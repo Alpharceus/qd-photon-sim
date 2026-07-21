@@ -1,0 +1,101 @@
+meta:
+  name: chatzarakis
+  device: "(211)B InAs/GaAs piezoelectric QD between GaAs/AlAs short-period superlattices"
+  role: validation (V-a)
+  source: "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)"
+  note: >
+    Entries marked PLACEHOLDER must be replaced with values digitized from the
+    published figures before the V-a gate can close. The paper is paywalled from
+    this machine; the pipeline runs end-to-end regardless.
+
+params:
+  # --- spectral (Module C) ---
+  delta_xx:
+    value: 9.0
+    unit: meV
+    tag: E
+    source: "PLACEHOLDER -- enhanced X-XX splitting of the (211)B piezoelectric dot; digitize from paper"
+  w:
+    value: 2.0
+    unit: meV
+    tag: A
+    source: "PLACEHOLDER -- published filter window; replace with the paper's value(s)"
+  E_lo:
+    value: 36.6
+    unit: meV
+    tag: DR
+    source: "GaAs LO phonon energy (matrix-dominated coupling assumed)"
+  gamma0:
+    range: [0.05, 2.0]
+    unit: meV
+    tag: A
+    source: "fit parameter: zero-T linewidth"
+  a_ac:
+    range: [0.0, 0.02]
+    unit: meV/K
+    tag: A
+    source: "fit parameter: acoustic-phonon linear coefficient"
+  b_lo:
+    range: [1.0, 80.0]
+    unit: meV
+    tag: A
+    source: "fit parameter: LO-phonon coupling strength"
+
+  # --- Gamma(T) anchor (V-a constraint) ---
+  gamma_anchor:
+    value: 6.5
+    unit: meV
+    tag: DR
+    source: "paper: measured linewidth 6-7 meV at >=250 K (planning doc, section 1)"
+  gamma_anchor_tol:
+    value: 0.5
+    unit: meV
+    tag: DR
+    source: "half-width of the published 6-7 meV interval"
+  gamma_anchor_T:
+    value: 250.0
+    unit: K
+    tag: DR
+    source: "anchor temperature"
+
+  # --- retention / background (rho path) ---
+  C_esc:
+    range: [1.0e+4, 1.0e+10]
+    unit: "1"
+    tag: A
+    source: "fit parameter: Arrhenius escape prefactor ratio"
+  E_a:
+    range: [200.0, 330.0]
+    unit: meV
+    tag: DR
+    source: "fit parameter bounded around the published 265+-30 meV activation energy"
+  E_a_prior:
+    value: 265.0
+    unit: meV
+    tag: DR
+    source: "paper: Arrhenius activation energy 265+-30 meV"
+  E_a_prior_tol:
+    value: 30.0
+    unit: meV
+    tag: DR
+    source: "published uncertainty"
+  b0:
+    range: [1.0e-4, 0.2]
+    unit: "1"
+    tag: A
+    source: "fit parameter: constant background-to-signal ratio"
+
+data:
+  g2_vs_T:
+    tag: E
+    source: >
+      PLACEHOLDER -- endpoints 0.02 @ 78 K and 0.36 @ 230 K are the planning-doc
+      anchors; the four interior points are invented smooth interpolants and must
+      be replaced by digitized values from the published g2(T) figure.
+    points:
+      - {T: 78.0,  g2: 0.02, err: 0.03}
+      - {T: 110.0, g2: 0.05, err: 0.03}
+      - {T: 140.0, g2: 0.10, err: 0.03}
+      - {T: 170.0, g2: 0.17, err: 0.03}
+      - {T: 200.0, g2: 0.26, err: 0.03}
+      - {T: 230.0, g2: 0.36, err: 0.03}

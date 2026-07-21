@@ -1,0 +1,19 @@
+{
+  "params": {
+    "delta_xx": 9.0,
+    "E_lo": 36.6,
+    "w": 2.0,
+    "gamma0": 0.5738432220910687,
+    "a_ac": 0.019999999999999997,
+    "b_lo": 5.543721283985036,
+    "C_esc": 832521.5147830591,
+    "E_a": 237.61598883251136,
+    "b0": 0.03192433131633475
+  },
+  "Tc_K": 241.57328196361055,
+  "tag_chain": "[A]",
+  "passed_pm0.03": false,
+  "notes": [
+    "PLACEHOLDER inputs present (delta_xx, w, g2_vs_T): fit exercises the machinery only -- the V-a gate CANNOT close on this run."
+  ]
+}
