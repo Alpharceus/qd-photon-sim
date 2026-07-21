@@ -84,10 +84,16 @@ class SpectralResult:
     t_xx: float
 
 
-def epsilon(delta_xx, gamma_x, gamma_xx, w=None, kappa=None) -> SpectralResult:
-    """F1: eps = t_XX/t_X for an XX line detuned by delta_xx from the X-centered filter."""
-    t_x = transmission(0.0, gamma_x, w, kappa)
-    t_xx = transmission(delta_xx, gamma_xx, w, kappa)
+def epsilon(delta_xx, gamma_x, gamma_xx, w=None, kappa=None, dx=0.0) -> SpectralResult:
+    """F1: eps = t_XX/t_X.
+
+    delta_xx > 0 means XX lies delta_xx below X in energy (red-shifted XX, the
+    Chatzarakis cavity-dot case); a blue-shifted (antibound) XX enters as
+    delta_xx < 0. dx is the offset of the X line from the filter center
+    (dx < 0: window blue-shifted past X, as in the published high-T windows).
+    """
+    t_x = transmission(dx, gamma_x, w, kappa)
+    t_xx = transmission(dx - delta_xx, gamma_xx, w, kappa)
     return SpectralResult(eps=t_xx / t_x, t_x=t_x, t_xx=t_xx)
 
 

@@ -17,7 +17,6 @@ import numpy as np
 from fsim_core.card import Tag
 from fsim_core.fitting import FitResult, V_A_TOL
 from fsim_core.integrator import g2_of_T, solve_Tc
-from fsim_core.spectral import gamma_of_T
 
 TAG_COLORS = {Tag.V: "#1a9641", Tag.DR: "#e3a21a", Tag.E: "#e3a21a", Tag.A: "#d7191c"}
 
@@ -34,13 +33,19 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
     params + the exact card, so the plot is regenerable from the bundle."""
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-    p = fit.params
 
     Ts_d = np.array([r["T"] for r in fit.data])
     g2_d = np.array([r["g2"] for r in fit.data])
     err_d = np.array([r["err"] for r in fit.data])
+    upper = np.array([r.get("bound") == "upper" for r in fit.data])
+    ws = np.array([r["w"] for r in fit.data])
+    dxs = np.array([r["dx"] for r in fit.data])
 
-    Ts = np.linspace(min(Ts_d) - 20, max(Ts_d) + 60, 300)
+    # model curve with the published windows interpolated in T
+    p = dict(fit.params)
+    p["w"] = lambda T: np.interp(T, Ts_d, ws)
+    p["dx"] = lambda T: np.interp(T, Ts_d, dxs)
+    Ts = np.linspace(min(Ts_d) - 18, max(Ts_d) + 60, 300)
     pts = [g2_of_T(T, p) for T in Ts]
     g2_m = np.array([q.g2 for q in pts])
     eps_m = np.array([q.eps for q in pts])
@@ -49,15 +54,19 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
     Tc = solve_Tc(p)
 
     # ---- CSV exports (one per plotted series group)
-    _write_csv(outdir / "fit_data_points.csv", ["T_K", "g2", "err", "model_g2", "residual"],
-               zip(Ts_d, g2_d, err_d, fit.model_g2, fit.residuals))
+    _write_csv(outdir / "fit_data_points.csv",
+               ["T_K", "g2", "err", "bound", "w_meV", "dx_meV", "model_g2", "residual"],
+               ((r["T"], r["g2"], r["err"], r.get("bound", "value"), r["w"], r["dx"], m, res)
+                for r, m, res in zip(fit.data, fit.model_g2, fit.residuals)))
     _write_csv(outdir / "fit_model_curve.csv",
-               ["T_K", "g2_model", "eps", "rho", "gamma_meV"],
-               zip(Ts, g2_m, eps_m, rho_m, gam_m))
+               ["T_K", "g2_model", "eps", "rho", "gamma_meV",
+                "w_interp_meV_extrap_clamped", "dx_interp_meV_extrap_clamped"],
+               zip(Ts, g2_m, eps_m, rho_m, gam_m,
+                   np.interp(Ts, Ts_d, ws), np.interp(Ts, Ts_d, dxs)))
     with open(outdir / "fit_params.json", "w", encoding="utf-8") as f:
-        json.dump({"params": p, "Tc_K": None if np.isnan(Tc) else Tc,
+        json.dump({"params": fit.params, "Tc_K": None if np.isnan(Tc) else Tc,
                    "tag_chain": fit.tag.label, "passed_pm0.03": fit.passed,
-                   "notes": fit.notes}, f, indent=2)
+                   "cost": fit.cost, "notes": fit.notes}, f, indent=2)
     (outdir / "card_snapshot.yaml").write_text(
         Path(card_path).read_text(encoding="utf-8"), encoding="utf-8")
 
@@ -66,8 +75,13 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
 
     ax = axes[0]
-    ax.errorbar(Ts_d, g2_d, yerr=err_d, fmt="o", color="#333333", capsize=3,
-                label="data (card)", zorder=5)
+    val = ~upper
+    ax.errorbar(Ts_d[val], g2_d[val], yerr=err_d[val], fmt="o", color="#333333",
+                capsize=3, label="data (Fig. 5)", zorder=5)
+    if upper.any():
+        ax.errorbar(Ts_d[upper], g2_d[upper], yerr=err_d[upper], fmt="v",
+                    color="#333333", capsize=3, uplims=True, zorder=5,
+                    label="upper bound")
     ax.plot(Ts, g2_m, color="#2166ac", lw=2, label="F-series model")
     ax.axhline(0.5, color="#888888", ls=":", lw=1)
     if np.isfinite(Tc):
@@ -78,7 +92,7 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
     ax.set_ylabel("$g^{(2)}(0)$")
     ax.set_ylim(0, max(0.7, g2_m.max() * 1.05))
     ax.legend(frameon=False, fontsize=8)
-    ax.set_title("V-a fit: $g^{(2)}(T)$", fontsize=10)
+    ax.set_title("V-a fit: $g^{(2)}(T)$, published windows", fontsize=10)
 
     ax = axes[1]
     ax.plot(Ts, eps_m, color="#5e3c99", lw=2, label=r"$\varepsilon(T)=t_{XX}/t_X$")
@@ -93,11 +107,10 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
 
     ax = axes[2]
     ax.plot(Ts, gam_m, color="#2166ac", lw=2)
-    gA, gAv, gAt = fit.gamma_anchor
-    T_anchor = 250.0
+    gA, gAv, gAt, T_anchor = fit.gamma_anchor
     ax.errorbar([T_anchor], [gAv], yerr=[gAt], fmt="s", color="#d7191c",
                 capsize=4, label="published anchor")
-    ax.plot([T_anchor], [gA], "x", color="#2166ac", ms=8, label="model @ anchor")
+    ax.plot([T_anchor], [gA], "x", color="#2166ac", ms=9, mew=2, label="model @ anchor")
     ax.set_xlabel("T (K)")
     ax.set_ylabel(r"$\Gamma$ (meV)")
     ax.legend(frameon=False, fontsize=8)

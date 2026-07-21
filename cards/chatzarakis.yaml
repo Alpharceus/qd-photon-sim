@@ -1,30 +1,28 @@
 meta:
   name: chatzarakis
-  device: "(211)B InAs/GaAs piezoelectric QD between GaAs/AlAs short-period superlattices"
+  device: "(211)B InAs/GaAs piezoelectric QD in a lambda-microcavity, GaAs/AlAs SSL barriers, <Al>=57%"
   role: validation (V-a)
-  source: "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)"
+  source: "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023); local PDF digitized 2026-07-21"
   note: >
-    Entries marked PLACEHOLDER must be replaced with values digitized from the
-    published figures before the V-a gate can close. The paper is paywalled from
-    this machine; the pipeline runs end-to-end regardless.
+    Antibunching dot of Figs. 4-5 (microcavity sample). g2 values are the
+    published numbers printed in Fig. 5. Filter windows and line positions
+    digitized programmatically from the embedded Fig. 4 raster (tick-calibrated,
+    ~+-0.1 meV on window edges; X-peak position noisier at high T, ~+-0.5 meV).
+    The 150 K and 210 K windows appear only in Fig. S4 (supplement unavailable)
+    and are piecewise-linear interpolations, tagged [E] in the row source.
 
 params:
   # --- spectral (Module C) ---
   delta_xx:
-    value: 9.0
+    value: 5.9
     unit: meV
-    tag: E
-    source: "PLACEHOLDER -- enhanced X-XX splitting of the (211)B piezoelectric dot; digitize from paper"
-  w:
-    value: 2.0
-    unit: meV
-    tag: A
-    source: "PLACEHOLDER -- published filter window; replace with the paper's value(s)"
+    tag: DR
+    source: "Fig. 4, 78 K panel: X 1.3313 eV, XX 1.3254 eV (red-shifted XX); +-0.3 meV digitization"
   E_lo:
     value: 36.6
     unit: meV
     tag: DR
-    source: "GaAs LO phonon energy (matrix-dominated coupling assumed)"
+    source: "GaAs LO phonon energy; dots assimilate GaAs character (paper Sec. III, Varshni discussion)"
   gamma0:
     range: [0.05, 2.0]
     unit: meV
@@ -46,7 +44,7 @@ params:
     value: 6.5
     unit: meV
     tag: DR
-    source: "paper: measured linewidth 6-7 meV at >=250 K (planning doc, section 1)"
+    source: "paper Sec. III / Fig. S2: (211)B and (100) linewidths merge at T>=250 K to FWHM 6-7 meV"
   gamma_anchor_tol:
     value: 0.5
     unit: meV
@@ -59,43 +57,70 @@ params:
     source: "anchor temperature"
 
   # --- retention / background (rho path) ---
-  C_esc:
-    range: [1.0e+4, 1.0e+10]
+  a_esc:
+    range: [1.0e+3, 1.0e+10]
     unit: "1"
     tag: A
-    source: "fit parameter: Arrhenius escape prefactor ratio"
+    source: "fit parameter: WL-escape Arrhenius prefactor; paper reports order 1e7 for macro samples"
   E_a:
-    range: [200.0, 330.0]
+    range: [200.0, 290.0]
     unit: meV
     tag: DR
-    source: "fit parameter bounded around the published 265+-30 meV activation energy"
+    source: "fit parameter bounded around the published activation energies (see E_a_prior)"
   E_a_prior:
-    value: 265.0
+    value: 240.0
     unit: meV
-    tag: DR
-    source: "paper: Arrhenius activation energy 265+-30 meV"
+    tag: V
+    source: "paper: Ea=(240+-20) meV for THIS microcavity dot (Fig. S5(b)); the 265+-30 meV of the planning doc is the <Al>=65% macro sample"
   E_a_prior_tol:
-    value: 30.0
+    value: 20.0
     unit: meV
-    tag: DR
-    source: "published uncertainty"
-  b0:
-    range: [1.0e-4, 0.2]
+    tag: V
+    source: "published uncertainty for the microcavity dot"
+  b_p:
+    range: [1.0, 1.0e+4]
     unit: "1"
     tag: A
-    source: "fit parameter: constant background-to-signal ratio"
+    source: "fit parameter: p-shell channel prefactor; paper: 'order of 100' (macro sample)"
+  b_p_prior_log10:
+    value: 2.0
+    unit: "log10(1)"
+    tag: DR
+    source: "paper: coefficient b in the order of 100 -> log10 = 2"
+  b_p_prior_log10_tol:
+    value: 0.7
+    unit: "log10(1)"
+    tag: E
+    source: "half-decade tolerance on an order-of-magnitude statement"
+  E_b:
+    value: 35.0
+    unit: meV
+    tag: DR
+    source: "paper: Eb=(35+-5) meV, p-shell thermalization (~30 meV s-p splitting from PLE)"
+  b0:
+    range: [1.0e-5, 0.1]
+    unit: "1"
+    tag: A
+    source: "fit parameter: T-independent background-to-signal ratio in the window"
+  beta:
+    range: [1.0e-4, 10.0]
+    unit: "1"
+    tag: A
+    source: "fit parameter: escaped-carrier re-emission (WL/SSL background) coupling, B = b0 + beta*(1-S)"
 
 data:
   g2_vs_T:
     tag: E
     source: >
-      PLACEHOLDER -- endpoints 0.02 @ 78 K and 0.36 @ 230 K are the planning-doc
-      anchors; the four interior points are invented smooth interpolants and must
-      be replaced by digitized values from the published g2(T) figure.
+      g2 values: published, printed in Fig. 5 [V]. Windows (w, dx) at
+      78/120/170/230 K: digitized from Fig. 4 raster [DR]. Windows at
+      150/210 K: piecewise-linear interpolation between digitized neighbors
+      [E] -- replace from Fig. S4 when the supplement is available.
+      dx = E_X - window center (negative: window blue-shifted past X).
     points:
-      - {T: 78.0,  g2: 0.02, err: 0.03}
-      - {T: 110.0, g2: 0.05, err: 0.03}
-      - {T: 140.0, g2: 0.10, err: 0.03}
-      - {T: 170.0, g2: 0.17, err: 0.03}
-      - {T: 200.0, g2: 0.26, err: 0.03}
-      - {T: 230.0, g2: 0.36, err: 0.03}
+      - {T: 78.0,  g2: 0.02, err: 0.01, bound: upper, w: 1.40, dx: -0.37}
+      - {T: 120.0, g2: 0.10, err: 0.01, w: 3.19, dx: -0.70}
+      - {T: 150.0, g2: 0.15, err: 0.01, w: 4.12, dx: -1.27}
+      - {T: 170.0, g2: 0.18, err: 0.02, w: 4.74, dx: -1.65}
+      - {T: 210.0, g2: 0.28, err: 0.03, w: 6.69, dx: -2.82}
+      - {T: 230.0, g2: 0.36, err: 0.03, w: 7.66, dx: -3.41}

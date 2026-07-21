@@ -4,9 +4,12 @@ for T_c, and runs one-at-a-time sensitivities.
 F-series governing math:
   * background law      g2 = 1 - rho^2 (1 - eps)
   * master ceiling      rho(Tc)^2 [1 - eps(Tc)] = 1/2   (i.e. g2(Tc) = 0.5)
-  * rho(T) from Arrhenius retention against a constant background channel:
-        S(T)   = 1 / (1 + C_esc * exp(-E_a / kB T))     (signal retention)
-        rho(T) = S / (S + b0)                           (signal fraction)
+  * rho(T) from the paper's two-channel Arrhenius retention with a coupled
+    background (escaped carriers re-emit in the WL/SSL):
+        S(T)   = 1 / (1 + a_esc e^{-E_a/kT} + b_p e^{-E_b/kT})   (retention)
+        B(T)   = b0 + beta (1 - S(T))                            (background)
+        rho(T) = S / (S + B)                                     (signal fraction)
+    E_a: WL escape (dominant, high T); E_b: p-shell channel (weak, low T).
 """
 from __future__ import annotations
 
@@ -18,10 +21,16 @@ from scipy.optimize import brentq
 from .spectral import KB, epsilon, gamma_of_T
 
 
-def rho_of_T(T, C_esc, E_a, b0):
+def retention(T, a_esc, E_a, b_p, E_b):
     T = np.asarray(T, dtype=float)
-    S = 1.0 / (1.0 + C_esc * np.exp(-E_a / (KB * T)))
-    return S / (S + b0)
+    kT = KB * T
+    return 1.0 / (1.0 + a_esc * np.exp(-E_a / kT) + b_p * np.exp(-E_b / kT))
+
+
+def rho_of_T(T, a_esc, E_a, b_p, E_b, b0, beta):
+    S = retention(T, a_esc, E_a, b_p, E_b)
+    B = b0 + beta * (1.0 - S)
+    return S / (S + B)
 
 
 def g2_from(eps, rho):
@@ -39,15 +48,24 @@ class ModelPoint:
     t_x: float
 
 
-# parameter dict keys expected by the assembler
-PARAM_KEYS = ("delta_xx", "gamma0", "a_ac", "b_lo", "E_lo", "w", "C_esc", "E_a", "b0")
+RHO_KEYS = ("a_esc", "E_a", "b_p", "E_b", "b0", "beta")
+PARAM_KEYS = ("delta_xx", "gamma0", "a_ac", "b_lo", "E_lo", "w", "dx") + RHO_KEYS
 
 
 def g2_of_T(T, p: dict) -> ModelPoint:
-    """Assemble one model point from a flat parameter dict (values in meV/K)."""
+    """Assemble one model point from a flat parameter dict (meV/K units).
+
+    Filter geometry: p["w"] window full width, p["dx"] X offset from window
+    center. For temperature sweeps with T-dependent windows, callables are
+    accepted for w and dx.
+    """
+    w = p["w"](T) if callable(p["w"]) else p["w"]
+    dx = p.get("dx", 0.0)
+    dx = dx(T) if callable(dx) else dx
     gam = float(gamma_of_T(T, p["gamma0"], p["a_ac"], p["b_lo"], p["E_lo"]))
-    spec = epsilon(p["delta_xx"], gam, p.get("gamma_xx", gam), w=p["w"], kappa=p.get("kappa"))
-    rho = float(rho_of_T(T, p["C_esc"], p["E_a"], p["b0"]))
+    spec = epsilon(p["delta_xx"], gam, p.get("gamma_xx", gam),
+                   w=w, kappa=p.get("kappa"), dx=dx)
+    rho = float(rho_of_T(T, *(p[k] for k in RHO_KEYS)))
     return ModelPoint(T=float(T), gamma=gam, eps=spec.eps, rho=rho,
                       g2=g2_from(spec.eps, rho), t_x=spec.t_x)
 
@@ -69,10 +87,10 @@ def solve_Tc(p: dict, T_lo=4.0, T_hi=400.0):
 
 def oat_sensitivity(p: dict, rel=0.05, keys=None) -> dict[str, float]:
     """One-at-a-time sensitivity of T_c: dTc for a +rel fractional bump of each
-    parameter (first pass before Sobol, per the planning doc)."""
+    scalar parameter (first pass before Sobol, per the planning doc)."""
     base = solve_Tc(p)
     out = {}
-    for k in keys or [k for k in PARAM_KEYS if k in p]:
+    for k in keys or [k for k in PARAM_KEYS if k in p and not callable(p[k])]:
         q = dict(p)
         q[k] = p[k] * (1.0 + rel) if p[k] != 0 else rel
         out[k] = solve_Tc(q) - base

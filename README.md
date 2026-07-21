@@ -24,10 +24,10 @@ python verify/verify_fsim.py      # regression suite, exit 0 iff all pass
 python scripts/run_phase0.py      # V-a fit + report bundle
 ```
 
-## Status / honesty ledger
+## Status
 
-`cards/chatzarakis.yaml` currently carries **PLACEHOLDER** entries: the four
-interior g²(T) points, Δ_XX, and the filter window are not yet digitized from
-Phys. Rev. Applied 20, 034011 (paywalled). The pipeline runs end-to-end and the
-fit machinery is verified, but **the V-a gate cannot close until the digitized
-values replace the placeholders** — the card and every output say so.
+**Phase-0 gate: CLOSED (V-a PASS, 2026-07-21).** All six published g²(T)
+points fit within ±0.03/point with the digitized windows, the Γ(250 K) anchor,
+and E_a = 240 meV (published for this dot). Solved ceiling T_c = 261 K. See
+`notes/phase0-results.md` for findings and the honesty ledger (existence, not
+uniqueness; 150/210 K windows interpolated [E] pending the supplement).
