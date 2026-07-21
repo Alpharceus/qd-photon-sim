@@ -1,31 +1,92 @@
 meta:
   name: reischle
-  device: "InP/GaInP QD p-i-n LED, red spectral range (Stuttgart)"
-  role: validation (V-c) -- BLOCKED on source data
-  source: "Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) -- PAYWALLED, PDF not yet available"
+  device: "InP/Ga0.51In0.49P QD p-i-n LED in low-Q AlGaAs DBR cavity, MOVPE on GaAs; ~20 um contact aperture"
+  role: validation (V-c)
+  source: "Reischle et al., Appl. Phys. Lett. 97, 143513 (2010); local PDF digitized 2026-07-21"
   note: >
-    PLACEHOLDER card. V-c claim (planning doc section 1): the 80 K electrical
-    result is rho-limited with eps ~ small -- i.e. the measured g2(0) is
-    explained by injection background (Delta rho) and junction heating
-    (Delta T_J) alone, with the filtered-cascade leakage eps subdominant.
-    To close V-c, drop the paper PDF (and supplement if any) into the project
-    root and re-run scripts/run_phase1.py: needed values are g2(0) at 80 K
-    (pulsed electrical), the X/XX splitting, filter window, drive conditions
-    (I, V, repetition rate), and any EL background spectra.
+    Pulsed electrical excitation, HBT autocorrelation. Dominant line assigned
+    by the paper to a negatively charged exciton (trion): NO radiative cascade
+    partner, so the filtered-cascade leakage is eps ~ 0 structurally and the
+    F-series predicts g2 = 1 - rho^2. Sample temperatures are drive-heating
+    estimates from the paper (50-Ohm termination), an in-the-wild DeltaT_J.
+    CAVEAT: this is the 2010 pulsed device at ~20-40 K. The planning doc's
+    "80 K electrical result" is Reischle et al., Opt. Express 16, 12771
+    (2008) [their ref. 19] -- open access but robot-blocked; drop that PDF in
+    the project root to close V-c at 80 K proper (V-c(ii)).
 
 params:
-  g2_80K:
-    value: 0.35
-    unit: "1"
-    tag: A
-    source: "PLACEHOLDER -- order-of-magnitude from comparable electrical QD LEDs at 77-80 K (Dou et al. 0.35); replace with the Reischle measured value"
-  delta_xx:
-    value: 4.0
-    unit: meV
-    tag: A
-    source: "PLACEHOLDER -- InP/GaInP X-XX splitting; replace from paper"
-  w:
-    value: 1.0
-    unit: meV
-    tag: A
-    source: "PLACEHOLDER -- spectral filter window; replace from paper"
+  line_type:
+    value: 0.0
+    unit: "0=trion,1=neutral-X"
+    tag: DR
+    source: "paper Sec: dominant line 'most probably from a negatively charged exciton' -> eps ~ 0 (no cascade)"
+  E_line:
+    value: 1.8396
+    unit: eV
+    tag: DR
+    source: "digitized Fig. 2(b) pulsed spectrum, Device 1 Pos. 2"
+  T_device1:
+    value: 40.0
+    unit: K
+    tag: DR
+    source: "paper: sample ~40 K for Device 1 (heating via 50-Ohm termination at 4.5 V)"
+  T_device2:
+    value: 20.0
+    unit: K
+    tag: DR
+    source: "paper: ~20 K for Device 2 (improved contacts, ~2 V operation)"
+  V_dc:
+    value: 4.5
+    unit: V
+    tag: DR
+    source: "Device 1 pulsed-spectra/autocorrelation bias (4.65 V for the DC spectrum)"
+  V_pp:
+    value: 4.8
+    unit: V
+    tag: DR
+    source: "pulse amplitude, 200 ps width for the 100/200 MHz runs"
+  tau_decay:
+    value: 500.0
+    unit: ps
+    tag: DR
+    source: "QD decay time from TCPC (paper)"
+  qd_density:
+    value: 1.0e+10
+    unit: cm^-2
+    tag: DR
+    source: "paper: high QD density ~1e10; discrete current paths excite few dots"
+
+data:
+  g2_vs_ERR:
+    tag: V
+    source: >
+      Published g2(0) values: central-peak area vs Poisson level, red numbers
+      in Fig. 3 (Device 1 Pos. 2) and Fig. 2 insets (200 MHz). No background
+      correction applied by the authors. err for the 500 MHz multi-Lorentz
+      point and the Fig. 2 insets not stated; 0.05 assumed [E].
+    points:
+      - {device: 1, position: 2, ERR_MHz: 100.0, pulse_ps: 200.0, g2: 0.37, err: 0.02}
+      - {device: 1, position: 2, ERR_MHz: 200.0, pulse_ps: 200.0, g2: 0.53, err: 0.02}
+      - {device: 1, position: 2, ERR_MHz: 500.0, pulse_ps: 150.0, g2: 0.49, err: 0.05}
+      - {device: 1, position: 1, ERR_MHz: 200.0, pulse_ps: 200.0, g2: 0.24, err: 0.05}
+      - {device: 2, position: 2, ERR_MHz: 200.0, pulse_ps: 200.0, g2: 0.34, err: 0.05}
+
+  rho_spectral:
+    tag: DR
+    source: >
+      Signal fraction rho(w) = S/(S+B) for a window of full width w centered
+      on the X- line, digitized from the Fig. 2(b) PULSED spectrum (same
+      excitation as the g2 runs). rho_lo: background referenced to the frame
+      bottom (max-background convention); rho_hi: referenced to the curve's
+      own minimum (min-background). Linear-intensity axis assumed. The
+      detection window of the HBT runs is NOT stated in the paper (slit-
+      defined); w is therefore swept.
+    points:
+      - {w_meV: 1.0,  rho_lo: 0.901, rho_hi: 0.950}
+      - {w_meV: 2.0,  rho_lo: 0.890, rho_hi: 0.944}
+      - {w_meV: 3.0,  rho_lo: 0.873, rho_hi: 0.935}
+      - {w_meV: 4.0,  rho_lo: 0.855, rho_hi: 0.925}
+      - {w_meV: 5.0,  rho_lo: 0.834, rho_hi: 0.913}
+      - {w_meV: 6.0,  rho_lo: 0.816, rho_hi: 0.902}
+      - {w_meV: 8.0,  rho_lo: 0.780, rho_hi: 0.881}
+      - {w_meV: 10.0, rho_lo: 0.745, rho_hi: 0.859}

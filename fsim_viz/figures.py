@@ -189,3 +189,36 @@ def phase1_bundle(drive: dict, thermal: dict, outdir: Path) -> dict:
         fig.savefig(outdir / f"phase1_drive_thermal.{ext}", bbox_inches="tight", dpi=200)
     plt.close(fig)
     return {"outdir": str(outdir)}
+
+
+def vc_reischle_figure(vc: dict, outdir: Path) -> None:
+    """V-c consistency figure: digitized rho(w) envelope vs the rho required by
+    the measured g2 under the trion (eps=0) F-series prediction g2 = 1-rho^2."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    ws, lo, hi = vc["w_meV"], vc["rho_lo"], vc["rho_hi"]
+    _write_csv(outdir / "vc_rho_window.csv",
+               ["w_meV", "rho_lo", "rho_hi", "rho_required", "rho_required_err"],
+               ((w, l, h, vc["rho_req"], vc["rho_req_err"]) for w, l, h in zip(ws, lo, hi)))
+
+    fig, ax = plt.subplots(figsize=(5.4, 3.8))
+    ax.fill_between(ws, lo, hi, alpha=0.3, color="#2166ac", lw=0,
+                    label=r"digitized $\rho(w)$ (zero-level conventions)")
+    ax.plot(ws, lo, color="#2166ac", lw=1.2)
+    ax.plot(ws, hi, color="#2166ac", lw=1.2)
+    ax.axhspan(vc["rho_req"] - vc["rho_req_err"], vc["rho_req"] + vc["rho_req_err"],
+               color="#d7191c", alpha=0.35, lw=0)
+    ax.axhline(vc["rho_req"], color="#d7191c", lw=1.5,
+               label=rf"$\rho$ required by $g^{{(2)}}$ = {vc['g2']}$\pm${vc['g2_err']}")
+    ax.set_xlabel("detection window $w$ (meV)")
+    ax.set_ylabel(r"signal fraction $\rho$")
+    ax.set_ylim(0.7, 1.0)
+    ax.legend(frameon=False, fontsize=8, loc="lower left")
+    verdict = "CONSISTENT" if vc["consistent"] else "INCONSISTENT"
+    ax.set_title(f"V-c (Reischle, 100 MHz, ~40 K): trion, $\\varepsilon\\approx 0$ — "
+                 f"{verdict}", fontsize=10,
+                 color="#1a9641" if vc["consistent"] else "#d7191c")
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"vc_reischle.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)

@@ -18,7 +18,7 @@ from fsim_core.card import load_card
 from fsim_core.fitting import V_A_TOL, fit_phase0
 from fsim_core.loading import f1b_g2
 from fsim_core.thermal import Layer, Stack, t_junction
-from fsim_viz.figures import phase0_bundle, phase1_bundle
+from fsim_viz.figures import phase0_bundle, phase1_bundle, vc_reischle_figure
 
 
 def va_recheck():
@@ -103,13 +103,65 @@ def main():
     res = phase1_bundle(drive, thermal, ROOT / "out" / "phase1")
     print(f"\nphase1 bundle -> {res['outdir']}")
 
-    rcard = load_card(ROOT / "cards" / "reischle.yaml")
-    ph = rcard.placeholders()
+    vc_reischle()
+    return fit
+
+
+def vc_reischle():
+    """V-c: is the Reischle electrical result rho-limited with eps ~ small?
+
+    Trion line -> eps = 0 structurally (no cascade partner), so the F-series
+    predicts g2 = 1 - rho^2. Test: does the rho digitized from the pulsed EL
+    spectrum, over plausible detection windows, cover the rho the measured
+    g2 requires?"""
+    card = load_card(ROOT / "cards" / "reischle.yaml")
+    ph = card.placeholders()
     if ph:
         print(f"\nV-c (reischle): BLOCKED -- placeholder entries: {', '.join(ph)}")
-        print("   Drop the Reischle APL 97, 143513 (2010) PDF into the project root "
-              "and re-run to close V-c.")
-    return fit
+        return
+
+    rows = card.datasets["g2_vs_ERR"].rows
+    base = next(r for r in rows
+                if r["device"] == 1 and r["position"] == 2 and r["ERR_MHz"] == 100.0)
+    g2, err = base["g2"], base["err"]
+    rho_req = float(np.sqrt(1.0 - g2))
+    rho_req_err = err / (2.0 * rho_req)
+
+    rw = sorted(card.datasets["rho_spectral"].rows, key=lambda r: r["w_meV"])
+    ws = [r["w_meV"] for r in rw]
+    lo = [r["rho_lo"] for r in rw]
+    hi = [r["rho_hi"] for r in rw]
+    cover = [r["w_meV"] for r in rw
+             if r["rho_lo"] - rho_req_err <= rho_req <= r["rho_hi"] + rho_req_err]
+    consistent = bool(cover)
+
+    print("\nV-c (Reischle APL 97, 143513; Device 1 Pos. 2, ~40 K, pulsed electrical):")
+    print("  line = trion (paper assignment) -> eps = 0 structurally; "
+          "no cascade leakage path")
+    print(f"  measured g2(0) = {g2}+-{err} @ 100 MHz  ->  requires rho = "
+          f"{rho_req:.3f}+-{rho_req_err:.3f}")
+    print(f"  digitized rho(w) envelope, w = {ws[0]:.0f}-{ws[-1]:.0f} meV: "
+          f"[{min(lo):.3f}, {max(hi):.3f}]")
+    if consistent:
+        print(f"  required rho covered at w = {cover[0]:.0f}-{cover[-1]:.0f} meV  ->  "
+              "V-c(i) CONSISTENT: rho-limited, eps small")
+    else:
+        print("  required rho NOT covered by the spectral envelope -> V-c(i) FAILS; "
+              "a non-spectral mechanism is required")
+    hi_err = [r for r in rows if r["ERR_MHz"] > 100.0 and r["device"] == 1 and r["position"] == 2]
+    if hi_err:
+        vals = ", ".join(f"{r['g2']} @ {r['ERR_MHz']:.0f} MHz" for r in hi_err)
+        print(f"  higher-ERR excess ({vals}): temporal (EP refilling + peak overlap; "
+              "paper's own attribution) -- outside the spectral model, WP-M2' tier")
+    print("  OPEN: the 80 K point (Opt. Express 16, 12771 (2008), their ref. 19) -- "
+          "drop that PDF to close V-c(ii)")
+    print(f"  tag chain: {card.datasets['rho_spectral'].tag.label} "
+          "(digitized spectrum; window unpublished, swept)")
+
+    vc_reischle_figure({"w_meV": ws, "rho_lo": lo, "rho_hi": hi,
+                        "rho_req": rho_req, "rho_req_err": rho_req_err,
+                        "g2": g2, "g2_err": err, "consistent": consistent},
+                       ROOT / "out" / "phase1")
 
 
 if __name__ == "__main__":

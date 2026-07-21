@@ -43,16 +43,35 @@ limit; cone approximation unvalidated beyond ~25% class); k(T) exponents for
 alloys assumed [A]; heat assumed generated at the junction plane; no surface/
 interface (Kapitza) resistance. COMSOL replaces this per plan at Phase-1 exit.
 
-## V-c status: BLOCKED (not failed)
+## V-c(i): CONSISTENT (Reischle APL 97, 143513 (2010), digitized 2026-07-21)
 
-`reischle.yaml` carries placeholders. Needed from Reischle et al., APL 97,
-143513 (2010): g²(0) at 80 K under pulsed electrical drive, X/XX splitting,
-filter window, drive conditions (I, V, repetition rate). Drop the PDF in the
-project root and re-run `scripts/run_phase1.py`. The V-c claim to test: the
-80 K electrical result is ρ-limited (injection background + ΔT_J) with ε
-subdominant.
+Correction to the plan's citation: APL 97, 143513 is the *pulsed high-rep-rate*
+study at ~20–40 K sample temperature; the "80 K electrical result" is its
+ref. 19 (Opt. Express 16, 12771 (2008)). V-c is therefore split:
+
+**V-c(i) — device-level ρ-limited test (this paper): PASS.**
+- The dominant line is a **trion** (paper's assignment) → no radiative cascade
+  partner → ε = 0 structurally. F-series prediction: g² = 1 − ρ².
+- Measured g²(0) = 0.37±0.02 (100 MHz, Device 1 Pos. 2) requires
+  ρ = 0.794±0.013. The ρ(w) digitized from the pulsed EL spectrum of the same
+  device/position (Fig. 2(b)) spans [0.745, 0.950] over w = 1–10 meV and two
+  zero-level conventions, covering the requirement at w ≈ 8–10 meV
+  (unpublished slit window; swept, never assumed). **The electrical result is
+  ρ-limited with ε small — the V-c mechanism claim holds.**
+- The higher-ERR excess (0.53 @ 200 MHz, 0.49 @ 500 MHz, same spectrum) is
+  temporal — EP refilling + peak overlap (τ_decay = 500 ps), the paper's own
+  attribution. This is outside the spectral model by construction and is the
+  concrete target for the WP-M2′ refilling tier (optional master-equation,
+  Module D).
+- Electrical-separation theorem in the wild: Device 1 (4.5 V) runs ~40 K vs
+  Device 2 (2 V) ~20 K — a ΔT_J-class drive penalty reported by the paper
+  itself (termination-resistor heating).
+
+**V-c(ii) — the 80 K point: OPEN.** Needs Opt. Express 16, 12771 (2008)
+(open access but robot-blocked; drop the PDF in the project root).
 
 ## Phase-1 exit criteria
 
 - T_j map for the staged-device mesa on GaAs/Si: **done** (`out/phase1/`).
-- V-c consistency: **open, blocked on source data** — the only remaining item.
+- V-c consistency: **V-c(i) PASS** at the device level; V-c(ii) (80 K point)
+  open on source data only.

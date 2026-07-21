@@ -37,5 +37,8 @@ operating point, injection background channels, MC-verified) + Module A
 (analytic spreading-resistance thermal, FD-checked, runaway detection) +
 `g2_electrical` (electrical-separation theorem). V-a re-passes with the F1b
 penalty (T_c 261.4 → 260.6 K). ΔT_J envelope maps in `out/phase1/`; findings
-in `notes/phase1-results.md`. **V-c is blocked on the Reischle APL 97, 143513
-(2010) PDF** — drop it in the project root and re-run `scripts/run_phase1.py`.
+in `notes/phase1-results.md`. **V-c(i) PASS** on the digitized Reischle APL
+97, 143513 (2010) data: trion → ε = 0, measured g² = 0.37 requires ρ = 0.794,
+inside the spectrum-digitized ρ(w) envelope — the electrical result is
+ρ-limited, as the F-series claims. V-c(ii) (the 80 K point) awaits the
+Opt. Express 16, 12771 (2008) PDF.
