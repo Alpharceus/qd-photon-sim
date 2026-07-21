@@ -242,6 +242,141 @@ def _():
     assert fit.passed, f"max |resid| = {np.max(np.abs(fit.residuals)):.4f}"
 
 
+# --------------------------------------------------------------- Module D (loading)
+
+@check("F1b: mu->0 recovers the F1 identity g2=eps")
+def _():
+    from fsim_core.loading import f1b_g2
+    for eps in (0.01, 0.1, 0.3):
+        assert abs(f1b_g2(1e-6, eps) / eps - 1.0) < 1e-4, eps
+
+
+@check("F1b: saturation limit 2 eps/(1+eps)^2; monotone increasing in mu")
+def _():
+    from fsim_core.loading import f1b_g2
+    eps = 0.1
+    assert abs(f1b_g2(50.0, eps) - 2 * eps / (1 + eps) ** 2) < 1e-9
+    mus = np.linspace(0.01, 10, 300)
+    g = f1b_g2(mus, eps)
+    assert np.all(np.diff(g) > -1e-14)
+
+
+@check("F1b: drive factor bounded in (1, 2)")
+def _():
+    from fsim_core.loading import drive_factor
+    for mu in (0.1, 0.33, 1.0, 3.0, 20.0):
+        f = drive_factor(mu, 0.05)
+        assert 1.0 < f < 2.0, (mu, f)
+
+
+@check("F1b: MC second method (finite t_x, three operating points)")
+def _():
+    from fsim_core.loading import f1b_g2, mc_pulsed_g2
+    eps = 0.12
+    for mu in (0.33, 1.0, 3.0):
+        g2, se = mc_pulsed_g2(mu, 0.6, 0.6 * eps, seed=3)
+        assert abs(g2 - f1b_g2(mu, eps)) < 4 * se + 2e-3, mu
+
+
+@check("background law exact for Poissonian background over the cascade (MC)")
+def _():
+    from fsim_core.loading import f1b_g2, loading_probs, mc_pulsed_g2
+    mu, t_x, eps, b = 0.8, 0.5, 0.15, 0.06
+    _, P1, P2 = loading_probs(mu)
+    s = t_x * (P1 + P2 * (1 + eps))          # mean signal photons per pulse
+    rho = s / (s + b)
+    expected = 1 - rho**2 * (1 - f1b_g2(mu, eps))
+    g2, se = mc_pulsed_g2(mu, t_x, t_x * eps, b=b, seed=4)
+    assert abs(g2 - expected) < 4 * se + 2e-3, (g2, expected)
+
+
+@check("injection channels: compose additively; E_act=0 is T-independent")
+def _():
+    from fsim_core.loading import BackgroundChannel, b_injection
+    leak = BackgroundChannel("leak", A=0.01, m=1.0)
+    wl = BackgroundChannel("WL-EL", A=0.5, m=2.0, E_act=100.0)
+    assert abs(b_injection([leak], 2.0, 80) - 0.02) < 1e-12
+    assert abs(b_injection([leak], 2.0, 300) - b_injection([leak], 2.0, 80)) < 1e-15
+    tot = b_injection([leak, wl], 2.0, 200)
+    assert tot > b_injection([leak], 2.0, 200)
+    assert b_injection([wl], 2.0, 300) > b_injection([wl], 2.0, 100)
+
+
+# --------------------------------------------------------------- Module A (thermal)
+
+@check("thermal: FD disk solve matches uniform-flux closed form within 8%")
+def _():
+    from fsim_core.thermal import fd_disk_rth
+    a, k = 1e-6, 55.0
+    R_dom = 12 * a
+    R_fd = fd_disk_rth(a, k, R_dom=R_dom, Z_dom=R_dom, n=240)
+    R_fd += 1.0 / (2 * np.pi * k * R_dom)  # far-field resistance cut off by the finite domain
+    R_uf = 8.0 / (3 * np.pi**2 * k * a)
+    assert abs(R_fd - R_uf) / R_uf < 0.08, (R_fd, R_uf)
+
+
+@check("thermal: stack limits (bare disk, pillar 1D term, cone < pillar)")
+def _():
+    from fsim_core.thermal import Layer, Stack, stack_rth
+    a, k = 0.5e-6, 55.0
+    bare = Stack(layers=[], k_sub300=k, sub_alpha=0.0)
+    assert abs(stack_rth(a, bare, 300.0) - 1 / (4 * k * a)) < 1e-9
+    t = 1.5e-6
+    pil = Stack(layers=[Layer(t, 15.0, 0.0, spread=False)], k_sub300=k, sub_alpha=0.0)
+    con = Stack(layers=[Layer(t, 15.0, 0.0, spread=True)], k_sub300=k, sub_alpha=0.0)
+    r_pil = stack_rth(a, pil, 300.0) - 1 / (4 * k * a)
+    assert abs(r_pil - t / (15.0 * np.pi * a**2)) < 1e-9
+    assert stack_rth(a, con, 300.0) < stack_rth(a, pil, 300.0)
+
+
+@check("thermal: R_th decreasing in mesa radius; bare Si < bare GaAs substrate")
+def _():
+    from fsim_core.thermal import Layer, Stack, stack_rth
+    gaas = Stack(layers=[Layer(1.5e-6, 15.0, spread=False)], k_sub300=55.0)
+    radii = np.linspace(0.15e-6, 1.5e-6, 30)
+    R = [stack_rth(a, gaas) for a in radii]
+    assert np.all(np.diff(R) < 0)
+    a = 0.5e-6
+    bare_si = Stack(layers=[], k_sub300=148.0, sub_alpha=1.35)
+    bare_ga = Stack(layers=[], k_sub300=55.0)
+    assert stack_rth(a, bare_si) < stack_rth(a, bare_ga)
+
+
+@check("thermal: k(T) runaway reported as inf, not extrapolated garbage")
+def _():
+    from fsim_core.thermal import Layer, Stack, t_junction
+    st = Stack(layers=[Layer(1.5e-6, 8.0, 1.25)], k_sub300=55.0)
+    Tj = t_junction(400e-6, 0.15e-6, st, 77.0)
+    assert np.isinf(Tj)
+
+
+@check("thermal: t_junction fixed point self-consistent; P=0 -> T_hs")
+def _():
+    from fsim_core.thermal import Layer, Stack, stack_rth, t_junction
+    st = Stack(layers=[Layer(1.5e-6, 15.0)], k_sub300=55.0)
+    a, P, T_hs = 0.3e-6, 200e-6, 77.0
+    assert t_junction(0.0, a, st, T_hs) == T_hs
+    Tj = t_junction(P, a, st, T_hs)
+    assert Tj > T_hs
+    assert abs(Tj - (T_hs + P * stack_rth(a, st, 0.5 * (T_hs + Tj)))) < 1e-2
+
+
+@check("electrical separation: g2_electrical == g2_of_T at T_j with I channels")
+def _():
+    from fsim_core.integrator import g2_electrical
+    from fsim_core.loading import BackgroundChannel
+    from fsim_core.thermal import Layer, Stack, t_junction
+    p = dict(BASE_P)
+    p["mu"] = 0.5
+    p["channels"] = [BackgroundChannel("leak", A=0.001, m=1.0)]
+    st = Stack(layers=[Layer(1.5e-6, 15.0)], k_sub300=55.0)
+    T_hs, I, V, a = 77.0, 50e-6, 1.9, 0.4e-6
+    pt = g2_electrical(T_hs, I, V, p, a, st)
+    Tj = t_junction(I * V, a, st, T_hs)
+    ref = g2_of_T(Tj, {**p, "I": I})
+    assert abs(pt.T - Tj) < 1e-9 and abs(pt.g2 - ref.g2) < 1e-12
+
+
 @check("units: KB*300K ~ 25.85 meV (meV/K convention holds)")
 def _():
     assert abs(KB * 300.0 - 25.852) < 0.01

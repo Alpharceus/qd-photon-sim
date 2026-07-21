@@ -97,6 +97,11 @@ params:
     unit: meV
     tag: DR
     source: "paper: Eb=(35+-5) meV, p-shell thermalization (~30 meV s-p splitting from PLE)"
+  mu_op:
+    value: 0.33
+    unit: "1"
+    tag: E
+    source: "F1b operating point: pump 'a factor of 3 lower than the exciton saturation level' (paper Sec. III); mu = P/P_sat under linear capture"
   b0:
     range: [1.0e-5, 0.1]
     unit: "1"

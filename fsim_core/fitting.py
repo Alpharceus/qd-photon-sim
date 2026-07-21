@@ -56,6 +56,8 @@ def fit_phase0(card: Card, dataset="g2_vs_T", seed=0, n_starts=40) -> FitResult:
         r.setdefault("bound", "value")
 
     fixed = {k: card[k].fixed for k in ("delta_xx", "E_lo", "E_b") if k in card.params}
+    if "mu_op" in card.params:
+        fixed["mu"] = card["mu_op"].fixed  # F1b operating point (Module D)
     T_anchor = card["gamma_anchor_T"].fixed
     g_anchor = card["gamma_anchor"].fixed
     g_anchor_tol = card["gamma_anchor_tol"].fixed

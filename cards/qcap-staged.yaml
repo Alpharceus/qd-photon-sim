@@ -1,0 +1,67 @@
+meta:
+  name: qcap-staged
+  device: "staged InP/GaAsP QD electrical device, mesa on GaAs and GaAs/Si templates"
+  role: prediction (Phase-1 thermal deliverable -- requirement envelopes only)
+  source: "QCAP staged-device concept; no fabricated device exists. Every entry [A]/[E]."
+  note: >
+    Prediction card: outputs are requirement envelopes and sensitivity
+    rankings, never point predictions (planning doc section 1). The epi-stack
+    effective conductivity is the dominant unknown -- it is swept, and the
+    T_j maps carry its full range.
+
+params:
+  mesa_diameter:
+    range: [0.3, 3.0]
+    unit: um
+    tag: A
+    source: "e-beam mesa layout, mirroring the Chatzarakis 0.3-3 um pattern"
+  epi_thickness:
+    value: 1.5
+    unit: um
+    tag: A
+    source: "cladding + current-spreading stack above the substrate/buffer; design TBD"
+  epi_k:
+    range: [8.0, 40.0]
+    unit: W/m/K
+    tag: A
+    source: "effective (anisotropic) conductivity of GaAsP/AlGaInP-class alloy stack; alloy scattering can push below 10 -- MEASURE"
+  epi_alpha:
+    value: 0.5
+    unit: "1"
+    tag: A
+    source: "k(T) exponent for the alloy stack: alloy scattering flattens the bulk ~T^-1.25 law; 0.5 assumed"
+  mesa_etch_through:
+    value: 1.0
+    unit: "1"
+    tag: A
+    source: "1 = mesa etched through the epi stack (pillar, laterally insulated); 0 = planar (cone spreading)"
+  buffer_thickness:
+    value: 2.0
+    unit: um
+    tag: E
+    source: "GaAs buffer on Si template, typical heteroepitaxy"
+  buffer_k:
+    value: 44.0
+    unit: W/m/K
+    tag: E
+    source: "defect-reduced GaAs buffer on Si, ~20% below bulk GaAs"
+  V_drive:
+    value: 1.9
+    unit: V
+    tag: E
+    source: "red p-i-n forward voltage at operating current"
+  I_drive:
+    range: [1.0, 200.0]
+    unit: uA
+    tag: A
+    source: "drive-current envelope for the T_j map"
+  duty:
+    value: 1.0
+    unit: "1"
+    tag: A
+    source: "CW worst case; pulsed drive scales linearly"
+  T_heatsink:
+    value: 77.0
+    unit: K
+    tag: A
+    source: "LN2 stage baseline for the map; 77-120 K is the anchored Phase-3 window"

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
+from .loading import b_injection, f1b_g2
 from .spectral import KB, epsilon, gamma_of_T
 
 
@@ -58,6 +59,11 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     Filter geometry: p["w"] window full width, p["dx"] X offset from window
     center. For temperature sweeps with T-dependent windows, callables are
     accepted for w and dx.
+
+    Drive realism (Module D, optional keys):
+      p["mu"]        mean cap-2 loading -> F1b replaces the F1 identity
+      p["I"], p["channels"]  injection current + BackgroundChannel set ->
+                     b_e(I,T) added to the background before rho
     """
     w = p["w"](T) if callable(p["w"]) else p["w"]
     dx = p.get("dx", 0.0)
@@ -65,9 +71,30 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     gam = float(gamma_of_T(T, p["gamma0"], p["a_ac"], p["b_lo"], p["E_lo"]))
     spec = epsilon(p["delta_xx"], gam, p.get("gamma_xx", gam),
                    w=w, kappa=p.get("kappa"), dx=dx)
-    rho = float(rho_of_T(T, *(p[k] for k in RHO_KEYS)))
+
+    S = float(retention(T, p["a_esc"], p["E_a"], p["b_p"], p["E_b"]))
+    B = p["b0"] + p["beta"] * (1.0 - S)
+    if p.get("channels") and p.get("I") is not None:
+        B += float(b_injection(p["channels"], p["I"], T))
+    rho = S / (S + B)
+
+    mu = p.get("mu")
+    g2_dot = float(f1b_g2(mu, spec.eps)) if mu else spec.eps
     return ModelPoint(T=float(T), gamma=gam, eps=spec.eps, rho=rho,
-                      g2=g2_from(spec.eps, rho), t_x=spec.t_x)
+                      g2=g2_from(g2_dot, rho), t_x=spec.t_x)
+
+
+def g2_electrical(T_hs, I, V, p: dict, a, stack, duty=1.0) -> ModelPoint:
+    """Electrical-separation theorem (F-series): electrical drive differs from
+    optical only through Delta T_J (junction heating, Module A) and Delta rho
+    (injection background channels, Module D). The eps path is untouched.
+
+    Evaluates the device at T_j = T_hs + duty * I * V * R_th and returns the
+    ModelPoint at the junction temperature (point.T == T_j)."""
+    from .thermal import t_junction
+
+    Tj = t_junction(duty * I * V, a, stack, T_hs)
+    return g2_of_T(Tj, {**p, "I": I})
 
 
 def g2_curve(Ts, p: dict) -> list[ModelPoint]:

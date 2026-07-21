@@ -1,0 +1,31 @@
+meta:
+  name: reischle
+  device: "InP/GaInP QD p-i-n LED, red spectral range (Stuttgart)"
+  role: validation (V-c) -- BLOCKED on source data
+  source: "Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) -- PAYWALLED, PDF not yet available"
+  note: >
+    PLACEHOLDER card. V-c claim (planning doc section 1): the 80 K electrical
+    result is rho-limited with eps ~ small -- i.e. the measured g2(0) is
+    explained by injection background (Delta rho) and junction heating
+    (Delta T_J) alone, with the filtered-cascade leakage eps subdominant.
+    To close V-c, drop the paper PDF (and supplement if any) into the project
+    root and re-run scripts/run_phase1.py: needed values are g2(0) at 80 K
+    (pulsed electrical), the X/XX splitting, filter window, drive conditions
+    (I, V, repetition rate), and any EL background spectra.
+
+params:
+  g2_80K:
+    value: 0.35
+    unit: "1"
+    tag: A
+    source: "PLACEHOLDER -- order-of-magnitude from comparable electrical QD LEDs at 77-80 K (Dou et al. 0.35); replace with the Reischle measured value"
+  delta_xx:
+    value: 4.0
+    unit: meV
+    tag: A
+    source: "PLACEHOLDER -- InP/GaInP X-XX splitting; replace from paper"
+  w:
+    value: 1.0
+    unit: meV
+    tag: A
+    source: "PLACEHOLDER -- spectral filter window; replace from paper"

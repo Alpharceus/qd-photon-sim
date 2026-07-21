@@ -128,3 +128,64 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
     plt.close(fig)
 
     return {"outdir": str(outdir), "Tc": Tc}
+
+
+def phase1_bundle(drive: dict, thermal: dict, outdir: Path) -> dict:
+    """Phase-1 report bundle: F1b drive-factor curve + Delta T_J envelope maps
+    (per-figure CSVs, per the plan). Inputs are plain result dicts computed by
+    fsim-core callers (three-layer rule: no physics here)."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    mus = drive["mu"]
+    _write_csv(outdir / "drive_factor.csv",
+               ["mu"] + [f"f_eps={e}" for e in drive["curves"]],
+               zip(mus, *drive["curves"].values()))
+    d_um = thermal["diam_um"]
+    for tpl, per_I in thermal["templates"].items():
+        _write_csv(outdir / f"tj_map_{tpl.lower().replace('/', '_')}.csv",
+                   ["diameter_um"] + [f"dTj_K_{I}uA_lo,dTj_K_{I}uA_hi".split(",")[i]
+                                      for I in thermal["currents_uA"] for i in (0, 1)],
+                   zip(d_um, *[col for I in thermal["currents_uA"]
+                               for col in (per_I[I][0], per_I[I][1])]))
+
+    fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
+
+    ax = axes[0]
+    for e, f in drive["curves"].items():
+        ax.plot(mus, f, lw=2, label=rf"$\varepsilon$ = {e}")
+    ax.axvline(drive["mu_op"], color="#888888", ls="--", lw=1)
+    ax.annotate(rf"$\mu_{{op}}$ = {drive['mu_op']}", (drive["mu_op"], 1.85),
+                fontsize=8, ha="left", color="#555555")
+    ax.axhline(2.0, color="#888888", ls=":", lw=1)
+    ax.set_xscale("log")
+    ax.set_xlabel(r"mean loading $\mu$")
+    ax.set_ylabel(r"$g^{(2)}(\mu)\,/\,\varepsilon$")
+    ax.set_ylim(0.95, 2.1)
+    ax.legend(frameon=False, fontsize=8)
+    ax.set_title("F1b: finite-$\\mu$ drive penalty (cap-2)", fontsize=10)
+
+    for ax, tpl in zip(axes[1:], thermal["templates"]):
+        per_I = thermal["templates"][tpl]
+        for I, color in zip(thermal["currents_uA"], ("#2166ac", "#e66101", "#d7191c")):
+            lo, hi = per_I[I]
+            lo = np.where(np.isinf(lo), np.nan, lo)  # runaway region: gap, not a line
+            hi = np.where(np.isinf(hi), np.nan, hi)
+            ax.fill_between(d_um, lo, hi, alpha=0.25, color=color, lw=0)
+            ax.plot(d_um, hi, color=color, lw=1.5,
+                    label=f"{I} µA" + (" (runaway ←)" if np.isnan(hi).any() else ""))
+        ax.set_xlabel("mesa diameter (µm)")
+        ax.set_ylabel(r"$\Delta T_J$ (K)")
+        ax.set_yscale("log")
+        ax.legend(frameon=False, fontsize=8, title="CW drive", title_fontsize=8)
+        ax.set_title(f"{tpl}: $T_J-T_{{hs}}$ @ {thermal['T_hs']:.0f} K "
+                     f"(band: epi-k range)", fontsize=10)
+
+    fig.suptitle("Phase 1 — Module D drive penalty and Module A junction-heating envelopes "
+                 "(tag chain [A]: requirement envelopes, not predictions)",
+                 fontsize=10, color="#d7191c", y=1.02)
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"phase1_drive_thermal.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+    return {"outdir": str(outdir)}

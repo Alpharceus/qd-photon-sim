@@ -31,3 +31,11 @@ points fit within ±0.03/point with the digitized windows, the Γ(250 K) anchor,
 and E_a = 240 meV (published for this dot). Solved ceiling T_c = 261 K. See
 `notes/phase0-results.md` for findings and the honesty ledger (existence, not
 uniqueness; 150/210 K windows interpolated [E] pending the supplement).
+
+**Phase 1 (drive realism): delivered 2026-07-21.** Module D (cap-2/F1b
+operating point, injection background channels, MC-verified) + Module A
+(analytic spreading-resistance thermal, FD-checked, runaway detection) +
+`g2_electrical` (electrical-separation theorem). V-a re-passes with the F1b
+penalty (T_c 261.4 → 260.6 K). ΔT_J envelope maps in `out/phase1/`; findings
+in `notes/phase1-results.md`. **V-c is blocked on the Reischle APL 97, 143513
+(2010) PDF** — drop it in the project root and re-run `scripts/run_phase1.py`.
