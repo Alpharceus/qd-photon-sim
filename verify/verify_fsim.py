@@ -377,6 +377,18 @@ def _():
     assert abs(pt.T - Tj) < 1e-9 and abs(pt.g2 - ref.g2) < 1e-12
 
 
+# ------------------------------------------------------------ three-layer rule
+
+@check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")
+def _():
+    root = Path(__file__).resolve().parents[1]
+    for pkg in ("fsim_core", "fsim_viz"):
+        for f in (root / pkg).glob("*.py"):
+            src = f.read_text(encoding="utf-8")
+            for banned in ("streamlit", "plotly"):
+                assert banned not in src, f"{f.name} references {banned}"
+
+
 @check("units: KB*300K ~ 25.85 meV (meV/K convention holds)")
 def _():
     assert abs(KB * 300.0 - 25.852) < 0.01

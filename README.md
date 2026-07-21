@@ -22,6 +22,9 @@ fit, and its figure/CSV bundle.
 ```
 python verify/verify_fsim.py      # regression suite, exit 0 iff all pass
 python scripts/run_phase0.py      # V-a fit + report bundle
+python scripts/run_phase1.py      # V-a recheck + T_j maps + V-c analysis
+streamlit run fsim_gui/app.py     # Phase-V GUI (spectral explainer, cascade,
+                                  #   dashboard, card editor; zero physics)
 ```
 
 ## Status
@@ -42,3 +45,11 @@ in `notes/phase1-results.md`. **V-c(i) PASS** on the digitized Reischle APL
 inside the spectrum-digitized ρ(w) envelope — the electrical result is
 ρ-limited, as the F-series claims. V-c(ii) (the 80 K point) awaits the
 Opt. Express 16, 12771 (2008) PDF.
+
+**Phase V (GUI v1): delivered 2026-07-21.** `fsim_gui/app.py` — Streamlit thin
+client (three-layer rule enforced by a regression check): spectral explainer
+(X/XX Lorentzians, Γ(T) on a temperature slider, shaded window, live ε/g²₀),
+cascade diagram, results dashboard (fit-from-card button, T_c readout,
+sensitivity tornado), tag-colored card editor that saves the same YAML the CLI
+uses. Exit criterion verified headlessly: the GUI regenerates the Phase-0 fit
+from `chatzarakis.yaml` (PASS, max |resid| = 0.011).
