@@ -502,6 +502,24 @@ def _():
                              * (1 - float(_f(d.drive.mu, spec.eps))))) < 1e-12
 
 
+@check("device: Lemma 1 -- beta_sin never touches the g2 path (functional)")
+def _():
+    from fsim_core.device import DeviceDesign, evaluate
+
+    d1, d2 = DeviceDesign(), DeviceDesign()
+    for d in (d1, d2):
+        d.cavity.enabled = True
+        d.cavity.type = "sin_waveguide"
+    d1.cavity.beta_sin, d2.cavity.beta_sin = 0.3, 3.0
+    r1, r2 = evaluate(d1), evaluate(d2)
+    c1, c2 = r1["curves"], r2["curves"]
+    for k in ("g2", "eps", "rho2"):
+        assert np.allclose(c1[k], c2[k], equal_nan=True), k
+    s1, s2 = r1["scalars"], r2["scalars"]
+    assert s1["T_c"] == s2["T_c"] or (s1["T_c"] != s1["T_c"] and s2["T_c"] != s2["T_c"])
+    assert abs(s2["brightness_per_pulse"] / s1["brightness_per_pulse"] - 10.0) < 1e-9
+
+
 @check("device: cavity gain raises rho; runaway design reports inf T_j")
 def _():
     from fsim_core.device import DeviceDesign, evaluate
@@ -528,7 +546,7 @@ def _():
     for pkg in ("fsim_core", "fsim_viz"):
         for f in (root / pkg).glob("*.py"):
             src = f.read_text(encoding="utf-8")
-            for banned in ("streamlit", "plotly"):
+            for banned in ("streamlit", "plotly", "dearpygui"):
                 assert banned not in src, f"{f.name} references {banned}"
 
 

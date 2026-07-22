@@ -21,16 +21,99 @@ import dearpygui.dearpygui as dpg
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from fsim_core import design_meta, presets  # noqa: E402
 from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
 SUBSTRATE = {"name": "GaAs", "k300": 55.0, "alpha": 1.25}
 
+GREEN = (86, 166, 50)
 AMBER = (227, 162, 26)
 RED = (215, 25, 28)
 BLUE = (60, 120, 216)
 PURPLE = (120, 90, 200)
+TAG_COLOR = {"V": GREEN, "DR": AMBER, "E": AMBER, "A": RED}
+
+# meta path -> live widget tag, for every parameter widget that carries a META
+# entry. aperture.density_cm2 is edited as log10 in the widget (see transform
+# in VIOLATIONS handling below).
+WIDGET_TAG = {
+    "dot.delta_xx": "dot.delta_xx", "dot.gamma_scale": "dot.gamma_scale",
+    "dot.r_xx": "dot.r_xx",
+    "drive.V": "drive.V", "drive.I_uA": "drive.I_uA", "drive.duty": "drive.duty",
+    "drive.mu": "drive.mu", "drive.b_e": "drive.b_e", "drive.b_e_m": "drive.b_e_m",
+    "drive.b_e_Eact": "drive.b_e_Eact",
+    "thermal.mesa_diameter_um": "th.mesa", "thermal.T_hs": "th.T_hs",
+    "cavity.enabled": "cav.enabled", "cavity.type": "cav.type",
+    "cavity.kappa": "cav.kappa", "cavity.T_track": "cav.T_track",
+    "cavity.E_X0": "cav.E_X0", "cavity.F_P": "cav.F_P", "cavity.G": "cav.G",
+    "cavity.beta_sin": "cav.beta_sin",
+    "filter.enabled": "fil.enabled", "filter.auto_w": "fil.auto_w",
+    "filter.w": "fil.w", "filter.dx": "fil.dx",
+    "aperture.density_cm2": "ap.log_density", "aperture.diameter_um": "ap.diam",
+    "aperture.sigma_inh": "ap.sigma", "aperture.comp_brightness": "ap.r",
+}
+
+VIOLATIONS = set()   # meta paths currently outside their known-physical band
+
+
+# ------------------------------------------------------------- tag bullets / validation
+
+def _tag_bullet(path):
+    """Colored provenance bullet + tooltip next to a parameter widget, keyed by
+    design_meta.META. No-op for paths without a META entry (e.g. no widget)."""
+    meta = design_meta.META.get(path)
+    if meta is None:
+        return
+    color = TAG_COLOR.get(meta["tag"], AMBER)
+    b = dpg.add_text("*", color=color)
+    with dpg.tooltip(b):
+        dpg.add_text(f"[{meta['tag']}] {meta['unit']}  |  band {meta['lo']:g}-{meta['hi']:g}"
+                     f"  |  {meta['source']}")
+
+
+def _validate(path, value):
+    meta = design_meta.META.get(path)
+    if meta is None or isinstance(value, str):
+        return
+    if meta["lo"] <= value <= meta["hi"]:
+        VIOLATIONS.discard(path)
+    else:
+        VIOLATIONS.add(path)
+    _refresh_warning()
+
+
+def _refresh_warning():
+    if VIOLATIONS and dpg.does_item_exist("param_warning"):
+        names = ", ".join(sorted(VIOLATIONS))
+        dpg.set_value("param_warning",
+                      f"! {len(VIOLATIONS)} parameters outside known-physical bands: {names}")
+    elif dpg.does_item_exist("param_warning"):
+        dpg.set_value("param_warning", "")
+
+
+def _mk_cb(path, extra=None, transform=None):
+    """Widget callback: validate against META, then run any pre-existing callback."""
+    def cb(sender, value):
+        _validate(path, value if transform is None else transform(value))
+        if extra:
+            extra(sender, value)
+    return cb
+
+
+def revalidate_all():
+    """Re-check every live widget against its META band (e.g. after a preset
+    or a Load overwrites values without going through a widget callback)."""
+    VIOLATIONS.clear()
+    for path, tag in WIDGET_TAG.items():
+        if not dpg.does_item_exist(tag):
+            continue
+        val = dpg.get_value(tag)
+        if path == "aperture.density_cm2":
+            val = 10.0 ** val
+        _validate(path, val)
+    _refresh_warning()
 
 
 # ------------------------------------------------------------- design <-> widgets
@@ -53,11 +136,13 @@ def collect_design() -> DeviceDesign:
     d.thermal.layers = [dict(L) for L in LAYERS]
     d.thermal.substrate = dict(SUBSTRATE)
     d.cavity.enabled = dpg.get_value("cav.enabled")
+    d.cavity.type = dpg.get_value("cav.type")
     d.cavity.kappa = dpg.get_value("cav.kappa")
     d.cavity.T_track = dpg.get_value("cav.T_track")
     d.cavity.E_X0 = dpg.get_value("cav.E_X0")
     d.cavity.F_P = dpg.get_value("cav.F_P")
     d.cavity.G = dpg.get_value("cav.G")
+    d.cavity.beta_sin = dpg.get_value("cav.beta_sin")
     d.filter.enabled = dpg.get_value("fil.enabled")
     d.filter.auto_w = dpg.get_value("fil.auto_w")
     d.filter.w = dpg.get_value("fil.w")
@@ -86,11 +171,15 @@ def apply_design(d: DeviceDesign):
     dpg.set_value("th.mesa", d.thermal.mesa_diameter_um)
     dpg.set_value("th.T_hs", d.thermal.T_hs)
     dpg.set_value("cav.enabled", d.cavity.enabled)
+    dpg.set_value("cav.type", d.cavity.type)
     dpg.set_value("cav.kappa", d.cavity.kappa)
     dpg.set_value("cav.T_track", d.cavity.T_track)
     dpg.set_value("cav.E_X0", d.cavity.E_X0)
     dpg.set_value("cav.F_P", d.cavity.F_P)
     dpg.set_value("cav.G", d.cavity.G)
+    dpg.set_value("cav.beta_sin", d.cavity.beta_sin)
+    if dpg.does_item_exist("lemma1_note"):
+        dpg.configure_item("lemma1_note", show=(d.cavity.type == "sin_waveguide"))
     dpg.set_value("fil.enabled", d.filter.enabled)
     dpg.set_value("fil.auto_w", d.filter.auto_w)
     dpg.set_value("fil.w", d.filter.w)
@@ -103,6 +192,22 @@ def apply_design(d: DeviceDesign):
     SUBSTRATE = dict(d.thermal.substrate)
     rebuild_stack_table()
     draw_cross_section()
+    revalidate_all()
+
+
+def apply_presets():
+    """Apply the four preset combos onto the live design, then push to widgets."""
+    d = collect_design()
+    presets.apply_dot_preset(d, dpg.get_value("preset.dot"))
+    presets.apply_template_preset(d, dpg.get_value("preset.template"))
+    presets.apply_cavity_preset(d, dpg.get_value("preset.cavity"))
+    presets.apply_drive_preset(d, dpg.get_value("preset.drive"))
+    apply_design(d)
+    dpg.set_value("status",
+                  f"applied presets: dot={dpg.get_value('preset.dot')}  "
+                  f"template={dpg.get_value('preset.template')}  "
+                  f"cavity={dpg.get_value('preset.cavity')}  "
+                  f"drive={dpg.get_value('preset.drive')}")
 
 
 # ------------------------------------------------------------------- fab stack UI
@@ -208,6 +313,12 @@ def run_device():
     dpg.fit_axis_data("xax1"); dpg.fit_axis_data("yax1")
     dpg.fit_axis_data("xax2"); dpg.fit_axis_data("yax2")
 
+    dpg.set_value("warn_runaway",
+                  "!!!  THERMAL RUNAWAY -- no operating point  !!!" if s["runaway"] else "")
+    dpg.set_value("warn_eps",
+                  "!!!  CAVITY SELECTS XX (eps > 1) -- retune tracking/filter  !!!"
+                  if s["eps_op"] > 1 else "")
+
     lines = [
         f"tag chain {s['tag_chain']}  (unmeasured inputs -> conditional numbers;"
         f" envelopes: run_phase3)",
@@ -246,6 +357,20 @@ def load_design():
     dpg.set_value("status", f"loaded {path.name}")
 
 
+def _save_dialog_cb(sender, app_data):
+    path = app_data["file_path_name"]
+    if not path.lower().endswith(".yaml"):
+        path += ".yaml"
+    collect_design().save(path)
+    dpg.set_value("status", f"saved {Path(path).name} (reproducible by anyone holding it)")
+
+
+def _load_dialog_cb(sender, app_data):
+    path = app_data["file_path_name"]
+    apply_design(DeviceDesign.load(path))
+    dpg.set_value("status", f"loaded {Path(path).name}")
+
+
 def export_bundle():
     d = collect_design()
     res = evaluate(d)
@@ -268,16 +393,41 @@ def export_bundle():
 
 def build_ui():
     with dpg.window(tag="main"):
+        with dpg.file_dialog(directory_selector=False, show=False, modal=True,
+                             callback=_save_dialog_cb, tag="save_file_dialog",
+                             default_path=str(ROOT / "cards"), width=700, height=400):
+            dpg.add_file_extension(".yaml")
+            dpg.add_file_extension(".*")
+        with dpg.file_dialog(directory_selector=False, show=False, modal=True,
+                             callback=_load_dialog_cb, tag="load_file_dialog",
+                             default_path=str(ROOT / "cards"), width=700, height=400):
+            dpg.add_file_extension(".yaml")
+            dpg.add_file_extension(".*")
+
         with dpg.group(horizontal=True):
             dpg.add_input_text(tag="design.name", default_value="staged-device",
                                width=160)
             dpg.add_button(label="Load", callback=load_design)
             dpg.add_button(label="Save", callback=save_design)
+            dpg.add_button(label="Save As...", callback=lambda: dpg.show_item("save_file_dialog"))
+            dpg.add_button(label="Load...", callback=lambda: dpg.show_item("load_file_dialog"))
             dpg.add_button(label="Export bundle", callback=export_bundle)
             dpg.add_button(label="  RUN  ", callback=run_device)
             dpg.add_text("tag chain [A] - every result inherits unmeasured inputs",
                          color=RED)
+        with dpg.group(horizontal=True):
+            dpg.add_text("Presets:")
+            dpg.add_combo(list(presets.DOT_PRESETS), default_value="chatzarakis-class",
+                         tag="preset.dot", width=160)
+            dpg.add_combo(list(presets.TEMPLATE_PRESETS), default_value="GaAs",
+                         tag="preset.template", width=110)
+            dpg.add_combo(list(presets.CAVITY_PRESETS), default_value="none",
+                         tag="preset.cavity", width=140)
+            dpg.add_combo(list(presets.DRIVE_PRESETS), default_value="cw-electrical",
+                         tag="preset.drive", width=150)
+            dpg.add_button(label="Apply presets", callback=apply_presets)
         dpg.add_text("", tag="status", color=AMBER)
+        dpg.add_text("", tag="param_warning", color=AMBER)
 
         with dpg.group(horizontal=True):
             # ---------------- left: block diagram
@@ -286,20 +436,41 @@ def build_ui():
                                      minimap=False):
                     with dpg.node(label="ELECTRICAL DRIVE", pos=(10, 20)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_input_float(label="V", tag="drive.V", width=90,
-                                                default_value=1.9)
-                            dpg.add_input_float(label="I (uA)", tag="drive.I_uA",
-                                                width=90, default_value=10.0)
-                            dpg.add_input_float(label="duty", tag="drive.duty",
-                                                width=90, default_value=1.0)
-                            dpg.add_input_float(label="mu/pulse", tag="drive.mu",
-                                                width=90, default_value=0.5)
-                            dpg.add_input_float(label="b_e", tag="drive.b_e",
-                                                width=90, default_value=0.02)
-                            dpg.add_input_float(label="b_e exp m", tag="drive.b_e_m",
-                                                width=90, default_value=1.5)
-                            dpg.add_input_float(label="b_e Eact", tag="drive.b_e_Eact",
-                                                width=90, default_value=100.0)
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="V", tag="drive.V", width=90,
+                                                    default_value=1.9,
+                                                    callback=_mk_cb("drive.V"))
+                                _tag_bullet("drive.V")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="I (uA)", tag="drive.I_uA",
+                                                    width=90, default_value=10.0,
+                                                    callback=_mk_cb("drive.I_uA"))
+                                _tag_bullet("drive.I_uA")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="duty", tag="drive.duty",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("drive.duty"))
+                                _tag_bullet("drive.duty")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="mu/pulse", tag="drive.mu",
+                                                    width=90, default_value=0.5,
+                                                    callback=_mk_cb("drive.mu"))
+                                _tag_bullet("drive.mu")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="b_e", tag="drive.b_e",
+                                                    width=90, default_value=0.02,
+                                                    callback=_mk_cb("drive.b_e"))
+                                _tag_bullet("drive.b_e")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="b_e exp m", tag="drive.b_e_m",
+                                                    width=90, default_value=1.5,
+                                                    callback=_mk_cb("drive.b_e_m"))
+                                _tag_bullet("drive.b_e_m")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="b_e Eact", tag="drive.b_e_Eact",
+                                                    width=90, default_value=100.0,
+                                                    callback=_mk_cb("drive.b_e_Eact"))
+                                _tag_bullet("drive.b_e_Eact")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="drive_out"):
                             dpg.add_text("I, V, heat")
@@ -309,12 +480,18 @@ def build_ui():
                                                 tag="th_in"):
                             dpg.add_text("P = duty * I * V")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_input_float(label="mesa d (um)", tag="th.mesa",
-                                                width=90, default_value=1.0,
-                                                callback=lambda s, v: draw_cross_section())
-                            dpg.add_input_float(label="T_hs (K)", tag="th.T_hs",
-                                                width=90, default_value=77.0,
-                                                callback=lambda s, v: draw_cross_section())
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="mesa d (um)", tag="th.mesa",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("thermal.mesa_diameter_um",
+                                                                   extra=lambda s, v: draw_cross_section()))
+                                _tag_bullet("thermal.mesa_diameter_um")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="T_hs (K)", tag="th.T_hs",
+                                                    width=90, default_value=77.0,
+                                                    callback=_mk_cb("thermal.T_hs",
+                                                                   extra=lambda s, v: draw_cross_section()))
+                                _tag_bullet("thermal.T_hs")
                             dpg.add_text("stack: edit in Fab stack panel ->")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="th_out"):
@@ -325,14 +502,23 @@ def build_ui():
                                                 tag="dot_in"):
                             dpg.add_text("carriers @ T_j")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_input_float(label="Delta_XX (meV)",
-                                                tag="dot.delta_xx", width=90,
-                                                default_value=3.5)
-                            dpg.add_input_float(label="Gamma scale",
-                                                tag="dot.gamma_scale", width=90,
-                                                default_value=1.0)
-                            dpg.add_input_float(label="r_XX", tag="dot.r_xx",
-                                                width=90, default_value=0.72)
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="Delta_XX (meV)",
+                                                    tag="dot.delta_xx", width=90,
+                                                    default_value=3.5,
+                                                    callback=_mk_cb("dot.delta_xx"))
+                                _tag_bullet("dot.delta_xx")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="Gamma scale",
+                                                    tag="dot.gamma_scale", width=90,
+                                                    default_value=1.0,
+                                                    callback=_mk_cb("dot.gamma_scale"))
+                                _tag_bullet("dot.gamma_scale")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="r_XX", tag="dot.r_xx",
+                                                    width=90, default_value=0.72,
+                                                    callback=_mk_cb("dot.r_xx"))
+                                _tag_bullet("dot.r_xx")
                             dpg.add_text("Gamma(T), retention: class proxy [A]",
                                          color=RED)
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
@@ -344,18 +530,51 @@ def build_ui():
                                                 tag="cav_in"):
                             dpg.add_text("photons")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_checkbox(label="enabled", tag="cav.enabled",
-                                             default_value=False)
-                            dpg.add_input_float(label="kappa (meV)", tag="cav.kappa",
-                                                width=90, default_value=1.0)
-                            dpg.add_input_float(label="track T (K)", tag="cav.T_track",
-                                                width=90, default_value=120.0)
-                            dpg.add_input_float(label="E_X0 (eV)", tag="cav.E_X0",
-                                                width=90, default_value=1.88)
-                            dpg.add_input_float(label="F_P", tag="cav.F_P",
-                                                width=90, default_value=10.0)
-                            dpg.add_input_float(label="gain G", tag="cav.G",
-                                                width=90, default_value=8.0)
+                            with dpg.group(horizontal=True):
+                                dpg.add_checkbox(label="enabled", tag="cav.enabled",
+                                                 default_value=False,
+                                                 callback=_mk_cb("cavity.enabled"))
+                                _tag_bullet("cavity.enabled")
+                            with dpg.group(horizontal=True):
+                                dpg.add_combo(("planar", "sin_waveguide"), label="type",
+                                             tag="cav.type", default_value="planar",
+                                             width=110,
+                                             callback=_mk_cb("cavity.type",
+                                                            extra=lambda s, v: dpg.configure_item(
+                                                                "lemma1_note", show=(v == "sin_waveguide"))))
+                                _tag_bullet("cavity.type")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="kappa (meV)", tag="cav.kappa",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("cavity.kappa"))
+                                _tag_bullet("cavity.kappa")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="track T (K)", tag="cav.T_track",
+                                                    width=90, default_value=120.0,
+                                                    callback=_mk_cb("cavity.T_track"))
+                                _tag_bullet("cavity.T_track")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="E_X0 (eV)", tag="cav.E_X0",
+                                                    width=90, default_value=1.88,
+                                                    callback=_mk_cb("cavity.E_X0"))
+                                _tag_bullet("cavity.E_X0")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="F_P", tag="cav.F_P",
+                                                    width=90, default_value=10.0,
+                                                    callback=_mk_cb("cavity.F_P"))
+                                _tag_bullet("cavity.F_P")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="gain G", tag="cav.G",
+                                                    width=90, default_value=8.0,
+                                                    callback=_mk_cb("cavity.G"))
+                                _tag_bullet("cavity.G")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="beta_sin", tag="cav.beta_sin",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("cavity.beta_sin"))
+                                _tag_bullet("cavity.beta_sin")
+                            dpg.add_text("Lemma 1: beta -> brightness only, never g2",
+                                        tag="lemma1_note", color=RED, show=False)
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="cav_out"):
                             dpg.add_text("filtered + boosted")
@@ -365,28 +584,53 @@ def build_ui():
                                                 tag="fil_in"):
                             dpg.add_text("spectrum")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_checkbox(label="enabled", tag="fil.enabled",
-                                             default_value=True)
-                            dpg.add_checkbox(label="auto w = Gamma(T_j)",
-                                             tag="fil.auto_w", default_value=True)
-                            dpg.add_input_float(label="w (meV)", tag="fil.w",
-                                                width=90, default_value=2.0)
-                            dpg.add_input_float(label="dx (meV)", tag="fil.dx",
-                                                width=90, default_value=0.0)
+                            with dpg.group(horizontal=True):
+                                dpg.add_checkbox(label="enabled", tag="fil.enabled",
+                                                 default_value=True,
+                                                 callback=_mk_cb("filter.enabled"))
+                                _tag_bullet("filter.enabled")
+                            with dpg.group(horizontal=True):
+                                dpg.add_checkbox(label="auto w = Gamma(T_j)",
+                                                 tag="fil.auto_w", default_value=True,
+                                                 callback=_mk_cb("filter.auto_w"))
+                                _tag_bullet("filter.auto_w")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="w (meV)", tag="fil.w",
+                                                    width=90, default_value=2.0,
+                                                    callback=_mk_cb("filter.w"))
+                                _tag_bullet("filter.w")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="dx (meV)", tag="fil.dx",
+                                                    width=90, default_value=0.0,
+                                                    callback=_mk_cb("filter.dx"))
+                                _tag_bullet("filter.dx")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="fil_out"):
                             dpg.add_text("to detector")
 
                     with dpg.node(label="APERTURE / ENSEMBLE (F5)", pos=(530, 330)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
-                            dpg.add_input_float(label="log10 density", tag="ap.log_density",
-                                                width=90, default_value=8.845)
-                            dpg.add_input_float(label="aperture (um)", tag="ap.diam",
-                                                width=90, default_value=1.0)
-                            dpg.add_input_float(label="sigma_inh", tag="ap.sigma",
-                                                width=90, default_value=40.0)
-                            dpg.add_input_float(label="comp. bright r", tag="ap.r",
-                                                width=90, default_value=0.3)
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="log10 density", tag="ap.log_density",
+                                                    width=90, default_value=8.845,
+                                                    callback=_mk_cb("aperture.density_cm2",
+                                                                   transform=lambda v: 10.0 ** v))
+                                _tag_bullet("aperture.density_cm2")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="aperture (um)", tag="ap.diam",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("aperture.diameter_um"))
+                                _tag_bullet("aperture.diameter_um")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="sigma_inh", tag="ap.sigma",
+                                                    width=90, default_value=40.0,
+                                                    callback=_mk_cb("aperture.sigma_inh"))
+                                _tag_bullet("aperture.sigma_inh")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="comp. bright r", tag="ap.r",
+                                                    width=90, default_value=0.3,
+                                                    callback=_mk_cb("aperture.comp_brightness"))
+                                _tag_bullet("aperture.comp_brightness")
 
                 dpg.add_node_link("drive_out", "th_in", parent="editor")
                 dpg.add_node_link("th_out", "dot_in", parent="editor")
@@ -422,6 +666,8 @@ def build_ui():
                                        tag="yax2"):
                         dpg.add_line_series([], [], label="dT_J", tag="s_tj")
                         dpg.add_line_series([], [], label="Gamma(T_j)", tag="s_gam")
+                dpg.add_text("", tag="warn_runaway", color=RED)
+                dpg.add_text("", tag="warn_eps", color=RED)
                 dpg.add_text("press RUN", tag="results_text")
 
 

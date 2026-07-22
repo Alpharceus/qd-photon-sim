@@ -90,12 +90,15 @@ class ThermalBlock:
 @dataclass
 class CavityBlock:
     enabled: bool = False
-    kappa: float = 1.0           # meV [A -> MEEP/COMSOL]
+    type: str = "planar"         # "planar" (F6 resonant filter/gain) | "sin_waveguide"
+    kappa: float = 1.0           # meV [A -> MEEP/COMSOL]; unused when type=sin_waveguide
     T_track: float = 120.0       # tracking-rule target (K)
     E_X0: float = 1.88           # eV cryogenic X
     dEdT_cav: float = -0.04      # meV/K
-    F_P: float = 10.0            # [A]
-    G: float = 8.0               # collection gain on signal [A]
+    F_P: float = 10.0            # [A]; unused when type=sin_waveguide
+    G: float = 8.0               # collection gain on signal [A]; unused when type=sin_waveguide
+    beta_sin: float = 1.0        # SiN evanescent coupling [A]; Lemma 1: brightness ONLY,
+                                  # never eps/rho/g2/T_c (applied inline in evaluate())
 
 
 @dataclass
@@ -166,6 +169,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     P = d.drive.duty * d.drive.I_uA * 1e-6 * d.drive.V
     chan = [BackgroundChannel("injection", A=d.drive.b_e, m=d.drive.b_e_m,
                               E_act=d.drive.b_e_Eact, I_ref=d.drive.I_ref_uA)]
+    # SiN evanescent coupling: no resonant line (no kappa acceptance, no G boost);
+    # beta_sin is applied to brightness only, below -- never to eps/rho/g2/T_c (Lemma 1).
+    sin_mode = d.cavity.enabled and d.cavity.type == "sin_waveguide"
 
     def one(T_hs):
         Tj = t_junction(P, a, st, T_hs)
@@ -173,9 +179,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
                         g2=np.nan, t_x=np.nan, runaway=True)
         gam = d.dot.gamma_scale * float(gamma_of_T(Tj, **gp))
-        kappa = d.cavity.kappa if d.cavity.enabled else None
+        kappa = d.cavity.kappa if (d.cavity.enabled and not sin_mode) else None
         dx = d.filter.dx
-        if d.cavity.enabled:
+        if d.cavity.enabled and not sin_mode:  # sin waveguide has no mode to track
             dx = 1e3 * float(tracking_detuning(Tj, d.cavity.E_X0, d.cavity.T_track,
                                                "GaAs", d.cavity.dEdT_cav * 1e-3))
         w = None
@@ -185,7 +191,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
         B = rp["b0"] + rp["beta"] * (1.0 - S) + float(
             b_injection(chan, d.drive.I_uA, Tj))
-        G = d.cavity.G if d.cavity.enabled else 1.0
+        G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
         rho = G * S / (G * S + B)
         g2_dot = float(f1b_g2(d.drive.mu, spec.eps)) if d.drive.mu > 0 else spec.eps
         return dict(Tj=Tj, gam=gam, eps=spec.eps, rho=rho,
@@ -225,16 +231,18 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     else:
         Nw, ap_pen = float("nan"), 0.0  # runaway: no meaningful operating window
 
+    gain_factor = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
+    beta_factor = d.cavity.beta_sin if sin_mode else 1.0
     scalars = {
         "T_j_op": op["Tj"], "dT_J": op["Tj"] - d.thermal.T_hs,
         "runaway": bool(op["runaway"]),
         "gamma_op": op["gam"], "eps_op": op["eps"], "rho_op": op["rho"],
         "g2_op": op["g2"], "t_x_op": op["t_x"],
         "brightness_per_pulse": float((P1 + P2)) * (op["t_x"] if np.isfinite(op["t_x"]) else 0.0)
-        * (d.cavity.G if d.cavity.enabled else 1.0),
+        * gain_factor * beta_factor,
         "T_c": Tc,
         "F_eff": float(purcell_eff(d.cavity.F_P, d.cavity.kappa, op["gam"]))
-        if (d.cavity.enabled and np.isfinite(op["gam"])) else np.nan,
+        if (d.cavity.enabled and not sin_mode and np.isfinite(op["gam"])) else np.nan,
         "N_w": Nw, "aperture_g2_penalty": ap_pen,
         "tag_chain": "[A]",  # unmeasured inputs are always in the chain today
     }
