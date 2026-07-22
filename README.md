@@ -21,10 +21,17 @@ fit, and its figure/CSV bundle.
 
 ```
 python verify/verify_fsim.py      # regression suite, exit 0 iff all pass
+python verify/audit_physics.py    # known-parameter physics audit
 python scripts/run_phase0.py      # V-a fit + report bundle
 python scripts/run_phase1.py      # V-a recheck + T_j maps + V-c analysis
-streamlit run fsim_gui/app.py     # Phase-V GUI (spectral explainer, cascade,
-                                  #   dashboard, card editor; zero physics)
+python scripts/run_phase2.py      # V-b + cavity design rules
+python scripts/run_phase3.py      # requirement envelopes + Osinski packet
+python fsim_gui/designer.py       # DEVICE DESIGNER (Dear PyGui): block-diagram
+                                  #   canvas, fab-stack editor + cross-section,
+                                  #   RUN -> graphs + numbers; designs saved as
+                                  #   cards/<name>-design.yaml
+streamlit run fsim_gui/app.py     # validation dashboard (spectral explainer,
+                                  #   cascade, V-a fit, card editor)
 ```
 
 ## Status

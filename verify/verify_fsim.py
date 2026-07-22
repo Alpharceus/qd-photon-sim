@@ -449,6 +449,77 @@ def _():
     assert b.rho > a.rho and abs(b.eps - a.eps) < 1e-15 and b.g2 < a.g2
 
 
+# -------------------------------------------------------------- device assembly
+
+@check("device: design YAML round-trip preserves every block")
+def _():
+    import tempfile
+
+    from fsim_core.device import DeviceDesign
+
+    d = DeviceDesign(name="rt-test")
+    d.dot.delta_xx = 4.2
+    d.drive.I_uA = 33.0
+    d.cavity.enabled = True
+    d.thermal.layers.append({"name": "buffer", "t_um": 2.0, "k300": 44.0,
+                             "alpha": 1.25, "spread": True})
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "d.yaml"
+        d.save(p)
+        e = DeviceDesign.load(p)
+    assert e.dot.delta_xx == 4.2 and e.drive.I_uA == 33.0
+    assert e.cavity.enabled and len(e.thermal.layers) == 2
+
+
+@check("device: evaluate() composes the same chain as the module-level calls")
+def _():
+    from fsim_core.device import DeviceDesign, class_proxy_params, evaluate
+    from fsim_core.loading import BackgroundChannel, b_injection
+    from fsim_core.spectral import gamma_of_T
+    from fsim_core.thermal import Layer, Stack, t_junction
+
+    d = DeviceDesign()
+    d.filter.auto_w = False
+    d.filter.w = 3.0
+    res = evaluate(d, T_grid=[d.thermal.T_hs])
+    s = res["scalars"]
+
+    pr = class_proxy_params()
+    st = Stack(layers=[Layer(1.5e-6, 15.0, 0.5)], k_sub300=55.0)
+    Tj = t_junction(d.drive.duty * d.drive.I_uA * 1e-6 * d.drive.V, 0.5e-6,
+                    st, d.thermal.T_hs)
+    assert abs(s["T_j_op"] - Tj) < 1e-6
+    gam = float(gamma_of_T(Tj, pr["gamma0"], pr["a_ac"], pr["b_lo"], pr["E_lo"]))
+    spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=3.0)
+    assert abs(s["eps_op"] - spec.eps) < 1e-12
+    S = float(retention(Tj, pr["a_esc"], pr["E_a"], pr["b_p"], pr["E_b"]))
+    chan = [BackgroundChannel("injection", A=d.drive.b_e, m=d.drive.b_e_m,
+                              E_act=d.drive.b_e_Eact, I_ref=d.drive.I_ref_uA)]
+    B = pr["b0"] + pr["beta"] * (1 - S) + float(b_injection(chan, d.drive.I_uA, Tj))
+    assert abs(s["rho_op"] - S / (S + B)) < 1e-12
+    from fsim_core.loading import f1b_g2 as _f
+    assert abs(s["g2_op"] - (1 - (S / (S + B)) ** 2
+                             * (1 - float(_f(d.drive.mu, spec.eps))))) < 1e-12
+
+
+@check("device: cavity gain raises rho; runaway design reports inf T_j")
+def _():
+    from fsim_core.device import DeviceDesign, evaluate
+
+    d = DeviceDesign()
+    base = evaluate(d, T_grid=[77.0])["scalars"]
+    d.cavity.enabled = True
+    cav = evaluate(d, T_grid=[77.0])["scalars"]
+    assert cav["rho_op"] > base["rho_op"]
+
+    hot = DeviceDesign()
+    hot.thermal.mesa_diameter_um = 0.15
+    hot.drive.I_uA = 400.0
+    hot.thermal.layers[0]["alpha"] = 1.25
+    s = evaluate(hot, T_grid=[77.0])["scalars"]
+    assert s["runaway"] and np.isinf(s["T_j_op"])
+
+
 # ------------------------------------------------------------ three-layer rule
 
 @check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")

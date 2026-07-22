@@ -1,0 +1,57 @@
+meta:
+  name: staged-device
+  role: device-design
+  note: editable device description; evaluate with fsim_core.device.evaluate
+design:
+  name: staged-device
+  dot:
+    delta_xx: 3.5
+    gamma_scale: 1.0
+    r_xx: 0.72
+  ret:
+    a_esc: 0.0
+    E_a: 0.0
+    b_p: 0.0
+    E_b: 35.0
+    b0: 0.0
+    beta: 0.0
+  drive:
+    V: 1.9
+    I_uA: 10.0
+    duty: 1.0
+    mu: 0.5
+    b_e: 0.02
+    b_e_m: 1.5
+    b_e_Eact: 100.0
+    I_ref_uA: 10.0
+  thermal:
+    mesa_diameter_um: 1.0
+    T_hs: 77.0
+    layers:
+    - name: epi/cladding
+      t_um: 1.5
+      k300: 15.0
+      alpha: 0.5
+      spread: false
+    substrate:
+      name: GaAs
+      k300: 55.0
+      alpha: 1.25
+  cavity:
+    enabled: false
+    kappa: 1.0
+    T_track: 120.0
+    E_X0: 1.88
+    dEdT_cav: -0.04
+    F_P: 10.0
+    G: 8.0
+  filter:
+    enabled: true
+    auto_w: true
+    w: 2.0
+    dx: 0.0
+  aperture:
+    density_cm2: 700000000.0
+    diameter_um: 1.0
+    sigma_inh: 40.0
+    comp_brightness: 0.3
