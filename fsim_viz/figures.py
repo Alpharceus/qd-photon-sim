@@ -191,6 +191,92 @@ def phase1_bundle(drive: dict, thermal: dict, outdir: Path) -> dict:
     return {"outdir": str(outdir)}
 
 
+def vb_figure(vb: dict, outdir: Path) -> None:
+    """V-b figure: measured Laferriere g2(T) points vs the reachable envelope of
+    the F1 spectral model over the swept (unpublished) parameters."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    Ts = [77.0, 220.0, 300.0]
+    lo = [min(vb["reach"][T][d][0] for d in vb["reach"][T]) for T in Ts]
+    hi = [max(vb["reach"][T][d][1] for d in vb["reach"][T]) for T in Ts]
+    _write_csv(outdir / "vb_envelope.csv",
+               ["T_K", "g2_measured", "err", "reachable_lo", "reachable_hi"],
+               ((T, r["g2"], r["err"], l, h)
+                for T, r, l, h in zip(Ts, vb["data"], lo, hi)))
+
+    fig, ax = plt.subplots(figsize=(5.6, 3.9))
+    ax.fill_between(Ts, lo, hi, alpha=0.25, color="#2166ac", lw=0,
+                    label="F1 reachable envelope (swept [E] inputs)")
+    ax.errorbar(Ts, [r["g2"] for r in vb["data"]], yerr=[r["err"] for r in vb["data"]],
+                fmt="o", color="#333333", capsize=4, ms=8, label="measured (Fig. 5)", zorder=5)
+    ax.axhline(0.5, color="#d7191c", ls=":", lw=1.5)
+    ax.annotate("Theorem-0 saturated bound (ε→1, μ→∞)", (90, 0.51), fontsize=8,
+                color="#d7191c")
+    ax.set_xlabel("T (K)")
+    ax.set_ylabel("$g^{(2)}(0)$")
+    ax.set_ylim(0, 1.0)
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    ok = bool(vb["covered_delta"])
+    ax.set_title("V-b (Laferrière): ε→1 limit under published windows — "
+                 + ("CONSISTENT" if ok else "NOT COVERED"),
+                 fontsize=10, color="#1a9641" if ok else "#d7191c")
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"vb_laferriere.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+
+
+def cavity_design_figure(cv: dict, outdir: Path) -> None:
+    """Phase-2 cavity deliverable: tracking detuning, cavity-filter eps map,
+    and F_eff/F_P vs kappa."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    _write_csv(outdir / "cavity_tracking_detuning.csv",
+               ["T_K", "detuning_meV"], zip(cv["Ts"], cv["det_meV"]))
+    _write_csv(outdir / "cavity_eps_map.csv",
+               ["kappa_meV"] + [f"eps_delta_{d:.1f}" for d in cv["deltas"]],
+               ((k, *row) for k, row in zip(cv["kappas"], cv["eps_band"])))
+
+    fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
+    ax = axes[0]
+    ax.plot(cv["Ts"], cv["det_meV"], color="#2166ac", lw=2)
+    ax.axhline(0, color="#888888", ls=":", lw=1)
+    ax.axvline(cv["T_target"], color="#d7191c", ls="--", lw=1.2)
+    ax.annotate(f"$T_{{target}}$ = {cv['T_target']:.0f} K",
+                (cv["T_target"], cv["det_meV"].max() * 0.7),
+                color="#d7191c", fontsize=9, rotation=90, ha="right")
+    ax.set_xlabel("T (K)")
+    ax.set_ylabel("X–mode detuning (meV)")
+    ax.set_title("mode-tracking rule (F6 iv): mode red of\ncryogenic line, zero at $T_{target}$",
+                 fontsize=9)
+
+    ax = axes[1]
+    ax.fill_between(cv["kappas"], cv["eps_band"].min(axis=1), cv["eps_band"].max(axis=1),
+                    alpha=0.3, color="#5e3c99", lw=0)
+    ax.plot(cv["kappas"], cv["eps_band"].min(axis=1), color="#5e3c99", lw=1.5,
+            label=rf"$\Delta$ = {cv['deltas'][-1]:.1f} meV")
+    ax.plot(cv["kappas"], cv["eps_band"].max(axis=1), color="#5e3c99", lw=1.5, ls="--",
+            label=rf"$\Delta$ = {cv['deltas'][0]:.1f} meV")
+    ax.set_xlabel(r"cavity $\kappa$ (meV)")
+    ax.set_ylabel(r"$\varepsilon$ at $T_{target}$ (cavity filter)")
+    ax.legend(frameon=False, fontsize=8)
+    ax.set_title(rf"cavity-only $\varepsilon$; $\Gamma(T_t)$ = {cv['gam_t']:.1f} meV [A proxy]",
+                 fontsize=9)
+
+    ax = axes[2]
+    ax.plot(cv["kappas"], cv["Feff"], color="#e66101", lw=2)
+    ax.set_xlabel(r"cavity $\kappa$ (meV)")
+    ax.set_ylabel(r"$F_{eff}/F_P = \kappa/(\kappa+\Gamma)$")
+    ax.set_title("spectral-overlap Purcell penalty (F6 iii)", fontsize=9)
+
+    fig.suptitle("Phase 2 — Module B design rules (tag chain [A]: requirement envelopes; "
+                 "κ, F_P, G await MEEP/COMSOL)", fontsize=10, color="#d7191c", y=1.03)
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"phase2_cavity_design.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+
+
 def vc_reischle_figure(vc: dict, outdir: Path) -> None:
     """V-c consistency figure: digitized rho(w) envelope vs the rho required by
     the measured g2 under the trion (eps=0) F-series prediction g2 = 1-rho^2."""

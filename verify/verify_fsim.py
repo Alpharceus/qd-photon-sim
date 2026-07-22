@@ -377,6 +377,78 @@ def _():
     assert abs(pt.T - Tj) < 1e-9 and abs(pt.g2 - ref.g2) < 1e-12
 
 
+# --------------------------------------------- F-series unification (foundation doc)
+
+@check("Theorem-0 slice: eps=1 gives g2(mu->0)->1 and g2(mu->inf)->0.5")
+def _():
+    from fsim_core.loading import f1b_g2
+    assert abs(f1b_g2(1e-4, 1.0) - 1.0) < 1e-3
+    assert abs(f1b_g2(200.0, 1.0) - 0.5) < 1e-6
+
+
+@check("F1b expansion: g2(mu) ~ eps[1 + mu(1/3 - eps)] at small mu (foundation form)")
+def _():
+    from fsim_core.loading import f1b_g2
+    for eps in (0.05, 0.3979, 0.6):
+        mu = 0.02
+        exact = float(f1b_g2(mu, eps))
+        approx = eps * (1 + mu * (1.0 / 3.0 - eps))
+        assert abs(exact - approx) < 2e-4 * max(eps, 0.1), (eps, exact, approx)
+
+
+@check("F5 aperture lemma vs MC at (1,1), (1,0.3), (1,1,1), (1,0.5,0.1); equal-p 1-1/N")
+def _():
+    from fsim_core.loading import aperture_g2, mc_aperture_g2
+    assert abs(aperture_g2([0.7] * 4) - (1 - 0.25)) < 1e-12
+    for ps in ([1.0, 1.0], [1.0, 0.3], [1.0, 1.0, 1.0], [1.0, 0.5, 0.1]):
+        # p=1 emitters fire every pulse: closed form still applies
+        g2, se = mc_aperture_g2(ps, seed=7)
+        assert abs(g2 - aperture_g2(ps)) < 4 * se + 1e-3, ps
+
+
+# --------------------------------------------------------------- Module B (cavity)
+
+@check("mode-tracking rule: detuning vanishes at T_target, positive (blue) below it")
+def _():
+    from fsim_core.cavity import tracking_detuning
+    Tt = 120.0
+    assert abs(tracking_detuning(Tt, 1.88, Tt)) < 1e-12
+    assert tracking_detuning(20.0, 1.88, Tt) > 0
+    assert tracking_detuning(300.0, 1.88, Tt) < 0
+
+
+@check("F_eff limits: kappa>>Gamma -> F_P; kappa<<Gamma -> F_P*kappa/Gamma")
+def _():
+    from fsim_core.cavity import purcell_eff
+    assert abs(purcell_eff(10.0, 1e4, 6.5) - 10.0) < 1e-2
+    assert abs(purcell_eff(10.0, 1e-3, 6.5) - 10.0 * 1e-3 / 6.5) < 1e-5
+
+
+@check("cavity filter suppresses XX vs no-filter (F6 i)")
+def _():
+    e_cav = epsilon(5.9, 2.0, 2.0, kappa=0.5).eps
+    e_none = 1.0  # no filter: both lines fully collected
+    assert e_cav < 0.1 < e_none
+
+
+@check("Lemma 1: SiN beta is brightness-only -- never referenced in the g2 path")
+def _():
+    root = Path(__file__).resolve().parents[1]
+    for f in ("integrator.py", "fitting.py", "spectral.py", "loading.py"):
+        src = (root / "fsim_core" / f).read_text(encoding="utf-8")
+        assert "sin_beta" not in src and "beta_sin" not in src, f
+    from fsim_core.cavity import sin_beta_brightness
+    assert abs(sin_beta_brightness(0.8, 0.6) - 0.48) < 1e-12
+
+
+@check("collection gain raises rho but leaves eps untouched (F6 ii)")
+def _():
+    p = dict(BASE_P)
+    a = g2_of_T(200.0, p)
+    b = g2_of_T(200.0, {**p, "collection_gain": 10.0})
+    assert b.rho > a.rho and abs(b.eps - a.eps) < 1e-15 and b.g2 < a.g2
+
+
 # ------------------------------------------------------------ three-layer rule
 
 @check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")

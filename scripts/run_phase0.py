@@ -32,6 +32,8 @@ def main():
 
     gA, gAv, gAt, T_anchor = fit.gamma_anchor
     print(f"\nGamma({T_anchor:.0f} K): model {gA:.2f} meV  vs anchor {gAv}+-{gAt} meV")
+    for k, v in fit.aux.items():
+        print(f"  {k} = {v:.3f}")
     print("fitted parameters:")
     for k, v in fit.params.items():
         print(f"  {k:>10} = {v:.4g}")

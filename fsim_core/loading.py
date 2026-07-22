@@ -86,6 +86,34 @@ def b_injection(channels, I, T):
     return sum(c.rate(I, T) for c in channels) if channels else 0.0
 
 
+# ------------------------------------------------------- F5 aperture lemma (unequal emitters)
+
+def aperture_g2(p_list):
+    """F5 aperture lemma: N independent single-photon emitters with brightnesses
+    p_i give g2 = 1 - sum(p_i^2)/(sum p_i)^2  (= 1 - 1/N for equal emitters)."""
+    p = np.asarray(p_list, dtype=float)
+    return 1.0 - np.sum(p**2) / np.sum(p) ** 2
+
+
+def n_window_competitors(n_qd_cm2, aperture_um2, w_meV, sigma_inh_meV):
+    """Expected in-window competitor dots: N_w ~ n_QD * A_ap * 2w/sigma_inh
+    (F5; drives the low-density / small-aperture requirement)."""
+    n_geom = n_qd_cm2 * aperture_um2 * 1e-8
+    return n_geom * 2.0 * w_meV / sigma_inh_meV
+
+
+def mc_aperture_g2(p_list, n_pulses=1_000_000, seed=0):
+    """MC second method for the aperture lemma."""
+    rng = np.random.default_rng(seed)
+    m = np.zeros(n_pulses, dtype=np.int64)
+    for p in p_list:
+        m += rng.random(n_pulses) < p
+    mean = m.mean()
+    g2 = (m * (m - 1)).mean() / mean**2
+    se = (m * (m - 1)).std() / np.sqrt(n_pulses) / mean**2
+    return float(g2), float(se)
+
+
 # ------------------------------------------------------------------ MC second method
 
 def mc_pulsed_g2(mu, t_x, t_xx, b=0.0, n_pulses=2_000_000, seed=0):

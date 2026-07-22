@@ -69,14 +69,16 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     dx = p.get("dx", 0.0)
     dx = dx(T) if callable(dx) else dx
     gam = float(gamma_of_T(T, p["gamma0"], p["a_ac"], p["b_lo"], p["E_lo"]))
-    spec = epsilon(p["delta_xx"], gam, p.get("gamma_xx", gam),
+    gam_xx = p.get("gamma_xx", p.get("r_xx", 1.0) * gam)  # S2: Gamma_XX < Gamma_X
+    spec = epsilon(p["delta_xx"], gam, gam_xx,
                    w=w, kappa=p.get("kappa"), dx=dx)
 
     S = float(retention(T, p["a_esc"], p["E_a"], p["b_p"], p["E_b"]))
     B = p["b0"] + p["beta"] * (1.0 - S)
     if p.get("channels") and p.get("I") is not None:
         B += float(b_injection(p["channels"], p["I"], T))
-    rho = S / (S + B)
+    G = p.get("collection_gain", 1.0)  # cavity/waveguide gain acts on signal only (F6 ii)
+    rho = G * S / (G * S + B)
 
     mu = p.get("mu")
     g2_dot = float(f1b_g2(mu, spec.eps)) if mu else spec.eps

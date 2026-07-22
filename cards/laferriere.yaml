@@ -1,0 +1,80 @@
+meta:
+  name: laferriere
+  device: "InAsP/InP nanowire QD (dot-in-a-rod) in photonic waveguide, O-band ~1.31 um, position-controlled (NRC)"
+  role: validation (V-b)
+  source: "Laferriere et al., Nano Lett. 23, 962 (2023); local PDF read in full 2026-07-22"
+  note: >
+    V-b claim (planning doc / foundation section 8): the g2(T) series is the
+    epsilon->1 (spectrally unresolved) limit of F1 under the published widened
+    windows. Single dot by design (site-selected nanowire), background fitted
+    and removed by the authors -> rho ~ 1; the series is an epsilon(T) story.
+    Delta_XX, Gamma(T), and per-T windows are not published as numbers -> all
+    swept [E]; V-b is an existence/envelope check, not a fit. Above-band
+    excitation re-excites the dot (their Fig. 2d) -- a non-cascade, non-cap-2
+    channel outside the spectral model (WP-M2' tier).
+
+params:
+  delta_xx:
+    range: [1.5, 5.5]
+    unit: meV
+    tag: E
+    source: "X-XX splitting unpublished for this dot; InAsP nanowire class few-meV; swept"
+  gamma_4K:
+    value: 0.044
+    unit: meV
+    tag: V
+    source: "4 K FWHM 44 ueV, spectrometer-resolution limited (upper bound)"
+  gamma_77:
+    range: [0.2, 1.5]
+    unit: meV
+    tag: E
+    source: "Gamma(77 K) unpublished; swept"
+  gamma_220:
+    range: [1.5, 5.0]
+    unit: meV
+    tag: E
+    source: "Gamma(220 K) unpublished; lines 'become one single broad peak above 150 K' -> Gamma ~ Delta scale; swept"
+  gamma_300:
+    range: [3.0, 10.0]
+    unit: meV
+    tag: E
+    source: "Gamma(300 K) unpublished; swept"
+  w_77:
+    range: [0.5, 3.0]
+    unit: meV
+    tag: E
+    source: "filter 0.1 nm at low T, widened with T (12 nm by 175 K); 77 K value unpublished -- swept"
+  w_220:
+    range: [8.0, 17.0]
+    unit: meV
+    tag: DR
+    source: "window between the published 12 nm (@175 K) and 25 nm anchors; 12-25 nm at ~1350 nm = 8-17 meV"
+  w_300:
+    value: 16.0
+    unit: meV
+    tag: V
+    source: "published 25 nm bandpass at 300 K; 25 nm at 1390 nm = 16 meV"
+  mu_77:
+    range: [0.3, 1.0]
+    unit: "1"
+    tag: E
+    source: "0.5 Psat nominal up to 120 K; effective loading swept around it"
+  mu_high:
+    range: [0.25, 3.0]
+    unit: "1"
+    tag: E
+    source: "0.25 Psat nominal at >=220 K, but above-band re-excitation boosts effective loading; swept"
+
+data:
+  g2_vs_T:
+    tag: V
+    source: >
+      Published values (abstract + Fig. 5): 0.021 at 4 K saturation
+      (re-excitation dominated, their Fig. 2d -- excluded from the spectral
+      envelope check), then 0.11/0.34/0.57 at 77/220/300 K. err from Fig. 5
+      symbol scale [E].
+    points:
+      - {T: 4.0,   g2: 0.021, err: 0.005, mechanism: re-excitation}
+      - {T: 77.0,  g2: 0.11,  err: 0.03}
+      - {T: 220.0, g2: 0.34,  err: 0.05}
+      - {T: 300.0, g2: 0.57,  err: 0.05}

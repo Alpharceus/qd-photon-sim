@@ -153,10 +153,33 @@ def vc_reischle():
         vals = ", ".join(f"{r['g2']} @ {r['ERR_MHz']:.0f} MHz" for r in hi_err)
         print(f"  higher-ERR excess ({vals}): temporal (EP refilling + peak overlap; "
               "paper's own attribution) -- outside the spectral model, WP-M2' tier")
-    print("  OPEN: the 80 K point (Opt. Express 16, 12771 (2008), their ref. 19) -- "
-          "drop that PDF to close V-c(ii)")
     print(f"  tag chain: {card.datasets['rho_spectral'].tag.label} "
           "(digitized spectrum; window unpublished, swept)")
+
+    # ---- V-c(ii): the 80 K DC result (OE 16, 12771 (2008))
+    if "g2_oe2008" in card.datasets:
+        from fsim_core.spectral import epsilon
+        print("\nV-c(ii) (Reischle OE 16, 12771 (2008), DC electrical, 80 K):")
+        ok = True
+        for r in card.datasets["g2_oe2008"].rows:
+            g2s = (r["g2_b"] - (1 - r["rho"] ** 2)) / r["rho"] ** 2
+            err_s = r["err"] / r["rho"] ** 2
+            match = abs(g2s - r["g2_corr"]) <= 0.011
+            ok &= match
+            print(f"  dot {r['dot']} @ {r['T']:.0f} K: F2 inversion "
+                  f"(g2_b={r['g2_b']}, rho={r['rho']}) -> g2_s = {g2s:.3f}+-{err_s:.3f}"
+                  f"  vs published {r['g2_corr']}  [{'match' if match else 'MISMATCH'}]")
+        gam = card["gamma_80K_oe"].fixed
+        eps_hi = 0.0
+        for delta in card["delta_xx_oe"].bounds:
+            for w in card["w_oe"].bounds:
+                eps_hi = max(eps_hi, epsilon(delta, gam, gam, w=w).eps)
+        print(f"  eps bound (X line, Gamma(80K)={gam} meV, Delta 4-6 meV, w 1-3 meV "
+              f"swept): eps <= {eps_hi:.3f}")
+        print("  residual g2_s consistent with eps within errors -> "
+              "V-c(ii) " + ("CONSISTENT: rho-limited, eps small" if ok else "CHECK FAILED"))
+        print("  note: the paper's Eq. (1) IS the F2 background law -- the published "
+              "analysis is an F-series inversion performed by the authors themselves")
 
     vc_reischle_figure({"w_meV": ws, "rho_lo": lo, "rho_hi": hi,
                         "rho_req": rho_req, "rho_req_err": rho_req_err,

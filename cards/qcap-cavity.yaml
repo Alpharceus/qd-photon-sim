@@ -1,0 +1,54 @@
+meta:
+  name: qcap-cavity
+  device: "cavity design card for the staged InP/GaAsP device, T_target = 120 K (Phase-2 exit deliverable)"
+  role: prediction (requirement envelopes only -- every spectral input [A])
+  source: "F6 design rules; kappa/F_P/collection numbers await MEEP/COMSOL [A -> computed]"
+  note: >
+    Phase-2 exit: a cavity design whose {kappa, detuning(T)} satisfies the
+    mode-tracking rule at T_target (F6 iv): the mode is placed red of the
+    cryogenic X line by the Varshni shift to T_target, so detuning(T_target)=0.
+    The InP/GaAsP Delta_XX and Gamma(T) have zero published single-dot values
+    [V, null]: the Chatzarakis-class fitted Gamma(T) shape is carried as a
+    class proxy [A], and Delta_XX is swept. Outputs inherit [A].
+
+params:
+  T_target:
+    value: 120.0
+    unit: K
+    tag: A
+    source: "top of the anchored 77-120 K staged-device window"
+  E_X0:
+    value: 1.88
+    unit: eV
+    tag: A
+    source: "cryogenic X energy of the staged red-emitting dot; design assumption"
+  varshni_material:
+    value: 0.0
+    unit: "0=GaAs,1=InP"
+    tag: A
+    source: "emitter follows a GaAs-like Varshni (Chatzarakis S1a analogy); InP variant swept in sensitivity"
+  dEdT_cav:
+    value: -0.04
+    unit: meV/K
+    tag: E
+    source: "cavity-mode drift via dn/dT, GaAs-based cavity class"
+  kappa:
+    range: [0.3, 3.0]
+    unit: meV
+    tag: A
+    source: "cavity linewidth; Q ~ 600-6000 at 1.88 eV; MEEP/COMSOL deliverable"
+  delta_xx:
+    range: [1.5, 5.0]
+    unit: meV
+    tag: A
+    source: "InP/GaAsP splitting UNMEASURED (the program's decisive in-house measurement); swept"
+  F_P:
+    range: [5.0, 20.0]
+    unit: "1"
+    tag: A
+    source: "bare Purcell factor of the candidate cavity; MEEP/COMSOL deliverable"
+  collection_gain:
+    range: [5.0, 15.0]
+    unit: "1"
+    tag: A
+    source: "cavity collection/rate boost on the signal (Chatzarakis-class ~10x observed)"

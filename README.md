@@ -46,6 +46,17 @@ inside the spectrum-digitized ρ(w) envelope — the electrical result is
 ρ-limited, as the F-series claims. V-c(ii) (the 80 K point) awaits the
 Opt. Express 16, 12771 (2008) PDF.
 
+**Phase 2 + all validations closed 2026-07-22.** Foundation doc cross-checked
+(exact agreement; F5 aperture lemma + Theorem-0 slice added). V-a re-passed as
+a joint over-determined fit against the supplement's τ(T) [V] and Γ_X/Γ_XX(T)
+[E] data (named Tier-2 refinement: effective phonon energy E_lo = 18.3 meV;
+r_XX = 0.72; T_c revised 261 → 249 K). V-c(ii) closed on OE 16, 12771 (2008)
+(the paper's Eq. (1) is the F2 law; residuals ≈ ε). V-b closed at the ε→1
+limit (300 K point at the Theorem-0 edge; 77 K residual = named re-excitation
+channel, three-paper convergence on WP-M2′). Module B (`fsim_core/cavity.py`):
+tracking rule met at T_target = 120 K (`cards/qcap-cavity.yaml`); design rules
+in `notes/phase2-results.md`. 43/43 checks. Run `python scripts/run_phase2.py`.
+
 **Phase V (GUI v1): delivered 2026-07-21.** `fsim_gui/app.py` — Streamlit thin
 client (three-layer rule enforced by a regression check): spectral explainer
 (X/XX Lorentzians, Γ(T) on a temperature slider, shaded window, live ε/g²₀),

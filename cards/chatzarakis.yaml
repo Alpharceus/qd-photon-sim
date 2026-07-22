@@ -19,10 +19,15 @@ params:
     tag: DR
     source: "Fig. 4, 78 K panel: X 1.3313 eV, XX 1.3254 eV (red-shifted XX); +-0.3 meV digitization"
   E_lo:
-    value: 36.6
+    range: [15.0, 37.0]
     unit: meV
-    tag: DR
-    source: "GaAs LO phonon energy; dots assimilate GaAs character (paper Sec. III, Varshni discussion)"
+    tag: A
+    source: >
+      effective phonon activation energy of the Bose broadening term. Freed
+      from the GaAs LO value (36.6) after the joint fit against Fig. S2
+      overshot Gamma(>=240 K): the S2 shape (steep rise to ~150 K, then
+      gentle growth) demands a lower effective energy -- alloy/interface
+      phonon modes. Named Tier-2 refinement of the standing Gamma(T) model.
   gamma0:
     range: [0.05, 2.0]
     unit: meV
@@ -38,6 +43,11 @@ params:
     unit: meV
     tag: A
     source: "fit parameter: LO-phonon coupling strength"
+  r_xx:
+    range: [0.5, 1.0]
+    unit: "1"
+    tag: DR
+    source: "Gamma_XX/Gamma_X ratio; Fig. S2 shows XX systematically narrower than X (~0.6-0.9)"
 
   # --- Gamma(T) anchor (V-a constraint) ---
   gamma_anchor:
@@ -129,3 +139,56 @@ data:
       - {T: 170.0, g2: 0.18, err: 0.02, w: 4.74, dx: -1.65}
       - {T: 210.0, g2: 0.28, err: 0.03, w: 6.69, dx: -2.82}
       - {T: 230.0, g2: 0.36, err: 0.03, w: 7.66, dx: -3.41}
+
+  gamma_vs_T:
+    tag: E
+    source: >
+      FWHM linewidths digitized from supplement Fig. S2 (tick/decade-label
+      calibrated, log axis; ~15% class error). NOTE: S2 is the MESA dot of
+      main-text Fig. 3 (<Al>=57%, Delta=5.4 meV), not the microcavity
+      antibunching dot -- the paper argues thermal broadening is generic for
+      the class ((211)B merges with (100) at >=250 K), hence tag [E] for use
+      on the cavity dot.
+    points:
+      - {T: 8.0,   gamma_x: 0.145, gamma_xx: 0.077}
+      - {T: 78.0,  gamma_x: 1.06,  gamma_xx: 0.67}
+      - {T: 90.0,  gamma_x: 0.95,  gamma_xx: 0.67}
+      - {T: 100.0, gamma_x: 1.64,  gamma_xx: 1.05}
+      - {T: 110.0, gamma_x: 2.52,  gamma_xx: 1.34}
+      - {T: 120.0, gamma_x: 3.12,  gamma_xx: 2.43}
+      - {T: 130.0, gamma_x: 3.73,  gamma_xx: 2.61}
+      - {T: 140.0, gamma_x: 3.86,  gamma_xx: 2.77}
+      - {T: 150.0, gamma_x: 4.20,  gamma_xx: 3.05}
+      - {T: 160.0, gamma_x: 4.20,  gamma_xx: 3.23}
+      - {T: 170.0, gamma_x: 4.84,  gamma_xx: 3.82}
+      - {T: 200.0, gamma_x: 5.58,  gamma_xx: 4.56}
+      - {T: 240.0, gamma_x: 6.22,  gamma_xx: 5.20}
+      - {T: 260.0, gamma_x: 7.17,  gamma_xx: 6.22}
+
+  tau_vs_T:
+    tag: V
+    source: >
+      X-line decay times printed next to each spectrum in supplement Fig. S4
+      (microcavity antibunching dot; mono-exponential TRPL fits; S6
+      cross-checks 78 K: TRPL 1.77 ns vs antibunching 1.74 ns).
+      tau(T)/tau(78K) is used as an independent retention-ratio constraint
+      S(T)/S(78K), assuming a T-independent radiative rate (assumption
+      ledger: cavity spectral walk-off and dark-state population violate this
+      at some level).
+    points:
+      - {T: 78.0,  tau_ns: 1.77}
+      - {T: 90.0,  tau_ns: 1.74}
+      - {T: 100.0, tau_ns: 1.73}
+      - {T: 110.0, tau_ns: 1.34}
+      - {T: 120.0, tau_ns: 1.11}
+      - {T: 130.0, tau_ns: 1.02}
+      - {T: 140.0, tau_ns: 0.97}
+      - {T: 150.0, tau_ns: 0.87}
+      - {T: 160.0, tau_ns: 0.75}
+      - {T: 170.0, tau_ns: 0.64}
+      - {T: 180.0, tau_ns: 0.52}
+      - {T: 190.0, tau_ns: 0.39}
+      - {T: 200.0, tau_ns: 0.34}
+      - {T: 210.0, tau_ns: 0.30}
+      - {T: 220.0, tau_ns: 0.27}
+      - {T: 230.0, tau_ns: 0.21}
