@@ -595,6 +595,34 @@ def _():
         assert set(srows[0].keys()) == {"scalar", "A"}
 
 
+# -------------------------------------------------------------------- spec mode
+
+@check("spec: inversions round-trip through the forward chain (F1b, background "
+      "law, F6 cavity filter)")
+def _():
+    from fsim_core.loading import f1b_g2 as _f1b_g2
+    from fsim_core.spec import G_required, eps_budget, kappa_ceiling, rho_required
+
+    for mu, target in [(0.1, 0.05), (0.5, 0.3), (1.0, 0.5)]:
+        eb = eps_budget(mu, target)
+        if eb < 1.0:
+            assert abs(float(_f1b_g2(mu, eb)) - target) < 1e-9, (mu, target, eb)
+
+    eps_op, mu, target = 0.05, 0.5, 0.5
+    g2dot = float(_f1b_g2(mu, eps_op))
+    rr = rho_required(eps_op, mu, target)
+    assert abs((1.0 - rr**2 * (1.0 - g2dot)) - target) < 1e-9
+
+    G = G_required(rr, 0.6, 0.05)
+    rho = G * 0.6 / (G * 0.6 + 0.05)
+    assert abs(rho - rr) < 1e-9
+
+    delta, gx, gxx, budget = 3.5, 2.0, 1.44, 0.1
+    km = kappa_ceiling(delta, gx, gxx, budget)
+    assert np.isfinite(km)
+    assert abs(epsilon(delta, gx, gxx, kappa=km, dx=0.0).eps - budget) < 1e-6
+
+
 # ------------------------------------------------------------ three-layer rule
 
 @check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")

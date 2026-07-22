@@ -374,6 +374,77 @@ def phase3_packet_figure(m: dict, s: dict, a: dict, r: dict, outdir: Path) -> No
     plt.close(fig)
 
 
+def spec_figure(staged_rows: list, k300_rows: list, be_curves: dict, outdir: Path) -> None:
+    """Spec-mode deliverable (fsim_core.spec): 2 panels summarizing the
+    design-target spec sheets.
+      left:  kappa_max vs Delta_XX, one line per (T_op, target) staged group,
+             plus the 300 K route's kappa_max vs Delta_XX per Gamma(300) anchor.
+      right: G_required vs injection background b_e for a few representative
+             design points (staged + 300 K), np.inf entries (rho_req >= 1,
+             no finite gain closes the gap) simply stop the curve.
+    Consumes fsim_core.spec results only (three-layer rule); every array here
+    was computed in fsim_core/scripts, not derived in this module.
+    """
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    _write_csv(outdir / "spec_kappa_vs_delta.csv",
+               ["group", "delta_meV", "kappa_max_meV"],
+               ((f"staged T_op={r['T_op']:.0f}K t={r['target_g2']:.2f}", r["delta_xx"], r["kappa_max"])
+                for r in staged_rows))
+    _write_csv(outdir / "spec_G_req_vs_be.csv",
+               ["label", "b_e", "G_required"],
+               ((label, be, g) for label, (bes, gs) in be_curves.items() for be, g in zip(bes, gs)))
+
+    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4))
+
+    ax = axes[0]
+    groups = {}
+    for r in staged_rows:
+        groups.setdefault((r["T_op"], r["target_g2"]), []).append(r)
+    colors = ["#2166ac", "#e66101", "#5e3c99", "#1a9641"]
+    for (i, ((T_op, target), rs)) in enumerate(sorted(groups.items())):
+        rs = sorted(rs, key=lambda r: r["delta_xx"])
+        deltas = [r["delta_xx"] for r in rs]
+        kmax = [r["kappa_max"] for r in rs]
+        ax.plot(deltas, kmax, "o-", color=colors[i % len(colors)], lw=1.8,
+                label=f"staged $T_{{op}}$={T_op:.0f} K, target={target:.2f}")
+    k_groups = {}
+    for k in k300_rows:
+        k_groups.setdefault(k["gamma300"], []).append(k)
+    for i, (g300, ks) in enumerate(sorted(k_groups.items())):
+        ks = sorted(ks, key=lambda k: k["delta"])
+        deltas = [k["delta"] for k in ks]
+        kmax = [k["kappa_max"] for k in ks]
+        ax.plot(deltas, kmax, "s--", color="#888888" if i else "#333333", lw=1.4,
+                label=rf"300 K, $\Gamma$(300)={g300:.1f} meV")
+    ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
+    ax.set_ylabel(r"$\kappa_{max}$ (meV)  [cavity linewidth ceiling]")
+    ax.legend(frameon=False, fontsize=7)
+    ax.set_title("kappa ceiling vs splitting (F6 i inverted)", fontsize=9)
+
+    ax = axes[1]
+    for i, (label, (bes, gs)) in enumerate(sorted(be_curves.items())):
+        finite = np.isfinite(gs)
+        ax.plot(np.asarray(bes)[finite], gs[finite], lw=1.8,
+                color=plt.get_cmap("tab10")(i % 10), label=label)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel(r"injection background $b_e$ (signal units)")
+    ax.set_ylabel(r"$G_{required}$ (collection gain)")
+    ax.legend(frameon=False, fontsize=7)
+    ax.set_title("cavity gain requirement vs background (F6 ii inverted)", fontsize=9)
+
+    fig.suptitle("Spec mode — design-target requirement sheets (tag chain [A]: "
+                 "necessary conditions from the validated model, not existence proofs "
+                 "-- kappa/V~ achievability is MEEP's question, R_th/mesa is COMSOL's)",
+                 fontsize=9.5, color="#d7191c", y=1.04)
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"spec_figure.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+
+
 def vc_reischle_figure(vc: dict, outdir: Path) -> None:
     """V-c consistency figure: digitized rho(w) envelope vs the rho required by
     the measured g2 under the trion (eps=0) F-series prediction g2 = 1-rho^2."""
