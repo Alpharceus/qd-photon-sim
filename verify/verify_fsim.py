@@ -562,6 +562,39 @@ def _():
     assert np.all(lo - 1e-12 <= point) and np.all(point <= hi + 1e-12)
 
 
+# -------------------------------------------------------------------------- viz
+
+@check("viz: designer_report writes a complete, re-readable bundle (headless)")
+def _():
+    import tempfile
+
+    from fsim_core.device import DeviceDesign, evaluate
+    from fsim_viz.report import designer_report
+
+    d = DeviceDesign(name="verify-report")
+    res = evaluate(d)
+    entry = {"label": "A", "name": d.name, "design": d, "curves": res["curves"],
+             "scalars": res["scalars"]}
+    with tempfile.TemporaryDirectory() as td:
+        outdir = designer_report([entry], Path(td), title="verify")
+        for f in ("report.pdf", "report.svg", "report.png",
+                 "curves_A.csv", "scalars_comparison.csv", "design_A.yaml"):
+            assert (outdir / f).exists(), f"missing {f}"
+
+        import csv
+        with open(outdir / "curves_A.csv", newline="", encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        c = res["curves"]
+        assert len(rows) == len(c["T_hs"])
+        for name in ("T_hs", "Tj", "g2", "eps", "rho2", "gamma"):
+            for row, ref in zip(rows, c[name]):
+                assert abs(float(row[name]) - float(ref)) < 1e-12, (name, row[name], ref)
+
+        with open(outdir / "scalars_comparison.csv", newline="", encoding="utf-8") as fh:
+            srows = list(csv.DictReader(fh))
+        assert set(srows[0].keys()) == {"scalar", "A"}
+
+
 # ------------------------------------------------------------ three-layer rule
 
 @check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")

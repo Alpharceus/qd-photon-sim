@@ -7,12 +7,18 @@ so the canvas is that chain with configurable blocks -- not free-form wiring.
 
 Three-layer rule: this file computes NO physics. It builds a DeviceDesign,
 calls fsim_core.device.evaluate, and renders the results. Designs round-trip
-to YAML in cards/ so every session is reproducible from its file.
+to YAML in cards/ so every session is reproducible from its file. Phase D3
+adds design comparison (Store A/B/C slots overlay the last RUN on the g2
+plot + a delta table) and a "Report bundle" button that hands the current
+run + stored slots to fsim_viz.report.designer_report -- imported lazily
+inside that one callback so normal startup never pays for matplotlib.
 
 Run:        python fsim_gui/designer.py
 Smoke test: python fsim_gui/designer.py --frames 5
+Selftest:   python fsim_gui/designer.py --selftest <outdir>
 """
 import csv
+import copy
 import sys
 from pathlib import Path
 
@@ -34,6 +40,18 @@ RED = (215, 25, 28)
 BLUE = (60, 120, 216)
 PURPLE = (120, 90, 200)
 TAG_COLOR = {"V": GREEN, "DR": AMBER, "E": AMBER, "A": RED}
+
+# ---- D3: comparison slots. LAST_RUN is the most recent successful RUN
+# (point or envelope), same shape as a designer_report() entry minus
+# "label": {design, name, curves, bands (or None), scalars, scalar_bands
+# (or None), ranged (dict, possibly empty)}. SLOTS holds up to 3 stored
+# copies of that shape, keyed "A"/"B"/"C".
+LAST_RUN = None
+SLOTS = {}
+SLOT_LABELS = ("A", "B", "C")
+SLOT_COLOR = {"A": AMBER, "B": BLUE, "C": PURPLE}
+DELTA_SCALARS = ["T_j_op", "dT_J", "eps_op", "rho_op", "g2_op", "brightness_per_pulse",
+                "T_c", "F_eff", "N_w", "aperture_g2_penalty"]
 
 # meta path -> live widget tag, for every parameter widget that carries a META
 # entry. aperture.density_cm2 is edited as log10 in the widget (see transform
@@ -371,8 +389,11 @@ def run_device():
 
 
 def _run_point(d: DeviceDesign):
+    global LAST_RUN
     res = evaluate(d)
     c, s = res["curves"], res["scalars"]
+    LAST_RUN = {"design": d, "name": d.name, "curves": c, "bands": None,
+                "scalars": s, "scalar_bands": None, "ranged": {}}
     Ts = list(map(float, c["T_hs"]))
     dpg.set_value("s_g2", [Ts, list(map(float, c["g2"]))])
     dpg.set_value("s_eps", [Ts, list(map(float, c["eps"]))])
@@ -414,6 +435,7 @@ def _run_point(d: DeviceDesign):
     ]
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
+    _refresh_delta_table()
 
 
 def _interval(lo, hi, fmt="{:.3f}", unit=""):
@@ -423,9 +445,27 @@ def _interval(lo, hi, fmt="{:.3f}", unit=""):
     return f"{fmt.format(lo)} - {fmt.format(hi)}{suffix}"
 
 
+def _mid_design(d: DeviceDesign, ranged: dict) -> DeviceDesign:
+    """Design with every ranged path pinned to its (lo+hi)/2 -- the same point
+    evaluate_envelope's 'mid' curve already uses, so a point-scalars readout
+    (T_j_op/brightness/F_eff/N_w/aperture penalty; not covered by
+    scalar_bands) exists for envelope runs too, e.g. for slot storage and the
+    report bundle. Bookkeeping only, not physics: evaluate() still does the
+    actual chain."""
+    dm = copy.deepcopy(d)
+    for path, (lo, hi) in ranged.items():
+        block_name, field_name = path.split(".", 1)
+        setattr(getattr(dm, block_name), field_name, 0.5 * (lo + hi))
+    return dm
+
+
 def _run_envelope(d: DeviceDesign, ranged: dict):
+    global LAST_RUN
     env = evaluate_envelope(d, ranged)
     mid, bands, sb = env["mid"], env["bands"], env["scalar_bands"]
+    mid_scalars = evaluate(_mid_design(d, ranged), T_grid=[d.thermal.T_hs])["scalars"]
+    LAST_RUN = {"design": d, "name": d.name, "curves": mid, "bands": bands,
+                "scalars": mid_scalars, "scalar_bands": sb, "ranged": dict(ranged)}
     Ts = list(map(float, mid["T_hs"]))
 
     dpg.set_value("s_g2", [Ts, list(map(float, mid["g2"]))])
@@ -481,6 +521,130 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
     ] + tornado_lines
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
+    _refresh_delta_table()
+
+
+# --------------------------------------------------------- D3: comparison slots
+
+def _fmt_delta(entry: dict, name: str) -> str:
+    """Point value, or 'lo..hi' when `entry` carries a scalar_bands interval
+    for this name -- same convention as fsim_viz.report._fmt_scalar, kept as
+    a small local copy so the delta table (refreshed after every RUN) never
+    has to import the viz package."""
+    sb = entry.get("scalar_bands")
+    if sb and name in sb:
+        lo, hi = sb[name]
+        return "nan" if (lo != lo or hi != hi) else f"{lo:.3g}..{hi:.3g}"
+    v = entry["scalars"].get(name, float("nan"))
+    return "nan" if (isinstance(v, float) and v != v) else f"{v:.3g}"
+
+
+def _refresh_delta_table():
+    if not dpg.does_item_exist("delta_text"):
+        return
+    if LAST_RUN is None or not SLOTS:
+        dpg.set_value("delta_text", "")
+        return
+    cols = [("current", LAST_RUN)] + [(lbl, SLOTS[lbl]) for lbl in SLOT_LABELS if lbl in SLOTS]
+    lines = ["", "comparison (current vs stored slots):",
+             f"{'scalar':<22}" + "".join(f"{c:>17}" for c, _ in cols)]
+    for name in DELTA_SCALARS:
+        row = "".join(f"{_fmt_delta(entry, name):>17}" for _, entry in cols)
+        lines.append(f"{name:<22}{row}")
+    dpg.set_value("delta_text", "\n".join(lines))
+
+
+def _slot_tags(label: str) -> tuple:
+    return f"s_g2_{label}", f"s_g2_band_{label}"
+
+
+def _build_slot_themes():
+    """Bind each slot's line/band series to its fixed SLOT_COLOR (A amber, B
+    blue, C purple) so overlays stay visually distinct from the auto-cycled
+    current-run series. Called once from build_ui()."""
+    for lbl in SLOT_LABELS:
+        line_tag, band_tag = _slot_tags(lbl)
+        r, g, b = SLOT_COLOR[lbl]
+        with dpg.theme() as lt:
+            with dpg.theme_component(dpg.mvLineSeries):
+                dpg.add_theme_color(dpg.mvPlotCol_Line, (r, g, b, 255),
+                                    category=dpg.mvThemeCat_Plots)
+        dpg.bind_item_theme(line_tag, lt)
+        with dpg.theme() as bt:
+            with dpg.theme_component(dpg.mvShadeSeries):
+                dpg.add_theme_color(dpg.mvPlotCol_Fill, (r, g, b, 70),
+                                    category=dpg.mvThemeCat_Plots)
+        dpg.bind_item_theme(band_tag, bt)
+
+
+def _refresh_slot_overlay():
+    """Push every stored slot's g2 curve (+ band, if it has one) onto the
+    pre-created hidden series on the main plot; hide a slot's series when it
+    has no stored design."""
+    for lbl in SLOT_LABELS:
+        line_tag, band_tag = _slot_tags(lbl)
+        if not dpg.does_item_exist(line_tag):
+            continue
+        entry = SLOTS.get(lbl)
+        if entry is None:
+            dpg.configure_item(line_tag, show=False)
+            dpg.configure_item(band_tag, show=False)
+            continue
+        c = entry["curves"]
+        Ts = list(map(float, c["T_hs"]))
+        dpg.set_value(line_tag, [Ts, list(map(float, c["g2"]))])
+        dpg.configure_item(line_tag, show=True, label=f"{lbl}: {entry['name']}")
+        bands = entry.get("bands")
+        if bands and "g2" in bands:
+            lo, hi = (list(map(float, a)) for a in bands["g2"])
+            dpg.set_value(band_tag, [Ts, lo, hi])
+            dpg.configure_item(band_tag, show=True, label=f"{lbl} band")
+        else:
+            dpg.set_value(band_tag, [[], [], []])
+            dpg.configure_item(band_tag, show=False)
+    dpg.fit_axis_data("xax1")
+    dpg.fit_axis_data("yax1")
+
+
+def store_slot(label: str):
+    """'Store <label>' button: capture LAST_RUN into a comparison slot. No-op
+    (with a status warning) if nothing has been run yet."""
+    if LAST_RUN is None:
+        dpg.set_value("status", f"nothing run yet -- press RUN before storing slot {label}")
+        return
+    SLOTS[label] = LAST_RUN
+    _refresh_slot_overlay()
+    _refresh_delta_table()
+    dpg.set_value("status", f"stored slot {label}: {LAST_RUN['name']}")
+
+
+def clear_slots():
+    SLOTS.clear()
+    _refresh_slot_overlay()
+    _refresh_delta_table()
+    dpg.set_value("status", "cleared comparison slots")
+
+
+def report_bundle(outdir_override=None):
+    """'Report bundle' button: hand the current run + every stored slot to
+    fsim_viz.report.designer_report. Imported lazily here (not at module
+    scope) so a normal designer launch never pays matplotlib's import cost."""
+    if LAST_RUN is None:
+        dpg.set_value("status", "nothing run yet -- press RUN before building a report")
+        return
+    from fsim_viz.report import designer_report
+
+    entries = [dict(LAST_RUN, label="current")]
+    entries += [dict(SLOTS[lbl], label=lbl) for lbl in SLOT_LABELS if lbl in SLOTS]
+    outdir = Path(outdir_override) if outdir_override is not None else (
+        ROOT / "out" / "designer" / f"{LAST_RUN['name']}-review")
+    designer_report(entries, outdir, title=f"{LAST_RUN['name']} design review")
+    try:
+        shown = outdir.relative_to(ROOT)
+    except ValueError:
+        shown = outdir
+    dpg.set_value("status", f"report bundle -> {shown}")
+    return outdir
 
 
 def save_design():
@@ -558,6 +722,13 @@ def build_ui():
             dpg.add_button(label="  RUN  ", callback=run_device)
             dpg.add_text("tag chain [A] - every result inherits unmeasured inputs",
                          color=RED)
+        with dpg.group(horizontal=True):
+            dpg.add_text("Compare:")
+            dpg.add_button(label="Store A", callback=lambda: store_slot("A"))
+            dpg.add_button(label="Store B", callback=lambda: store_slot("B"))
+            dpg.add_button(label="Store C", callback=lambda: store_slot("C"))
+            dpg.add_button(label="Clear slots", callback=clear_slots)
+            dpg.add_button(label="Report bundle", callback=lambda: report_bundle())
         with dpg.group(horizontal=True):
             dpg.add_text("Presets:")
             dpg.add_combo(list(presets.DOT_PRESETS), default_value="chatzarakis-class",
@@ -813,6 +984,13 @@ def build_ui():
                         dpg.add_line_series([], [], label="rho^2", tag="s_rho2")
                         dpg.add_line_series([], [], label="ceiling 0.5", tag="s_half")
                         dpg.add_line_series([], [], label="T_c", tag="s_tc")
+                        # D3 comparison slots: pre-created hidden, shown/colored
+                        # on store (see _refresh_slot_overlay / _build_slot_themes)
+                        for _lbl in SLOT_LABELS:
+                            _lt, _bt = _slot_tags(_lbl)
+                            dpg.add_shade_series([], [], y2=[], label=f"{_lbl} band",
+                                                 tag=_bt, show=False)
+                            dpg.add_line_series([], [], label=_lbl, tag=_lt, show=False)
                 with dpg.plot(height=180, width=-1):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax2")
@@ -824,9 +1002,49 @@ def build_ui():
                 dpg.add_text("", tag="warn_runaway", color=RED)
                 dpg.add_text("", tag="warn_eps", color=RED)
                 dpg.add_text("press RUN", tag="results_text")
+                dpg.add_text("", tag="delta_text", color=(200, 200, 200))
+    _build_slot_themes()
 
 
-def main(frames=None):
+def _run_selftest(outdir: Path) -> bool:
+    """D3 selftest: drive the real button callbacks (not a reimplementation)
+    through one full compare-and-report cycle -- preset -> RUN (envelope
+    defaults on) -> Store A -> tweak delta_xx -> RUN -> Store B -> Report
+    bundle -- then check the bundle landed with the files a reviewer needs."""
+    dpg.set_value("preset.dot", "staged-inp-gaasp")
+    dpg.set_value("preset.template", "GaAs")
+    dpg.set_value("preset.cavity", "none")
+    dpg.set_value("preset.drive", "cw-electrical")
+    apply_presets()
+    run_device()
+    store_slot("A")
+    dpg.set_value("dot.delta_xx", 5.0)   # swept param: shows up in the YAML
+    dpg.set_value("drive.I_uA", 50.0)    # NON-swept param: curves must diverge
+    run_device()
+    store_slot("B")
+    report_bundle(outdir_override=outdir)
+    for _ in range(5):
+        dpg.render_dearpygui_frame()
+
+    required = ["report.png", "report.pdf", "curves_A.csv", "curves_B.csv",
+               "scalars_comparison.csv", "design_A.yaml", "design_B.yaml"]
+    missing = [f for f in required if not (Path(outdir) / f).exists()]
+    ok = not missing
+    if ok:
+        # the comparison must compare: A and B must not be byte-identical
+        # (Opus D3 finding -- an all-swept edit yields identical curves)
+        a = (Path(outdir) / "curves_A.csv").read_bytes()
+        b = (Path(outdir) / "curves_B.csv").read_bytes()
+        if a == b:
+            ok = False
+            print("selftest: FAIL  slots A and B are identical -- comparison "
+                  "path not exercised")
+    print(f"selftest: {'OK' if ok else 'FAIL'}  bundle -> {outdir}"
+          + (f"  missing: {missing}" if missing else ""))
+    return ok
+
+
+def main(frames=None, selftest_outdir=None):
     dpg.create_context()
     build_ui()
     default = DeviceDesign()
@@ -837,6 +1055,10 @@ def main(frames=None):
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("main", True)
+    if selftest_outdir is not None:
+        ok = _run_selftest(Path(selftest_outdir))
+        dpg.destroy_context()
+        sys.exit(0 if ok else 1)
     if frames:
         run_device()  # exercise the full pipeline once
         for _ in range(frames):
@@ -856,6 +1078,9 @@ def main(frames=None):
 
 if __name__ == "__main__":
     n = None
+    selftest_outdir = None
     if "--frames" in sys.argv:
         n = int(sys.argv[sys.argv.index("--frames") + 1])
-    main(frames=n)
+    if "--selftest" in sys.argv:
+        selftest_outdir = sys.argv[sys.argv.index("--selftest") + 1]
+    main(frames=n, selftest_outdir=selftest_outdir)
