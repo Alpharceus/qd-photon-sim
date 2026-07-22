@@ -1,0 +1,7 @@
+numpy>=1.20
+scipy>=1.7
+matplotlib>=3.4
+PyYAML>=5.4
+streamlit>=1.30
+plotly>=5.0
+dearpygui>=1.10

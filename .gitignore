@@ -1,3 +1,21 @@
+# python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
 .ipynb_checkpoints/
+.venv/
+venv/
+
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# scratch
+*.tmp
+scratch/
+
+# note: out/ is committed intentionally -- report bundles are deliverables,
+# regenerable from scripts/ but kept so every reported figure has its CSV.
