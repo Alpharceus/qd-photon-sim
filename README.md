@@ -57,6 +57,13 @@ channel, three-paper convergence on WP-M2′). Module B (`fsim_core/cavity.py`):
 tracking rule met at T_target = 120 K (`cards/qcap-cavity.yaml`); design rules
 in `notes/phase2-results.md`. 43/43 checks. Run `python scripts/run_phase2.py`.
 
+**Phase 3 (prediction runs): delivered 2026-07-22.** The four §4 deliverables
+— (i) staged 77–120 K envelope, (ii) piezo-variant (Δ,ρ) requirement map vs
+300 K with measured devices overplotted, (iii) F5 aperture/density rules,
+(iv) measurement-priority ranking — assembled into the design-review packet
+`notes/phase3-osinski-packet.md` with every claim tagged. Bundle in
+`out/phase3/`. Run `python scripts/run_phase3.py`.
+
 **Phase V (GUI v1): delivered 2026-07-21.** `fsim_gui/app.py` — Streamlit thin
 client (three-layer rule enforced by a regression check): spectral explainer
 (X/XX Lorentzians, Γ(T) on a temperature slider, shaded window, live ε/g²₀),

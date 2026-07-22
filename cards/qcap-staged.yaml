@@ -65,3 +65,40 @@ params:
     unit: K
     tag: A
     source: "LN2 stage baseline for the map; 77-120 K is the anchored Phase-3 window"
+
+  # --- Phase-3 spectral/drive envelope inputs (all [A] until measured) ---
+  delta_xx_staged:
+    range: [1.5, 5.0]
+    unit: meV
+    tag: A
+    source: "InP/GaAsP X-XX splitting: ZERO published single-dot values [V, null] -- the program's decisive in-house measurement; swept"
+  gamma_scale:
+    range: [0.7, 1.3]
+    unit: "1"
+    tag: A
+    source: "InP/GaAsP Gamma(T) unknown; the arsenide-class V-a fit shape is carried, scaled by this factor"
+  b_e_total:
+    range: [1.0e-3, 0.3]
+    unit: "1"
+    tag: A
+    source: "total injection background (WL EL + barrier EL + leakage) at the operating point, in signal units; MEASURE under injection"
+  mu_op_staged:
+    range: [0.1, 1.0]
+    unit: "1"
+    tag: A
+    source: "electrical loading per pulse at the operating point"
+  sigma_inh:
+    value: 40.0
+    unit: meV
+    tag: A
+    source: "inhomogeneous ensemble broadening for the F5 aperture statistics (foundation section 5)"
+  comp_brightness:
+    value: 0.3
+    unit: "1"
+    tag: A
+    source: "relative brightness of in-window competitor dots (off-resonant coupling); F5 penalty input"
+  qd_density:
+    range: [1.0e+8, 2.0e+10]
+    unit: cm^-2
+    tag: A
+    source: "growth lever: native 7e9-2e10; low-density growth reaches ~7e8 (Chatzarakis Sec. II analogy)"

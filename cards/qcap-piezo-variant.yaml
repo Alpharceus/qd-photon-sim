@@ -1,0 +1,56 @@
+meta:
+  name: qcap-piezo-variant
+  device: "(211)B piezoelectric InAs/GaAs route to 300 K (requirement map, not a design)"
+  role: prediction -- (Delta, rho) requirement map for T_c >= 300 K (Phase-3 item ii)
+  source: "F7 flow-down quantified; anchors from Chatzarakis et al. PRApplied 20, 034011 [V]"
+  note: >
+    The map answers: what (Delta_XX, rho) does the 300 K target demand, against
+    the (211)B-demonstrated splitting distribution? Gamma(300 K) is anchored to
+    the published 6-7 meV [V]; the class Gamma(T) shape is the V-a fit rescaled
+    to that anchor (the fit's known high-T overshoot is thereby removed --
+    honesty note: the rescale itself is [A]).
+
+params:
+  gamma_300_lo:
+    value: 6.0
+    unit: meV
+    tag: V
+    source: "linewidths merge at >=250 K to FWHM 6-7 meV (paper Sec. III / Fig. S2)"
+  gamma_300_hi:
+    value: 7.0
+    unit: meV
+    tag: V
+    source: "upper edge of the published interval"
+  delta_median:
+    value: 5.4
+    unit: meV
+    tag: V
+    source: "studied mesa dot |XX-X| = 5.4 meV (Fig. 3)"
+  delta_yield_threshold:
+    value: 5.0
+    unit: meV
+    tag: V
+    source: "paper: |XX-X| > 5 meV in >50% of dots in both samples"
+  delta_class_lo:
+    value: 4.0
+    unit: meV
+    tag: V
+    source: "(211)B class splitting range 4-13 meV (paper refs 36-40)"
+  delta_class_hi:
+    value: 13.0
+    unit: meV
+    tag: V
+    source: "(211)B class splitting range 4-13 meV"
+
+data:
+  device_points:
+    tag: DR
+    source: >
+      Measured devices placed on the map. rho values: chatzarakis-230K from the
+      V-a joint fit at 230 K (derived); reischle-80K from the paper's own
+      spectral evaluation [V]; laferriere-300K approx rho~1 (background fitted
+      out; the 300 K value is eps-limited, shown for contrast).
+    points:
+      - {name: "Chatzarakis 230 K", delta: 5.9, rho: -1.0, T: 230.0, note: "rho computed from fit at runtime"}
+      - {name: "Reischle 80 K", delta: 5.0, rho: 0.88, T: 80.0}
+      - {name: "Laferriere 300 K", delta: 5.0, rho: 0.99, T: 300.0}

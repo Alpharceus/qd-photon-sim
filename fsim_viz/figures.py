@@ -277,6 +277,103 @@ def cavity_design_figure(cv: dict, outdir: Path) -> None:
     plt.close(fig)
 
 
+def phase3_packet_figure(m: dict, s: dict, a: dict, r: dict, outdir: Path) -> None:
+    """Phase-3 packet: (ii) (Delta,rho) T_c map, (i) staged envelope,
+    (iii) F5 aperture rules, (iv) measurement ranking. CSV per panel."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    _write_csv(outdir / "map_tc_delta_rho.csv",
+               ["rho\\delta_meV"] + [f"{d:.2f}" for d in m["deltas"]],
+               ((f"{rho:.3f}", *row) for rho, row in zip(m["rhos"], m["Tc"])))
+    g_lo, g_hi = m["g_band"]
+    _write_csv(outdir / "map_rho_required_300K.csv",
+               ["delta_meV", f"rho_req_gamma{g_lo}", f"rho_req_gamma{g_hi}"],
+               zip(m["deltas"], m["rho_req"][g_lo], m["rho_req"][g_hi]))
+    for T_hs, e in s["envelopes"].items():
+        _write_csv(outdir / f"staged_envelope_{T_hs:.0f}K.csv",
+                   ["delta_meV", "g2_lo", "g2_hi"],
+                   ((d, lo, hi) for d, (lo, hi) in zip(s["deltas"], e["band"])))
+    _write_csv(outdir / "aperture_g2_penalty.csv",
+               ["density_cm2\\diam_um"] + [f"{d:.2f}" for d in a["diams"]],
+               ((f"{n:.2e}", *row) for n, row in zip(a["dens"], a["g2pen"])))
+    _write_csv(outdir / "measurement_ranking.csv",
+               ["input", "envelope_narrowing_K"],
+               ((k, v) for k, v in r["ranked"]))
+
+    fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.6))
+
+    ax = axes[0, 0]
+    cf = ax.contourf(m["deltas"], m["rhos"], m["Tc"], levels=np.arange(50, 425, 25),
+                     cmap="viridis")
+    cs = ax.contour(m["deltas"], m["rhos"], m["Tc"], levels=[77, 120, 200, 300],
+                    colors="white", linewidths=1.2)
+    ax.clabel(cs, fmt="%.0f K", fontsize=7)
+    ax.plot(m["deltas"], m["rho_req"][g_lo], color="#d7191c", lw=2)
+    ax.plot(m["deltas"], m["rho_req"][g_hi], color="#d7191c", lw=2, ls="--")
+    ax.fill_between(m["deltas"], m["rho_req"][g_lo], m["rho_req"][g_hi],
+                    color="#d7191c", alpha=0.25, lw=0,
+                    label=r"$\rho$ required for 300 K [$\Gamma$(300) 6–7 meV]")
+    ax.axvline(5.0, color="#e3a21a", ls=":", lw=1.5)
+    ax.annotate(">50% of (211)B dots", (5.05, 0.615), rotation=90, fontsize=7,
+                color="#e3a21a")
+    for p in m["points"]:
+        ax.plot(p["delta"], p["rho"], "o", color="#ffffff", mec="#333333", ms=7)
+        ax.annotate(p["name"], (p["delta"] + 0.15, p["rho"] - 0.012), fontsize=6.5)
+    plt.colorbar(cf, ax=ax, label="$T_c$ (K)")
+    ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
+    ax.set_ylabel(r"signal purity $\rho$")
+    ax.legend(frameon=False, fontsize=7, loc="lower right")
+    ax.set_title("(ii) master-ceiling map: $T_c(\\Delta,\\rho)$, narrow-filter bound",
+                 fontsize=9)
+
+    ax = axes[0, 1]
+    colors = {77.0: "#2166ac", 120.0: "#e66101"}
+    for T_hs, e in s["envelopes"].items():
+        band = e["band"]
+        ax.fill_between(s["deltas"], band[:, 0], band[:, 1], alpha=0.3,
+                        color=colors[T_hs], lw=0)
+        ax.plot(s["deltas"], band[:, 1], color=colors[T_hs], lw=1.8,
+                label=f"$T_{{hs}}$ = {T_hs:.0f} K (worst case)")
+    ax.axhline(0.5, color="#888888", ls=":", lw=1)
+    ax.axhline(0.1, color="#888888", ls=":", lw=1)
+    ax.set_xlabel(r"$\Delta_{XX}$ (meV)  [A: unmeasured on InP/GaAsP]")
+    ax.set_ylabel("$g^{(2)}(0)$ envelope")
+    ax.set_yscale("log")
+    ax.legend(frameon=False, fontsize=7)
+    ax.set_title("(i) staged device envelope, electrical, w=$\\Gamma$ convention",
+                 fontsize=9)
+
+    ax = axes[1, 0]
+    cf = ax.contourf(a["diams"], a["dens"], a["g2pen"],
+                     levels=[0, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0], cmap="magma_r")
+    cs = ax.contour(a["diams"], a["dens"], a["Nw"], levels=[1.0], colors="#2166ac",
+                    linewidths=1.5)
+    ax.clabel(cs, fmt="$N_w$=%.0f", fontsize=7)
+    ax.set_yscale("log")
+    plt.colorbar(cf, ax=ax, label="F5 aperture $g^{(2)}$ penalty")
+    ax.set_xlabel("aperture diameter (µm)")
+    ax.set_ylabel("QD density (cm$^{-2}$)")
+    ax.set_title(f"(iii) F5 aperture/density rules (w = {a['w']:.1f} meV)", fontsize=9)
+
+    ax = axes[1, 1]
+    items = r["ranked"][::-1]
+    ax.barh([r["labels"][k] for k, _ in items], [v for _, v in items],
+            color="#2166ac")
+    ax.set_xlabel(f"$T_c$ envelope narrowing (K) out of {r['width_full']:.0f} K total")
+    ax.set_title("(iv) measurement-priority ranking (in-house queue)", fontsize=9)
+    ax.tick_params(axis="y", labelsize=7)
+
+    fig.suptitle("Phase 3 — requirement envelopes and design rules "
+                 "(tag chain [A]: every panel inherits unmeasured inputs; "
+                 "see the packet note for the chains)",
+                 fontsize=10, color="#d7191c", y=1.0)
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"phase3_packet.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+
+
 def vc_reischle_figure(vc: dict, outdir: Path) -> None:
     """V-c consistency figure: digitized rho(w) envelope vs the rho required by
     the measured g2 under the trion (eps=0) F-series prediction g2 = 1-rho^2."""

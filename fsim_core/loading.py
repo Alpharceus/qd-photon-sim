@@ -95,11 +95,13 @@ def aperture_g2(p_list):
     return 1.0 - np.sum(p**2) / np.sum(p) ** 2
 
 
-def n_window_competitors(n_qd_cm2, aperture_um2, w_meV, sigma_inh_meV):
-    """Expected in-window competitor dots: N_w ~ n_QD * A_ap * 2w/sigma_inh
-    (F5; drives the low-density / small-aperture requirement)."""
+def n_window_competitors(n_qd_cm2, aperture_um2, w_full_meV, sigma_inh_meV):
+    """Expected in-window competitor dots: N_w ~ n_QD * A_ap * w/sigma_inh with
+    w the FULL window width (foundation section 5 checkpoint: 1e10 cm^-2,
+    0.1 um^2, w = 6.5, sigma = 40 -> ~10 geometric, ~1.6 spectral). Drives the
+    low-density / small-aperture requirement."""
     n_geom = n_qd_cm2 * aperture_um2 * 1e-8
-    return n_geom * 2.0 * w_meV / sigma_inh_meV
+    return n_geom * w_full_meV / sigma_inh_meV
 
 
 def mc_aperture_g2(p_list, n_pulses=1_000_000, seed=0):
