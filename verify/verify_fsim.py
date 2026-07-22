@@ -538,6 +538,30 @@ def _():
     assert s["runaway"] and np.isinf(s["T_j_op"])
 
 
+@check("device: envelope bands contain the point evaluation for interior parameter values")
+def _():
+    from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope
+
+    # mode="extremes" is only a 2-level factorial: with a non-monotone response
+    # it can legitimately fail to bound an off-grid interior point. To make
+    # containment guaranteed by construction (not just empirically likely),
+    # use explicit grids and test AT a grid point, not an arbitrary interior
+    # value -- that point's own evaluate() curve is then one of the samples
+    # evaluate_envelope takes the pointwise min/max over, so containment holds
+    # by definition of min/max, independent of monotonicity.
+    delta_grid = [1.5, 3.0, 5.0]
+    b_e_grid = [1e-3, 0.05, 0.1, 0.3]
+    d = DeviceDesign()
+    d.dot.delta_xx = 3.0
+    d.drive.b_e = 0.05
+    point = evaluate(d)["curves"]["g2"]
+
+    env = evaluate_envelope(DeviceDesign(), {"dot.delta_xx": delta_grid,
+                                             "drive.b_e": b_e_grid})
+    lo, hi = env["bands"]["g2"]
+    assert np.all(lo - 1e-12 <= point) and np.all(point <= hi + 1e-12)
+
+
 # ------------------------------------------------------------ three-layer rule
 
 @check("three-layer rule: fsim_core and fsim_viz never import GUI frameworks")

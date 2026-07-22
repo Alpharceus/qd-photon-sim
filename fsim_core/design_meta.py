@@ -103,6 +103,41 @@ META = {
                                   "source": "relative brightness of in-window competitor dots"},
 }
 
+# ---- envelope defaults (phase D2): default sweep ranges for [A]-tagged
+# parameters, taken from the program's prediction cards (qcap-staged.yaml /
+# qcap-piezo-variant.yaml). Program decision: [A] inputs default to RANGED
+# on in the designer, rendering bands instead of single-point lines.
+ENV_DEFAULTS = {
+    "dot.delta_xx": (1.5, 5.0),
+    "dot.gamma_scale": (0.7, 1.3),
+    "drive.b_e": (1e-3, 0.3),
+    "drive.mu": (0.1, 1.0),
+    "cavity.kappa": (0.3, 3.0),
+    "cavity.G": (5.0, 15.0),
+    "cavity.F_P": (5.0, 20.0),
+    "aperture.density_cm2": (1e8, 2e10),
+}
+
+
+def default_ranged(design: DeviceDesign) -> dict:
+    """The ENV_DEFAULTS subset applicable to `design`: cavity.* only makes
+    sense (and is only wired into evaluate()) when the cavity is enabled and
+    not a SiN waveguide (kappa/G/F_P are unused for cavity.type=sin_waveguide,
+    see CavityBlock/evaluate). aperture.density_cm2 is excluded by default --
+    it only feeds the F5 aperture-penalty scalar, not the curves, so ranging
+    it by default would band nothing a user is looking at."""
+    out = {}
+    for path, bounds in ENV_DEFAULTS.items():
+        if path == "aperture.density_cm2":
+            continue
+        block = path.split(".", 1)[0]
+        if block == "cavity" and not (design.cavity.enabled
+                                      and design.cavity.type != "sin_waveguide"):
+            continue
+        out[path] = bounds
+    return out
+
+
 _EXCLUDED = {("thermal", "layers"), ("thermal", "substrate")}
 
 

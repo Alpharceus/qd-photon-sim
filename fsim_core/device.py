@@ -16,6 +16,8 @@ the widest tag of its chain. The envelope treatment lives in run_phase3.
 """
 from __future__ import annotations
 
+import copy
+import itertools
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -247,3 +249,145 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "tag_chain": "[A]",  # unmeasured inputs are always in the chain today
     }
     return {"curves": curves, "scalars": scalars}
+
+
+# ------------------------------------------------------------- envelope mode (D2)
+
+_ENVELOPE_CAP = 4096
+_ENV_CURVES = ("g2", "eps", "rho2", "Tj", "gamma")
+_ENV_SCALARS = ("T_c", "g2_op", "eps_op", "rho_op", "dT_J")
+
+
+def _set_path(design: DeviceDesign, path: str, value) -> None:
+    block_name, field_name = path.split(".", 1)
+    setattr(getattr(design, block_name), field_name, value)
+
+
+def _value_set(spec, mode: str) -> tuple:
+    """One parameter's sample set from a ranged spec: a 2-tuple (lo, hi) under
+    mode="extremes" becomes the 2-level factorial [lo, hi]; anything else
+    (len != 2, or an explicit 2-point grid the caller wants used verbatim) is
+    taken as given."""
+    seq = tuple(spec)
+    if len(seq) == 2:
+        if mode != "extremes":
+            raise ValueError(f"evaluate_envelope: unsupported mode {mode!r} for a "
+                             "(lo, hi) pair -- only mode='extremes' is implemented")
+        return seq
+    return seq
+
+
+def _cartesian_eval(design: DeviceDesign, paths: list, value_sets: dict, T_grid):
+    """Evaluate design at every point of the cartesian product of value_sets
+    (one value set per path, in `paths` order); returns (curves_list,
+    scalars_list), one entry per sample."""
+    combos = list(itertools.product(*(value_sets[p] for p in paths))) if paths else [()]
+    curves_list, scalars_list = [], []
+    for values in combos:
+        d = copy.deepcopy(design)
+        for path, v in zip(paths, values):
+            _set_path(d, path, v)
+        res = evaluate(d, T_grid=T_grid)
+        curves_list.append(res["curves"])
+        scalars_list.append(res["scalars"])
+    return curves_list, scalars_list
+
+
+def _curve_bands(curves_list: list) -> dict:
+    bands = {}
+    for name in _ENV_CURVES:
+        stacked = np.array([c[name] for c in curves_list], dtype=float)
+        # nanmin/nanmax warn (via warnings.warn, not an FP flag) on all-NaN
+        # slices -- e.g. a fully-runaway box; guard explicitly (Opus D2 finding)
+        any_finite = np.isfinite(stacked).any(axis=0)
+        lo = np.full(stacked.shape[1], np.nan)
+        hi = np.full(stacked.shape[1], np.nan)
+        if any_finite.any():
+            lo[any_finite] = np.nanmin(stacked[:, any_finite], axis=0)
+            hi[any_finite] = np.nanmax(stacked[:, any_finite], axis=0)
+        bands[name] = (lo, hi)
+    return bands
+
+
+def _scalar_bands(scalars_list: list) -> dict:
+    out = {}
+    for name in _ENV_SCALARS:
+        vals = np.array([s[name] for s in scalars_list], dtype=float)
+        finite = vals[np.isfinite(vals)]
+        if finite.size == 0:
+            out[name] = (float("nan"), float("nan"))
+        else:
+            out[name] = (float(finite.min()), float(finite.max()))
+    return out
+
+
+def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
+                      mode: str = "extremes") -> dict:
+    """Headless envelope evaluation: sweep `ranged` inputs instead of pinning
+    them to a point, per the honesty discipline (unmeasured [A] inputs are
+    swept, never averaged into a single "prediction").
+
+    ranged: {META path ("dot.delta_xx", ...): (lo, hi) | explicit value list}.
+    A 2-tuple is expanded to a 2-level factorial [lo, hi] under the default
+    mode="extremes" -- HONEST CAVEAT: this only bounds the true envelope when
+    the response is monotone in that parameter across the box; a non-monotone
+    response can have interior extrema the 2-level factorial misses. Anything
+    else (an explicit list/tuple of length != 2) is used verbatim as that
+    parameter's grid, e.g. to include known interior points.
+
+    Samples the cartesian product over every ranged path's value set (capped
+    at 4096 evaluations -- raises ValueError above that). Returns:
+      bands:        {curve_name: (lo_array, hi_array)} pointwise NaN-safe
+                    min/max over samples, for g2/eps/rho2/Tj/gamma.
+      mid:          curves dict at the all-midpoint sample (every ranged path
+                    pinned to the midpoint of its value set).
+      scalar_bands: {scalar_name: (lo, hi)} NaN-safe (all-NaN -> (nan, nan))
+                    for T_c/g2_op/eps_op/rho_op/dT_J.
+      tornado:      {path: width_reduction} -- for each ranged path, the drop
+                    in the baseline scalar's band width (T_c if any sample has
+                    a finite T_c, else g2_op) when that one path alone is
+                    collapsed to its midpoint (others stay ranged). Larger is
+                    a higher measurement priority.
+      n_samples:    number of cartesian-product evaluations.
+
+    ranged={} degenerates exactly to evaluate(design, T_grid): one sample, so
+    bands/mid/scalar_bands all collapse to that single evaluate() call.
+    """
+    Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
+    paths = list(ranged)
+    value_sets = {p: _value_set(ranged[p], mode) for p in paths}
+
+    n_samples = 1
+    for p in paths:
+        n_samples *= len(value_sets[p])
+    if n_samples > _ENVELOPE_CAP:
+        raise ValueError(
+            f"evaluate_envelope: {len(paths)} ranged parameters -> {n_samples} "
+            f"cartesian-product evaluations, over the cap of {_ENVELOPE_CAP}. "
+            "Sweep fewer parameters at once, or use coarser/explicit grids."
+        )
+
+    curves_list, scalars_list = _cartesian_eval(design, paths, value_sets, Ts)
+    bands = _curve_bands(curves_list)
+    scalar_bands = _scalar_bands(scalars_list)
+
+    mid_values = {p: 0.5 * (min(value_sets[p]) + max(value_sets[p])) for p in paths}
+    mid_design = copy.deepcopy(design)
+    for p in paths:
+        _set_path(mid_design, p, mid_values[p])
+    mid = evaluate(mid_design, T_grid=Ts)["curves"]
+
+    baseline = "T_c" if np.isfinite(scalar_bands["T_c"][0]) else "g2_op"
+    full_lo, full_hi = scalar_bands[baseline]
+    full_width = full_hi - full_lo
+    tornado = {}
+    for p in paths:
+        collapsed = dict(value_sets)
+        collapsed[p] = (mid_values[p],)
+        _, sc_list = _cartesian_eval(design, paths, collapsed, Ts)
+        c_lo, c_hi = _scalar_bands(sc_list)[baseline]
+        collapsed_width = c_hi - c_lo
+        tornado[p] = full_width - collapsed_width
+
+    return {"bands": bands, "mid": mid, "scalar_bands": scalar_bands,
+            "tornado": tornado, "n_samples": n_samples}

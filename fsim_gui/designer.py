@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fsim_core import design_meta, presets  # noqa: E402
-from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope  # noqa: E402
 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
@@ -91,6 +91,66 @@ def _refresh_warning():
                       f"! {len(VIOLATIONS)} parameters outside known-physical bands: {names}")
     elif dpg.does_item_exist("param_warning"):
         dpg.set_value("param_warning", "")
+
+
+# --------------------------------------------------------- envelope (D2) controls
+
+def _toggle_range(path):
+    on = dpg.get_value(f"rng.{path}")
+    dpg.configure_item(f"rng.{path}.lo", show=on)
+    dpg.configure_item(f"rng.{path}.hi", show=on)
+
+
+def _range_controls(path):
+    """Envelope toggle for a parameter with an ENV_DEFAULTS entry: checkbox
+    '~' + lo/hi range inputs, shown only when checked. No-op for paths
+    without an entry. Program decision: [A]-tagged params default RANGED on
+    (see design_meta.default_ranged); apply_design() re-syncs the checked
+    state and lo/hi values every time a design is loaded."""
+    bounds = design_meta.ENV_DEFAULTS.get(path)
+    if bounds is None:
+        return
+    lo, hi = bounds
+    on = path in design_meta.default_ranged(DeviceDesign())
+    with dpg.group(horizontal=True):
+        dpg.add_checkbox(label="~", tag=f"rng.{path}", default_value=on,
+                         callback=lambda s, v: _toggle_range(path))
+        dpg.add_input_float(tag=f"rng.{path}.lo", width=68, default_value=lo,
+                            show=on)
+        dpg.add_input_float(tag=f"rng.{path}.hi", width=68, default_value=hi,
+                            show=on)
+        dpg.add_text("range (envelope)", color=(150, 150, 150))
+
+
+def _reset_range_controls(d: DeviceDesign):
+    """Re-derive the checked/unchecked state and lo/hi values for every
+    envelope control from design_meta.default_ranged(d) -- called whenever a
+    design is freshly loaded (apply_design), so a design's own [A] defaults
+    always drive the initial envelope, not whatever the previous design left
+    behind. Ranges are session state, not part of the saved DeviceDesign."""
+    dr = design_meta.default_ranged(d)
+    for path, bounds in design_meta.ENV_DEFAULTS.items():
+        tag = f"rng.{path}"
+        if not dpg.does_item_exist(tag):
+            continue
+        on = path in dr
+        lo, hi = bounds
+        dpg.set_value(tag, on)
+        dpg.set_value(f"{tag}.lo", lo)
+        dpg.set_value(f"{tag}.hi", hi)
+        dpg.configure_item(f"{tag}.lo", show=on)
+        dpg.configure_item(f"{tag}.hi", show=on)
+
+
+def _collect_ranged() -> dict:
+    """Currently-checked envelope ranges, keyed by META path, as (lo, hi)."""
+    out = {}
+    for path in design_meta.ENV_DEFAULTS:
+        tag = f"rng.{path}"
+        if dpg.does_item_exist(tag) and dpg.get_value(tag):
+            lo, hi = dpg.get_value(f"{tag}.lo"), dpg.get_value(f"{tag}.hi")
+            out[path] = (min(lo, hi), max(lo, hi))
+    return out
 
 
 def _mk_cb(path, extra=None, transform=None):
@@ -193,6 +253,7 @@ def apply_design(d: DeviceDesign):
     rebuild_stack_table()
     draw_cross_section()
     revalidate_all()
+    _reset_range_controls(d)
 
 
 def apply_presets():
@@ -298,7 +359,18 @@ def draw_cross_section():
 # ------------------------------------------------------------------------- run
 
 def run_device():
+    """RUN dispatcher: any checked '~' range switches the whole run to
+    envelope mode (bands + tornado); otherwise the original single-point
+    path runs unchanged."""
     d = collect_design()
+    ranged = _collect_ranged()
+    if ranged:
+        _run_envelope(d, ranged)
+    else:
+        _run_point(d)
+
+
+def _run_point(d: DeviceDesign):
     res = evaluate(d)
     c, s = res["curves"], res["scalars"]
     Ts = list(map(float, c["T_hs"]))
@@ -310,6 +382,10 @@ def run_device():
     dpg.set_value("s_tc", [[tc, tc], [0.0, 1.0]] if tc == tc else [[], []])
     dpg.set_value("s_tj", [Ts, [tj - t for tj, t in zip(map(float, c["Tj"]), Ts)]])
     dpg.set_value("s_gam", [Ts, list(map(float, c["gamma"]))])
+    dpg.set_value("s_g2_band", [[], [], []])
+    dpg.set_value("s_rho2_band", [[], [], []])
+    dpg.set_value("s_tj_band", [[], [], []])
+    dpg.set_value("envelope_header", "")
     dpg.fit_axis_data("xax1"); dpg.fit_axis_data("yax1")
     dpg.fit_axis_data("xax2"); dpg.fit_axis_data("yax2")
 
@@ -336,6 +412,73 @@ def run_device():
         + (f"{s['F_eff']:.1f}" if s["F_eff"] == s["F_eff"] else "-- (cavity off)"),
         f"aperture: N_w = {s['N_w']:.2f}  ->  F5 g2 penalty {s['aperture_g2_penalty']:.3f}",
     ]
+    dpg.set_value("results_text", "\n".join(lines))
+    draw_cross_section()
+
+
+def _interval(lo, hi, fmt="{:.3f}", unit=""):
+    if lo != lo or hi != hi:  # NaN
+        return "not reached in swept range"
+    suffix = f" {unit}" if unit else ""
+    return f"{fmt.format(lo)} - {fmt.format(hi)}{suffix}"
+
+
+def _run_envelope(d: DeviceDesign, ranged: dict):
+    env = evaluate_envelope(d, ranged)
+    mid, bands, sb = env["mid"], env["bands"], env["scalar_bands"]
+    Ts = list(map(float, mid["T_hs"]))
+
+    dpg.set_value("s_g2", [Ts, list(map(float, mid["g2"]))])
+    dpg.set_value("s_eps", [Ts, list(map(float, mid["eps"]))])
+    dpg.set_value("s_rho2", [Ts, list(map(float, mid["rho2"]))])
+    dpg.set_value("s_half", [[Ts[0], Ts[-1]], [0.5, 0.5]])
+    dpg.set_value("s_tc", [[], []])  # a single marker can't honestly show a band -- see text
+    dTj_mid = [tj - t for tj, t in zip(map(float, mid["Tj"]), Ts)]
+    dpg.set_value("s_tj", [Ts, dTj_mid])
+    dpg.set_value("s_gam", [Ts, list(map(float, mid["gamma"]))])
+
+    g2_lo, g2_hi = (list(map(float, a)) for a in bands["g2"])
+    rho2_lo, rho2_hi = (list(map(float, a)) for a in bands["rho2"])
+    tj_lo, tj_hi = bands["Tj"]
+    dTj_lo = [tj - t for tj, t in zip(map(float, tj_lo), Ts)]
+    dTj_hi = [tj - t for tj, t in zip(map(float, tj_hi), Ts)]
+    dpg.set_value("s_g2_band", [Ts, g2_lo, g2_hi])
+    dpg.set_value("s_rho2_band", [Ts, rho2_lo, rho2_hi])
+    dpg.set_value("s_tj_band", [Ts, dTj_lo, dTj_hi])
+    dpg.fit_axis_data("xax1"); dpg.fit_axis_data("yax1")
+    dpg.fit_axis_data("xax2"); dpg.fit_axis_data("yax2")
+
+    dpg.set_value("warn_runaway", "")
+    dpg.set_value("warn_eps", "")
+
+    dpg.set_value("envelope_header",
+                  f"ENVELOPE over {env['n_samples']} samples: [A] inputs swept "
+                  "(honest mode); uncheck ~ to explore point designs")
+
+    baseline = "T_c" if sb["T_c"][0] == sb["T_c"][0] else "g2_op"
+    b_unit = "K" if baseline == "T_c" else ""
+    ranked = sorted(env["tornado"].items(), key=lambda kv: kv[1], reverse=True)
+    tornado_lines = []
+    for path, red in ranked:
+        if red != red:
+            tornado_lines.append(f"    measure {path} first: ({baseline} band not finite)")
+        else:
+            tornado_lines.append(
+                f"    measure {path} first: narrows {baseline} band by {red:.3g}"
+                + (f" {b_unit}" if b_unit else ""))
+
+    lines = [
+        f"tag chain [A]  (envelope over {env['n_samples']} [A]-swept samples;"
+        f" mid line = all ranges at their midpoint)",
+        "",
+        f"g2(0) at op:               {_interval(*sb['g2_op'])}",
+        f"eps = t_XX/t_X at op:      {_interval(*sb['eps_op'])}",
+        f"rho (signal purity) at op: {_interval(*sb['rho_op'])}",
+        f"dT_J at op:                {_interval(*sb['dT_J'], fmt='{:.2f}', unit='K')}",
+        f"master ceiling T_c:        {_interval(*sb['T_c'], fmt='{:.0f}', unit='K')}",
+        "",
+        "sensitivity (measurement priority, highest first):",
+    ] + tornado_lines
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
 
@@ -456,11 +599,13 @@ def build_ui():
                                                     width=90, default_value=0.5,
                                                     callback=_mk_cb("drive.mu"))
                                 _tag_bullet("drive.mu")
+                            _range_controls("drive.mu")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="b_e", tag="drive.b_e",
                                                     width=90, default_value=0.02,
                                                     callback=_mk_cb("drive.b_e"))
                                 _tag_bullet("drive.b_e")
+                            _range_controls("drive.b_e")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="b_e exp m", tag="drive.b_e_m",
                                                     width=90, default_value=1.5,
@@ -508,12 +653,14 @@ def build_ui():
                                                     default_value=3.5,
                                                     callback=_mk_cb("dot.delta_xx"))
                                 _tag_bullet("dot.delta_xx")
+                            _range_controls("dot.delta_xx")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="Gamma scale",
                                                     tag="dot.gamma_scale", width=90,
                                                     default_value=1.0,
                                                     callback=_mk_cb("dot.gamma_scale"))
                                 _tag_bullet("dot.gamma_scale")
+                            _range_controls("dot.gamma_scale")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="r_XX", tag="dot.r_xx",
                                                     width=90, default_value=0.72,
@@ -548,6 +695,7 @@ def build_ui():
                                                     width=90, default_value=1.0,
                                                     callback=_mk_cb("cavity.kappa"))
                                 _tag_bullet("cavity.kappa")
+                            _range_controls("cavity.kappa")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="track T (K)", tag="cav.T_track",
                                                     width=90, default_value=120.0,
@@ -563,11 +711,13 @@ def build_ui():
                                                     width=90, default_value=10.0,
                                                     callback=_mk_cb("cavity.F_P"))
                                 _tag_bullet("cavity.F_P")
+                            _range_controls("cavity.F_P")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="gain G", tag="cav.G",
                                                     width=90, default_value=8.0,
                                                     callback=_mk_cb("cavity.G"))
                                 _tag_bullet("cavity.G")
+                            _range_controls("cavity.G")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="beta_sin", tag="cav.beta_sin",
                                                     width=90, default_value=1.0,
@@ -616,6 +766,7 @@ def build_ui():
                                                     callback=_mk_cb("aperture.density_cm2",
                                                                    transform=lambda v: 10.0 ** v))
                                 _tag_bullet("aperture.density_cm2")
+                            _range_controls("aperture.density_cm2")
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="aperture (um)", tag="ap.diam",
                                                     width=90, default_value=1.0,
@@ -650,10 +801,13 @@ def build_ui():
 
             # ---------------- right: results
             with dpg.child_window(width=-1, height=640):
+                dpg.add_text("", tag="envelope_header", color=AMBER)
                 with dpg.plot(height=270, width=-1):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax1")
                     with dpg.plot_axis(dpg.mvYAxis, label="g2 / fractions", tag="yax1"):
+                        dpg.add_shade_series([], [], y2=[], label="g2 band", tag="s_g2_band")
+                        dpg.add_shade_series([], [], y2=[], label="rho^2 band", tag="s_rho2_band")
                         dpg.add_line_series([], [], label="g2(0)", tag="s_g2")
                         dpg.add_line_series([], [], label="eps", tag="s_eps")
                         dpg.add_line_series([], [], label="rho^2", tag="s_rho2")
@@ -664,6 +818,7 @@ def build_ui():
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax2")
                     with dpg.plot_axis(dpg.mvYAxis, label="dT_J (K) / Gamma (meV)",
                                        tag="yax2"):
+                        dpg.add_shade_series([], [], y2=[], label="dT_J band", tag="s_tj_band")
                         dpg.add_line_series([], [], label="dT_J", tag="s_tj")
                         dpg.add_line_series([], [], label="Gamma(T_j)", tag="s_gam")
                 dpg.add_text("", tag="warn_runaway", color=RED)
