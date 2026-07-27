@@ -1,4 +1,4 @@
-# FSIM — F-series simulator
+# qd-photon-sim
 
 Simulation and inverse-design stack for electrically driven epitaxial-QD
 single-photon devices, built on the F-series mathematics (filtered-cascade
