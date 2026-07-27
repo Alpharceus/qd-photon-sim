@@ -25,6 +25,21 @@ names (details and honesty ledgers in `notes/`):
 Named open model residuals: Γ(T) high-T shape (Tier-3 independent-boson
 candidate); re-excitation/refilling channel (WP-M2′, three-paper convergence).
 
+## Scope and data provenance
+
+- **The validation data are digitizations.** The V-a/V-b/V-c comparisons run
+  against my digitizations of published figures plus values printed in the
+  papers, not author-released datasets. The source PDFs are deliberately not
+  distributed with this repository, so reproducing the fits from scratch
+  means obtaining the papers and re-extracting the data.
+- **Inverse design outputs necessary conditions, not geometry.** `spec.py`
+  turns a g² target into required linewidth, gain, mode volume, and
+  background budget. It does not produce a cavity geometry; the EM-solver
+  step that would consume these requirements is planned, not present.
+- **Model scope.** Exciton–biexciton cascade with Lorentzian lineshapes.
+  No carrier transport, no growth modelling, no indistinguishability
+  metrics.
+
 ## Layout (three-layer rule: core is headless; GUIs compute no physics)
 
 - `fsim_core/` — physics + assembly:
