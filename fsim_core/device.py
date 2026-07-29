@@ -32,6 +32,8 @@ from .loading import (
     aperture_g2,
     b_injection,
     f1b_g2,
+    f8_g2,
+    f8b_thin_fano,
     loading_probs,
     n_window_competitors,
 )
@@ -77,6 +79,16 @@ class DriveBlock:
     b_e_m: float = 1.5           # current exponent of b_e [A]
     b_e_Eact: float = 100.0      # meV activation of the WL/barrier EL share [A]
     I_ref_uA: float = 10.0
+    mode: str = "EL"             # "EL" (electrical: dg_inj + injection background
+                                  # both active) | "PL" (optical excitation: both
+                                  # disabled) [A]
+    dg_inj: float = 0.0          # meV; F5' injection broadening amplitude [A]
+    p_inj: float = 1.0           # F5' injection broadening current exponent [A]
+    F_p: float = 1.0             # F8 pump Fano factor (1=Poisson) [A]
+    eta_capture: float = 1.0     # F8b dot-capture fraction (thinning) [A]
+    C_dep_pF: float = 10.0       # pF; F9 depletion capacitance, informational
+                                  # (drives granularity_N/island_radius_nm only
+                                  # -- never wired into g2) [E]
 
 
 @dataclass
@@ -181,6 +193,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
                         g2=np.nan, t_x=np.nan, runaway=True)
         gam = d.dot.gamma_scale * float(gamma_of_T(Tj, **gp))
+        # F5' injection broadening (v1.1): EL-mode-only, applied BEFORE the
+        # auto-w filter width (below) and BEFORE epsilon.
+        if d.drive.mode != "PL" and d.drive.dg_inj:
+            gam = gam + d.drive.dg_inj * (d.drive.I_uA / d.drive.I_ref_uA) ** d.drive.p_inj
         kappa = d.cavity.kappa if (d.cavity.enabled and not sin_mode) else None
         dx = d.filter.dx
         if d.cavity.enabled and not sin_mode:  # sin waveguide has no mode to track
@@ -191,11 +207,26 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             w = gam if d.filter.auto_w else d.filter.w
         spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
         S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
-        B = rp["b0"] + rp["beta"] * (1.0 - S) + float(
-            b_injection(chan, d.drive.I_uA, Tj))
+        # PL mode: optical excitation, no injection-current background channel.
+        inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
+        B = rp["b0"] + rp["beta"] * (1.0 - S) + inj_bg
         G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
         rho = G * S / (G * S + B)
-        g2_dot = float(f1b_g2(d.drive.mu, spec.eps)) if d.drive.mu > 0 else spec.eps
+        if d.drive.mu > 0:
+            if d.drive.F_p != 1.0:
+                # F8b thinning: effective pump Fano factor AT the dot, after
+                # dot-capture; F8: moment-matched (mu, Fano) cap-2 loading.
+                F_eff = f8b_thin_fano(d.drive.eta_capture, d.drive.F_p)
+                g2_dot = float(f8_g2(d.drive.mu, F_eff, spec.eps))
+            else:
+                # F_p == 1.0 (default): keep the original f1b_g2 path EXACTLY
+                # -- f8_g2(mu, 1, eps) is not bit-identical to f1b_g2(mu, eps)
+                # at finite mu (different, equally valid cap-2 conventions;
+                # see loading.py module docstring), so every pre-v1.1 result
+                # stays reproducible unless F_p is explicitly set != 1.0.
+                g2_dot = float(f1b_g2(d.drive.mu, spec.eps))
+        else:
+            g2_dot = spec.eps
         return dict(Tj=Tj, gam=gam, eps=spec.eps, rho=rho,
                     g2=g2_from(g2_dot, rho), t_x=spec.t_x, runaway=False)
 
@@ -277,19 +308,40 @@ def _value_set(spec, mode: str) -> tuple:
     return seq
 
 
-def _cartesian_eval(design: DeviceDesign, paths: list, value_sets: dict, T_grid):
+def _cartesian_eval(design: DeviceDesign, paths: list, value_sets: dict, T_grid,
+                    raise_if_all_dropped=True):
     """Evaluate design at every point of the cartesian product of value_sets
     (one value set per path, in `paths` order); returns (curves_list,
-    scalars_list), one entry per sample."""
+    scalars_list), one entry per sample. raise_if_all_dropped=False lets a
+    caller (the tornado's collapsed runs) receive an all-NaN result instead
+    of an error when the whole collapsed box is outside the F8 domain."""
     combos = list(itertools.product(*(value_sets[p] for p in paths))) if paths else [()]
     curves_list, scalars_list = [], []
+    n_dropped = 0
     for values in combos:
         d = copy.deepcopy(design)
         for path, v in zip(paths, values):
             _set_path(d, path, v)
-        res = evaluate(d, T_grid=T_grid)
+        try:
+            res = evaluate(d, T_grid=T_grid)
+        except ValueError:
+            # F8 domain violation (mu < 1 - F_eff): no cap-2 loading
+            # distribution with these moments exists -- same category as
+            # thermal runaway, so the sample contributes a gap, not a crash
+            # (Opus v1.1 finding). The point-evaluation path keeps raising.
+            n_T = len(T_grid) if T_grid is not None else 120
+            nanarr = np.full(n_T, np.nan)
+            res = {"curves": {k: nanarr.copy() for k in _ENV_CURVES},
+                   "scalars": {k: float("nan") for k in _ENV_SCALARS}}
+            res["scalars"]["runaway"] = False
+            n_dropped += 1
         curves_list.append(res["curves"])
         scalars_list.append(res["scalars"])
+    if n_dropped == len(combos) and raise_if_all_dropped:
+        raise ValueError(
+            "evaluate_envelope: every sample in the ranged box violates the F8 "
+            "loading domain (mu >= 1 - F_eff). Narrow the mu range or raise "
+            "F_p/eta_capture.")
     return curves_list, scalars_list
 
 
@@ -375,7 +427,14 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
     mid_design = copy.deepcopy(design)
     for p in paths:
         _set_path(mid_design, p, mid_values[p])
-    mid = evaluate(mid_design, T_grid=Ts)["curves"]
+    try:
+        mid = evaluate(mid_design, T_grid=Ts)["curves"]
+    except ValueError:
+        # midpoint itself outside the F8 loading domain (possible for an
+        # explicit user range straddling the floor): NaN reference curve,
+        # bands remain valid (Opus v1.1 finding, mid-path leg)
+        n_T = len(Ts) if Ts is not None else 120
+        mid = {k: np.full(n_T, np.nan) for k in _ENV_CURVES}
 
     baseline = "T_c" if np.isfinite(scalar_bands["T_c"][0]) else "g2_op"
     full_lo, full_hi = scalar_bands[baseline]
@@ -384,8 +443,10 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
     for p in paths:
         collapsed = dict(value_sets)
         collapsed[p] = (mid_values[p],)
-        _, sc_list = _cartesian_eval(design, paths, collapsed, Ts)
+        _, sc_list = _cartesian_eval(design, paths, collapsed, Ts,
+                                     raise_if_all_dropped=False)
         c_lo, c_hi = _scalar_bands(sc_list)[baseline]
+        # collapsed midpoint may sit outside the F8 domain -> width undefined
         collapsed_width = c_hi - c_lo
         tornado[p] = full_width - collapsed_width
 

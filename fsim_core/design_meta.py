@@ -41,6 +41,20 @@ META = {
                         "source": "WL/barrier EL activation energy"},
     "drive.I_ref_uA": {"unit": "uA", "tag": "A", "lo": 0.1, "hi": 1000.0,
                         "source": "reference current for the injection-background law"},
+    "drive.mode": {"unit": "enum", "tag": "A", "lo": 0.0, "hi": 1.0,
+                   "source": "EL (electrical injection) | PL (optical excitation, "
+                             "disables dg_inj and the injection background)"},
+    "drive.dg_inj": {"unit": "meV", "tag": "A", "lo": 0.0, "hi": 20.0,
+                      "source": "Kitamura EL~4xPL anchor; unmeasured on our platform"},
+    "drive.p_inj": {"unit": "1", "tag": "A", "lo": 0.5, "hi": 3.0,
+                     "source": "F5' injection broadening current exponent"},
+    "drive.F_p": {"unit": "1", "tag": "A", "lo": 0.0, "hi": 2.0,
+                  "source": "pump Fano factor; 1=Poisson, <1 quiet pump (Zhao RT), "
+                            "0=turnstile"},
+    "drive.eta_capture": {"unit": "1", "tag": "A", "lo": 0.0, "hi": 1.0,
+                           "source": "dot capture fraction; F8b thinning"},
+    "drive.C_dep_pF": {"unit": "pF", "tag": "E", "lo": 0.1, "hi": 100.0,
+                        "source": "Zhao: down to ~3.5 pF"},
 
     # ---- retention (class-proxy Arrhenius overrides; 0 -> use class proxy)
     "ret.a_esc": {"unit": "1", "tag": "A", "lo": 0.0, "hi": 1e7,
@@ -112,11 +126,16 @@ ENV_DEFAULTS = {
     "dot.gamma_scale": (0.7, 1.3),
     "drive.b_e": (1e-3, 0.3),
     "drive.mu": (0.1, 1.0),
+    "drive.F_p": (0.3, 1.0),
+    "drive.eta_capture": (0.1, 1.0),
     "cavity.kappa": (0.3, 3.0),
     "cavity.G": (5.0, 15.0),
     "cavity.F_P": (5.0, 20.0),
     "aperture.density_cm2": (1e8, 2e10),
 }
+
+
+_DEFAULT_RANGED_EXCLUDED = {"aperture.density_cm2", "drive.F_p", "drive.eta_capture"}
 
 
 def default_ranged(design: DeviceDesign) -> dict:
@@ -125,15 +144,32 @@ def default_ranged(design: DeviceDesign) -> dict:
     not a SiN waveguide (kappa/G/F_P are unused for cavity.type=sin_waveguide,
     see CavityBlock/evaluate). aperture.density_cm2 is excluded by default --
     it only feeds the F5 aperture-penalty scalar, not the curves, so ranging
-    it by default would band nothing a user is looking at."""
+    it by default would band nothing a user is looking at. drive.F_p and
+    drive.eta_capture (F8/F8b, v1.1) are also excluded by default: F8's
+    domain (mu >= 1 - f8b_thin_fano(eta_capture, F_p)) couples them to
+    drive.mu, and ranging all three together by default risks a ValueError
+    on any design whose default mu doesn't span the coupled band -- F_p/
+    eta_capture ranging is opt-in (still available via ENV_DEFAULTS for a
+    caller who has chosen a compatible mu), not default-on."""
     out = {}
     for path, bounds in ENV_DEFAULTS.items():
-        if path == "aperture.density_cm2":
+        if path in _DEFAULT_RANGED_EXCLUDED:
             continue
         block = path.split(".", 1)[0]
         if block == "cavity" and not (design.cavity.enabled
                                       and design.cavity.type != "sin_waveguide"):
             continue
+        if path == "drive.mu" and design.drive.F_p != 1.0:
+            # F8 domain floor (Opus v1.1 finding): with a fixed quiet pump,
+            # mu below 1 - F_eff has no realizable cap-2 loading distribution.
+            # Clamp the default mu range to the physical domain; if the whole
+            # range is below the floor, don't range mu at all.
+            F_eff = 1.0 - design.drive.eta_capture * (1.0 - design.drive.F_p)
+            floor = (1.0 - F_eff) + 1e-9
+            lo, hi = bounds
+            if floor >= hi:
+                continue
+            bounds = (max(lo, floor), hi)
         out[path] = bounds
     return out
 

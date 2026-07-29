@@ -640,6 +640,39 @@ def _():
     assert abs(KB * 300.0 - 25.852) < 0.01
 
 
+# ------------------------------------------------------------ oracle-only rule (S-1)
+
+@check("oracles: ported EM oracles pass and are quarantined (oracle-only rule)")
+def _():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+
+    # (a) the ported-oracle regression suite (tests/oracles/oracle_checks.py)
+    # must pass standalone, including its negative control.
+    result = subprocess.run(
+        [sys.executable, str(root / "tests" / "oracles" / "oracle_checks.py")],
+        cwd=str(root), capture_output=True, text=True,
+    )
+    assert result.returncode == 0, (
+        f"tests/oracles/oracle_checks.py exited {result.returncode}\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+    # (b) quarantine: fsim_core, fsim_viz, and fsim_gui must never import the
+    # ported oracles -- they duplicate FSIM-owned filter/cavity physics and
+    # may exist only as independent test oracles.
+    for pkg in ("fsim_core", "fsim_viz", "fsim_gui"):
+        pkg_dir = root / pkg
+        if not pkg_dir.exists():
+            continue
+        for f in pkg_dir.rglob("*.py"):
+            src = f.read_text(encoding="utf-8")
+            assert "tests.oracles" not in src and "tests/oracles" not in src, (
+                f"{f.relative_to(root)} imports the oracle-only tests.oracles package"
+            )
+
+
 def main():
     failed = 0
     for name, fn in CHECKS:

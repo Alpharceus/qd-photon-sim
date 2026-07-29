@@ -1,0 +1,35 @@
+meta:
+  name: zhao
+  device: "electrically driven single-photon source, sub-Poissonian ('quiet') current drive vs normal shot-noise-limited drive"
+  role: validation (pump statistics)
+  source: "Zhao et al., PRResearch 6, L032021 (2024) / arXiv:2309.09703 [V, read by PI]"
+  note: >
+    F8/F8b/F9 (F-series v1.1) validation card: published pump-statistics g2
+    values under normal vs quiet (sub-Poissonian, squeezed) electrical drive
+    at matched pump strength I/I_th=4.0. C_dep_pF and squeezing_dB are the
+    device parameters behind the quiet-pump demonstration -- the small
+    depletion capacitance is what puts the junction in the N>>1 "collective
+    regulation" granularity regime (F9), and the squeezing figure is the
+    measured pump-noise reduction that F8b's thinning lemma (F_p<1 -> stays
+    <1 for any eta) is meant to survive down to the dot. The SDE fit (plan
+    task 4) consumes this card's g2_vs_pump dataset directly.
+
+params:
+  C_dep_pF:
+    value: 3.5
+    unit: pF
+    tag: V
+    source: "Zhao et al.: depletion capacitance reduced down to ~3.5 pF [V, read]"
+  squeezing_dB:
+    value: 3.1
+    unit: dB
+    tag: V
+    source: "Zhao et al.: measured pump-current squeezing under the quiet drive [V, read]"
+
+data:
+  g2_vs_pump:
+    tag: V
+    source: "Zhao et al., PRResearch 6, L032021 (2024) / arXiv:2309.09703, published g2(0) values [V, read]"
+    points:
+      - {pump: "normal", I_over_Ith: 4.0, g2: 1.0224, err: 0.003}
+      - {pump: "quiet",  I_over_Ith: 4.0, g2: 0.9823, err: 0.006}

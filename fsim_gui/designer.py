@@ -33,6 +33,12 @@ from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope  # noqa: 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
 SUBSTRATE = {"name": "GaAs", "k300": 55.0, "alpha": 1.25}
+# F-series v1.1 DriveBlock fields with no dedicated widget yet (no new UI in
+# this phase -- see fsim_core.device.DriveBlock): carried through
+# collect_design/apply_design like LAYERS/SUBSTRATE so Save/Load round-trips
+# a loaded design's values instead of silently resetting them to defaults.
+DRIVE_EXTRA = {"mode": "EL", "dg_inj": 0.0, "p_inj": 1.0, "F_p": 1.0,
+              "eta_capture": 1.0, "C_dep_pF": 10.0}
 
 GREEN = (86, 166, 50)
 AMBER = (227, 162, 26)
@@ -209,6 +215,12 @@ def collect_design() -> DeviceDesign:
     d.drive.b_e = dpg.get_value("drive.b_e")
     d.drive.b_e_m = dpg.get_value("drive.b_e_m")
     d.drive.b_e_Eact = dpg.get_value("drive.b_e_Eact")
+    d.drive.mode = DRIVE_EXTRA["mode"]
+    d.drive.dg_inj = DRIVE_EXTRA["dg_inj"]
+    d.drive.p_inj = DRIVE_EXTRA["p_inj"]
+    d.drive.F_p = DRIVE_EXTRA["F_p"]
+    d.drive.eta_capture = DRIVE_EXTRA["eta_capture"]
+    d.drive.C_dep_pF = DRIVE_EXTRA["C_dep_pF"]
     d.thermal.mesa_diameter_um = dpg.get_value("th.mesa")
     d.thermal.T_hs = dpg.get_value("th.T_hs")
     d.thermal.layers = [dict(L) for L in LAYERS]
@@ -246,6 +258,9 @@ def apply_design(d: DeviceDesign):
     dpg.set_value("drive.b_e", d.drive.b_e)
     dpg.set_value("drive.b_e_m", d.drive.b_e_m)
     dpg.set_value("drive.b_e_Eact", d.drive.b_e_Eact)
+    DRIVE_EXTRA.update(mode=d.drive.mode, dg_inj=d.drive.dg_inj, p_inj=d.drive.p_inj,
+                       F_p=d.drive.F_p, eta_capture=d.drive.eta_capture,
+                       C_dep_pF=d.drive.C_dep_pF)
     dpg.set_value("th.mesa", d.thermal.mesa_diameter_um)
     dpg.set_value("th.T_hs", d.thermal.T_hs)
     dpg.set_value("cav.enabled", d.cavity.enabled)

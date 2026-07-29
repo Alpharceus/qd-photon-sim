@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
-from .loading import b_injection, f1b_g2
+from .loading import b_injection, f1b_g2, f8_g2, f8b_thin_fano
 from .spectral import KB, epsilon, gamma_of_T
 
 
@@ -61,14 +61,34 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     accepted for w and dx.
 
     Drive realism (Module D, optional keys):
-      p["mu"]        mean cap-2 loading -> F1b replaces the F1 identity
+      p["mu"]        mean cap-2 loading -> F1b (or F8, see below) replaces
+                     the F1 identity
       p["I"], p["channels"]  injection current + BackgroundChannel set ->
                      b_e(I,T) added to the background before rho
+      p["dg_inj"], p["p_inj"], p["I_ref"]  F5' injection broadening (v1.1):
+                     when p["dg_inj"] and p["I"] are both given, the X/XX
+                     linewidth becomes Gamma_eff = Gamma(T) + dg_inj *
+                     (I/I_ref)^p_inj BEFORE epsilon (and hence before any
+                     auto-w filter width derived from Gamma downstream, e.g.
+                     device.evaluate's filter.auto_w). p_inj defaults to 1.0,
+                     I_ref defaults to 1.0.
+      p["F_p"], p["eta_capture"]  F8/F8b (v1.1): a pump Fano factor F_p != 1.0
+                     switches g2_dot from f1b_g2(mu, eps) (Poisson cap-2) to
+                     f8_g2(mu, F_eff, eps), the moment-matched (mu, Fano)
+                     cap-2 family, with F_eff = f8b_thin_fano(eta_capture,
+                     F_p) (F8b dot-capture thinning; eta_capture defaults to
+                     1.0, i.e. F_eff = F_p). F_p == 1.0 (the default) keeps
+                     the f1b_g2 path EXACTLY -- the two cap-2 conventions are
+                     not identical at finite mu (see loading.py module
+                     docstring), so every pre-v1.1 result is preserved
+                     bit-for-bit unless F_p is explicitly set away from 1.0.
     """
     w = p["w"](T) if callable(p["w"]) else p["w"]
     dx = p.get("dx", 0.0)
     dx = dx(T) if callable(dx) else dx
     gam = float(gamma_of_T(T, p["gamma0"], p["a_ac"], p["b_lo"], p["E_lo"]))
+    if p.get("dg_inj") and p.get("I") is not None:
+        gam = gam + p["dg_inj"] * (p["I"] / p.get("I_ref", 1.0)) ** p.get("p_inj", 1.0)
     gam_xx = p.get("gamma_xx", p.get("r_xx", 1.0) * gam)  # S2: Gamma_XX < Gamma_X
     spec = epsilon(p["delta_xx"], gam, gam_xx,
                    w=w, kappa=p.get("kappa"), dx=dx)
@@ -81,7 +101,15 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     rho = G * S / (G * S + B)
 
     mu = p.get("mu")
-    g2_dot = float(f1b_g2(mu, spec.eps)) if mu else spec.eps
+    F_p = p.get("F_p", 1.0)
+    if mu:
+        if F_p != 1.0:
+            F_eff = f8b_thin_fano(p.get("eta_capture", 1.0), F_p)
+            g2_dot = float(f8_g2(mu, F_eff, spec.eps))
+        else:
+            g2_dot = float(f1b_g2(mu, spec.eps))
+    else:
+        g2_dot = spec.eps
     return ModelPoint(T=float(T), gamma=gam, eps=spec.eps, rho=rho,
                       g2=g2_from(g2_dot, rho), t_x=spec.t_x)
 

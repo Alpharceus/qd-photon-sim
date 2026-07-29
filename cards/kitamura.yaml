@@ -1,0 +1,51 @@
+meta:
+  name: kitamura
+  device: "electrically injected QD single-photon source with RTI + dual-aperture + intracavity contact injection engineering"
+  role: design variant (injection engineering)
+  source: "Kitamura et al. (Arakawa/Iwamoto), CLEO 2025 [V, read by PI]"
+  note: >
+    F5'/F8b (F-series v1.1) design-variant card: same-dot EL linewidth runs
+    ~4x the PL linewidth at their bias point (dg_inj_anchor_ratio) -- the
+    measured basis for F5's injection-broadening amendment
+    Gamma_eff(T_j,I)=Gamma(T_j)+dg_inj*(I/I_ref)^p_inj. rti/dual_aperture/
+    intracavity_contact are boolean design-choice flags (1.0=present) for the
+    three injection-engineering features the paper combines to keep carrier
+    injection quiet at the dot. eta_capture_rationale: RTI (resonant
+    tunneling injection) + the carrier aperture raise the dot capture
+    efficiency eta -> under F8b's thinning lemma
+    (F_p_thinned = 1 - eta(1-F_p_pump)) a HIGHER eta preserves more of the
+    pump's sub-Poissonian statistics at the dot instead of washing it back
+    toward Poisson; this card supplies the EL/PL linewidth anchor for
+    dg_inj, not a measured eta_capture value.
+
+params:
+  dg_inj_anchor_ratio:
+    value: 4.0
+    unit: "1"
+    tag: V
+    source: "EL/PL linewidth ratio at their bias point [V, read]"
+  el_linewidth_nm:
+    range: [0.72, 0.86]
+    unit: nm
+    tag: V
+    source: "same-dot EL linewidth range [V, read]"
+  pl_linewidth_nm:
+    range: [0.16, 0.20]
+    unit: nm
+    tag: V
+    source: "same-dot PL linewidth range [V, read]"
+  rti:
+    value: 1.0
+    unit: bool
+    tag: A
+    source: "design-choice flag: resonant tunneling injection present"
+  dual_aperture:
+    value: 1.0
+    unit: bool
+    tag: A
+    source: "design-choice flag: dual-aperture carrier injection present"
+  intracavity_contact:
+    value: 1.0
+    unit: bool
+    tag: A
+    source: "design-choice flag: intracavity contact present"
