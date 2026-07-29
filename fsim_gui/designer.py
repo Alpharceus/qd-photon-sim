@@ -475,6 +475,7 @@ def run_device():
         _run_envelope(d, ranged)
     else:
         _run_point(d)
+    _refresh_open_expand_windows()
 
 
 def _run_point(d: DeviceDesign):
@@ -716,6 +717,126 @@ def clear_slots():
     _refresh_slot_overlay()
     _refresh_delta_table()
     dpg.set_value("status", "cleared comparison slots")
+
+
+# ------------------------------------------------------ expand-to-window plots
+
+# Full-detail popouts for the two results plots. Each holds a lazily-created
+# copy of the inline plot's series (own tags, prefixed "x_") that is
+# refreshed from the live source series on every [ expand ] click and after
+# every RUN (see _refresh_open_expand_windows, called from run_device()).
+EXPAND_SPECS = {
+    "main": {
+        "window_tag": "expand_win_main",
+        "title": "g2 / fractions vs heatsink T -- full detail",
+        "xaxis_tag": "x_xax1", "yaxis_tag": "x_yax1",
+        "xlabel": "heatsink T (K)", "ylabel": "g2 / fractions",
+        "lines": ["s_g2", "s_eps", "s_rho2", "s_half", "s_tc"],
+        "shades": ["s_g2_band", "s_rho2_band"],
+        # D3 slot overlays: only copied once populated (see _copy_one_series)
+        "slot_lines": [_slot_tags(lbl)[0] for lbl in SLOT_LABELS],
+        "slot_shades": [_slot_tags(lbl)[1] for lbl in SLOT_LABELS],
+    },
+    "secondary": {
+        "window_tag": "expand_win_secondary",
+        "title": "dT_J / Gamma vs heatsink T -- full detail",
+        "xaxis_tag": "x_xax2", "yaxis_tag": "x_yax2",
+        "xlabel": "heatsink T (K)", "ylabel": "dT_J (K) / Gamma (meV)",
+        "lines": ["s_tj", "s_gam"],
+        "shades": ["s_tj_band"],
+        "slot_lines": [],
+        "slot_shades": [],
+    },
+}
+
+
+def _expand_tag(src_tag: str) -> str:
+    return f"x_{src_tag}"
+
+
+def _copy_one_series(src_tag: str, yaxis_tag: str, is_shade: bool, skip_if_empty: bool):
+    """Push one source series' CURRENT data into its expanded-window twin,
+    creating the twin lazily on first copy (distinct tag, see _expand_tag).
+    `skip_if_empty` is used for the D3 slot overlays -- an unstored slot has
+    no data and shouldn't clutter the expanded legend until it is populated
+    (mirrors the inline plot's show=False convention, see
+    _refresh_slot_overlay); once created, an emptied slot is hidden rather
+    than deleted so it reappears cleanly if the slot is re-stored."""
+    dst_tag = _expand_tag(src_tag)
+    data = dpg.get_value(src_tag)
+    has_data = len(data[0]) > 0
+    if skip_if_empty and not has_data:
+        if dpg.does_item_exist(dst_tag):
+            dpg.configure_item(dst_tag, show=False)
+        return
+    label = dpg.get_item_label(src_tag)
+    if not dpg.does_item_exist(dst_tag):
+        if is_shade:
+            dpg.add_shade_series(data[0], data[1], y2=data[2], label=label,
+                                 tag=dst_tag, parent=yaxis_tag)
+        else:
+            dpg.add_line_series(data[0], data[1], label=label, tag=dst_tag,
+                                parent=yaxis_tag)
+    else:
+        dpg.set_value(dst_tag, data)
+        dpg.configure_item(dst_tag, label=label, show=True)
+
+
+def _refresh_expand_window(kind: str):
+    """Refresh every series in the expanded window for `kind` ("main" or
+    "secondary") from its live source series. No-op if that window has never
+    been opened."""
+    spec = EXPAND_SPECS[kind]
+    if not dpg.does_item_exist(spec["window_tag"]):
+        return
+    yax = spec["yaxis_tag"]
+    for tag in spec["shades"]:
+        _copy_one_series(tag, yax, is_shade=True, skip_if_empty=False)
+    for tag in spec["lines"]:
+        _copy_one_series(tag, yax, is_shade=False, skip_if_empty=False)
+    for tag in spec["slot_shades"]:
+        _copy_one_series(tag, yax, is_shade=True, skip_if_empty=True)
+    for tag in spec["slot_lines"]:
+        _copy_one_series(tag, yax, is_shade=False, skip_if_empty=True)
+    dpg.fit_axis_data(spec["xaxis_tag"])
+    dpg.fit_axis_data(yax)
+
+
+def _open_expand_window(kind: str):
+    """[ expand ] button callback: open a ~1200x700 resizable/closable window
+    with a full-size copy of the given plot, or -- if it's already open --
+    focus it and refresh its data. Native dpg zoom/pan (scroll, right-drag
+    box-zoom, double-click autofit) is left at defaults on this plot too."""
+    spec = EXPAND_SPECS[kind]
+    win_tag = spec["window_tag"]
+    if dpg.does_item_exist(win_tag):
+        dpg.configure_item(win_tag, show=True)
+        dpg.focus_item(win_tag)
+    else:
+        with dpg.window(tag=win_tag, label=spec["title"], width=1200, height=700,
+                        pos=(120, 60)):
+            with dpg.plot(height=-1, width=-1):
+                dpg.add_plot_legend()
+                dpg.add_plot_axis(dpg.mvXAxis, label=spec["xlabel"], tag=spec["xaxis_tag"])
+                dpg.add_plot_axis(dpg.mvYAxis, label=spec["ylabel"], tag=spec["yaxis_tag"])
+    _refresh_expand_window(kind)
+
+
+def expand_main(sender=None, app_data=None):
+    _open_expand_window("main")
+
+
+def expand_secondary(sender=None, app_data=None):
+    _open_expand_window("secondary")
+
+
+def _refresh_open_expand_windows():
+    """Called after every RUN (see run_device()): keep any already-open
+    expanded window in sync with the new curves, without popping one open
+    that the user hasn't asked for."""
+    for kind, spec in EXPAND_SPECS.items():
+        if dpg.does_item_exist(spec["window_tag"]) and dpg.is_item_shown(spec["window_tag"]):
+            _refresh_expand_window(kind)
 
 
 def report_bundle(outdir_override=None):
@@ -1112,6 +1233,7 @@ def build_ui():
             # ---------------- right: results
             with dpg.child_window(width=-1, height=640):
                 dpg.add_text("", tag="envelope_header", color=AMBER)
+                dpg.add_button(label="[ expand ]", callback=expand_main)
                 with dpg.plot(height=270, width=-1):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax1")
@@ -1130,6 +1252,7 @@ def build_ui():
                             dpg.add_shade_series([], [], y2=[], label=f"{_lbl} band",
                                                  tag=_bt, show=False)
                             dpg.add_line_series([], [], label=_lbl, tag=_lt, show=False)
+                dpg.add_button(label="[ expand ]", callback=expand_secondary)
                 with dpg.plot(height=180, width=-1):
                     dpg.add_plot_legend()
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax2")
@@ -1138,6 +1261,8 @@ def build_ui():
                         dpg.add_shade_series([], [], y2=[], label="dT_J band", tag="s_tj_band")
                         dpg.add_line_series([], [], label="dT_J", tag="s_tj")
                         dpg.add_line_series([], [], label="Gamma(T_j)", tag="s_gam")
+                dpg.add_text("zoom: scroll | box: right-drag | reset: double-click",
+                             color=(150, 150, 150))
                 dpg.add_text("", tag="warn_runaway", color=RED)
                 dpg.add_text("", tag="warn_eps", color=RED)
                 dpg.add_text("press RUN", tag="results_text")
@@ -1242,6 +1367,19 @@ def main(frames=None, selftest_outdir=None, roundtrip_check=False):
             print("screenshot ->", out)
         print("smoke: rendered", frames, "frames;",
               dpg.get_value("results_text").splitlines()[2].strip())
+        # expand-to-window: drive both [ expand ] callbacks directly, then
+        # confirm the popouts exist and their g2 series copied the full
+        # source data (see EXPAND_SPECS / _refresh_expand_window).
+        expand_main()
+        expand_secondary()
+        for _ in range(3):
+            dpg.render_dearpygui_frame()
+        src_len = len(dpg.get_value("s_g2")[0])
+        exp_len = len(dpg.get_value("x_s_g2")[0])
+        assert dpg.does_item_exist("expand_win_main"), "expand: main popout missing"
+        assert dpg.does_item_exist("expand_win_secondary"), "expand: secondary popout missing"
+        assert exp_len == src_len, f"expand: g2 length mismatch src={src_len} expanded={exp_len}"
+        print(f"smoke: expand popouts OK; g2 series len {src_len} matches expanded copy")
     else:
         dpg.start_dearpygui()
     dpg.destroy_context()
