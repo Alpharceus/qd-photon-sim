@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
-from .loading import b_injection, f1b_g2, f8_g2, f8b_thin_fano
+from .loading import b_injection, f1b_g2, f8_g2, f8b_thin_fano, gamma_eff
 from .spectral import KB, epsilon, gamma_of_T
 
 
@@ -88,7 +88,7 @@ def g2_of_T(T, p: dict) -> ModelPoint:
     dx = dx(T) if callable(dx) else dx
     gam = float(gamma_of_T(T, p["gamma0"], p["a_ac"], p["b_lo"], p["E_lo"]))
     if p.get("dg_inj") and p.get("I") is not None:
-        gam = gam + p["dg_inj"] * (p["I"] / p.get("I_ref", 1.0)) ** p.get("p_inj", 1.0)
+        gam = gamma_eff(gam, p["dg_inj"], p["I"] / p.get("I_ref", 1.0), p.get("p_inj", 1.0))
     gam_xx = p.get("gamma_xx", p.get("r_xx", 1.0) * gam)  # S2: Gamma_XX < Gamma_X
     spec = epsilon(p["delta_xx"], gam, gam_xx,
                    w=w, kappa=p.get("kappa"), dx=dx)

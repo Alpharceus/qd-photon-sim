@@ -29,16 +29,11 @@ sys.path.insert(0, str(ROOT))
 
 from fsim_core import design_meta, presets  # noqa: E402
 from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope  # noqa: E402
+from fsim_core.loading import f8_g2_load, f8b_thin_fano, granularity_N  # noqa: E402
 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
 SUBSTRATE = {"name": "GaAs", "k300": 55.0, "alpha": 1.25}
-# F-series v1.1 DriveBlock fields with no dedicated widget yet (no new UI in
-# this phase -- see fsim_core.device.DriveBlock): carried through
-# collect_design/apply_design like LAYERS/SUBSTRATE so Save/Load round-trips
-# a loaded design's values instead of silently resetting them to defaults.
-DRIVE_EXTRA = {"mode": "EL", "dg_inj": 0.0, "p_inj": 1.0, "F_p": 1.0,
-              "eta_capture": 1.0, "C_dep_pF": 10.0}
 
 GREEN = (86, 166, 50)
 AMBER = (227, 162, 26)
@@ -68,6 +63,9 @@ WIDGET_TAG = {
     "drive.V": "drive.V", "drive.I_uA": "drive.I_uA", "drive.duty": "drive.duty",
     "drive.mu": "drive.mu", "drive.b_e": "drive.b_e", "drive.b_e_m": "drive.b_e_m",
     "drive.b_e_Eact": "drive.b_e_Eact",
+    "drive.mode": "drive.mode", "drive.dg_inj": "drive.dg_inj",
+    "drive.p_inj": "drive.p_inj", "drive.F_p": "drive.F_p",
+    "drive.eta_capture": "drive.eta_capture", "drive.C_dep_pF": "drive.C_dep_pF",
     "thermal.mesa_diameter_um": "th.mesa", "thermal.T_hs": "th.T_hs",
     "cavity.enabled": "cav.enabled", "cavity.type": "cav.type",
     "cavity.kappa": "cav.kappa", "cavity.T_track": "cav.T_track",
@@ -125,24 +123,32 @@ def _toggle_range(path):
     dpg.configure_item(f"rng.{path}.hi", show=on)
 
 
-def _range_controls(path):
+def _range_controls(path, extra=None):
     """Envelope toggle for a parameter with an ENV_DEFAULTS entry: checkbox
     '~' + lo/hi range inputs, shown only when checked. No-op for paths
     without an entry. Program decision: [A]-tagged params default RANGED on
     (see design_meta.default_ranged); apply_design() re-syncs the checked
-    state and lo/hi values every time a design is loaded."""
+    state and lo/hi values every time a design is loaded. `extra`, when
+    given, also fires on the ~ toggle and on lo/hi edits (used by drive.mu
+    to keep the F8 domain warning live -- see _update_drive_panel)."""
     bounds = design_meta.ENV_DEFAULTS.get(path)
     if bounds is None:
         return
     lo, hi = bounds
     on = path in design_meta.default_ranged(DeviceDesign())
+
+    def _toggle_cb(s, v):
+        _toggle_range(path)
+        if extra:
+            extra(s, v)
+
     with dpg.group(horizontal=True):
         dpg.add_checkbox(label="~", tag=f"rng.{path}", default_value=on,
-                         callback=lambda s, v: _toggle_range(path))
+                         callback=_toggle_cb)
         dpg.add_input_float(tag=f"rng.{path}.lo", width=68, default_value=lo,
-                            show=on)
+                            show=on, callback=extra)
         dpg.add_input_float(tag=f"rng.{path}.hi", width=68, default_value=hi,
-                            show=on)
+                            show=on, callback=extra)
         dpg.add_text("range (envelope)", color=(150, 150, 150))
 
 
@@ -158,7 +164,9 @@ def _reset_range_controls(d: DeviceDesign):
         if not dpg.does_item_exist(tag):
             continue
         on = path in dr
-        lo, hi = bounds
+        # use default_ranged's bounds where present (F8-narrowed mu floor for
+        # quiet-pump designs -- Opus v1.1 finding), raw ENV_DEFAULTS otherwise
+        lo, hi = dr.get(path, bounds)
         dpg.set_value(tag, on)
         dpg.set_value(f"{tag}.lo", lo)
         dpg.set_value(f"{tag}.hi", hi)
@@ -184,6 +192,43 @@ def _mk_cb(path, extra=None, transform=None):
         if extra:
             extra(sender, value)
     return cb
+
+
+def _update_drive_panel(sender=None, value=None):
+    """Live refresh of the ELECTRICAL DRIVE node's v1.1 read-outs: the F9
+    granularity info text, the F8 domain warning (amber, WARN-ONLY -- never
+    blocks input, per the house rule), and the PL-mode note. Called from
+    every v1.1 drive widget's callback and from apply_design(); a no-op
+    before build_ui() has created the widgets. Every number here is computed
+    by fsim_core.loading (granularity_N / f8b_thin_fano / f8_g2_load) --
+    this function only reads widget values and formats text."""
+    if not dpg.does_item_exist("drive.C_dep_pF"):
+        return
+    mode = dpg.get_value("drive.mode")
+    F_p = dpg.get_value("drive.F_p")
+    eta = dpg.get_value("drive.eta_capture")
+    C_pF = dpg.get_value("drive.C_dep_pF")
+    T_hs = dpg.get_value("th.T_hs") if dpg.does_item_exist("th.T_hs") else 77.0
+
+    N = granularity_N(C_pF * 1e-12, T_hs)
+    dpg.set_value("drive.N_info", f"N ~ {N:.1e} e-/quantum @ T_hs")
+
+    dpg.set_value("drive.pl_note",
+                  "PL: injection background + dg_inj disabled" if mode == "PL" else "")
+
+    warn = ""
+    if F_p != 1.0:
+        floor = 1.0 - f8b_thin_fano(eta, F_p)
+        if dpg.does_item_exist("rng.drive.mu") and dpg.get_value("rng.drive.mu"):
+            mu_lo = dpg.get_value("rng.drive.mu.lo")
+            mu_hi = dpg.get_value("rng.drive.mu.hi")
+            mu_test = min(mu_lo, mu_hi)
+        else:
+            mu_test = dpg.get_value("drive.mu")
+        if mu_test < floor:
+            warn = (f"!  F8 domain: mu {mu_test:g} below floor {floor:.3f} "
+                    f"(= 1 - F8b-thinned Fano) -- warn only, not blocked")
+    dpg.set_value("drive.f8_warning", warn)
 
 
 def revalidate_all():
@@ -215,12 +260,12 @@ def collect_design() -> DeviceDesign:
     d.drive.b_e = dpg.get_value("drive.b_e")
     d.drive.b_e_m = dpg.get_value("drive.b_e_m")
     d.drive.b_e_Eact = dpg.get_value("drive.b_e_Eact")
-    d.drive.mode = DRIVE_EXTRA["mode"]
-    d.drive.dg_inj = DRIVE_EXTRA["dg_inj"]
-    d.drive.p_inj = DRIVE_EXTRA["p_inj"]
-    d.drive.F_p = DRIVE_EXTRA["F_p"]
-    d.drive.eta_capture = DRIVE_EXTRA["eta_capture"]
-    d.drive.C_dep_pF = DRIVE_EXTRA["C_dep_pF"]
+    d.drive.mode = dpg.get_value("drive.mode")
+    d.drive.dg_inj = dpg.get_value("drive.dg_inj")
+    d.drive.p_inj = dpg.get_value("drive.p_inj")
+    d.drive.F_p = dpg.get_value("drive.F_p")
+    d.drive.eta_capture = dpg.get_value("drive.eta_capture")
+    d.drive.C_dep_pF = dpg.get_value("drive.C_dep_pF")
     d.thermal.mesa_diameter_um = dpg.get_value("th.mesa")
     d.thermal.T_hs = dpg.get_value("th.T_hs")
     d.thermal.layers = [dict(L) for L in LAYERS]
@@ -258,9 +303,12 @@ def apply_design(d: DeviceDesign):
     dpg.set_value("drive.b_e", d.drive.b_e)
     dpg.set_value("drive.b_e_m", d.drive.b_e_m)
     dpg.set_value("drive.b_e_Eact", d.drive.b_e_Eact)
-    DRIVE_EXTRA.update(mode=d.drive.mode, dg_inj=d.drive.dg_inj, p_inj=d.drive.p_inj,
-                       F_p=d.drive.F_p, eta_capture=d.drive.eta_capture,
-                       C_dep_pF=d.drive.C_dep_pF)
+    dpg.set_value("drive.mode", d.drive.mode)
+    dpg.set_value("drive.dg_inj", d.drive.dg_inj)
+    dpg.set_value("drive.p_inj", d.drive.p_inj)
+    dpg.set_value("drive.F_p", d.drive.F_p)
+    dpg.set_value("drive.eta_capture", d.drive.eta_capture)
+    dpg.set_value("drive.C_dep_pF", d.drive.C_dep_pF)
     dpg.set_value("th.mesa", d.thermal.mesa_diameter_um)
     dpg.set_value("th.T_hs", d.thermal.T_hs)
     dpg.set_value("cav.enabled", d.cavity.enabled)
@@ -287,6 +335,7 @@ def apply_design(d: DeviceDesign):
     draw_cross_section()
     revalidate_all()
     _reset_range_controls(d)
+    _update_drive_panel()
 
 
 def apply_presets():
@@ -296,12 +345,14 @@ def apply_presets():
     presets.apply_template_preset(d, dpg.get_value("preset.template"))
     presets.apply_cavity_preset(d, dpg.get_value("preset.cavity"))
     presets.apply_drive_preset(d, dpg.get_value("preset.drive"))
+    presets.apply_injection_preset(d, dpg.get_value("preset.injection"))
     apply_design(d)
     dpg.set_value("status",
                   f"applied presets: dot={dpg.get_value('preset.dot')}  "
                   f"template={dpg.get_value('preset.template')}  "
                   f"cavity={dpg.get_value('preset.cavity')}  "
-                  f"drive={dpg.get_value('preset.drive')}")
+                  f"drive={dpg.get_value('preset.drive')}  "
+                  f"injection={dpg.get_value('preset.injection')}")
 
 
 # ------------------------------------------------------------------- fab stack UI
@@ -389,6 +440,29 @@ def draw_cross_section():
                   color=AMBER, parent="xsec")
 
 
+def _f8_result_lines(d: DeviceDesign) -> list:
+    """F8 results-panel lines for the given (point or mid-envelope) design:
+    the g2_load factor (fsim_core.loading.f8_g2_load at the thinned F_eff --
+    same F_eff device.evaluate/integrator.g2_of_T actually feed to f8_g2),
+    "--" when mu/F_p sit outside the F8 domain, and a quiet-pump indicator
+    when F_p < 1. Empty list when F_p == 1.0 (Poisson pump: F8 doesn't
+    apply, nothing new to report)."""
+    lines = []
+    if d.drive.F_p != 1.0:
+        F_eff = f8b_thin_fano(d.drive.eta_capture, d.drive.F_p)
+        if d.drive.mu > 0:
+            try:
+                val = float(f8_g2_load(d.drive.mu, F_eff))
+                lines.append(f"g2_load factor: {val:.3f} (F8)")
+            except ValueError:
+                lines.append("g2_load factor: -- (F8)")
+        else:
+            lines.append("g2_load factor: -- (F8)")
+        if d.drive.F_p < 1.0:
+            lines.append("[F8] quiet-pump")
+    return lines
+
+
 # ------------------------------------------------------------------------- run
 
 def run_device():
@@ -447,7 +521,7 @@ def _run_point(d: DeviceDesign):
         f"F_eff (cavity)           "
         + (f"{s['F_eff']:.1f}" if s["F_eff"] == s["F_eff"] else "-- (cavity off)"),
         f"aperture: N_w = {s['N_w']:.2f}  ->  F5 g2 penalty {s['aperture_g2_penalty']:.3f}",
-    ]
+    ] + _f8_result_lines(d)
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
     _refresh_delta_table()
@@ -478,7 +552,8 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
     global LAST_RUN
     env = evaluate_envelope(d, ranged)
     mid, bands, sb = env["mid"], env["bands"], env["scalar_bands"]
-    mid_scalars = evaluate(_mid_design(d, ranged), T_grid=[d.thermal.T_hs])["scalars"]
+    dm = _mid_design(d, ranged)
+    mid_scalars = evaluate(dm, T_grid=[d.thermal.T_hs])["scalars"]
     LAST_RUN = {"design": d, "name": d.name, "curves": mid, "bands": bands,
                 "scalars": mid_scalars, "scalar_bands": sb, "ranged": dict(ranged)}
     Ts = list(map(float, mid["T_hs"]))
@@ -534,6 +609,9 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
         "",
         "sensitivity (measurement priority, highest first):",
     ] + tornado_lines
+    f8_lines = _f8_result_lines(dm)
+    if f8_lines:
+        lines += [""] + f8_lines
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
     _refresh_delta_table()
@@ -754,6 +832,8 @@ def build_ui():
                          tag="preset.cavity", width=140)
             dpg.add_combo(list(presets.DRIVE_PRESETS), default_value="cw-electrical",
                          tag="preset.drive", width=150)
+            dpg.add_combo(list(presets.INJECTION_PRESETS), default_value="standard",
+                         tag="preset.injection", width=150)
             dpg.add_button(label="Apply presets", callback=apply_presets)
         dpg.add_text("", tag="status", color=AMBER)
         dpg.add_text("", tag="param_warning", color=AMBER)
@@ -783,9 +863,10 @@ def build_ui():
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="mu/pulse", tag="drive.mu",
                                                     width=90, default_value=0.5,
-                                                    callback=_mk_cb("drive.mu"))
+                                                    callback=_mk_cb("drive.mu",
+                                                                   extra=lambda s, v: _update_drive_panel()))
                                 _tag_bullet("drive.mu")
-                            _range_controls("drive.mu")
+                            _range_controls("drive.mu", extra=lambda s, v: _update_drive_panel())
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="b_e", tag="drive.b_e",
                                                     width=90, default_value=0.02,
@@ -802,11 +883,52 @@ def build_ui():
                                                     width=90, default_value=100.0,
                                                     callback=_mk_cb("drive.b_e_Eact"))
                                 _tag_bullet("drive.b_e_Eact")
+                            dpg.add_separator()
+                            with dpg.group(horizontal=True):
+                                dpg.add_combo(("EL", "PL"), label="mode", tag="drive.mode",
+                                             default_value="EL", width=60,
+                                             callback=_mk_cb("drive.mode",
+                                                            extra=lambda s, v: _update_drive_panel()))
+                                _tag_bullet("drive.mode")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="dGamma_inj (meV)", tag="drive.dg_inj",
+                                                    width=90, default_value=0.0,
+                                                    callback=_mk_cb("drive.dg_inj",
+                                                                   extra=lambda s, v: _update_drive_panel()))
+                                _tag_bullet("drive.dg_inj")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="p_inj", tag="drive.p_inj",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("drive.p_inj"))
+                                _tag_bullet("drive.p_inj")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="pump Fano F_p", tag="drive.F_p",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("drive.F_p",
+                                                                   extra=lambda s, v: _update_drive_panel()))
+                                _tag_bullet("drive.F_p")
+                            _range_controls("drive.F_p")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="eta_capture", tag="drive.eta_capture",
+                                                    width=90, default_value=1.0,
+                                                    callback=_mk_cb("drive.eta_capture",
+                                                                   extra=lambda s, v: _update_drive_panel()))
+                                _tag_bullet("drive.eta_capture")
+                            _range_controls("drive.eta_capture")
+                            with dpg.group(horizontal=True):
+                                dpg.add_input_float(label="C_dep (pF)", tag="drive.C_dep_pF",
+                                                    width=90, default_value=10.0,
+                                                    callback=_mk_cb("drive.C_dep_pF",
+                                                                   extra=lambda s, v: _update_drive_panel()))
+                                _tag_bullet("drive.C_dep_pF")
+                            dpg.add_text("", tag="drive.N_info", color=(150, 150, 150))
+                            dpg.add_text("", tag="drive.f8_warning", color=AMBER)
+                            dpg.add_text("", tag="drive.pl_note", color=(150, 150, 150))
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="drive_out"):
                             dpg.add_text("I, V, heat")
 
-                    with dpg.node(label="MESA / THERMAL", pos=(10, 330)):
+                    with dpg.node(label="MESA / THERMAL", pos=(10, 700)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Input,
                                                 tag="th_in"):
                             dpg.add_text("P = duty * I * V")
@@ -821,7 +943,9 @@ def build_ui():
                                 dpg.add_input_float(label="T_hs (K)", tag="th.T_hs",
                                                     width=90, default_value=77.0,
                                                     callback=_mk_cb("thermal.T_hs",
-                                                                   extra=lambda s, v: draw_cross_section()))
+                                                                   extra=lambda s, v: (
+                                                                       draw_cross_section(),
+                                                                       _update_drive_panel())))
                                 _tag_bullet("thermal.T_hs")
                             dpg.add_text("stack: edit in Fab stack panel ->")
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
@@ -1059,7 +1183,35 @@ def _run_selftest(outdir: Path) -> bool:
     return ok
 
 
-def main(frames=None, selftest_outdir=None):
+def _run_roundtrip_check() -> bool:
+    """v1.1 gate check (gate_v11_gui.py check c): apply_design() a design
+    carrying the six new DriveBlock fields THROUGH THE REAL WIDGETS, then
+    collect_design() and assert every field survives the round trip --
+    exercises the widget wiring itself, not a reimplementation of it."""
+    d = DeviceDesign()
+    d.drive.mode = "PL"
+    d.drive.dg_inj = 2.0
+    d.drive.F_p = 0.5
+    d.drive.eta_capture = 0.7
+    apply_design(d)
+    for _ in range(2):
+        dpg.render_dearpygui_frame()
+    d2 = collect_design()
+    tol = 1e-5  # add_input_float stores float32 internally (~7 sig figs)
+    ok = (d2.drive.mode == d.drive.mode
+          and abs(d2.drive.dg_inj - d.drive.dg_inj) < tol
+          and abs(d2.drive.p_inj - d.drive.p_inj) < tol
+          and abs(d2.drive.F_p - d.drive.F_p) < tol
+          and abs(d2.drive.eta_capture - d.drive.eta_capture) < tol
+          and abs(d2.drive.C_dep_pF - d.drive.C_dep_pF) < tol)
+    print(f"roundtrip-check: {'OK' if ok else 'FAIL'}  "
+          f"mode={d2.drive.mode} dg_inj={d2.drive.dg_inj} p_inj={d2.drive.p_inj} "
+          f"F_p={d2.drive.F_p} eta_capture={d2.drive.eta_capture} "
+          f"C_dep_pF={d2.drive.C_dep_pF}")
+    return ok
+
+
+def main(frames=None, selftest_outdir=None, roundtrip_check=False):
     dpg.create_context()
     build_ui()
     default = DeviceDesign()
@@ -1070,6 +1222,10 @@ def main(frames=None, selftest_outdir=None):
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("main", True)
+    if roundtrip_check:
+        ok = _run_roundtrip_check()
+        dpg.destroy_context()
+        sys.exit(0 if ok else 1)
     if selftest_outdir is not None:
         ok = _run_selftest(Path(selftest_outdir))
         dpg.destroy_context()
@@ -1098,4 +1254,5 @@ if __name__ == "__main__":
         n = int(sys.argv[sys.argv.index("--frames") + 1])
     if "--selftest" in sys.argv:
         selftest_outdir = sys.argv[sys.argv.index("--selftest") + 1]
-    main(frames=n, selftest_outdir=selftest_outdir)
+    roundtrip_check = "--roundtrip-check" in sys.argv
+    main(frames=n, selftest_outdir=selftest_outdir, roundtrip_check=roundtrip_check)

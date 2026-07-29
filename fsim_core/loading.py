@@ -100,6 +100,19 @@ def b_injection(channels, I, T):
     return sum(c.rate(I, T) for c in channels) if channels else 0.0
 
 
+# --------------------------------------------------- F5': injection linewidth broadening
+
+def gamma_eff(gamma, dg_inj, I_ratio, p_inj=1.0):
+    """F5' (v1.1): effective X/XX linewidth under electrical injection --
+
+        Gamma_eff = Gamma + dg_inj * I_ratio^p_inj      (I_ratio = I / I_ref)
+
+    THE ONE implementation of this formula (three-layer rule): integrator.
+    g2_of_T, device.evaluate, and fsim_gui/app.py's spectral explainer all
+    call this instead of re-deriving the expression inline."""
+    return gamma + dg_inj * I_ratio ** p_inj
+
+
 # ------------------------------------------------------- F5 aperture lemma (unequal emitters)
 
 def aperture_g2(p_list):

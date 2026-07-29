@@ -445,6 +445,66 @@ def spec_figure(staged_rows: list, k300_rows: list, be_curves: dict, outdir: Pat
     plt.close(fig)
 
 
+def zhao_fit_figure(rows: list, curve: dict, I_th: float, outdir: Path) -> None:
+    """Module-D (fsim_core.sde) Tier-2 validation figure for cards/zhao.yaml:
+    left panel is the headline sim-vs-published g2(0) comparison at I=4 I_th
+    (normal/quiet), right panel is the g2 vs I/I_th curve for both pump
+    modes with the I=4 I_th published points overlaid. CSVs are written by
+    the caller (scripts/run_zhao_fit.py), matching the run_spec.py/
+    spec_figure convention -- this function only plots. [E]-tag caption note:
+    the simulation is fsim_core.sde's literature-class Tier-2 fit (see that
+    module's and run_zhao_fit.py's docstrings for the tuned-parameter table
+    and the honestly-reported quiet-pump near-miss -- do not read a visually
+    small gap on this plot as a precision match; see the printed sigma
+    table)."""
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+
+    ax = axes[0]
+    colors = {"normal": "#2166ac", "quiet": "#5e3c99"}
+    for i, r in enumerate(rows):
+        x = i
+        ax.errorbar([x - 0.08], [r["sim_g2"]], yerr=[r["sim_se"]], fmt="o", ms=8,
+                    color=colors[r["pump"]], capsize=4, label=f"{r['pump']} (sim)" if i < 2 else None)
+        ax.errorbar([x + 0.08], [r["published_g2"]], yerr=[r["published_err"]], fmt="s", ms=8,
+                    color=colors[r["pump"]], mfc="white", capsize=4,
+                    label=f"{r['pump']} (published)" if i < 2 else None)
+    ax.axhline(1.0, color="#888888", ls=":", lw=1.2)
+    ax.set_xticks(range(len(rows)))
+    ax.set_xticklabels([r["pump"] for r in rows])
+    ax.set_ylabel("$g^{(2)}(0)$")
+    ax.set_title("I = 4 $I_{th}$: sim (filled) vs Zhao et al. (open)", fontsize=9.5)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, frameon=False, fontsize=7, loc="best")
+
+    ax = axes[1]
+    for label, mk, col in (("normal", "o-", "#2166ac"), ("quiet", "s-", "#5e3c99")):
+        c = curve[label]
+        g2 = np.asarray(c["g2"])
+        se = np.asarray(c["se"])
+        ax.plot(c["I"], g2, mk, color=col, lw=1.8, ms=6, label=f"{label} (sim)")
+        ax.fill_between(c["I"], g2 - se, g2 + se, color=col, alpha=0.25, lw=0)
+    for r in rows:
+        ax.errorbar([4.0], [r["published_g2"]], yerr=[r["published_err"]], fmt="s", ms=7,
+                    color=colors[r["pump"]], mfc="white", capsize=4)
+    ax.axhline(1.0, color="#888888", ls=":", lw=1.2)
+    ax.set_xlabel(r"$I / I_{th}$")
+    ax.set_ylabel("$g^{(2)}(0)$")
+    ax.legend(frameon=False, fontsize=7.5, loc="best")
+    ax.set_title(f"g$^{{(2)}}$(0) vs pump strength ($I_{{th}}$ raw axis = {I_th:.3f})", fontsize=9.5)
+
+    fig.suptitle("cards/zhao.yaml Tier-2 fit -- fsim_core.sde stochastic drive engine "
+                 "(tag chain [E]: literature-class tuned rate-equation model; "
+                 "see run_zhao_fit.py for the honest verdict)",
+                 fontsize=9, color="#d7191c", y=1.03)
+    fig.tight_layout()
+    for ext in ("pdf", "svg", "png"):
+        fig.savefig(outdir / f"zhao_fit_figure.{ext}", bbox_inches="tight", dpi=200)
+    plt.close(fig)
+
+
 def vc_reischle_figure(vc: dict, outdir: Path) -> None:
     """V-c consistency figure: digitized rho(w) envelope vs the rho required by
     the measured g2 under the trion (eps=0) F-series prediction g2 = 1-rho^2."""

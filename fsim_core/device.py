@@ -34,6 +34,7 @@ from .loading import (
     f1b_g2,
     f8_g2,
     f8b_thin_fano,
+    gamma_eff,
     loading_probs,
     n_window_competitors,
 )
@@ -196,7 +197,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # F5' injection broadening (v1.1): EL-mode-only, applied BEFORE the
         # auto-w filter width (below) and BEFORE epsilon.
         if d.drive.mode != "PL" and d.drive.dg_inj:
-            gam = gam + d.drive.dg_inj * (d.drive.I_uA / d.drive.I_ref_uA) ** d.drive.p_inj
+            gam = gamma_eff(gam, d.drive.dg_inj, d.drive.I_uA / d.drive.I_ref_uA, d.drive.p_inj)
         kappa = d.cavity.kappa if (d.cavity.enabled and not sin_mode) else None
         dx = d.filter.dx
         if d.cavity.enabled and not sin_mode:  # sin waveguide has no mode to track

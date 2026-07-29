@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 from fsim_core.card import Tag, load_card, widest
 from fsim_core.fitting import V_A_TOL, fit_phase0
 from fsim_core.integrator import g2_from, g2_of_T, oat_sensitivity, solve_Tc
-from fsim_core.loading import f1b_g2, loading_probs
+from fsim_core.loading import f1b_g2, f8_g2_load, f8b_thin_fano, gamma_eff, loading_probs
 from fsim_core.spectral import epsilon, gamma_of_T, lorentzian
 from fsim_viz.figures import phase0_bundle
 
@@ -101,10 +101,23 @@ with spec_tab:
         mu = st.slider("mean loading μ (F1b)", 0.0, 5.0,
                        float(p_model.get("mu", card.params.get("mu_op").value
                              if "mu_op" in card.params else 0.0) or 0.0), 0.05)
+        drive_mode = st.radio("drive mode", ["PL", "EL"], horizontal=True,
+                              key="spec_drive_mode")
+        dg_inj, I_ratio = 0.0, 1.0
+        p_inj = float(p_model.get("p_inj", 1.0) or 1.0)
+        if drive_mode == "EL":
+            dg_inj = st.number_input("dGamma_inj (meV)", 0.0, 20.0, 2.0, 0.5)
+            I_ratio = st.number_input("I / I_ref", 0.0, 20.0, 1.0, 0.5)
 
     delta = p_model.get("delta_xx", 5.9)
-    gam = float(gamma_of_T(T, p_model.get("gamma0", 0.5), p_model.get("a_ac", 2e-3),
-                           p_model.get("b_lo", 25.0), p_model.get("E_lo", 36.6)))
+    gam_pl = float(gamma_of_T(T, p_model.get("gamma0", 0.5), p_model.get("a_ac", 2e-3),
+                              p_model.get("b_lo", 25.0), p_model.get("E_lo", 36.6)))
+    # F5' injection broadening: THE ONE implementation lives in
+    # fsim_core.loading.gamma_eff (also used by integrator.g2_of_T and
+    # device.evaluate) -- the GUI never re-derives that broadening expression
+    # itself (three-layer rule).
+    gam_el = float(gamma_eff(gam_pl, dg_inj, I_ratio, p_inj))
+    gam = gam_el if drive_mode == "EL" else gam_pl
     spec = epsilon(delta, gam, gam, w=w, dx=dx)
     g2_dot = float(f1b_g2(mu, spec.eps)) if mu > 0 else spec.eps
 
@@ -127,7 +140,14 @@ with spec_tab:
                       legend=dict(orientation="h"))
     c1.plotly_chart(fig, use_container_width=True)
 
-    c2.markdown(f"**Γ(T)** = {gam:.2f} meV")
+    ratio = (gam_el / gam_pl) if gam_pl > 0 else float("nan")
+    ratio_style = "color:#e3a21a;font-weight:bold" if ratio > 2 else "font-weight:bold"
+    c2.markdown(
+        f"PL Γ: {gam_pl:.2f} meV / EL Γ_eff: {gam_el:.2f} meV, ratio "
+        f"<span style='{ratio_style}'>{ratio:.2f}x</span>"
+        + ("  ← Kitamura ~4x" if ratio > 2 else ""),
+        unsafe_allow_html=True)
+    c2.markdown(f"**Γ(T)** = {gam:.2f} meV  (active: {drive_mode})")
     c2.markdown(f"**ε = t_XX/t_X** = {spec.eps:.4f}")
     c2.markdown(f"**g²₀(μ)** = {g2_dot:.4f}" + ("  (F1: ε)" if mu == 0 else "  (F1b)"))
     c2.markdown(f"**t_X (brightness)** = {spec.t_x:.3f}")
@@ -198,6 +218,28 @@ with dash_tab:
             if fit is not None and st.button("Write report bundle (out/phase0)"):
                 phase0_bundle(fit, card_path, ROOT / "out" / "phase0")
                 st.success("bundle written: figure + CSVs + params + card snapshot")
+
+            st.markdown("---")
+            F_p_dash = st.slider("F_p (pump Fano)", 0.0, 1.5, 1.0, 0.05, key="dash_Fp")
+            mu_dash = st.slider("mu (loading, F8)", 0.0, 3.0,
+                                float(p_model.get("mu", 0.5) or 0.5), 0.05, key="dash_mu")
+            # F8 domain floor: mu >= 1 - F_eff, F_eff = f8b_thin_fano(eta, F_p) --
+            # computed via the core (no eta_capture control here, so eta=1: no
+            # dot-capture thinning, F_eff = F_p).
+            F_eff_dash = f8b_thin_fano(1.0, F_p_dash)
+            floor_dash = 1.0 - F_eff_dash
+            if mu_dash < floor_dash:
+                st.warning(f"F8 domain: mu {mu_dash:.2f} below floor "
+                          f"{floor_dash:.2f} (= 1 - F_p) — g2_load undefined")
+                st.caption("g2_load = —")
+            elif mu_dash <= 0:
+                st.caption("g2_load = —")
+            else:
+                try:
+                    g2load_dash = float(f8_g2_load(mu_dash, F_eff_dash))
+                    st.metric("g2_load", f"{g2load_dash:.3f}")
+                except ValueError:
+                    st.caption("g2_load = —")
 
         if not p_model or "a_esc" not in p_model:
             st.warning("No fitted parameterization available — run the fit.")

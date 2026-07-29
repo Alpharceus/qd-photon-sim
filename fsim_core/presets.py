@@ -57,6 +57,30 @@ DRIVE_PRESETS = {
     "optical": {"V": 0.0, "I_uA": 0.0, "duty": 0.0, "mu": 0.33, "b_e": 0.0},  # no injection, no junction heating
 }
 
+# ---- injection-engineering presets (v1.1): point choices on the F8/F8b/F5'
+# drive fields (+ one fab-stack primitive for "dual-aperture-contact") that a
+# designer session can layer on top of the other four preset combos. Every
+# field here stays inside its design_meta.META [A]/[E] band -- picking a
+# preset does not upgrade provenance.
+INJECTION_PRESETS = {
+    "standard": {
+        "note": "baseline: no injection-engineering changes",
+    },
+    "rti-quiet": {
+        "drive": {"F_p": 0.5, "eta_capture": 0.8, "dg_inj": 1.0},
+        "note": "RTI carrier selectivity preserves quiet pump statistics through "
+                "capture; moderate injection broadening [A]",
+        "source": "Kitamura CLEO 2025 + Zhao PRR L032021",
+    },
+    "dual-aperture-contact": {
+        "drive": {"eta_capture": 0.9, "dg_inj": 0.5},
+        "halve_b_e": True,
+        "layer": {"name": "oxide aperture", "t_um": 0.03, "k300": 2.0,
+                  "alpha": 0.3, "spread": False},
+        "note": "intracavity-contact + dual-aperture stack primitive [A]",
+    },
+}
+
 
 def apply_dot_preset(design: DeviceDesign, key: str) -> DeviceDesign:
     p = DOT_PRESETS[key]
@@ -94,6 +118,29 @@ def apply_drive_preset(design: DeviceDesign, key: str) -> DeviceDesign:
     design.drive.duty = p.get("duty", b.duty)
     design.drive.mu = p.get("mu", b.mu)
     design.drive.b_e = p.get("b_e", b.b_e)
+    return design
+
+
+def apply_injection_preset(design: DeviceDesign, key: str) -> DeviceDesign:
+    """Mutate `design` in place per INJECTION_PRESETS[key]. 'standard' is an
+    explicit no-op baseline (so the designer combo always has a do-nothing
+    choice); 'rti-quiet' sets drive.F_p/eta_capture/dg_inj; 'dual-aperture-
+    contact' sets drive.eta_capture/dg_inj, halves the CURRENT drive.b_e
+    (relative to whatever the design's b_e already is when this preset is
+    applied -- same "layer on top" convention as the other apply_*_preset
+    mutators), and inserts an oxide-aperture thermal layer at index 1 if a
+    layer of that name isn't already present. Called after
+    apply_template_preset in the designer's apply-all-presets flow, so the
+    layer insertion survives (template preset replaces thermal.layers
+    wholesale; injection preset only adds to it)."""
+    p = INJECTION_PRESETS[key]
+    for field_name, value in p.get("drive", {}).items():
+        setattr(design.drive, field_name, value)
+    if p.get("halve_b_e"):
+        design.drive.b_e = design.drive.b_e * 0.5
+    layer = p.get("layer")
+    if layer is not None and layer["name"] not in [L.get("name") for L in design.thermal.layers]:
+        design.thermal.layers.insert(1, dict(layer))
     return design
 
 
