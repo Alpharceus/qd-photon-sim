@@ -378,6 +378,50 @@ def ibm_transmission(delta_meV, params: PhononParams, T: float,
     return float(out[0]) if scalar else out
 
 
+def ibm_purcell_transmission(delta_meV, params: PhononParams, T: float,
+                             gamma_zpl_meV: float, F_cav: float,
+                             w_meV=None, kappa_meV=None, delta_c_meV=None):
+    """R2 (roadmap 13): Purcell-reweighted IBM transmission and the effective
+    ZPL fraction. The cavity enhances emission at the ZPL by F_cav (the
+    overlap-penalized F_eff = F_P*kappa/(kappa+Gamma), computed by the
+    caller); the sidebands, spectrally far from the mode on the kappa scale,
+    stay at the free-space rate [E: sideband weight within kappa of the mode
+    is also enhanced -- ignored; small while kappa << sideband span].
+
+    Rate bookkeeping: ZPL photon rate scales Z*F_cav, sideband rate (1-Z);
+    so the detected fraction is
+
+        t = (Z F_cav t_zpl + t_sb) / (Z F_cav + (1-Z))
+
+    and the redistributed ZPL fraction is Z_eff = Z F_cav / (Z F_cav + 1-Z)
+    -- the standard Purcell funneling of emission into the line the filter
+    can actually collect. Returns (t, Z_eff, rate_mult) with rate_mult =
+    Z*F_cav + (1-Z), the total emission-rate multiplier the retention
+    coupling consumes. F_cav = 1 reduces exactly to ibm_transmission.
+    Everything downstream of this carries [E->analytic-1D, confirm: SIM-B].
+    """
+    d = float(delta_meV)
+    dc = d if delta_c_meV is None else float(delta_c_meV)
+    omega, s_sb, z = _spectrum_parts(params, float(T), float(gamma_zpl_meV))
+    sb_area = float(np.trapezoid(s_sb, omega))
+    t_zpl = transmission2(d, dc, gamma_zpl_meV, w_meV, kappa_meV)
+    x = omega + d
+    xc = omega + dc
+    acc = np.ones_like(x)
+    if w_meV is not None:
+        acc *= np.abs(x) <= w_meV / 2.0
+    if kappa_meV is not None:
+        acc *= (kappa_meV / 2.0) ** 2 / (xc**2 + (kappa_meV / 2.0) ** 2)
+    t_sb = float(np.trapezoid(s_sb * acc, omega))
+    # normalize the (z, sb_area) split to unit total before reweighting
+    tot = z + sb_area
+    z_n, sb_n = z / tot, sb_area / tot
+    rate_mult = z_n * F_cav + sb_n
+    t = (z_n * F_cav * t_zpl + t_sb / tot) / rate_mult
+    z_eff = z_n * F_cav / rate_mult
+    return float(t), float(z_eff), float(rate_mult)
+
+
 # ------------------------------------------------------------ broadening bridge
 
 def effective_gamma_zpl(T, gamma0, a_ac, b_lo, E_lo):

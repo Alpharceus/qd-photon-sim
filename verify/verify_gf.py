@@ -396,6 +396,40 @@ def _():
     assert e_held < 1.0, e_held
 
 
+@check("R2 Purcell wiring: purcell_wire=False (default) keeps evaluate() "
+       "bit-identical; F_cav=1 reduces ibm_purcell_transmission exactly to "
+       "ibm_transmission; wiring ON raises S-side rho, t_X, and lowers g2 "
+       "at a hot cavity point")
+def _():
+    from copy import deepcopy
+    from fsim_core.device import DeviceDesign, evaluate
+    from fsim_core.qd_gf import ibm_purcell_transmission
+    pp = PhononParams()
+    t0 = float(ibm_transmission(0.0, pp, 300.0, 6.0, w_meV=8.0, kappa_meV=3.0))
+    t1, z_eff, rm = ibm_purcell_transmission(0.0, pp, 300.0, 6.0, 1.0,
+                                             w_meV=8.0, kappa_meV=3.0)
+    assert abs(t1 - t0) < 1e-12 and abs(rm - 1.0) < 1e-12
+    tF, z_effF, rmF = ibm_purcell_transmission(0.0, pp, 300.0, 6.0, 20.0,
+                                               w_meV=8.0, kappa_meV=3.0)
+    assert tF > t0 and rmF > 1.0 and z_effF > z_eff
+    base = DeviceDesign()
+    base.dot.lineshape = "ibm"
+    base.thermal.T_hs = 300.0     # op point AT the tracked design T
+    base.cavity.enabled = True
+    base.cavity.kappa = 3.0
+    base.cavity.F_P = 20.0
+    base.cavity.T_track = 300.0
+    ref = evaluate(base, T_grid=[300.0])["scalars"]
+    off = deepcopy(base)   # purcell_wire defaults False
+    same = evaluate(off, T_grid=[300.0])["scalars"]
+    assert same["t_x_op"] == ref["t_x_op"] and same["g2_op"] == ref["g2_op"]
+    on = deepcopy(base)
+    on.cavity.purcell_wire = True
+    won = evaluate(on, T_grid=[300.0])["scalars"]
+    assert won["t_x_op"] > ref["t_x_op"], (won["t_x_op"], ref["t_x_op"])
+    assert won["g2_op"] <= ref["g2_op"] + 1e-12
+
+
 @check("V-a GATE (T2): the six Chatzarakis points re-evaluated with the IBM "
        "lineshape at the FITTED Lorentzian parameters shift eps by < 0.03 "
        "per point (inside the V-a acceptance band) -- the validated fit "

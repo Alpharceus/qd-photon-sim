@@ -62,6 +62,10 @@ META = {
                    "source": "qd_gf.PhononParams overrides (l_xy_nm/l_z_nm "
                              "geometry [A, null until AFM/TEM #8]; InP-class "
                              "materials [DR])"},
+    "cavity.purcell_wire": {"unit": "", "tag": "E",
+                            "source": "R2/roadmap-13 opt-in: F_eff into "
+                                      "retention + IBM ZPL redistribution "
+                                      "[E->analytic-1D, confirm: SIM-B]"},
     "filter.track": {"unit": "", "tag": "E", "choices": ["mode", "hold"],
                      "source": "F6 slit tracking: 'mode' follows the cavity "
                                "(legacy); 'hold' pins the slit on X below "

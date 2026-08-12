@@ -39,7 +39,7 @@ from .loading import (
     loading_probs,
     n_window_competitors,
 )
-from .qd_gf import PhononParams, ibm_transmission
+from .qd_gf import PhononParams, ibm_purcell_transmission, ibm_transmission
 from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 
@@ -125,6 +125,12 @@ class CavityBlock:
     G: float = 8.0               # collection gain on signal [A]; unused when type=sin_waveguide
     beta_sin: float = 1.0        # SiN evanescent coupling [A]; Lemma 1: brightness ONLY,
                                   # never eps/rho/g2/T_c (applied inline in evaluate())
+    purcell_wire: bool = False   # R2 (roadmap 13), opt-in: wire F_eff into
+                                  # (a) retention (radiative rate x rate_mult
+                                  # -> escape ratios divided) and (b) the IBM
+                                  # ZPL redistribution (Z_eff funneling).
+                                  # [E->analytic-1D, confirm: SIM-B]. False =
+                                  # legacy bit-identical (T_c conservative).
 
 
 @dataclass
@@ -229,6 +235,18 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         held = (d.filter.track == "hold" and d.filter.enabled
                 and d.cavity.enabled and not sin_mode)
         dx_w = d.filter.dx if held else dx
+        # R2 opt-in: overlap-penalized Purcell at this operating point,
+        # scaled by the cavity Lorentzian at the X detuning (a mode far off
+        # the line enhances nothing -- the factor that kills the 77 K +
+        # 120 K-tracked wiring honestly).
+        wire = (d.cavity.purcell_wire and d.cavity.enabled and not sin_mode)
+        if wire:
+            det = (kappa / 2.0) ** 2 / (dx**2 + (kappa / 2.0) ** 2)
+            F_eff_op = 1.0 + (float(purcell_eff(d.cavity.F_P, kappa, gam))
+                              - 1.0) * det
+        else:
+            F_eff_op = 1.0
+        rate_mult = 1.0
         if d.dot.lineshape == "ibm":
             # T2 tier: sideband-aware transmissions. Same acceptance stack and
             # delta conventions as spectral.epsilon; the XX line reuses the X
@@ -237,9 +255,17 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # refinement that waits for data). ZPL widths carry the standing
             # Gamma(T) model unchanged (see qd_gf.effective_gamma_zpl note).
             pp = PhononParams(**d.dot.phonon)
-            t_x = float(ibm_transmission(dx_w, pp, Tj, gam, w_meV=w,
-                                         kappa_meV=kappa,
-                                         delta_c_meV=dx if held else None))
+            if wire:
+                # R2: Purcell funnels emission into the ZPL (Z_eff) and
+                # multiplies the radiative rate; X line only (the XX line's
+                # own Purcell overlap differs -- kept unenhanced, [E]).
+                t_x, _z_eff, rate_mult = ibm_purcell_transmission(
+                    dx_w, pp, Tj, gam, F_eff_op, w_meV=w, kappa_meV=kappa,
+                    delta_c_meV=dx if held else None)
+            else:
+                t_x = float(ibm_transmission(dx_w, pp, Tj, gam, w_meV=w,
+                                             kappa_meV=kappa,
+                                             delta_c_meV=dx if held else None))
             t_xx = float(ibm_transmission(dx_w - d.dot.delta_xx, pp, Tj,
                                           d.dot.r_xx * gam, w_meV=w,
                                           kappa_meV=kappa,
@@ -251,7 +277,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             kappa=kappa, dx_w=dx_w, dx_c=dx)
         else:
             spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
-        S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
+        # R2: Purcell speeds the radiative channel by rate_mult (photon-
+        # weighted; Lorentzian path uses F_eff directly since there is no
+        # sideband split), so the escape-to-radiative ratios divide by it.
+        if wire:
+            rm = rate_mult if d.dot.lineshape == "ibm" else F_eff_op
+            S = float(retention(Tj, rp["a_esc"] / rm, rp["E_a"],
+                                rp["b_p"] / rm, rp["E_b"]))
+        else:
+            S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
         # PL mode: optical excitation, no injection-current background channel.
         inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
         B = rp["b0"] + rp["beta"] * (1.0 - S) + inj_bg
