@@ -55,6 +55,21 @@ META = {
                            "source": "dot capture fraction; F8b thinning"},
     "drive.C_dep_pF": {"unit": "pF", "tag": "E", "lo": 0.1, "hi": 100.0,
                         "source": "Zhao: down to ~3.5 pF"},
+    "dot.lineshape": {"unit": "", "tag": "E", "choices": ["lorentzian", "ibm"],
+                      "source": "T2 tier (tier plan 2026-08-12): IBM polaron "
+                                "ZPL+sidebands vs legacy Lorentzian"},
+    "dot.phonon": {"unit": "", "tag": "A",
+                   "source": "qd_gf.PhononParams overrides (l_xy_nm/l_z_nm "
+                             "geometry [A, null until AFM/TEM #8]; InP-class "
+                             "materials [DR])"},
+    "drive.mechanism": {"unit": "", "tag": "A", "choices":
+                        ["", "poisson-rail", "quiet-rail", "pulsed",
+                         "set-metallic", "set-gated", "set-turnstile", "rti"],
+                        "source": "T1 drive-mechanism library (tier plan "
+                                  "2026-08-12); '' = legacy F_p/eta fields"},
+    "drive.mech_params": {"unit": "", "tag": "A",
+                          "source": "per-mechanism params dict; see "
+                                    "fsim_core.drive_mech.mech_from_card"},
 
     # ---- retention (class-proxy Arrhenius overrides; 0 -> use class proxy)
     "ret.a_esc": {"unit": "1", "tag": "A", "lo": 0.0, "hi": 1e7,

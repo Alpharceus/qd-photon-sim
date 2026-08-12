@@ -27,6 +27,7 @@ import yaml
 
 from .cavity import purcell_eff, tracking_detuning
 from .integrator import g2_from, retention
+from .drive_mech import mech_from_card
 from .loading import (
     BackgroundChannel,
     aperture_g2,
@@ -38,7 +39,8 @@ from .loading import (
     loading_probs,
     n_window_competitors,
 )
-from .spectral import epsilon, gamma_of_T
+from .qd_gf import PhononParams, ibm_transmission
+from .spectral import SpectralResult, epsilon, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +59,11 @@ class DotBlock:
     delta_xx: float = 3.5        # meV [A on InP/GaAsP]
     gamma_scale: float = 1.0     # multiplies the class Gamma(T) proxy [A]
     r_xx: float = 0.72           # Gamma_XX/Gamma_X [DR class]
+    lineshape: str = "lorentzian"  # T2 tier: "lorentzian" (legacy, bit-
+                                   # identical) | "ibm" (polaron ZPL+sidebands;
+                                   # the Lorentzian-optimism correction)
+    phonon: dict = field(default_factory=dict)  # qd_gf.PhononParams overrides
+                                   # (geometry l_xy_nm/l_z_nm, materials) [A/DR]
 
 
 @dataclass
@@ -90,6 +97,10 @@ class DriveBlock:
     C_dep_pF: float = 10.0       # pF; F9 depletion capacitance, informational
                                   # (drives granularity_N/island_radius_nm only
                                   # -- never wired into g2) [E]
+    mechanism: str = ""           # T1 drive-mechanism library: "" = legacy path
+                                  # (bit-identical); else a drive_mech name
+                                  # (poisson-rail/quiet-rail/pulsed/set-*/rti)
+    mech_params: dict = field(default_factory=dict)  # per-mechanism params [A]
 
 
 @dataclass
@@ -206,26 +217,60 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         w = None
         if d.filter.enabled:
             w = gam if d.filter.auto_w else d.filter.w
-        spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
+        if d.dot.lineshape == "ibm":
+            # T2 tier: sideband-aware transmissions. Same acceptance stack and
+            # delta conventions as spectral.epsilon; the XX line reuses the X
+            # exciton's PhononParams (single-form-factor approximation, [E] --
+            # the XX phonon coupling differs at the O(1)-factor level, a
+            # refinement that waits for data). ZPL widths carry the standing
+            # Gamma(T) model unchanged (see qd_gf.effective_gamma_zpl note).
+            pp = PhononParams(**d.dot.phonon)
+            t_x = float(ibm_transmission(dx, pp, Tj, gam, w_meV=w, kappa_meV=kappa))
+            t_xx = float(ibm_transmission(dx - d.dot.delta_xx, pp, Tj,
+                                          d.dot.r_xx * gam, w_meV=w, kappa_meV=kappa))
+            spec = SpectralResult(eps=t_xx / t_x, t_x=t_x, t_xx=t_xx)
+        else:
+            spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
         S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
         # PL mode: optical excitation, no injection-current background channel.
         inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
         B = rp["b0"] + rp["beta"] * (1.0 - S) + inj_bg
         G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
         rho = G * S / (G * S + B)
-        if d.drive.mu > 0:
-            if d.drive.F_p != 1.0:
+        # T1 mechanism library (opt-in): resolve the card's mechanism into the
+        # DriveInterface at THIS junction temperature (SET pricing is T-honest)
+        # and use its (mu, F_p, eta). mechanism == "" keeps the legacy fields.
+        mu_use, Fp_use, eta_use = d.drive.mu, d.drive.F_p, d.drive.eta_capture
+        if d.drive.mechanism:
+            iface = mech_from_card(d.drive.mechanism, d.drive.mech_params,
+                                   T_K=Tj, I_uA=d.drive.I_uA,
+                                   mu=d.drive.mu, eta=d.drive.eta_capture)
+            mu_use, Fp_use, eta_use = iface.mu, iface.F_p, iface.eta_capture
+        if mu_use > 0:
+            if Fp_use != 1.0:
                 # F8b thinning: effective pump Fano factor AT the dot, after
                 # dot-capture; F8: moment-matched (mu, Fano) cap-2 loading.
-                F_eff = f8b_thin_fano(d.drive.eta_capture, d.drive.F_p)
-                g2_dot = float(f8_g2(d.drive.mu, F_eff, spec.eps))
+                F_eff = f8b_thin_fano(eta_use, Fp_use)
+                if d.drive.mechanism:
+                    # mechanism path: out-of-domain (mu, F) at this T is a
+                    # gap, not a crash (a mechanism may drift out of the
+                    # cap-2 domain as Tj moves along the curve)
+                    try:
+                        g2_dot = float(f8_g2(mu_use, F_eff, spec.eps))
+                    except ValueError:
+                        g2_dot = np.nan
+                else:
+                    # legacy F_p path: keep v1.1 semantics EXACTLY -- domain
+                    # violations raise; the envelope legs (design_meta) do
+                    # their own gap handling and verify4 asserts the raise
+                    g2_dot = float(f8_g2(mu_use, F_eff, spec.eps))
             else:
                 # F_p == 1.0 (default): keep the original f1b_g2 path EXACTLY
                 # -- f8_g2(mu, 1, eps) is not bit-identical to f1b_g2(mu, eps)
                 # at finite mu (different, equally valid cap-2 conventions;
                 # see loading.py module docstring), so every pre-v1.1 result
                 # stays reproducible unless F_p is explicitly set != 1.0.
-                g2_dot = float(f1b_g2(d.drive.mu, spec.eps))
+                g2_dot = float(f1b_g2(mu_use, spec.eps))
         else:
             g2_dot = spec.eps
         return dict(Tj=Tj, gam=gam, eps=spec.eps, rho=rho,
