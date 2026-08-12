@@ -1,0 +1,35 @@
+meta:
+  name: chatzarakis2023
+  role: "V1 device-tier validation card (work order v3)"
+  device: "(211)B piezo-engineered InAs/GaAs cavity dot, red/NIR, optically pumped (PL)"
+  source: "Chatzarakis et al., PRApplied 20, 034011 (2023); windows/values from cards/chatzarakis.yaml [V/DR]; Gamma/retention/background from the V-a joint fit (out/phase0/fit_params.json [DR])"
+  note: >
+    Device-tier recomposition of the V-a configuration: fitted Gamma(T) form
+    (the class proxy IS this fit, gamma_scale = 1), fitted retention and
+    background, published per-point slit windows (w, dx), delta_xx = 5.9
+    [DR], no cavity block (the slit windows carry the published acceptance,
+    as in the V-a fit). PL mode: no injection background or broadening.
+    Lorentzian pass = a wiring check (must recompose the validated fit);
+    IBM pass = the new content (sideband correction at the fitted params,
+    bounded <= +0.026 eps by the standing V-a gate).
+
+device:
+  lineshape: both        # runner does lorentzian AND ibm passes
+  geometry:              # [A] arsenide lens-dot class proxy (larger than InP dots)
+    l_xy_nm: 4.5
+    l_z_nm: 2.0
+  phonon_alpha_ps2: 0.027   # [DR] Ramsay InGaAs/GaAs class
+  delta_xx: 5.9             # [DR] card
+  r_xx: 0.72                # [DR] V-a fit
+  mu: 0.33                  # [DR] V-a fit
+
+data:
+  g2_vs_T:
+    tag: V
+    points:   # published values with per-point windows (w, dx) [V/DR]
+      - {T: 78.0,  g2: 0.02, err: 0.01, w: 1.40, dx: -0.37, bound: upper}
+      - {T: 120.0, g2: 0.10, err: 0.01, w: 3.19, dx: -0.70}
+      - {T: 150.0, g2: 0.15, err: 0.01, w: 4.12, dx: -1.27}
+      - {T: 170.0, g2: 0.18, err: 0.02, w: 4.74, dx: -1.65}
+      - {T: 210.0, g2: 0.28, err: 0.03, w: 6.69, dx: -2.82}
+      - {T: 230.0, g2: 0.36, err: 0.03, w: 7.66, dx: -3.41}

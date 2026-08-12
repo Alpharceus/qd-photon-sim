@@ -1,0 +1,48 @@
+meta:
+  name: laferriere2023
+  role: "V1 device-tier validation card (work order v3) -- RT-regime anchor"
+  device: "InAsP dot-in-a-rod in InP nanowire photonic waveguide, O-band, position-controlled (NRC)"
+  source: "Laferriere et al., Nano Lett. 23, 962 (2023); local PDF re-read 2026-08-12 (pages 1-6); builds on cards/laferriere.yaml (V-b, full-text read 2026-07-22)"
+  note: >
+    Device-tier reconstruction for V1. Optical above-band pumping (670 nm),
+    pulsed g2 with the authors' per-T bandpass; background counts fitted and
+    removed by the authors -> rho ~ 1 is reconstructed by zeroing the model's
+    background channels. The adjacent transition is HIGHER energy than X
+    (blue side; sign irrelevant here because the acceptance is a symmetric
+    slit centered on X -- no cavity). The 4 K point (0.021) is re-excitation
+    dominated (their Fig. 2d) and excluded from the spectral comparison, as
+    in V-b. Unpublished parameters carry ranges [E]; the model output is an
+    ENVELOPE over the 16 range corners per temperature, not a point.
+
+device:
+  lineshape: ibm
+  geometry:
+    l_xy_nm: 3.6      # [A] dot D_c ~ 20 nm, thickness ~3 nm -> class-proxy mapping
+    l_z_nm: 1.5       # [A]
+  delta_xx:
+    mid: 3.5
+    range: [1.5, 5.5]   # [E] unpublished; InAsP nanowire class; V-b sweep range
+  r_xx: 0.72            # [DR class]
+  mu:
+    mid_77: 0.65
+    range_77: [0.3, 1.0]     # [E] 0.5 Psat nominal
+    mid_high: 1.6
+    range_high: [0.25, 3.0]  # [E] 0.25 Psat nominal but re-excitation boosts loading
+  gamma_meV:              # [E] unpublished; V-b sweep ranges, mid used as center
+    "77":  {mid: 0.85, range: [0.2, 1.5]}
+    "220": {mid: 3.25, range: [1.5, 5.0]}
+    "300": {mid: 6.5,  range: [3.0, 10.0]}
+  w_meV:                  # filter bandpass converted at the emission wavelength
+    "77":  {mid: 1.75, range: [0.5, 3.0]}    # [E] unpublished at 77 K
+    "220": {mid: 12.5, range: [8.0, 17.0]}   # [DR] between 12 nm@175K and 25 nm anchors
+    "300": {mid: 16.0, range: [14.0, 18.0]}  # [V] 25 nm at ~1390 nm; small conv. slack
+
+data:
+  g2_vs_T:
+    tag: V
+    points:
+      - {T: 77.0,  g2: 0.11, err: 0.03}
+      - {T: 220.0, g2: 0.34, err: 0.05}
+      - {T: 300.0, g2: 0.57, err: 0.05}
+    excluded:
+      - {T: 4.0, g2: 0.021, mechanism: "re-excitation (their Fig. 2d); WP-M2' tier, not spectral"}
