@@ -75,6 +75,33 @@ def transmission(delta, gamma, w=None, kappa=None):
     return 1.0  # no filter: unit-area line fully collected
 
 
+def transmission2(delta_w, delta_c, gamma, w=None, kappa=None):
+    """Transmission of a Lorentzian line through a slit and a cavity whose
+    CENTERS DIFFER (post-tier work order T-1: the F6 slit-held mode -- an
+    external slit fixed at the design placement while the physical cavity
+    mode walks with dn/dT).
+
+    delta_w: line offset from the SLIT center; delta_c: line offset from the
+    CAVITY center. With delta_w == delta_c this reduces exactly to
+    transmission() (verified bit-level in verify_fsim); slit-only and
+    cavity-only cases dispatch to the same closed forms."""
+    if w is not None and kappa is not None:
+        if delta_w == delta_c:
+            return combined_transmission(delta_w, gamma, w, kappa)
+        off = delta_w - delta_c   # cavity center relative to slit center
+        val, _ = quad(
+            lambda x: lorentzian(x, delta_w, gamma)
+            * (kappa / 2.0) ** 2 / ((x - off) ** 2 + (kappa / 2.0) ** 2),
+            -w / 2.0, w / 2.0, limit=200,
+        )
+        return val
+    if w is not None:
+        return tophat_transmission(delta_w, gamma, w)
+    if kappa is not None:
+        return cavity_transmission(delta_c, gamma, kappa)
+    return 1.0
+
+
 # ------------------------------------------------------------------------------- epsilon
 
 @dataclass
@@ -94,6 +121,16 @@ def epsilon(delta_xx, gamma_x, gamma_xx, w=None, kappa=None, dx=0.0) -> Spectral
     """
     t_x = transmission(dx, gamma_x, w, kappa)
     t_xx = transmission(dx - delta_xx, gamma_xx, w, kappa)
+    return SpectralResult(eps=t_xx / t_x, t_x=t_x, t_xx=t_xx)
+
+
+def epsilon2(delta_xx, gamma_x, gamma_xx, w=None, kappa=None, dx_w=0.0,
+             dx_c=0.0) -> SpectralResult:
+    """F1 eps with independent slit and cavity centers (slit-held tracking).
+    dx_w: X offset from the slit center; dx_c: X offset from the cavity mode.
+    dx_w == dx_c reduces exactly to epsilon()."""
+    t_x = transmission2(dx_w, dx_c, gamma_x, w, kappa)
+    t_xx = transmission2(dx_w - delta_xx, dx_c - delta_xx, gamma_xx, w, kappa)
     return SpectralResult(eps=t_xx / t_x, t_x=t_x, t_xx=t_xx)
 
 

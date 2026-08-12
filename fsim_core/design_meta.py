@@ -62,6 +62,10 @@ META = {
                    "source": "qd_gf.PhononParams overrides (l_xy_nm/l_z_nm "
                              "geometry [A, null until AFM/TEM #8]; InP-class "
                              "materials [DR])"},
+    "filter.track": {"unit": "", "tag": "E", "choices": ["mode", "hold"],
+                     "source": "F6 slit tracking: 'mode' follows the cavity "
+                               "(legacy); 'hold' pins the slit on X below "
+                               "T_target (work order T-1)"},
     "drive.mechanism": {"unit": "", "tag": "A", "choices":
                         ["", "poisson-rail", "quiet-rail", "pulsed",
                          "set-metallic", "set-gated", "set-turnstile", "rti"],

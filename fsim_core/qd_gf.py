@@ -88,6 +88,7 @@ from fsim_core.spectral import (
     gamma_of_T,
     lorentzian,
     tophat_transmission,
+    transmission2,
 )
 
 HBAR = 0.6582119569       # meV*ps
@@ -327,7 +328,8 @@ def ibm_spectrum(omega_grid_meV, params: PhononParams, T: float,
 
 
 def ibm_transmission(delta_meV, params: PhononParams, T: float,
-                     gamma_zpl_meV: float, w_meV=None, kappa_meV=None):
+                     gamma_zpl_meV: float, w_meV=None, kappa_meV=None,
+                     delta_c_meV=None):
     """Fraction of the IBM line transmitted through the filter stack --
     the sideband-aware replacement for the Lorentzian t_X/t_XX in the F1
     eps path.
@@ -345,28 +347,32 @@ def ibm_transmission(delta_meV, params: PhononParams, T: float,
     the ZPL, so narrow filters lose it (brightness) while wide/offset filters
     admit the other line's sideband (purity) -- the 'Lorentzian optimism'
     correction. Scalar or array delta_meV.
+
+    delta_c_meV (optional, slit-held tracking, work order T-1): the line's
+    offset from the CAVITY center when it differs from the slit offset
+    delta_meV. None (default) keeps the shared-center behavior exactly.
     """
     scalar = np.ndim(delta_meV) == 0
     deltas = np.atleast_1d(np.asarray(delta_meV, dtype=float))
+    if delta_c_meV is None:
+        deltas_c = deltas
+    else:
+        deltas_c = np.atleast_1d(np.asarray(delta_c_meV, dtype=float))
     if w_meV is None and kappa_meV is None:
         out = np.ones_like(deltas)
         return float(out[0]) if scalar else out
     omega, s_sb, z = _spectrum_parts(params, float(T), float(gamma_zpl_meV))
     sb_area = float(np.trapezoid(s_sb, omega))
     out = np.empty_like(deltas)
-    for i, d in enumerate(deltas):
-        if w_meV is not None and kappa_meV is not None:
-            t_zpl = combined_transmission(d, gamma_zpl_meV, w_meV, kappa_meV)
-        elif w_meV is not None:
-            t_zpl = tophat_transmission(d, gamma_zpl_meV, w_meV)
-        else:
-            t_zpl = cavity_transmission(d, gamma_zpl_meV, kappa_meV)
-        x = omega + d  # photon energy relative to the filter center
+    for i, (d, dc) in enumerate(zip(deltas, deltas_c)):
+        t_zpl = transmission2(d, dc, gamma_zpl_meV, w_meV, kappa_meV)
+        x = omega + d       # photon energy relative to the SLIT center
+        xc = omega + dc     # ... relative to the CAVITY center
         acc = np.ones_like(x)
         if w_meV is not None:
             acc *= np.abs(x) <= w_meV / 2.0
         if kappa_meV is not None:
-            acc *= (kappa_meV / 2.0) ** 2 / (x**2 + (kappa_meV / 2.0) ** 2)
+            acc *= (kappa_meV / 2.0) ** 2 / (xc**2 + (kappa_meV / 2.0) ** 2)
         t_sb = float(np.trapezoid(s_sb * acc, omega))
         out[i] = (z * t_zpl + t_sb) / (z + sb_area)
     return float(out[0]) if scalar else out

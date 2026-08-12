@@ -342,6 +342,60 @@ def _():
     assert es > eb, (es, eb)
 
 
+@check("slit-held (T-1): transmission2 with coincident centers is bit-"
+       "identical to the shared-center closed forms; the offset case agrees "
+       "with an independent trapezoid second method to 1e-6")
+def _():
+    from fsim_core.spectral import (combined_transmission, lorentzian,
+                                    transmission2)
+    for d in (-2.0, 0.0, 1.3):
+        assert transmission2(d, d, 2.0, w=3.0, kappa=1.5) == \
+            combined_transmission(d, 2.0, 3.0, 1.5)
+        assert transmission2(d, 99.0, 2.0, w=3.0) == \
+            spectral.tophat_transmission(d, 2.0, 3.0)
+        assert transmission2(99.0, d, 2.0, kappa=1.5) == \
+            spectral.cavity_transmission(d, 2.0, 1.5)
+    # offset case vs independent dense trapezoid
+    dw, dc, gam, w, kap = 0.5, 7.0, 2.0, 3.0, 1.5
+    x = np.linspace(-w / 2, w / 2, 400_001)
+    ref = np.trapezoid(lorentzian(x, dw, gam) * (kap / 2) ** 2
+                       / ((x - (dw - dc)) ** 2 + (kap / 2) ** 2), x)
+    got = transmission2(dw, dc, gam, w=w, kappa=kap)
+    assert abs(got - ref) < 1e-6, (got, ref)
+
+
+@check("slit-held (T-1) device wiring: track='hold' at T_hs = T_track is "
+       "bit-identical to legacy 'mode' (centers coincide at the design "
+       "point); at 77 K under a 120 K-tracked cavity, 'hold' kills the F6 "
+       "XX-inversion (eps < 1) that 'mode' shows (eps > 1)")
+def _():
+    from copy import deepcopy
+    from fsim_core.device import DeviceDesign, evaluate
+    base = DeviceDesign()
+    base.cavity.enabled = True
+    base.cavity.kappa = 1.65
+    base.cavity.T_track = 120.0
+    base.cavity.dEdT_cav = -0.1311
+    at_target = deepcopy(base)
+    at_target.thermal.T_hs = 120.0
+    at_target.drive.I_uA = 1e-9   # kill junction heating: centers coincide at
+    at_target.drive.b_e = 0.0     # T_j = T_track, not T_hs = T_track
+    ref = evaluate(at_target, T_grid=[120.0])["scalars"]
+    held = deepcopy(at_target)
+    held.filter.track = "hold"
+    same = evaluate(held, T_grid=[120.0])["scalars"]
+    assert abs(same["eps_op"] - ref["eps_op"]) < 1e-12
+    assert abs(same["t_x_op"] - ref["t_x_op"]) < 1e-12
+    cold_mode = deepcopy(base)
+    cold_mode.thermal.T_hs = 77.0
+    cold_held = deepcopy(cold_mode)
+    cold_held.filter.track = "hold"
+    e_mode = evaluate(cold_mode, T_grid=[77.0])["scalars"]["eps_op"]
+    e_held = evaluate(cold_held, T_grid=[77.0])["scalars"]["eps_op"]
+    assert e_mode > 1.0, e_mode
+    assert e_held < 1.0, e_held
+
+
 @check("V-a GATE (T2): the six Chatzarakis points re-evaluated with the IBM "
        "lineshape at the FITTED Lorentzian parameters shift eps by < 0.03 "
        "per point (inside the V-a acceptance band) -- the validated fit "

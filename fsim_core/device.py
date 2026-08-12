@@ -40,7 +40,7 @@ from .loading import (
     n_window_competitors,
 )
 from .qd_gf import PhononParams, ibm_transmission
-from .spectral import SpectralResult, epsilon, gamma_of_T
+from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +133,12 @@ class FilterBlock:
     auto_w: bool = True          # w = Gamma(T_j) operating convention [A]
     w: float = 2.0               # meV, used when auto_w = False
     dx: float = 0.0              # X offset from window center (meV)
+    track: str = "mode"          # "mode": slit follows the cavity mode (legacy,
+                                 #   bit-identical) | "hold": F6 slit-held --
+                                 #   slit centered ON X at each operating T
+                                 #   (lab monochromator convention) while the
+                                 #   cavity mode walks per dn/dT. The two
+                                 #   coincide at T_track by construction.
 
 
 @dataclass
@@ -217,6 +223,12 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         w = None
         if d.filter.enabled:
             w = gam if d.filter.auto_w else d.filter.w
+        # Slit-held tracking (T-1): slit centered on X (dx_w = user offset
+        # only), cavity at the physical mode walk (dx stays the tracking
+        # detuning). Under "mode" (legacy) both centers share dx exactly.
+        held = (d.filter.track == "hold" and d.filter.enabled
+                and d.cavity.enabled and not sin_mode)
+        dx_w = d.filter.dx if held else dx
         if d.dot.lineshape == "ibm":
             # T2 tier: sideband-aware transmissions. Same acceptance stack and
             # delta conventions as spectral.epsilon; the XX line reuses the X
@@ -225,10 +237,18 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # refinement that waits for data). ZPL widths carry the standing
             # Gamma(T) model unchanged (see qd_gf.effective_gamma_zpl note).
             pp = PhononParams(**d.dot.phonon)
-            t_x = float(ibm_transmission(dx, pp, Tj, gam, w_meV=w, kappa_meV=kappa))
-            t_xx = float(ibm_transmission(dx - d.dot.delta_xx, pp, Tj,
-                                          d.dot.r_xx * gam, w_meV=w, kappa_meV=kappa))
+            t_x = float(ibm_transmission(dx_w, pp, Tj, gam, w_meV=w,
+                                         kappa_meV=kappa,
+                                         delta_c_meV=dx if held else None))
+            t_xx = float(ibm_transmission(dx_w - d.dot.delta_xx, pp, Tj,
+                                          d.dot.r_xx * gam, w_meV=w,
+                                          kappa_meV=kappa,
+                                          delta_c_meV=(dx - d.dot.delta_xx)
+                                          if held else None))
             spec = SpectralResult(eps=t_xx / t_x, t_x=t_x, t_xx=t_xx)
+        elif held:
+            spec = epsilon2(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w,
+                            kappa=kappa, dx_w=dx_w, dx_c=dx)
         else:
             spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
         S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
