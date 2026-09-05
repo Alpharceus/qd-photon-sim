@@ -456,3 +456,172 @@ def spec_sheet(T_op, target, delta, mu=0.5, b_e_range=(1e-3, 0.3), gamma_scale=1
         "feasible": feasible, "verdict": verdict,
         "tag": "[A]",
     }
+
+
+# ------------------------------------------------- device-resolved assembler (opt-in)
+
+def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
+                           t_x_floor=0.3, F_eff_target=3.0, penalty_budget=0.05,
+                           dT_max=3.0) -> dict:
+    """Device-resolved counterpart of spec_sheet(): answers the SAME inverse
+    question (given a target g2(0), what must the background/gain/cavity
+    DELIVER?) using ONE device's own resolved physics (fsim_core.device.
+    evaluate) instead of the arsenide class_proxy_params() fit. Opt-in and
+    strictly additive -- spec_sheet() and every existing caller (scripts/
+    run_spec.py, out/spec) are untouched, and nothing else in this module
+    calls this function.
+
+    Only "metric='g2_pulsed'" (the headline pulsed-intrinsic g2(0), docs/
+    rt_edge_contract.md "Acceptance gates") is inverted. A CW metric
+    ("g2_cw0"/"g2_cw0_raw"), any other unknown metric string, or a design
+    requesting CW operation (design.drive.cw=True -- the exact field
+    device.evaluate() itself gates its whole CW branch on) is REJECTED
+    outright rather than approximated with the pulsed formulas: CW and
+    pulsed g2 are diagnostics on different rate equations (cw_g2.py vs
+    loading.f1b_g2/f8_g2), not interchangeable.
+
+    BACKGROUND NORMALIZATION (docs/rt_edge_contract.md "Units and
+    normalization"), applied exactly ONCE, at the B_total_raw/b_e_bud_norm
+    lines below: the contract's b_e is background COUNTS PER COLLECTED X
+    PHOTON, whereas b_e_budget()/G_required()/rho_required() (reused
+    UNCHANGED from spec_sheet's own inversion) work in RAW units -- the same
+    units as the retention S, in the rho = S/(S+B) sense. The evaluator's
+    own "collected-X" scale factor is S_resolved: device.evaluate()'s own
+    rho = G*S/(G*S+B) uses exactly that G*S term to turn a per-collected-X
+    ratio into a raw background, and G=1 always in this tier (emission.
+    type='edge' and cavity.enabled are mutually exclusive in device.py, so
+    an edge device never carries a resonant-cavity gain). rho itself is
+    taken directly from the evaluator (rho_op) -- never re-derived via the
+    rho=1/(1+b_e) shortcut, which would silently drop any biexciton leakage
+    the evaluator already folded into its own signal/background accounting.
+
+    Returns a flat dict reusing spec_sheet's key names wherever the meaning
+    is identical (T_op, target_g2, delta_xx, mu, gamma_op, gamma_xx_op,
+    S_op, eps_budget, t_x_floor, rho_required, G_required, kappa_max,
+    w_floor, kappa_min, v_tilde_required, F_eff_target, density_limit_cm2,
+    penalty_budget, mesa_min_um, dT_max, feasible, verdict, tag), plus
+    T_j_used, b_e_resolved, b_e_budget (raw), b_e_budget_norm (contract
+    units), b_e_units, metric, source="device-resolved", and a "tags" dict
+    giving each reported value its own provenance: a value inherited from
+    an evaluator input keeps THAT input's [A]/[E] tag (via the evaluator's
+    own scalars["provenance"]); every newly derived requirement is "[A]"
+    (this module's standing convention -- see the module docstring).
+    """
+    if metric != "g2_pulsed":
+        raise ValueError(
+            f"spec_sheet_from_device: metric={metric!r} is not supported -- only "
+            "the pulsed-intrinsic 'g2_pulsed' inversion is implemented; CW metrics "
+            "('g2_cw0'/'g2_cw0_raw') are diagnostics on a different rate equation "
+            "and are never approximated with the pulsed formulas")
+    if design.drive.cw:
+        # design.drive.cw is the exact field device.evaluate() gates its CW
+        # branch on (fsim_core/device.py: "if d.drive.cw and ..."); guarding
+        # on it here, rather than inferring CW-ness from some other design
+        # field, matches the evaluator's own notion of "CW operation".
+        raise ValueError(
+            "spec_sheet_from_device: design.drive.cw=True requests CW operation, "
+            "which this adapter cannot invert (pulsed-only)")
+
+    from .device import _stack, evaluate  # local import: avoids spec<->device cycle
+
+    T_hs = design.thermal.T_hs if T_op is None else T_op
+    scalars = evaluate(design, T_grid=[T_hs])["scalars"]
+
+    reasons = scalars.get("invalid_reasons") or []
+    if reasons:
+        raise ValueError(
+            "spec_sheet_from_device: evaluator marked this design's operating "
+            "point invalid: " + "; ".join(reasons))
+
+    T_j, gam, eps_op = scalars["T_j_op"], scalars["gamma_op"], scalars["eps_op"]
+    mu, S, rho_op = scalars["mu_resolved"], scalars["S_resolved"], scalars["rho_op"]
+    b_e_resolved = scalars["b_e_resolved"]
+
+    for name, value in (("T_j_op", T_j), ("gamma_op", gam),
+                        ("mu_resolved", mu), ("S_resolved", S)):
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError(f"spec_sheet_from_device: evaluator scalar {name!r} "
+                             f"is non-finite or non-positive ({value!r})")
+    if not np.isfinite(eps_op) or eps_op < 0:
+        raise ValueError(f"spec_sheet_from_device: evaluator scalar 'eps_op' is "
+                         f"invalid ({eps_op!r})")
+    if not np.isfinite(rho_op) or not (0.0 < rho_op <= 1.0):
+        raise ValueError(f"spec_sheet_from_device: evaluator scalar 'rho_op' is "
+                         f"invalid ({rho_op!r})")
+    if not np.isfinite(b_e_resolved) or b_e_resolved < 0.0:
+        raise ValueError(f"spec_sheet_from_device: evaluator scalar 'b_e_resolved' "
+                         f"is invalid ({b_e_resolved!r})")
+
+    prov = scalars.get("provenance", {}) or {}
+
+    def _tag(key):
+        return "[" + prov.get(key, {}).get("tag", "A") + "]"
+
+    delta = design.dot.delta_xx
+    gam_xx = design.dot.r_xx * gam  # Gamma_XX = r_xx * Gamma_X, the SAME ratio
+                                    # device.evaluate() itself applies to build
+                                    # eps_op -- not a re-fit of Gamma(T) or
+                                    # retention, just the design's own r_xx.
+
+    eps_bud = eps_budget(mu, target)
+    rho_req = rho_required(eps_op, mu, target)
+    g2dot = float(f1b_g2(mu, eps_op))
+
+    # ---- background normalization (see docstring); the ONE conversion point.
+    S_collect = S  # evaluator's own collected-X scale factor (G == 1 here)
+    B_total_raw = S_collect * (1.0 - rho_op) / rho_op       # total raw background
+    B0_raw = B_total_raw - S_collect * b_e_resolved          # baseline (injection backed out)
+    G_req = G_required(rho_req, S, B_total_raw)
+    b_e_bud_raw = b_e_budget(rho_req, S, B0_raw)
+    b_e_bud_norm = (b_e_bud_raw / S_collect) if np.isfinite(b_e_bud_raw) else b_e_bud_raw
+
+    kappa_max = kappa_ceiling(delta, gam, gam_xx, eps_bud)
+    w_floor = w_floor_of(t_x_floor, gam)
+    kappa_min = kappa_min_of(t_x_floor, gam)
+    v_tilde_req = v_tilde_required(F_eff_target, kappa_min, gam, design.cavity.E_X0)
+
+    stack_worst = _stack(design.thermal)
+    P = design.drive.duty * design.drive.I_uA * 1e-6 * design.drive.V
+    mesa_um = mesa_min(P, stack_worst, T_hs, dT_max=dT_max)
+
+    w_ap = gam  # legacy auto_w operating-window convention (same [A] assumption
+                # spec_sheet's own baseline route makes: w = Gamma(T))
+    dens_lim = density_limit(penalty_budget, design.aperture.diameter_um, w_ap,
+                             design.aperture.sigma_inh, design.aperture.comp_brightness)
+
+    feasible = bool(g2dot < target and np.isfinite(b_e_bud_raw) and b_e_bud_raw >= 0.0)
+    verdict = (
+        f"closes: b_e budget {b_e_bud_norm:.3g} (contract units) at rho>={rho_req:.4g}"
+        if feasible else
+        f"INFEASIBLE: device-resolved cascade g2={g2dot:.3g} vs target {target:.3g}, "
+        f"or background budget exhausted (b_e_budget={b_e_bud_raw:.3g} raw)")
+
+    return {
+        "T_op": T_hs, "T_j_used": T_j, "target_g2": target, "delta_xx": delta,
+        "mu": mu, "gamma_op": gam, "gamma_xx_op": gam_xx, "S_op": S,
+        "rho_op": rho_op, "eps_op": eps_op, "g2dot": g2dot,
+        "b_e_resolved": b_e_resolved,
+        "eps_budget": eps_bud, "t_x_floor": t_x_floor,
+        "rho_required": rho_req, "G_required": G_req,
+        "b_e_budget": b_e_bud_raw, "b_e_budget_norm": b_e_bud_norm,
+        "b_e_units": ("raw: same convention as retention S (rho = S/(S+B)); norm: "
+                     "background counts in the detection window per collected X "
+                     "photon (docs/rt_edge_contract.md b_e)"),
+        "kappa_max": kappa_max, "w_floor": w_floor, "kappa_min": kappa_min,
+        "v_tilde_required": v_tilde_req, "F_eff_target": F_eff_target,
+        "density_limit_cm2": dens_lim, "penalty_budget": penalty_budget,
+        "mesa_min_um": mesa_um, "dT_max": dT_max,
+        "metric": metric, "source": "device-resolved",
+        "feasible": feasible, "verdict": verdict, "tag": "[A]",
+        "tags": {
+            "T_j_used": "[A]", "mu": _tag("mu_resolved"),
+            "gamma_op": _tag("linewidth"), "gamma_xx_op": _tag("linewidth"),
+            "S_op": _tag("retention"), "rho_op": "[A]", "eps_op": _tag("linewidth"),
+            "b_e_resolved": _tag("b_e_resolved"),
+            "eps_budget": "[A]", "rho_required": "[A]", "G_required": "[A]",
+            "b_e_budget": "[A]", "b_e_budget_norm": "[A]",
+            "kappa_max": "[A]", "w_floor": "[A]", "kappa_min": "[A]",
+            "v_tilde_required": "[A]", "density_limit_cm2": "[A]",
+            "mesa_min_um": "[A]",
+        },
+    }

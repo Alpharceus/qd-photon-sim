@@ -58,6 +58,7 @@ the AlGaInP direct-indirect crossover, the classic InP/GaInP mismatch).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -586,17 +587,80 @@ def extra(label: str) -> dict:
                        f"{sorted(MATERIAL_EXTRA)}") from e
 
 
-def refractive_index(label: str, lambda_nm: float) -> float:
-    """n at the nearest tabulated wavelength (linear interpolation between
-    tabulated points; extrapolation refused)."""
+# [E] Composition-aware fallback for two alloy families whose MATERIAL_EXTRA
+# table only tabulates a few fixed x (cw-grid-and-algainp-index item 2): a
+# requested composition not directly in the table is built by LINEAR
+# interpolation in x, at the requested wavelength, between the nearest
+# tabulated compositions -- Adachi, "Optical Constants of Crystalline and
+# Amorphous Semiconductors"; Kato et al., J. Appl. Phys. 75, 3335 (1994) for
+# the AlGaInP dispersion trend; Aspnes et al., JAP 60, 754 (1986) for AlGaAs.
+# Anchors are (x, MATERIAL_EXTRA label) pairs sorted by x; the family is
+# lattice-matched (Al_x Ga_1-x)_0.51 In_0.49 P / Al_x Ga_1-x As so a single x
+# fully determines the composition. Below the direct gap n(x) is monotone
+# (checked in verify_materials): interpolating between real, monotonically
+# ordered tabulated points preserves that.
+_ALGAINP_RE = re.compile(r"^\(Al(?P<xal>\d*\.?\d+)Ga\d*\.?\d+\)(?P<y>\d*\.?\d+)In\d*\.?\d+P$")
+_ALGAAS_RE = re.compile(r"^Al(?P<xal>\d*\.?\d+)Ga\d*\.?\d+As$")
+_ALGAINP_ANCHORS = ((0.0, "Ga0.51In0.49P"), (0.5, "(Al0.50Ga0.50)0.51In0.49P"), (1.0, "Al0.52In0.48P"))
+_ALGAAS_ANCHORS = ((0.0, "GaAs"), (0.45, "Al0.45Ga0.55As"), (1.0, "AlAs"))
+
+
+def _lookup_n(label: str, lambda_nm: float, extrap_tol_nm: float = 30.0) -> float:
+    """Core single-composition wavelength lookup (linear interpolation
+    between tabulated points; extrapolation refused beyond extrap_tol_nm of
+    a lone tabulated point)."""
     tab = extra(label)["n"]
     lams = np.array(sorted(tab))
     ns = np.array([tab[l] for l in lams])
     if lambda_nm < lams.min() - 1e-9 or lambda_nm > lams.max() + 1e-9:
-        if len(lams) == 1 and abs(lambda_nm - lams[0]) < 30:
+        if len(lams) == 1 and abs(lambda_nm - lams[0]) < extrap_tol_nm:
             return float(ns[0])
         raise ValueError(f"{label}: n tabulated only at {list(lams)} nm; asked {lambda_nm}")
     return float(np.interp(lambda_nm, lams, ns))
+
+
+def _interp_n_by_x(x: float, anchors: tuple, lambda_nm: float) -> float:
+    """[E] n(x) by linear interpolation between the two tabulated anchors
+    bracketing x (clamped at the ends). Anchor lookups use a widened
+    single-point extrapolation tolerance (150 nm) so a family stays usable
+    across the 600-800 nm red-emission window even where an anchor
+    composition has only one measured wavelength (e.g. Al0.45Ga0.55As)."""
+    if not 0.0 <= x <= 1.0:
+        raise ValueError(f"composition x must be in [0,1], got {x}")
+    xs = [a[0] for a in anchors]
+    i = 0
+    while i < len(xs) - 2 and x > xs[i + 1]:
+        i += 1
+    (x_lo, lab_lo), (x_hi, lab_hi) = anchors[i], anchors[i + 1]
+    n_lo = _lookup_n(lab_lo, lambda_nm, extrap_tol_nm=150.0)
+    n_hi = _lookup_n(lab_hi, lambda_nm, extrap_tol_nm=150.0)
+    t = (x - x_lo) / (x_hi - x_lo)
+    return float(n_lo + t * (n_hi - n_lo))
+
+
+def refractive_index(label: str, lambda_nm: float) -> float:
+    """n at the nearest tabulated wavelength (linear interpolation between
+    tabulated points; extrapolation refused).
+
+    `label` may also be a Material (e.g. the object AlGaInP(x) or AlGaAs(x)
+    returns) -- its `.label` is used. For a composition not directly in
+    MATERIAL_EXTRA, labels of the form "(Al<x>Ga<1-x>)0.51In0.49P" or
+    "Al<x>Ga<1-x>As" fall back to [E] linear interpolation in x between the
+    nearest tabulated compositions of that family (see _interp_n_by_x)."""
+    if not isinstance(label, str):
+        label = label.label
+    if label not in MATERIAL_EXTRA:
+        m = _ALGAINP_RE.match(label)
+        if m:
+            y = float(m.group("y"))
+            if abs(y - 0.51) > 0.02:
+                raise ValueError(f"{label}: composition interpolation only covers the "
+                                 "y=0.51 lattice-matched (AlxGa1-x)0.51In0.49P family")
+            return _interp_n_by_x(float(m.group("xal")), _ALGAINP_ANCHORS, lambda_nm)
+        m = _ALGAAS_RE.match(label)
+        if m:
+            return _interp_n_by_x(float(m.group("xal")), _ALGAAS_ANCHORS, lambda_nm)
+    return _lookup_n(label, lambda_nm)
 
 
 def thermal_k(label: str, T: float = 300.0) -> float:

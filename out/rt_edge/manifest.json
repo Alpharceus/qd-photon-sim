@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "generated_utc": "2026-09-05T20:24:08.189904+00:00",
+  "quick": false,
+  "grid_complete": true,
+  "grid": {
+    "dot.delta_xx": [
+      4.0,
+      5.5,
+      7.0
+    ],
+    "dot.gamma300": [
+      6.0,
+      13.0,
+      20.0
+    ],
+    "irf_ps": [
+      50.0,
+      125.0,
+      200.0
+    ]
+  },
+  "range_bounds": {
+    "dot.delta_xx": [
+      4.0,
+      7.0,
+      "meV"
+    ],
+    "dot.gamma300": [
+      6.0,
+      20.0,
+      "meV"
+    ],
+    "irf_ps": [
+      50.0,
+      200.0,
+      "ps"
+    ]
+  },
+  "pulse_assumption": {
+    "pulse_width_ns": 0.1,
+    "rep_rate_hz": 80000000.0,
+    "tag": "A",
+    "note": "no published single-dot pulsed-drive scheme exists at this design's pA-nA current scale; 100 ps / 80 MHz is the fast-gain-switched/mode-locked class window (cf. scripts/run_rt_campaign.py T-5), used only for drive.duty/diode.tau_pulse_ns and the reported collected_flux_s column"
+  },
+  "cards": [
+    {
+      "id": "edge-inp-gaasp-design",
+      "class": "primary",
+      "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gaasp-design.yaml",
+      "sha256": "484adedade9ac5265443fa7d56cea78efbf5f0004a33bfce33bf222fe7eb4bc2"
+    },
+    {
+      "id": "edge-inp-gainp-design",
+      "class": "fallback",
+      "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gainp-design.yaml",
+      "sha256": "1646b6a9c0374ce0c6757828058811c0aebfa39663432579d4ec5ae02b1abfa7"
+    }
+  ],
+  "runtime_versions": {
+    "python": "3.12.10",
+    "numpy": "2.5.0",
+    "scipy": "1.18.1",
+    "yaml": "6.0.3"
+  },
+  "policy": {
+    "g2_threshold": 0.5,
+    "pass_requires": [
+      "grid_complete",
+      "evidence_complete",
+      "hallucination_tests_passed",
+      "at least one same-row eligible corner with pulsed g2<0.5, CW intrinsic g2<0.5 and CW IRF-convolved g2<0.5"
+    ],
+    "coverage_denominator": "every scheduled row (invalid rows count as nonpassing)"
+  },
+  "output_schema": {
+    "sweep.csv": [
+      "card_id",
+      "card_class",
+      "config_id",
+      "delta_xx_meV",
+      "delta_xx_tag",
+      "gamma300_meV",
+      "gamma300_tag",
+      "irf_ps",
+      "irf_tag",
+      "T_hs_K",
+      "Tj_pulsed_K",
+      "Tj_cw_K",
+      "I_uA",
+      "V_j_pulsed_V",
+      "V_j_cw_V",
+      "mu_pulsed",
+      "eta_inj_pulsed",
+      "eta_inj_cw",
+      "S_retention_pulsed",
+      "S_retention_cw",
+      "b_e_window_pulsed",
+      "b_e_window_cw",
+      "t_x_pulsed",
+      "eps_pulsed",
+      "t_x_cw",
+      "eps_cw",
+      "edge_beta",
+      "edge_eta_total",
+      "collected_flux_pulsed_s",
+      "collected_flux_cw_s",
+      "g2_pulsed",
+      "g2_cw0",
+      "g2_cw0_raw",
+      "eligible_pulsed",
+      "eligible_cw",
+      "eligible_row",
+      "combined_pass",
+      "invalid_reasons_pulsed",
+      "invalid_reasons_cw",
+      "assumptions",
+      "pulse_width_ns",
+      "rep_rate_hz",
+      "duty_pulsed"
+    ]
+  },
+  "stats": {
+    "n_total": 54,
+    "n_eligible": 54,
+    "eligible_coverage": 1.0,
+    "secondary_coverage": 0.0,
+    "combined_coverage": 0.0,
+    "g2_pulsed_min": 0.3647514271810818,
+    "g2_pulsed_median": 0.7730452647071653,
+    "n_combined_pass": 0
+  },
+  "per_card_stats": {
+    "edge-inp-gaasp-design": {
+      "card_class": "primary",
+      "n_rows": 27,
+      "n_eligible": 27,
+      "g2_pulsed_min": 0.41172916120843794,
+      "g2_pulsed_median": 0.85545528854355,
+      "g2_cw0_min": 0.40257353134156004,
+      "g2_cw0_median": 0.9443003414550146,
+      "g2_cw0_raw_min": 0.978438853822235,
+      "g2_cw0_raw_median": 0.9991919627506769,
+      "n_favorable": 0
+    },
+    "edge-inp-gainp-design": {
+      "card_class": "fallback",
+      "n_rows": 27,
+      "n_eligible": 27,
+      "g2_pulsed_min": 0.3647514271810818,
+      "g2_pulsed_median": 0.7325311171940395,
+      "g2_cw0_min": 0.3412571098238779,
+      "g2_cw0_median": 0.9050126053737303,
+      "g2_cw0_raw_min": 0.8906903197695182,
+      "g2_cw0_raw_median": 0.9925940221185935,
+      "n_favorable": 0
+    }
+  },
+  "verdict": {
+    "pass": false,
+    "fail_reasons": [
+      "evidence_incomplete",
+      "no_favorable_corner_metrics"
+    ],
+    "g2_min": 0.3647514271810818,
+    "g2_median": 0.7730452647071653,
+    "median_pass": false,
+    "coverage": 0.0,
+    "eligible_n": 54,
+    "eligible_total": 54,
+    "evidence_complete": false,
+    "hallucination_ok": true,
+    "conditional": false,
+    "assumptions_used": [],
+    "fallback_only": false,
+    "note": ""
+  },
+  "evidence": {
+    "evidence_complete": false,
+    "source_ledger_sha256": "4f8f1e63a85ce64a29e6648968eb424a52007903c07c17955e7bae952886896a",
+    "evaluator_input_hashes": {
+      "verify/data/rt_edge_anchors.yaml": "4f8f1e63a85ce64a29e6648968eb424a52007903c07c17955e7bae952886896a",
+      "cards/edge-inp-gaasp-design.yaml": "484adedade9ac5265443fa7d56cea78efbf5f0004a33bfce33bf222fe7eb4bc2",
+      "cards/edge-inp-gainp-design.yaml": "1646b6a9c0374ce0c6757828058811c0aebfa39663432579d4ec5ae02b1abfa7"
+    },
+    "missing_evidence": [
+      {
+        "claim": "reischle2008_g2_80K",
+        "reason": "only 0 distinct verified primary source(s), need 2",
+        "anchors": [
+          "reischle08-g2-80k",
+          "reischle08-g2-80k-independent-gap"
+        ]
+      },
+      {
+        "claim": "hkust_inp_gaasp_wavelength",
+        "reason": "only 0 distinct verified primary source(s), need 2",
+        "anchors": [
+          "gu25-hkust-wavelength",
+          "hkust22-wavelength-independent-gap",
+          "luo22-hkust-wavelength-si"
+        ]
+      }
+    ]
+  },
+  "hallucination_self_test": {
+    "hallucination_tests_passed": true
+  },
+  "runtime_seconds": 46.826473236083984
+}

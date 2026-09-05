@@ -13,6 +13,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fsim_core import materials as M  # noqa: E402
@@ -141,6 +143,33 @@ bool_check("feasibility report flags the absorbing GaAs cap at 668 nm",
            any("GaAs (cap)" in w for w in rep["warnings"]), str(rep["warnings"]))
 bool_check("InGaAs default label preserves both compositions",
            M.InGaAs(0.532).label == "In0.532Ga0.468As", M.InGaAs(0.532).label)
+
+print("== 9. Composition-aware refractive index: (AlxGa1-x)0.51In0.49P and AlxGa1-xAs ==")
+check("n((Al0.55Ga0.45)0.51In0.49P, 668nm)",
+      M.refractive_index("(Al0.55Ga0.45)0.51In0.49P", 668), 3.25, 0.10,
+      "[E] x-interpolated between tabulated (Al0.5Ga0.5)InP and AlInP; expect [3.15,3.35]")
+check("n((Al0.70Ga0.30)0.51In0.49P, 668nm)",
+      M.refractive_index("(Al0.70Ga0.30)0.51In0.49P", 668), 3.18, 0.10,
+      "[E] x-interpolated between tabulated (Al0.5Ga0.5)InP and AlInP; expect [3.08,3.28]")
+check("n(Al0.42Ga0.58As, 668nm)", M.refractive_index("Al0.42Ga0.58As", 668), 3.52, 0.03,
+      "[E] x-interpolated between tabulated GaAs, Al0.45Ga0.55As, AlAs (Aspnes 1986)")
+bool_check("n((AlxGa1-x)0.51In0.49P, 668nm) monotone decreasing in x over the full x=0..1 sweep",
+           all(M.refractive_index(M.AlGaInP(x).label, 668) < M.refractive_index(M.AlGaInP(x - 0.1).label, 668)
+               for x in np.arange(0.1, 1.01, 0.1)),
+           "GaInP -> (Al0.5Ga0.5)InP -> AlInP should decrease monotonically at fixed lambda")
+bool_check("n(AlxGa1-xAs, 668nm) monotone decreasing in x over the full x=0..1 sweep",
+           all(M.refractive_index(M.AlGaAs(x).label, 668) < M.refractive_index(M.AlGaAs(x - 0.1).label, 668)
+               for x in np.arange(0.1, 1.01, 0.1)),
+           "GaAs -> Al0.45Ga0.55As -> AlAs should decrease monotonically at fixed lambda")
+bool_check("refractive_index accepts a Material object (AlGaInP(x)/AlGaAs(x)) directly",
+           abs(M.refractive_index(M.AlGaInP(0.55), 668) - M.refractive_index("(Al0.55Ga0.45)0.51In0.49P", 668)) < 1e-12
+           and abs(M.refractive_index(M.AlGaAs(0.42), 668) - M.refractive_index("Al0.42Ga0.58As", 668)) < 1e-12,
+           "n(Material) must equal n(Material.label)")
+bool_check("composition interpolation reproduces the exact tabulated endpoints (x=0, 0.5, 1)",
+           abs(M.refractive_index(M.AlGaInP(0.0).label, 668) - M.refractive_index("Ga0.51In0.49P", 668)) < 1e-12
+           and abs(M.refractive_index(M.AlGaInP(0.5).label, 668) - M.refractive_index("(Al0.50Ga0.50)0.51In0.49P", 668)) < 1e-12
+           and abs(M.refractive_index(M.AlGaInP(1.0).label, 668) - M.refractive_index("Al0.52In0.48P", 668)) < 1e-12,
+           "x=0/0.5/1 must fall through to the real tabulated values, not the interpolation formula")
 
 n_pass = sum(RESULTS)
 print(f"\n{n_pass}/{len(RESULTS)} materials checks passed")

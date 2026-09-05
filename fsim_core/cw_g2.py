@@ -76,7 +76,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import curve_fit
-from scipy.special import erfc
+from scipy.special import erfc, erfcx
 
 from .integrator import g2_from
 from .spectral import KB
@@ -85,6 +85,11 @@ _GAUSS_FWHM_TO_SIGMA = 1.0 / (2.0 * np.sqrt(2.0 * np.log(2.0)))   # sigma = FWHM
 _EXP_FWHM_TO_TAU = 1.0 / (2.0 * np.log(2.0))                       # tau_i = FWHM * this
 
 IRF_SHAPES = ("gaussian", "exponential")
+
+# Hard cap on cw_report's uniform tau grid (spec: bound at ~2e5 points so a
+# stiff 300 K escape rate cannot blow up convolve_irf's O(N * kernel) cost).
+# Odd so the symmetric linspace still lands exactly on tau = 0.
+_GRID_MAX_N = 200_001
 
 
 # ------------------------------------------------------------------- escape rates
@@ -287,7 +292,9 @@ def dip_convolved(A, tau_d, sigma):
 
     (sigma = IRF standard deviation, same time unit as tau_d)."""
     x = sigma / tau_d
-    return 1.0 - A * np.exp(0.5 * x * x) * erfc(x / np.sqrt(2.0))
+    # exp(x^2/2) erfc(x/sqrt2) == erfcx(x/sqrt2): scaled form avoids overflow for
+    # sigma >> tau_d (Tier 0 fix 2026-09-05; identical value where both are finite).
+    return 1.0 - A * erfcx(x / np.sqrt(2.0))
 
 
 def dip_convolved_exp(A, tau_d, tau_irf):
@@ -356,7 +363,17 @@ def cw_report(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX, rho,
     rates = [x for x in (r_ns, pump_ratio * r_ns, gamma_X_ns + k_X, gamma_XX_ns + k_XX) if x > 0]
     dt = min(0.05 / max(rates), wpar / 20.0, tau_max_ns / 500.0)
     if n_tau is None:
-        n_tau = 2 * int(np.ceil(tau_max_ns / dt)) + 1
+        # 0.05/max(rate) ties the grid to the FASTEST escape/pump rate so the
+        # dip shape is resolved; at 300 K that rate can be 1e11-1e13/s (>>
+        # gamma_X), which blows the grid up to 1e7-1e8 points and makes the
+        # O(N * kernel) convolve_irf below take minutes. propagate() evaluates
+        # exp(M tau) exactly at each tau via eigendecomposition (not a
+        # finite-difference stepper), so coarsening the grid costs zero
+        # accuracy in g2_dot itself -- only convolve_irf's resolution of the
+        # IRF and fit_dip's resolution of the dip shape depend on dt, and
+        # both of those are already bounded above by wpar/20 and
+        # tau_max_ns/500. So it is safe to just cap the point count.
+        n_tau = min(2 * int(np.ceil(tau_max_ns / dt)) + 1, _GRID_MAX_N)
     tau = np.linspace(-tau_max_ns, tau_max_ns, n_tau)
     g2_dot = g2_cw(tau, r_ns, gamma_X_ns, gamma_XX_ns, t_X, t_XX, k_X, k_XX, pump_ratio)
     g2_meas = g2_with_background(g2_dot, rho)

@@ -35,6 +35,15 @@ DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
 SUBSTRATE = {"name": "GaAs", "k300": 55.0, "alpha": 1.25}
 
+# Preservation baseline (spec rt-edge-gui-preservation): the last design
+# apply_design() was handed, kept verbatim. collect_design() deep-copies this
+# and overwrites only the fields that have a live widget (WIDGET_TAG below),
+# so any DeviceDesign field the GUI has no control for -- present today
+# (ret.*, emission.*, drive.cw/diode/mechanism/..., aperture.compose,
+# filter.track/track_material, ...) or added later -- round-trips untouched
+# instead of silently reverting to its dataclass default.
+_BASELINE_DESIGN = DeviceDesign()
+
 GREEN = (86, 166, 50)
 AMBER = (227, 162, 26)
 RED = (215, 25, 28)
@@ -248,87 +257,50 @@ def revalidate_all():
 # ------------------------------------------------------------- design <-> widgets
 
 def collect_design() -> DeviceDesign:
-    d = DeviceDesign()
+    """Deep-copy the preservation baseline (the last design apply_design()
+    was handed -- see _BASELINE_DESIGN) and overwrite only the fields that
+    have a live widget, via the same WIDGET_TAG map apply_design() writes
+    from. Any field without a widget -- including nested dicts/lists on
+    blocks the GUI has no editor for -- survives untouched; this is
+    deliberately data-driven off WIDGET_TAG rather than a hand-written list
+    of block/field names, so a field added later needs a WIDGET_TAG entry
+    (or none, to keep it preserved) and nothing else here."""
+    import math
+    d = copy.deepcopy(_BASELINE_DESIGN)
     d.name = dpg.get_value("design.name")
-    d.dot.delta_xx = dpg.get_value("dot.delta_xx")
-    d.dot.gamma_scale = dpg.get_value("dot.gamma_scale")
-    d.dot.r_xx = dpg.get_value("dot.r_xx")
-    d.drive.V = dpg.get_value("drive.V")
-    d.drive.I_uA = dpg.get_value("drive.I_uA")
-    d.drive.duty = dpg.get_value("drive.duty")
-    d.drive.mu = dpg.get_value("drive.mu")
-    d.drive.b_e = dpg.get_value("drive.b_e")
-    d.drive.b_e_m = dpg.get_value("drive.b_e_m")
-    d.drive.b_e_Eact = dpg.get_value("drive.b_e_Eact")
-    d.drive.mode = dpg.get_value("drive.mode")
-    d.drive.dg_inj = dpg.get_value("drive.dg_inj")
-    d.drive.p_inj = dpg.get_value("drive.p_inj")
-    d.drive.F_p = dpg.get_value("drive.F_p")
-    d.drive.eta_capture = dpg.get_value("drive.eta_capture")
-    d.drive.C_dep_pF = dpg.get_value("drive.C_dep_pF")
-    d.thermal.mesa_diameter_um = dpg.get_value("th.mesa")
-    d.thermal.T_hs = dpg.get_value("th.T_hs")
+    for path, tag in WIDGET_TAG.items():
+        if not dpg.does_item_exist(tag):
+            continue
+        value = dpg.get_value(tag)
+        if path == "aperture.density_cm2":
+            value = 10.0 ** value
+        block_name, field_name = path.split(".", 1)
+        setattr(getattr(d, block_name), field_name, value)
     d.thermal.layers = [dict(L) for L in LAYERS]
     d.thermal.substrate = dict(SUBSTRATE)
-    d.cavity.enabled = dpg.get_value("cav.enabled")
-    d.cavity.type = dpg.get_value("cav.type")
-    d.cavity.kappa = dpg.get_value("cav.kappa")
-    d.cavity.T_track = dpg.get_value("cav.T_track")
-    d.cavity.E_X0 = dpg.get_value("cav.E_X0")
-    d.cavity.F_P = dpg.get_value("cav.F_P")
-    d.cavity.G = dpg.get_value("cav.G")
-    d.cavity.beta_sin = dpg.get_value("cav.beta_sin")
-    d.filter.enabled = dpg.get_value("fil.enabled")
-    d.filter.auto_w = dpg.get_value("fil.auto_w")
-    d.filter.w = dpg.get_value("fil.w")
-    d.filter.dx = dpg.get_value("fil.dx")
-    d.aperture.density_cm2 = 10.0 ** dpg.get_value("ap.log_density")
-    d.aperture.diameter_um = dpg.get_value("ap.diam")
-    d.aperture.sigma_inh = dpg.get_value("ap.sigma")
-    d.aperture.comp_brightness = dpg.get_value("ap.r")
     return d
 
 
 def apply_design(d: DeviceDesign):
-    global LAYERS, SUBSTRATE
+    """Push `d` onto every live widget via WIDGET_TAG (see collect_design)
+    and record it verbatim as the new preservation baseline -- a deep copy,
+    taken before anything below can mutate it, so a field with no widget
+    (unknown to this GUI, today or in the future) still round-trips through
+    the next collect_design()."""
+    global LAYERS, SUBSTRATE, _BASELINE_DESIGN
     import math
+    _BASELINE_DESIGN = copy.deepcopy(d)
     dpg.set_value("design.name", d.name)
-    dpg.set_value("dot.delta_xx", d.dot.delta_xx)
-    dpg.set_value("dot.gamma_scale", d.dot.gamma_scale)
-    dpg.set_value("dot.r_xx", d.dot.r_xx)
-    dpg.set_value("drive.V", d.drive.V)
-    dpg.set_value("drive.I_uA", d.drive.I_uA)
-    dpg.set_value("drive.duty", d.drive.duty)
-    dpg.set_value("drive.mu", d.drive.mu)
-    dpg.set_value("drive.b_e", d.drive.b_e)
-    dpg.set_value("drive.b_e_m", d.drive.b_e_m)
-    dpg.set_value("drive.b_e_Eact", d.drive.b_e_Eact)
-    dpg.set_value("drive.mode", d.drive.mode)
-    dpg.set_value("drive.dg_inj", d.drive.dg_inj)
-    dpg.set_value("drive.p_inj", d.drive.p_inj)
-    dpg.set_value("drive.F_p", d.drive.F_p)
-    dpg.set_value("drive.eta_capture", d.drive.eta_capture)
-    dpg.set_value("drive.C_dep_pF", d.drive.C_dep_pF)
-    dpg.set_value("th.mesa", d.thermal.mesa_diameter_um)
-    dpg.set_value("th.T_hs", d.thermal.T_hs)
-    dpg.set_value("cav.enabled", d.cavity.enabled)
-    dpg.set_value("cav.type", d.cavity.type)
-    dpg.set_value("cav.kappa", d.cavity.kappa)
-    dpg.set_value("cav.T_track", d.cavity.T_track)
-    dpg.set_value("cav.E_X0", d.cavity.E_X0)
-    dpg.set_value("cav.F_P", d.cavity.F_P)
-    dpg.set_value("cav.G", d.cavity.G)
-    dpg.set_value("cav.beta_sin", d.cavity.beta_sin)
+    for path, tag in WIDGET_TAG.items():
+        if not dpg.does_item_exist(tag):
+            continue
+        block_name, field_name = path.split(".", 1)
+        value = getattr(getattr(d, block_name), field_name)
+        if path == "aperture.density_cm2":
+            value = math.log10(value)
+        dpg.set_value(tag, value)
     if dpg.does_item_exist("lemma1_note"):
         dpg.configure_item("lemma1_note", show=(d.cavity.type == "sin_waveguide"))
-    dpg.set_value("fil.enabled", d.filter.enabled)
-    dpg.set_value("fil.auto_w", d.filter.auto_w)
-    dpg.set_value("fil.w", d.filter.w)
-    dpg.set_value("fil.dx", d.filter.dx)
-    dpg.set_value("ap.log_density", math.log10(d.aperture.density_cm2))
-    dpg.set_value("ap.diam", d.aperture.diameter_um)
-    dpg.set_value("ap.sigma", d.aperture.sigma_inh)
-    dpg.set_value("ap.r", d.aperture.comp_brightness)
     LAYERS = [dict(L) for L in d.thermal.layers]
     SUBSTRATE = dict(d.thermal.substrate)
     rebuild_stack_table()
@@ -463,6 +435,43 @@ def _f8_result_lines(d: DeviceDesign) -> list:
     return lines
 
 
+def _fmt_or_na(s: dict, key: str, fmt: str = "{:.4g}", unit: str = "") -> str:
+    """One evaluate() scalar, formatted, or 'n/a' when the key is absent or
+    NaN -- lets the results panel work both before and after a given
+    evaluator key lands (spec rt-edge-gui-preservation). Every value here is
+    a straight pass-through of an evaluate()/evaluate_envelope() scalar,
+    never computed in this file (three-layer rule)."""
+    v = s.get(key)
+    if v is None or (isinstance(v, float) and v != v):
+        return "n/a"
+    suffix = f" {unit}" if unit else ""
+    return fmt.format(v) + suffix
+
+
+def _derived_result_lines(s: dict) -> list:
+    """Read-only labelled lines for the transport/CW-derived scalars
+    (integration-a/-b): junction voltage, applied voltage, built-in voltage,
+    junction power, injection/capture efficiency, resolved loading mu, the
+    background rate (per collected X photon), and the CW g2(0) pair --
+    intrinsic g2_cw0 vs IRF-convolved g2_cw0_raw, kept distinct from the
+    pulsed-intrinsic g2 headline number above. Labels only, never widgets:
+    nothing here is ever written back into a design."""
+    return [
+        "",
+        f"junction temperature (transport): {_fmt_or_na(s, 'T_j_transport', unit='K')}",
+        f"junction voltage V_j: {_fmt_or_na(s, 'V_j_op', unit='V')}",
+        f"applied voltage V_applied: {_fmt_or_na(s, 'V_applied', unit='V')}",
+        f"built-in voltage V_bi: {_fmt_or_na(s, 'V_bi', unit='V')}",
+        f"junction power P_junction: {_fmt_or_na(s, 'P_junction_W', unit='W')}",
+        f"injection efficiency eta_inj: {_fmt_or_na(s, 'eta_inj')}",
+        f"capture efficiency eta_capture: {_fmt_or_na(s, 'eta_capture_resolved')}",
+        f"loading mu (resolved): {_fmt_or_na(s, 'mu_resolved')}",
+        f"background per collected X photon: {_fmt_or_na(s, 'b_e_resolved')}",
+        f"g2_cw0 (intrinsic CW): {_fmt_or_na(s, 'g2_cw0')}",
+        f"g2_cw0_raw (IRF-convolved CW): {_fmt_or_na(s, 'g2_cw0_raw')}",
+    ]
+
+
 # ------------------------------------------------------------------------- run
 
 def run_device():
@@ -522,7 +531,7 @@ def _run_point(d: DeviceDesign):
         f"F_eff (cavity)           "
         + (f"{s['F_eff']:.1f}" if s["F_eff"] == s["F_eff"] else "-- (cavity off)"),
         f"aperture: N_w = {s['N_w']:.2f}  ->  F5 g2 penalty {s['aperture_g2_penalty']:.3f}",
-    ] + _f8_result_lines(d)
+    ] + _derived_result_lines(s) + _f8_result_lines(d)
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
     _refresh_delta_table()
@@ -609,7 +618,7 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
         f"master ceiling T_c:        {_interval(*sb['T_c'], fmt='{:.0f}', unit='K')}",
         "",
         "sensitivity (measurement priority, highest first):",
-    ] + tornado_lines
+    ] + tornado_lines + _derived_result_lines(mid_scalars)
     f8_lines = _f8_result_lines(dm)
     if f8_lines:
         lines += [""] + f8_lines
@@ -1336,17 +1345,37 @@ def _run_roundtrip_check() -> bool:
     return ok
 
 
-def main(frames=None, selftest_outdir=None, roundtrip_check=False):
+def main(frames=None, selftest_outdir=None, roundtrip_check=False, *,
+         design_path=None, screenshot=None, collect_dump=None):
+    """`design_path`, `screenshot` and `collect_dump` are keyword-only (all
+    None reproduces the pre-existing behavior exactly): `design_path`
+    replaces the DESIGN_PATH default; `screenshot` writes a real PNG (plus
+    the verbatim results-panel text at `screenshot + ".txt"`) once `frames`
+    have rendered; `collect_dump` renders a couple of frames after
+    apply_design() and saves collect_design() to that path, exiting before
+    the event loop -- both without importing anything the GUI doesn't
+    already use (three-layer rule)."""
     dpg.create_context()
     build_ui()
+    dpath = Path(design_path) if design_path is not None else DESIGN_PATH
     default = DeviceDesign()
-    if DESIGN_PATH.exists():
-        default = DeviceDesign.load(DESIGN_PATH)
+    if dpath.exists():
+        default = DeviceDesign.load(dpath)
     apply_design(default)
     dpg.create_viewport(title="FSIM device designer", width=1520, height=760)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("main", True)
+    if collect_dump is not None:
+        # No run_device()/evaluate() here on purpose: a --collect-dump design
+        # is only being checked for widget round-trip fidelity (spec
+        # rt-edge-gui-preservation), and an arbitrary probe design may not be
+        # a physically consistent one evaluate() would accept.
+        for _ in range(2):
+            dpg.render_dearpygui_frame()
+        collect_design().save(collect_dump)
+        dpg.destroy_context()
+        sys.exit(0)
     if roundtrip_check:
         ok = _run_roundtrip_check()
         dpg.destroy_context()
@@ -1359,12 +1388,15 @@ def main(frames=None, selftest_outdir=None, roundtrip_check=False):
         run_device()  # exercise the full pipeline once
         for _ in range(frames):
             dpg.render_dearpygui_frame()
-        if "--screenshot" in sys.argv:
-            out = sys.argv[sys.argv.index("--screenshot") + 1]
-            dpg.output_frame_buffer(out)  # async: needs further frames to flush
+        if screenshot is not None:
+            out_path = Path(screenshot)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            dpg.output_frame_buffer(str(out_path))  # async: needs further frames to flush
             for _ in range(10):
                 dpg.render_dearpygui_frame()
-            print("screenshot ->", out)
+            Path(str(out_path) + ".txt").write_text(
+                dpg.get_value("results_text"), encoding="utf-8")
+            print("screenshot ->", out_path)
         print("smoke: rendered", frames, "frames;",
               dpg.get_value("results_text").splitlines()[2].strip())
         # expand-to-window: drive both [ expand ] callbacks directly, then
@@ -1393,4 +1425,14 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         selftest_outdir = sys.argv[sys.argv.index("--selftest") + 1]
     roundtrip_check = "--roundtrip-check" in sys.argv
-    main(frames=n, selftest_outdir=selftest_outdir, roundtrip_check=roundtrip_check)
+    design_path = None
+    if "--design" in sys.argv:
+        design_path = sys.argv[sys.argv.index("--design") + 1]
+    screenshot = None
+    if "--screenshot" in sys.argv:
+        screenshot = sys.argv[sys.argv.index("--screenshot") + 1]
+    collect_dump = None
+    if "--collect-dump" in sys.argv:
+        collect_dump = sys.argv[sys.argv.index("--collect-dump") + 1]
+    main(frames=n, selftest_outdir=selftest_outdir, roundtrip_check=roundtrip_check,
+         design_path=design_path, screenshot=screenshot, collect_dump=collect_dump)

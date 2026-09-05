@@ -65,6 +65,33 @@ anchors:
     locator: "news summary"
     tag: E
     status: missing
+  # The underlying peer-reviewed paper behind the news-summary gap above has
+  # since been identified and confirmed (WebSearch + crossref + DOI-redirect
+  # cross-check, 2026-09-05): Luo, Lin, Huang, Lin, Lau, "Electrically pumped
+  # InP/GaAsP quantum dot lasers grown on (001) Si emitting at 750 nm",
+  # Optics Express 30, 40750 (2022), DOI 10.1364/OE.474320 (doi.org redirects
+  # to opg.optica.org/abstract.cfm?URI=oe-30-22-40750, matching journal/vol/
+  # page exactly). This is a genuine, distinct, DOI-confirmed second source
+  # for the claim's underlying scientific fact. Its status is kept "missing"
+  # (not promoted to "verified") rather than also flipping gu25-hkust-
+  # wavelength to verified: verify/verify_rt_edge_cards.py (out of this
+  # spec's scope) requires any card value anchored to a "verified" anchor to
+  # lie inside that anchor's tolerance, and cards/edge-inp-gaasp-design.yaml
+  # (also out of scope) deliberately pins emission.lambda_nm to 668 nm -- the
+  # only tabulated-index design point -- rather than to gu25's unconfirmed
+  # 755 nm HKUST target; raising gu25 to verified would make that card fail.
+  # See the implementation report's QUESTION.
+  - id: luo22-hkust-wavelength-si
+    claim: hkust_inp_gaasp_wavelength
+    value: 750
+    unit: nm
+    tolerance: 5
+    conditions: "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent."
+    source: "Luo et al., Optics Express 30, 40750 (2022)"
+    doi: "10.1364/OE.474320"
+    locator: "title / device wavelength"
+    tag: V
+    status: missing
   - id: reischle08-gaas-pin-iv
     claim: gaas_pin_iv
     value: 1.97
@@ -131,6 +158,36 @@ anchors:
     locator: "Fig. 5 temperature-series discussion"
     tag: DR
     status: missing
+  # Genuinely distinct, verified second source confirmed against the
+  # PRB abstract (WebSearch + Keio institutional-repository listing,
+  # 2026-09-05); already the codebase's own GAMMA300_DEFAULT class anchor
+  # (fsim_core/linewidth.py, fsim_core/device.py) but was never entered in
+  # this ledger. In0.5Ga0.5As, not InP -- class proxy, same as Laferriere.
+  - id: matsuda01-gamma300-class
+    claim: gamma300_class_range
+    value: 12
+    unit: meV
+    tolerance: 2
+    conditions: "In0.5Ga0.5As/GaAs single quantum dot, near-field scanning optical microscopy, homogeneous linewidth at 300 K; distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement."
+    source: "Matsuda et al., Physical Review B 63, 121304(R) (2001)"
+    doi: "10.1103/PhysRevB.63.121304"
+    locator: "abstract; ~12 meV homogeneous linewidth at 300 K"
+    tag: V
+    status: verified
+  # Second, independent class-proxy source: fact-checked against
+  # ../_goal/paper_digests_factcheck.md item 27 (rendered-figure + verbatim
+  # p.6 quote), distinct DOI from Matsuda and from Laferriere.
+  - id: chatzarakis23-gamma300-class
+    claim: gamma300_class_range
+    value: 6.5
+    unit: meV
+    tolerance: 0.5
+    conditions: "InAs/GaAs (211)B piezoelectric quantum dot ensembles (non-SSL and SSL-barrier samples); mesa and microcavity-dot linewidth curves merge at T >= 250 K to FWHM 6-7 meV; distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement."
+    source: "Chatzarakis et al., Physical Review Applied 20, 034011 (2023)"
+    doi: "10.1103/PhysRevApplied.20.034011"
+    locator: "p. 6, linewidth-curve-merge discussion"
+    tag: V
+    status: verified
   - id: bommer11-retention-ea
     claim: retention_Ea_inp_algainp
     value: 96
@@ -141,7 +198,25 @@ anchors:
     doi: "10.1063/1.3633218"
     locator: "single-dot Arrhenius fit"
     tag: V
-    status: missing
+    status: verified
+  # Genuinely distinct second source, confirmed by downloading and reading
+  # the full text (pypdf, 2026-09-05): a different Stuttgart-group paper,
+  # ensemble (not single-dot) PL, reporting a family of activation energies
+  # for InP QDs in Al0.20Ga0.80InP barriers depending on cladding; the value
+  # below is Table 1 structure (a), the plain reference barrier with no
+  # additional cladding/tunnel barrier, the closest ensemble analogue to
+  # Bommer's single-dot structure. Not referenced by any design card.
+  - id: schulz08-retention-ea-ensemble
+    claim: retention_Ea_inp_algainp
+    value: 150
+    unit: meV
+    tolerance: 20
+    conditions: "Ensemble PL intensity vs temperature, simple thermal-activation-model Arrhenius fit (Table 1, structure (a): reference Al0.20Ga0.80InP barrier, no additional cladding or tunnel barrier); InP quantum dots, same general InP/(Al,Ga)InP thermal-escape activation-energy family as Bommer 2011, but an independent ensemble measurement, not a reproduction of it."
+    source: "Schulz et al., physica status solidi (c) 6, 906 (2009)"
+    doi: "10.1002/pssc.200880599"
+    locator: "Table 1, structure (a)"
+    tag: V
+    status: verified
   - id: inp-algainp-retention-independent-gap
     claim: retention_Ea_inp_algainp
     value: null

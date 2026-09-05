@@ -1,0 +1,362 @@
+meta:
+  name: edge-inp-gaasp-design
+  role: device-design
+  device: >
+    InP self-assembled QD in a GaAs0.60P0.40 well, (Al0.50Ga0.50)0.51In0.49P
+    core cladding, (Al0.70Ga0.30)0.51In0.49P outer cladding, GaAs substrate;
+    RT electrical edge emitter, HKUST-class transport diode.
+  source: "primary RT edge-emitter design card, docs/rt_edge_contract.md"
+  note: >
+    Primary card of the room-temperature electrical edge-emitter tier
+    (docs/rt_edge_contract.md). Opts into every new device.py mode:
+    dot.linewidth=anchored, ret.mode=confinement (inline ret.system, no
+    ret.preset), drive.mode=EL-transport with drive.diode.preset, emission.
+    type=edge, aperture.compose, a non-empty filter.track_material, and
+    drive.cw. Every scalar this card sets carries a design.provenance.
+    sources entry keyed by its dotted design path; design.provenance also
+    records the sweepable ranges the acceptance sweep consumes and the
+    single-dot selection argument (aperture area x density x pi/4 < 0.5
+    expected dots). drive.b_e and cavity.beta_sin are evaluator-derived and
+    are never set here. Loads and evaluates with fsim_core.device
+    (DeviceDesign.load / evaluate); checked mechanically by
+    verify/verify_rt_edge_cards.py.
+
+    KNOWN MODEL LIMITATION (documented, not hidden): dot_levels.DotSystem /
+    device._resolve_edge give the confinement Hamiltonian and the edge-
+    emission waveguide exactly ONE barrier material, used symmetrically on
+    both sides of the matrix well. This device's real epitaxial stack has
+    TWO distinct claddings (an inner (Al0.50Ga0.50)0.51In0.49P core and an
+    outer (Al0.70Ga0.30)0.51In0.49P cladding); only the inner core enters
+    ret.system.barrier (and therefore the confinement/edge-emission model),
+    because it is also the only AlGaInP composition with a tabulated
+    refractive index in materials.MATERIAL_EXTRA (x_al=0.70 is not
+    tabulated -- calling waveguide.edge_emission with it raises an uncaught
+    KeyError, not the graceful ValueError device.evaluate() handles). The
+    outer cladding is carried honestly in thermal.layers (it is real and
+    thermally relevant) but does not participate in the confinement/optical
+    model. See design.provenance.sources["ret.system.barrier.x_al"].
+
+design:
+  name: edge-inp-gaasp-design
+  dot:
+    linewidth: anchored
+    delta_xx: 5.0
+    gamma300: 16.0
+  ret:
+    mode: confinement
+    system:
+      dot: InP
+      matrix: {kind: GaAsP, x_p: 0.4}
+      barrier: {kind: AlGaInP, x_al: 0.5, y_III: 0.51}
+      substrate: GaAs
+      geometry: {height_nm: 4.0, radius_nm: 12.0}
+  drive:
+    mode: EL-transport
+    diode: {preset: hkust}
+    I_uA: 0.001
+    cw: true
+    cw_irf_fwhm_ps: 100.0
+    cw_tau_max_ns: 0.02
+  thermal:
+    T_hs: 300.0
+    layers:
+      - name: "(Al0.50Ga0.50)0.51In0.49P core"
+        t_um: 0.5
+        k300: 6.0
+        alpha: 0.5
+        spread: false
+      - name: "(Al0.70Ga0.30)0.51In0.49P outer cladding"
+        t_um: 1.5
+        k300: 6.0
+        alpha: 0.5
+        spread: false
+  cavity:
+    enabled: false
+  filter:
+    track_material: dot
+  aperture:
+    compose: true
+    density_cm2: 300000000.0
+    diameter_um: 0.4
+  emission:
+    type: edge
+    ridge_width_nm: 2000.0
+    lambda_nm: 668.0
+
+  provenance:
+    card_id: edge-inp-gaasp-design
+    class: primary
+
+    sources:
+      dot.linewidth:
+        value: anchored
+        tag: A
+        source: >
+          Opt-in to the anchored InP linewidth model (docs/rt_edge_contract.md
+          block schema); anchor-fit class of Matsuda et al., PRB 63, 121304
+          (2001), per device.py DotBlock.linewidth's documented convention.
+      dot.delta_xx:
+        value: 5.0
+        tag: V
+        source: >
+          Reischle et al., Optics Express 16, 12771 (2008), p. 12774,
+          exciton-complex discussion: InP/GaInP-family X-XX binding range
+          4-6 meV, used as the InP-dot-family proxy anchor for this
+          InP/GaAsP design (no InP/GaAsP-dot X-XX measurement exists).
+        anchor_id: reischle08-delta-xx
+      dot.gamma300:
+        value: 16.0
+        tag: A
+        source: >
+          Laferriere et al., Nano Letters 23, 962 (2023), Fig. 5: InAsP/InP
+          nanowire dot at 300 K, 25 nm linewidth at 1398 nm converted to
+          meV. Class proxy only -- docs/rt_edge_contract.md Evidence section
+          states the InP/GaAsP 300 K single-dot linewidth is unmeasured.
+        anchor_id: laferriere23-linewidth-class-proxy
+      ret.mode:
+        value: confinement
+        tag: E
+        source: >
+          Opt-in to dot_levels-derived confinement retention in place of the
+          arsenide class-proxy Arrhenius fit (docs/rt_edge_contract.md block
+          schema).
+      ret.system.dot:
+        value: InP
+        tag: A
+        source: "InP self-assembled QD, the RT edge-emitter tier's target dot material (docs/rt_edge_contract.md)."
+      ret.system.matrix.x_p:
+        value: 0.4
+        tag: A
+        source: >
+          GaAs0.60P0.40 well composition, the simulator's own design-card
+          GaAsP class (dot_levels.class_presets 'InP/GaAsP0.4/AlGaAs0.4 on
+          GaAs'), chosen to keep the well direct-gap with margin
+          (materials_research.md Section 0(c), per dot_levels.py docstring).
+          Gu et al., Opt. Express 33, 23732 (2025) use x=0.35 in their own
+          device; no single-photon data exists for either composition.
+      ret.system.barrier.x_al:
+        value: 0.5
+        tag: E
+        source: >
+          Substituted for a higher-Al outer cladding because
+          (Al0.50Ga0.50)0.51In0.49P is the only AlGaInP composition with a
+          tabulated refractive index in materials.MATERIAL_EXTRA (Moser et
+          al., APL 64, 235 (1994); Schubert et al., JAP 86, 2025 (1999)):
+          emission.type='edge' shares this same ret.system stack
+          (device.py's documented "shared inline stack" rule), and any
+          untabulated AlGaInP composition makes waveguide.edge_emission
+          raise an uncaught KeyError (materials.refractive_index has no
+          fallback). The real outer cladding, (Al0.70Ga0.30)0.51In0.49P, is
+          retained honestly in thermal.layers (see the card-level note).
+      ret.system.barrier.y_III:
+        value: 0.51
+        tag: DR
+        source: >
+          Lattice-matched-to-GaAs III-sublattice fraction, Vurgaftman et
+          al., JAP 89, 5815 (2001) convention (materials.AlGaInP default).
+      ret.system.substrate:
+        value: GaAs
+        tag: A
+        source: "GaAs growth substrate, Gu et al., Opt. Express 33, 23732 (2025) HKUST class."
+      ret.system.geometry.height_nm:
+        value: 4.0
+        tag: E
+        source: >
+          dot_levels.class_presets 'InP/GaAsP0.4/AlGaAs0.4 on GaAs' default
+          height: the simulator's own design-card variant of Gu et al.
+          2025's reported 4-7 nm InP island range.
+      ret.system.geometry.radius_nm:
+        value: 12.0
+        tag: A
+        source: >
+          Radius not reported by Gu et al. 2025; carried over at 12 nm per
+          dot_levels.class_presets' hkust() class default.
+      drive.mode:
+        value: EL-transport
+        tag: A
+        source: >
+          Opt-in transport-aware electrical drive (docs/rt_edge_contract.md
+          block schema); Gu et al., Opt. Express 33, 23732 (2025)
+          electrically pumped InP/GaAsP ridge device.
+      drive.diode.preset:
+        value: hkust
+        tag: E
+        source: >
+          transport.hkust_preset: Gu et al. 2025-like p-i-n stack
+          (Al0.4Ga0.6As claddings/barriers each side of the GaAs1-xPx well).
+      drive.I_uA:
+        value: 0.001
+        tag: A
+        source: >
+          Reduced from the module's legacy 10 uA default to a single-dot-
+          scale injection current (pA-nA class), consistent with the
+          sub-0.5 expected dot count of design.provenance.
+          single_dot_selection, and small enough that the CW rate-equation
+          tau grid (dt ~ 0.05 / max(rate)) stays numerically tractable at
+          this operating point. No literature single-dot InP/GaAsP drive
+          current has been published; MEASURE.
+      drive.cw:
+        value: true
+        tag: A
+        source: "Opt-in CW g2(tau)/IRF diagnostics (docs/rt_edge_contract.md block schema)."
+      drive.cw_irf_fwhm_ps:
+        value: 100.0
+        tag: E
+        source: >
+          Within the acceptance sweep's irf_ps=[50,200] ps class range
+          (design.provenance.ranges); a representative fast-SPAD instrument
+          response, faster than the module's Reischle-2008-class 500 ps
+          default.
+      drive.cw_tau_max_ns:
+        value: 0.02
+        tag: A
+        source: >
+          Reduced from the module's 10 ns default to match this operating
+          point's confinement-escape timescale (~1/k_XX,
+          dot_levels.retention_params-derived, sub-picosecond here) so the
+          g2(tau) grid (cw_g2.cw_report) stays numerically tractable; a
+          numerical/design choice, not a literature value.
+      thermal.T_hs:
+        value: 300.0
+        tag: A
+        source: "Room-temperature operating point, the RT edge-emitter tier's target (docs/rt_edge_contract.md)."
+      thermal.layers.0.t_um:
+        value: 0.5
+        tag: E
+        source: "Inner (Al0.50Ga0.50)0.51In0.49P core-cladding thickness, class estimate."
+      thermal.layers.0.k300:
+        value: 6.0
+        tag: E
+        source: >
+          Adachi (2007) AlGaInP alloy-class thermal-conductivity estimate;
+          the same class value materials.MATERIAL_EXTRA records for
+          (Al0.50Ga0.50)0.51In0.49P.
+      thermal.layers.0.alpha:
+        value: 0.5
+        tag: E
+        source: >
+          Adachi (2007) alloy-class k(T) exponent, matching
+          materials.MATERIAL_EXTRA's (Al0.50Ga0.50)0.51In0.49P alpha_k.
+      thermal.layers.0.spread:
+        value: false
+        tag: A
+        source: "Planar heat flow, no current-spreading correction (matches the legacy staged-device-design.yaml default)."
+      thermal.layers.1.t_um:
+        value: 1.5
+        tag: E
+        source: >
+          Outer (Al0.70Ga0.30)0.51In0.49P cladding thickness, matching the
+          legacy staged-device-design.yaml epi/cladding class value.
+      thermal.layers.1.k300:
+        value: 6.0
+        tag: E
+        source: >
+          Same AlGaInP alloy-class thermal-conductivity estimate as the
+          inner core layer (Adachi 2007); alloy scattering makes the two
+          compositions indistinguishable at this [E] class precision.
+      thermal.layers.1.alpha:
+        value: 0.5
+        tag: E
+        source: "Same Adachi (2007) alloy-class k(T) exponent as the inner layer."
+      thermal.layers.1.spread:
+        value: false
+        tag: A
+        source: "Planar heat flow, no current-spreading correction."
+      cavity.enabled:
+        value: false
+        tag: A
+        source: >
+          emission.type='edge' is incompatible with a resonant cavity
+          (device.evaluate()'s guard; docs/rt_edge_contract.md); this
+          design has no resonant cavity.
+      filter.track_material:
+        value: dot
+        tag: DR
+        source: >
+          Stack-based Varshni tracking on the InP dot's own bandgap
+          (materials.bandgap), opt-in per docs/rt_edge_contract.md block
+          schema.
+      aperture.compose:
+        value: true
+        tag: A
+        source: >
+          Opt-in continuous Poisson competitor-bath composition
+          (docs/rt_edge_contract.md "Aperture assumptions").
+      aperture.density_cm2:
+        value: 300000000.0
+        tag: E
+        source: >
+          Low end of published InP QD densities (Chatzarakis et al.,
+          Phys. Rev. Applied 20, 034011 (2023), low-density-growth note),
+          paired with aperture.diameter_um for single-dot selection
+          (design.provenance.single_dot_selection: n_expected < 0.5).
+      aperture.diameter_um:
+        value: 0.4
+        tag: A
+        source: >
+          Within the Chatzarakis et al., Phys. Rev. Applied 20, 034011
+          (2023) 0.3-3 um e-beam mesa class; chosen for single-dot
+          selection (design.provenance.single_dot_selection).
+      emission.type:
+        value: edge
+        tag: A
+        source: >
+          Opt-in edge out-coupling (docs/rt_edge_contract.md;
+          waveguide.edge_emission on the shared ret.system stack).
+      emission.ridge_width_nm:
+        value: 2000.0
+        tag: A
+        source: >
+          2 um ridge, within the Chatzarakis et al., Phys. Rev. Applied 20,
+          034011 (2023) 0.3-3 um mesa/ridge class; no InP/GaAsP edge-
+          emitter ridge width has been published.
+      emission.lambda_nm:
+        value: 668.0
+        tag: A
+        source: >
+          Explicit design wavelength pinned to the only tabulated phosphide
+          index point (668 nm; Moser et al., APL 64, 235 (1994); Schubert
+          et al., JAP 86, 2025 (1999)) rather than the confinement-derived
+          natural transition, which falls outside materials.MATERIAL_
+          EXTRA's sparse tabulated optics (device.py EmissionBlock.
+          lambda_nm documented convention). The HKUST class's own target
+          emission is ~755 nm (Gu et al. 2025); independent single-dot
+          evidence for the InP/GaAsP line itself is absent
+          (docs/rt_edge_contract.md Evidence section).
+        anchor_id: gu25-hkust-wavelength
+
+    ranges:
+      dot.delta_xx:
+        lo: 4.0
+        hi: 7.0
+        unit: meV
+        tag: V
+        source: "Reischle 2008 (5 meV) / Bommer 2011 (7 meV) InP-dot-family X-XX splitting range, docs/rt_edge_contract.md."
+      dot.gamma300:
+        lo: 6.0
+        hi: 20.0
+        unit: meV
+        tag: E
+        source: "InP-dot 300 K linewidth class range (docs/rt_edge_contract.md Evidence section; Matsuda 2001 / Laferriere 2023 proxies)."
+      irf_ps:
+        lo: 50.0
+        hi: 200.0
+        unit: ps
+        tag: E
+        source: >
+          Fast-SPAD-class detector-IRF sweep window for the acceptance
+          sweep's CW diagnostics; maps onto drive.cw_irf_fwhm_ps
+          (docs/rt_edge_contract.md).
+
+    assumptions:
+      - dot.gamma300
+      - emission.lambda_nm
+
+    single_dot_selection:
+      aperture_um2: 0.12566370614359174
+      density_cm2: 300000000.0
+      n_expected: 0.3769911184307752
+
+    derived_fields:
+      - drive.b_e
+      - cavity.beta_sin

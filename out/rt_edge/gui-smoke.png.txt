@@ -1,0 +1,25 @@
+tag chain [A]  (envelope over 16 [A]-swept samples; mid line = all ranges at their midpoint)
+
+g2(0) at op:               0.032 - 0.199
+eps = t_XX/t_X at op:      0.004 - 0.150
+rho (signal purity) at op: 0.986 - 0.986
+dT_J at op:                1.26 - 1.26 K
+master ceiling T_c:        99 - 238 K
+
+sensitivity (measurement priority, highest first):
+    measure dot.delta_xx first: narrows T_c band by 78.7 K
+    measure dot.gamma_scale first: narrows T_c band by 39.6 K
+    measure drive.mu first: narrows T_c band by 2.22 K
+    measure drive.b_e first: narrows T_c band by 1.86 K
+
+junction temperature (transport): n/a
+junction voltage V_j: 1.9 V
+applied voltage V_applied: 1.9 V
+built-in voltage V_bi: n/a
+junction power P_junction: 1.9e-05 W
+injection efficiency eta_inj: n/a
+capture efficiency eta_capture: 1
+loading mu (resolved): 0.55
+background per collected X photon: 5.47e-08
+g2_cw0 (intrinsic CW): n/a
+g2_cw0_raw (IRF-convolved CW): n/a

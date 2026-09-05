@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "evidence_complete": false,
+  "hallucination_tests_passed": true,
+  "claim_results": {},
+  "anchor_results": {},
+  "missing_evidence": [],
+  "source_ledger_sha256": "4f8f1e63a85ce64a29e6648968eb424a52007903c07c17955e7bae952886896a",
+  "evaluator_input_hashes": {
+    "verify/data/rt_edge_anchors.yaml": "4f8f1e63a85ce64a29e6648968eb424a52007903c07c17955e7bae952886896a",
+    "cards/edge-inp-gaasp-design.yaml": "484adedade9ac5265443fa7d56cea78efbf5f0004a33bfce33bf222fe7eb4bc2",
+    "cards/edge-inp-gainp-design.yaml": "1646b6a9c0374ce0c6757828058811c0aebfa39663432579d4ec5ae02b1abfa7"
+  },
+  "checks_passed": 21,
+  "checks_total": 21,
+  "self_test": true
+}

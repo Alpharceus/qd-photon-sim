@@ -4,6 +4,8 @@ background law, IRF convolution / deconvolution).
 Run: python verify/verify_cw_g2.py   (exit code 0 iff all pass)
 """
 import sys
+import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +33,11 @@ from fsim_core.cw_g2 import (
     raw_g2_0,
     steady_state,
 )
+
+# cw_report's fit_dip transiently probes near-zero decay times while
+# curve_fit converges on the stiff 300 K case below (i); the fitted A_dip/
+# tau_dip are not what check (i) asserts on.
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="fsim_core.cw_g2")
 from fsim_core.integrator import g2_from, retention
 from fsim_core.loading import f1b_g2
 
@@ -263,6 +270,41 @@ def _():
         prev = rep["g2_raw0"]
 
 
+# --------------------------------------------------------- (i) stiff 300 K grid
+
+_STIFF_PARAMS = dict(r_ns=10.0, gX=1.0, gXX=2.0, kX=1e3, kXX=1e3, t_X=1.0, t_XX=0.2, rho=0.95)
+
+
+@check("(i1) stiff 300K-class escape rates (r_ns=10, k_X=k_XX=1e3/ns): "
+       "cw_report completes in < 2 s")
+def _():
+    p = _STIFF_PARAMS
+    t0 = time.perf_counter()
+    rep = cw_report(p["r_ns"], p["gX"], p["gXX"], p["kX"], p["kXX"], p["t_X"], p["t_XX"],
+                    p["rho"], irf_fwhm_ps=100.0, tau_max_ns=10.0)
+    elapsed = time.perf_counter() - t0
+    RESULTS["i_elapsed"] = elapsed
+    RESULTS["i_g2_dot0"] = rep["g2_dot0"]
+    assert elapsed < 2.0, elapsed
+
+
+@check("(i2) stiff case's g2_cw0 matches the closed-form low-pump limit "
+       "eps p S_XX/S_X within 5% (grid-bounding must not degrade propagate())")
+def _():
+    p = _STIFF_PARAMS
+    eps = p["t_XX"] / p["t_X"]
+    rep = cw_report(p["r_ns"], p["gX"], p["gXX"], p["kX"], p["kXX"], p["t_X"], p["t_XX"],
+                    p["rho"], irf_fwhm_ps=100.0, tau_max_ns=10.0)
+    low = g2_cw_zero_low_pump(p["gX"], p["gXX"], eps, p["kX"], p["kXX"], 1.0)
+    RESULTS["i_low"] = low
+    assert abs(rep["g2_dot0"] / low - 1.0) < 0.05, (rep["g2_dot0"], low)
+    # the numeric curve (propagate + the tau grid), not just the closed-form
+    # field, must agree too -- propagate() is exact per tau regardless of grid
+    # density, so bounding the grid must not have degraded g2_dot itself.
+    g_numeric = float(np.interp(0.0, rep["curves"]["tau"], rep["curves"]["g2_dot"]))
+    assert abs(g_numeric / low - 1.0) < 0.05, (g_numeric, low)
+
+
 # ------------------------------------------------------------ report + note sanity
 
 @check("cw_report: fields present, curves symmetric, raw curve -> g2_meas edge, note derivation present")
@@ -299,6 +341,10 @@ def main():
             print(f"(d) r=1e-3 gamma_X, k_X={kx}, k_XX={kxx}, p={p}: numeric {num:.5f}  limit eps p S_XX/S_X = {low:.5f}")
     if "g1" in RESULTS:
         print(f"(g1) Gaussian dip: numeric {RESULTS['g1'][0]:.6f}  closed {RESULTS['g1'][1]:.6f}")
+    if "i_elapsed" in RESULTS:
+        print(f"(i) stiff 300K-class case (r_ns=10, k_X=k_XX=1e3/ns): cw_report took "
+              f"{RESULTS['i_elapsed']:.3f} s; g2_dot0 = {RESULTS['i_g2_dot0']:.4f} vs "
+              f"low-pump limit {RESULTS['i_low']:.4f}")
     if "g3" in RESULTS:
         g = RESULTS["g3"]
         print(f"(g3) Reischle anchor A=0.85, tau_d=1 ns: raw g2(0) = {g['raw_exp_tau05']:.3f} "
