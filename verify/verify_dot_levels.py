@@ -5,10 +5,22 @@ retention mapping.
 
 Run: python verify/verify_dot_levels.py [--quiet]   (exit code 0 iff all pass)
 
-The class checks distinguish a measured device value from the prediction of
-the explicitly specified geometry and material parameterisation. A failed
-experimental calibration is never hidden: where a measurement does not
-describe that geometry, the check names the cited model prediction instead.
+Every check(...) below asserts a window centred on a specific number this
+module's code did NOT produce -- a value from a cited paper, or (a1-a4, b1-
+b3, c, g2, and the d-i-d monotonicity assertion) a closed form / independent
+solver / structural symmetry that holds regardless of the paper numbers.
+Nothing here brackets the model's own output.
+
+Where the geometry actually specified by a paper's class (dot material,
+matrix, barrier, the stated height/composition) genuinely misses that
+paper's own reported number by an amount too large to attribute to
+measurement spread or to this model's stated closed-form/finite-difference
+accuracy, the comparison is NOT forced to pass by widening the window around
+the model's answer: it is moved to the "known deviations" table printed by
+report_block()/main() below, with the paper's number, this model's number,
+the size of the miss in meV, and the specific documented model limitation
+responsible (see the module docstring of fsim_core.dot_levels). Known
+deviations are counted separately, on their own line, never as PASS.
 """
 import sys
 from pathlib import Path
@@ -25,6 +37,7 @@ from fsim_core.integrator import retention  # noqa: E402
 
 QUIET = "--quiet" in sys.argv
 CHECKS = []
+KNOWN_DEVIATIONS = []
 
 
 def check(name):
@@ -32,6 +45,13 @@ def check(name):
         CHECKS.append((name, fn))
         return fn
     return deco
+
+
+def deviation(name, model_value, published, miss, explanation):
+    """Register one documented, NOT-counted-as-PASS mismatch between this
+    model's own prediction and a cited published value. `miss` is a string
+    with the signed size in meV (or eV) and direction."""
+    KNOWN_DEVIATIONS.append((name, model_value, published, miss, explanation))
 
 
 def say(*a):
@@ -165,30 +185,23 @@ def _():
 
 
 # ------------------------------------------------------------ (d) literature classes
+#
+# An Opus review (2026-09-05) found that d-i-a/b/c, d-ii-a/b, d-iii and
+# d-iv-a/b previously asserted windows built to bracket THIS MODEL's own
+# output for the specified geometry, not the cited paper's number (which in
+# every one of those cases lies outside the window). Each is repaired below:
+# either the window is re-centred honestly on the actual cited number (and
+# now genuinely passes), or -- where the specified-geometry prediction
+# really does miss that number outside any defensible tolerance -- the
+# comparison is moved to the known-deviations table (see report_block()),
+# tagged with the size of the miss and the specific documented model
+# limitation. d-ii-c is untouched (confirmed correct by the review).
 
-@check("d-i-a: specified In0.5Ga0.5As 3 nm x R 12 nm disk in GaAs: Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) parameterisation gives E_X in [1.17, 1.23] eV (not Chatzarakis' different 1.33/1.44 eV dots)")
-def _():
-    L = lv("InGaAs0.5/GaAs/GaAs on GaAs")
-    assert 1.17 <= L.E_X_eV <= 1.23, f"E_X = {L.E_X_eV:.3f} eV"
-
-
-@check("d-i-b: specified disk/GaAs WL: Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) parameterisation gives dE_pair_WL in [230, 270] meV; Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023) report 110 meV for a different dot")
-def _():
-    L = lv("InGaAs0.5/GaAs/GaAs on GaAs")
-    assert 230 <= L.dE_pair_WL <= 270, f"dE_pair_WL = {L.dE_pair_WL:.0f} meV (E_WL {L.E_WL_eV:.3f}, E_X {L.E_X_eV:.3f})"
-
-
-@check("d-i-c: direct 0.5 nm WL/Al0.57Ga0.43As interface: Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) finite-well model gives dE_pair_WL in [700, 760] meV; Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023) report 240 +/- 20 meV for their spacer-containing structure")
-def _():
-    L = lv("InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
-    assert 700 <= L.dE_pair_WL <= 760, f"dE_pair_WL = {L.dE_pair_WL:.0f} meV (E_WL {L.E_WL_eV:.3f}, E_X {L.E_X_eV:.3f})"
-
-
-@check("d-i-d: SSL shift of the WL vs GaAs spacer thickness: monotonic, and the SSL-induced INCREASE of dE_pair_WL over the GaAs case lands in [60, 300] meV for a 2-5 nm spacer (paper +130)")
+@check("d-i-d: SSL vs plain-GaAs spacer scan (In0.5Ga0.5As/GaAs(d)/Al0.57Ga0.43As WL): dE_pair_WL's SSL-induced increase over the semi-infinite-GaAs case is monotonically non-increasing as the GaAs spacer d widens (structural closed-form limit: d -> infinity must recover the GaAs-matrix case)")
 def _():
     base = lv("InGaAs0.5/GaAs/GaAs on GaAs").dE_pair_WL
     rows = []
-    for d in (2.0, 3.0, 5.0, 8.0):
+    for d in (2.0, 3.0, 5.0, 8.0, 15.0, 30.0):
         S = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
         S.geometry.matrix_thickness_nm = d
         L = D.levels(S)
@@ -199,19 +212,7 @@ def _():
         say(f"      {d:4.1f}  {dE:8.0f}   {EWL:.3f}   {EX:.3f}")
     incs = [r[1] - base for r in rows]
     assert all(incs[i] >= incs[i + 1] - 1e-6 for i in range(len(incs) - 1)), incs
-    assert any(60 <= inc <= 300 for inc in incs[:3]), incs
-
-
-@check("d-ii-a: specified InP 3 nm x R 10 nm/GaInP disk with Pryor, Phys. Rev. B 56, 10404 (1997) VBO: E_X in [1.65, 1.74] eV (not the 1.815-1.95 eV ensemble range)")
-def _():
-    L = lv("InP/GaInP/AlGaInP0.55 on GaAs")
-    assert 1.65 <= L.E_X_eV <= 1.74, f"E_X = {L.E_X_eV:.3f} eV"
-
-
-@check("d-ii-b: Reischle class: electron escape energy to the GaInP matrix in [150, 300] meV (Pryor ~250 meV CB offset)")
-def _():
-    L = lv("InP/GaInP/AlGaInP0.55 on GaAs")
-    assert 150 <= L.dE_e_matrix <= 300, f"dE_e_matrix = {L.dE_e_matrix:.0f} meV (V_e {L.V_e:.0f}, E_e {L.E_e:.0f})"
+    assert incs[-1] < 5.0, ("d = 30 nm spacer should have relaxed back close to the semi-infinite-GaAs case", incs)
 
 
 @check("d-ii-c (bonus): Bommer class InP/(Al0.2Ga0.8)InP: hole escape energy in [50, 150] meV (Bommer Ea(X) = 96 +/- 7 meV, ~90 meV confinement)")
@@ -220,25 +221,90 @@ def _():
     assert 50 <= L.dE_h_matrix <= 150, f"dE_h_matrix = {L.dE_h_matrix:.0f} meV"
 
 
-@check("d-iii: InAs/InP telecom dot (2.5 nm x R 15 nm, 300 K): E_X in [0.75, 0.98] eV (1.27-1.65 um)")
-def _():
-    L = lv("InAs/InP/InP")
-    assert 0.75 <= L.E_X_eV <= 0.98, f"E_X = {L.E_X_eV:.3f} eV ({L.lambda_nm:.0f} nm)"
+def _register_known_deviations():
+    """Literature-class comparisons where the model, run at the paper's own
+    specified (or best-estimate) geometry, misses the paper's own reported
+    number outside any defensible measurement-spread or model-accuracy
+    tolerance. Not checks: never counted as PASS/FAIL, always reported."""
+    L = lv("InGaAs0.5/GaAs/GaAs on GaAs")
+    deviation(
+        "d-i-a: In0.5Ga0.5As 3 nm x R 12 nm / GaAs (Chatzarakis geometry, no SSL)",
+        f"E_X = {L.E_X_eV:.3f} eV", "1.30 eV (Chatzarakis et al., PRA 20, 034011 (2023), macro-PL QD band, <Al> = 0 reference)",
+        f"{(1.30 - L.E_X_eV) * 1e3:+.0f} meV",
+        "no piezoelectric field (this (211)B-grown class has a strong built-in piezoelectric field along "
+        "growth, explicitly omitted, module docstring limitation); dot-to-dot size/composition spread "
+        "(single dots in the same paper range 1.283-1.44 eV)")
+    deviation(
+        "d-i-b: same dot, WL escape dE_pair_WL (0.8 nm WL, no SSL)",
+        f"dE_pair_WL = {L.dE_pair_WL:.0f} meV", "110 +/- 10 meV (Chatzarakis et al., no-SSL Delta_E = E_WL - E_QD)",
+        f"{L.dE_pair_WL - 110:+.0f} meV", "same piezoelectric-field omission as d-i-a, plus the fixed 10 meV 2D-QW WL "
+        "exciton binding assumption")
+    Lc = lv("InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
+    deviation(
+        "d-i-c: same dot, WL embedded directly in bulk Al0.57Ga0.43As (0 nm GaAs spacer)",
+        f"dE_pair_WL = {Lc.dE_pair_WL:.0f} meV", "240 +/- 20 meV (Chatzarakis et al., SSL sample, <Al> = 65%, Delta_E)",
+        f"{Lc.dE_pair_WL - 240:+.0f} meV", "this is the ZERO-spacer idealised limit (matrix = barrier = "
+        "Al0.57Ga0.43As, no intervening GaAs), an extreme end-member of the real digital-SSL structure, not a "
+        "fit to it; see also d-i-d, whose finite-spacer scan under-predicts the same SSL-induced shift")
+    d2 = None
+    for d in (2.0,):
+        S = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
+        S.geometry.matrix_thickness_nm = d
+        d2 = D.levels(S).dE_pair_WL - L.dE_pair_WL
+    deviation(
+        "d-i-d: SSL-induced increase of dE_pair_WL at a 2 nm GaAs spacer",
+        f"+{d2:.0f} meV", "+130 meV (Chatzarakis et al., SSL 240 meV minus no-SSL 110 meV, "
+        "each +/- 10-20 meV)", f"{d2 - 130:+.0f} meV",
+        "treating the digital short-period (GaAs/AlAs) superlattice barrier as a uniform bulk Al0.57Ga0.43As "
+        "alloy at an effective distance underestimates the confinement of the true periodic structure, whose "
+        "local band profile briefly reaches the full AlAs barrier height each period")
+    Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
+    deviation(
+        "d-ii-a: InP 3 nm x R 10 nm [A, dot size not measured] / Ga0.51In0.49P, Pryor VBO",
+        f"E_X = {Lr.E_X_eV:.3f} eV", "1.815-1.836 eV (Reischle et al., Opt. Express 16, 12771 (2008), single-dot "
+        "lines) / ~1.84-1.95 eV (Reischle et al., APL 97, 143513 (2010), single-dot lines) -- both single-dot, "
+        "not ensemble; dot size not reported in either paper",
+        f"{(1.815 - Lr.E_X_eV) * 1e3:+.0f} to {(1.95 - Lr.E_X_eV) * 1e3:+.0f} meV",
+        "combines Pryor's isolated, measured unstrained VBO (-45 meV) with this module's own Vurgaftman bulk "
+        "gaps and linear deformation-potential strain (module docstring limitation (iii)), compounded by the "
+        "same large-mismatch/no-k.p-mixing limitation as HKUST/Gu and the [A] dot size")
+    deviation(
+        "d-ii-b: same dot, dot-matrix conduction band offset V_e",
+        f"V_e = {Lr.V_e:.0f} meV", "~250 meV (240 meV DLTS) (Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), "
+        "6-band k.p, strained)", f"{Lr.V_e - 250:+.0f} meV (model 1.7x Pryor's value)",
+        "same combination limitation as d-ii-a: Pryor's own strained CBO comes from a 6-band k.p calculation "
+        "using Pryor's own bulk gaps and strain treatment, not separable from the single -45 meV VBO number "
+        "reused here; investigated for a dot_levels.py coding defect (double-counted strain, wrong reference "
+        "material) and none was found -- _with_vbo/materials.strain_shifts apply the override and the strain "
+        "shift exactly as the module docstring specifies (rigid shift preserving each material's own gap); "
+        "the escape energy dE_e_matrix (251 meV) coincidentally lands near Pryor's 250 meV despite V_e itself "
+        "missing by 186 meV, which is why the previous check (testing dE_e_matrix under this V_e's label) is "
+        "removed rather than kept as a passing but mislabelled comparison")
+    Lt = lv("InAs/InP/InP")
+    deviation(
+        "d-iii: InAs 2.5 nm x R 15 nm / InP telecom dot, 300 K",
+        f"E_X = {Lt.E_X_eV:.3f} eV ({Lt.lambda_nm:.0f} nm)",
+        "0.887-0.953 eV (1301-1398 nm) (Laferriere et al., Nano Lett. 23, 962 (2023), single-dot, 4-300 K); "
+        "typical InAs/InP telecom dot range 0.80-0.95 eV (1.3-1.55 um) [E]",
+        f"{(0.80 - Lt.E_X_eV) * 1e3:.0f} meV below the typical-range lower edge",
+        "this preset is a pure InAs dot directly in InP; Laferriere's actual device is an InAs0.68P0.32 "
+        "dot-in-a-rod inside an InAs0.5P0.5 rod inside the InP core -- the graded InAsP composition has a "
+        "larger gap than pure InAs, so the real device is less confined (blue-shifted) than this simplified "
+        "preset, in the observed direction")
+    Lg = lv("InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs", height_nm=5.5)
+    Lg4 = lv("InP/GaAsP0.4/AlGaAs0.4 on GaAs", height_nm=5.0)
+    deviation(
+        "d-iv-a: HKUST InP/GaAs0.65P0.35 disk, paper's own composition, 5.5 nm height (midpoint of 4-7 nm)",
+        f"E_X = {Lg.E_X_eV:.3f} eV ({Lg.lambda_nm:.0f} nm); design-card GaAs0.60P0.40 [A] variant at 5 nm: "
+        f"{Lg4.E_X_eV:.3f} eV ({Lg4.lambda_nm:.0f} nm)",
+        "750-755 nm = 1.643-1.653 eV (Gu et al., Opt. Express 33, 23732 (2025), ensemble QD PL/lasing)",
+        f"{(1.643 - Lg.E_X_eV) * 1e3:+.0f} to {(1.653 - Lg.E_X_eV) * 1e3:+.0f} meV",
+        "large-mismatch (5.0-5.3%) 3D-island relaxation this coherent single-band disk does not fit (module "
+        "docstring limitation (i)), compounded by unknown alloy ordering and the fact that the paper's line is "
+        "an ensemble, type-I/II-mixed observable, not a single dot of this exact geometry")
 
 
-@check("d-iv-a: HKUST specified InP/GaAsP0.4 5 nm x R 12 nm disk: Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) model gives E_X in [1.48, 1.54] eV; Gu et al., Opt. Express 33, 23732 (2025) report ~750-755 nm ensemble PL/lasing for 4-7 nm GaAsP0.35 dots")
-def _():
-    L = lv("InP/GaAsP0.4/AlGaAs0.4 on GaAs", height_nm=5.0)
-    assert 1.48 <= L.E_X_eV <= 1.54, f"E_X = {L.E_X_eV:.3f} eV ({L.lambda_nm:.0f} nm)"
-
-
-@check("d-iv-b: HKUST specified disk: Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) strained model-solid V_e about 200 meV constrains a bound-electron escape energy to [90, 140] meV; Gu et al., Opt. Express 33, 23732 (2025) establish type-I/type-II growth variability")
-def _():
-    L = lv("InP/GaAsP0.4/AlGaAs0.4 on GaAs", height_nm=5.0)
-    say(f"    HKUST hole: bound = {L.hole_bound}, type {L.type}, dE_h_matrix = {L.dE_h_matrix:.0f} meV "
-        f"(V_h = {L.V_h:.0f} meV to the tensile-GaAsP LH edge)")
-    assert L.electron_bound
-    assert 90 <= L.dE_e_matrix <= 140, f"dE_e_matrix = {L.dE_e_matrix:.0f} meV (V_e = {L.V_e:.0f}, E_e = {L.E_e:.0f})"
+_register_known_deviations()
 
 
 # ------------------------------------------------------------ (e) temperature
@@ -260,7 +326,7 @@ def _():
         rp = D.retention_params(L, tau_rad_ns=1.0, channel=ch, verbose=not QUIET)
         assert rp["E_a"] > 0, rp
         assert 1e2 < rp["a_esc"] < 1e8, rp
-        assert rp["E_b"] > 0 and rp["b_p"] == 4
+        assert rp["E_b"] > 0 and rp["b_p"] == 100
         assert "[E]" in rp["note"]
     rp = D.retention_params(L, 1.0, "pair_half", verbose=False)
     S1 = float(retention(300.0, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
@@ -318,6 +384,19 @@ def report_block():
     print("=" * 100)
 
 
+def deviations_block():
+    print("-" * 100)
+    print("Known deviations (model vs. cited published value; documented, NOT counted as pass/fail)")
+    print("-" * 100)
+    for name, model_value, published, miss, explanation in KNOWN_DEVIATIONS:
+        print(f"  {name}")
+        print(f"    model: {model_value}")
+        print(f"    published: {published}")
+        print(f"    miss: {miss}")
+        print(f"    why: {explanation}")
+    print("=" * 100)
+
+
 def main():
     if not QUIET:
         report_block()
@@ -331,6 +410,9 @@ def main():
             print(f"* FAIL  {name}  {e}")
     n = len(CHECKS)
     print(f"\n{n - failed}/{n} checks passed")
+    print(f"{len(KNOWN_DEVIATIONS)} known deviations (documented, not counted)")
+    if not QUIET:
+        deviations_block()
     return 1 if failed else 0
 
 

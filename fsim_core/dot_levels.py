@@ -12,7 +12,22 @@ strain), the dot geometry, and the effective masses, so that changing the
 matrix from GaAs to GaAsP or AlGaInP changes the retention curve for a
 stated physical reason.
 
-MODEL (tag [E], expected accuracy: tens of meV on every level).
+MODEL (tag [E]). HONEST ACCURACY: tens of meV for a dot close to the
+  lattice-matched, non-piezoelectric, single-parameter-source regime this
+  separable-disk + linear-strain treatment was built for. Three classes of
+  input honestly miss by 100-300 meV, documented with the numbers and the
+  mechanism in verify/verify_dot_levels.py's "known deviations" table rather
+  than forced to pass: (i) large-mismatch 3D islands compared to an ensemble
+  PL/lasing line (Gu et al. HKUST InP/GaAsP, ~160 meV, see below); (ii)
+  piezoelectric (211)B-grown dots, whose built-in field this model omits
+  entirely (Chatzarakis et al. InAs/GaAs, ~90-300 meV); (iii) combining one
+  paper's isolated, measured band-offset number (e.g. Pryor's InP/GaInP
+  unstrained VBO) with this module's OWN bulk band gaps and linear
+  deformation-potential strain, which are not the ingredients that
+  paper's own (typically k.p) calculation used internally -- the isolated
+  number is not separable from the rest of that calculation, so re-injecting
+  it here does not reproduce that paper's own strained offset (Pryor/
+  Reischle InP/GaInP, ~130-260 meV).
   Lens / truncated-pyramid dots are replaced by a SEPARABLE DISK:
     * along z: a symmetric finite square well of width = dot height, with
       BenDaniel-Duke matching (mass discontinuity) -> E_z;
@@ -38,21 +53,22 @@ MODEL (tag [E], expected accuracy: tens of meV on every level).
 
 HKUST InP/GaAsP FINDING. Gu et al., Opt. Express 33, 23732 (2025) [V]
 report 4--7 nm high InP islands and approximately 750--755 nm ensemble QD
-PL/lasing in a GaAs0.65P0.35 well. For the deliberately specified 5 nm x
-R=12 nm GaAs0.60P0.40 test dot, this model gives about 1.51 eV. The
-difference from the ensemble line is not a missing Varshni correction:
+PL/lasing in their OWN GaAs0.65P0.35 well (class_presets()
+"InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs"). For that composition at the
+midpoint 5.5 nm height, this model gives about 1.484 eV (V_e = 175 meV,
+dE_e_matrix = 105 meV); the design-card variant at the simulator's own
+GaAs0.60P0.40 well [A] gives about 1.520 eV (V_e = 200 meV). Neither
+difference from the ensemble line is a missing Varshni correction:
 materials.bandgap already applies the Vurgaftman et al., J. Appl. Phys. 89,
 5815 (2001) [V] temperature dependence at the requested T. Nor can it be
 removed honestly by changing the tabulated InP electron mass. It is the
 expected uncertainty of applying a fully coherent, single-band disk to a
 large-mismatch 3D island, compounded by unknown alloy ordering/composition
-and the fact that the measured laser line is an ensemble observable. The
-same model-solid strained offset is V_e about 200 meV; because a bound
-electron has a positive confinement energy, its escape energy must be
-strictly below 200 meV. Thus a >200 meV electron-escape expectation was
-inconsistent with its own offset, not a solver defect. Gu et al. also
-observe both type-I and type-II alignment depending on growth, so their
-ensemble wavelength cannot uniquely determine this type-I test structure.
+and the fact that the measured laser line is an ensemble observable. Gu et
+al. also observe both type-I and type-II alignment depending on growth, so
+their ensemble wavelength cannot uniquely determine either test structure;
+because a bound electron has a positive confinement energy, its escape
+energy is in both cases strictly below its own V_e, not a solver defect.
 
 UNITS. Energies in meV inside the solvers and the level table, eV for band
 edges and transition energies (suffix _eV), nm for lengths, masses in m0.
@@ -331,6 +347,29 @@ def _disk_ground(V, R, m_in, m_out, l):
     Es = HB2_2M0 * ks**2 / m_in
     Es = Es[(Es > 0) & (Es < V * (1 - 1e-9))]
     roots = _scan_roots(f, Es, n_max=1)
+    if not roots and l == 0:
+        # The l = 0 state of a 2D finite circular well is bound for EVERY
+        # V > 0 (no threshold depth, unlike l >= 1): a shallow/narrow well
+        # (small m_in V R^2) still binds, but with an exponentially small
+        # binding energy V - E0 (kappa R << 1), which can fall below the
+        # resolution of the E-grid above (itself cut off at V*(1 - 1e-9) to
+        # avoid the kappa -> 0 singular point of Kl). Recover it by bracketing
+        # geometrically in the residual (V - E) down toward E -> V^-, using
+        # the last (still V > E) grid sample as the starting point.
+        e_lo = float(Es[-1]) if len(Es) else 0.0
+        f_lo = f(e_lo)
+        if np.isfinite(f_lo) and f_lo != 0.0:
+            for resid in V * np.logspace(-1.0, -15.0, 57):
+                e_hi = V - resid
+                if e_hi <= e_lo:
+                    continue
+                f_hi = f(e_hi)
+                if not np.isfinite(f_hi):
+                    continue
+                if f_lo * f_hi < 0.0:
+                    roots = [brentq(f, e_lo, e_hi, xtol=1e-14 * V, rtol=1e-13)]
+                    break
+                e_lo, f_lo = e_hi, f_hi
     return roots[0] if roots else None
 
 
@@ -513,7 +552,15 @@ def levels(system: DotSystem) -> DotLevels:
         E_e_z = ez.energies_meV[0]
         er = finite_disk_2d(V_e - E_e_z, g.radius_nm, m_e_d, m_e_m)
         E_e_r = er.E0_meV if er.bound else 0.0
-        sp_e = (er.E1_meV - er.E0_meV) if er.p_bound else (er.V_meV - er.E0_meV)
+        if not er.bound:
+            # V_e - E_e_z <= 0: the layered z-solution already uses up (or
+            # exceeds) the dot-matrix step, e.g. when it is really a
+            # matrix-layer state riding on the extra matrix-barrier step
+            # V_e_mb (matrix_thickness_nm finite). No residual in-plane well
+            # is left for the disk problem, so there is no p-shell either.
+            sp_e = 0.0
+        else:
+            sp_e = (er.E1_meV - er.E0_meV) if er.p_bound else (er.V_meV - er.E0_meV)
         rms_e_r = er.rms_r_nm if (er.bound and er.rms_r_nm) else 1.5 * g.radius_nm
         rms_e_z = ez.rms_z_nm
         e_bound, p_e = True, er.p_bound
@@ -530,7 +577,10 @@ def levels(system: DotSystem) -> DotLevels:
         E_h_z = hz.energies_meV[0]
         hr = finite_disk_2d(V_h - E_h_z, g.radius_nm, m_hr_d, m_hr_m)
         E_h_r = hr.E0_meV if hr.bound else 0.0
-        sp_h = (hr.E1_meV - hr.E0_meV) if hr.p_bound else (hr.V_meV - hr.E0_meV)
+        if not hr.bound:
+            sp_h = 0.0    # see the matching electron comment above
+        else:
+            sp_h = (hr.E1_meV - hr.E0_meV) if hr.p_bound else (hr.V_meV - hr.E0_meV)
         rms_h_r = hr.rms_r_nm if (hr.bound and hr.rms_r_nm) else 1.5 * g.radius_nm
         rms_h_z = hz.rms_z_nm
         h_bound, p_h = True, hr.p_bound
@@ -551,10 +601,12 @@ def levels(system: DotSystem) -> DotLevels:
     # ---- exciton
     eps_r = S.eps_r if S.eps_r is not None else eps_r_static(S.dot)
     Eb0 = _gauss_binding(l_e_xy, l_h_xy, eps_r)
-    cap = 0.5 * (max(E_e_r, 0.0) + max(E_h_r, 0.0))
-    Eb = min(Eb0, cap)
-    if Eb0 > cap:
-        notes.append(f"E_bind capped at half the in-plane confinement ({cap:.1f} meV; Gaussian estimate {Eb0:.1f})")
+    # No cap is applied: an earlier version capped Eb0 at half the summed
+    # in-plane confinement (0.5*(E_e_r+E_h_r)), with no citation, and it
+    # fired on 3 of 8 presets, e.g. shifting the HKUST binding 22.0 ->
+    # 10.9 meV. The frozen-orbital Gaussian estimate _gauss_binding already
+    # has a stated accuracy (see its docstring) and is used uncapped.
+    Eb = Eb0
     E_X = Eg_dot + (E_e + E_h - Eb) * 1e-3
     lam = HC_EV_NM / E_X
 
@@ -608,8 +660,24 @@ def retention_params(lv: DotLevels, tau_rad_ns: float, channel: str = "pair_half
       subbands, barrier continuum) and the WL-transport / recapture
       dynamics (Gelinas): the fit E_a is then effectively degenerate with
       a_esc, which is why the two are not separately meaningful.
-    E_b = min(sp_split_e, sp_split_h) (p-shell channel), b_p = 4 (two p
-      states x the s/p level-degeneracy ratio 2) [E].
+    E_b = the smaller of the two carriers' s-p splitting (p-shell channel),
+      counting only carriers that are actually bound with a meaningful
+      p-shell energy (sp_split_e/h is 0 exactly when that carrier is not
+      bound to the dot at all, or -- for a finite matrix_thickness_nm --
+      when its z-solution already exceeds the dot-matrix step and no
+      residual in-plane well is left; such a carrier contributes no
+      p-channel). If NEITHER carrier has a meaningful p-shell, the p-channel
+      is absent (b_p = 0, E_b = 0) rather than a spurious E_b = 0 with
+      b_p != 0, which would make the p-term T-independent and floor S(T)
+      away from 1 even at T = 0.
+      b_p = 100, carried directly as the Chatzarakis et al., Phys. Rev.
+      Applied 20, 034011 (2023) Fig. 2a Arrhenius-fit class value (b ~ 100,
+      Eb ~ 35 +/- 5 meV) [E]; an earlier version derived b_p = 4 from "two p
+      states x an s/p degeneracy ratio of 2", a self-referential argument
+      with no independent citation, 25x below the fitted class value. As
+      with a_esc (see above), the fitted b likely also absorbs additional
+      physics (multiple p-sublevels, phonon-assisted capture) beyond the
+      bare level degeneracy, so it is carried as-is rather than re-derived.
     All [E] tags are repeated in the returned note."""
     kT = KB_MEV * T_ref
     ms = lv.masses
@@ -638,12 +706,18 @@ def retention_params(lv: DotLevels, tau_rad_ns: float, channel: str = "pair_half
     states_per_dot = n2d_cm2 / n_dot_cm2
     nu_esc0_ps = states_per_dot / tau_cap_ps          # 1/ps
     a_esc = tau_rad_ns * 1e3 * nu_esc0_ps
-    E_b = min(lv.sp_split_e, lv.sp_split_h) if lv.hole_bound else lv.sp_split_e
-    b_p = 4.0
+    p_splits = [s for s in (lv.sp_split_e, lv.sp_split_h) if s > 0.0]
+    if p_splits:
+        E_b = min(p_splits)
+        b_p = 100.0
+    else:
+        E_b = 0.0
+        b_p = 0.0    # no carrier has a meaningful p-shell: the p-channel is absent, not T-independent
     note = (f"E_a = {E_a:.1f} meV ({ch_label}); a_esc = tau_rad ({tau_rad_ns} ns) x nu_esc0 "
             f"({nu_esc0_ps:.3g}/ps) with N2D/N_dot = {states_per_dot:.1f} states per dot within kT "
             f"at {T_ref:.0f} K (m* = {m_star:.3f}, n_dot = {n_dot_cm2:.1e} cm^-2), tau_cap = {tau_cap_ps} ps [E]; "
-            f"E_b = min s-p splitting = {E_b:.1f} meV, b_p = 4 [E]; separable-disk levels [E]; "
+            f"E_b = min bound-carrier s-p splitting = {E_b:.1f} meV, b_p = {b_p:g} "
+            f"[E, Chatzarakis et al. PRA 20, 034011 (2023) Fig. 2a fit class]; separable-disk levels [E]; "
             f"biaxial-film strain in the dot [E]; 2D-QW WL exciton binding 10 meV [E]; "
             f"Gaussian-orbital exciton binding [E]")
     if verbose:
@@ -679,9 +753,17 @@ def class_presets() -> dict:
     """Constructors for the literature dot classes. Each entry is a callable
     f(T=..., height_nm=..., radius_nm=...) -> DotSystem. Geometries are the
     stated class values; heights from the papers where given.
-      "InP/GaAsP0.4/AlGaAs0.4 on GaAs"      HKUST, Gu et al. Opt. Express 33,
-            23732 (2025): InP dots 4-7 nm high in a GaAsP well, Al0.4Ga0.6As
-            barriers; default height 4 nm, radius 12 nm.
+      "InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs" HKUST, Gu et al. Opt. Express 33,
+            23732 (2025) [V]: the paper's OWN composition, GaAs0.65P0.35, and
+            InP dot heights 4-7 nm (default 5.5 nm, the midpoint) [V]; radius
+            not given by the paper, carried over at 12 nm [A]. Use this
+            fixture, not the 0.40 variant below, for literature comparisons.
+      "InP/GaAsP0.4/AlGaAs0.4 on GaAs"      the same HKUST class at the
+            simulator's design-card composition GaAs0.60P0.40 [A] (chosen to
+            keep the well direct-gap with margin, materials_research.md
+            Section 0(c)) and radius 12 nm [A]; default height 4 nm.
+            Gu et al. give no single-photon/single-dot data for either
+            composition -- both are ensemble laser material [V].
       "InP/GaInP/AlGaInP0.55 on GaAs"       Reischle class (Stuttgart): dot
             InP 3 nm x R 10 nm in Ga0.51In0.49P, (Al0.55Ga0.45)0.51In0.49P
             cladding; dot-matrix VBO -45 meV (Pryor 1997).
@@ -699,6 +781,10 @@ def class_presets() -> dict:
     """
     InP, GaAs = M.binary("InP"), M.binary("GaAs")
 
+    def hkust_gu(T=300.0, height_nm=5.5, radius_nm=12.0):
+        return DotSystem(InP, M.GaAsP(0.35), M.AlGaAs(0.4), GaAs, T,
+                         DotGeometry(height_nm, radius_nm), name="InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs")
+
     def hkust(T=300.0, height_nm=4.0, radius_nm=12.0):
         return DotSystem(InP, M.GaAsP(0.4), M.AlGaAs(0.4), GaAs, T,
                          DotGeometry(height_nm, radius_nm), name="InP/GaAsP0.4/AlGaAs0.4 on GaAs")
@@ -715,17 +801,25 @@ def class_presets() -> dict:
                          DotGeometry(height_nm, radius_nm), {"dot-matrix": vbo},
                          name="InP/AlGaInP0.2/AlGaInP0.55 on GaAs")
 
+    # Chatzarakis et al. give the wetting layer of this class as 0.8 nm
+    # (Section 2: "Intermixed: modelled as In0.5Ga0.5As, 3 nm QD, 0.8 nm
+    # WL"), not the module's generic 0.5 nm (~2 ML InP/InAs) default [V].
+    CHATZ_WL_NM = 0.8
+
     def chatz(T=78.0, height_nm=3.0, radius_nm=12.0):
         return DotSystem(M.InGaAs(0.5), GaAs, M.AlGaAs(0.57), GaAs, T,
-                         DotGeometry(height_nm, radius_nm), name="InGaAs0.5/GaAs/AlGaAs0.57 on GaAs")
+                         DotGeometry(height_nm, radius_nm, CHATZ_WL_NM),
+                         name="InGaAs0.5/GaAs/AlGaAs0.57 on GaAs")
 
     def chatz_gaas(T=78.0, height_nm=3.0, radius_nm=12.0):
         return DotSystem(M.InGaAs(0.5), GaAs, GaAs, GaAs, T,
-                         DotGeometry(height_nm, radius_nm), name="InGaAs0.5/GaAs/GaAs on GaAs")
+                         DotGeometry(height_nm, radius_nm, CHATZ_WL_NM),
+                         name="InGaAs0.5/GaAs/GaAs on GaAs")
 
     def chatz_ssl(T=78.0, height_nm=3.0, radius_nm=12.0):
         return DotSystem(M.InGaAs(0.5), M.AlGaAs(0.57), M.AlGaAs(0.57), GaAs, T,
-                         DotGeometry(height_nm, radius_nm), name="InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
+                         DotGeometry(height_nm, radius_nm, CHATZ_WL_NM),
+                         name="InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
 
     def telecom(T=300.0, height_nm=2.5, radius_nm=15.0):
         return DotSystem(M.binary("InAs"), InP, InP, InP, T,
@@ -736,6 +830,7 @@ def class_presets() -> dict:
                          DotGeometry(height_nm, radius_nm), name="InAs/InGaAsP-Q1.15/InP")
 
     return {
+        "InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs": hkust_gu,
         "InP/GaAsP0.4/AlGaAs0.4 on GaAs": hkust,
         "InP/GaInP/AlGaInP0.55 on GaAs": reischle,
         "InP/AlGaInP0.2/AlGaInP0.55 on GaAs": bommer,

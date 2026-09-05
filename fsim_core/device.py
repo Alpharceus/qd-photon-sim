@@ -42,6 +42,8 @@ from .loading import (
 from .qd_gf import PhononParams, ibm_purcell_transmission, ibm_transmission
 from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
+from .linewidth import LinewidthParams, gamma_anchor
+from . import cw_g2, dot_levels, materials, transport, waveguide
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -64,6 +66,11 @@ class DotBlock:
                                    # the Lorentzian-optimism correction)
     phonon: dict = field(default_factory=dict)  # qd_gf.PhononParams overrides
                                    # (geometry l_xy_nm/l_z_nm, materials) [A/DR]
+    linewidth: str = "class"    # "class" proxy | "anchored" [A; Matsuda, PRB 2001]
+    gamma0: float = 0.25         # meV [V] Bommer et al., JAP 110, 063108 (2011)
+    a_ac: float = 2.0e-3         # meV/K [V] Ortner et al., PRB 70, 201301 (2004)
+    E_LO: float = 43.0           # meV [V] Ioffe NSM, InP LO phonon
+    gamma300: float = 12.0       # meV [A] Matsuda et al., PRB 63, 121304 (2001) class anchor
 
 
 @dataclass
@@ -75,6 +82,18 @@ class RetentionBlock:
     E_b: float = 35.0
     b0: float = 0.0
     beta: float = 0.0
+    mode: str = "proxy"         # "proxy" keeps class fit; "confinement" derives levels [E]
+    preset: str = ""
+    system: dict = field(default_factory=dict)  # inline DotSystem stack (mutually
+                                  # exclusive with preset); never carries overrides
+    tau_rad_ns: float = 1.0      # ns [E] dot_levels.retention_params convention
+    channel: str = "pair_half"  # Gelinas et al., arXiv:0910.0480 [DR]
+    overrides: dict = field(default_factory=dict)  # confinement mode only: explicit
+                                  # a_esc/E_a/b_p/E_b/b0/beta replacements for the
+                                  # retention_params()-derived values [A]; separate
+                                  # from `system` so a preset stack can still be
+                                  # combined with explicit overrides. An explicit
+                                  # 0.0 here always wins (never a truthy-or fallback).
 
 
 @dataclass
@@ -101,6 +120,18 @@ class DriveBlock:
                                   # (bit-identical); else a drive_mech name
                                   # (poisson-rail/quiet-rail/pulsed/set-*/rti)
     mech_params: dict = field(default_factory=dict)  # per-mechanism params [A]
+    diode: dict = field(default_factory=dict)  # transport preset plus Diode overrides [E/DR]
+    n_dot_cm2: float = 0.0       # cm^-2; 0 uses aperture density [A]
+    cw: bool = False              # opt-in CW g2(tau)/IRF diagnostics (docs/
+                                  # rt_edge_contract.md); requires mode=
+                                  # "EL-transport" (the CW pump rate is
+                                  # transport.loading.r_dot, never inferred
+                                  # from the dimensionless pulsed mu) [A]
+    cw_irf_fwhm_ps: float = 500.0  # detector IRF FWHM, ps; Reischle 2008
+                                  # class 0.5 ns [E]
+    cw_irf_shape: str = "gaussian"  # cw_g2.IRF_SHAPES
+    cw_pump_ratio: float = 1.0    # X->XX secondary CW pump ratio [A]
+    cw_tau_max_ns: float = 10.0   # CW g2(tau) window half-width, ns [A]
 
 
 @dataclass
@@ -145,6 +176,13 @@ class FilterBlock:
                                  #   (lab monochromator convention) while the
                                  #   cavity mode walks per dn/dT. The two
                                  #   coincide at T_track by construction.
+    track_material: str = ""     # "" = legacy hard-coded GaAs Varshni tracking
+                                 #   (cavity.tracking_detuning, bit-identical);
+                                 #   "dot" | "matrix" opts into stack-based
+                                 #   tracking via materials.bandgap() on the
+                                 #   named layer of the shared inline stack
+                                 #   (ret.preset / ret.system) -- never GaAs
+                                 #   by default for a non-GaAs stack [DR].
 
 
 @dataclass
@@ -153,6 +191,43 @@ class ApertureBlock:
     diameter_um: float = 1.0
     sigma_inh: float = 40.0
     comp_brightness: float = 0.3
+    compose: bool = False        # False (legacy): aperture_g2_penalty stays an
+                                 #   informational scalar (integer-rounded
+                                 #   competitor count), never folded into g2.
+                                 #   True: continuous [A] Poisson-competitor-
+                                 #   bath composition into g2/g2_cw0 (docs/
+                                 #   rt_edge_contract.md "Aperture assumptions").
+
+
+@dataclass
+class EmissionBlock:
+    type: str = "none"           # "none" (legacy) | "edge" opts into
+                                 #   waveguide.edge_emission out-coupling
+                                 #   (Lemma 1: brightness only, never g2/eps/rho).
+    ridge_width_nm: float = 2000.0
+    etch_depth_nm: float = 1200.0
+    L_um: float = 500.0
+    NA: float = 0.5
+    alpha_cm: float = 5.0        # ridge propagation loss, class estimate [E]
+    R_back: float | None = None  # None: two facets share emission equally [A]
+    coating: dict = field(default_factory=dict)  # facet_transmission() override [A]
+    core_half_nm: float = 148.0  # matrix (well) layer thickness each side of
+                                 #   the dot plane, hkust_ridge_stack class [E]
+    cladding_nm: float = 1000.0  # barrier/cladding thickness each side [E]
+    lambda_nm: float = 0.0       # 0 (default): the actual confinement-derived
+                                 #   X transition, dot_levels.levels(system).
+                                 #   lambda_nm (contract wording). MATERIAL_
+                                 #   EXTRA's optical tables are sparse (a
+                                 #   handful of tabulated points per alloy), so
+                                 #   most physically-derived InP-dot
+                                 #   wavelengths land outside any table and
+                                 #   are correctly reported ineligible
+                                 #   (missing optics evidence) rather than
+                                 #   guessed; an explicit >0 value here is a
+                                 #   stated [A] design wavelength (e.g. the
+                                 #   668 nm point where the phosphide stack's
+                                 #   indices are actually tabulated) used
+                                 #   instead of the natural transition.
 
 
 @dataclass
@@ -165,6 +240,8 @@ class DeviceDesign:
     cavity: CavityBlock = field(default_factory=CavityBlock)
     filter: FilterBlock = field(default_factory=FilterBlock)
     aperture: ApertureBlock = field(default_factory=ApertureBlock)
+    emission: EmissionBlock = field(default_factory=EmissionBlock)
+    provenance: dict = field(default_factory=dict)  # persisted card-side evidence notes
 
     # ---- YAML round-trip (same reproducibility rule as the cards)
     def save(self, path):
@@ -183,6 +260,8 @@ class DeviceDesign:
             drive=DriveBlock(**d["drive"]), thermal=ThermalBlock(**d["thermal"]),
             cavity=CavityBlock(**d["cavity"]), filter=FilterBlock(**d["filter"]),
             aperture=ApertureBlock(**d["aperture"]),
+            emission=EmissionBlock(**d.get("emission", {})),
+            provenance=dict(d.get("provenance", {})),
         )
 
 
@@ -194,13 +273,203 @@ def _stack(th: ThermalBlock) -> Stack:
     )
 
 
+def _material_from_mapping(value):
+    """Decode a card material without changing the public material API [DR]."""
+    if isinstance(value, str):
+        return materials.binary(value)
+    if not isinstance(value, dict):
+        raise ValueError("ret.system material must be a name or mapping")
+    kind = value.get("kind", value.get("alloy", "binary"))
+    if kind == "binary":
+        return materials.binary(value["name"])
+    constructors = {"GaAsP": materials.GaAsP, "GaInP": materials.GaInP,
+                    "AlGaAs": materials.AlGaAs, "AlGaInP": materials.AlGaInP,
+                    "InGaAs": materials.InGaAs}
+    if kind not in constructors:
+        raise ValueError(f"ret.system unknown material kind {kind!r}")
+    kw = {k: v for k, v in value.items() if k not in ("kind", "alloy", "name", "tag", "source")}
+    return constructors[kind](**kw)
+
+
+def _retention_system(ret: RetentionBlock):
+    if ret.preset and ret.system:
+        raise ValueError("ret.preset and ret.system cannot both be set")
+    if ret.preset:
+        presets = dot_levels.class_presets()
+        if ret.preset not in presets:
+            raise ValueError(f"unknown ret.preset {ret.preset!r}")
+        # The actual junction temperature, rather than a preset's cryogenic
+        # display temperature, is installed by _confinement_params below.
+        return presets[ret.preset]()
+    if not ret.system:
+        raise ValueError("ret.mode='confinement' requires ret.preset or ret.system")
+    raw = ret.system
+    geometry = dot_levels.DotGeometry(**raw.get("geometry", {}))
+    return dot_levels.DotSystem(
+        _material_from_mapping(raw["dot"]), _material_from_mapping(raw["matrix"]),
+        _material_from_mapping(raw["barrier"]), _material_from_mapping(raw["substrate"]),
+        T=float(raw.get("T", 300.0)), geometry=geometry,
+        vbo_override_eV=dict(raw.get("vbo_override_eV", {})),
+        eps_r=raw.get("eps_r"), name=raw.get("name", "inline-system"),
+    )
+
+
+def _diode_from_drive(drive: DriveBlock):
+    raw = dict(drive.diode)
+    preset = raw.pop("preset", "")
+    for key in ("tau_pulse_ns", "tau_rad_ns", "w_meV", "dE_WL_meV",
+                "eta_rad_matrix", "E_urbach_meV", "eta_total"):
+        raw.pop(key, None)
+    # Inline material spellings are deliberately decoded here: no card is
+    # allowed to silently replace its stated stack with a preset [DR].
+    for key in ("p_cladding", "n_cladding", "active", "barrier", "substrate"):
+        if key in raw:
+            raw[key] = _material_from_mapping(raw[key])
+    if preset == "hkust":
+        return transport.hkust_preset(**raw)
+    if preset in ("red", "red_diode"):
+        return transport.red_diode_preset(**raw)
+    raise ValueError("drive.mode='EL-transport' requires diode.preset 'hkust' or 'red'")
+
+
+def _confinement_params(ret: RetentionBlock, Tj: float) -> dict:
+    """Resolve confinement at the temperature consumed by escape [DR]."""
+    system = _retention_system(ret)
+    # DotSystem is mutable, so copy rather than mutating the card-derived
+    # object.  This is also why evaluate leaves its input design untouched.
+    system = copy.copy(system)
+    system.T = float(Tj)
+    return dot_levels.retention_params(dot_levels.levels(system), ret.tau_rad_ns,
+                                       ret.channel, verbose=False)
+
+
+def _tracked_material(ret: RetentionBlock, layer: str) -> materials.Material:
+    """Resolve filter.track_material ("dot" | "matrix") against the SAME
+    shared inline stack (ret.preset / ret.system) used by confinement
+    retention -- never an independently selected material [DR]."""
+    if layer not in ("dot", "matrix"):
+        raise ValueError(f"unknown filter.track_material {layer!r} (use 'dot' or 'matrix')")
+    system = _retention_system(ret)
+    return system.dot if layer == "dot" else system.matrix
+
+
+def _aperture_lambda(density_cm2, aperture_um2, w_full_meV, sigma_inh_meV,
+                     comp_brightness) -> tuple:
+    """Continuous (unrounded) competitor count N_w and composed bath mean
+    lambda = N_w * comp_brightness (docs/rt_edge_contract.md "Aperture
+    assumptions"). NaN in, NaN out (no meaningful operating window)."""
+    if not np.isfinite(w_full_meV):
+        return float("nan"), float("nan")
+    Nw = float(n_window_competitors(density_cm2, aperture_um2, w_full_meV, sigma_inh_meV))
+    return Nw, Nw * comp_brightness
+
+
+def _compose_aperture_g2(g_target, lam):
+    """Continuous aperture composition [A]: the competitor bath is an
+    aggregate Poisson process of mean lam = N_w * comp_brightness (N_w
+    continuous, never rounded), independent of the target and of any other
+    loss already folded into g_target (filter/capture/loading are upstream of
+    this call, composed exactly once). Factorial-moment derivation, target
+    brightness normalized to 1:
+
+        <n(n-1)> = g_target*1^2  +  lam^2  +  2*1*lam     (target + Poisson
+                                                            bath + independent
+                                                            cross term)
+        <n>^2   = (1 + lam)^2
+
+        g_mix = (g_target + 2 lam + lam^2) / (1 + lam)^2
+
+    Continuous in lam (no integer rounding/clipping/additive penalty); lam=0
+    (N_w=0 or comp_brightness=0) returns g_target exactly."""
+    lam = np.asarray(lam, dtype=float)
+    return (np.asarray(g_target, dtype=float) + 2.0 * lam + lam * lam) / (1.0 + lam) ** 2
+
+
+def _resolve_edge(ret: RetentionBlock, emission: EmissionBlock, Tj: float):
+    """Convert the shared inline stack (ret.preset / ret.system) into
+    waveguide.Layer objects at the actual emission wavelength (the
+    confinement-derived X transition, dot_levels.levels(system).lambda_nm)
+    and run waveguide.edge_emission's documented public API. Never uses the
+    hkust_ridge_stack() convenience builder (that stack's own composition is
+    a separate literature fixture, not inferred from any card's stack) and
+    never touches private waveguide internals."""
+    if not (ret.preset or ret.system):
+        raise ValueError("emission.type='edge' requires ret.preset or ret.system "
+                          "(the shared inline stack; no independently selected preset)")
+    system = copy.copy(_retention_system(ret))
+    system.T = float(Tj)
+    lv = dot_levels.levels(system)
+    lambda_nm = emission.lambda_nm if emission.lambda_nm > 0 else lv.lambda_nm
+    g = system.geometry
+
+    def n_at(mat):
+        return materials.refractive_index(mat.label, lambda_nm)
+
+    layers = [
+        waveguide.Layer("barrier_lower", n_at(system.barrier), emission.cladding_nm),
+        waveguide.Layer("matrix_lower", n_at(system.matrix), emission.core_half_nm),
+        waveguide.Layer("dot", n_at(system.dot), max(g.height_nm, 0.1), True),
+        waveguide.Layer("matrix_upper", n_at(system.matrix), emission.core_half_nm),
+        waveguide.Layer("barrier_upper", n_at(system.barrier), emission.cladding_nm),
+    ]
+    edge = waveguide.edge_emission(
+        layers, emission.ridge_width_nm, emission.etch_depth_nm, lambda_nm,
+        emission.L_um, emission.NA, alpha_cm=emission.alpha_cm,
+        R_back=emission.R_back, coating=(emission.coating or None))
+    return edge, lambda_nm
+
+
+def _transport_options(drive: DriveBlock, w_meV: float) -> dict:
+    """Card-only transport knobs; units are ns and meV [A/E]."""
+    raw = drive.diode
+    return dict(tau_pulse_ns=float(raw.get("tau_pulse_ns", 1.0)),
+                tau_rad_ns=float(raw.get("tau_rad_ns", 1.0)),
+                w_meV=float(raw.get("w_meV", w_meV)),
+                dE_WL_meV=float(raw.get("dE_WL_meV", 100.0)),
+                eta_rad_matrix=float(raw.get("eta_rad_matrix", 0.1)),
+                E_urbach_meV=raw.get("E_urbach_meV"),
+                eta_total=float(raw.get("eta_total", 0.01)))
+
+
 def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     """Run the full chain. Returns {'curves': {...}, 'scalars': {...}}."""
     d = design
-    proxy = class_proxy_params()
-    gp = {k: proxy[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo")}
-    rp = {k: (getattr(d.ret, k) or proxy[k]) for k in ("a_esc", "E_a", "b_p", "b0", "beta")}
-    rp["E_b"] = d.ret.E_b or proxy["E_b"]
+    if d.drive.mode == "PL" and d.drive.diode:
+        raise ValueError("drive.mode='PL' cannot be used with a non-empty diode")
+    if d.drive.mode == "EL-transport" and d.drive.dg_inj:
+        raise ValueError("drive.mode='EL-transport' cannot be used with dg_inj")
+    if d.drive.mode == "EL-transport" and d.drive.mechanism:
+        raise ValueError("drive.mode='EL-transport' cannot be combined with "
+                         "drive.mechanism (conflicting loading resolutions)")
+    if d.dot.linewidth not in ("class", "anchored"):
+        raise ValueError(f"unknown dot.linewidth {d.dot.linewidth!r}")
+    if d.ret.mode not in ("proxy", "confinement"):
+        raise ValueError(f"unknown ret.mode {d.ret.mode!r}")
+    if d.drive.mode not in ("EL", "PL", "EL-transport"):
+        raise ValueError(f"unknown drive.mode {d.drive.mode!r}")
+    if d.emission.type not in ("none", "edge"):
+        raise ValueError(f"unknown emission.type {d.emission.type!r}")
+    if d.filter.track_material not in ("", "dot", "matrix"):
+        raise ValueError(f"unknown filter.track_material {d.filter.track_material!r}")
+    if d.emission.type == "edge" and d.cavity.enabled:
+        # Reject conflicting SiN/edge and resonant-cavity collection (docs/
+        # rt_edge_contract.md): coexistence needs an explicit supported
+        # leakage accounting this tier does not implement.
+        raise ValueError("emission.type='edge' cannot be combined with "
+                         "cavity.enabled (no supported cavity-leakage accounting)")
+    if d.drive.cw and d.drive.mode != "EL-transport":
+        # The CW pump rate is transport.loading.r_dot; never inferred from
+        # the dimensionless pulsed mu (docs/rt_edge_contract.md).
+        raise ValueError("drive.cw=True requires drive.mode='EL-transport'")
+    proxy = class_proxy_params() if (d.dot.linewidth == "class" or d.ret.mode == "proxy") else {}
+    gp = ({k: proxy[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo")}
+          if d.dot.linewidth == "class" else None)
+    rp = ({k: (getattr(d.ret, k) or proxy[k]) for k in ("a_esc", "E_a", "b_p", "b0", "beta")}
+          if d.ret.mode == "proxy" else {})
+    if d.ret.mode == "proxy":
+        rp["E_b"] = d.ret.E_b or proxy["E_b"]
+    retention_note = "class-proxy Arrhenius fit [A]"
+    diode = _diode_from_drive(d.drive) if d.drive.mode == "EL-transport" else None
 
     a = 0.5 * d.thermal.mesa_diameter_um * 1e-6
     st = _stack(d.thermal)
@@ -212,11 +481,47 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     sin_mode = d.cavity.enabled and d.cavity.type == "sin_waveguide"
 
     def one(T_hs):
+        # The legacy branch deliberately retains its one-shot P=IV calculation.
+        # Transport uses the diode's junction power in a short fixed-point loop.
         Tj = t_junction(P, a, st, T_hs)
+        if diode is not None:
+            if d.drive.I_uA <= 0:
+                return dict(Tj=np.nan, gam=np.nan, eps=np.nan, rho=np.nan,
+                            g2=np.nan, t_x=np.nan, runaway=False, mu=np.nan,
+                            eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
+                            g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
+                            cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                            invalid_reason="EL-transport requires positive current")
+            converged = False
+            for _ in range(12):
+                trial = transport.evaluate_injection(
+                    diode=diode, I_uA=d.drive.I_uA, T=Tj,
+                    n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
+                    aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
+                    **_transport_options(d.drive, 1.0))
+                next_Tj = t_junction(d.drive.duty * trial.P_junction_W, a, st, T_hs)
+                if abs(next_Tj - Tj) < 1e-10:
+                    converged = True
+                    break
+                Tj = next_Tj
+            if not converged:
+                return dict(Tj=np.nan, gam=np.nan, eps=np.nan, rho=np.nan,
+                            g2=np.nan, t_x=np.nan, runaway=False, mu=np.nan,
+                            eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
+                            g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
+                            cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                            invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
-                        g2=np.nan, t_x=np.nan, runaway=True)
-        gam = d.dot.gamma_scale * float(gamma_of_T(Tj, **gp))
+                        g2=np.nan, t_x=np.nan, runaway=True, mu=np.nan,
+                        eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
+                        g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
+                        cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                        invalid_reason="thermal runaway")
+        gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
+                    d.dot.E_LO, d.dot.gamma300))) if d.dot.linewidth == "anchored"
+                    else float(gamma_of_T(Tj, **gp)))
+        gam = d.dot.gamma_scale * gam_base
         # F5' injection broadening (v1.1): EL-mode-only, applied BEFORE the
         # auto-w filter width (below) and BEFORE epsilon.
         if d.drive.mode != "PL" and d.drive.dg_inj:
@@ -224,8 +529,17 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         kappa = d.cavity.kappa if (d.cavity.enabled and not sin_mode) else None
         dx = d.filter.dx
         if d.cavity.enabled and not sin_mode:  # sin waveguide has no mode to track
-            dx = 1e3 * float(tracking_detuning(Tj, d.cavity.E_X0, d.cavity.T_track,
-                                               "GaAs", d.cavity.dEdT_cav * 1e-3))
+            if d.filter.track_material:
+                # Stack-based tracking [DR]: the E_X0/T=0 anchor cancels
+                # between the two bandgap differences below, so only the
+                # named layer's OWN Varshni shape enters -- never GaAs unless
+                # the stack's own dot/matrix material happens to be GaAs.
+                mat = _tracked_material(d.ret, d.filter.track_material)
+                dx = (1e3 * (materials.bandgap(mat, Tj) - materials.bandgap(mat, d.cavity.T_track))
+                      - d.cavity.dEdT_cav * (Tj - d.cavity.T_track))
+            else:
+                dx = 1e3 * float(tracking_detuning(Tj, d.cavity.E_X0, d.cavity.T_track,
+                                                   "GaAs", d.cavity.dEdT_cav * 1e-3))
         w = None
         if d.filter.enabled:
             w = gam if d.filter.auto_w else d.filter.w
@@ -277,24 +591,54 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             kappa=kappa, dx_w=dx_w, dx_c=dx)
         else:
             spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
+        if d.ret.mode == "confinement":
+            derived = _confinement_params(d.ret, Tj)
+            params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
+            params["b0"], params["beta"] = d.ret.b0, d.ret.beta
+            # ret.overrides is an explicit dict (distinct from ret.system, which
+            # only ever carries the inline stack): its presence, not its
+            # truthiness, decides whether a coefficient is replaced, so an
+            # explicitly supplied zero always wins -- unlike legacy's
+            # 0="use proxy" shorthand on the RetentionBlock fields themselves.
+            for key, value in d.ret.overrides.items():
+                if key not in ("a_esc", "E_a", "b_p", "E_b", "b0", "beta"):
+                    raise ValueError(f"unsupported ret.overrides key {key!r}")
+                params[key] = float(value)
+        else:
+            params = rp
         # R2: Purcell speeds the radiative channel by rate_mult (photon-
         # weighted; Lorentzian path uses F_eff directly since there is no
         # sideband split), so the escape-to-radiative ratios divide by it.
+        # rm == 1.0 whenever `wire` is False (rate_mult/F_eff_op are then
+        # left at their 1.0 initializers) -- also reused below by the CW
+        # gamma_X_ns "radiative enhancement" (docs/rt_edge_contract.md).
+        rm = rate_mult if d.dot.lineshape == "ibm" else F_eff_op
         if wire:
-            rm = rate_mult if d.dot.lineshape == "ibm" else F_eff_op
-            S = float(retention(Tj, rp["a_esc"] / rm, rp["E_a"],
-                                rp["b_p"] / rm, rp["E_b"]))
+            S = float(retention(Tj, params["a_esc"] / rm, params["E_a"],
+                                params["b_p"] / rm, params["E_b"]))
         else:
-            S = float(retention(Tj, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
+            S = float(retention(Tj, params["a_esc"], params["E_a"], params["b_p"], params["E_b"]))
         # PL mode: optical excitation, no injection-current background channel.
-        inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
-        B = rp["b0"] + rp["beta"] * (1.0 - S) + inj_bg
+        injection = None
+        if diode is not None:
+            opts = _transport_options(d.drive, w if w is not None else 1.0)
+            injection = transport.evaluate_injection(
+                diode=diode, I_uA=d.drive.I_uA, T=Tj,
+                n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
+                aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
+                S_dot=S, **opts)
+            inj_bg = injection.b_e
+        else:
+            inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
         G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
+        B = params["b0"] + params["beta"] * (1.0 - S) + (G * S * inj_bg if diode else inj_bg)
         rho = G * S / (G * S + B)
         # T1 mechanism library (opt-in): resolve the card's mechanism into the
         # DriveInterface at THIS junction temperature (SET pricing is T-honest)
         # and use its (mu, F_p, eta). mechanism == "" keeps the legacy fields.
         mu_use, Fp_use, eta_use = d.drive.mu, d.drive.F_p, d.drive.eta_capture
+        if injection is not None:
+            mu_use, eta_use = injection.mu or 0.0, injection.eta_capture
         if d.drive.mechanism:
             iface = mech_from_card(d.drive.mechanism, d.drive.mech_params,
                                    T_K=Tj, I_uA=d.drive.I_uA,
@@ -327,8 +671,68 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 g2_dot = float(f1b_g2(mu_use, spec.eps))
         else:
             g2_dot = spec.eps
+        # Continuous aperture composition [A] (docs/rt_edge_contract.md
+        # "Aperture assumptions"): composed AFTER loading/capture/filter are
+        # already folded into g2_dot (spec.eps upstream, mu/F_p above), and
+        # BEFORE the background law below -- every loss is applied exactly
+        # once. Legacy (compose=False) leaves g2_dot untouched; the rounded
+        # aperture_g2_penalty scalar (below, at the operating point only)
+        # stays informational-only in that case, unchanged from before.
+        w_ap = gam if (d.filter.auto_w or not d.filter.enabled) else d.filter.w
+        if d.aperture.compose:
+            _, lam_row = _aperture_lambda(
+                d.aperture.density_cm2, np.pi * (d.aperture.diameter_um / 2) ** 2,
+                w_ap, d.aperture.sigma_inh, d.aperture.comp_brightness)
+            g2_dot = float(_compose_aperture_g2(g2_dot, lam_row))
+        else:
+            lam_row = float("nan")
+
+        # CW diagnostics (opt-in, drive.cw=True; requires EL-transport so the
+        # pump rate comes from transport.loading.r_dot, never inferred from
+        # the dimensionless pulsed mu). gamma_X_ns carries the same Purcell
+        # "radiative enhancement" (rm) as the pulsed retention S above; k_X/
+        # k_XX are the matching ABSOLUTE non-radiative rates for that same
+        # enhanced gamma_X_ns (integrator.retention-consistent, see
+        # cw_g2.escape_rates_from_retention). rho_cw is derived from the
+        # TOTAL filtered X+XX signal, not 1/(1+b_e): b_e is a per-X ratio, so
+        # naively applying it to the X+XX total would double-discount the XX
+        # contribution.
+        g2_cw0 = g2_cw0_raw = float("nan")
+        cw_r_ns = cw_gamma_X_ns = cw_rho = float("nan")
+        if d.drive.cw and injection is not None:
+            gamma_X_ns = rm / d.ret.tau_rad_ns
+            k_X, k_XX = cw_g2.escape_rates_from_retention(
+                gamma_X_ns, params["a_esc"], params["E_a"], params["b_p"], params["E_b"], Tj)
+            r_ns = injection.loading.r_dot / 1e9
+            t_X, t_XX = spec.t_x, spec.eps * spec.t_x
+            if r_ns > 0 and gamma_X_ns > 0 and t_X > 0:
+                I_X, I_XX = cw_g2.photon_rates(r_ns, gamma_X_ns, 2.0 * gamma_X_ns,
+                                               k_X, k_XX, d.drive.cw_pump_ratio)
+                sig = t_X * I_X + t_XX * I_XX
+                bg = inj_bg * t_X * I_X   # b_e is per collected X photon (contract)
+                rho_cw = sig / (sig + bg) if (sig + bg) > 0 else float("nan")
+                report = cw_g2.cw_report(
+                    r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX, rho_cw,
+                    d.drive.cw_irf_fwhm_ps, tau_max_ns=d.drive.cw_tau_max_ns,
+                    pump_ratio=d.drive.cw_pump_ratio, irf_shape=d.drive.cw_irf_shape)
+                if d.aperture.compose and np.isfinite(lam_row):
+                    tau = report["curves"]["tau"]
+                    g_mix = _compose_aperture_g2(report["curves"]["g2_dot"], lam_row)
+                    g_meas = cw_g2.g2_with_background(g_mix, rho_cw)
+                    g_raw = (cw_g2.convolve_irf(tau, g_meas, d.drive.cw_irf_fwhm_ps,
+                                                d.drive.cw_irf_shape)
+                             if d.drive.cw_irf_fwhm_ps > 0 else g_meas)
+                    g2_cw0 = float(np.interp(0.0, tau, g_meas))
+                    g2_cw0_raw = float(np.interp(0.0, tau, g_raw))
+                else:
+                    g2_cw0 = report["g2_meas0"]
+                    g2_cw0_raw = report["g2_raw0"]
+                cw_r_ns, cw_gamma_X_ns, cw_rho = r_ns, gamma_X_ns, rho_cw
         return dict(Tj=Tj, gam=gam, eps=spec.eps, rho=rho,
-                    g2=g2_from(g2_dot, rho), t_x=spec.t_x, runaway=False)
+                    g2=g2_from(g2_dot, rho), t_x=spec.t_x, runaway=False,
+                    mu=mu_use, eta_capture=eta_use, b_e=inj_bg,
+                    injection=injection, S=S, g2_cw0=g2_cw0, g2_cw0_raw=g2_cw0_raw,
+                    cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho)
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     rows = [one(T) for T in Ts]
@@ -340,6 +744,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "rho2": np.array([r["rho"] for r in rows]) ** 2,
         "gamma": np.array([r["gam"] for r in rows]),
     }
+    if d.drive.cw:
+        # T-aligned CW diagnostics (docs/rt_edge_contract.md); g2_op/g2 above
+        # remain the pulsed-intrinsic headline metric (Lemma 1 note).
+        curves["g2_cw0"] = np.array([r["g2_cw0"] for r in rows])
+        curves["g2_cw0_raw"] = np.array([r["g2_cw0_raw"] for r in rows])
 
     op = one(d.thermal.T_hs)
     # T_c: first heatsink temperature where g2 crosses 0.5 (above the g2 minimum)
@@ -352,7 +761,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 Tc = float(np.interp(0.5, [g2c[i], g2c[i + 1]], [Ts[i], Ts[i + 1]]))
                 break
 
-    _, P1, P2 = loading_probs(d.drive.mu)
+    _, P1, P2 = loading_probs(op["mu"])
     w_ap = op["gam"] if d.filter.auto_w or not d.filter.enabled else d.filter.w
     if np.isfinite(w_ap):
         Nw = float(n_window_competitors(
@@ -363,21 +772,121 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             if n_comp else 0.0
     else:
         Nw, ap_pen = float("nan"), 0.0  # runaway: no meaningful operating window
+    lam_op = Nw * d.aperture.comp_brightness if d.aperture.compose and np.isfinite(Nw) else float("nan")
 
     gain_factor = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
     beta_factor = d.cavity.beta_sin if sin_mode else 1.0
+    brightness = float((P1 + P2)) * (op["t_x"] if np.isfinite(op["t_x"]) else 0.0) \
+        * gain_factor * beta_factor
+    if diode is not None:
+        # `mu` is captured-dot loading already: multiply retention and the
+        # spectral window once, never eta_inj/eta_capture again.
+        brightness *= op["S"]
+
+    # emission.type="edge" (Lemma 1: brightness only -- eta_total already
+    # contains beta and the chosen front-facet fraction exactly once; T_facet/
+    # beta/cavity.beta_sin are never applied a second time here).
+    edge, edge_lambda_nm, edge_err = None, float("nan"), None
+    if d.emission.type == "edge" and np.isfinite(op["Tj"]):
+        try:
+            edge, edge_lambda_nm = _resolve_edge(d.ret, d.emission, op["Tj"])
+            brightness *= edge.eta_total
+        except ValueError as e:
+            edge_err = str(e)
+            brightness = float("nan")
+    elif d.emission.type == "edge":
+        edge_err = "no finite operating temperature for edge emission"
+        brightness = float("nan")
     scalars = {
         "T_j_op": op["Tj"], "dT_J": op["Tj"] - d.thermal.T_hs,
         "runaway": bool(op["runaway"]),
         "gamma_op": op["gam"], "eps_op": op["eps"], "rho_op": op["rho"],
         "g2_op": op["g2"], "t_x_op": op["t_x"],
-        "brightness_per_pulse": float((P1 + P2)) * (op["t_x"] if np.isfinite(op["t_x"]) else 0.0)
-        * gain_factor * beta_factor,
+        "brightness_per_pulse": brightness,
         "T_c": Tc,
         "F_eff": float(purcell_eff(d.cavity.F_P, d.cavity.kappa, op["gam"]))
         if (d.cavity.enabled and not sin_mode and np.isfinite(op["gam"])) else np.nan,
         "N_w": Nw, "aperture_g2_penalty": ap_pen,
         "tag_chain": "[A]",  # unmeasured inputs are always in the chain today
+        "linewidth_source": d.dot.linewidth,
+        "retention_source": d.ret.mode,
+        "drive_source": d.drive.mode,
+        "mu_resolved": op["mu"],
+        "eta_capture_resolved": op["eta_capture"],
+        "b_e_resolved": op["b_e"],
+        "V_j_op": op["injection"].V_j if op["injection"] is not None else d.drive.V,
+        "V_j": op["injection"].V_j if op["injection"] is not None else d.drive.V,
+        "V_applied": op["injection"].V_applied if op["injection"] is not None else d.drive.V,
+        "V_bi": op["injection"].V_bi if op["injection"] is not None else np.nan,
+        "P_junction_W": (op["injection"].P_junction_W
+                         if op["injection"] is not None else d.drive.I_uA * 1e-6 * d.drive.V),
+        "eta_inj": (op["injection"].leakage.eta_inj
+                    if op["injection"] is not None else np.nan),
+        "T_j_transport": op["injection"].T if op["injection"] is not None else np.nan,
+        "S_resolved": op["S"],
+        "loading.r_dot": (op["injection"].loading.r_dot
+                          if op["injection"] is not None else np.nan),
+        # Pre-collection photon rates staged for integration-b (transport.py
+        # native units, photons/s -- not rescaled to ns^-1 here so that these
+        # stay exact pass-throughs of the verified Background dataclass).
+        "background.rate_bg_window": (op["injection"].background.rate_bg_window
+                                      if op["injection"] is not None else np.nan),
+        "background.rate_x": (op["injection"].background.rate_x
+                              if op["injection"] is not None else np.nan),
+        # emission.type="edge" (Lemma 1: reported, never re-multiplied into
+        # g2/eps/rho -- see the brightness composition above).
+        "emission_type": d.emission.type,
+        "edge_lambda_nm": edge_lambda_nm,
+        "edge_beta": edge.beta if edge is not None else np.nan,
+        "edge_T_facet": edge.T_facet if edge is not None else np.nan,
+        "edge_eta_prop": edge.eta_prop if edge is not None else np.nan,
+        "edge_eta_NA": edge.eta_NA if edge is not None else np.nan,
+        "edge_eta_total": edge.eta_total if edge is not None else np.nan,
+        "edge_n_eff": edge.n_eff if edge is not None else np.nan,
+        "edge_n_g": edge.n_g if edge is not None else np.nan,
+        "edge_Gamma_dot": edge.Gamma_dot if edge is not None else np.nan,
+        "edge_A_mode_um2": edge.A_mode_um2 if edge is not None else np.nan,
+        # continuous aperture composition (docs/rt_edge_contract.md); N_w
+        # above is already the unrounded competitor count.
+        "aperture_compose": d.aperture.compose,
+        "aperture_lambda_op": lam_op,
+        # material tracking (filter.track_material)
+        "track_material": d.filter.track_material,
+        # CW diagnostics (drive.cw)
+        "g2_cw0": op["g2_cw0"], "g2_cw0_raw": op["g2_cw0_raw"],
+        "cw_r_ns": op["cw_r_ns"], "cw_gamma_X_ns": op["cw_gamma_X_ns"],
+        "cw_rho_op": op["cw_rho"],
+        "invalid_reasons": ([] if np.isfinite(op["g2"])
+                            else [op.get("invalid_reason", "invalid operating point")])
+        + ([edge_err] if edge_err else [])
+        + (["CW diagnostics requested but not evaluable at this operating point"]
+           if d.drive.cw and not np.isfinite(op["g2_cw0"]) else []),
+        "provenance": {
+            "linewidth": {"tag": "A" if d.dot.linewidth == "anchored" else "A",
+                          "note": "anchored linewidth model" if d.dot.linewidth == "anchored"
+                                  else "arsenide class proxy"},
+            "retention": {"tag": "E" if d.ret.mode == "confinement" else "A",
+                          "note": retention_note},
+            "drive": {"tag": "E" if diode is not None else "A",
+                      "note": "transport Diode injection result" if diode is not None
+                              else "legacy drive fields"},
+            "mu_resolved": {"tag": "E" if diode is not None else "A",
+                            "note": "transport dot loading" if diode is not None else "drive.mu"},
+            "b_e_resolved": {"tag": "E" if diode is not None else "A",
+                              "note": "in-window background per collected X photon"},
+            "emission": {"tag": "E" if edge is not None else "A",
+                        "note": ("waveguide.edge_emission on the shared inline stack"
+                                 if edge is not None else "no edge collection (legacy)")},
+            "aperture": {"tag": "A",
+                        "note": ("continuous Poisson competitor-bath composition"
+                                 if d.aperture.compose
+                                 else "legacy informational aperture_g2_penalty only")},
+            "tracking": {"tag": "DR" if d.filter.track_material else "A",
+                        "note": (f"materials.bandgap on stack layer {d.filter.track_material!r}"
+                                 if d.filter.track_material else "legacy hard-coded GaAs Varshni")},
+            "cw": {"tag": "A", "note": ("cw_g2 rate-equation model, transport-derived pump rate"
+                                        if d.drive.cw else "not requested")},
+        },
     }
     return {"curves": curves, "scalars": scalars}
 

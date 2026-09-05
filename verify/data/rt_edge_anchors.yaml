@@ -1,0 +1,177 @@
+anchors:
+  - id: reischle08-g2-80k
+    claim: reischle2008_g2_80K
+    value: 0.43
+    unit: g2(0)
+    tolerance: {rel: 0.12}
+    conditions: "InP/AlGaInP p-i-n EL, 80 K, QD C; raw dip. A second independent 80 K electrical single-dot result is not in the digests."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "Fig. 3b"
+    tag: V
+    status: missing
+  - id: reischle08-g2-80k-independent-gap
+    claim: reischle2008_g2_80K
+    value: null
+    unit: g2(0)
+    tolerance: {rel: 0.12}
+    conditions: "Independent paper required for the 80 K electrical InP-dot g2 anchor."
+    source: "Independent source not retrieved"
+    doi: ""
+    locator: "not available"
+    tag: A
+    status: missing
+  - id: chatzarakis23-g2-temperature
+    claim: temperature_trend_g2
+    value: 0.36
+    unit: g2(0)
+    tolerance: 0.03
+    conditions: "Pulsed X-line measurement, 230 K, no background correction."
+    source: "Chatzarakis et al., Physical Review Applied 20, 034011 (2023)"
+    doi: "10.1103/PhysRevApplied.20.034011"
+    locator: "Fig. 5"
+    tag: V
+    status: verified
+  - id: laferriere23-g2-temperature
+    claim: temperature_trend_g2
+    value: 0.57
+    unit: g2(0)
+    tolerance: {rel: 0.06}
+    conditions: "Pulsed InAsP/InP nanowire measurement, 300 K, fitted with background."
+    source: "Laferriere et al., Nano Letters 23, 962 (2023)"
+    doi: "10.1021/acs.nanolett.2c04375"
+    locator: "Fig. 5"
+    tag: V
+    status: verified
+  - id: gu25-hkust-wavelength
+    claim: hkust_inp_gaasp_wavelength
+    value: 755
+    unit: nm
+    tolerance: 5
+    conditions: "Electrically pumped type-I/type-II InP/GaAs0.65P0.35 QD ridge laser on GaAs. Independent matching single-dot evidence is absent."
+    source: "Gu et al., Optics Express 33, 23732 (2025)"
+    doi: "10.1364/OE.563529"
+    locator: "reported device wavelength"
+    tag: V
+    status: missing
+  - id: hkust22-wavelength-independent-gap
+    claim: hkust_inp_gaasp_wavelength
+    value: 750
+    unit: nm
+    tolerance: 5
+    conditions: "Electrically pumped InP/GaAsP QD laser on Si; digest gives a news summary only, without DOI or figure."
+    source: "Luo et al., HKUST Optics Express news summary (2022)"
+    doi: ""
+    locator: "news summary"
+    tag: E
+    status: missing
+  - id: reischle08-gaas-pin-iv
+    claim: gaas_pin_iv
+    value: 1.97
+    unit: V
+    tolerance: 0.02
+    conditions: "GaAs-substrate InP/AlGaInP p-i-n, QD C, 80 K electrical operation."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "Fig. 2d"
+    tag: V
+    status: verified
+  - id: reischle10-gaas-pin-iv
+    claim: gaas_pin_iv
+    value: 2.07
+    unit: V
+    tolerance: 0.03
+    conditions: "GaAs-substrate InP/GaInP p-i-n, Device 2 dc bias before pulsed injection, about 20 K."
+    source: "Reischle et al., Applied Physics Letters 97, 143513 (2010)"
+    doi: "10.1063/1.3497016"
+    locator: "Fig. 3"
+    tag: V
+    status: verified
+  - id: reischle08-first-lens-efficiency
+    claim: edge_extraction_efficiency
+    value: 0.00009
+    unit: fraction
+    tolerance: {rel: 0.15}
+    conditions: "Vertical reference device, 4 K; collection efficiency inferred from 90 kHz first-lens rate and 1 GHz maximum rate."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "p. 12775, collection-efficiency paragraph"
+    tag: DR
+    status: verified
+  - id: laferriere23-first-lens-efficiency
+    claim: edge_extraction_efficiency
+    value: 0.276
+    unit: fraction
+    tolerance: {rel: 0.05}
+    conditions: "Vertical InP photonic-nanowire reference, 4 K, after multiphoton correction."
+    source: "Laferriere et al., Nano Letters 23, 962 (2023)"
+    doi: "10.1021/acs.nanolett.2c04375"
+    locator: "Fig. 2 and first-lens-efficiency discussion"
+    tag: V
+    status: verified
+  - id: inp-300k-linewidth-class-gap
+    claim: gamma300_class_range
+    value: null
+    unit: meV
+    tolerance: {rel: 0.25}
+    conditions: "No 300 K single-InP-dot linewidth was retrieved; 15-20 meV is only a III-As/III-P class proxy."
+    source: "Materials research synthesis, Section 6"
+    doi: ""
+    locator: "Linewidths at 300 K"
+    tag: E
+    status: missing
+  - id: laferriere23-linewidth-class-proxy
+    claim: gamma300_class_range
+    value: 16
+    unit: meV
+    tolerance: {rel: 0.2}
+    conditions: "InAsP/InP nanowire dot at 300 K; 25 nm at 1398 nm converted to energy width. Not an InP/GaAsP-dot measurement."
+    source: "Laferriere et al., Nano Letters 23, 962 (2023)"
+    doi: "10.1021/acs.nanolett.2c04375"
+    locator: "Fig. 5 temperature-series discussion"
+    tag: DR
+    status: missing
+  - id: bommer11-retention-ea
+    claim: retention_Ea_inp_algainp
+    value: 96
+    unit: meV
+    tolerance: 7
+    conditions: "Single-dot X Arrhenius activation energy for InP/(Al0.20Ga0.80)InP."
+    source: "Bommer et al., Journal of Applied Physics 110, 063108 (2011)"
+    doi: "10.1063/1.3633218"
+    locator: "single-dot Arrhenius fit"
+    tag: V
+    status: missing
+  - id: inp-algainp-retention-independent-gap
+    claim: retention_Ea_inp_algainp
+    value: null
+    unit: meV
+    tolerance: 10
+    conditions: "A second independently sourced InP/AlGaInP activation-energy measurement is required."
+    source: "Independent source not retrieved"
+    doi: ""
+    locator: "not available"
+    tag: A
+    status: missing
+  - id: reischle08-delta-xx
+    claim: delta_xx_inp_gaasp
+    value: 5
+    unit: meV
+    tolerance: 1
+    conditions: "InP/GaInP proxy: typical X-XX binding-energy range 4-6 meV, not a measured InP/GaAsP dot."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "p. 12774, exciton-complex discussion"
+    tag: V
+    status: verified
+  - id: bommer11-delta-xx
+    claim: delta_xx_inp_gaasp
+    value: 7
+    unit: meV
+    tolerance: 1
+    conditions: "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement."
+    source: "Bommer et al., Journal of Applied Physics 110, 063108 (2011)"
+    doi: "10.1063/1.3633218"
+    locator: "biexciton-binding discussion"
+    tag: V
+    status: verified
