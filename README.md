@@ -96,19 +96,21 @@ p-i-n transport, ridge waveguide, and CW correlation; new opt-in
 The honest conditional outcome, from `out/rt_edge/verdict.md`, is:
 
 ```
-VERDICT: FAIL g2_min=0.4305 g2_median=0.7076 diag_g2_min=0.4305 diag_g2_median=0.7409 flux_max=1111 flux_shortfall=0.9001 median_pass=false coverage=0.02083 eligible=16/192 flux_floor_excluded=176 evidence=incomplete conditional=true headline_coverage=4/192 cw_raw_coverage=0/192 gamma300_pass_max=6
+VERDICT: FAIL g2_min=0.3986 g2_median_eligible=0.7019 diag_g2_min=0.3986 diag_g2_median_diagnostic=0.7352 flux_max=1544 flux_margin=1.544 flux_shortfall_deprecated=0.6475 median_pass=false coverage_over_eligible=0.25 eligible_fraction=0.1667 eligible=32/192 flux_floor_excluded=160 evidence=incomplete conditional=true headline_coverage=8/192 cw_raw_coverage=0/192 gamma300_pass_max=8 gamma300_threshold=8-10
 ```
 
 The stop rule is not met as stated. The model's pulsed intrinsic `g2(0)` at
-300 K is controlled by an unmeasured InP-dot exciton linewidth: verified
-class anchors are 6.5 and 12 meV and the sweep spans 6--20 meV. At the
-low-linewidth end the fallback card has four eligible 300 K pulsed corners
-with `g2(0) < 0.5` and more than 1 kHz collected flux, but only with declared
-collection levers (HR back facet, NA 0.75, 250 um ridge). Evidence remains
+300 K is controlled by an unmeasured InP-dot exciton linewidth; the sampled
+threshold is bracketed at 8--10 meV. The explicit 6.5 meV per-card result
+fails for the primary InP/GaAsP card and passes for the fallback InP/(Al)GaInP
+card. At 6.5 meV, the primary returns `g2_pulsed=0.6523` and 291.6 photons/s,
+while the fallback returns `g2_pulsed=0.4563` and 1441 photons/s. The primary card never clears the flux floor, so the conditional result
+rests on the fallback card alone. Evidence remains
 incomplete: no second verified source supports Reischle 2008's 80 K electrical
 `g2` anchor, and the HKUST 750 nm line is not reproduced by the single-band
 solver (about 816 nm for the GaAsP card). The CW dip is detector-limited, so
-pulsed drive is required. See **`docs/rt_edge_tier.md`** for current verify
+pulsed drive is required. Like-for-like, Reischle's deconvolved 0.25 +/- 0.05
+is compared with the model's best intrinsic corner. See **`docs/rt_edge_tier.md`** for current verify
 counts, the 80 K/230 K comparisons, assumptions, disclosures, and council
 review history.
 
