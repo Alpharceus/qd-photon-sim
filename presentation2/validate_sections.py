@@ -4,7 +4,7 @@ presentation2/sections/*.json against the schema in presentation2/SCHEMA.md.
 Checks: required keys (section-level and per-slide), layout is one of the
 eleven allowed values, at most 6 bullets each at most ~18 words, at most 3
 equations per slide (each with latex + caption), speaker notes word count
-(100-280 words, hard bounds), figure.path/figure.script exist on disk and
+(115-255 words, hard bounds), figure.path/figure.script exist on disk and
 figure.path is exactly 1600x900 or 1200x1200 px, read straight from the PNG
 header (both checks skip with check_figures=False for a fast
 pre-figure-generation pass -- see build.py), and every `repo_numbers` entry's
@@ -52,8 +52,8 @@ VALID_LAYOUTS = {
 MAX_BULLETS = 6
 MAX_BULLET_WORDS = 18
 MAX_EQUATIONS = 3
-MIN_NOTES_WORDS = 100
-MAX_NOTES_WORDS = 280
+MIN_NOTES_WORDS = 115
+MAX_NOTES_WORDS = 255
 ALLOWED_FIGURE_SIZES = {(1600, 900), (1200, 1200)}
 REPO_NUMBER_TOL = 1e-6
 HOW_TIMEOUT_S = 30

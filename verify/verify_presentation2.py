@@ -18,9 +18,13 @@ What this confirms:
     layout, not only `equation` -- contains at least as many picture shapes
     as it has `equations` (exercises the new `equation+figure` and
     `bullets+table` layouts, and a `bullets+figure` slide with an equation);
+  * every `equation`/`equation+figure` slide that also carries `bullets`
+    renders each bullet's text in both the pptx slide text and the HTML
+    page (SCHEMA.md: bullets render on every layout that carries them,
+    including those two);
   * out/presentation2/index.html has the same number of `<section` elements
     as slides, embeds no external `<script src=`, and stays under 16 MB;
-  * validate_sections.py rejects speaker notes shorter than the 100-280 word
+  * validate_sections.py rejects speaker notes shorter than the 115-255 word
     hard bound and a figure PNG whose pixel size is not exactly 1600x900 or
     1200x1200 (negative tests using temp copies).
 
@@ -98,7 +102,7 @@ def check_repo_numbers_how(sample: dict) -> None:
 
 def check_notes_length_validation(sample: dict) -> None:
     """validate_sections.py must reject a slide whose speaker notes are far
-    shorter than the schema's 100-280 word hard bound."""
+    shorter than the schema's 115-255 word hard bound."""
     mutated = json.loads(json.dumps(sample))
     mutated["slides"][0]["notes"] = "Too short to pass the word-count check."
 
@@ -111,7 +115,7 @@ def check_notes_length_validation(sample: dict) -> None:
             cwd=str(ROOT), capture_output=True, text=True,
         )
     ck(result.returncode != 0,
-       "validate_sections.py --section rejects notes shorter than 100 words")
+       "validate_sections.py --section rejects notes shorter than 115 words")
 
 
 _FAKE_PNG_PATH = PRESENTATION2 / "figures" / "out" / "_verify_tmp_badsize.png"
@@ -183,6 +187,8 @@ def main() -> int:
     ck(len(slides) == expected_n_slides,
        f"pptx slide count == sample slide count ({len(slides)} vs {expected_n_slides})")
 
+    html_text = HTML_PATH.read_text(encoding="utf-8")
+
     for i, pptx_slide in enumerate(slides):
         json_slide = sample["slides"][i] if i < len(sample["slides"]) else None
         label = json_slide["id"] if json_slide else f"index {i}"
@@ -210,7 +216,19 @@ def main() -> int:
                f"slide {label} ({json_slide['layout']}): "
                f"{n_pictures} pictures >= {n_equations} equations")
 
-    html_text = HTML_PATH.read_text(encoding="utf-8")
+        if json_slide and json_slide.get("layout") in ("equation", "equation+figure") \
+                and json_slide.get("bullets"):
+            # SCHEMA.md: bullets render on every layout that carries them,
+            # including "equation" and "equation+figure" -- assert each
+            # bullet's text actually shows up in both renderers' output.
+            for bullet in json_slide["bullets"]:
+                ck(bullet in slide_text,
+                   f"slide {label} ({json_slide['layout']}): pptx text contains bullet "
+                   f"'{bullet[:40]}'")
+                ck(bullet in html_text,
+                   f"slide {label} ({json_slide['layout']}): html contains bullet "
+                   f"'{bullet[:40]}'")
+
     n_sections = len(re.findall(r"<section", html_text))
     ck(n_sections == expected_n_slides,
        f"index.html has the same number of <section> elements as slides "

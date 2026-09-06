@@ -347,14 +347,38 @@ function layoutFigure(pres, slide, sectionTitle, pageNum, accent) {
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
+// Compact bullets strip reserved above an equation (or equation+figure)
+// block -- SCHEMA.md: bullets render on every layout that carries them,
+// including "equation" (above the equation block) and "equation+figure"
+// (above the equation column). Sized in proportion to bullet count but
+// capped so the equation/figure content below always keeps most of the box.
+const BULLETS_STRIP_ROW_H = 0.32;
+
+function splitBodyForBullets(box, bullets) {
+  if (!bullets || !bullets.length) return { bulletsBox: null, main: box };
+  const gap = 0.15;
+  const bH = Math.min(bullets.length * BULLETS_STRIP_ROW_H, box.h * 0.35);
+  const mainY = box.y + bH + gap;
+  return {
+    bulletsBox: { x: box.x, y: box.y, w: box.w, h: bH },
+    main: { x: box.x, y: mainY, w: box.w, h: box.h - bH - gap },
+  };
+}
+
 function layoutEquation(pres, slide, sectionTitle, pageNum, accent) {
   const s = pres.addSlide();
   s.background = { color: WHITE };
   addTitleText(s, slide.title, { color: accent });
   const eqs = slide.equations || [];
-  const rowH = BODY_H / Math.max(eqs.length, 1);
+  const { bulletsBox, main } = splitBodyForBullets(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.bullets
+  );
+  if (bulletsBox) {
+    renderBulletsColumn(s, slide.bullets, bulletsBox, { fontSize: 14 });
+  }
+  const rowH = main.h / Math.max(eqs.length, 1);
   eqs.forEach((eq, i) => {
-    const y = BODY_Y + i * rowH;
+    const y = main.y + i * rowH;
     const capH = 0.4;
     const imgPath = equationImagePath(eq.latex);
     if (fs.existsSync(imgPath)) {
@@ -439,7 +463,13 @@ function layoutEquationFigure(pres, slide, sectionTitle, pageNum, accent) {
   const gap = 0.4;
   const leftW = CONTENT_W * 0.45;
   const rightW = CONTENT_W - leftW - gap;
-  renderEquationsStrip(s, slide.equations || [], { x: CONTENT_X, y: BODY_Y, w: leftW, h: BODY_H });
+  const { bulletsBox, main: eqBox } = splitBodyForBullets(
+    { x: CONTENT_X, y: BODY_Y, w: leftW, h: BODY_H }, slide.bullets
+  );
+  if (bulletsBox) {
+    renderBulletsColumn(s, slide.bullets, bulletsBox, { fontSize: 14 });
+  }
+  renderEquationsStrip(s, slide.equations || [], eqBox);
   if (slide.figure) {
     addFigureWithCaption(s, slide.figure, { x: CONTENT_X + leftW + gap, y: BODY_Y, w: rightW, h: BODY_H });
   }

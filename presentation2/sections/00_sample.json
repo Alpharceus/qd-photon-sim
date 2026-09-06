@@ -53,18 +53,22 @@
         "caption": "The same sample figure, shown large with no competing text",
         "script": "presentation2/figures/fig_00_sample.py"
       },
-      "notes": "Demonstrates the figure-only layout: a large centered figure with a caption and a short title, no bullet text competing for attention. This layout is meant for a single diagram, plot, or schematic that deserves the whole slide -- a device cross-section, a level diagram, a measured or simulated trace -- where accompanying prose belongs in the speaker notes rather than on the slide itself. The fixture reuses the same synthetic damped-oscillation figure as the bullets+figure slide above, produced by the same deterministic, re-runnable matplotlib script, so this check never has to generate a second image just to exercise the figure-only code path in both renderers.",
+      "notes": "Demonstrates the figure-only layout: a large centered figure with a caption and a short title, no bullet text competing for attention. This layout is meant for a single diagram, plot, or schematic that deserves the whole slide -- a device cross-section, a level diagram, a measured or simulated trace -- where accompanying prose belongs in the speaker notes rather than on the slide itself. The fixture reuses the same synthetic damped-oscillation figure as the bullets+figure slide above, produced by the same deterministic, re-runnable matplotlib script, so this check never has to generate a second image just to exercise the figure-only code path in both renderers, keeping this slide's fixture footprint as small as every other slide's in the deck.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {
       "id": "00-05",
       "layout": "equation",
       "title": "Equation layout",
+      "bullets": [
+        "Bullets now render above the equation block too",
+        "Kept compact so the equations keep most of the slide"
+      ],
       "equations": [
         {"latex": "E = \\hbar \\omega", "caption": "photon energy; hbar reduced Planck constant, omega angular frequency"},
         {"latex": "\\Gamma = \\frac{1}{\\tau}", "caption": "decay rate; tau spontaneous emission lifetime"}
       ],
-      "notes": "Demonstrates the equation layout: each equation is rendered by mathimg.py to a cached PNG keyed by a hash of its LaTeX source, then placed as a picture with its caption beneath it, up to three equations per slide as the schema allows. The pptx and html renderers must locate the same cached file independently -- the Node renderer computes the identical sha256-based hash itself rather than shelling out to Python -- so this slide also exercises that cross-language cache-key agreement. Two short textbook-style equations are used here, a photon-energy relation and a decay-rate relation, each with a caption naming every symbol that is not already defined elsewhere on the slide, matching the schema's captioning rule.",
+      "notes": "Demonstrates the equation layout: each equation is rendered by mathimg.py to a cached PNG keyed by a hash of its LaTeX source, then placed as a picture with its caption beneath it, up to three equations per slide as the schema allows. The pptx and html renderers must locate the same cached file independently -- the Node renderer computes the identical sha256-based hash itself rather than shelling out to Python -- so this slide also exercises that cross-language cache-key agreement. Two short textbook-style equations are used here, a photon-energy relation and a decay-rate relation, each with a caption naming every symbol that is not already defined elsewhere on the slide, matching the schema's captioning rule. A schema-wide rule change now also requires bullets to render on every layout that carries them, including this one, so this slide adds two short framing bullets above the equation block -- rendered in a smaller, compact font so the equations still keep most of the vertical space -- to exercise that new rule in both renderers alongside the existing equation-caching path.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {
@@ -90,7 +94,7 @@
           ["high bias", ">2", "series-resistance dominated"]
         ]
       },
-      "notes": "Demonstrates the table layout: a header row plus data rows, rendered as a native table in the pptx (so it stays editable and accessible in PowerPoint) and as a plain HTML table on the web page, wrapped in a scrollable container so a wide table never forces the whole page to scroll sideways on a narrow screen. The header row is filled with the section's accent color and white text in both renderers, and body rows alternate a light and white background in the pptx to keep long rows readable, mirroring how a real table of device regimes, fit parameters, or comparison numbers would be presented in the talk.",
+      "notes": "Demonstrates the table layout: a header row plus data rows, rendered as a native table in the pptx (so it stays editable and accessible in PowerPoint) and as a plain HTML table on the web page, wrapped in a scrollable container so a wide table never forces the whole page to scroll sideways on a narrow screen. The header row is filled with the section's accent color and white text in both renderers, and body rows alternate a light and white background in the pptx to keep long rows readable, mirroring how a real table of device regimes, fit parameters, or comparison numbers would be presented in the talk, without any of the surrounding renderer code treating this fixture's rows as special cases.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {
@@ -98,7 +102,7 @@
       "layout": "section-divider",
       "title": "Section Divider",
       "subtitle": "A full-bleed break between sections",
-      "notes": "Demonstrates the section-divider layout: a full-color break slide carrying just a title and an optional subtitle, used between major sections of the two-hour talk to give the audience a visual reset and a moment to see where the talk is headed next. The background fills with the section's accent color rather than white, and both the title and subtitle switch to light text so they stay readable against that dark or saturated background -- a detail both renderers must handle correctly, since every other layout in this fixture assumes a white background and dark ink, and this is the one layout in the whole schema that deliberately inverts that contrast.",
+      "notes": "Demonstrates the section-divider layout: a full-color break slide carrying just a title and an optional subtitle, used between major sections of the two-hour talk to give the audience a visual reset and a moment to see where the talk is headed next. The background fills with the section's accent color rather than white, and both the title and subtitle switch to light text so they stay readable against that dark or saturated background -- a detail both renderers must handle correctly, since every other layout in this fixture assumes a white background and dark ink, and this is the one layout in the whole schema that deliberately inverts that contrast, a detail this fixture exists specifically to catch if either renderer regresses it.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {
@@ -106,7 +110,7 @@
       "layout": "quote",
       "title": "Data-driven slides keep four concurrent writers from stepping on one renderer's toes.",
       "subtitle": "Demo callout -- no attribution, schema-conformance fixture only",
-      "notes": "Demonstrates the quote layout: the title field is shown large, centered, and in italics as the quoted text itself, with the subtitle field, if present, shown smaller beneath it as an attribution or a short caption line, the way a pull-quote breaks up a long stretch of technical slides with a single memorable sentence. This fixture's quote is itself a description of why the presentation is built this way -- four workers editing four section files concurrently, all rendered by one shared pair of renderers -- rather than a real citation, and the sources field says so explicitly so nobody mistakes it for an attributed remark from the literature.",
+      "notes": "Demonstrates the quote layout: the title field is shown large, centered, and in italics as the quoted text itself, with the subtitle field, if present, shown smaller beneath it as an attribution or a short caption line, the way a pull-quote breaks up a long stretch of technical slides with a single memorable sentence. This fixture's quote is itself a description of why the presentation is built this way -- four workers editing four section files concurrently, all rendered by one shared pair of renderers -- rather than a real citation, and the sources field says so explicitly so nobody mistakes it for an attributed remark from the literature, keeping this fixture honest about its own synthetic origin.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {
@@ -139,6 +143,10 @@
       "id": "00-11",
       "layout": "equation+figure",
       "title": "Equation + figure layout",
+      "bullets": [
+        "Bullets now render above the equation column here too",
+        "The figure column keeps its full width and height"
+      ],
       "equations": [
         {"latex": "g^{(2)}(0) = \\frac{\\langle \\hat n (\\hat n - 1) \\rangle}{\\langle \\hat n \\rangle^2}", "caption": "second-order coherence at zero delay; n photon-number operator"}
       ],
@@ -147,7 +155,7 @@
         "caption": "The same sample figure, paired with the equation it illustrates",
         "script": "presentation2/figures/fig_00_sample.py"
       },
-      "notes": "Demonstrates the new equation+figure layout: an equation block sits on the left half of the slide and the referenced figure sits on the right half, each with its own caption, so a formula and the plot or diagram it produces can share one slide without one crowding out the other. This layout exists because several real sections pair a derived expression directly with a numerical or measured curve that illustrates it, and forcing that pairing across two separate slides -- one equation layout, one figure layout -- would break the narrative flow a lecturer wants when explaining where a formula comes from and what it predicts next. The fixture reuses the sample figure and a short two-photon-coherence equation purely to exercise this new code path in both renderers.",
+      "notes": "Demonstrates the new equation+figure layout: an equation block sits on the left half of the slide and the referenced figure sits on the right half, each with its own caption, so a formula and the plot or diagram it produces can share one slide without one crowding out the other. This layout exists because several real sections pair a derived expression directly with a numerical or measured curve that illustrates it, and forcing that pairing across two separate slides -- one equation layout, one figure layout -- would break the narrative flow a lecturer wants when explaining where a formula comes from and what it predicts next. The fixture reuses the sample figure and a short two-photon-coherence equation purely to exercise this new code path in both renderers. A schema-wide rule change now also requires bullets to render on every layout that carries them, including this one, so this slide adds two short bullets above the equation column, in a compact font, while the figure column keeps its full height untouched.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
     },
     {

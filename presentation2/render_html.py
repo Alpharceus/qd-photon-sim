@@ -81,9 +81,10 @@ def load_sections(sections_dir: Path, include_sample: bool):
     return sections
 
 
-def render_bullets(bullets) -> str:
+def render_bullets(bullets, compact: bool = False) -> str:
     items = "".join(f"<li>{inline_text(b)}</li>" for b in bullets)
-    return f'<ul class="bullets">{items}</ul>'
+    cls = "bullets bullets-compact" if compact else "bullets"
+    return f'<ul class="{cls}">{items}</ul>'
 
 
 def render_figure(figure) -> str:
@@ -171,9 +172,15 @@ def render_slide(slide, section, accent) -> str:
         if slide.get("figure"):
             body += render_figure(slide["figure"])
     elif layout == "equation":
-        body = f'<h2>{title}</h2><div class="equations">{render_equations(slide.get("equations", []))}</div>'
+        body = f"<h2>{title}</h2>"
+        if slide.get("bullets"):
+            body += render_bullets(slide["bullets"], compact=True)
+        body += f'<div class="equations">{render_equations(slide.get("equations", []))}</div>'
     elif layout == "equation+figure":
-        body = f'<h2>{title}</h2><div class="split">'
+        body = f"<h2>{title}</h2>"
+        if slide.get("bullets"):
+            body += render_bullets(slide["bullets"], compact=True)
+        body += '<div class="split">'
         body += f'<div class="split-text equations">{render_equations(slide.get("equations", []))}</div>'
         if slide.get("figure"):
             body += f'<div class="split-fig">{render_figure(slide["figure"])}</div>'
@@ -274,6 +281,8 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
   text-align: center; border: none; margin: 1rem 0; }
 .bullets { line-height: 1.6; }
 .bullets li { margin-bottom: 0.4rem; }
+.bullets-compact { font-size: 0.85rem; line-height: 1.3; margin-bottom: 0.5rem; }
+.bullets-compact li { margin-bottom: 0.15rem; }
 .split { display: flex; gap: 1.5rem; }
 .split-text, .split-fig { flex: 1 1 0; min-width: 0; }
 .fig, .eq { text-align: center; margin: 0.5rem 0; }
