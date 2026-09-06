@@ -75,6 +75,7 @@ The review record is in `../_goal/PROGRESS.md`; the associated `.workers/specs/r
 - Opus pass 4 found the decisive eligible corner had to be evaluated with the final cards; fix round 4 regenerated the 192-row sweep and conditional verdict.
 - A codex-sol cross-review found that the human-facing documents still described an earlier sweep; this final documentation round refreshes the verdict, counts, disclosures, and conditional conclusion.
 - Council review pass 5 refreshed the gamma300 threshold bracket, flux margin, 6.5 meV per-card anchor, like-for-like Reischle comparison, and fused facet-model note.
+- Council review pass 6 (Opus, 2026-09-06) confirmed the physics reproduces to float precision (facet factor applied once, 1544 photons/s factor chain, 8-10 meV threshold bracket) and found reporting-attribution errors; fix round 6 made the residual-background citation ledger-driven (Opt. Express 16, 12771), prints `none(flux)` / `none(g2)` instead of a misleading threshold when nothing passes, names the smallest factor of the whole brightness chain (retention S) as the limiter, unifies the coverage/median names with the VERDICT line, adds the IRF-deconvolved Reischle 0.25 +/- 0.05 anchor with [V] tags, and rewrites the cards' signal-fraction sentences (Lemma 1: rho is independent of the collection levers).
 
 ## Limits
 

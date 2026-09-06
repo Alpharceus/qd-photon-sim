@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-09-06T08:59:19.106139+00:00",
+  "generated_utc": "2026-09-06T10:12:38.983599+00:00",
   "quick": false,
   "grid_complete": true,
   "grid": {
@@ -83,13 +83,13 @@
       "id": "edge-inp-gaasp-design",
       "class": "primary",
       "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gaasp-design.yaml",
-      "sha256": "668d6aaa1fc0fe3bc05590ca335eee61a9a24698d0c8124d99fd47ef487fca7f"
+      "sha256": "c0096225c600a0f96178574cd9c180776dd4aa385c6fd9ceae0dbf10171ee503"
     },
     {
       "id": "edge-inp-gainp-design",
       "class": "fallback",
       "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gainp-design.yaml",
-      "sha256": "f815687aa439927e1a7a4c7b160b76bdd24e48a7f69ef02a1b801f8b9446e507"
+      "sha256": "884cae74ad19cdefb05a5d6520bc5a50227bfc3c4a5d38d8e293480418170a07"
     }
   ],
   "runtime_versions": {
@@ -455,7 +455,8 @@
     "gamma300_threshold_by_card": {
       "edge-inp-gaasp-design": {
         "lo": null,
-        "hi": 6.0
+        "hi": 6.0,
+        "reason": "flux"
       },
       "edge-inp-gainp-design": {
         "lo": 8.0,
@@ -489,18 +490,19 @@
   },
   "evidence": {
     "evidence_complete": false,
-    "source_ledger_sha256": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
+    "source_ledger_sha256": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
     "evaluator_input_hashes": {
-      "verify/data/rt_edge_anchors.yaml": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
-      "cards/edge-inp-gaasp-design.yaml": "668d6aaa1fc0fe3bc05590ca335eee61a9a24698d0c8124d99fd47ef487fca7f",
-      "cards/edge-inp-gainp-design.yaml": "f815687aa439927e1a7a4c7b160b76bdd24e48a7f69ef02a1b801f8b9446e507"
+      "verify/data/rt_edge_anchors.yaml": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
+      "cards/edge-inp-gaasp-design.yaml": "c0096225c600a0f96178574cd9c180776dd4aa385c6fd9ceae0dbf10171ee503",
+      "cards/edge-inp-gainp-design.yaml": "884cae74ad19cdefb05a5d6520bc5a50227bfc3c4a5d38d8e293480418170a07"
     },
     "missing_evidence": [
       {
         "claim": "reischle2008_g2_80K",
-        "reason": "only 0 distinct verified primary source(s), need 2",
+        "reason": "only 1 distinct verified primary source(s), need 2",
         "anchors": [
           "reischle08-g2-80k",
+          "reischle08-g2-80k-deconvolved",
           "reischle08-g2-80k-independent-gap"
         ]
       },
@@ -525,5 +527,5 @@
   "hallucination_self_test": {
     "self_test_passed": true
   },
-  "runtime_seconds": 479.85441613197327
+  "runtime_seconds": 488.25392961502075
 }

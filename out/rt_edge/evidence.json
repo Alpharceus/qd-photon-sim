@@ -6,11 +6,12 @@
     "reischle2008_g2_80K": {
       "anchors": [
         "reischle08-g2-80k",
+        "reischle08-g2-80k-deconvolved",
         "reischle08-g2-80k-independent-gap"
       ],
-      "distinct_verified_sources": 0,
+      "distinct_verified_sources": 1,
       "complete": false,
-      "reason": "only 0 distinct verified primary source(s), need 2"
+      "reason": "only 1 distinct verified primary source(s), need 2"
     },
     "temperature_trend_g2": {
       "anchors": [
@@ -155,6 +156,70 @@
         }
       ],
       "effective_verified": false
+    },
+    "reischle08-g2-80k-deconvolved": {
+      "claim": "reischle2008_g2_80K",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 0.25,
+      "tolerance": 0.05,
+      "context": "InP/AlGaInP p-i-n EL, 80 K, QD C; IRF-deconvolved, background-included value (distinct from the unconvolved dip and from the further background-corrected 0.03). Same paper/DOI as reischle08-g2-80k -- counts as ONE distinct source under score_ledger's DOI-based dedup, never a second independent source.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "not asserted as a raw observation"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 0.25 g2(0) (paper_digests.md, Paper 1, Section 5 (line ~36): IRF-deconvolved, background-included g2(0) = 0.25 +/- 0.05 (QD C, 80 K), distinct from the unconvolved 0.43 dip and the further background-corrected 0.03.)"
+        }
+      ],
+      "effective_verified": true
     },
     "reischle08-g2-80k-independent-gap": {
       "claim": "reischle2008_g2_80K",
@@ -1518,9 +1583,10 @@
   "missing_evidence": [
     {
       "claim": "reischle2008_g2_80K",
-      "reason": "only 0 distinct verified primary source(s), need 2",
+      "reason": "only 1 distinct verified primary source(s), need 2",
       "anchors": [
         "reischle08-g2-80k",
+        "reischle08-g2-80k-deconvolved",
         "reischle08-g2-80k-independent-gap"
       ]
     },
@@ -1545,7 +1611,7 @@
     {
       "name": "claim [reischle2008_g2_80K] has two distinct verified primary sources",
       "status": "FAIL",
-      "reason": "only 0 distinct verified primary source(s), need 2"
+      "reason": "only 1 distinct verified primary source(s), need 2"
     },
     {
       "name": "claim [temperature_trend_g2] has two distinct verified primary sources",
@@ -1628,11 +1694,11 @@
       "reason": "InP/AlGaInP EL fixture at 80 K evaluates to a physically eligible corner (g2_op=0.0336); this is delegation-wiring evidence that the simulator can represent this device class, NOT a reproduction of Reischle's measured 0.43 -- the claim stays gated on missing second-source evidence regardless"
     }
   ],
-  "source_ledger_sha256": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
+  "source_ledger_sha256": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
   "evaluator_input_hashes": {
-    "verify/data/rt_edge_anchors.yaml": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
-    "cards/edge-inp-gaasp-design.yaml": "668d6aaa1fc0fe3bc05590ca335eee61a9a24698d0c8124d99fd47ef487fca7f",
-    "cards/edge-inp-gainp-design.yaml": "f815687aa439927e1a7a4c7b160b76bdd24e48a7f69ef02a1b801f8b9446e507"
+    "verify/data/rt_edge_anchors.yaml": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
+    "cards/edge-inp-gaasp-design.yaml": "c0096225c600a0f96178574cd9c180776dd4aa385c6fd9ceae0dbf10171ee503",
+    "cards/edge-inp-gainp-design.yaml": "884cae74ad19cdefb05a5d6520bc5a50227bfc3c4a5d38d8e293480418170a07"
   },
   "checks_passed": 14,
   "checks_total": 17,
