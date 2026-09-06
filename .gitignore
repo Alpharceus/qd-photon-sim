@@ -20,3 +20,4 @@ scratch/
 # note: out/ is committed intentionally -- report bundles are deliverables,
 # regenerable from scripts/ but kept so every reported figure has its CSV.
 .workers/
+.claude/settings.local.json
