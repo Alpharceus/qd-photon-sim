@@ -536,27 +536,78 @@ MATERIAL_EXTRA = {
     "Ga0.51In0.49P": {"k300": 5.2, "alpha_k": 0.5, "tag_k": "E",
                       "src_k": "Adachi 2007 alloy model (~0.05 W/cm/K for x~0.5); "
                                "measured 4.9-5.5 W/m/K class",
-                      "n": {668: 3.573, 650: 3.599}, "tag_n": "V",
+                      # 700/750/800/850 [V, rt-fix-cards-wavelength 2026-09-05]: read
+                      # from the Schubert et al. 1995 n,k table hosted on
+                      # refractiveindex.info (shelf=other, book=GaP-InP, page=Schubert;
+                      # github.com/polyanskiy/refractiveindex.info-database
+                      # data/other/semiconductor alloys/GaP-InP/nk/Schubert.yml),
+                      # nearest tabulated rows to each round wavelength: 3.4952 at
+                      # 699.74 nm, 3.38004 at 753.5 nm, 3.31693 at 807.67 nm,
+                      # 3.27486 at 853.28 nm -- added so the RT edge-emitter cards'
+                      # confinement-derived transitions (~750-820 nm) fall inside a
+                      # tabulated window instead of only the legacy 650/668 nm pair.
+                      "n": {668: 3.573, 650: 3.599, 700: 3.4952, 750: 3.38004,
+                            800: 3.31693, 850: 3.27486}, "tag_n": "V",
                       "src_n": "[V] Schubert et al., JAP 77, 3416 (1995): n = 3.573 at 666.74 nm, "
-                               "3.599 at 650.15 nm",
+                               "3.599 at 650.15 nm, 3.4952 at 699.74 nm, 3.38004 at 753.5 nm, "
+                               "3.31693 at 807.67 nm, 3.27486 at 853.28 nm",
                       "dn_dT": 2.5e-4},
+    # rt-fix-cards-wavelength 2026-09-05, orchestrator-approved option (c):
+    # Kato & Adachi, Jpn. J. Appl. Phys. 33, 186 (1994) / Adachi, "Optical
+    # Constants of Crystalline and Amorphous Semiconductors" are the real
+    # sources for this composition's 700-850 nm dispersion and have no
+    # open-access copy (Unpaywall-checked, is_oa=false) or digitizable table
+    # reachable via WebSearch/WebFetch. 700/750/800/850 [E] instead scale the
+    # real, measured 668 nm value by the Ga0.51In0.49P dispersion RATIO at
+    # each wavelength (n_GaInP(lambda)/n_GaInP(668), from the [V] Schubert
+    # 1995 points above): below-gap dispersion across the lattice-matched
+    # (AlxGa1-x)0.51In0.49P family follows the same single-effective-
+    # oscillator (Adachi-model) shape as a function of E/Eg, so a family
+    # member's OWN normalized shape is a same-family estimate, not an
+    # invented number -- but it is still uncalibrated for this composition
+    # (+/-0.05 in n) and stays [E], not [V]. ratio(700)=0.97823,
+    # ratio(750)=0.94599, ratio(800)=0.92833, ratio(850)=0.91656.
     "(Al0.50Ga0.50)0.51In0.49P": {"k300": 6.0, "alpha_k": 0.5, "tag_k": "E",
                                   "src_k": "alloy class, Adachi 2007",
-                                  "n": {668: 3.22, 650: 3.24}, "tag_n": "E",
-                                  "src_n": "[E] AlxGa1-xInP: Moser et al., APL 64, 235 (1994); "
-                                           "Schubert et al., JAP 86, 2025 (1999)",
+                                  "n": {668: 3.22, 650: 3.24, 700: 3.1499, 750: 3.0461,
+                                        800: 2.9892, 850: 2.9513}, "tag_n": "E",
+                                  "src_n": "[E] 668/650: AlxGa1-xInP, Moser et al., APL 64, 235 "
+                                           "(1994); Schubert et al., JAP 86, 2025 (1999). "
+                                           "700/750/800/850: 668 nm value x Ga0.51In0.49P "
+                                           "n(lambda)/n(668) dispersion ratio (Schubert 1995); "
+                                           "+/-0.05 uncertainty; Kato & Adachi 1994 / Adachi's "
+                                           "book give the real (AlxGa1-x)0.5In0.5P dispersion but "
+                                           "have no open-access/digitizable copy",
                                   "dn_dT": 2.0e-4},
+    # rt-fix-cards-wavelength 2026-09-05, orchestrator-approved option (c):
+    # same ratio-scaling method and blocker as the entry above (Kato & Adachi
+    # 1994 / Adachi's book not open-access/digitizable). ratio values as above.
     "Al0.52In0.48P": {"k300": 8.0, "alpha_k": 0.5, "tag_k": "E",
                       "src_k": "alloy class, Adachi 2007",
-                       "n": {668: 3.05, 650: 3.07}, "tag_n": "E",
-                       "src_n": "[E] AlInP: Moser et al., APL 64, 235 (1994); "
-                                "Schubert et al., JAP 86, 2025 (1999)",
+                       "n": {668: 3.05, 650: 3.07, 700: 2.9836, 750: 2.8853,
+                             800: 2.8314, 850: 2.7955}, "tag_n": "E",
+                       "src_n": "[E] 668/650: AlInP, Moser et al., APL 64, 235 (1994); "
+                                "Schubert et al., JAP 86, 2025 (1999). 700/750/800/850: 668 nm "
+                                "value x Ga0.51In0.49P n(lambda)/n(668) dispersion ratio "
+                                "(Schubert 1995); +/-0.05 uncertainty; Kato & Adachi 1994 / "
+                                "Adachi's book give the real AlInP dispersion but have no "
+                                "open-access/digitizable copy",
                       "dn_dT": 1.8e-4},
+    # rt-fix-cards-wavelength 2026-09-05, orchestrator-approved option (c): no
+    # GaAs1-xPx (ternary, x~0.4) tabulation exists on refractiveindex.info
+    # (checked: its only GaAs/GaP-adjacent quaternary page, GaAs-InAs-GaP-InP/
+    # Adachi, is a FIXED In0.48Ga0.52As0.24P0.76 composition lattice-matched to
+    # InP, not usable for GaAs0.6P0.4 on GaAs) -- same ratio-scaling method as
+    # the two entries above, applied to the existing 668 nm class estimate.
     "GaAs0.60P0.40": {"k300": 10.0, "alpha_k": 0.5, "tag_k": "E",
                       "src_k": "Adachi 2007 alloy model, GaAsP x~0.4",
-                      "n": {668: 3.55}, "tag_n": "E",
-                      "src_n": "GaAs-GaP interpolation near the direct edge (E_g ~1.92 eV "
-                               "at x = 0.4): the value is within ~0.1 of the true n; MEASURE"},
+                      "n": {668: 3.55, 700: 3.4727, 750: 3.3583, 800: 3.2956,
+                            850: 3.2538}, "tag_n": "E",
+                      "src_n": "[E] 668: GaAs-GaP interpolation near the direct edge (E_g ~1.92 "
+                               "eV at x = 0.4): the value is within ~0.1 of the true n; MEASURE. "
+                               "700/750/800/850: 668 nm value x Ga0.51In0.49P n(lambda)/n(668) "
+                               "dispersion ratio (Schubert 1995); +/-0.05 uncertainty (no "
+                               "GaAs1-xPx tabulation on refractiveindex.info)"},
     "Al0.45Ga0.55As": {"k300": 9.8, "alpha_k": 0.5, "tag_k": "V",
                        "src_k": "[V] Ioffe NSM AlGaAs thermal formula: 0.55-2.12x+2.48x^2 W/cm/K",
                        "n": {668: 3.495}, "tag_n": "DR",

@@ -27,6 +27,15 @@ job). It checks that the cards are self-describing and honest:
   7. fsim_core.device.evaluate() runs at the card's own thermal.T_hs
      without raising, returns curves/scalars, and the resolved scalars
      report every opted-in mode as active.
+  8. (rt-fix-cards-wavelength, council review 2026-09-05) at the card's own
+     operating point: emission.lambda_nm is within 2% of the confinement-
+     derived transition (dot_levels.levels(system).lambda_nm) UNLESS its
+     provenance.sources entry explicitly overrides with tag DR or A (both
+     cards currently do -- see each card's emission.lambda_nm note for why
+     the gap is a documented, root-caused model limitation, not a design
+     choice); evaluate()'s own sub_turn_on flag is absent (qV_j is not
+     Boltzmann-suppressed at drive.I_uA); and evaluate() completes in
+     under 5 seconds (the drive.cw_tau_max_ns / cw_g2 grid-cap budget).
 
 "Scalar leaf": every non-dict, non-list value found by recursing through
 the card's `design` mapping (excluding `design.provenance` itself, which is
@@ -43,11 +52,13 @@ Exits 0 iff every check passes; prints "N/N rt-edge card checks passed".
 """
 from __future__ import annotations
 
+import copy
 import dataclasses
 import math
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import yaml
@@ -55,7 +66,11 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from fsim_core import device as device_mod  # noqa: E402
+from fsim_core import dot_levels  # noqa: E402
 from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+
+CW_RUNTIME_BUDGET_S = 5.0
 
 CARDS = [
     ROOT / "cards" / "edge-inp-gaasp-design.yaml",
@@ -244,12 +259,14 @@ def check_card(path: Path, anchors: dict) -> None:
        values_equal(sds.get("density_cm2"), density_cm2))
 
     # ---- 7. evaluate() at the card's own thermal.T_hs: must not raise
+    t0 = time.perf_counter()
     try:
         result = evaluate(design, T_grid=[design.thermal.T_hs])
         evaluated = True
     except Exception:
         result = None
         evaluated = False
+    eval_seconds = time.perf_counter() - t0
     ok(f"{tag}: evaluate() at thermal.T_hs does not raise", evaluated)
     if evaluated:
         ok(f"{tag}: evaluate() returns curves and scalars",
@@ -267,6 +284,29 @@ def check_card(path: Path, anchors: dict) -> None:
            sc.get("aperture_compose") is True)
         ok(f"{tag}: resolved scalars report the card's own filter.track_material",
            sc.get("track_material") == design.filter.track_material)
+
+        # ---- 8. wavelength self-consistency, sub_turn_on, CW runtime budget
+        # (rt-fix-cards-wavelength, council review 2026-09-05).
+        system = copy.copy(device_mod._retention_system(design.ret))
+        system.T = float(sc.get("T_j_op", design.thermal.T_hs))
+        lambda_derived = dot_levels.levels(system).lambda_nm
+        lambda_used = sc.get("edge_lambda_nm")
+        lambda_entry = sources.get("emission.lambda_nm", {})
+        within_2pct = (lambda_used is not None and math.isfinite(lambda_used)
+                       and lambda_derived and math.isfinite(lambda_derived)
+                       and abs(lambda_used - lambda_derived) / lambda_derived < 0.02)
+        overridden = lambda_entry.get("tag") in ("DR", "A")
+        ok(f"{tag}: emission.lambda_nm within 2% of confinement-derived "
+           f"({lambda_used!r} vs {lambda_derived:.1f} nm) or explicitly overridden [DR]/[A]",
+           within_2pct or overridden)
+
+        sub_turn_on = any("sub_turn_on" in r for r in sc.get("invalid_reasons", []))
+        ok(f"{tag}: no sub_turn_on flag at drive.I_uA (qV_j not Boltzmann-suppressed)",
+           not sub_turn_on)
+
+        ok(f"{tag}: evaluate() completes in under {CW_RUNTIME_BUDGET_S:g} s "
+           f"({eval_seconds:.2f} s)",
+           eval_seconds < CW_RUNTIME_BUDGET_S)
 
 
 def main() -> int:

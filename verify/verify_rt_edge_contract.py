@@ -110,6 +110,14 @@ def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
         ok(f"anchor [{aid}] tag is valid (V/DR/E/A)", a.get("tag") in VALID_TAGS)
         ok(f"anchor [{aid}] status is valid (verified/missing)",
            a.get("status") in VALID_STATUSES)
+        # Optional `verification` key (digest/pdf:<path>/web:<url>/unverified,
+        # for anchors citing a paper outside the fact-checked digest set): an
+        # anchor that admits it is `unverified` cannot also claim status
+        # verified -- that combination would be a self-contradicting anchor.
+        verification = a.get("verification")
+        if verification is not None:
+            ok(f"anchor [{aid}] verification=='unverified' is not paired with status: verified",
+               not (str(verification).strip() == "unverified" and a.get("status") == "verified"))
 
     ids = [a.get("id") for a in anchors]
     ok("every anchor id is unique", len(ids) == len(set(ids)))

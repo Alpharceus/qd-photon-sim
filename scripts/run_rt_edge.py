@@ -270,9 +270,15 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
     scp, sccw = pulsed["scalars"], cw["scalars"]
     eligible_row = bool(pulsed["eligible"] and cw["eligible"])
     g2_p, g2_cw0, g2_cw0_raw = scp.get("g2_op"), sccw.get("g2_cw0"), sccw.get("g2_cw0_raw")
-    combined_pass = bool(
-        eligible_row and np.isfinite(g2_p) and np.isfinite(g2_cw0) and np.isfinite(g2_cw0_raw)
-        and g2_p < G2_THRESHOLD and g2_cw0 < G2_THRESHOLD and g2_cw0_raw < G2_THRESHOLD)
+    # Contract rule (docs/rt_edge_contract.md Acceptance gates): the headline
+    # metric is pulsed intrinsic g2(0) alone -- g2_cw0/g2_cw0_raw are
+    # secondary diagnostics, reported per-row and as coverage fractions, but
+    # they never gate PASS. `secondary_pass` is retained as a diagnostic-only
+    # column (both CW gates favorable), never consumed by compute_verdict.
+    headline_pass = bool(eligible_row and np.isfinite(g2_p) and g2_p < G2_THRESHOLD)
+    secondary_pass = bool(
+        eligible_row and np.isfinite(g2_cw0) and np.isfinite(g2_cw0_raw)
+        and g2_cw0 < G2_THRESHOLD and g2_cw0_raw < G2_THRESHOLD)
     assumptions = sorted(set(card_assumptions) | set(SWEEP_ASSUMPTION_KEYS))
     config_hash = hashlib.sha256(json.dumps(
         {"card": card["id"], "delta_xx": delta_xx, "gamma300": gamma300,
@@ -297,7 +303,8 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         "collected_flux_pulsed_s": pulsed["flux_s"], "collected_flux_cw_s": cw["flux_s"],
         "g2_pulsed": g2_p, "g2_cw0": g2_cw0, "g2_cw0_raw": g2_cw0_raw,
         "eligible_pulsed": pulsed["eligible"], "eligible_cw": cw["eligible"],
-        "eligible_row": eligible_row, "combined_pass": combined_pass,
+        "eligible_row": eligible_row, "headline_pass": headline_pass,
+        "secondary_pass": secondary_pass,
         "invalid_reasons_pulsed": "; ".join(pulsed["reasons"]),
         "invalid_reasons_cw": "; ".join(cw["reasons"]),
         "assumptions": "; ".join(assumptions),
@@ -315,7 +322,7 @@ def csv_fieldnames() -> list:
             "eps_pulsed", "t_x_cw", "eps_cw", "edge_beta", "edge_eta_total",
             "collected_flux_pulsed_s", "collected_flux_cw_s", "g2_pulsed",
             "g2_cw0", "g2_cw0_raw", "eligible_pulsed", "eligible_cw",
-            "eligible_row", "combined_pass", "invalid_reasons_pulsed",
+            "eligible_row", "headline_pass", "secondary_pass", "invalid_reasons_pulsed",
             "invalid_reasons_cw", "assumptions", "pulse_width_ns", "rep_rate_hz",
             "duty_pulsed"]
 
@@ -332,7 +339,9 @@ def _finite_stats(values: list) -> tuple:
 def compute_stats(rows: list) -> dict:
     """Per-card and pooled statistics, computed directly from the row list
     (the same computation the verifier redoes directly from the written
-    CSV)."""
+    CSV). Coverage denominator is every scheduled row (spec: "invalid rows
+    count as nonpassing"), for the headline metric and for each secondary
+    (CW) diagnostic independently -- none of the three gates the others."""
     by_card: dict = {}
     for row in rows:
         by_card.setdefault(row["card_id"], []).append(row)
@@ -342,7 +351,7 @@ def compute_stats(rows: list) -> dict:
         pulsed_vals = [r["g2_pulsed"] for r in eligible_rows]
         cw_raw_vals = [r["g2_cw0_raw"] for r in eligible_rows]
         cw0_vals = [r["g2_cw0"] for r in eligible_rows]
-        favorable = [r for r in card_rows if r["combined_pass"]]
+        headline_rows = [r for r in card_rows if r["headline_pass"]]
         p_min, p_med = _finite_stats(pulsed_vals)
         r_min, r_med = _finite_stats(cw_raw_vals)
         c_min, c_med = _finite_stats(cw0_vals)
@@ -352,23 +361,27 @@ def compute_stats(rows: list) -> dict:
             "g2_pulsed_min": p_min, "g2_pulsed_median": p_med,
             "g2_cw0_min": c_min, "g2_cw0_median": c_med,
             "g2_cw0_raw_min": r_min, "g2_cw0_raw_median": r_med,
-            "n_favorable": len(favorable), "favorable_rows": favorable,
+            "n_favorable": len(headline_rows), "favorable_rows": headline_rows,
         }
     all_eligible = [r for r in rows if r["eligible_row"]]
     pooled_min, pooled_median = _finite_stats([r["g2_pulsed"] for r in all_eligible])
     n_total = len(rows)
     n_eligible = len(all_eligible)
-    n_secondary = sum(1 for r in rows if r["eligible_row"]
-                      and np.isfinite(r["g2_cw0"]) and np.isfinite(r["g2_cw0_raw"])
-                      and r["g2_cw0"] < G2_THRESHOLD and r["g2_cw0_raw"] < G2_THRESHOLD)
-    n_combined = sum(1 for r in rows if r["combined_pass"])
+    n_headline = sum(1 for r in rows if r["headline_pass"])
+    n_cw0_pass = sum(1 for r in rows if r["eligible_row"]
+                     and np.isfinite(r["g2_cw0"]) and r["g2_cw0"] < G2_THRESHOLD)
+    n_cw_raw_pass = sum(1 for r in rows if r["eligible_row"]
+                        and np.isfinite(r["g2_cw0_raw"]) and r["g2_cw0_raw"] < G2_THRESHOLD)
     return {
         "per_card": per_card, "n_total": n_total, "n_eligible": n_eligible,
         "eligible_coverage": (n_eligible / n_total) if n_total else 0.0,
-        "secondary_coverage": (n_secondary / n_total) if n_total else 0.0,
-        "combined_coverage": (n_combined / n_total) if n_total else 0.0,
+        "n_headline": n_headline,
+        "headline_coverage": (n_headline / n_total) if n_total else 0.0,
+        "n_cw0_pass": n_cw0_pass,
+        "cw0_coverage": (n_cw0_pass / n_total) if n_total else 0.0,
+        "n_cw_raw_pass": n_cw_raw_pass,
+        "cw_raw_coverage": (n_cw_raw_pass / n_total) if n_total else 0.0,
         "g2_pulsed_min": pooled_min, "g2_pulsed_median": pooled_median,
-        "n_combined_pass": n_combined,
     }
 
 
@@ -376,13 +389,21 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
                     evidence_report: dict, hallucination_report: dict) -> dict:
     """Pure policy function over already-computed rows/stats plus the two
     freshly-run paper-check reports -- no card loading, no evaluate() calls,
-    so verify_rt_edge_sweep.py can drive it with synthetic fixtures."""
+    so verify_rt_edge_sweep.py can drive it with synthetic fixtures.
+
+    Contract rule (docs/rt_edge_contract.md Acceptance gates, council review
+    2026-09-05): the headline metric is pulsed intrinsic g2(0) ALONE.
+    g2_cw0/g2_cw0_raw are secondary diagnostics -- reported as coverage
+    fractions and per-row, but they never gate PASS. This replaces the prior
+    three-gate (pulsed AND g2_cw0 AND g2_cw0_raw) rule, which the contract
+    never stated and which made the raw-CW gate (structurally >= ~0.89 for
+    every corner) force coverage=0 regardless of the headline metric."""
     evidence_complete = bool(evidence_report.get("evidence_complete", False))
     hallucination_ok = bool(hallucination_report.get("hallucination_tests_passed", False))
-    favorable_rows = [r for r in rows if r["combined_pass"]]
-    favorable_by_card: dict = {}
-    for r in favorable_rows:
-        favorable_by_card.setdefault(r["card_id"], []).append(r)
+    headline_rows = [r for r in rows if r["headline_pass"]]
+    headline_by_card: dict = {}
+    for r in headline_rows:
+        headline_by_card.setdefault(r["card_id"], []).append(r)
 
     fail_reasons = []
     if not grid_complete:
@@ -393,20 +414,20 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         fail_reasons.append("hallucination_checks_failed")
     if stats["n_eligible"] == 0:
         fail_reasons.append("no_eligible_rows")
-    elif not favorable_rows:
-        fail_reasons.append("no_favorable_corner_metrics")
+    elif not headline_rows:
+        fail_reasons.append("no_headline_pass")
 
     passed = len(fail_reasons) == 0
     g2_min, g2_median = stats["g2_pulsed_min"], stats["g2_pulsed_median"]
     median_pass = bool(np.isfinite(g2_median) and g2_median < G2_THRESHOLD)
 
     assumptions_used = sorted(set(
-        a for r in favorable_rows for a in r["assumptions"].split("; ") if a))
+        a for r in headline_rows for a in r["assumptions"].split("; ") if a))
     conditional = bool(passed and assumptions_used)
 
-    fallback_only = bool(passed and favorable_by_card
+    fallback_only = bool(passed and headline_by_card
                          and all(r["card_class"] != "primary"
-                                 for rs in favorable_by_card.values() for r in rs))
+                                 for rs in headline_by_card.values() for r in rs))
     primary_id = next((c["id"] for c in CARDS if c["class"] == "primary"), None)
     fallback_id = next((c["id"] for c in CARDS if c["class"] == "fallback"), None)
     note = ""
@@ -420,11 +441,14 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     return {
         "pass": passed, "fail_reasons": fail_reasons,
         "g2_min": g2_min, "g2_median": g2_median, "median_pass": median_pass,
-        "coverage": stats["combined_coverage"],
+        "coverage": stats["headline_coverage"],
+        "headline_coverage_n": stats["n_headline"], "headline_coverage_total": stats["n_total"],
+        "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_total"],
+        "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_total"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
         "evidence_complete": evidence_complete, "hallucination_ok": hallucination_ok,
         "conditional": conditional, "assumptions_used": assumptions_used,
-        "favorable_rows": favorable_rows, "favorable_by_card": favorable_by_card,
+        "headline_rows": headline_rows, "headline_by_card": headline_by_card,
         "fallback_only": fallback_only, "note": note,
     }
 
@@ -436,7 +460,9 @@ def verdict_line(verdict: dict) -> str:
             f"coverage={verdict['coverage']:.4g} "
             f"eligible={verdict['eligible_n']}/{verdict['eligible_total']} "
             f"evidence={'complete' if verdict['evidence_complete'] else 'incomplete'} "
-            f"conditional={'true' if verdict['conditional'] else 'false'}")
+            f"conditional={'true' if verdict['conditional'] else 'false'} "
+            f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
+            f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']}")
 
 
 def card_line(card_id: str, card_stats: dict) -> str:
@@ -543,12 +569,19 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## Literature ceiling")
     lines.append(
-        "No published III-V quantum dot has demonstrated g2(0) < 0.5 at 300 K "
-        "under electrical driving; the best reported room-temperature values "
-        "sit around 0.5-0.57 (docs/rt_edge_contract.md Evidence section; "
-        "verify/data/rt_edge_anchors.yaml). This sweep's pooled pulsed "
-        f"g2_min={verdict['g2_min']:.4g}, g2_median={verdict['g2_median']:.4g} "
-        "is reported against that ceiling, not as a claim of having exceeded it.")
+        "No electrically driven III-V single quantum dot g2(0) at 300 K has "
+        "been published (docs/rt_edge_contract.md Evidence section; "
+        "verify/data/rt_edge_anchors.yaml) -- there is no existing electrical "
+        "300 K baseline for this sweep to exceed. The best reported "
+        "electrically driven single-dot result at any temperature is "
+        "Reischle et al. 2008 at 80 K: g2(0) = 0.43 raw, 0.03 after "
+        "background correction. The best reported 300 K single-dot values "
+        "are optically pumped: g2(0) ~ 0.5-0.57 (Laferriere et al. 2023, "
+        "InAsP/InP nanowire dot, g2(0) = 0.57 at 300 K). This sweep's pooled "
+        f"pulsed g2_min={verdict['g2_min']:.4g}, "
+        f"g2_median={verdict['g2_median']:.4g} is reported against that "
+        "electrical-vs-optical literature picture, not as a claim of an "
+        "existing electrical 300 K result to exceed.")
     lines.append("")
     lines.append("## Grid")
     lines.append(f"Grid complete: {grid_complete}"
@@ -560,15 +593,19 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("## Coverage")
     lines.append(f"- eligible coverage: {stats['n_eligible']}/{stats['n_total']} "
                  f"= {stats['eligible_coverage']:.3f}")
-    lines.append(f"- secondary-gate coverage (CW intrinsic AND raw < 0.5, eligible): "
-                 f"{stats['combined_coverage']:.3f} combined / "
-                 f"{stats['secondary_coverage']:.3f} secondary-only")
-    lines.append(f"- combined passing coverage (all three gates, eligible): "
-                 f"{stats['n_combined_pass']}/{stats['n_total']} = {stats['combined_coverage']:.3f}")
+    lines.append(f"- **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- "
+                 f"the contract's PASS metric): "
+                 f"{stats['n_headline']}/{stats['n_total']} = {stats['headline_coverage']:.3f}")
+    lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (diagnostic only, does "
+                 f"not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
+                 f"= {stats['cw0_coverage']:.3f}")
+    lines.append(f"- secondary coverage, CW IRF-convolved g2_cw0_raw < 0.5 (diagnostic "
+                 f"only, does not gate PASS): {stats['n_cw_raw_pass']}/{stats['n_total']} "
+                 f"= {stats['cw_raw_coverage']:.3f}")
     lines.append("")
     lines.append("## Per-card statistics")
     lines.append("| card | role | g2_pulsed min/median | g2_cw0 min/median | "
-                 "g2_cw0_raw min/median | eligible | favorable rows |")
+                 "g2_cw0_raw min/median | eligible | headline rows |")
     lines.append("|---|---|---|---|---|---|---|")
     for card_id, cs in stats["per_card"].items():
         lines.append(
@@ -578,12 +615,12 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             f"{cs['g2_cw0_raw_min']:.4g} / {cs['g2_cw0_raw_median']:.4g} | "
             f"{cs['n_eligible']}/{cs['n_rows']} | {cs['n_favorable']} |")
     lines.append("")
-    lines.append("## Assumptions required by any favorable corner")
+    lines.append("## Assumptions required by any headline-passing corner")
     if verdict["assumptions_used"]:
         for a in verdict["assumptions_used"]:
             lines.append(f"- `{a}`")
     else:
-        lines.append("- (no row satisfies all three same-row gates; see fail_reasons below)")
+        lines.append("- (no row satisfies the headline gate; see fail_reasons below)")
     lines.append("")
     if verdict["note"]:
         lines.append(f"**Note:** {verdict['note']}")
@@ -600,10 +637,11 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## Fail reasons" if not verdict["pass"] else "## Pass basis")
     if verdict["pass"]:
-        lines.append(f"At least one same-row eligible corner has pulsed g2 < 0.5, "
-                     f"CW intrinsic g2 < 0.5 and CW IRF-convolved g2 < 0.5 "
-                     f"({stats['n_combined_pass']} such row(s) across both cards), "
-                     f"grid complete, evidence complete, hallucination self-test passed.")
+        lines.append(f"At least one eligible corner has pulsed intrinsic g2(0) < 0.5 -- "
+                     f"the contract's headline metric ({stats['n_headline']} such row(s) "
+                     f"across both cards), grid complete, evidence complete, hallucination "
+                     f"self-test passed. g2_cw0 and g2_cw0_raw are reported above as "
+                     f"secondary diagnostics (see Coverage) and do not gate this PASS.")
     else:
         for r in verdict["fail_reasons"]:
             lines.append(f"- `{r}`")
@@ -637,8 +675,9 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
             "g2_threshold": G2_THRESHOLD,
             "pass_requires": ["grid_complete", "evidence_complete",
                               "hallucination_tests_passed",
-                              "at least one same-row eligible corner with pulsed g2<0.5, "
-                              "CW intrinsic g2<0.5 and CW IRF-convolved g2<0.5"],
+                              "at least one eligible row with pulsed intrinsic g2(0)<0.5 "
+                              "(the headline metric; g2_cw0 and g2_cw0_raw are secondary "
+                              "diagnostics reported as coverage fractions but do not gate PASS)"],
             "coverage_denominator": "every scheduled row (invalid rows count as nonpassing)",
         },
         "output_schema": {"sweep.csv": csv_fieldnames()},
@@ -646,7 +685,7 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
         "per_card_stats": {cid: {k: v for k, v in cs.items() if k not in ("favorable_rows",)}
                           for cid, cs in stats["per_card"].items()},
         "verdict": {k: v for k, v in verdict.items()
-                   if k not in ("favorable_rows", "favorable_by_card")},
+                   if k not in ("headline_rows", "headline_by_card")},
         "evidence": {k: evidence_report.get(k) for k in
                     ("evidence_complete", "source_ledger_sha256", "evaluator_input_hashes",
                      "missing_evidence")},

@@ -333,14 +333,19 @@ def _diode_from_drive(drive: DriveBlock):
 
 
 def _confinement_params(ret: RetentionBlock, Tj: float) -> dict:
-    """Resolve confinement at the temperature consumed by escape [DR]."""
+    """Resolve confinement at the temperature consumed by escape [DR].  Also
+    carries the level table's own E_X_eV (resolved transition energy) for
+    the item-2 sub-turn-on loading suppression -- the SAME confinement
+    solve, never a second one."""
     system = _retention_system(ret)
     # DotSystem is mutable, so copy rather than mutating the card-derived
     # object.  This is also why evaluate leaves its input design untouched.
     system = copy.copy(system)
     system.T = float(Tj)
-    return dot_levels.retention_params(dot_levels.levels(system), ret.tau_rad_ns,
-                                       ret.channel, verbose=False)
+    lv = dot_levels.levels(system)
+    params = dot_levels.retention_params(lv, ret.tau_rad_ns, ret.channel, verbose=False)
+    params["E_X_eV"] = lv.E_X_eV
+    return params
 
 
 def _tracked_material(ret: RetentionBlock, layer: str) -> materials.Material:
@@ -540,6 +545,19 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             else:
                 dx = 1e3 * float(tracking_detuning(Tj, d.cavity.E_X0, d.cavity.T_track,
                                                    "GaAs", d.cavity.dEdT_cav * 1e-3))
+        elif d.filter.track_material:
+            # item 4 (council review 2026-09-05): track_material was gated
+            # behind cavity.enabled, so it did nothing on any cavity-less
+            # design (both edge-emitter cards) -- g2_op was bit-identical
+            # for track_material in {dot, matrix, ""}.  With no cavity mode
+            # to net against, the filter window still follows the dot's OWN
+            # Varshni walk relative to cavity.T_track (the only reference
+            # temperature this block carries); no dEdT_cav subtraction here
+            # (there is no cavity mode drifting to subtract).  Legacy
+            # default path (track_material == "") is untouched: dx stays
+            # d.filter.dx exactly as before.
+            mat = _tracked_material(d.ret, d.filter.track_material)
+            dx = 1e3 * (materials.bandgap(mat, Tj) - materials.bandgap(mat, d.cavity.T_track))
         w = None
         if d.filter.enabled:
             w = gam if d.filter.auto_w else d.filter.w
@@ -604,8 +622,14 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 if key not in ("a_esc", "E_a", "b_p", "E_b", "b0", "beta"):
                     raise ValueError(f"unsupported ret.overrides key {key!r}")
                 params[key] = float(value)
+            # item 2: the confinement-derived transition energy feeds
+            # transport's sub-turn-on loading suppression below; proxy mode
+            # has no confinement level structure, so E_X_eV stays None there
+            # (transport.dot_loading's documented legacy-numerics default).
+            E_X_eV = derived["E_X_eV"]
         else:
             params = rp
+            E_X_eV = None
         # R2: Purcell speeds the radiative channel by rate_mult (photon-
         # weighted; Lorentzian path uses F_eff directly since there is no
         # sideband split), so the escape-to-radiative ratios divide by it.
@@ -626,7 +650,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 diode=diode, I_uA=d.drive.I_uA, T=Tj,
                 n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
                 aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
-                S_dot=S, **opts)
+                S_dot=S, E_X_eV=E_X_eV, **opts)
             inj_bg = injection.b_e
         else:
             inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
@@ -709,7 +733,21 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 I_X, I_XX = cw_g2.photon_rates(r_ns, gamma_X_ns, 2.0 * gamma_X_ns,
                                                k_X, k_XX, d.drive.cw_pump_ratio)
                 sig = t_X * I_X + t_XX * I_XX
-                bg = inj_bg * t_X * I_X   # b_e is per collected X photon (contract)
+                # item 3 fix (council review 2026-09-05): the old
+                # `inj_bg * t_X * I_X` chained the PULSED ratio inj_bg
+                # (denominator = transport's own min(r_dot,1/tau_rad)*S,
+                # Background.rate_x) onto the CW rate equation's OWN X rate
+                # I_X -- consistent only away from saturation, 13x too large
+                # at the card operating point where the two X rates diverge.
+                # Carry transport's absolute in-window background rate
+                # (photons/s, the SAME physical operating point regardless
+                # of pulsed/CW framing) into the CW calculation and divide
+                # by the SAME I_X this rate-equation solution produces --
+                # abs_bg_in_window / I_X * (t_X * I_X) -- so I_X cancels and
+                # the ratio is formed once, consistently, instead of mixing
+                # two different models' X rates across the multiplication.
+                abs_bg_in_window_ns = injection.background.rate_bg_window / 1e9
+                bg = abs_bg_in_window_ns * t_X
                 rho_cw = sig / (sig + bg) if (sig + bg) > 0 else float("nan")
                 report = cw_g2.cw_report(
                     r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX, rho_cw,
@@ -860,7 +898,14 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             else [op.get("invalid_reason", "invalid operating point")])
         + ([edge_err] if edge_err else [])
         + (["CW diagnostics requested but not evaluable at this operating point"]
-           if d.drive.cw and not np.isfinite(op["g2_cw0"]) else []),
+           if d.drive.cw and not np.isfinite(op["g2_cw0"]) else [])
+        # item 2: sub-turn-on warning, informational -- the sweep can see the
+        # dot is being loaded almost entirely off the Boltzmann tail of the
+        # carrier reservoirs (qV_j far below E_X) without this making the
+        # operating point itself invalid (g2_op stays finite).
+        + (["sub_turn_on: f_qfl < 0.05 (qV_j well below the dot transition; "
+            "loading exponentially suppressed, Sze & Ng ch. 12)"]
+           if (op["injection"] is not None and op["injection"].f_qfl < 0.05) else []),
         "provenance": {
             "linewidth": {"tag": "A" if d.dot.linewidth == "anchored" else "A",
                           "note": "anchored linewidth model" if d.dot.linewidth == "anchored"

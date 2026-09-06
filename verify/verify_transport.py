@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fsim_core import materials as M  # noqa: E402
 from fsim_core.transport import (  # noqa: E402
-    binary, evaluate_injection, fermi_levels, gaas_homojunction,
+    Q_SI, binary, evaluate_injection, fermi_levels, gaas_homojunction,
     hkust_preset, homojunction_vbi, n_c_eff, n_i, n_v,
     qcse_shift_meV, red_diode_preset, to_background_channel,
     xi_window, xi_window_unclipped,
@@ -113,6 +113,41 @@ bool_check("n-side E_F is above midgap", efn > midgap,
            "Sze & Ng Boltzmann Fermi level for n-type doping")
 bool_check("p-side E_F is below midgap", efp < midgap,
            "Sze & Ng Boltzmann Fermi level for p-type doping")
+
+print("== 6. Carrier conservation and sub-turn-on loading (council review 2026-09-05) ==")
+# Item 1: a single physical dot cannot receive more than the total captured
+# supply f_QD*eta_inj*(I/q), regardless of how fractional the Poisson-
+# expected N_dots under the aperture is (N_eff = max(N_dots, 1.0)).
+I_test_uA = 1.0
+lk_test = hk.eta_inj(300.0)
+f_QD_test = hk.f_qd(1e10)
+supply = f_QD_test * lk_test.eta_inj * (I_test_uA * 1e-6 / Q_SI)
+cons_ok = True
+for n_dots_target in (0.1, 0.377, 1.0, 10.0):
+    aperture_um2 = n_dots_target / (1e10 * 1e-8)  # N_dots = n_dot_cm2 * aperture_um2 * 1e-8
+    ld = hk.dot_loading(I_test_uA, 300.0, 1e10, aperture_um2, leakage=lk_test)
+    cons_ok = cons_ok and (ld.N_dots > 0) and (ld.r_dot <= supply * (1.0 + 1e-9))
+bool_check("r_dot never exceeds f_QD*eta_inj*(I/q) for N_dots in {0.1, 0.377, 1, 10}",
+           cons_ok, "carrier conservation; N_eff = max(N_dots, 1.0) [DR]")
+ld_frac = hk.dot_loading(I_test_uA, 300.0, 1e10, 0.377 / 100.0, leakage=lk_test)
+ld_one = hk.dot_loading(I_test_uA, 300.0, 1e10, 1.0 / 100.0, leakage=lk_test)
+bool_check("a fractional N_dots (0.377) clamps to the SAME per-dot share as N_dots=1 (N_eff=max(N_dots,1))",
+           ld_frac.r_dot == ld_one.r_dot,
+           "council review item 1: N_dots is a Poisson aperture-occupancy statistic, not a divisor < 1")
+
+# Item 2: sub-turn-on Boltzmann-tail loading suppression f_qfl =
+# min(1, exp(-(E_X - V_j)/kT)) -- E_X_eV=None (every check above) keeps
+# f_qfl = 1 exactly (legacy numerics unchanged).
+V_j_ref = hk.vj_of_j(I_test_uA * 1e-6 / hk.area_cm2, 300.0)
+kT_eV = M.KB_EV * 300.0
+ld_below = hk.dot_loading(I_test_uA, 300.0, 1e10, 0.785, leakage=lk_test,
+                          E_X_eV=V_j_ref + 0.3)
+check("f_qfl at E_X - qV_j = 0.3 eV, 300 K", ld_below.f_qfl, np.exp(-11.6), 0.02, rel=True,
+      note="Boltzmann tail of the carrier reservoirs, Sze & Ng 3rd ed. ch. 12")
+ld_above = hk.dot_loading(I_test_uA, 300.0, 1e10, 0.785, leakage=lk_test,
+                          E_X_eV=V_j_ref - 0.1)
+check("f_qfl = 1 exactly when qV_j >= E_X", ld_above.f_qfl, 1.0, 1e-12,
+      note="min(1, exp(...)) clip; loading unsuppressed above turn-on")
 
 n_pass = sum(RESULTS)
 print(f"\n{n_pass}/{len(RESULTS)} transport checks passed")

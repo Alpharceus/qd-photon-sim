@@ -106,9 +106,22 @@ PHYSICS (all closed forms; one implementation each):
      / wetting layer:  f_QD = 1/(1 + tau_cap,QD/tau_matrix),
      tau_cap,QD = tau_cap0 (1e10 cm^-2 / n_dot) [E: capture rate proportional
      to dot density, tau_cap0 = 5 ps at 1e10], tau_matrix = 1 ns [E].
-     N_dots = n_dot A_ap;  r_dot = f_QD eta_inj (I/q)/N_dots;
-     pulsed: mu = r_dot tau_pulse (cap-2 truncation happens downstream in
-     loading.f1b_g2 / f8_g2);  CW: occupancy estimate r_dot tau_rad.
+     N_dots = n_dot A_ap (the Poisson-EXPECTED dot count under the aperture,
+     an aperture-occupancy statistic -- keeps this meaning for the
+     competitor count elsewhere, e.g. loading.n_window_competitors);
+     r_dot = f_QD eta_inj (I/q)/N_eff, N_eff = max(N_dots, 1.0) [DR,
+     council review 2026-09-05 item 1]: a fractional N_dots < 1 is the
+     probability of finding a dot in the aperture, not a fraction of a
+     physical dot, so the single dot that IS there is capped at receiving
+     the WHOLE captured supply, never more (dividing by a fractional
+     N_dots < 1 would hand it > 100% of the injected/captured flux).
+     Sub-turn-on suppression [DR, item 2]: f_qfl = min(1, exp(-(E_X -
+     V_j)/kT)) further multiplies r_dot when the dot transition energy E_X
+     is given (device.py's confinement-derived level structure) and qV_j <
+     E_X -- the intrinsic region's quasi-Fermi-level separation cannot
+     exceed qV_j (Sze & Ng 3rd ed. ch. 12).  pulsed: mu = r_dot tau_pulse
+     (cap-2 truncation happens downstream in loading.f1b_g2 / f8_g2);  CW:
+     occupancy estimate r_dot tau_rad.
      THE EYE-OPENER: 1 uA, 1 ns pulses, one dot -> mu ~ 6000.  Single-dot
      cap-2 operation (mu ~ 0.5) needs ~80 pA into ONE dot, or ~0.6 nA for the
      7 dots under a 1 um aperture at 7e8 cm^-2.  Every published electrically
@@ -371,6 +384,8 @@ class DotLoading:
     n_occ_cw: float        # r_dot * tau_rad (CW mean-occupancy estimate, uncapped)
     saturated: bool        # r_dot > 1/tau_rad
     eta_capture_dot: float  # per-dot thinning probability of the injected stream
+    f_qfl: float = 1.0     # [DR] sub-turn-on quasi-Fermi-level loading suppression
+                            # applied to r_dot (1.0 when E_X_eV is not supplied)
 
 
 @dataclass
@@ -408,6 +423,7 @@ class InjectionResult:
     mu: float | None
     eta_capture: float
     b_e: float
+    f_qfl: float = 1.0     # [DR] sub-turn-on loading suppression at this operating point
     tags: dict = field(default_factory=lambda: {
         "V_j": "DR", "V_bi": "DR", "F": "DR(eps_r E)", "eta_inj": "E",
         "mu": "E", "b_e": "E", "P_junction": "E"})
@@ -644,18 +660,54 @@ class Diode:
     def dot_loading(self, I_uA: float, T=None, n_dot_cm2: float = 1e10,
                     aperture_um2: float = 0.785, tau_pulse_ns: float | None = None,
                     f_capture: float | None = None, tau_rad_ns: float = 1.0,
-                    leakage: Leakage | None = None) -> DotLoading:
-        """Carrier budget at the dot layer (module docstring, item 6)."""
+                    leakage: Leakage | None = None,
+                    E_X_eV: float | None = None) -> DotLoading:
+        """Carrier budget at the dot layer (module docstring, item 6).
+
+        Carrier conservation [DR, council review 2026-09-05 item 1]: N_dots
+        (n_dot_cm2 * aperture_um2) is the Poisson-EXPECTED number of dots
+        under the aperture -- an aperture-occupancy statistic, not a divisor
+        on a single physical dot's supply.  A fractional N_dots (< 1 dot
+        expected in the aperture) does not mean the one dot that IS there
+        gets a fraction of the current; it still receives at most the WHOLE
+        injected/captured flux.  The per-dot share therefore divides by
+        N_eff = max(N_dots, 1.0), never by N_dots itself, for both r_dot and
+        eta_capture_dot (same formula, same overcounting).  N_dots itself is
+        untouched and keeps its aperture-statistics meaning for the
+        competitor count elsewhere (loading.n_window_competitors /
+        aperture_g2 use n_dot_cm2 and aperture area directly, not this
+        field).
+
+        Sub-turn-on injection [DR, item 2]: at qV_j < E_X the intrinsic
+        region's quasi-Fermi-level separation cannot supply carriers at the
+        dot transition energy without an exponentially suppressed Boltzmann
+        tail (Sze & Ng, "Physics of Semiconductor Devices" 3rd ed., ch. 12
+        LED injection).  f_qfl = min(1, exp(-(E_X - V_j)/kT)) multiplies
+        r_dot when E_X_eV is supplied; E_X_eV=None (the default) keeps the
+        legacy numerics (f_qfl = 1) exactly."""
         T = self._T(T)
         lk = leakage or self.eta_inj(T)
         f_QD = self.f_qd(n_dot_cm2) if f_capture is None else float(f_capture)
         N_dots = n_dot_cm2 * aperture_um2 * 1e-8
-        r_dot = f_QD * lk.eta_inj * (I_uA * 1e-6 / Q_SI) / N_dots
+        N_eff = max(N_dots, 1.0)
+        r_dot = f_QD * lk.eta_inj * (I_uA * 1e-6 / Q_SI) / N_eff
+        f_qfl = 1.0
+        if E_X_eV is not None:
+            V_j = self.vj_of_j(I_uA * 1e-6 / self.area_cm2, T)
+            kT_eV = KB_EV * T
+            exponent = -(E_X_eV - V_j) / kT_eV
+            # exponent >= 0 (qV_j >= E_X, above turn-on) -> f_qfl = 1 exactly;
+            # evaluate exp() only for the sub-turn-on branch so a deeply
+            # above-turn-on operating point (large positive exponent, e.g.
+            # a cold-T self-heating trial before Tj converges) never
+            # overflows exp() before the clip gets applied.
+            f_qfl = 1.0 if exponent >= 0.0 else float(np.exp(exponent))
+            r_dot *= f_qfl
         mu = r_dot * tau_pulse_ns * 1e-9 if tau_pulse_ns is not None else None
         n_occ = float(r_dot * tau_rad_ns * 1e-9)
         return DotLoading(float(I_uA), T, float(lk.eta_inj), float(f_QD), float(N_dots),
                           float(r_dot), None if mu is None else float(mu), n_occ,
-                          bool(n_occ > 1.0), float(f_QD * lk.eta_inj / N_dots))
+                          bool(n_occ > 1.0), float(f_QD * lk.eta_inj / N_eff), f_qfl)
 
     def current_for_mu(self, mu_target: float, T=None, n_dot_cm2: float = 1e10,
                        aperture_um2: float = 0.785, tau_pulse_ns: float = 1.0,
@@ -671,15 +723,19 @@ class Diode:
             n_dot_cm2: float = 1e10, aperture_um2: float = 0.785, S_dot=1.0,
             eta_rad_matrix: float = 0.1, E_urbach_meV: float | None = None,
             tau_rad_ns: float = 1.0, f_capture: float | None = None,
-            leakage: Leakage | None = None) -> Background:
+            leakage: Leakage | None = None,
+            E_X_eV: float | None = None) -> Background:
         """b_e(I, T): background photons inside the X window per dot X photon
         (module docstring, definition and item 7).  S_dot: the dot's thermal
-        retention factor, a float or a callable S_dot(T)."""
+        retention factor, a float or a callable S_dot(T).  E_X_eV: same
+        sub-turn-on loading suppression as dot_loading (item 2), so rate_x
+        here stays the SAME (suppressed) X rate that r_dot/mu report --
+        None (default) reproduces legacy numerics exactly."""
         T = self._T(T)
         kT_meV = 1e3 * KB_EV * T
         E_U = max(kT_meV, E_urbach_meV if E_urbach_meV is not None else kT_meV)
         ld = self.dot_loading(I_uA, T, n_dot_cm2, aperture_um2, None, f_capture,
-                              tau_rad_ns, leakage)
+                              tau_rad_ns, leakage, E_X_eV)
         S = float(S_dot(T)) if callable(S_dot) else float(S_dot)
         xi = float(xi_window(w_meV, dE_WL_meV, E_U))
         rate_bg = (1.0 - ld.f_QD) * ld.eta_inj * (I_uA * 1e-6 / Q_SI) * eta_rad_matrix * xi
@@ -705,26 +761,32 @@ def evaluate_injection(diode: Diode, I_uA: float, T: float, n_dot_cm2: float,
                        aperture_um2: float, tau_pulse_ns: float | None, w_meV: float,
                        dE_WL_meV: float, S_dot=1.0, tau_rad_ns: float = 1.0,
                        eta_rad_matrix: float = 0.1, E_urbach_meV: float | None = None,
-                       eta_total: float = 0.01) -> InjectionResult:
+                       eta_total: float = 0.01,
+                       E_X_eV: float | None = None) -> InjectionResult:
     """Everything for one operating point (I, T): junction voltage, field,
     leakage, dot loading, background and heat.  The drive-block mapping is
         DriveBlock.mu          <- result.mu
         DriveBlock.eta_capture <- result.eta_capture  (per-dot thinning)
         DriveBlock.b_e/_m/_Eact <- to_background_channel(...)
         DriveBlock.V           <- result.V_j (thermal.t_junction wants P = duty * P_junction)
-    """
+
+    E_X_eV: the dot's resolved transition energy [eV], used ONLY for the
+    item-2 sub-turn-on loading suppression f_qfl = min(1, exp(-(E_X -
+    V_j)/kT)) applied to r_dot (device.py passes it in when it has one from
+    the confinement-derived level structure).  None (the default) keeps
+    every legacy caller's numerics exactly unchanged (f_qfl = 1)."""
     I = I_uA * 1e-6
     V_app, V_j = diode.v_of_i(I, T)
     dep = diode.depletion(V_j, T)
     lk = diode.eta_inj(T)
     ld = diode.dot_loading(I_uA, T, n_dot_cm2, aperture_um2, tau_pulse_ns, None,
-                           tau_rad_ns, lk)
+                           tau_rad_ns, lk, E_X_eV)
     bg = diode.b_e(I_uA, T, w_meV, dE_WL_meV, n_dot_cm2, aperture_um2, S_dot,
-                   eta_rad_matrix, E_urbach_meV, tau_rad_ns, None, lk)
+                   eta_rad_matrix, E_urbach_meV, tau_rad_ns, None, lk, E_X_eV)
     P = diode.junction_power(I_uA, T, eta_total)
     return InjectionResult(I_uA, T, V_j, V_app, dep.V_bi, diode.v_on(T),
                            I / diode.area_cm2, dep, lk, ld, bg, P, ld.mu,
-                           ld.eta_capture_dot, bg.b_e)
+                           ld.eta_capture_dot, bg.b_e, ld.f_qfl)
 
 
 def to_background_channel(diode: Diode, I_grid_uA, T_grid, I_ref_uA: float = 1.0,

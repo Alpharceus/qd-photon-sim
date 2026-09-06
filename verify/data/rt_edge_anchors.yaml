@@ -54,12 +54,13 @@ anchors:
     locator: "reported device wavelength"
     tag: V
     status: missing
+    verification: "web:https://pubmed.ncbi.nlm.nih.gov/40515333/ -- confirmed 2026-09-05 (WebSearch): Gu et al., \"755 nm InP/GaAs0.65P0.35 quantum dot laser with polarization-dependent emission from type-I and type-II band alignments,\" Optics Express 33(11), 23732-23739 (2 Jun 2025); not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
   - id: hkust22-wavelength-independent-gap
     claim: hkust_inp_gaasp_wavelength
     value: 750
     unit: nm
     tolerance: 5
-    conditions: "Electrically pumped InP/GaAsP QD laser on Si; digest gives a news summary only, without DOI or figure."
+    conditions: "Electrically pumped InP/GaAsP QD laser on Si; digest gives a news summary only, without DOI or figure. Superseded as a citable source by luo22-hkust-wavelength-si below, which carries the confirmed DOI for the same underlying paper; kept here only as the historical news-summary placeholder that first flagged the claim."
     source: "Luo et al., HKUST Optics Express news summary (2022)"
     doi: ""
     locator: "news summary"
@@ -67,40 +68,51 @@ anchors:
     status: missing
   # The underlying peer-reviewed paper behind the news-summary gap above has
   # since been identified and confirmed (WebSearch + crossref + DOI-redirect
-  # cross-check, 2026-09-05): Luo, Lin, Huang, Lin, Lau, "Electrically pumped
-  # InP/GaAsP quantum dot lasers grown on (001) Si emitting at 750 nm",
-  # Optics Express 30, 40750 (2022), DOI 10.1364/OE.474320 (doi.org redirects
-  # to opg.optica.org/abstract.cfm?URI=oe-30-22-40750, matching journal/vol/
-  # page exactly). This is a genuine, distinct, DOI-confirmed second source
-  # for the claim's underlying scientific fact. Its status is kept "missing"
-  # (not promoted to "verified") rather than also flipping gu25-hkust-
-  # wavelength to verified: verify/verify_rt_edge_cards.py (out of this
-  # spec's scope) requires any card value anchored to a "verified" anchor to
-  # lie inside that anchor's tolerance, and cards/edge-inp-gaasp-design.yaml
-  # (also out of scope) deliberately pins emission.lambda_nm to 668 nm -- the
-  # only tabulated-index design point -- rather than to gu25's unconfirmed
-  # 755 nm HKUST target; raising gu25 to verified would make that card fail.
-  # See the implementation report's QUESTION.
+  # cross-check, 2026-09-05; re-confirmed again in this pass): Luo, Lin,
+  # Huang, Lin, Lau, "Electrically pumped InP/GaAsP quantum dot lasers grown
+  # on (001) Si emitting at 750 nm", Optics Express 30, 40750 (2022), DOI
+  # 10.1364/OE.474320 (doi.org redirects to opg.optica.org/oe/fulltext.cfm?
+  # uri=oe-30-22-40750, matching journal/vol/page exactly). This is a
+  # genuine, distinct, DOI-confirmed second source for the claim's underlying
+  # scientific fact.
+  #
+  # Council review (2026-09-05): status corrected from "missing" to
+  # "verified". It was previously kept "missing" only to avoid tripping
+  # verify_rt_edge_cards.py's tolerance check on cards/edge-inp-gaasp-
+  # design.yaml's emission.lambda_nm (668 nm, the tabulated-index design
+  # point) against the unconfirmed 755 nm HKUST target -- but that card's
+  # anchor_id for emission.lambda_nm is gu25-hkust-wavelength (still
+  # "missing", unchanged above), NOT this anchor, so promoting THIS anchor to
+  # "verified" does not touch that gate. The 668 nm vs 750 nm design-point
+  # mismatch is a card-level provenance.assumptions entry for the concurrent
+  # cards spec to record, not evidence-ledger "missing" status: the
+  # underlying literature fact (a real, DOI-sourced InP/GaAsP QD laser near
+  # this wavelength class exists) IS verified, even though hkust_inp_gaasp_
+  # wavelength as a CLAIM still needs 2 distinct verified sources and has
+  # only this one (gu25 remains "missing"), so the claim itself stays
+  # evidence-incomplete overall -- this edit only corrects this one anchor's
+  # own status to match the evidence, it does not complete the claim.
   - id: luo22-hkust-wavelength-si
     claim: hkust_inp_gaasp_wavelength
     value: 750
     unit: nm
     tolerance: 5
-    conditions: "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent."
+    conditions: "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (668 nm) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 668 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor."
     source: "Luo et al., Optics Express 30, 40750 (2022)"
     doi: "10.1364/OE.474320"
     locator: "title / device wavelength"
     tag: V
-    status: missing
+    status: verified
+    verification: "web:https://opg.optica.org/oe/fulltext.cfm?uri=oe-30-22-40750 -- confirmed 2026-09-05 (WebSearch): Luo, Lin, Huang, Lin, Lau, Optics Express 30(22), 40750-40755 (2022); not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
   - id: reischle08-gaas-pin-iv
     claim: gaas_pin_iv
     value: 1.97
     unit: V
     tolerance: 0.02
-    conditions: "GaAs-substrate InP/AlGaInP p-i-n, QD C, 80 K electrical operation."
+    conditions: "GaAs-substrate InP/AlGaInP p-i-n, QD C, 80 K electrical operation; autocorrelation bias point."
     source: "Reischle et al., Optics Express 16, 12771 (2008)"
     doi: "10.1364/OE.16.012771"
-    locator: "Fig. 2d"
+    locator: "Fig. 3b (autocorrelation bias, QD C, 80 K); corrected from a prior 'Fig. 2d' mislocation -- Fig. 2 only carries the spectral bias series, the U = 1.97 V autocorrelation condition is stated with Fig. 3."
     tag: V
     status: verified
   - id: reischle10-gaas-pin-iv
@@ -111,7 +123,7 @@ anchors:
     conditions: "GaAs-substrate InP/GaInP p-i-n, Device 2 dc bias before pulsed injection, about 20 K."
     source: "Reischle et al., Applied Physics Letters 97, 143513 (2010)"
     doi: "10.1063/1.3497016"
-    locator: "Fig. 3"
+    locator: "p. 143513-2 text (decay-time-vs-Vdc series: '420 ps for Vdc=2.07 V'); Fig. 4 caption (Device 2, Position 2) -- corrected from a prior bare 'Fig. 3' mislocation (Fig. 3 is Device 1's repetition-rate series, not Device 2's bias point)."
     tag: V
     status: verified
   - id: reischle08-first-lens-efficiency
@@ -152,11 +164,11 @@ anchors:
     value: 16
     unit: meV
     tolerance: {rel: 0.2}
-    conditions: "InAsP/InP nanowire dot at 300 K; 25 nm at 1398 nm converted to energy width. Not an InP/GaAsP-dot measurement."
+    conditions: "InAsP/InP nanowire dot at 300 K; NOT a measured emission linewidth -- 25 nm is the detection bandpass-filter width at 1398 nm/300 K (an instrument upper bound, widened as the X/XX lines broadened and merged; digest Paper 5, Section 5: 'No numeric Gamma(T) given'), converted here to an energy width. Not an InP/GaAsP-dot measurement; superseded for gamma300_class_range by matsuda01-gamma300-class and chatzarakis23-gamma300-class below, which are genuine measured single-dot linewidths."
     source: "Laferriere et al., Nano Letters 23, 962 (2023)"
     doi: "10.1021/acs.nanolett.2c04375"
-    locator: "Fig. 5 temperature-series discussion"
-    tag: DR
+    locator: "p. 965, detection-filter bandwidth (widened from 0.1 nm to 12 nm at 175 K and to 25 nm at 300 K)"
+    tag: E
     status: missing
   # Genuinely distinct, verified second source confirmed against the
   # PRB abstract (WebSearch + Keio institutional-repository listing,
@@ -174,6 +186,7 @@ anchors:
     locator: "abstract; ~12 meV homogeneous linewidth at 300 K"
     tag: V
     status: verified
+    verification: "web:https://journals.aps.org/prb/abstract/10.1103/PhysRevB.63.121304 -- confirmed 2026-09-05 (WebSearch): Matsuda, Ikeda, Saiki, Tsuchiya, Saito, Nishi, \"Homogeneous linewidth broadening in a single quantum dot at room temperature investigated using a highly sensitive near-field scanning optical microscope,\" Phys. Rev. B 63, 121304(R) (2001), ~12 meV at 300 K, In0.5Ga0.5As/GaAs dot; not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
   # Second, independent class-proxy source: fact-checked against
   # ../_goal/paper_digests_factcheck.md item 27 (rendered-figure + verbatim
   # p.6 quote), distinct DOI from Matsuda and from Laferriere.
@@ -182,10 +195,10 @@ anchors:
     value: 6.5
     unit: meV
     tolerance: 0.5
-    conditions: "InAs/GaAs (211)B piezoelectric quantum dot ensembles (non-SSL and SSL-barrier samples); mesa and microcavity-dot linewidth curves merge at T >= 250 K to FWHM 6-7 meV; distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement."
+    conditions: "InAs/GaAs (211)B piezoelectric single-quantum-dot linewidth measurement (mesa-isolated dot, Fig. S2); the (211)B and (100) single-dot linewidth curves merge at T >= 250 K to FWHM 6-7 meV (paper text, p. 6). Corrected wording: earlier text here wrongly described this as an 'ensemble (non-SSL/SSL-barrier)' and 'mesa and microcavity-dot' merge -- the ensemble non-SSL/SSL Arrhenius activation energies (125/265 meV) are a different measurement on different (ensemble) samples; the linewidth-curve merge quoted for this anchor is specifically the (211)B vs (100) SINGLE-DOT comparison per paper_digests_factcheck.md item 27. Distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement."
     source: "Chatzarakis et al., Physical Review Applied 20, 034011 (2023)"
     doi: "10.1103/PhysRevApplied.20.034011"
-    locator: "p. 6, linewidth-curve-merge discussion"
+    locator: "p. 6, linewidth-curve-merge discussion; Fig. S2"
     tag: V
     status: verified
   - id: bommer11-retention-ea
@@ -199,6 +212,7 @@ anchors:
     locator: "single-dot Arrhenius fit"
     tag: V
     status: verified
+    verification: "web:https://pubs.aip.org/aip/jap/article-abstract/110/6/063108/151233 -- confirmed 2026-09-05 by reading the full text (open-access mirror, kops.uni-konstanz.de): 'Activation energy derived from Arrhenius fits: Ea_X = 96 +/- 7 meV, Ea_XX = 80 +/- 8 meV' -- exact match to this anchor's value/tolerance. Not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
   # Genuinely distinct second source, confirmed by downloading and reading
   # the full text (pypdf, 2026-09-05): a different Stuttgart-group paper,
   # ensemble (not single-dot) PL, reporting a family of activation energies
@@ -206,7 +220,16 @@ anchors:
   # below is Table 1 structure (a), the plain reference barrier with no
   # additional cladding/tunnel barrier, the closest ensemble analogue to
   # Bommer's single-dot structure. Not referenced by any design card.
-  - id: schulz08-retention-ea-ensemble
+  #
+  # Id/year fix (council review, 2026-09-05): the id said "schulz08" but the
+  # citation is physica status solidi (c) 6, 906 (2009) -- confirmed via the
+  # Wiley abstract page (onlinelibrary.wiley.com/doi/abs/10.1002/
+  # pssc.200880599: "Schulz - 2009 - physica status solidi c"); the arXiv
+  # preprint (arXiv:0812.0452) was posted Dec 2008, which is presumably where
+  # the "08" came from, but the citable journal publication is 2009. Id
+  # renamed schulz08-retention-ea-ensemble -> schulz09-retention-ea-ensemble
+  # to match; not referenced by id anywhere outside this file.
+  - id: schulz09-retention-ea-ensemble
     claim: retention_Ea_inp_algainp
     value: 150
     unit: meV
@@ -217,6 +240,7 @@ anchors:
     locator: "Table 1, structure (a)"
     tag: V
     status: verified
+    verification: "web:https://onlinelibrary.wiley.com/doi/abs/10.1002/pssc.200880599 -- confirmed 2026-09-05: Wiley abstract page dates the journal publication to physica status solidi (c) 6, 906 (2009); the arXiv preprint (arXiv:0812.0452, Dec 2008, same paper) full text was read directly and gives Table 1 verbatim: 'Structure (a) (b) (c) (d) (e) / EA (meV) 150 205 220 251 272 / TC (K) 150 140 150 160 192' -- exact match to this anchor's value for structure (a). Not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
   - id: inp-algainp-retention-independent-gap
     claim: retention_Ea_inp_algainp
     value: null
@@ -228,25 +252,41 @@ anchors:
     locator: "not available"
     tag: A
     status: missing
+  # Re-sourcing (council review, 2026-09-05): the 4-6 meV X-XX binding energy
+  # is secondhand in Reischle et al. 2008 -- their own text says it is
+  # "quoted" from Ref. 14 (Beirne et al., Phys. Rev. B 75, 195302 (2007)) and
+  # "not measured here" (digest Paper 1, Section 5; confirmed against the PDF
+  # by paper_digests_factcheck.md item 10). Re-sourced below so the primary
+  # citation is Beirne 2007, with the Reischle 2008 locator kept as the
+  # (secondary) place this value is actually quoted, since Beirne 2007's own
+  # text was not independently re-read here (existence/authorship/venue
+  # confirmed via WebSearch 2026-09-05: Beirne, Reischle, Rossbach, Schulz,
+  # Jetter, Seebeck, Gartner, Gies, Jahnke, Michler, Phys. Rev. B 75, 195302
+  # (2007), a real, distinct Stuttgart/Bremen-group paper on quantum-dot
+  # exciton complexes). Id kept as "reischle08-delta-xx" (unchanged) because
+  # cards/edge-inp-gaasp-design.yaml references this id directly by name
+  # (out of this spec's scope to edit).
   - id: reischle08-delta-xx
     claim: delta_xx_inp_gaasp
     value: 5
     unit: meV
     tolerance: 1
-    conditions: "InP/GaInP proxy: typical X-XX binding-energy range 4-6 meV, not a measured InP/GaAsP dot."
-    source: "Reischle et al., Optics Express 16, 12771 (2008)"
-    doi: "10.1364/OE.16.012771"
-    locator: "p. 12774, exciton-complex discussion"
+    conditions: "InP/GaInP proxy: X-XX binding-energy range 4-6 meV, reported by Beirne et al., Phys. Rev. B 75, 195302 (2007) (Ref. 14 of Reischle et al. 2008) and quoted secondarily -- not independently measured -- in Reischle et al. 2008, p. 12774: 'typical X-XX binding energy in this InP/GaInP system quoted as ~4-6 meV ... not measured here.' Union with bommer11-delta-xx (7 +/- 1 meV, i.e. 6-8 meV) spans 4-8 meV, overlapping only marginally near 6 meV -- the two independent sources are consistent but only weakly overlapping."
+    source: "Beirne et al., Physical Review B 75, 195302 (2007); quoted secondarily by Reischle et al., Optics Express 16, 12771 (2008), p. 12774 (Ref. 14)"
+    doi: "10.1103/PhysRevB.75.195302"
+    locator: "as cited in Reischle et al. 2008, p. 12774 (Ref. 14); not independently re-located in Beirne 2007's own text"
     tag: V
     status: verified
+    verification: "digest -- value transcribed from ../_goal/paper_digests.md Paper 1, Section 5 (Reischle et al. 2008's own quotation of Beirne et al. 2007, confirmed against the PDF by paper_digests_factcheck.md item 10); Beirne et al., Phys. Rev. B 75, 195302 (2007) confirmed as a genuine paper with this author list and in this venue via WebSearch 2026-09-05 (Beirne 2007 itself is not in the fact-checked six-paper digest set)."
   - id: bommer11-delta-xx
     claim: delta_xx_inp_gaasp
     value: 7
     unit: meV
     tolerance: 1
-    conditions: "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement."
+    conditions: "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement. Union with reischle08-delta-xx (Beirne 2007, 4-6 meV) spans 4-8 meV, overlapping only marginally near 6 meV."
     source: "Bommer et al., Journal of Applied Physics 110, 063108 (2011)"
     doi: "10.1063/1.3633218"
     locator: "biexciton-binding discussion"
     tag: V
     status: verified
+    verification: "web:https://pubs.aip.org/aip/jap/article-abstract/110/6/063108/151233 -- confirmed 2026-09-05 by reading the full text (open-access mirror, kops.uni-konstanz.de): 'the XX binding energy of ~7 meV allows to clearly identify the X and XX decay channels' -- matches this anchor's value (the paper does not itself state an explicit +/-1 meV uncertainty on this particular number; the tolerance here is a reading-precision estimate). Not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."

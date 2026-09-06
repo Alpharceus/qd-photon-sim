@@ -12,8 +12,13 @@ in this file (never by calling compute_verdict and trusting its own answer),
 plus real (but --quick, then once full) runs of the actual script.
 
 Section 1 (pure policy, no evaluate() calls): all-ineligible, no-evidence,
-duplicate-evidence, pulsed-only-pass, secondary-gate-failure, fallback-only-
-pass, median-fail and only-[A]/[E]-corner scenarios against synthetic rows.
+duplicate-evidence, headline-only-pass (favorable pulsed gate despite both CW
+secondary diagnostics failing), secondary-only-pass (favorable CW diagnostics
+cannot substitute for a failing headline gate), coverage bookkeeping,
+fallback-only-pass, median-fail and only-[A]/[E]-corner scenarios against
+synthetic rows -- exercising docs/rt_edge_contract.md's rule that the
+headline metric (pulsed intrinsic g2(0)) alone gates PASS, with g2_cw0/
+g2_cw0_raw reported as non-gating secondary diagnostics.
 Section 2: a --quick real-evaluator smoke run, plus a synthetic all-invalid
 dataset run through write_png/write_markdown directly (an empty/all-invalid
 case must still produce legible artifacts, and evidence failure must not
@@ -73,16 +78,20 @@ BAD_HALLU = {"hallucination_tests_passed": False}
 
 def make_row(card_id, card_class, g2_pulsed, g2_cw0, g2_cw0_raw, eligible_row,
             assumptions="dot.gamma300; emission.lambda_nm") -> dict:
-    """Minimal synthetic row: combined_pass is worked out here by the SAME
-    plain formula the spec states (same-row, all three gates, eligible) --
-    not imported from run_rt_edge -- so the fixture's own label is an
-    independent ground truth for the section-1 assertions below."""
-    combined_pass = bool(eligible_row
-                         and all(np.isfinite(v) for v in (g2_pulsed, g2_cw0, g2_cw0_raw))
-                         and g2_pulsed < 0.5 and g2_cw0 < 0.5 and g2_cw0_raw < 0.5)
+    """Minimal synthetic row: headline_pass/secondary_pass are worked out
+    here by the SAME plain formulas docs/rt_edge_contract.md states (the
+    headline metric is pulsed intrinsic g2(0) alone; g2_cw0/g2_cw0_raw are
+    secondary diagnostics that never gate PASS) -- not imported from
+    run_rt_edge -- so the fixture's own label is an independent ground truth
+    for the section-1 assertions below."""
+    headline_pass = bool(eligible_row and np.isfinite(g2_pulsed) and g2_pulsed < 0.5)
+    secondary_pass = bool(eligible_row
+                          and all(np.isfinite(v) for v in (g2_cw0, g2_cw0_raw))
+                          and g2_cw0 < 0.5 and g2_cw0_raw < 0.5)
     return {"card_id": card_id, "card_class": card_class, "g2_pulsed": g2_pulsed,
             "g2_cw0": g2_cw0, "g2_cw0_raw": g2_cw0_raw, "eligible_row": eligible_row,
-            "combined_pass": combined_pass, "assumptions": assumptions}
+            "headline_pass": headline_pass, "secondary_pass": secondary_pass,
+            "assumptions": assumptions}
 
 
 def full_row(**overrides) -> dict:
@@ -100,7 +109,8 @@ def full_row(**overrides) -> dict:
         "collected_flux_pulsed_s": 10.0, "collected_flux_cw_s": 10.0,
         "g2_pulsed": float("nan"), "g2_cw0": float("nan"), "g2_cw0_raw": float("nan"),
         "eligible_pulsed": False, "eligible_cw": False, "eligible_row": False,
-        "combined_pass": False, "invalid_reasons_pulsed": "synthetic: forced invalid",
+        "headline_pass": False, "secondary_pass": False,
+        "invalid_reasons_pulsed": "synthetic: forced invalid",
         "invalid_reasons_cw": "synthetic: forced invalid",
         "assumptions": "dot.gamma300; emission.lambda_nm",
         "pulse_width_ns": rte.PULSE_WIDTH_NS, "rep_rate_hz": rte.REP_RATE_HZ,
@@ -130,7 +140,7 @@ ok("no-evidence: physics stats still computed correctly (0.3/0.3)",
    abs(v["g2_min"] - 0.3) < 1e-12 and abs(v["g2_median"] - 0.3) < 1e-12)
 ok("no-evidence: verdict FAILs on evidence, not metrics/eligibility",
    not v["pass"] and "evidence_incomplete" in v["fail_reasons"]
-   and "no_favorable_corner_metrics" not in v["fail_reasons"])
+   and "no_headline_pass" not in v["fail_reasons"])
 
 # -- duplicate evidence: a distinct evidence-incompleteness reason still gates PASS
 v_dup = rte.compute_verdict(rows, stats, True, DUP_EVIDENCE, GOOD_HALLU)
@@ -145,22 +155,42 @@ with tempfile.TemporaryDirectory() as td:
 ok("duplicate-evidence: the specific reason text survives into verdict.md",
    "duplicate DOI collapses to one distinct source" in md_text)
 
-# -- pulsed-only pass: intrinsic CW gate fails -> same-row rule rejects it
+# -- headline-only pass: docs/rt_edge_contract.md makes the headline metric
+# (pulsed intrinsic g2(0)) alone the PASS gate; g2_cw0/g2_cw0_raw are
+# secondary diagnostics that must NOT block PASS even when both fail.
 rows = [make_row(PRIMARY_ID, "primary", g2_pulsed=0.3, g2_cw0=0.7, g2_cw0_raw=0.9, eligible_row=True)]
 stats = rte.compute_stats(rows)
 v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
-ok("pulsed-only pass: pooled pulsed median alone would look like a pass",
-   v["median_pass"] is True)
-ok("pulsed-only pass: same-row 3-gate rule rejects it (overall FAIL)",
-   not v["pass"] and "no_favorable_corner_metrics" in v["fail_reasons"])
+ok("headline-only pass: pulsed g2<0.5 alone is sufficient for PASS",
+   v["pass"] and "no_headline_pass" not in v["fail_reasons"])
+ok("headline-only pass: failing CW secondary diagnostics are recorded but never gate",
+   not rows[0]["secondary_pass"] and v["cw_raw_coverage_n"] == 0 and v["cw0_coverage_n"] == 0)
 
-# -- secondary failure: intrinsic CW gate OK, but the IRF-convolved (raw) gate fails
-rows = [make_row(PRIMARY_ID, "primary", g2_pulsed=0.3, g2_cw0=0.3, g2_cw0_raw=0.9, eligible_row=True)]
+# -- secondary-only pass is NOT sufficient: favorable CW diagnostics cannot
+# substitute for a failing headline (pulsed) gate.
+rows = [make_row(PRIMARY_ID, "primary", g2_pulsed=0.9, g2_cw0=0.3, g2_cw0_raw=0.3, eligible_row=True)]
 stats = rte.compute_stats(rows)
 v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
-ok("secondary failure (raw/IRF-convolved gate alone fails): rejected",
-   not v["pass"] and not rows[0]["combined_pass"]
-   and "no_favorable_corner_metrics" in v["fail_reasons"])
+ok("secondary-only pass: favorable CW diagnostics cannot substitute for the headline gate",
+   not v["pass"] and not rows[0]["headline_pass"] and "no_headline_pass" in v["fail_reasons"])
+ok("secondary-only pass: secondary coverage still correctly counts the row "
+   "even though overall verdict is FAIL",
+   v["cw_raw_coverage_n"] == 1 and v["cw0_coverage_n"] == 1)
+
+# -- coverage bookkeeping: headline/cw0/cw_raw coverages are independent
+# fractions over EVERY scheduled row (run_rt_edge.py's own "every scheduled
+# row" coverage-denominator policy), not gated on each other.
+rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True),   # headline+secondary pass
+        make_row(PRIMARY_ID, "primary", 0.9, 0.3, 0.3, True),   # headline fail, secondary pass
+        make_row(PRIMARY_ID, "primary", 0.3, 0.9, 0.9, True),   # headline pass, secondary fail
+        make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, False)]  # ineligible
+stats = rte.compute_stats(rows)
+v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+ok("coverage bookkeeping: headline coverage counts exactly the headline-passing rows / all rows",
+   v["headline_coverage_n"] == 2 and v["headline_coverage_total"] == 4
+   and abs(stats["headline_coverage"] - 0.5) < 1e-12)
+ok("coverage bookkeeping: cw0/cw_raw secondary coverage counted independently of headline",
+   v["cw0_coverage_n"] == 2 and v["cw_raw_coverage_n"] == 2)
 
 # -- fallback-only pass: primary card never favorable, fallback card is
 rows = [make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True),
@@ -319,15 +349,16 @@ with tempfile.TemporaryDirectory() as td:
            min_matches and med_matches and n_eligible == declared["n_eligible"]
            and n_rows == declared["n_rows"])
 
-    # Every claimed passing row must genuinely satisfy the same-row 3-gate
-    # rule and carry non-empty assumptions (spec: "every claimed passing
-    # corner must have matching assumptions and valid same-row gates").
-    passing_rows = [r for r in full_rows if r["combined_pass"] == "True"]
-    ok("full run: every combined_pass=True row genuinely satisfies all three same-row gates",
+    # Every claimed headline-passing row must genuinely satisfy the headline
+    # (pulsed-only) gate and carry non-empty assumptions (spec: "every
+    # claimed passing corner must have matching assumptions and a valid
+    # headline gate"); its secondary (CW) diagnostics may be anything.
+    passing_rows = [r for r in full_rows if r["headline_pass"] == "True"]
+    ok("full run: every headline_pass=True row genuinely satisfies the headline gate "
+       "(eligible, pulsed intrinsic g2(0)<0.5)",
        all(r["eligible_row"] == "True" and float(r["g2_pulsed"]) < 0.5
-           and float(r["g2_cw0"]) < 0.5 and float(r["g2_cw0_raw"]) < 0.5
            for r in passing_rows))
-    ok("full run: every combined_pass=True row lists non-empty assumptions",
+    ok("full run: every headline_pass=True row lists non-empty assumptions",
        all(r["assumptions"].strip() for r in passing_rows))
 
 

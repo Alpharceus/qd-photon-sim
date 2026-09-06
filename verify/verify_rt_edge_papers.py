@@ -48,11 +48,30 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 ANCHORS_PATH = ROOT / "verify" / "data" / "rt_edge_anchors.yaml"
+DIGEST_VALUES_PATH = ROOT / "verify" / "data" / "rt_edge_digest_values.yaml"
 GAASP_CARD = ROOT / "cards" / "edge-inp-gaasp-design.yaml"
 GAINP_CARD = ROOT / "cards" / "edge-inp-gainp-design.yaml"
 DEFAULT_REPORT = ROOT / "out" / "rt_edge" / "evidence.json"
 
 VALID_TAGS = {"V", "DR", "E", "A"}
+
+# Registered DOI-prefix allowlist for the plausibility check below (Part B.ii
+# of the council review): APS, AIP, Optica, Wiley, IOP, Elsevier, Springer/
+# Nature, ACS, IEEE. A DOI outside this list is rejected unless the anchor
+# carries an explicit `web:` verification note (a real paper hosted under a
+# prefix this list happens not to cover, hand-confirmed).
+REGISTERED_DOI_PREFIXES = (
+    "10.1103",  # APS (Phys. Rev. *)
+    "10.1063",  # AIP (J. Appl. Phys., Appl. Phys. Lett., ...)
+    "10.1364",  # Optica (Optics Express, Optics Letters, ...)
+    "10.1002",  # Wiley (physica status solidi, ...)
+    "10.1088",  # IOP
+    "10.1016",  # Elsevier
+    "10.1038",  # Nature
+    "10.1007",  # Springer
+    "10.1021",  # ACS
+    "10.1109",  # IEEE
+)
 
 # Per-claim expectations used for context/unit/magnitude hallucination checks.
 # `material_tokens`/`temp_tokens`/`drive_tokens` are OR-checked substrings
@@ -109,6 +128,17 @@ def _sha256_file(path: Path) -> str | None:
 def load_anchors(path: Path = ANCHORS_PATH) -> dict:
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     return {a["id"]: a for a in doc["anchors"]}
+
+
+def load_digest_values(path: Path = DIGEST_VALUES_PATH) -> dict:
+    """The independent ground-truth transcription table (verify/data/
+    rt_edge_digest_values.yaml), keyed by (doi, quantity) -> entry. This is
+    never derived from rt_edge_anchors.yaml -- it is hand-transcribed from
+    ../_goal/paper_digests.md / confirmed web-PDF sources -- so it can catch
+    a fabricated anchor or a mutated real value the anchors file alone
+    cannot self-detect."""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return {(e["doi"], e["quantity"]): e for e in doc.get("entries", [])}
 
 
 def group_by_claim(anchors: dict) -> dict:
@@ -253,17 +283,70 @@ def _check_tolerance_sane(anchor: dict):
     return True, "tolerance within a plausible measurement/reading bound"
 
 
+def _check_doi_plausible(anchor: dict):
+    """DOI plausibility (council review Part B.ii): a DOI must carry a
+    registered publisher prefix (REGISTERED_DOI_PREFIXES) unless the anchor
+    is explicitly whitelisted with a `web:` verification note -- a real
+    paper hand-confirmed under a prefix this list happens not to cover. A
+    bare fabricated DOI (e.g. a hallucinated "10.1000/xyz") has neither and
+    is rejected."""
+    if anchor.get("value") is None:
+        return True, "no numeric claim to source (declared gap)"
+    doi = (anchor.get("doi") or "").strip()
+    if not doi:
+        return True, "no DOI asserted (locator-only sourcing)"
+    if doi.startswith(REGISTERED_DOI_PREFIXES):
+        return True, f"DOI {doi!r} carries a registered publisher prefix"
+    verification = (anchor.get("verification") or "").strip()
+    if verification.startswith("web:"):
+        return True, f"unregistered DOI prefix but explicitly whitelisted via {verification!r}"
+    return False, f"DOI {doi!r} has no registered publisher prefix and no web: whitelist"
+
+
+def _check_digest_crosscheck(claim: str, anchor: dict, digest_table: dict):
+    """Value-level hallucination gate (council review Part B.i): every
+    VERIFIED, valued anchor must agree -- same DOI+claim, unit, and value
+    within the anchor's own declared tolerance -- with an entry in the
+    independently hand-transcribed verify/data/rt_edge_digest_values.yaml
+    table. That table is never derived from this ledger, so it catches what
+    the purely structural checks above cannot: a fabricated anchor (whose
+    doi/claim pair simply is not in the table) or a mutated real value
+    (whose doi/claim pair IS in the table, but at a different number).
+    Anchors that are not status=='verified', or that declare no numeric
+    value (a gap), are not cross-checked here -- the spec scopes this gate
+    to verified anchors only."""
+    if anchor.get("status") != "verified" or anchor.get("value") is None:
+        return True, "not a verified numeric claim (skipped)"
+    doi = (anchor.get("doi") or "").strip()
+    entry = digest_table.get((doi, claim))
+    if entry is None:
+        return False, f"no independent digest-value table entry for doi={doi!r} claim={claim!r}"
+    if entry.get("unit") != anchor.get("unit"):
+        return False, (f"unit mismatch: anchor unit {anchor.get('unit')!r} vs digest-table "
+                       f"unit {entry.get('unit')!r}")
+    bound = anchor_bound(anchor)
+    if abs(float(anchor["value"]) - float(entry["value"])) > bound + 1e-9:
+        return False, (f"value {anchor['value']} is outside tolerance ({bound}) of the "
+                       f"independently transcribed {entry['value']} {entry['unit']} "
+                       f"({entry.get('digest_section', '?')})")
+    return True, (f"matches independent transcription {entry['value']} {entry['unit']} "
+                  f"({entry.get('digest_section', '?')})")
+
+
 ANCHOR_CHECKS = [
     _check_tag_valid,
     _check_citation_present,
     _check_tag_consistent_with_sourcing,
     _check_no_gainp_80k_confusion,
     _check_tolerance_sane,
+    _check_doi_plausible,
 ]
 CLAIM_ANCHOR_CHECKS = [_check_unit_and_magnitude, _check_context_tokens, _check_raw_vs_corrected]
 
 
-def _anchor_passes_all(claim: str, anchor: dict) -> tuple[bool, list]:
+def _anchor_passes_all(claim: str, anchor: dict, digest_table: dict | None = None) -> tuple[bool, list]:
+    if digest_table is None:
+        digest_table = load_digest_values()
     details = []
     all_ok = True
     for fn in ANCHOR_CHECKS:
@@ -274,12 +357,15 @@ def _anchor_passes_all(claim: str, anchor: dict) -> tuple[bool, list]:
         ok, detail = fn(claim, anchor)
         details.append({"check": fn.__name__, "ok": ok, "detail": detail})
         all_ok = all_ok and ok
+    ok, detail = _check_digest_crosscheck(claim, anchor, digest_table)
+    details.append({"check": "_check_digest_crosscheck", "ok": ok, "detail": detail})
+    all_ok = all_ok and ok
     return all_ok, details
 
 
 # ---------------------------------------------------------- claim-level scoring
 
-def score_ledger(anchors: dict) -> dict:
+def score_ledger(anchors: dict, digest_table: dict | None = None) -> dict:
     """Recompute per-claim evidence completeness from an anchors dict --
     NEVER trusting a stored `status` field by itself. An anchor only counts
     toward a claim's required two distinct primary sources if: its ledger
@@ -293,6 +379,8 @@ def score_ledger(anchors: dict) -> dict:
     exactly one deliberate defect (removed anchor / duplicate DOI /
     incompatible context / downgraded or invalid tag) -- the SAME function
     must reject every one of those, per the spec's acceptance criteria."""
+    if digest_table is None:
+        digest_table = load_digest_values()
     anchor_results = {}
     claim_results = {}
     missing_evidence = []
@@ -302,7 +390,7 @@ def score_ledger(anchors: dict) -> dict:
         any_v_or_dr = False
         for aid in aids:
             anchor = anchors[aid]
-            passed, details = _anchor_passes_all(claim, anchor)
+            passed, details = _anchor_passes_all(claim, anchor, digest_table)
             effective_verified = (passed and anchor.get("status") == "verified"
                                   and anchor.get("value") is not None)
             anchor_results[aid] = {
@@ -593,6 +681,49 @@ def _tamper_e_class_only(anchors: dict) -> dict:
     return t
 
 
+def _tamper_mutate_chatzarakis_g2_value(anchors: dict) -> dict:
+    """Value-level hallucination (council review Part B): mutate a REAL,
+    already-verified anchor's number while keeping its real DOI/source/
+    conditions untouched -- the class of error the purely structural checks
+    above cannot catch (right unit, right context tokens, real citation),
+    but the independent digest-values table can, because the table's own
+    0.36 doesn't move when this copy's anchor value does."""
+    t = copy.deepcopy(anchors)
+    t["chatzarakis23-g2-temperature"]["value"] = 0.90
+    return t
+
+
+def _tamper_mutate_matsuda_gamma300_value(anchors: dict) -> dict:
+    t = copy.deepcopy(anchors)
+    t["matsuda01-gamma300-class"]["value"] = 30.0
+    return t
+
+
+def _tamper_fabricated_anchor_with_flipped_status(anchors: dict) -> dict:
+    """Reproduces the reviewer's fabricated-anchor scenario concretely: an
+    attacker (or a careless edit) both (a) flips the real single-source
+    reischle2008_g2_80K anchor's status from 'missing' to 'verified' -- the
+    "fix" a bad-faith edit might make, since the number itself is genuine --
+    and (b) adds a second, wholly fabricated anchor under the same claim
+    with a fake journal, a fake DOI, and value 0.44, but otherwise-correct
+    unit/context tokens so every structural check above passes it. Before
+    the digest cross-check / DOI-plausibility check existed, this pair would
+    give distinct=2, any_v_or_dr=True and flip reischle2008_g2_80K to
+    'complete'; the digest cross-check rejects the fabricated anchor (its
+    fake DOI has no table entry) and the DOI-plausibility check independently
+    rejects it too (fake DOI has no registered prefix and no web:
+    whitelist), so distinct drops back to 1 and the claim stays incomplete."""
+    t = copy.deepcopy(anchors)
+    t["reischle08-g2-80k"]["status"] = "verified"
+    t["fabricated-g2-80k"] = _synthetic_anchor(
+        value=0.44, unit="g2(0)", tolerance=0.02,
+        conditions="InP/AlGaInP p-i-n EL, 80 K, raw dip.",
+        source="Fake Journal of Quantum Nonsense 1, 1 (2000)",
+        doi="10.1000/xyz.fake", locator="Fig. 1",
+        tag="V", status="verified", claim="reischle2008_g2_80K")
+    return t
+
+
 def _synthetic_anchor(**overrides) -> dict:
     base = dict(id="synthetic", claim="reischle2008_g2_80K", value=0.2, unit="g2(0)",
                tolerance=0.02, conditions="InP/AlGaInP p-i-n EL, 80 K, raw dip.",
@@ -649,12 +780,31 @@ def _run_self_test(ok_fn) -> None:
          "delta_xx_inp_gaasp"),
         ("[E]-only pair cannot alone establish target validation", _tamper_e_class_only,
          "delta_xx_inp_gaasp"),
+        ("value-level hallucination: Chatzarakis g2(0) mutated 0.36->0.90 is "
+         "caught by the independent digest-values cross-check",
+         _tamper_mutate_chatzarakis_g2_value, "temperature_trend_g2"),
+        ("value-level hallucination: Matsuda gamma300 mutated 12->30 meV is "
+         "caught by the independent digest-values cross-check",
+         _tamper_mutate_matsuda_gamma300_value, "gamma300_class_range"),
     ]
     for name, tamper_fn, claim in tamper_cases:
         was_complete = baseline["claim_results"][claim]["complete"]
         tampered = score_ledger(tamper_fn(real_anchors))
         now_complete = tampered["claim_results"][claim]["complete"]
         ok_fn(f"self-test: {name}", was_complete and not now_complete)
+
+    # Fabricated-anchor scenario (council review Part B.iii): a fake journal,
+    # a fake DOI, and value 0.44 -- with the right unit/context tokens so
+    # every structural check passes it -- paired with the real single source
+    # having its status "fixed" to verified must still NOT flip
+    # reischle2008_g2_80K to complete (see the tamper function's docstring).
+    fabricated_scored = score_ledger(_tamper_fabricated_anchor_with_flipped_status(real_anchors))
+    ok_fn("self-test: fabricated anchor (fake journal/DOI, value 0.44) cannot "
+         "flip reischle2008_g2_80K to complete even paired with a status-"
+         "flipped real anchor",
+         not fabricated_scored["claim_results"]["reischle2008_g2_80K"]["complete"])
+    ok_fn("self-test: the fabricated anchor itself is rejected (not effective_verified)",
+         not fabricated_scored["anchor_results"]["fabricated-g2-80k"]["effective_verified"])
 
     # Newly-completed claims: the ledger now carries a genuine second source
     # for these (Matsuda 2001 + Chatzarakis 2023; Schulz 2009 + Bommer
@@ -692,6 +842,37 @@ def _run_self_test(ok_fn) -> None:
              _synthetic_anchor(conditions="InP/GaInP p-i-n EL, 80 K electrically driven."))[0])
     ok_fn("self-test: missing-value gap is not itself flagged as a citation failure",
          _check_citation_present(_synthetic_anchor(value=None, source="", doi=""))[0])
+
+    # DOI-plausibility fixtures (council review Part B.ii).
+    ok_fn("self-test: implausible DOI prefix rejected",
+         not _check_doi_plausible(_synthetic_anchor(doi="10.1000/xyz.fake"))[0])
+    ok_fn("self-test: implausible DOI prefix accepted when explicitly web-whitelisted",
+         _check_doi_plausible(_synthetic_anchor(
+             doi="10.9999/unregistered-but-real",
+             verification="web:https://example.org/hand-confirmed-real-paper"))[0])
+    ok_fn("self-test: registered publisher prefixes (APS/AIP/Optica/Wiley) accepted "
+         "without needing a web: whitelist",
+         all(_check_doi_plausible(_synthetic_anchor(doi=doi))[0] for doi in
+             ("10.1103/PhysRevB.1.1", "10.1063/1.1", "10.1364/OE.1.1", "10.1002/pssc.1")))
+
+    # Independent digest-values cross-check fixtures (council review Part B.i).
+    digest_table = load_digest_values()
+    ok_fn("self-test: digest cross-check accepts the real, unmutated "
+         "chatzarakis23-g2-temperature anchor",
+         _check_digest_crosscheck("temperature_trend_g2",
+             real_anchors["chatzarakis23-g2-temperature"], digest_table)[0])
+    ok_fn("self-test: digest cross-check rejects a fabricated anchor whose "
+         "doi/claim pair is absent from the table",
+         not _check_digest_crosscheck("reischle2008_g2_80K",
+             _synthetic_anchor(doi="10.1000/xyz.fake", status="verified"), digest_table)[0])
+    ok_fn("self-test: digest cross-check rejects a mutated real value "
+         "(Chatzarakis 0.36 -> 0.90) even with the real DOI",
+         not _check_digest_crosscheck("temperature_trend_g2",
+             _synthetic_anchor(**{**real_anchors["chatzarakis23-g2-temperature"],
+                                  "value": 0.90}), digest_table)[0])
+    ok_fn("self-test: digest cross-check skips a non-verified (missing-status) anchor",
+         _check_digest_crosscheck("reischle2008_g2_80K",
+             _synthetic_anchor(doi="10.1000/xyz.fake", status="missing"), digest_table)[0])
 
     # Orchestrator-required: a deliberately wrong parameter fed through the
     # real evaluator/DeviceDesign must make the corresponding gate FAIL.

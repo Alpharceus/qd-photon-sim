@@ -84,6 +84,31 @@ python scripts/run_spec.py        # inverse-design spec    -> out/spec
 Python ≥ 3.9. After editing cards or code, re-run `verify/` — every phase
 gate and review finding is encoded as a permanent check.
 
+## RT edge-emitter tier (branch rt-edge-emitter)
+
+Branch `rt-edge-emitter` adds a room-temperature (300 K heatsink),
+electrically driven, edge-emitting InP-dot tier on top of the F-series core:
+new `fsim_core` modules for materials, 300 K linewidth, confinement levels,
+p-i-n transport, ridge waveguide, and CW correlation; new opt-in
+`device.py` blocks; two design cards; and a reproducible acceptance sweep
+(`scripts/run_rt_edge.py`) with its own verify suite.
+
+The honest outcome, from `out/rt_edge/verdict.md`:
+
+```
+VERDICT: FAIL g2_min=0.3648 g2_median=0.773 median_pass=false coverage=0 eligible=54/54 evidence=incomplete conditional=false
+```
+
+Neither design card reaches a favorable operating corner (0 favorable rows
+each, 54/54 eligible), and two literature anchors this tier's claims depend
+on (the 80 K electrical g²(0) result and the HKUST wavelength anchor) still
+lack a second independent verified source. See **`docs/rt_edge_tier.md`**
+for the full picture: the goal and outcome, why the code implements "InP
+dots in a GaAs<sub>0.6</sub>P<sub>0.4</sub> well with (Al,Ga)InP barriers on
+GaAs" rather than the literally-stated "InP cladding, GaAsP active region,"
+the module map, how to reproduce every number, the provenance-tag and
+known-deviations conventions, and the remaining limitations.
+
 ## Status
 
 All planned phases delivered (0, V, 1, 2, 3 + designer D0–D3 + spec mode).

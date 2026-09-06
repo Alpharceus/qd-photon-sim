@@ -171,6 +171,58 @@ bool_check("composition interpolation reproduces the exact tabulated endpoints (
            and abs(M.refractive_index(M.AlGaInP(1.0).label, 668) - M.refractive_index("Al0.52In0.48P", 668)) < 1e-12,
            "x=0/0.5/1 must fall through to the real tabulated values, not the interpolation formula")
 
+print("== 10. rt-fix-cards-wavelength: GaInP extended to 700-850nm (Schubert 1995) ==")
+check("n(GaInP,700nm)", M.refractive_index("Ga0.51In0.49P", 700), 3.4952, 1e-4,
+      "[V] Schubert et al., JAP 77, 3416 (1995), refractiveindex.info GaP-InP/Schubert: "
+      "3.4952 at 699.74 nm")
+check("n(GaInP,750nm)", M.refractive_index("Ga0.51In0.49P", 750), 3.38004, 1e-4,
+      "[V] Schubert et al., JAP 77, 3416 (1995): 3.38004 at 753.5 nm")
+check("n(GaInP,800nm)", M.refractive_index("Ga0.51In0.49P", 800), 3.31693, 1e-4,
+      "[V] Schubert et al., JAP 77, 3416 (1995): 3.31693 at 807.67 nm")
+check("n(GaInP,850nm)", M.refractive_index("Ga0.51In0.49P", 850), 3.27486, 1e-4,
+      "[V] Schubert et al., JAP 77, 3416 (1995): 3.27486 at 853.28 nm")
+bool_check("n(GaInP, lambda) decreases monotonically over the full 650-850nm tabulated span",
+           all(M.refractive_index("Ga0.51In0.49P", lo) > M.refractive_index("Ga0.51In0.49P", hi)
+               for lo, hi in zip([650, 668, 700, 750, 800], [668, 700, 750, 800, 850])),
+           "normal dispersion away from the E0 gap, Schubert 1995")
+print("== 11. rt-fix-cards-wavelength: (Al0.50Ga0.50)0.51In0.49P/AlInP/GaAsP0.6P0.4 "
+      "ratio-scaled to 700-850nm (orchestrator-approved option (c)) ==")
+# Ratio-scaled [E] estimates carry the coordinator-specified +/-0.05 uncertainty
+# in n (wider than the [V] GaInP tolerance above): n_X(668) * n_GaInP(lambda)/
+# n_GaInP(668), the same-family Adachi-model dispersion shape (Kato & Adachi,
+# JJAP 33, 186 (1994) / Adachi's "Optical Constants..." book give the real
+# per-composition dispersion but have no open-access/digitizable copy).
+E_TOL = 0.05
+for label, vals in {
+    "(Al0.50Ga0.50)0.51In0.49P": {700: 3.1499, 750: 3.0461, 800: 2.9892, 850: 2.9513},
+    "Al0.52In0.48P": {700: 2.9836, 750: 2.8853, 800: 2.8314, 850: 2.7955},
+    "GaAs0.60P0.40": {700: 3.4727, 750: 3.3583, 800: 3.2956, 850: 3.2538},
+}.items():
+    for lam, ref in vals.items():
+        check(f"n({label},{lam}nm)", M.refractive_index(label, lam), ref, E_TOL,
+              "[E] 668 nm value x Ga0.51In0.49P n(lambda)/n(668) dispersion ratio "
+              "(Schubert 1995); Kato & Adachi 1994 / Adachi's book give the real "
+              "dispersion but have no open-access/digitizable copy")
+bool_check("n(AlInP) < n((Al0.50Ga0.50)0.51In0.49P) < n(GaInP) at every tabulated "
+           "wavelength (650-850nm)",
+           all(M.refractive_index("Al0.52In0.48P", lam)
+               < M.refractive_index("(Al0.50Ga0.50)0.51In0.49P", lam)
+               < M.refractive_index("Ga0.51In0.49P", lam)
+               for lam in (650, 668, 700, 750, 800, 850)),
+           "more Al -> lower n at fixed lambda, preserved by the ratio-scaling method")
+bool_check("n((Al0.50Ga0.50)0.51In0.49P), n(AlInP), n(GaAs0.60P0.40) each decrease "
+           "monotonically over 650/668-850nm",
+           all(all(M.refractive_index(label, lo) > M.refractive_index(label, hi)
+                   for lo, hi in zip([668, 700, 750, 800], [700, 750, 800, 850]))
+               for label in ("(Al0.50Ga0.50)0.51In0.49P", "Al0.52In0.48P", "GaAs0.60P0.40")),
+           "normal dispersion, inherited from the GaInP ratio")
+bool_check("n((Al0.70Ga0.30)0.51In0.49P,800nm) < n((Al0.50Ga0.50)0.51In0.49P,800nm) "
+           "(x-interpolation now reaches 800nm through the extended AlInP anchor)",
+           M.refractive_index("(Al0.70Ga0.30)0.51In0.49P", 800.0)
+           < M.refractive_index("(Al0.50Ga0.50)0.51In0.49P", 800.0),
+           "more Al -> lower n; x=0.70 interpolates between the (now tabulated) "
+           "x=0.5 and x=1.0 (AlInP) anchors")
+
 n_pass = sum(RESULTS)
 print(f"\n{n_pass}/{len(RESULTS)} materials checks passed")
 sys.exit(0 if n_pass == len(RESULTS) else 1)

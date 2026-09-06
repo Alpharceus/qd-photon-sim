@@ -57,10 +57,10 @@ design:
     diode:
       preset: red
       active: {kind: GaInP, x_ga: 0.51}
-    I_uA: 0.001
+    I_uA: 0.0015
     cw: true
     cw_irf_fwhm_ps: 100.0
-    cw_tau_max_ns: 0.02
+    cw_tau_max_ns: 0.24
   thermal:
     T_hs: 300.0
     layers:
@@ -80,7 +80,7 @@ design:
   emission:
     type: edge
     ridge_width_nm: 2000.0
-    lambda_nm: 668.0
+    lambda_nm: 770.0
 
   provenance:
     card_id: edge-inp-gainp-design
@@ -198,16 +198,23 @@ design:
           the Reischle et al. 2008 class device; transport.
           red_diode_preset(active='GaInP') default.
       drive.I_uA:
-        value: 0.001
-        tag: A
+        value: 0.0015
+        tag: DR
         source: >
-          Reduced from the module's legacy 10 uA default to a single-dot-
-          scale injection current (pA-nA class), consistent with the
-          sub-0.5 expected dot count of design.provenance.
-          single_dot_selection, and small enough that the CW rate-equation
-          tau grid (dt ~ 0.05 / max(rate)) stays numerically tractable at
-          this operating point. No literature single-dot InP/GaInP drive
-          current at this class has been published; MEASURE.
+          Council review 2026-09-05: the previous 0.001 uA (1 nA) gives
+          V_j = 1.515 V against this dot's confinement-derived E_X =
+          1.610 eV (dot_levels.levels at 300 K) -- qV_j is 3.1 kT below
+          E_X, in the Boltzmann-suppressed sub-turn-on regime the
+          concurrent transport fix flags (device.py's f_qfl term). Raised
+          to the smallest current at which device.evaluate()'s own
+          sub_turn_on flag clears, i.e. V_j >= E_X/q - 3kT/q = 1.5326 V
+          at 300 K (bisected against fsim_core.transport.evaluate_injection
+          / device._diode_from_drive's own V_j, not re-derived): I_uA =
+          0.0015 gives V_j = 1.5356 V, mu_resolved = 0.445 (the CW pump
+          rate r_dot/gamma_X stays below the radiative rate -- single-
+          exciton regime holds here, unlike the gaasp card's tighter
+          margin). No literature single-dot InP/GaInP drive current at
+          this class has been published; MEASURE.
       drive.cw:
         value: true
         tag: A
@@ -221,13 +228,18 @@ design:
           response, faster than the module's Reischle-2008-class 500 ps
           default.
       drive.cw_tau_max_ns:
-        value: 0.02
-        tag: A
+        value: 0.24
+        tag: DR
         source: >
-          Reduced from the module's 10 ns default to match this operating
-          point's confinement-escape timescale (~1/k_XX,
-          dot_levels.retention_params-derived) so the g2(tau) grid
-          (cw_g2.cw_report) stays numerically tractable; a numerical/design
+          Council review 2026-09-05: 0.02 ns put 81% of the IRF kernel
+          weight on edge padding (kernel FWHM > window). Re-derived as
+          >= 5 sigma_IRF + 5 tau_dip: sigma_IRF = 100 ps FWHM / 2.3548 =
+          0.0425 ns (5 sigma = 0.212 ns); tau_dip = 0.00462 ns from
+          cw_g2.cw_report's own single-exponential dip fit at this
+          operating point (5 tau_dip = 0.0231 ns) -- floor 0.235 ns.
+          0.24 ns clears that floor with margin and (cw_g2's max-2e5-point
+          grid cap in force) evaluate() completes in ~0.4 s at this card's
+          drive.I_uA, inside the <5 s/evaluation bound; a numerical
           choice, not a literature value.
       thermal.T_hs:
         value: 300.0
@@ -284,8 +296,11 @@ design:
         source: >
           Lithographic single-dot-isolation design target (design.
           provenance.single_dot_selection), distinct from Reischle et al.
-          2008's own large-aperture (~20 um), high-density (~1e10 cm^-2)
-          current-funneling approach (cards/reischle.yaml qd_density).
+          2008's own large-aperture (~20 um) current-funneling approach
+          (cards/reischle.yaml qd_density) and from the ~1e10 cm^-2
+          published InP-dot density digest (Reischle et al., Appl. Phys.
+          Lett. 97, 143513 (2010)) -- two orders of magnitude above this
+          design target (council review 2026-09-05).
       aperture.diameter_um:
         value: 0.4
         tag: A
@@ -308,15 +323,37 @@ design:
           034011 (2023) 0.3-3 um mesa/ridge class; no InP/GaInP edge-
           emitter ridge width has been published.
       emission.lambda_nm:
-        value: 668.0
-        tag: A
+        value: 770.0
+        tag: DR
         source: >
-          Explicit design wavelength pinned to the only tabulated phosphide
-          index point (668 nm) shared by InP, Ga0.51In0.49P and
-          (Al0.50Ga0.50)0.51In0.49P (device.py EmissionBlock.lambda_nm
-          documented convention); close to, but not asserted equal to,
-          Reischle et al. 2008's own X line at 1.8396 eV (~674 nm,
-          cards/reischle.yaml E_line).
+          Council review 2026-09-05, completed after materials.
+          MATERIAL_EXTRA gained ratio-scaled [E] refractive-index points
+          for ret.system.matrix (Ga0.51In0.49P) and ret.system.barrier
+          ((Al0.50Ga0.50)0.51In0.49P) at 700-850 nm (orchestrator-approved
+          option (c): 668 nm class value x Ga0.51In0.49P's own measured
+          n(lambda)/n(668) dispersion ratio, Schubert et al., JAP 77,
+          3416 (1995) -- see materials.py comments on those entries).
+          770.0 nm is this dot's own confinement-derived transition
+          (fsim_core.dot_levels.levels(system), using the matching
+          dot_levels.class_presets 'InP/GaInP/AlGaInP0.55 on GaAs' preset,
+          300 K: E_X = 1.610 eV), i.e. the device.py
+          EmissionBlock.lambda_nm=0 default's resolved value, set explicitly
+          here so the [DR] tag and this note are visible on the card itself.
+          waveguide.edge_emission now runs at this wavelength instead of the
+          previous 668 nm tabulation-limited fallback (13.2% off), so
+          beta/Gamma_dot/n_eff/eta_NA and all downstream fluxes are evaluated
+          at the modelled emitter's own line.
+
+          KNOWN MODEL DEVIATION, not a design choice: this solver output
+          (770 nm, dot_levels' confinement Hamiltonian on the design-card
+          GaInP variant; see verify/verify_dot_levels.py's known-deviations
+          section, item d-iv-a) is ~13.2% above the published Reischle-class
+          target emission, ~674 nm (Reischle et al., Appl. Phys. Lett. 93,
+          201101 (2008), 1.8396 eV; cards/reischle.yaml E_line). This gap is
+          the module's own documented large-mismatch 3D-island-relaxation
+          limitation (dot_levels.py docstring), not something this card's
+          emission.lambda_nm papers over by picking the published number
+          instead of the solver's.
 
     ranges:
       dot.delta_xx:

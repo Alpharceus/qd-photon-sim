@@ -53,10 +53,10 @@ design:
   drive:
     mode: EL-transport
     diode: {preset: hkust}
-    I_uA: 0.001
+    I_uA: 0.022
     cw: true
-    cw_irf_fwhm_ps: 100.0
-    cw_tau_max_ns: 0.02
+    cw_irf_fwhm_ps: 50.0
+    cw_tau_max_ns: 0.12
   thermal:
     T_hs: 300.0
     layers:
@@ -81,7 +81,7 @@ design:
   emission:
     type: edge
     ridge_width_nm: 2000.0
-    lambda_nm: 668.0
+    lambda_nm: 815.7
 
   provenance:
     card_id: edge-inp-gaasp-design
@@ -185,37 +185,67 @@ design:
           transport.hkust_preset: Gu et al. 2025-like p-i-n stack
           (Al0.4Ga0.6As claddings/barriers each side of the GaAs1-xPx well).
       drive.I_uA:
-        value: 0.001
-        tag: A
+        value: 0.022
+        tag: DR
         source: >
-          Reduced from the module's legacy 10 uA default to a single-dot-
-          scale injection current (pA-nA class), consistent with the
-          sub-0.5 expected dot count of design.provenance.
-          single_dot_selection, and small enough that the CW rate-equation
-          tau grid (dt ~ 0.05 / max(rate)) stays numerically tractable at
-          this operating point. No literature single-dot InP/GaAsP drive
-          current has been published; MEASURE.
+          Council review 2026-09-05: the previous 0.001 uA (1 nA) gives
+          V_j = 1.284 V against this dot's confinement-derived E_X =
+          1.520 eV (dot_levels.levels at 300 K) -- qV_j is 3.0 kT below
+          E_X, deep in the Boltzmann-suppressed sub-turn-on regime the
+          concurrent transport fix flags (device.py's f_qfl term). Raised
+          to the smallest current at which device.evaluate()'s own
+          sub_turn_on flag clears, i.e. V_j >= E_X/q - 3kT/q = 1.4425 V
+          at 300 K (bisected against fsim_core.transport.evaluate_injection
+          / device._diode_from_drive's own V_j, not re-derived): I_uA =
+          0.022 gives V_j = 1.4429 V. This does NOT keep mu in the
+          single-exciton regime (mu_resolved = 2.01, i.e. the CW pump
+          rate r_dot/gamma_X is ~2x the radiative rate) -- clearing the
+          Boltzmann suppression and staying single-exciton are in tension
+          at this dot's 300 K operating point with the hkust diode's I-V;
+          reported here rather than hidden. No literature single-dot
+          InP/GaAsP drive current has been published; MEASURE.
       drive.cw:
         value: true
         tag: A
         source: "Opt-in CW g2(tau)/IRF diagnostics (docs/rt_edge_contract.md block schema)."
       drive.cw_irf_fwhm_ps:
-        value: 100.0
-        tag: E
+        value: 50.0
+        tag: DR
         source: >
           Within the acceptance sweep's irf_ps=[50,200] ps class range
-          (design.provenance.ranges); a representative fast-SPAD instrument
-          response, faster than the module's Reischle-2008-class 500 ps
-          default.
+          (design.provenance.ranges); lowered from the module's 100 ps
+          representative-fast-SPAD default (council review 2026-09-05):
+          this dot's confinement escape is very fast (k_XX ~ 2074 ns^-1,
+          dot_levels/cw_g2.escape_rates_from_retention at this operating
+          point), which forces cw_g2.cw_report's fixed time step dt ~
+          0.05/k_XX ~ 2.4e-5 ns; the discrete IRF kernel (irf_kernel,
+          reach = 8 sigma_IRF) then has ~8 sigma_IRF/dt points regardless
+          of drive.cw_tau_max_ns, so halving the IRF FWHM (which halves
+          sigma_IRF) roughly halves both the kernel size and the
+          drive.cw_tau_max_ns floor below, the only two-sided lever
+          available from a card (cw_g2.py's grid/kernel code is out of
+          this card's scope) to keep evaluate() inside the <5 s bound;
+          still a fast-SPAD-class instrument response, at the sweep's own
+          50 ps low end.
       drive.cw_tau_max_ns:
-        value: 0.02
-        tag: A
+        value: 0.12
+        tag: DR
         source: >
-          Reduced from the module's 10 ns default to match this operating
-          point's confinement-escape timescale (~1/k_XX,
-          dot_levels.retention_params-derived, sub-picosecond here) so the
-          g2(tau) grid (cw_g2.cw_report) stays numerically tractable; a
-          numerical/design choice, not a literature value.
+          Council review 2026-09-05: 0.02 ns put 81% of the IRF kernel
+          weight on edge padding (kernel FWHM > window). Re-derived as
+          >= 5 sigma_IRF + 5 tau_dip at this card's cw_irf_fwhm_ps = 50 ps:
+          sigma_IRF = 50 ps / 2.3548 = 0.02123 ns (5 sigma = 0.1062 ns);
+          tau_dip = 0.000964 ns from cw_g2.cw_report's own single-
+          exponential dip fit at this operating point (5 tau_dip =
+          0.0048 ns) -- floor 0.111 ns. 0.12 ns clears that floor with
+          margin; at 100 ps FWHM (the module's usual default) this dot's
+          fast k_XX (~2074 ns^-1, see drive.cw_irf_fwhm_ps above) pushes
+          evaluate() to 5.0-5.8 s even at the bare 0.217 ns floor --
+          over the <5 s bound -- so cw_irf_fwhm_ps was lowered together
+          with cw_tau_max_ns (both card-level scalars) rather than left
+          unmet; at cw_irf_fwhm_ps = 50 ps, evaluate() completes in
+          ~2.8-3.0 s at this card's drive.I_uA, inside the <5 s/evaluation
+          bound with margin; a numerical choice, not a literature value.
       thermal.T_hs:
         value: 300.0
         tag: A
@@ -284,12 +314,20 @@ design:
           (docs/rt_edge_contract.md "Aperture assumptions").
       aperture.density_cm2:
         value: 300000000.0
-        tag: E
+        tag: A
         source: >
-          Low end of published InP QD densities (Chatzarakis et al.,
-          Phys. Rev. Applied 20, 034011 (2023), low-density-growth note),
-          paired with aperture.diameter_um for single-dot selection
-          (design.provenance.single_dot_selection: n_expected < 0.5).
+          Lithographic single-dot-isolation design target (design.
+          provenance.single_dot_selection: n_expected < 0.5), paired with
+          aperture.diameter_um; NOT a published InP-dot density (council
+          review 2026-09-05: the previous [E] citation to Chatzarakis et
+          al., Phys. Rev. Applied 20, 034011 (2023) was wrong -- that
+          paper's dots are InAs/GaAs, and its own low-density note is 7e8
+          cm^-2, not this value). The only published InP-dot density in
+          the digests is ~1e10 cm^-2 (Reischle et al., Appl. Phys. Lett.
+          97, 143513 (2010), current-funneling growth), two orders of
+          magnitude above this design target; single-dot selection here
+          is a lithographic-mesa choice, distinct from that growth-density
+          approach (mirrors the gainp card's aperture.density_cm2 tag).
       aperture.diameter_um:
         value: 0.4
         tag: A
@@ -311,19 +349,38 @@ design:
           034011 (2023) 0.3-3 um mesa/ridge class; no InP/GaAsP edge-
           emitter ridge width has been published.
       emission.lambda_nm:
-        value: 668.0
-        tag: A
+        value: 815.7
+        tag: DR
         source: >
-          Explicit design wavelength pinned to the only tabulated phosphide
-          index point (668 nm; Moser et al., APL 64, 235 (1994); Schubert
-          et al., JAP 86, 2025 (1999)) rather than the confinement-derived
-          natural transition, which falls outside materials.MATERIAL_
-          EXTRA's sparse tabulated optics (device.py EmissionBlock.
-          lambda_nm documented convention). The HKUST class's own target
-          emission is ~755 nm (Gu et al. 2025); independent single-dot
-          evidence for the InP/GaAsP line itself is absent
-          (docs/rt_edge_contract.md Evidence section).
-        anchor_id: gu25-hkust-wavelength
+          Council review 2026-09-05, completed after materials.
+          MATERIAL_EXTRA gained ratio-scaled [E] refractive-index points
+          for ret.system.matrix (GaAs0.60P0.40) and ret.system.barrier
+          ((Al0.50Ga0.50)0.51In0.49P) at 700-850 nm (orchestrator-approved
+          option (c): 668 nm class value x Ga0.51In0.49P's own measured
+          n(lambda)/n(668) dispersion ratio, Schubert et al., JAP 77,
+          3416 (1995) -- see materials.py comments on those entries).
+          815.7 nm is this dot's own confinement-derived transition
+          (dot_levels.levels(system), 300 K: E_X = 1.520 eV), i.e. the
+          device.py EmissionBlock.lambda_nm=0 default's resolved value,
+          set explicitly here (rather than left at 0) so the [DR] tag and
+          this note are visible on the card itself. waveguide.edge_emission
+          now runs at this wavelength instead of the previous 668 nm
+          tabulation-limited fallback (18.0% off), so beta/Gamma_dot/
+          n_eff/eta_NA and all downstream fluxes are evaluated at the
+          modelled emitter's own line.
+
+          KNOWN MODEL DEVIATION, not a design choice: this solver output
+          (815.7-816 nm, dot_levels' confinement Hamiltonian on the
+          design-card GaAsP0.4 variant; see verify/verify_dot_levels.py's
+          known-deviations section, item d-iv-a) is ~9% above the
+          published HKUST-class target emission, 750-755 nm (Gu et al.,
+          Opt. Express 33, 23732 (2025), 755 nm; Luo et al., Opt. Express
+          30, 40750 (2022), a second 750 nm-class candidate; verify/data/
+          rt_edge_anchors.yaml's gu25-hkust-wavelength / luo22-hkust-
+          wavelength-si anchors). This gap is the module's own documented
+          large-mismatch 3D-island-relaxation limitation (dot_levels.py
+          docstring), not something this card's emission.lambda_nm papers
+          over by picking the published number instead of the solver's.
 
     ranges:
       dot.delta_xx:
@@ -350,7 +407,6 @@ design:
 
     assumptions:
       - dot.gamma300
-      - emission.lambda_nm
 
     single_dot_selection:
       aperture_um2: 0.12566370614359174

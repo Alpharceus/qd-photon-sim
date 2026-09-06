@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 import fsim_core.device as devmod
 from fsim_core.device import (DeviceDesign, EmissionBlock, evaluate, evaluate_envelope,
                               _stack, _resolve_edge, _compose_aperture_g2, _aperture_lambda,
-                              _tracked_material)
+                              _tracked_material, _diode_from_drive)
 from fsim_core.linewidth import LinewidthParams, gamma_anchor
 from fsim_core.integrator import retention, g2_from
 from fsim_core.loading import loading_probs
@@ -600,8 +600,24 @@ r_ns = sc_cw["loading.r_dot"] / 1e9
 t_X, t_XX = sc_cw["t_x_op"], sc_cw["eps_op"] * sc_cw["t_x_op"]
 I_X, I_XX = cw_g2.photon_rates(r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, 1.0)
 sig = t_X * I_X + t_XX * I_XX
-bg = sc_cw["b_e_resolved"] * t_X * I_X
+# item 3 fix (council review 2026-09-05): the absolute in-window background
+# rate is transport's OWN accounting (Background.rate_bg_window, photons/s
+# -- the same physical operating point regardless of pulsed/CW framing);
+# forming b_e_cw = abs_bg_in_window / I_X (the SAME CW rate-equation X rate
+# that feeds sig) and then multiplying back by t_X * I_X cancels I_X
+# exactly, leaving bg = abs_bg_in_window * t_X -- one consistent ratio,
+# never the pulsed model's own rate_x (b_e_resolved's denominator) chained
+# onto this I_X (that was the bug: two different X-rate models mixed
+# across the multiplication, 13x too large at a saturated operating point).
+abs_bg_in_window_ns = sc_cw["background.rate_bg_window"] / 1e9
+b_e_cw = abs_bg_in_window_ns / I_X
+bg = b_e_cw * t_X * I_X
 rho_cw_expected = sig / (sig + bg)
+ok("reconstruction: abs_bg_in_window == b_e * X_rate_collected, pulsed path",
+   abs(sc_cw["background.rate_bg_window"] - sc_cw["b_e_resolved"] * sc_cw["background.rate_x"])
+   < 1e-6 * max(1.0, sc_cw["background.rate_bg_window"]))
+ok("reconstruction: abs_bg_in_window == b_e * X_rate_collected, CW path",
+   abs(abs_bg_in_window_ns - b_e_cw * I_X) < 1e-9 * max(1.0, abs_bg_in_window_ns))
 report_cw = cw_g2.cw_report(r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX,
                             rho_cw_expected, d_cw.drive.cw_irf_fwhm_ps,
                             tau_max_ns=d_cw.drive.cw_tau_max_ns,
@@ -662,6 +678,47 @@ ok("evaluate_envelope sweeps a new-block field without error and preserves Lemma
    env_new["n_samples"] == 2
    and np.isfinite(env_new["scalar_bands"]["g2_op"]).all()
    and env_new["scalar_bands"]["g2_op"][0] == env_new["scalar_bands"]["g2_op"][1] == sc_edge["g2_op"])
+
+# ============================================== 12. council review 2026-09-05 fixes
+# Item 1: carrier conservation at the gainp card's own EL-transport +
+# confinement operating point -- a single dot cannot receive more than the
+# supply-limited flux f_QD*eta_inj*(I/q) (the reviewer's own bound, 0.53).
+d_gainp = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
+sc_gainp = evaluate(d_gainp)["scalars"]
+Tj_gainp = sc_gainp["T_j_op"]
+diode_gainp = _diode_from_drive(d_gainp.drive)
+n_dot_cm2_gainp = d_gainp.drive.n_dot_cm2 or d_gainp.aperture.density_cm2
+lk_gainp = diode_gainp.eta_inj(Tj_gainp)
+f_QD_gainp = diode_gainp.f_qd(n_dot_cm2_gainp)
+supply_bound_gainp = f_QD_gainp * lk_gainp.eta_inj * (d_gainp.drive.I_uA * 1e-6 / transport.Q_SI)
+ok("gainp card: mu stays at or below the reviewer's supply-limited bound (0.53)",
+   sc_gainp["mu_resolved"] <= 0.53 + 1e-9)
+ok("gainp card: loading.r_dot never exceeds f_QD*eta_inj*(I/q) (carrier conservation)",
+   sc_gainp["loading.r_dot"] <= supply_bound_gainp * (1.0 + 1e-6))
+
+# Item 3: CW rho must match pulsed rho within 2% in the linear (unsaturated)
+# pump regime -- both derive from the SAME transport background/X-rate
+# accounting once the ratio is formed with a single, consistent denominator
+# (device.py bg = injection.background.rate_bg_window * t_X, item 3 fix).
+d_linear = copy.deepcopy(d_gainp)
+d_linear.drive.I_uA = 1e-6  # deep linear regime: mu << 1, well off dot saturation
+sc_linear = evaluate(d_linear)["scalars"]
+ok("CW rho matches pulsed rho within 2% in the linear pump regime",
+   sc_linear["mu_resolved"] < 0.01
+   and abs(sc_linear["cw_rho_op"] - sc_linear["rho_op"]) < 0.02 * sc_linear["rho_op"])
+
+# Item 4: filter.track_material must no longer be inert with cavity.enabled
+# False (both edge-emitter cards run cavity-less) -- the stack-derived
+# Varshni walk of the filter window must move g2_op at a T away from
+# cavity.T_track, where the InP and GaAs walks differ by more than the
+# window-width tolerance.
+d_notrack = DeviceDesign(); d_notrack.ret.mode = "confinement"; d_notrack.ret.system = EDGE_SYSTEM
+d_notrack.thermal.T_hs = 400.0
+r_notrack = evaluate(d_notrack, [400.0])
+d_track4 = copy.deepcopy(d_notrack); d_track4.filter.track_material = "dot"
+r_track4 = evaluate(d_track4, [400.0])
+ok("filter.track_material is no longer inert with cavity.enabled=False (g2_op moves)",
+   r_notrack["scalars"]["g2_op"] != r_track4["scalars"]["g2_op"])
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)
