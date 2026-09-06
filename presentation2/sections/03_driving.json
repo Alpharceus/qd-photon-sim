@@ -26,7 +26,7 @@
         "Strictly resonant: drive the exciton transition itself, coherent Rabi rotation, a pi-pulse gives one photon",
         "Two-photon resonant excitation (TPE): drive the biexciton via a virtual state at half its energy"
       ],
-      "notes": "Above-band excitation (pump photon energy above the wetting-layer or barrier gap) is the simplest scheme: any laser above the confinement energy works, but relaxation through many phonon-scattering steps before the carriers reach the dot ground state adds timing jitter to the emission and lets carriers recombine elsewhere, hurting purity. Quasi-resonant p-shell pumping addresses the biggest part of that jitter by injecting directly into the dot's own excited orbital, leaving only one LO-phonon relaxation step to the s-shell. Phonon-assisted excitation drives the dot from a laser detuned from the exciton line by close to one LA-phonon energy, using the phonon bath itself to supply or absorb the difference; it needs no cavity and gives near-unity population inversion at the right detuning and power. Strictly resonant excitation drives the transition on resonance and produces genuine Rabi oscillations: a pi-pulse flips the population with the least timing jitter and the best indistinguishability of any optical scheme, at the cost of needing polarization or spectral filtering to reject the pump. Two-photon resonant excitation drives the biexciton two-photon transition through a virtual state detuned by the biexciton binding energy, giving a clean, background-free cascade source.",
+      "notes": "Above-band excitation (pump photon energy above the wetting-layer or barrier gap) is the simplest scheme: any laser above the confinement energy works, but relaxation through many phonon-scattering steps before the carriers reach the dot ground state adds timing jitter to the emission and lets carriers recombine elsewhere, hurting purity. Quasi-resonant p-shell pumping addresses the biggest part of that jitter by injecting directly into the dot's own excited orbital, leaving only one LO-phonon relaxation step to the s-shell. Phonon-assisted excitation drives the dot from a laser detuned from the exciton line by close to one LA-phonon energy, using the phonon bath itself to supply or absorb the difference; it needs no cavity and gives near-unity population inversion at the right detuning and power. Strictly resonant excitation drives the transition on resonance and produces genuine Rabi oscillations: a pi-pulse flips the population with the least timing jitter and the best indistinguishability of any optical scheme, at the cost of needing polarization or spectral filtering to reject the pump. Two-photon resonant excitation drives the biexciton two-photon transition through a virtual level sitting E_b/2 -- half the biexciton binding energy -- below the exciton line's own energy, giving a clean, background-free cascade source.",
       "sources": [
         "Michler (ed.), Quantum Dots for Quantum Information Technologies (2017), ch. on coherent control",
         "Fox, Quantum Optics ch. 8"
@@ -181,7 +181,7 @@
       ],
       "notes": "The Shockley equation J = J0 (exp(qV/kT) - 1) is the starting point for every semiconductor diode: an exponential current-voltage law that follows from minority carriers diffusing away from the junction into the neutral p- and n-claddings under forward bias, recombining there with a characteristic diffusion length L = sqrt(D tau). An ideality factor of exactly n = 1 in the more general J0(exp(qV/nkT)-1) form is the signature of this diffusion-dominated channel. fsim_core.transport.Diode.ln_j0's 'diff' channel implements exactly this, using each cladding's OWN intrinsic carrier density (not the active layer's, which the spec's simplified textbook one-liner would suggest) -- important because a wide-gap AlGaInP or AlGaAs cladding has an intrinsic density many orders of magnitude below the active layer's, making this channel negligible in exactly the heterojunction LEDs this project cares about, per its own exp(-2 dE_g/kT) suppression relative to a homojunction. The diffusion coefficients D_n = mu_n kT/q, D_p = mu_p kT/q, and the diffusion lengths are capped at the physical cladding thickness when one is given, since a thin cladding is itself a perfect carrier sink shorter than the natural diffusion length. This channel matters for the GaAs reference diode used to verify the module; it is subdominant in both real InP-dot cards.",
       "sources": [
-        "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 1",
+        "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 2",
         "fsim_core/transport.py: Diode.ln_j0 ('diff' channel)"
       ]
     },
@@ -207,7 +207,7 @@
       ],
       "notes": "At low-to-moderate forward bias, most real diodes are dominated not by carriers that have already diffused into the neutral claddings but by carriers recombining through mid-gap trap states while still inside the depleted, field-swept i-region -- Shockley-Read-Hall recombination. Because SRH recombination through a single trap level needs both an electron and a hole present simultaneously, its rate is maximized, and its voltage dependence characteristically halved, giving an ideality factor n = 2: J0,SRH = q n_i,active d_i / (2 tau_SRH) for the simple case where the whole i-region shares the active layer's intrinsic density. The classic 'two-diode model' sums exactly these two channels -- an ideal n=1 diode for diffusion, an n=2 diode for SRH -- in parallel, which is what fsim_core.transport.Diode.ln_j0/ln_j do (implemented in log space via logsumexp for numerical stability at cryogenic temperatures where n_i can underflow). The repository generalizes the SRH term to sum over EVERY depleted layer (active plus barrier) with its own n_i, since n_i,barrier/n_i,active can be four orders of magnitude smaller for a wide-gap barrier -- a detail the textbook one-liner glosses over but that matters once the i-region is not homogeneous, as in every real heterostructure LED in this project's cards. A third channel (radiative recombination in the active layer, also n=1) is summed alongside these two; see the module docstring for its rate.",
       "sources": [
-        "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 1",
+        "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 2",
         "fsim_core/transport.py: Diode.ln_j0 ('srh' channel), Diode.ln_j"
       ]
     },
@@ -230,7 +230,7 @@
       },
       "notes": "Two more effects shape the high-bias I-V curve. First, high injection: once the injected minority carrier density becomes comparable to the majority doping, the simple exponential channels above no longer separate cleanly and the effective ideality factor tends back toward n~2 (conductivity modulation of the quasi-neutral regions). Second, series resistance: contacts and undepleted material outside the junction drop IR, so the terminal voltage is V_applied = V_j + I R_s, and the I-V curve rolls over from exponential toward linear at high current -- fsim_core.transport.Diode.iv solves this self-consistently by brentq on the junction voltage. The subtler issue is current crowding: everything downstream (injection efficiency, per-dot capture, background) depends on CURRENT DENSITY through the active layer, current divided by the actual cross-sectional area of the current path -- not necessarily the diode's overall mesa footprint. The repository's own council review (2026-09-05, item 3) found exactly this bug: the junction voltage was solved at the mesa area (0.785 um^2, a 1 um diameter default) while dot loading used the smaller current aperture (0.4 um diameter, 0.126 um^2) -- a 6.25x discrepancy that silently inflated the apparent per-dot loading. The fix defaults the diode's injection area to the SAME aperture area used everywhere else, unless an explicit current-crowding override (drive.diode_area_um2) says the real current path is narrower still.",
       "sources": [
-        "Coldren, Corzine & Masanovic, Diode Lasers and Photonic Integrated Circuits 2nd ed., sec. 4.4",
+        "Coldren, Corzine & Masanovic, Diode Lasers and Photonic Integrated Circuits 2nd ed.",
         "fsim_core/transport.py: Diode.iv, _diode_from_drive (device.py)"
       ],
       "repo_numbers": {
@@ -267,7 +267,8 @@
         "The i-region's quasi-Fermi split cannot exceed qV_j -- carriers at E_X above it are Boltzmann-suppressed",
         "Applies twice: once to the dot transition E_X, once to the wetting-layer/matrix background E_X + dE_WL",
         "Because dE_WL > 0, the background is suppressed MORE than the dot at the same sub-turn-on bias",
-        "Pass-2 finding: applying this suppression to the dot only, and not to the background, is an artefact"
+        "Pass-2 finding: applying this suppression to the dot only, and not to the background, is an artefact",
+        "At the card's default point: f_qfl = 1 (qV_j exceeds E_X by 31.6 meV) -- only background suppressed"
       ],
       "equations": [
         {
@@ -277,10 +278,10 @@
       ],
       "figure": {
         "path": "presentation2/figures/out/03_11_boltzmann_tail.png",
-        "caption": "loading mu and background suppression f_qfl,bg vs. drive current for the gainp card at 300 K (fresh evaluate() sweep)",
+        "caption": "the dot's own f_qfl and the background's f_qfl,bg vs. the dimensionless (qV_j - E_X)/kT for the gainp card at 300 K (fresh evaluate() sweep); at the card's default point the dot has saturated (f_qfl = 1) while the background is still suppressed",
         "script": "presentation2/figures/fig_03_11_boltzmann_tail.py"
       },
-      "notes": "Regime V is not a new current channel but a correction to how much of the diode current that DOES flow can actually reach the dot's own transition energy E_X, which sits well above the conduction- and valence-band edges used in the I-V regimes so far. Sze & Ng's LED-injection treatment (ch. 12) makes the point that the intrinsic region's electron and hole quasi-Fermi levels cannot separate by more than qV_j; if E_X exceeds qV_j, only an exponentially small Boltzmann tail of the carrier distribution reaches that energy, f_qfl = min(1, exp(-(E_X - qV_j)/kT)). The repository's council review (2026-09-05, item 1) found this had been applied asymmetrically: the dot's own loading rate carried this suppression, but the wetting-layer/matrix background channel that competes with it did not -- a one-sided bug that made the background look relatively brighter than it should below turn-on. The background reservoir sits at E_X + dE_WL (about 100 meV higher by the repository's own b_e() default, a separate, simpler estimate than the full confinement-derived confinement depth), so its OWN suppression, f_qfl,bg = min(1, exp(-(E_X + dE_WL - qV_j)/kT)), is always at least as strong as the dot's -- exactly the physically correct sign for a background channel sitting deeper in the gap. The carriers a fully suppressed dot channel does NOT capture are not simply discarded either: transport.py routes them into r_matrix so the total carrier supply stays exactly conserved.",
+      "notes": "Regime V is not a new current channel but a correction to how much of the diode current that DOES flow can actually reach the dot's own transition energy E_X, above the conduction- and valence-band edges used in the I-V regimes so far. Sze & Ng's LED-injection treatment (ch. 12) notes that the intrinsic region's electron and hole quasi-Fermi levels cannot separate by more than qV_j; if E_X exceeds qV_j, only an exponentially small Boltzmann tail reaches that energy, f_qfl = min(1, exp(-(E_X - qV_j)/kT)). The repository's council review (2026-09-05, item 1) found this applied asymmetrically: the dot's own loading rate carried this suppression, but the competing wetting-layer/matrix background channel did not -- a one-sided bug that made the background look relatively brighter than it should below turn-on. The background reservoir sits at E_X + dE_WL (about 100 meV higher, the repository's own b_e() default), so its OWN suppression, f_qfl,bg = min(1, exp(-(E_X + dE_WL - qV_j)/kT)), is always at least as strong as the dot's -- the physically correct sign for a channel sitting deeper in the gap. At the gainp card's own default 300 K point, the dot has already saturated to f_qfl = 1 (qV_j exceeds E_X by about 31.6 meV), while the background remains suppressed at f_qfl,bg = 0.071 -- exactly the asymmetric regime this correction targets. Carriers a saturated-suppressed dot channel does NOT capture are not discarded: transport.py routes them into r_matrix so total carrier supply stays exactly conserved.",
       "sources": [
         "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 12",
         "fsim_core/transport.py: qfl_suppression, Diode.dot_loading, Diode.b_e"
@@ -295,6 +296,16 @@
           "value": 0.9999999987213851,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'mu_resolved')"
+        },
+        "f_qfl_dot_at_default_op_point_300K": {
+          "value": 1.0,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qfl_dot('cards/edge-inp-gainp-design.yaml')"
+        },
+        "qVj_minus_EX_meV_at_default_op_point_300K": {
+          "value": 31.64388047528499,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).qVj_minus_EX_meV('cards/edge-inp-gainp-design.yaml')"
         }
       }
     },
@@ -356,7 +367,7 @@
         "Per-dot share: r_dot = f_QD eta_inj (I/q) / N_eff, N_eff = max(N_dots, 1.0)",
         "max(.,1) is carrier conservation: a fractional expected dot count is NOT a fractional physical dot"
       ],
-      "notes": "A carrier that survives injection into the active layer does not appear inside the dot directly -- it first populates the surrounding wetting layer or matrix material, from which it either recombines there (lost to background) or is captured into a dot via phonon-assisted relaxation, typically emitting one or more LO phonons (in InP, the LO phonon energy is about 43 meV) on a picosecond timescale. fsim_core.transport.Diode.f_qd models the competition as a simple branching ratio, f_QD = 1/(1 + tau_cap/tau_matrix), with the dot capture time scaling inversely with dot density (tau_cap = tau_cap0 x (1e10 cm^-2 / n_dot), tau_cap0 = 5 ps [E] at 1e10 cm^-2) since a denser dot ensemble captures faster -- giving f_QD = 0.995 at 1e10 cm^-2 but only 0.933 at the sparser 7e8 cm^-2 density this project's single-dot-selection cards actually use. The captured supply must then be divided among however many dots sit under the current aperture, N_dots = n_dot x A_aperture, itself a Poisson-EXPECTED dot count and therefore often fractional (0.377 for the actual cards' 0.4 um aperture at 3e8 cm^-2). The repository's council review (2026-09-05, item 1) established that dividing by a fractional N_dots directly would hand the ONE dot that IS actually present in the aperture MORE than 100% of the captured supply -- an unphysical result -- so the per-dot share instead divides by N_eff = max(N_dots, 1.0), while N_dots itself keeps its statistical meaning for the separate neighbour-dot competitor count used elsewhere in the chain.",
+      "notes": "A carrier that survives injection into the active layer does not appear inside the dot directly -- it first populates the surrounding wetting layer or matrix material, from which it either recombines there (lost to background) or is captured into a dot via phonon-assisted relaxation, typically emitting one or more LO phonons (in InP, the LO phonon energy is about 43 meV) on a picosecond timescale. fsim_core.transport.Diode.f_qd models the competition as a simple branching ratio, f_QD = 1/(1 + tau_cap/tau_matrix), with the dot capture time scaling inversely with dot density (tau_cap = tau_cap0 x (1e10 cm^-2 / n_dot), tau_cap0 = 5 ps [E] at 1e10 cm^-2) since a denser dot ensemble captures faster -- giving f_QD = 0.995 at 1e10 cm^-2 but only 0.857 at the sparser 3e8 cm^-2 density this project's single-dot-selection cards actually use. The captured supply must then be divided among however many dots sit under the current aperture, N_dots = n_dot x A_aperture, itself a Poisson-EXPECTED dot count and therefore often fractional (0.377 for the actual cards' 0.4 um aperture at 3e8 cm^-2). The repository's council review (2026-09-05, item 1) established that dividing by a fractional N_dots directly would hand the ONE dot that IS actually present in the aperture MORE than 100% of the captured supply -- an unphysical result -- so the per-dot share instead divides by N_eff = max(N_dots, 1.0), while N_dots itself keeps its statistical meaning for the separate neighbour-dot competitor count used elsewhere in the chain.",
       "sources": [
         "Sze & Ng, Physics of Semiconductor Devices 3rd ed., ch. 12",
         "fsim_core/transport.py: Diode.f_qd, Diode.dot_loading"
@@ -367,10 +378,10 @@
           "file": "fsim_core/transport.py",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qd(1e10)"
         },
-        "f_QD_at_7e8_cm2": {
-          "value": 0.9333333333333333,
+        "f_QD_at_3e8_cm2": {
+          "value": 0.8571428571428571,
           "file": "fsim_core/transport.py",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qd(7e8)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qd(3e8)"
         },
         "N_dots_expected_in_aperture": {
           "value": 0.3769911184307752,
@@ -415,7 +426,7 @@
           ]
         ]
       },
-      "notes": "Once the per-dot capture rate r_dot is known, the operating regime depends on how the drive is timed. Under pulsed drive, mu = r_dot x tau_pulse is the mean number of excitons loaded into the dot during one drive pulse, and the loading statistics are Poisson, P_n = exp(-mu) mu^n/n! -- but real single-photon sources only ever report the mean number that survive to two-photon events, since a biexciton state saturates the cascade; the repository's loading.f1b_g2/f8_g2 apply exactly this cap-2 truncation downstream of the mu computed here. Under CW drive, the more natural quantity is an occupancy estimate n_occ = r_dot x tau_rad (uncapped mean population), with the actual antibunching dip computed by a full rate-equation model (fsim_core.cw_g2) rather than a Poisson snapshot, since CW drive has no pulse boundary to define a single loading event. Both cards in this repository are tuned, by construction, to mu ~ 1 at their default 300 K operating point: 1.9 nA for the fallback 'gainp' card and 11.3 nA for the primary 'gaasp' card, both at an 80 MHz repetition rate with a 100 ps pulse width (duty = tau_pulse x rep rate = 0.008). These are genuinely tiny currents -- nanoamps, not the milliamps every published electrically driven single-dot result to date has actually used -- because mu ~ 1 into ONE dot, not an ensemble of millions sharing the current, is the single-photon operating point; the next several slides quantify exactly why that gap exists.",
+      "notes": "Once the per-dot capture rate r_dot is known, the operating regime depends on how the drive is timed. Under pulsed drive, mu = r_dot x tau_pulse is the mean number of excitons loaded per drive pulse, and the loading statistics are Poisson, P_n = exp(-mu) mu^n/n! -- but the dot itself can only ever hold an exciton (X) and a biexciton (XX) state, so the model truncates the occupation at n = 2 (cap-2), folding every n >= 2 outcome into the biexciton channel as a MODELLING convention, not a reporting choice; loading.f1b_g2/f8_g2 apply exactly this cap-2 truncation downstream of the mu computed here. Under CW drive, the more natural quantity is an occupancy estimate n_occ = r_dot x tau_rad (uncapped mean population), with the actual antibunching dip computed by a full rate-equation model (fsim_core.cw_g2) rather than a Poisson snapshot, since CW drive has no pulse boundary to define a single loading event. Both cards here are tuned, by construction, to mu ~ 1 at their default 300 K point: 1.9 nA for the fallback 'gainp' card and 11.3 nA for the primary 'gaasp' card, both at 80 MHz with a 100 ps pulse (duty = tau_pulse x rep rate = 0.008). These are tiny currents -- nanoamps, not the milliamps every published electrically driven single-dot result has used -- because mu ~ 1 into ONE dot, not an ensemble sharing the current, is the single-photon operating point; the next slides quantify why that gap exists.",
       "sources": [
         "fsim_core/loading.py: f1b_g2, f8_g2",
         "fsim_core/transport.py: Diode.dot_loading, Diode.current_for_mu"
@@ -461,11 +472,15 @@
           "caption": "Urbach-tail window fraction; Delta E = dE_WL (peak-to-window-centre offset), w window width, E_U = max(kT, E_urbach) tail energy"
         },
         {
-          "latex": "b_e = \\frac{(1-f_{QD})\\,\\eta_{inj}\\,(I/q)\\,\\eta_{rad,matrix}\\,\\xi\\, f_{qfl,bg}}{\\min(r_{dot},\\,1/\\tau_{rad})\\,S}",
-          "caption": "background photons per collected X photon; S the dot's thermal retention factor"
+          "latex": "b_e = \\frac{r_{matrix}\\,\\eta_{rad,matrix}\\,\\xi\\, f_{qfl,bg}}{\\min(r_{dot},\\,1/\\tau_{rad})\\,S}",
+          "caption": "background photons per collected X photon; S the dot's thermal retention factor; r_matrix the full matrix supply (below)"
+        },
+        {
+          "latex": "r_{matrix} = (1-f_{QD})\\,\\mathrm{supply} \\;+\\; f_{QD}\\,\\mathrm{supply}\\,(1-f_{qfl})",
+          "caption": "carriers reaching the matrix; supply = eta_inj (I/q); the second (routed) term vanishes only when f_qfl = 1"
         }
       ],
-      "notes": "Every carrier that is injected but NOT captured by the selected dot (the (1-f_QD) share) still recombines somewhere in the matrix or wetting layer, and a fraction eta_rad,matrix of that recombination is radiative -- light that the same collection optics and spectral filter that collect the dot's X line will partly collect too. The repository models the matrix/WL emission's low-energy edge as a normalized one-sided exponential (Urbach) tail of decay energy E_U = max(kT, E_urbach), and xi(w, dE_WL, E_U) is the closed-form fraction of that tail that falls inside a detection window of width w centred a distance dE_WL below the matrix peak -- an Arrhenius-like form in T that matches the repository's legacy background-channel fit. b_e is DEFINED, once, as the ratio of that background rate to the dot's own X-line photon rate at the same operating point (I, T) -- this is the module's whole reason for existing, since the code audit that preceded it found the same symbol used with three inconsistent meanings. b_e is entirely distinct from drive.b_res, a SEPARATE residual background channel the repository transfers from an actual measurement: Reischle et al. 2008 report a signal fraction rho = S/(S+B) = 0.88 at 80 K (QD C), which both design cards carry forward as b_res = (1-rho)/rho = 0.136, an [E] assumption that a comparable background fraction still applies at 300 K on a different, InP/GaAsP or InP/GaInP, material platform -- stated honestly as an assumption, not a 300 K measurement.",
+      "notes": "Every carrier injected but NOT captured by the selected dot still recombines in the matrix or wetting layer, and a fraction eta_rad,matrix of that recombination is radiative -- light the same optics and filter that collect the dot's X line will partly collect too. The matrix supply itself is r_matrix = (1-f_QD) supply + f_QD supply (1-f_qfl), supply = eta_inj (I/q): the first term is carriers never captured, the second is carriers that WERE captured but sub-turn-on suppressed (03-11) and routed back out, so total supply stays conserved exactly. At this project's own default point f_qfl = 1 (03-11), so the second term vanishes and r_matrix reduces to the familiar (1-f_QD) supply -- a property of THIS point, not a general simplification. The matrix/WL emission's low-energy edge is modelled as a one-sided exponential (Urbach) tail of decay energy E_U = max(kT, E_urbach); xi(w, dE_WL, E_U) is the fraction of that tail inside a window of width w centred dE_WL below the peak. b_e is DEFINED, once, as the ratio of background rate to the dot's own X-line rate at the same operating point -- the module's whole reason for existing, since an earlier audit found the same symbol used with three inconsistent meanings. b_e is distinct from drive.b_res, a SEPARATE channel transferred from measurement: Reischle et al. 2008 report rho = 0.88 at 80 K (QD C), which both cards carry forward as b_res = (1-rho)/rho = 0.136, an [E] assumption that a similar fraction applies at 300 K on a different platform -- an assumption, not a measurement.",
       "sources": [
         "Reischle et al., Opt. Express 16, 12771 (2008)",
         "docs/rt_edge_contract.md",
@@ -514,7 +529,7 @@
       "title": "CW electrical drive: why the dip is IRF-limited at 300 K",
       "subtitle": "The antibunching dip narrows faster than a real detector can follow",
       "bullets": [
-        "CW drive: intrinsic g2_cw0(T) alone satisfies g2(0) < 0.5 up to 300 K on the gainp card",
+        "CW drive: gainp card's OWN default parameters give g2_cw0(T) = 0.5 crossing near 243 K, not 300 K",
         "But a real detector convolves the dip with a finite instrument response function (IRF)",
         "g2_cw0_raw(T): the SAME dip after IRF convolution rises above 0.5 well before 300 K",
         "The dip narrows in time as escape/capture speed up with T, faster than any practical IRF can resolve",
@@ -525,7 +540,7 @@
         "caption": "intrinsic g2_cw0 vs. IRF-convolved g2_cw0_raw across the temperature ladder (gainp card, fresh evaluate() sweep, cw_irf_fwhm_ps=100)",
         "script": "presentation2/figures/fig_03_17_cw_dip_vs_T.py"
       },
-      "notes": "Continuous-wave electrical drive is attractive because it needs no pulse generator at all -- just a steady bias -- but it hides a timing trap that only becomes visible once a real detector's finite timing resolution is accounted for. The repository computes two related quantities for the CW case: g2_cw0, the intrinsic zero-delay correlation from a rate-equation model of loading and escape (fsim_core.cw_g2), and g2_cw0_raw, the SAME dip after convolution with a detector instrument response function (IRF) of finite width (drive.cw_irf_fwhm_ps). At the repository's own favourable 300 K corner, the intrinsic dip alone (g2_cw0 = 0.359) would already satisfy the single-photon criterion g2(0) < 0.5 -- but the IRF-convolved value (g2_cw0_raw = 0.895) sits well above threshold. In plain terms, as temperature rises, carrier escape and re-capture accelerate and the antibunching dip in time becomes narrower than the timing resolution of realistic single-photon detectors can resolve, so a CW intensity-correlation measurement alone could never actually DEMONSTRATE single-photon emission from this platform near room temperature, even though the underlying physics is genuinely antibunched. This is exactly why every electrically driven demonstration this section discusses either operates at cryogenic temperature (where the dip is wide enough for any reasonable IRF) or switches to gated, pulsed excitation, which sidesteps the detector's timing resolution altogether by defining the correlation window electrically rather than optically.",
+      "notes": "Continuous-wave electrical drive is attractive because it needs no pulse generator -- just a steady bias -- but it hides a timing trap that only becomes visible once a real detector's finite timing resolution is accounted for. The repository computes two related quantities for the CW case: g2_cw0, the intrinsic zero-delay correlation from a rate-equation model of loading and escape (fsim_core.cw_g2), and g2_cw0_raw, the SAME dip after convolution with a detector instrument response function (IRF) of finite width (drive.cw_irf_fwhm_ps). At the gainp card's own DEFAULT dot parameters (not the favourable corner), g2_cw0 stays below 0.5 only up to about 243 K and has already risen to 0.7415 by 300 K (repo_numbers) -- the favourable-corner numbers below describe a distinct, more optimistic point in the same grid, not the card's as-specified behaviour. There, the intrinsic dip alone (g2_cw0 = 0.359) would already satisfy g2(0) < 0.5 -- but the IRF-convolved value (g2_cw0_raw = 0.895) sits well above threshold. In plain terms, as temperature rises, carrier escape and re-capture accelerate and the antibunching dip in time becomes narrower than the timing resolution of realistic single-photon detectors can resolve, so a CW intensity-correlation measurement alone could never actually DEMONSTRATE single-photon emission near room temperature, even though the underlying physics is genuinely antibunched. This is exactly why every electrically driven demonstration this section discusses either operates at cryogenic temperature (where the dip is wide enough for any reasonable IRF) or switches to gated, pulsed excitation, which sidesteps the detector's timing resolution by defining the correlation window electrically rather than optically.",
       "sources": [
         "docs/rt_edge_contract.md",
         "out/rt_edge/verdict.md",
@@ -553,6 +568,11 @@
           "value": 0.9777344806603223,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_cw0_raw')"
+        },
+        "g2_cw0_crossing_T_gainp_default": {
+          "value": 243.0986306700349,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).cw_g2_crossing_T('cards/edge-inp-gainp-design.yaml')"
         }
       }
     },
@@ -564,6 +584,7 @@
       "bullets": [
         "Every watt dissipated in the junction must spread through the package to the heat sink",
         "Thermal spreading resistance R_th converts dissipated power into a steady-state temperature rise",
+        "The solve uses the TIME-AVERAGED power (duty x P_junction), not the instantaneous per-pulse power",
         "At the nanoamp currents this project's dots actually run at, the rise is negligible"
       ],
       "equations": [
@@ -572,11 +593,11 @@
           "caption": "junction dissipated power: electrical input minus the (tiny) radiated optical power; f_Rs the local share of I^2 R_s heat"
         },
         {
-          "latex": "T_j = T_{hs} + R_{th}\\, P_{junction}",
-          "caption": "self-consistent junction temperature; T_hs the heat-sink set point, R_th the thermal spreading resistance"
+          "latex": "T_j = T_{hs} + R_{th}\\,\\big(\\mathrm{duty} \\times P_{junction}\\big)",
+          "caption": "self-consistent junction temperature; T_hs the heat-sink set point, R_th the thermal spreading resistance, duty = tau_pulse x rep_rate the SAME pulsed duty cycle used throughout this section"
         }
       ],
-      "notes": "The current that flows through the diode dissipates power in two places: I V_j at the junction itself, and a share f_Rs,local of the I^2 R_s series-resistance heating in the mesa (the rest is assumed to spread into contacts/substrate before reaching the active region); a negligible amount is subtracted back out as radiated optical power. This power must conduct away through the actual package layer stack to the heat sink, and the repository's thermal module (fsim_core.thermal.t_junction) computes the steady-state rise self-consistently: T_j = T_hs + R_th P_junction, with R_th built from each layer's own thickness and thermal conductivity (and, where the layer.spread flag is set, its own spreading geometry) rather than assumed as a single lumped number. This is the T_j that every temperature-dependent quantity in this section -- anchored linewidth, retention, injection efficiency, CW escape -- actually consumes, never the bare heat-sink set point T_hs, per the repository's own temperature-mapping contract. At the currents this project's single-dot cards actually run (nanoamps, not milliamps), the self-heating contribution is vanishingly small: both design cards show a junction-to-heat-sink temperature difference of only tens of MICROkelvin at their 300 K operating point (dT_J ~ 6-58 microkelvin, repo_numbers) -- reassuring, since it means the temperature ladder examined two slides ahead is genuinely a heat-sink temperature sweep, not an artefact of the device heating itself at these currents.",
+      "notes": "The current that flows through the diode dissipates power in two places: I V_j at the junction itself, and a share f_Rs,local of the I^2 R_s series-resistance heating in the mesa; a negligible amount is subtracted back out as radiated optical power. This power must conduct away through the package layer stack to the heat sink, and the repository's thermal module (fsim_core.thermal.t_junction) computes the steady-state rise self-consistently: T_j = T_hs + R_th (duty x P_junction), where duty = tau_pulse x rep_rate is the SAME pulsed duty cycle used throughout this section (0.008 for both cards) -- the solve consumes the time-AVERAGED power, not the instantaneous per-pulse P_junction, since only the average heating raises the steady-state temperature; omitting duty would understate the implied R_th by a full factor of 1/duty (2 619 K/W instead of the model's actual 327 400 K/W for gainp at 300 K, repo_numbers). R_th itself is built from each layer's own thickness and thermal conductivity, rather than assumed as a single lumped number. This is the T_j every temperature-dependent quantity in this section -- anchored linewidth, retention, injection efficiency, CW escape -- actually consumes, never the bare T_hs, per the repository's own temperature-mapping contract. At the currents this project's cards actually run (nanoamps, not milliamps), self-heating is vanishingly small despite that large R_th: both cards show a junction-to-heat-sink difference of only microkelvin at 300 K (dT_J = 8.00 microkelvin for gainp, 58.25 for gaasp, repo_numbers) -- reassuring, since the temperature ladder two slides ahead is genuinely a heat-sink sweep, not device self-heating.",
       "sources": [
         "fsim_core/thermal.py: t_junction",
         "docs/rt_edge_contract.md"
@@ -596,6 +617,11 @@
           "value": 3.0553712711693464e-09,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'P_junction_W')"
+        },
+        "R_th_implied_gainp_300K": {
+          "value": 327400.7947680838,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).r_th_implied('cards/edge-inp-gainp-design.yaml')"
         }
       }
     },
@@ -621,7 +647,7 @@
             "1.00000",
             "0.0758",
             "0.229",
-            "23 738",
+            "38 029",
             "yes"
           ],
           [
@@ -630,7 +656,7 @@
             "0.99969",
             "0.0131",
             "0.500",
-            "4 108",
+            "6 581",
             "yes"
           ],
           [
@@ -639,12 +665,12 @@
             "0.99266",
             "0.00462",
             "0.689",
-            "1 441",
+            "2 308",
             "yes"
           ]
         ]
       },
-      "notes": "This ladder is the single clearest picture of the temperature cost this whole section has been building toward, computed fresh (fsim_core.card.load_design-equivalent DeviceDesign.load + fsim_core.device.evaluate, overriding only thermal.T_hs) against the fallback 'gainp' design card at its OWN default operating current and dot parameters -- no numbers here are read from a stale sweep file. Three things move together as the heat sink warms from 80 to 300 K. Injection efficiency barely moves for this particular card (0.9999 to 0.9927) because its AlGaInP barrier gives a large conduction-band offset; the OTHER (primary, 'gaasp') card's smaller barrier would show a much sharper fall over the same range, as the injection-efficiency slide showed. Retention S -- the fraction of captured excitons that decay radiatively before escaping back out of the dot -- falls steeply, by more than an order of magnitude (0.076 to 0.0046), because thermal escape over the confinement barrier is itself exponentially activated in T; this is the dominant reason collected flux falls from nearly 24,000 to about 1,400 photons/s over the same range. Pulsed intrinsic g2(0) correspondingly rises from 0.229 (comfortably single-photon) to 0.689 (above the 0.5 threshold) as the shrinking retention lets a proportionally larger background and multiphoton contribution show through. All three rows remain above this project's 1 kHz pulsed collected-flux eligibility floor, i.e. every row is a measurable, not merely diagnostic, operating point -- but only the 80 K row actually passes the g2(0) < 0.5 single-photon gate at these particular delta_xx/gamma300 defaults.",
+      "notes": "This ladder is the single clearest picture of the temperature cost this section has been building toward, computed fresh (fsim_core.device.DeviceDesign.load + fsim_core.device.evaluate, overriding only thermal.T_hs) against the fallback 'gainp' card at its OWN default operating current and dot parameters -- no numbers here are read from a stale sweep file. Three things move together as the heat sink warms from 80 to 300 K. Injection efficiency barely moves for this card (0.9999 to 0.9927) because its AlGaInP barrier gives a large conduction-band offset; the OTHER (primary, 'gaasp') card's smaller barrier would show a much sharper fall, as the injection-efficiency slide showed. Retention S -- the fraction of captured excitons that decay radiatively before escaping the dot -- falls steeply, by more than an order of magnitude (0.076 to 0.0046), because thermal escape over the confinement barrier is exponentially activated in T; this is the dominant reason collected flux falls from roughly 38,000 to about 2,300 photons/s. Pulsed intrinsic g2(0) correspondingly rises from 0.229 (comfortably single-photon) to 0.689 (above threshold), driven overwhelmingly by eps_op -- the spectral-overlap multiphoton probability, which grows more than 500x (0.00119 to 0.6509) as the confinement linewidth broadens with T -- not by rho, the background/signal fraction, which barely moves (0.880 to 0.843). All three rows remain above this project's 1 kHz collected-flux eligibility floor, i.e. every row is measurable, not merely diagnostic -- but only the 80 K row actually passes the g2(0) < 0.5 gate at these delta_xx/gamma300 defaults.",
       "sources": [
         "docs/rt_edge_contract.md",
         "out/rt_edge/verdict.md",
@@ -667,19 +693,39 @@
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0)"
         },
         "flux_gainp_80K": {
-          "value": 23737.84782846043,
+          "value": 38028.83369043679,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0)"
         },
         "flux_gainp_230K": {
-          "value": 4107.797325879014,
+          "value": 6580.830009053337,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0)"
         },
         "flux_gainp_300K": {
-          "value": 1440.7486360487203,
+          "value": 2308.1279594492175,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0)"
+        },
+        "eps_op_gainp_80K": {
+          "value": 0.001186008684294538,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eps_op', T_hs=80.0)"
+        },
+        "eps_op_gainp_300K": {
+          "value": 0.650940040491455,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eps_op', T_hs=300.0)"
+        },
+        "rho_op_gainp_80K": {
+          "value": 0.8799998742597043,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=80.0)"
+        },
+        "rho_op_gainp_300K": {
+          "value": 0.8427621124531315,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=300.0)"
         },
         "S_gainp_80K": {
           "value": 0.0757524707852274,
@@ -731,7 +777,7 @@
           [
             "purity g2(0)",
             "excellent (<0.01 reported, resonant)",
-            "0.03 background-corrected @ 80 K (Reischle); 0.23-0.83 across this project's 80-300 K ladder"
+            "0.03 background-corrected @ 80 K (Reischle); 0.229-0.689 across this project's gainp-card 80-300 K ladder (gaasp is diagnostic-only, below the flux floor)"
           ],
           [
             "brightness",
@@ -772,14 +818,14 @@
         "Loading (1 - e^-mu, mu=1): 0.6321 -- the Poisson probability of at least one exciton per pulse",
         "Spectral transmission t_X (filter matched to the line's own width): 0.500",
         "Thermal retention S (confinement escape at 300 K): 0.00462 -- the single biggest loss in the chain",
-        "Edge out-coupling eta_total (waveguide beta x facets x propagation x NA), folded into one factor: 0.01323"
+        "Edge out-coupling eta_total (waveguide beta x facets x propagation x NA), folded into one factor: 0.02070"
       ],
       "figure": {
         "path": "presentation2/figures/out/03_22_efficiency_chain.png",
         "caption": "the multiplicative efficiency chain reproducing collected_flux_pulsed_s at the favourable 300 K corner (out/rt_edge/verdict.md factor table, reproduced by fresh evaluate())",
         "script": "presentation2/figures/fig_03_22_efficiency_chain.py"
       },
-      "notes": "This slide and the next three walk one electron, injected at the n-contact, all the way to a detected photon in the fibre, multiplying every efficiency factor the previous slides introduced -- at the repository's own most favourable evaluated corner (out/rt_edge/verdict.md), reproduced here by a fresh evaluate() call against the fallback 'gainp' card rather than read off a possibly-stale sweep file. Four factors compose, in order: the Poisson loading probability of at least one exciton per pulse at mu = 1 (1 - e^-1 = 0.6321); the spectral filter's transmission of the X line itself, t_X = 0.5 by construction of the auto-window convention (the filter is always set to exactly the line's own width, so half the line's photons fall inside it regardless of how wide or narrow the real, currently unmeasured, 300 K linewidth turns out to be); the dot's OWN thermal retention S = 0.0046, the confinement-escape survival probability from the temperature ladder two slides back and, by a wide margin, the single biggest loss in this chain; and the edge-emission out-coupling efficiency eta_total = 0.0132, the product of the waveguide spontaneous-emission (beta) factor, front/back facet transmission and reflectivity, propagation loss, and collection numerical aperture -- counted exactly once, per the repository's own Lemma 1. Multiplying these four factors by the 80 MHz repetition rate reproduces the reported collected flux of 1544 photons/s to within 0.0001%, a live self-check the figure script performs.",
+      "notes": "This slide and the next three walk one electron, injected at the n-contact, all the way to a detected photon in the fibre, multiplying every efficiency factor the previous slides introduced -- at the repository's own most favourable evaluated corner (out/rt_edge/verdict.md), reproduced here by a fresh evaluate() call against the fallback 'gainp' card rather than read off a possibly-stale sweep file. Four factors compose, in order: the Poisson loading probability of at least one exciton per pulse at mu = 1 (1 - e^-1 = 0.6321); the spectral filter's transmission of the X line itself, t_X = 0.5 by construction of the auto-window convention (the filter is always set to exactly the line's own width, so half the line's photons fall inside it regardless of how wide or narrow the real, currently unmeasured, 300 K linewidth turns out to be); the dot's OWN thermal retention S = 0.0046, the confinement-escape survival probability from the temperature ladder two slides back and, by a wide margin, the single biggest loss in this chain; and the edge-emission out-coupling efficiency eta_total = 0.0207, the product of the waveguide spontaneous-emission (beta) factor, front/back facet transmission and reflectivity, propagation loss, and collection numerical aperture -- counted exactly once, per the repository's own Lemma 1. Multiplying these four factors by the 80 MHz repetition rate reproduces the reported collected flux of 2417 photons/s to within 0.0001%, a live self-check the figure script performs.",
       "sources": [
         "out/rt_edge/verdict.md",
         "fsim_core/waveguide.py: edge_emission",
@@ -802,12 +848,12 @@
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', favorable=True)"
         },
         "eta_total_favorable_corner": {
-          "value": 0.013228144766681021,
+          "value": 0.02069845908854732,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'edge_eta_total', favorable=True)"
         },
         "collected_flux_favorable_corner": {
-          "value": 1544.4045042358741,
+          "value": 2416.5742068088216,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True)"
         }
@@ -821,7 +867,9 @@
       "bullets": [
         "rho (signal fraction, S/(S+B)): 0.8611 -- background is a real but subdominant loss here",
         "eps (single-dot multiphoton probability from the loading/filter chain): 0.1362",
-        "g2(0) (pulsed, intrinsic, cap-2 loading folded in): 0.3986 -- clears the 0.5 single-photon gate"
+        "g2_dot before aperture composition: f1b_g2(mu=1, eps=0.1362) = 0.1612",
+        "After continuous aperture composition (N_w-weighted lam=0.0170): g2_dot = 0.1890",
+        "g2(0) = 1 - rho^2 (1 - g2_dot) = 0.3986 -- clears the 0.5 single-photon gate"
       ],
       "equations": [
         {
@@ -829,13 +877,18 @@
           "caption": "signal fraction; G cavity gain (1 here, no cavity), S retention, B the summed background rate"
         },
         {
-          "latex": "g_2(0) = f_{1b,g2}(\\mu,\\varepsilon)\\ \\text{ or }\\ f_{8,g2}(\\mu, F_{eff}, \\varepsilon)",
-          "caption": "cap-2 Poisson-loaded g2(0); f8_g2 generalizes f1b_g2 when the pump Fano factor F_p differs from 1"
+          "latex": "g_{2,dot} = f_{1b,g2}(\\mu,\\varepsilon)\\ \\xrightarrow{\\text{aperture composition}}\\ g_{2,dot}'",
+          "caption": "cap-2 Poisson-loaded g2 at the dot, then continuous aperture composition (lam = N_w x comp_brightness); f8_g2 generalizes f1b_g2 when the pump Fano factor F_p differs from 1"
+        },
+        {
+          "latex": "g_2(0) = 1 - \\rho^2\\,(1 - g_{2,dot}')",
+          "caption": "background law (fsim_core.integrator.g2_from); rho enters here squared, AFTER g2_dot already carries the loading and aperture corrections"
         }
       ],
-      "notes": "The same favourable operating point that produced the collected-flux chain on the previous slide also fixes the three quantities that determine g2(0) itself. rho = GS/(GS+B) is the fraction of collected light that is genuine dot signal rather than background: at this corner rho = 0.861, meaning roughly 14% of collected counts are background, dominated by the residual channel b_res transferred from Reischle 2008 plus the transport-computed in-window matrix/WL channel b_e -- a real but subdominant loss compared to S itself. eps is the single-dot multiphoton probability the spectral/filter chain leaves behind before any Poisson loading statistics are applied; at this corner eps = 0.136, larger than the eta_total figures on the previous slide would suggest because the narrower gamma300 = 6 meV sampled here (vs. this card's own 12 meV default) widens the spectral overlap with the biexciton at this delta_xx. Finally, g2(0) itself folds the Poisson loading (mu = 1) through the repository's cap-2 formula -- f1b_g2 when the pump Fano factor F_p = 1 (the legacy path, kept bit-identical for reproducibility), or the more general f8_g2 when a drive mechanism supplies a different F_p -- together with eps, giving g2(0) = 0.399 at this corner: comfortably below the 0.5 single-photon threshold, and the best pulsed intrinsic result either design card reaches anywhere in the repository's own sampled grid, though only after continuous, not integer-rounded, aperture composition is applied on top.",
+      "notes": "The same favourable operating point that produced the collected-flux chain on the previous slide also fixes the quantities that determine g2(0), and the full chain -- not just its first step -- matters. rho = GS/(GS+B) is the fraction of collected light that is genuine dot signal rather than background: at this corner rho = 0.861, meaning roughly 14% of collected counts are background, dominated by b_res (transferred from Reischle 2008) plus the transport-computed matrix/WL channel b_e. eps = 0.136 is the single-dot multiphoton probability the spectral/filter chain leaves behind, at this corner's own delta_xx = 8 meV; holding delta_xx at the card's default 7 meV instead, narrowing gamma300 from 12 to 6 meV actually NARROWS the spectral overlap with the biexciton (eps_op falls from 0.6509 to 0.1798) -- the corner's simultaneous delta_xx increase and gamma300 decrease partly offset, leaving eps lower than either alone would predict. The dot-side cap-2 formula alone, f1b_g2(mu=1, eps=0.136), gives g2_dot = 0.161 -- NOT yet g2(0). Continuous aperture composition with the neighbour-dot bath (lam = 0.0170, from N_w competing dots in the window) raises this to g2_dot = 0.189. Only then does the background law apply: g2(0) = 1 - rho^2 (1 - g2_dot) = 0.399, comfortably below the 0.5 threshold -- the best pulsed intrinsic result either card reaches anywhere in the repository's own grid. Skipping aperture composition and applying the background law to the raw f1b_g2 output instead would UNDERSTATE g2(0) as 0.378, an easily missed omission this slide now shows explicitly.",
       "sources": [
         "fsim_core/loading.py: f1b_g2, f8_g2, aperture_g2",
+        "fsim_core/integrator.py: g2_from",
         "out/rt_edge/verdict.md"
       ],
       "repo_numbers": {
@@ -849,10 +902,40 @@
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eps_op', favorable=True)"
         },
+        "g2_dot_pre_aperture_favorable_corner": {
+          "value": 0.16121776314787564,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_dot_pre_aperture('cards/edge-inp-gainp-design.yaml', favorable=True)"
+        },
+        "aperture_lambda_favorable_corner": {
+          "value": 0.0169646011717862,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'aperture_lambda_op', favorable=True)"
+        },
+        "g2_dot_post_aperture_favorable_corner": {
+          "value": 0.18896881716068323,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_dot_post_aperture('cards/edge-inp-gainp-design.yaml', favorable=True)"
+        },
         "g2_favorable_corner": {
           "value": 0.398621373709134,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True)"
+        },
+        "g2_favorable_corner_from_chain": {
+          "value": 0.398621373709134,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_op_from_chain('cards/edge-inp-gainp-design.yaml', favorable=True)"
+        },
+        "eps_op_gamma300_12meV_delta7_300K": {
+          "value": 0.650940040491455,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).eps_op_at('cards/edge-inp-gainp-design.yaml', gamma300=12.0, T_hs=300.0)"
+        },
+        "eps_op_gamma300_6meV_delta7_300K": {
+          "value": 0.1797823862440514,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).eps_op_at('cards/edge-inp-gainp-design.yaml', gamma300=6.0, T_hs=300.0)"
         }
       }
     },
@@ -898,7 +981,7 @@
             "0.0758",
             "0.229",
             "0.880",
-            "23 738",
+            "38 029",
             "PASS"
           ],
           [
@@ -907,7 +990,7 @@
             "0.0131",
             "0.500",
             "0.838",
-            "4 108",
+            "6 581",
             "borderline"
           ],
           [
@@ -916,7 +999,7 @@
             "0.00462",
             "0.689",
             "0.843",
-            "1 441",
+            "2 308",
             "fail (this card's default gamma300)"
           ],
           [
@@ -925,12 +1008,12 @@
             "0.00462",
             "0.399",
             "0.861",
-            "1 544",
+            "2 417",
             "PASS"
           ]
         ]
       },
-      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from earlier in the worked example, so the two threads of this section -- 'what happens as heat-sink temperature rises at the card's own default parameters' and 'what is the best this platform can do at 300 K under its own sampled grid' -- sit side by side. At the gainp card's default dot parameters (delta_xx=7 meV, gamma300=12 meV), the single-photon gate g2(0) < 0.5 clearly passes at 80 K, sits exactly at the boundary at 230 K, and fails at 300 K. But dot.gamma300 is an unmeasured [E]-class input (the true InP-family 300 K single-dot linewidth has never been reported; docs/rt_edge_contract.md Evidence section), and resampling it together with the collection-lever axes (numerical aperture, back-facet reflectivity, cavity length) at 300 K finds a corner -- delta_xx=8 meV, gamma300=6 meV, NA=0.8, R_back=0.95, L_um=250 um -- where g2(0) = 0.399, comfortably passing, at a still-measurable 1544 photons/s. Neither number is 'the' answer: the default-parameter ladder is honest about what this card does at its own as-designed point, and the favourable corner is honest about what remains possible within the same physical model once genuinely unmeasured inputs are allowed to vary within their literature-anchored ranges. Every number in both rows traces to the SAME evaluate() call convention used throughout this section -- no separate code path, no hand-tuned override outside the documented sweep axes.",
+      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from earlier in the worked example, so the two threads of this section -- 'what happens as heat-sink temperature rises at the card's own default parameters' and 'what is the best this platform can do at 300 K under its own sampled grid' -- sit side by side. At the gainp card's default dot parameters (delta_xx=7 meV, gamma300=12 meV), the single-photon gate g2(0) < 0.5 clearly passes at 80 K, sits exactly at the boundary at 230 K, and fails at 300 K. But dot.gamma300 is an unmeasured [E]-class input (the true InP-family 300 K single-dot linewidth has never been reported; docs/rt_edge_contract.md Evidence section), and resampling it together with the collection-lever axes (numerical aperture, back-facet reflectivity, cavity length) at 300 K finds a corner -- delta_xx=8 meV, gamma300=6 meV, NA=0.8, R_back=0.95, L_um=250 um -- where g2(0) = 0.399, comfortably passing, at a still-measurable 2417 photons/s. Neither number is 'the' answer: the default-parameter ladder is honest about what this card does at its own as-designed point, and the favourable corner is honest about what remains possible within the same physical model once genuinely unmeasured inputs are allowed to vary within their literature-anchored ranges. Every number in both rows traces to the SAME evaluate() call convention used throughout this section -- no separate code path, no hand-tuned override outside the documented sweep axes.",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md"
@@ -963,9 +1046,9 @@
         "The diode's I-V has five regimes: diffusion, SRH, high injection/crowding, tunnelling/breakdown, and the sub-turn-on tail",
         "Injection efficiency, capture, and confinement retention -- not the diode's I-V alone -- decide the 300 K outcome",
         "This project's methodology: a validated two-diode transport model feeding a carrier-conserving dot-loading chain",
-        "The relaxed, non-cryogenic stop rule (TEC to ~230 K) is met; 300 K single-photon operation is not, yet"
+        "230 K (default): g2(0) = 0.500, gate NOT met; 300 K favourable corner (0.399) passes"
       ],
-      "notes": "Pulling the whole section together: optical excitation, in its five variants from above-band to two-photon resonant, is the higher-purity, higher-fidelity route and remains the only route with a published single-dot antibunching result above 200 K (Chatzarakis, 230 K), but it always needs a laser, wavelength stability, and (for anything near-resonant) pump rejection. Electrical injection trades the laser for a current source and a diode, at the cost of a genuinely richer physics chain: five distinct diode current regimes (ideal diffusion, SRH recombination, high injection with current crowding, tunnelling/breakdown to avoid, and a sub-turn-on Boltzmann tail that suppresses the dot and the background by different, and initially wrongly-coded, amounts), followed by injection efficiency, carrier capture, loading statistics, background electroluminescence and self-heating -- each of which this repository now computes from first principles rather than treating as a free parameter, per the module-by-module audit that motivated this rewrite. The temperature ladder and worked example showed both faces of the honest answer: at a design card's own as-specified parameters, the single-photon gate passes cleanly at 80 K and fails at 300 K, but resampling genuinely unmeasured inputs within their literature-anchored ranges finds a 300 K corner that also passes. The project's relaxed, non-cryogenic stop rule -- a thermoelectrically cooled 230 K, not a cryostat -- is achievable with today's model; an electrically driven, single-dot, room-temperature demonstration remains, honestly, still ahead of what any paper in this literature set has shown.",
+      "notes": "Pulling the section together: optical excitation, in its five variants from above-band to two-photon resonant, is the higher-purity route and remains the only one with a published single-dot antibunching result above 200 K (Chatzarakis, 230 K), but it always needs a laser, wavelength stability, and pump rejection. Electrical injection trades the laser for a current source and a diode, at the cost of a richer physics chain: five diode current regimes (diffusion, SRH, high injection/crowding, tunnelling/breakdown, and a sub-turn-on Boltzmann tail that suppresses the dot and background by different, initially wrongly-coded, amounts), followed by injection efficiency, carrier capture, loading statistics, background electroluminescence and self-heating -- each now computed from first principles, per the module-by-module audit that motivated this rewrite. The temperature ladder and worked example show both faces of the honest answer: at a card's own as-specified parameters, the single-photon gate passes cleanly at 80 K, sits exactly at the 0.5 boundary at 230 K (g2(0) = 0.500, gate NOT met), and fails outright at 300 K (g2(0) = 0.689) -- but resampling unmeasured inputs within literature-anchored ranges finds a 300 K corner that DOES pass (g2(0) = 0.399). The project's relaxed, non-cryogenic stop rule -- a thermoelectrically cooled 230 K, not a cryostat -- is therefore NOT cleanly met by this card's own parameters; the repository's own acceptance-sweep verdict says so plainly: 'VERDICT: FAIL g2_min=0.3214 g2_median_el...' (out/rt_edge/verdict.md), evidence incomplete, conditional on the unmeasured 300 K linewidth. An electrically driven, room-temperature single-photon demonstration remains, honestly, still ahead of what any paper in this literature set has shown.",
       "sources": [
         "docs/rt_edge_contract.md",
         "../_goal/GOAL_PROMPT.md",

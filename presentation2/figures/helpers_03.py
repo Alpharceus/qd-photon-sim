@@ -15,6 +15,14 @@ Not a figure script itself (writes no PNG); imported by the JSON's `how`
 expressions as `presentation2.figures.helpers_03` with the repository root
 on sys.path (the validator/test-command convention), and importable the
 same way interactively.
+
+Physics review (2026-09-06, item 1, 3, 10) added a handful more wrappers
+below for the same reason: the g2(0) chain (f1b_g2 -> aperture composition
+-> the background law) and the sub-turn-on Boltzmann tail's dot-side f_qfl
+both need intermediate quantities evaluate()'s own scalars dict does not
+export directly, so these call the SAME internal device.py helpers
+(_compose_aperture_g2, _confinement_params) device.py itself uses, never a
+re-derivation.
 """
 from __future__ import annotations
 
@@ -27,7 +35,11 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from fsim_core import materials, transport  # noqa: E402
-from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+from fsim_core.device import (  # noqa: E402
+    DeviceDesign, evaluate, _compose_aperture_g2, _confinement_params,
+)
+from fsim_core.integrator import g2_from  # noqa: E402
+from fsim_core.loading import f1b_g2  # noqa: E402
 
 # The favourable diagnostic corner (out/rt_edge/verdict.md's best pulsed-g2
 # row for the gainp card): dot.delta_xx=8 meV, dot.gamma300=6 meV,
@@ -132,3 +144,99 @@ def gate_pass(card_path: str, threshold: float = 0.5, favorable: bool = False,
     the section's pass/fail gate, as a float for the how-expression contract."""
     g2 = evaluate_card(card_path, "g2_op", favorable=favorable, T_hs=T_hs)
     return 1.0 if g2 < threshold else 0.0
+
+
+def g2_dot_pre_aperture(card_path: str, favorable: bool = False,
+                         T_hs: float | None = None) -> float:
+    """g2_dot BEFORE aperture composition: f1b_g2(mu_resolved, eps_op), the
+    same legacy cap-2 call device.py itself makes (item 1: the slide's ONLY
+    g2 equation, f1b_g2(mu, eps), stops here -- this is not yet g2_op)."""
+    sc = evaluate_card(card_path, favorable=favorable, T_hs=T_hs)
+    return float(f1b_g2(sc["mu_resolved"], sc["eps_op"]))
+
+
+def g2_dot_post_aperture(card_path: str, favorable: bool = False,
+                          T_hs: float | None = None) -> float:
+    """g2_dot AFTER continuous aperture composition (device.py's
+    _compose_aperture_g2 at lam = scalars['aperture_lambda_op']) but still
+    BEFORE the background law -- the middle link in item 1's full chain."""
+    sc = evaluate_card(card_path, favorable=favorable, T_hs=T_hs)
+    pre = f1b_g2(sc["mu_resolved"], sc["eps_op"])
+    return float(_compose_aperture_g2(pre, sc["aperture_lambda_op"]))
+
+
+def g2_op_from_chain(card_path: str, favorable: bool = False,
+                      T_hs: float | None = None) -> float:
+    """The full item-1 chain reproduced end to end -- f1b_g2 -> aperture
+    composition -> g2_from(g2_dot, rho) -- as an independent cross-check
+    that it reaches the SAME g2_op evaluate() itself reports."""
+    sc = evaluate_card(card_path, favorable=favorable, T_hs=T_hs)
+    g2_dot = g2_dot_post_aperture(card_path, favorable=favorable, T_hs=T_hs)
+    return float(g2_from(g2_dot, sc["rho_op"]))
+
+
+def f_qfl_dot(card_path: str, T_hs: float | None = None) -> float:
+    """The dot's OWN sub-turn-on suppression f_qfl = qfl_suppression(E_X, V_j,
+    kT) at its own resolved transition energy E_X_eV (item 10: evaluate()
+    exports only the background's f_qfl_bg as a scalar, so the dot's own
+    value is recomputed here from the SAME confinement solve device.py uses,
+    fsim_core.device._confinement_params, and the SAME public
+    fsim_core.transport.qfl_suppression the background channel calls)."""
+    design = load_design(card_path, T_hs=T_hs)
+    sc = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
+    Tj, Vj = sc["T_j_op"], sc["V_j_op"]
+    E_X_eV = _confinement_params(design.ret, Tj)["E_X_eV"]
+    kT_eV = transport.KB_EV * Tj
+    return transport.qfl_suppression(E_X_eV, Vj, kT_eV)
+
+
+def qVj_minus_EX_meV(card_path: str, T_hs: float | None = None) -> float:
+    """(V_j - E_X_eV) in meV at the given operating point -- how far above
+    (positive) or below (negative) the dot's own transition energy the
+    quasi-Fermi split qV_j sits (item 10)."""
+    design = load_design(card_path, T_hs=T_hs)
+    sc = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
+    Tj, Vj = sc["T_j_op"], sc["V_j_op"]
+    E_X_eV = _confinement_params(design.ret, Tj)["E_X_eV"]
+    return (Vj - E_X_eV) * 1.0e3
+
+
+def r_th_implied(card_path: str, T_hs: float | None = None) -> float:
+    """The thermal spreading resistance R_th (K/W) implied by dT_J = R_th x
+    (duty x P_junction) -- item 3: t_junction() is called on duty x
+    P_junction, the time-AVERAGED power, never the bare per-pulse
+    P_junction, so dividing dT_J by P_junction alone (no duty factor)
+    understates R_th by 1/duty."""
+    design = load_design(card_path, T_hs=T_hs)
+    sc = evaluate_card(card_path, T_hs=T_hs)
+    return sc["dT_J"] / (design.drive.duty * sc["P_junction_W"])
+
+
+def eps_op_at(card_path: str, gamma300: float | None = None,
+              delta_xx: float | None = None, T_hs: float | None = None) -> float:
+    """scalars['eps_op'] with dot.gamma300 and/or dot.delta_xx overridden in
+    isolation (neither the favourable-corner bundle nor any other override)
+    -- item 7: isolates the linewidth's OWN effect on the spectral-overlap
+    multiphoton probability from the favourable corner's simultaneous
+    delta_xx change."""
+    design = DeviceDesign.load(_ROOT / card_path)
+    if gamma300 is not None:
+        design.dot.gamma300 = float(gamma300)
+    if delta_xx is not None:
+        design.dot.delta_xx = float(delta_xx)
+    if T_hs is not None:
+        design.thermal.T_hs = float(T_hs)
+    scalars = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
+    return scalars["eps_op"]
+
+
+def cw_g2_crossing_T(card_path: str, target: float = 0.5,
+                      T_lo: float = 200.0, T_hi: float = 260.0) -> float:
+    """Heat-sink temperature (K) where the intrinsic CW g2_cw0(T_hs), at the
+    card's own DEFAULT dot parameters (no favourable-corner overrides),
+    crosses `target` from below -- item 2: bisection (scipy.optimize.brentq)
+    on repeated evaluate_card(..., cw=True, T_hs=..) calls, the same
+    fresh-evaluate() convention every other number in this section uses."""
+    from scipy.optimize import brentq
+    return float(brentq(lambda T: evaluate_card(card_path, "g2_cw0", cw=True,
+                                                T_hs=T) - target, T_lo, T_hi))

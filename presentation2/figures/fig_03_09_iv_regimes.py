@@ -12,6 +12,14 @@ Right panel: the mesa (default Diode.area_um2) vs. current-aperture
 was the source of the 2026-09-05 council-review current-density
 inconsistency (module docstring, item 3 of transport.py / fig caption).
 
+Physics review (2026-09-06, item 17): the left panel's R_s rollover is
+real for transport.red_diode_preset() (used here only for its generic I-V
+shape), but it appears at ~1e5-1e6 A/cm^2 -- five to six orders of
+magnitude above the ~1.5 A/cm^2 current density either edge-inp design
+card actually runs at (nanoamps over the 0.4 um aperture). The left panel
+now marks that operating point honestly rather than implying the rollover
+is reachable at this project's own currents.
+
 Run: python presentation2/figures/fig_03_09_iv_regimes.py
 Writes presentation2/figures/out/03_09_iv_regimes.png at 1600x900 px, dpi=150.
 """
@@ -30,8 +38,10 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from fsim_core import transport  # noqa: E402
+from fsim_core.device import DeviceDesign  # noqa: E402
 
 OUT_PATH = Path(__file__).resolve().parent / "out" / "03_09_iv_regimes.png"
+CARD = Path(__file__).resolve().parents[2] / "cards" / "edge-inp-gainp-design.yaml"
 
 
 def main() -> None:
@@ -49,23 +59,38 @@ def main() -> None:
     J = np.array([diode.j_of_vj(v, T) for v in V_j])
     V_applied = V_j + (J * diode.area_cm2) * diode.R_s_ohm
 
+    # Item 17: the card's own operating current density, for an honest
+    # marker of how far this project's actual regime sits from the R_s
+    # rollover shown above (fresh DeviceDesign.load, never a stale number).
+    design = DeviceDesign.load(CARD)
+    aperture_cm2 = np.pi * (design.aperture.diameter_um / 2.0) ** 2 * 1e-8
+    J_op_Acm2 = design.drive.I_uA * 1e-6 / aperture_cm2
+
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(1600 / 150, 900 / 150), dpi=150)
     fig.patch.set_facecolor("white")
 
     ax1.semilogy(V_j, J, color="#1769aa", lw=2.5, label=r"$J(V_j)$ -- junction voltage")
     ax1.semilogy(V_applied, J, color="#c43d3d", lw=2.5, ls="--",
                  label=r"$J(V_{applied})$ -- includes series resistance $R_s$")
-    ax1.annotate("diffusion + SRH\n(exponential)", xy=(0.4, 1e-6), fontsize=12,
-                 color="#1769aa")
-    ax1.annotate("$R_s$ rollover\n(bends right,\nsame $J$ needs\nmore $V$)", xy=(2.3, 1e4),
-                 fontsize=12, color="#c43d3d")
+    ax1.axhline(J_op_Acm2, color="#2e8b57", ls=":", lw=1.8)
+    ax1.annotate(f"this project's own operating point:\n{J_op_Acm2:.2g} A/cm$^2$ "
+                 f"(~{J[-1] / J_op_Acm2:.0e}x below the axis top)",
+                 xy=(2.9, J_op_Acm2), xytext=(1.75, 3e-11), fontsize=10.5,
+                 color="#2e8b57", arrowprops=dict(arrowstyle="->", color="#2e8b57", lw=1.2))
+    ax1.annotate("diffusion + SRH\n(exponential)", xy=(0.62, 3e-7), xytext=(1.15, 1e-4),
+                 fontsize=12, color="#1769aa",
+                 arrowprops=dict(arrowstyle="->", color="#1769aa", lw=1.2))
+    ax1.annotate("$R_s$ rollover (bends right):\nreal for this GENERIC preset,\n"
+                 "but only at $10^5$-$10^6\\times$\nthis project's own current density",
+                 xy=(2.05, 2e5), xytext=(2.15, 3e0), fontsize=10.5, color="#c43d3d",
+                 arrowprops=dict(arrowstyle="->", color="#c43d3d", lw=1.2))
     ax1.set_xlim(0, 3.8)
     ax1.set_xlabel("voltage (V)", fontsize=15)
     ax1.set_ylabel(r"current density $J$ (A/cm$^2$)", fontsize=15)
     ax1.set_title("Two-diode I-V: from exponential to $R_s$-limited", fontsize=15)
     ax1.tick_params(labelsize=13)
     ax1.grid(True, alpha=0.25, which="both")
-    ax1.legend(loc="lower right", fontsize=12, frameon=True)
+    ax1.legend(loc="upper left", fontsize=12, frameon=True)
     ax1.spines["top"].set_visible(False)
     ax1.spines["right"].set_visible(False)
 
@@ -78,17 +103,18 @@ def main() -> None:
         ax2.text(b.get_x() + b.get_width() / 2, v + 0.02, f"{v:.3f} um$^2$",
                   ha="center", fontsize=13, fontweight="bold")
     ax2.set_ylabel(r"area (um$^2$)", fontsize=15)
-    ax2.set_title(f"Current-crowding fix: same area used everywhere\n"
-                  f"(ratio = {ratio:.2f}x)", fontsize=15)
+    ax2.set_title(f"Current-crowding fix\n(same area everywhere; ratio = {ratio:.2f}x)",
+                  fontsize=13)
     ax2.tick_params(labelsize=13)
     ax2.grid(True, alpha=0.25, axis="y")
     ax2.spines["top"].set_visible(False)
     ax2.spines["right"].set_visible(False)
 
-    fig.tight_layout()
+    fig.tight_layout(rect=(0.0, 0.0, 1.0, 0.94))
     fig.savefig(OUT_PATH, dpi=150, facecolor="white")
     plt.close(fig)
-    print(f"wrote {OUT_PATH}  (mesa/aperture ratio = {ratio:.6f})")
+    print(f"wrote {OUT_PATH}  (mesa/aperture ratio = {ratio:.6f}, "
+          f"J_op = {J_op_Acm2:.6g} A/cm^2)")
 
 
 if __name__ == "__main__":
