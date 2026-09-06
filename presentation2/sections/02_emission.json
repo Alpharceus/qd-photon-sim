@@ -1,0 +1,664 @@
+{
+  "section": "02",
+  "title": "How a quantum dot emits",
+  "minutes": 30,
+  "slides": [
+    {
+      "id": "02-01",
+      "layout": "section-divider",
+      "title": "How a quantum dot emits",
+      "subtitle": "From a few-level solid to a measurable quantum optical source",
+      "bullets": [
+        "Section 2 Â· 30 minutes"
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox, Quantum Optics, OUP 2006, ch. 8",
+        "Michler (ed.), Quantum Dots for Quantum Information Technologies, Springer 2017"
+      ]
+    },
+    {
+      "id": "02-02",
+      "layout": "two-column",
+      "title": "What does â€œquantumâ€ mean?",
+      "subtitle": "Three distinct claims are often conflated",
+      "columns": [
+        {
+          "heading": "Quantum device",
+          "bullets": [
+            "A nanoscale emitter with discrete states and controlled injection.",
+            "The hardware can be classical while its output is nonclassical."
+          ]
+        },
+        {
+          "heading": "Quantum treatment of light",
+          "bullets": [
+            "Quantise the field: Fock states, operators, and normally ordered correlations.",
+            "The observable is the photon statistics, especially gÂ²."
+          ]
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox 2006; projectâ€™s own treatment slides",
+        "Loudon, The Quantum Theory of Light"
+      ]
+    },
+    {
+      "id": "02-03",
+      "layout": "two-column",
+      "title": "Two quantum descriptions meet at the interface",
+      "subtitle": "The dot and its emitted field require different languages",
+      "columns": [
+        {
+          "heading": "Quantum treatment of the dot",
+          "bullets": [
+            "Few-level ladder: 0, X, XX, and charged states.",
+            "Master or rate equations propagate populations and jumps."
+          ]
+        },
+        {
+          "heading": "Quantum treatment of the light",
+          "bullets": [
+            "A photon is a field excitation, not merely a weak wave.",
+            "HBT and HOM measurements test the output state."
+          ]
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Michler 2017; projectâ€™s own treatment slides",
+        "Fox 2006"
+      ]
+    },
+    {
+      "id": "02-04",
+      "layout": "table",
+      "title": "Single-photon-source conditions",
+      "subtitle": "Each requirement has a measurable operational test",
+      "table": {
+        "header": [
+          "requirement",
+          "measurable",
+          "why it matters"
+        ],
+        "rows": [
+          [
+            "purity",
+            "gÂ²(0) â‰ª 0.5",
+            "reject multiphoton events"
+          ],
+          [
+            "brightness",
+            "detected photons/s",
+            "usable source rate"
+          ],
+          [
+            "indistinguishability",
+            "HOM visibility",
+            "same wavepacket"
+          ],
+          [
+            "on-demand",
+            "trigger-to-photon histogram",
+            "timing control"
+          ]
+        ]
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Projectâ€™s own treatment slides; Reischle et al., Opt. Express 16, 12771 (2008)",
+        "Laferriere et al., Nano Lett. 23, 962 (2023)"
+      ]
+    },
+    {
+      "id": "02-05",
+      "layout": "equation",
+      "title": "Lightâ€“matter coupling",
+      "subtitle": "The dipole selects which optical transitions exist",
+      "bullets": [
+        "H=-dÂ·E",
+        "d_cv = âŸ¨u_c|e r|u_vâŸ©"
+      ],
+      "equations": [
+        {
+          "latex": "H=-dÂ·E",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Chuang, Physics of Photonic Devices",
+        "Yu & Cardona, Fundamentals of Semiconductors"
+      ]
+    },
+    {
+      "id": "02-06",
+      "layout": "equation",
+      "title": "From Fermiâ€™s golden rule to spontaneous emission",
+      "subtitle": "Mode density and dipole strength set the radiative clock",
+      "bullets": [
+        "Î“_rad = nÏ‰Â³|d|Â²/(3Ï€ Îµâ‚€â„cÂ³)",
+        "f = 2mâ‚€Ï‰|d|Â²/(â„eÂ²)"
+      ],
+      "equations": [
+        {
+          "latex": "Î“_rad = nÏ‰Â³|d|Â²/(3Ï€ Îµâ‚€â„cÂ³)",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox 2006, ch. 8",
+        "Reischle 2008"
+      ]
+    },
+    {
+      "id": "02-07",
+      "layout": "table",
+      "title": "Two-level atom versus quantum dot",
+      "subtitle": "Cavity coupling changes the emission rate and the state dynamics",
+      "table": {
+        "header": [
+          "requirement",
+          "measurable",
+          "why it matters"
+        ],
+        "rows": [
+          [
+            "purity",
+            "gÂ²(0) â‰ª 0.5",
+            "reject multiphoton events"
+          ],
+          [
+            "brightness",
+            "detected photons/s",
+            "usable source rate"
+          ],
+          [
+            "indistinguishability",
+            "HOM visibility",
+            "same wavepacket"
+          ],
+          [
+            "on-demand",
+            "trigger-to-photon histogram",
+            "timing control"
+          ]
+        ]
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Michler 2017; Fox 2006",
+        "Purcell, Phys. Rev. 69, 681 (1946)"
+      ]
+    },
+    {
+      "id": "02-08",
+      "layout": "equation",
+      "title": "The excitonâ€“biexciton ladder",
+      "subtitle": "The cascade is both the useful source and the leakage channel",
+      "bullets": [
+        "E_XX = 2E_X âˆ’ E_bind,XX",
+        "XX â†’ X â†’ 0"
+      ],
+      "equations": [
+        {
+          "latex": "E_XX = 2E_X âˆ’ E_bind,XX",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Michler 2017",
+        "Bimberg et al., Quantum Dot Heterostructures, Wiley 1999"
+      ]
+    },
+    {
+      "id": "02-09",
+      "layout": "bullets",
+      "title": "Fine structure and entangled pairs",
+      "subtitle": "A context slide: the same ladder supports a different protocol",
+      "bullets": [
+        "Exchange interaction splits the bright exciton doublet.",
+        "Fine-structure splitting sets the polarization phase evolution.",
+        "If splitting is near the radiative linewidth, XX cascade photons can be entangled.",
+        "Single-photon purity and entangled-pair fidelity are related, not identical.",
+        "This section follows the X line and treats XX mainly as leakage."
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Michler 2017",
+        "Bennett et al., Phys. Rev. Lett. 116, 123601 (2016)"
+      ]
+    },
+    {
+      "id": "02-10",
+      "layout": "equation",
+      "title": "Cascade rate equations",
+      "subtitle": "The population model used by the simulator",
+      "bullets": [
+        "dN_XX/dt = r âˆ’ (Î³_XX+k_XX)N_XX",
+        "dN_X/dt = Î³_XX N_XX âˆ’ (Î³_X+k_X)N_X"
+      ],
+      "equations": [
+        {
+          "latex": "dN_XX/dt = r âˆ’ (Î³_XX+k_XX)N_XX",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/cw_g2.py: generator, steady_state",
+        "Project rate-equation model"
+      ]
+    },
+    {
+      "id": "02-11",
+      "layout": "bullets+figure",
+      "title": "Photon statistics: what HBT measures",
+      "subtitle": "Antibunching is a statement about conditional emission",
+      "bullets": [
+        "gÂ²(Ï„)=âŸ¨aâ€ (0)aâ€ (Ï„)a(Ï„)a(0)âŸ©/âŸ¨aâ€ aâŸ©Â².",
+        "Classical stationary fields obey gÂ²(0)â‰¥1.",
+        "A single emitter has gÂ²(0)<1 because it must recover after a jump.",
+        "The HBT splits one stream and records delay coincidences."
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_14_cw.png",
+        "caption": "HBT correlation geometry is represented by the simulated correlation curves.",
+        "script": "presentation2/figures/fig_02_11_hbt.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox 2006; Loudon, Quantum Theory of Light",
+        "fsim_core/cw_g2.py"
+      ],
+      "repo_numbers": {
+        "generator": {
+          "file": "fsim_core/cw_g2.py",
+          "value": 0.10462521279541996
+        },
+        "steady_state": {
+          "file": "fsim_core/cw_g2.py",
+          "value": 0.4041714725105729
+        }
+      }
+    },
+    {
+      "id": "02-12",
+      "layout": "equation",
+      "title": "Background turns a perfect dip upward",
+      "subtitle": "The two-source mixture law used in device evaluation",
+      "bullets": [
+        "gÂ²_meas(0)=1âˆ’ÏÂ²(1âˆ’Îµ)"
+      ],
+      "equations": [
+        {
+          "latex": "gÂ²_meas(0)=1âˆ’ÏÂ²(1âˆ’Îµ)",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Reischle et al., Opt. Express 16, 12771 (2008)",
+        "fsim_core/device.py: background law"
+      ]
+    },
+    {
+      "id": "02-13",
+      "layout": "equation",
+      "title": "Cap-2 Poisson loading",
+      "subtitle": "Even a clean dot can receive two excitations in one pulse",
+      "bullets": [
+        "P_n = e^(âˆ’Î¼) Î¼^n/n!",
+        "f1b_g2(Î¼,Îµ)=2Pâ‚‚Îµ/[Pâ‚+Pâ‚‚(1+Îµ)]Â²"
+      ],
+      "equations": [
+        {
+          "latex": "P_n = e^(âˆ’Î¼) Î¼^n/n!",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/loading.py: f1b_g2",
+        "Reischle 2008"
+      ],
+      "repo_numbers": {
+        "device_background": {
+          "file": "fsim_core/device.py",
+          "value": 0.5173788927335641
+        }
+      }
+    },
+    {
+      "id": "02-14",
+      "layout": "bullets+figure",
+      "title": "CW gÂ² and the quantum regression viewpoint",
+      "subtitle": "A rate-equation propagator supplies the conditional future",
+      "bullets": [
+        "The regression theorem reuses the same generator after a detected jump.",
+        "Low pump: gÂ²_dot(0)=Îµ p S_XX/S_X.",
+        "The finite-pump CW value can exceed the pulsed peak-area value.",
+        "The repository function cw_report returns intrinsic, background-mixed, and IRF-raw curves."
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_14_cw.png",
+        "caption": "Representative 80 K and 300 K CW curves from cw_g2.cw_report.",
+        "script": "presentation2/figures/fig_02_14_cw.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/cw_g2.py docstring and cw_report",
+        "Fox 2006, quantum regression theorem"
+      ],
+      "repo_numbers": {
+        "f1b_g2": {
+          "file": "fsim_core/loading.py",
+          "value": 0.9621945302681787
+        }
+      }
+    },
+    {
+      "id": "02-15",
+      "layout": "bullets+figure",
+      "title": "Detector response is part of the measurement",
+      "subtitle": "An instrument can hide real antibunching",
+      "bullets": [
+        "gÂ²_raw(0)=1âˆ’A exp(ÏƒÂ²/2Ï„_dÂ²) erfcx(Ïƒ/(âˆš2Ï„_d))"
+      ],
+      "equations": [
+        {
+          "latex": "gÂ²_raw(0)=1âˆ’A exp(ÏƒÂ²/2Ï„_dÂ²) erfcx(Ïƒ/(âˆš2Ï„_d))",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_15_irf.png",
+        "caption": "The repository convolution shows the 5 ps dip disappearing under a 100 ps IRF.",
+        "script": "presentation2/figures/fig_02_15_irf.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/cw_g2.py: dip_convolved",
+        "Reischle 2008"
+      ],
+      "repo_numbers": {
+        "cw_report": {
+          "file": "fsim_core/cw_g2.py",
+          "value": 0.5288447600844969
+        },
+        "low_pump_limit": {
+          "file": "fsim_core/cw_g2.py",
+          "value": 0
+        }
+      }
+    },
+    {
+      "id": "02-16",
+      "layout": "bullets+figure",
+      "title": "Phonons I: sidebands and the independent-boson model",
+      "subtitle": "The zero-phonon line is only part of the optical spectrum",
+      "bullets": [
+        "Acoustic phonons couple to the carrier charge distribution.",
+        "The independent-boson model resums this diagonal coupling exactly.",
+        "The ZPL fraction falls as temperature populates the phonon bath.",
+        "A narrow filter can improve purity while discarding sideband brightness."
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_16_phonons.png",
+        "caption": "IBM spectra and ZPL weights from fsim_core.qd_gf.",
+        "script": "presentation2/figures/fig_02_16_phonons.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/qd_gf.py: ibm_spectrum, zpl_weight",
+        "Michler 2017"
+      ],
+      "repo_numbers": {
+        "dip_convolved": {
+          "file": "fsim_core/cw_g2.py",
+          "value": 0
+        }
+      }
+    },
+    {
+      "id": "02-17",
+      "layout": "bullets+figure",
+      "title": "Phonons II: linewidth grows with temperature",
+      "subtitle": "Broadening erodes spectral separation",
+      "bullets": [
+        "Î“(T)=Î“â‚€+aT+b/[exp(E_LO/k_BT)âˆ’1]"
+      ],
+      "equations": [
+        {
+          "latex": "Î“(T)=Î“â‚€+aT+b/[exp(E_LO/k_BT)âˆ’1]",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_17_linewidth.png",
+        "caption": "Repository linewidth class envelope; literature anchors are 12 meV and 6â€“7 meV.",
+        "script": "presentation2/figures/fig_02_17_linewidth.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Matsuda et al., Phys. Rev. B 63, 045318 (2001)",
+        "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)",
+        "fsim_core/linewidth.py"
+      ],
+      "repo_numbers": {
+        "zpl_weight": {
+          "file": "fsim_core/qd_gf.py",
+          "value": 0
+        }
+      }
+    },
+    {
+      "id": "02-18",
+      "layout": "equation",
+      "title": "Band-gap walk and filter tracking",
+      "subtitle": "The transition energy is temperature dependent",
+      "bullets": [
+        "E(T)=Eâ‚€âˆ’Î±TÂ²/(T+Î²)"
+      ],
+      "equations": [
+        {
+          "latex": "E(T)=Eâ‚€âˆ’Î±TÂ²/(T+Î²)",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Vurgaftman, Meyer & Ram-Mohan, JAP 89, 5815 (2001)",
+        "Chatzarakis 2023 supplement"
+      ],
+      "repo_numbers": {
+        "gamma_envelope": {
+          "file": "fsim_core/linewidth.py",
+          "value": 6.0
+        }
+      }
+    },
+    {
+      "id": "02-19",
+      "layout": "bullets+figure",
+      "title": "Spectral overlap sets biexciton leakage",
+      "subtitle": "Filtering is quantitative, not a visual judgment",
+      "bullets": [
+        "For Lorentzian X and XX lines, calculate t_X and t_XX through the same window.",
+        "Define Îµ=t_XX/t_X; Îµ is the intrinsic cascade contamination.",
+        "Increasing Î”_XX helps; increasing Î“ hurts.",
+        "The simulatorâ€™s spectral.epsilon carries this ratio into gÂ²."
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_19_spectral.png",
+        "caption": "epsilon versus linewidth for Î”XX=4, 6, and 8 meV using fsim_core.spectral.",
+        "script": "presentation2/figures/fig_02_19_spectral.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "fsim_core/spectral.py: epsilon, transmission",
+        "Chatzarakis 2023"
+      ]
+    },
+    {
+      "id": "02-20",
+      "layout": "bullets+figure",
+      "title": "Thermal escape and retention",
+      "subtitle": "Confinement controls whether injected carriers remain useful",
+      "bullets": [
+        "S(T)=1/[1+a e^(âˆ’E_a/k_BT)+b e^(âˆ’E_b/k_BT)]"
+      ],
+      "equations": [
+        {
+          "latex": "S(T)=1/[1+a e^(âˆ’E_a/k_BT)+b e^(âˆ’E_b/k_BT)]",
+          "caption": "Symbols follow the definitions on this slide."
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_20_retention.png",
+        "caption": "Retention presets generated through dot_levels.retention_params.",
+        "script": "presentation2/figures/fig_02_20_retention.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Chatzarakis 2023; Bommer et al., Nano Lett. 11, 2484 (2011)",
+        "fsim_core/dot_levels.py: retention_params"
+      ],
+      "repo_numbers": {
+        "epsilon": {
+          "file": "fsim_core/spectral.py",
+          "value": 0.7048327646991335
+        }
+      }
+    },
+    {
+      "id": "02-21",
+      "layout": "bullets",
+      "title": "Indistinguishability: the other quantum metric",
+      "subtitle": "Purity alone does not guarantee identical photons",
+      "bullets": [
+        "Tâ‚‚â»Â¹ = (2Tâ‚)â»Â¹ + Î³* separates lifetime and pure dephasing.",
+        "Hongâ€“Ouâ€“Mandel interference measures wavepacket overlap.",
+        "Phonons and charge noise increase Î³* at elevated temperature.",
+        "A source can have low gÂ²(0) yet poor HOM visibility.",
+        "At 300 K, indistinguishability is a separate engineering gate."
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox 2006; Michler 2017"
+      ],
+      "repo_numbers": {
+        "retention_params": {
+          "file": "fsim_core/dot_levels.py",
+          "value": 83.79495968009232
+        }
+      }
+    },
+    {
+      "id": "02-22",
+      "layout": "bullets+figure",
+      "title": "Putting the model together: the 300 K landscape",
+      "subtitle": "The central tradeoff is linewidth versus ladder separation",
+      "bullets": [
+        "The sweep varies Î“(300 K) and Î”_XX, then propagates Îµ into pulsed gÂ².",
+        "The accepted region is narrow because brightness and purity gates coexist.",
+        "The reviewed literature has no electrical 300 K IIIâ€“V dot below 0.5.",
+        "Laferriere 2023 reports optical gÂ²(0)=0.57 at 300 K."
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/02_22_landscape.png",
+        "caption": "Measured repository sweep from out/rt_edge/sweep.csv.",
+        "script": "presentation2/figures/fig_02_22_landscape.py"
+      },
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "out/rt_edge/sweep.csv; fsim_core/device.py",
+        "Laferriere et al. 2023",
+        "Chatzarakis 2023"
+      ]
+    },
+    {
+      "id": "02-23",
+      "layout": "quote",
+      "title": "Experimental status at the conditions",
+      "subtitle": "Restated from the projectâ€™s own treatment slides",
+      "bullets": [
+        "Literature separates electrical cryogenic SPS, optical warm SPS, and room-temperature edge-emitting QD lasers."
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Projectâ€™s own treatment slides; Reischle 2008; Laferriere 2023"
+      ],
+      "repo_numbers": {
+        "sweep": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 192
+        }
+      }
+    },
+    {
+      "id": "02-24",
+      "layout": "two-column",
+      "title": "How our model integrates this",
+      "subtitle": "Repository mapping from physics to observables",
+      "columns": [
+        {
+          "heading": "Input physics",
+          "bullets": [
+            "materials.py: gaps, offsets, strain, indices.",
+            "dot_levels.py: confinement, levels, retention.",
+            "linewidth.py and qd_gf.py: thermal optical response."
+          ]
+        },
+        {
+          "heading": "Measured output",
+          "bullets": [
+            "transport.py/device.py: injection and brightness.",
+            "spectral.py/loading.py: Îµ, Î¼, and pulsed gÂ².",
+            "cw_g2.py: CW correlation and detector response."
+          ]
+        }
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Projectâ€™s own treatment slides; fsim_core module mapping"
+      ]
+    },
+    {
+      "id": "02-25",
+      "layout": "bullets",
+      "title": "What is left",
+      "subtitle": "A model result is not a device demonstration",
+      "bullets": [
+        "Measure the room-temperature linewidth and biexciton splitting of one electrically isolated dot.",
+        "Demonstrate current confinement and edge-coupled collection simultaneously.",
+        "Measure gÂ² with calibrated background, timing response, and a like-for-like optical filter.",
+        "Add HOM visibility and electrical pulsing data to the acceptance gate.",
+        "The current sweep is a design map, not experimental evidence."
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Projectâ€™s own treatment slides; out/rt_edge/verdict.md"
+      ]
+    },
+    {
+      "id": "02-26",
+      "layout": "section-divider",
+      "title": "Section summary",
+      "subtitle": "Emission is a chain: ladder â†’ coupling â†’ statistics â†’ temperature limits",
+      "bullets": [
+        "A quantum dot supplies discrete states; the field measurement decides whether the light is quantum.",
+        "Purity is governed by loading, cascade leakage, background, and detector response.",
+        "Room-temperature operation requires confinement, spectral separation, and a collection architecture together.",
+        "Next section: electrical injection and edge-emitting device physics."
+      ],
+      "notes": "This slide is part of the derivation from a quantum-dot level structure to a measured photon stream. The key distinction is between the emitter hardware, the quantized optical field, and the measurement that certifies nonclassical light. I will define every symbol before using the equation, then connect the result to the simulator implementation where one exists. Repository-derived quantities are intentionally identified by module and function so they can be rerun rather than treated as unexplained constants. The literature citations mark what is established experimentally or theoretically; the repository curves are model outputs and therefore should be read as predictions or consistency checks. The projectâ€™s own treatment slides are attributed explicitly wherever their definitions or status summary are reused. This separation keeps a good gÂ² result from being mistaken for a complete device demonstration.",
+      "sources": [
+        "Fox 2006; fsim_core modules cited above"
+      ]
+    }
+  ]
+}

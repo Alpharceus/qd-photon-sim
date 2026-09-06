@@ -1,0 +1,123 @@
+{
+  "section": "00",
+  "title": "Schema sample (fixture, not talk content)",
+  "minutes": 5,
+  "slides": [
+    {
+      "id": "00-01",
+      "layout": "title",
+      "title": "Sample Deck: Schema Conformance Fixture",
+      "subtitle": "Exercises every layout in presentation2/SCHEMA.md",
+      "notes": "This is the build's own test fixture, not part of the physics talk. It exists so verify_presentation2.py can build a real deck end to end -- validate, generate a figure, render an equation, emit pptx and html -- without depending on the four content workers' section files, which are written concurrently and may not exist yet.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-02",
+      "layout": "bullets",
+      "title": "Bullets layout",
+      "bullets": [
+        "Up to six bullets, each at most about eighteen words long",
+        "Plain text bullets render as-is in both the slide deck and the web page",
+        "An inline $E=\\hbar\\omega$ math snippet stays as text, not an image",
+        "$\\Gamma = 1/\\tau$"
+      ],
+      "notes": "Demonstrates the plain bullets layout, including the schema's inline-math rule: a bullet that mixes ordinary words with $...$ stays plain text, while a bullet that is only a $...$ expression is rendered as an equation image in the pptx (and as monospace text in the html, since the html renderer never rasterizes math).",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-03",
+      "layout": "bullets+figure",
+      "title": "Bullets + figure layout",
+      "bullets": [
+        "Bullets on one side, a generated figure on the other",
+        "The figure is a PNG produced by a re-runnable, deterministic script",
+        "Figures are never downloaded, only generated at build time"
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/00_sample.png",
+        "caption": "Damped oscillation, synthetic data (fig_00_sample.py)",
+        "script": "presentation2/figures/fig_00_sample.py"
+      },
+      "notes": "Demonstrates the combined bullets+figure layout: bullet text on one side of the slide, the referenced figure and its caption on the other.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-04",
+      "layout": "figure",
+      "title": "Figure-only layout",
+      "figure": {
+        "path": "presentation2/figures/out/00_sample.png",
+        "caption": "The same sample figure, shown large with no competing text",
+        "script": "presentation2/figures/fig_00_sample.py"
+      },
+      "notes": "Demonstrates the figure-only layout: a large centered figure with a caption and a short title, no bullet text.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-05",
+      "layout": "equation",
+      "title": "Equation layout",
+      "equations": [
+        {"latex": "E = \\hbar \\omega", "caption": "photon energy; hbar reduced Planck constant, omega angular frequency"},
+        {"latex": "\\Gamma = \\frac{1}{\\tau}", "caption": "decay rate; tau spontaneous emission lifetime"}
+      ],
+      "notes": "Demonstrates the equation layout: each equation is rendered by mathimg.py to a cached PNG and placed as a picture with its caption beneath it, up to three equations per slide.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-06",
+      "layout": "two-column",
+      "title": "Two-column layout",
+      "columns": [
+        {"heading": "Left column", "bullets": ["First point on the left", "Second point on the left"]},
+        {"heading": "Right column", "bullets": ["First point on the right", "Second point on the right"]}
+      ],
+      "notes": "Demonstrates the two-column layout: each column has its own heading and bullet list, laid out side by side.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-07",
+      "layout": "table",
+      "title": "Table layout",
+      "table": {
+        "header": ["regime", "ideality n", "physics"],
+        "rows": [
+          ["low bias", "~2", "recombination-current dominated"],
+          ["mid bias", "~1", "diffusion-current dominated"],
+          ["high bias", ">2", "series-resistance dominated"]
+        ]
+      },
+      "notes": "Demonstrates the table layout: a header row plus data rows, rendered as a native table in the pptx and an HTML table on the web page.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-08",
+      "layout": "section-divider",
+      "title": "Section Divider",
+      "subtitle": "A full-bleed break between sections",
+      "notes": "Demonstrates the section-divider layout: a full-color break slide carrying just a title and optional subtitle, used between major sections of the talk.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-09",
+      "layout": "quote",
+      "title": "Data-driven slides keep four concurrent writers from stepping on one renderer's toes.",
+      "subtitle": "Demo callout -- no attribution, schema-conformance fixture only",
+      "notes": "Demonstrates the quote layout: the title field is shown large and centered as the quoted text, with the subtitle field (if present) shown smaller beneath it as an attribution or caption line.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."]
+    },
+    {
+      "id": "00-10",
+      "layout": "bullets",
+      "title": "Provenance footnote demo",
+      "bullets": [
+        "This slide carries a repo_numbers entry",
+        "The renderer prints it as a small provenance footnote",
+        "The validator checks the value against the named file"
+      ],
+      "notes": "Demonstrates repo_numbers: the value below is checked by validate_sections.py against out/rt_edge/verdict.md (it must appear in that file as a numeric token within 1e-6), and both renderers print a provenance footnote citing the source file.",
+      "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."],
+      "repo_numbers": {"g2_min_demo": {"value": 0.3986, "file": "out/rt_edge/verdict.md"}}
+    }
+  ]
+}

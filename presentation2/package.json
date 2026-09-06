@@ -1,0 +1,9 @@
+{
+  "name": "presentation2-renderer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "pptxgenjs renderer for the qd-photon-sim presentation2 deck (internal build tool, not published).",
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}
