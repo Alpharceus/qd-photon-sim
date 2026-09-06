@@ -10,6 +10,24 @@ anchors:
     locator: "Fig. 3b"
     tag: V
     status: missing
+  # Council review round 6, item 5: run_rt_edge.py's REISCHLE_DECONV_G2 /
+  # REISCHLE_DECONV_G2_ERR constants (~line 290) used to be hardcoded with
+  # no provenance tag and no ledger anchor. This is the same paper/DOI as
+  # reischle08-g2-80k above -- score_ledger's DOI-based dedup (_distinct_key)
+  # counts both under one distinct source, so adding this anchor does NOT
+  # flip reischle2008_g2_80K to two-source complete.
+  - id: reischle08-g2-80k-deconvolved
+    claim: reischle2008_g2_80K
+    value: 0.25
+    unit: g2(0)
+    tolerance: 0.05
+    conditions: "InP/AlGaInP p-i-n EL, 80 K, QD C; IRF-deconvolved, background-included value (distinct from the unconvolved dip and from the further background-corrected 0.03). Same paper/DOI as reischle08-g2-80k -- counts as ONE distinct source under score_ledger's DOI-based dedup, never a second independent source."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "Fig. 3b; ../_goal/paper_digests.md line ~36"
+    tag: V
+    status: verified
+    verification: "digest:../_goal/paper_digests.md line ~36 (IRF-deconvolved, background-included g2(0) = 0.25 +/- 0.05, QD C, 80 K)."
   - id: reischle08-g2-80k-independent-gap
     claim: reischle2008_g2_80K
     value: null

@@ -369,18 +369,22 @@ ok("lever combos oracle: every combo is a well-formed overrides dict, both corne
 # ======================== 1c. gamma300_pass_max / conditional-on-linewidth (round 4, item 2)
 
 gamma_rows = [
-    {"card_id": PRIMARY_ID, "headline_pass": True, "gamma300_meV": 6.0, "g2_pulsed": 0.30,
-     "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75, "emission_R_back": 0.95,
-     "emission_L_um": 250.0, "assumptions": "dot.gamma300"},
-    {"card_id": PRIMARY_ID, "headline_pass": True, "gamma300_meV": 13.0, "g2_pulsed": 0.45,
-     "delta_xx_meV": 5.5, "irf_ps": 125.0, "emission_NA": 0.8, "emission_R_back": 0.0,
-     "emission_L_um": 500.0, "assumptions": "dot.gamma300"},
-    {"card_id": PRIMARY_ID, "headline_pass": False, "gamma300_meV": 20.0, "g2_pulsed": 0.90,
-     "delta_xx_meV": 7.0, "irf_ps": 200.0, "emission_NA": 0.5, "emission_R_back": 0.95,
-     "emission_L_um": 250.0, "assumptions": ""},
-    {"card_id": FALLBACK_ID, "headline_pass": False, "gamma300_meV": 6.0, "g2_pulsed": 0.90,
-     "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75, "emission_R_back": 0.95,
-     "emission_L_um": 250.0, "assumptions": ""},
+    {"card_id": PRIMARY_ID, "headline_pass": True, "eligible": True, "gamma300_meV": 6.0,
+     "g2_pulsed": 0.30, "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": "dot.gamma300"},
+    {"card_id": PRIMARY_ID, "headline_pass": True, "eligible": True, "gamma300_meV": 13.0,
+     "g2_pulsed": 0.45, "delta_xx_meV": 5.5, "irf_ps": 125.0, "emission_NA": 0.8,
+     "emission_R_back": 0.0, "emission_L_um": 500.0, "assumptions": "dot.gamma300"},
+    {"card_id": PRIMARY_ID, "headline_pass": False, "eligible": True, "gamma300_meV": 20.0,
+     "g2_pulsed": 0.90, "delta_xx_meV": 7.0, "irf_ps": 200.0, "emission_NA": 0.5,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""},
+    # eligible=True, g2_pulsed=0.90: this card's failure is a genuine physics
+    # shortfall (g2 too high), not a flux-eligibility one -- exercises the
+    # "none(g2)" branch below (round 6, item 2), distinct from the "none(flux)"
+    # branch exercised by the dedicated fixture in section 1g-ii.
+    {"card_id": FALLBACK_ID, "headline_pass": False, "eligible": True, "gamma300_meV": 6.0,
+     "g2_pulsed": 0.90, "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""},
 ]
 gmax_by_card = rte._card_gamma300_pass_max(gamma_rows)
 ok("gamma300_pass_max oracle: picks the LARGEST passing gamma300 (13.0), not the first (6.0)",
@@ -563,9 +567,11 @@ _bracket_by_card = rte._gamma300_threshold_bracket(gamma_rows, _gmax_by_card)
 ok("gamma300_threshold_bracket oracle: PRIMARY_ID passes at 13.0 and fails at the next "
    "sampled value (20.0) -- bracket is (13.0, 20.0)",
    _bracket_by_card[PRIMARY_ID]["lo"] == 13.0 and _bracket_by_card[PRIMARY_ID]["hi"] == 20.0)
-ok("gamma300_threshold_bracket oracle: a card with NO headline-passing sample has lo=None "
-   "and hi=the smallest sampled value",
-   _bracket_by_card[FALLBACK_ID]["lo"] is None and _bracket_by_card[FALLBACK_ID]["hi"] == 6.0)
+ok("gamma300_threshold_bracket oracle: a card with NO headline-passing sample has lo=None, "
+   "hi=the smallest sampled value, and reason='g2' (its only rows are eligible but "
+   "g2_pulsed=0.90 -- round 6, item 2)",
+   _bracket_by_card[FALLBACK_ID]["lo"] is None and _bracket_by_card[FALLBACK_ID]["hi"] == 6.0
+   and _bracket_by_card[FALLBACK_ID]["reason"] == "g2")
 _pooled_bracket = rte._pooled_gamma300_threshold(_gmax_by_card, _bracket_by_card)
 ok("pooled gamma300_threshold: picks the bracket of whichever card attains the pooled max "
    "(PRIMARY_ID, 13.0), not FALLBACK_ID's",
@@ -574,10 +580,51 @@ ok("_format_threshold: both bounds known renders 'lo-hi'",
    rte._format_threshold({"lo": 13.0, "hi": 20.0}) == "13-20")
 ok("_format_threshold: hi=None (nothing sampled above pass_max fails) renders '>=lo'",
    rte._format_threshold({"lo": 13.0, "hi": None}) == ">=13")
-ok("_format_threshold: lo=None (nothing passes) renders '<hi'",
+ok("_format_threshold: lo=None with no 'reason' key falls back to the old '<hi' text "
+   "(bare bracket, e.g. a caller that never ran _gamma300_threshold_bracket)",
    rte._format_threshold({"lo": None, "hi": 6.0}) == "<6")
 ok("_format_threshold: no data at all renders 'n/a'",
    rte._format_threshold({"lo": None, "hi": None}) == "n/a")
+
+# ==================== 1g-ii. gamma300_threshold none(reason) (round 6, item 2) ====================
+# Reproduces the primary card's real favourable-corner shape: g2=0.26 at a
+# gamma300/delta_xx sample that is still below the 1 kHz collected-flux
+# floor (313 photons/s in the real sweep) -- headline_pass is False at
+# EVERY sample even though g2 alone would already clear the gate, because
+# eligible=False everywhere. gamma300_threshold must print `none(flux)`,
+# never a bracket like `<6` that would misleadingly imply the card passes
+# below 6 meV.
+_no_pass_flux_rows = [
+    {"card_id": "flux_card", "headline_pass": False, "eligible": False, "gamma300_meV": g,
+     "g2_pulsed": 0.26, "delta_xx_meV": 1.0, "irf_ps": 50.0, "emission_NA": 0.75,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""}
+    for g in (6.0, 8.0, 10.0)
+]
+_no_pass_flux_gmax = rte._card_gamma300_pass_max(_no_pass_flux_rows)
+_no_pass_flux_bracket = rte._gamma300_threshold_bracket(_no_pass_flux_rows, _no_pass_flux_gmax)
+ok("_gamma300_threshold_bracket oracle: every sample flux-ineligible (favourable g2=0.26 "
+   "but never eligible) -> reason='flux'",
+   _no_pass_flux_bracket["flux_card"]["lo"] is None
+   and _no_pass_flux_bracket["flux_card"]["reason"] == "flux")
+ok("_format_threshold: reason='flux' renders 'none(flux)'",
+   rte._format_threshold(_no_pass_flux_bracket["flux_card"]) == "none(flux)")
+
+# Contrast case: at least one row IS flux-eligible, but g2 >= 0.5 at every
+# sampled gamma300 -- a genuine physics shortfall, not an eligibility one.
+_no_pass_g2_rows = [
+    {"card_id": "g2_card", "headline_pass": False, "eligible": True, "gamma300_meV": g,
+     "g2_pulsed": 0.9, "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""}
+    for g in (6.0, 8.0, 10.0)
+]
+_no_pass_g2_gmax = rte._card_gamma300_pass_max(_no_pass_g2_rows)
+_no_pass_g2_bracket = rte._gamma300_threshold_bracket(_no_pass_g2_rows, _no_pass_g2_gmax)
+ok("_gamma300_threshold_bracket oracle: eligible rows exist but g2_pulsed >= 0.5 "
+   "everywhere -> reason='g2'",
+   _no_pass_g2_bracket["g2_card"]["lo"] is None
+   and _no_pass_g2_bracket["g2_card"]["reason"] == "g2")
+ok("_format_threshold: reason='g2' renders 'none(g2)'",
+   rte._format_threshold(_no_pass_g2_bracket["g2_card"]) == "none(g2)")
 
 # All-pass fixture: every sample passes -> hi is None (threshold >= largest sample).
 _all_pass_rows = [{"card_id": "x", "headline_pass": True, "gamma300_meV": g, "g2_pulsed": 0.2,
@@ -869,6 +916,71 @@ with tempfile.TemporaryDirectory() as td:
        "check (council review round 5, item 6), not just the back-solved tautology",
        "Independent check on the combined front-facet factor" in md_text_full
        and "BACK-SOLVED" in md_text_full)
+
+    # ==================== Sixth council review (2026-09-06) reporting fixes ====================
+
+    # Item 1: the background-assumption citation is generated FROM the ledger
+    # anchor (reischle08-b-res-80k), never the hardcoded/drifted "Appl. Phys.
+    # Lett. 92, 233113 (2008)" string.
+    ok("full run: verdict.md never cites the drifted 'Appl. Phys. Lett. 92, "
+       "233113 (2008)' background-assumption source",
+       "Appl. Phys. Lett. 92" not in md_text_full)
+    ok("full run: verdict.md's background-assumption paragraph cites the ledger anchor's "
+       "real source (Optics Express 16, 12771 (2008), DOI 10.1364/OE.16.012771)",
+       "12771" in md_text_full and "10.1364/OE.16.012771" in md_text_full
+       and "reischle08-b-res-80k" in md_text_full)
+
+    # Item 2: a card with zero headline-passing samples prints gamma300_threshold
+    # as a REASON class (none(flux)/none(g2)), never a bare "<N" bracket that
+    # would misleadingly imply it passes below N.
+    gaasp_row_line = next((ln for ln in md_text_full.splitlines()
+                          if ln.startswith(f"| {PRIMARY_ID} |")), None)
+    ok("full run: the gaasp (primary) card's gamma300_threshold table row exists",
+       gaasp_row_line is not None)
+    if gaasp_row_line is not None:
+        ok("full run: the gaasp (primary) card's gamma300_threshold prints 'none(flux)' "
+           "(every sample in this grid is below the collected-flux eligibility floor), "
+           "never a bare '<N' bracket",
+           "none(flux)" in gaasp_row_line and "<6" not in gaasp_row_line)
+    ok("full run: verdict.md explains the none(flux)/none(g2) reason classes",
+       "none(flux)" in md_text_full and "none(g2)" in md_text_full)
+
+    # Item 3: the dominant brightness limiter is compared across the WHOLE
+    # chain (loading, t_X, S, plus eta_total's own sub-factors), not just
+    # eta_total's sub-factors -- at the favourable corner S (retention) is
+    # smaller than beta and must be named.
+    dominant_sentence = next((ln for ln in md_text_full.splitlines()
+                             if "dominant brightness limiter" in ln), None)
+    ok("full run: verdict.md names a dominant brightness limiter",
+       dominant_sentence is not None)
+    if dominant_sentence is not None:
+        ok("full run: the dominant brightness limiter names S (confinement retention), "
+           "not beta -- S is smaller at the favourable corner once the comparison spans "
+           "the whole chain (council review round 6, item 3)",
+           "is S (confinement retention)" in dominant_sentence)
+
+    # Item 4: one name per quantity -- the Coverage section uses the same key
+    # names as the VERDICT line, everywhere.
+    ok("full run: verdict.md's Coverage section uses the VERDICT-line key names "
+       "(coverage_over_eligible, g2_median_eligible, diag_g2_median_diagnostic), "
+       "not the old bare coverage/g2_median/diag_g2_median labels",
+       "`coverage_over_eligible`" in md_text_full and "`g2_median_eligible`" in md_text_full
+       and "`diag_g2_median_diagnostic`" in md_text_full)
+
+    # Item 5: REISCHLE_RAW_G2/REISCHLE_DECONV_G2/REISCHLE_DECONV_G2_ERR are
+    # read from the ledger and tagged in the markdown.
+    ok("full run: verdict.md tags the Reischle raw/deconvolved g2 values with their "
+       "ledger anchor ids and a provenance tag",
+       "reischle08-g2-80k-deconvolved" in md_text_full
+       and "0.43 [V]" in md_text_full and "0.25 [V]" in md_text_full)
+
+    # Item 6: the verified-anchor section header identifies the Chatzarakis
+    # anchor as an InAs/GaAs (211)B single-dot measurement used as a
+    # distinct-material class proxy, not an unqualified InP-class result.
+    ok("full run: the 'Verified 6.5 meV anchor' header names the InAs/GaAs (211)B "
+       "single-dot measurement and its [E]-class proxy role",
+       "InAs/GaAs (211)B single-dot" in md_text_full
+       and "distinct-material class proxy [E]" in md_text_full)
 
     # Item 4: flux_margin/eligible_fraction in the VERDICT line and manifest.
     ok("full run: printed VERDICT line carries flux_margin= and eligible_fraction=",

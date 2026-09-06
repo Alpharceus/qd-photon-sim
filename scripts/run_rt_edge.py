@@ -287,9 +287,20 @@ CHATZARAKIS_ANCHOR_GAMMA300_MEV = 6.5
 # (also background-included via drive.b_res/rho, also never IRF-convolved
 # for the pulsed metric): g2_b(0) = 0.25 +/- 0.05 (QD C, 80 K)
 # (../_goal/paper_digests.md line ~36).
-REISCHLE_RAW_G2 = 0.43
-REISCHLE_DECONV_G2 = 0.25
-REISCHLE_DECONV_G2_ERR = 0.05
+#
+# Council review round 6, item 5: these three numbers (and the background-
+# assumption citation below, item 1) are now READ from the ledger
+# (verify/data/rt_edge_anchors.yaml) instead of being hardcoded, so they
+# cannot drift from their anchors again: RAW/BG_RES from the single-source
+# raw-dip/residual-background anchors, DECONV/its error from the deconvolved
+# anchor added for this review.
+_RAW_G2_ANCHOR_ID = "reischle08-g2-80k"
+_DECONV_G2_ANCHOR_ID = "reischle08-g2-80k-deconvolved"
+BG_RES_ANCHOR_ID = "reischle08-b-res-80k"
+_rt_anchors = rt_papers.load_anchors()
+REISCHLE_RAW_G2 = float(_rt_anchors[_RAW_G2_ANCHOR_ID]["value"])
+REISCHLE_DECONV_G2 = float(_rt_anchors[_DECONV_G2_ANCHOR_ID]["value"])
+REISCHLE_DECONV_G2_ERR = rt_papers.anchor_bound(_rt_anchors[_DECONV_G2_ANCHOR_ID])
 
 
 # --------------------------------------------------------------------- grid
@@ -517,7 +528,9 @@ def refine_gamma300(card: dict, delta_xx_grid: list, lever_combos: list,
     already in RANGE_BOUNDS's endpoints (computed by sweep_card for the
     same delta_xx/lever) are cache hits, not recomputed. Returns a list of
     row-like dicts (never written to sweep.csv) with just the fields
-    _card_gamma300_pass_max / _gamma300_threshold_bracket need."""
+    _card_gamma300_pass_max / _gamma300_threshold_bracket need -- including
+    `eligible` (council review round 6, item 2), which _gamma300_threshold_
+    bracket uses to classify WHY no sample passes when that happens."""
     card_path = card["path"]
     design0 = DeviceDesign.load(card_path)
     provenance = design0.provenance or {}
@@ -533,6 +546,7 @@ def refine_gamma300(card: dict, delta_xx_grid: list, lever_combos: list,
                                      and g2_p < G2_THRESHOLD)
                 rows.append({
                     "card_id": card["id"], "headline_pass": headline_pass,
+                    "eligible": bool(pulsed["eligible"]),
                     "gamma300_meV": gamma300, "g2_pulsed": g2_p,
                     "delta_xx_meV": delta_xx, "irf_ps": None,
                     "emission_NA": lever["emission.NA"],
@@ -857,6 +871,18 @@ def _card_gamma300_pass_max(rows: list) -> dict:
     return result
 
 
+def _no_pass_reason(card_rows: list) -> str:
+    """Council review round 6, item 2: WHY a card has zero headline-passing
+    gamma300 samples. `"flux"` when every sampled row is below the
+    collected-flux eligibility floor (headline_pass can never be True for
+    an ineligible row, no matter how good g2 would be -- e.g. the primary
+    card's favourable corner reaches g2=0.26 at 1 meV but only 313 photons/s,
+    below the 1 kHz floor); `"g2"` when at least one row IS eligible but
+    g2(0) >= 0.5 at every sampled gamma300 (a genuine physics shortfall, not
+    a flux-eligibility one)."""
+    return "g2" if any(r.get("eligible") for r in card_rows) else "flux"
+
+
 def _gamma300_threshold_bracket(rows: list, gamma300_pass_max_by_card: dict) -> dict:
     """Council review round 5, item 2: gamma300_pass_max alone only says the
     true (continuous, unsampled) threshold is AT LEAST this value -- it says
@@ -867,16 +893,23 @@ def _gamma300_threshold_bracket(rows: list, gamma300_pass_max_by_card: dict) -> 
     (gamma300_pass_max, that value]. Returns {card_id: {"lo": ..., "hi":
     ...}}: hi is None when every sampled value >= gamma300_pass_max passes
     (the threshold is >= the largest sample); lo is None when no sampled
-    value passes at all (the threshold is < the smallest sample)."""
+    value passes at all (the threshold is < the smallest sample) -- in that
+    case a `"reason"` key (council review round 6, item 2) is also set,
+    `"flux"` or `"g2"` per _no_pass_reason, so _format_threshold can print
+    `none(flux)`/`none(g2)` instead of a bracket like `<6` that would
+    otherwise misleadingly imply the card passes below that value."""
     by_card_gammas: dict = {}
+    by_card_rows: dict = {}
     for r in rows:
         by_card_gammas.setdefault(r["card_id"], set()).add(float(r["gamma300_meV"]))
+        by_card_rows.setdefault(r["card_id"], []).append(r)
     result = {}
     for card_id, gammas in by_card_gammas.items():
         gmax = gamma300_pass_max_by_card.get(card_id, {}).get("gamma300_pass_max_meV", float("nan"))
         sorted_g = sorted(gammas)
         if not np.isfinite(gmax):
-            result[card_id] = {"lo": None, "hi": (sorted_g[0] if sorted_g else None)}
+            result[card_id] = {"lo": None, "hi": (sorted_g[0] if sorted_g else None),
+                               "reason": _no_pass_reason(by_card_rows.get(card_id, []))}
             continue
         higher = sorted(g for g in sorted_g if g > gmax)
         result[card_id] = {"lo": gmax, "hi": (higher[0] if higher else None)}
@@ -900,13 +933,20 @@ def _pooled_gamma300_threshold(gamma300_pass_max_by_card: dict, threshold_by_car
 def _format_threshold(bracket: dict) -> str:
     """Human-readable `gamma300_threshold` text for the VERDICT line/
     verdict.md: "<lo>-<hi>" when both bounds are known, ">=<lo>" when every
-    sampled value at/above gamma300_pass_max passes, "<<hi>" when nothing
-    passes, "n/a" when there is no card data at all."""
+    sampled value at/above gamma300_pass_max passes, "n/a" when there is no
+    card data at all. When nothing passes, council review round 6 item 2:
+    a numeric "<hi" bracket would misleadingly imply the card passes
+    somewhere below `hi`, when in fact NO sample passed at all -- print the
+    REASON class instead, `none(flux)` (every sample flux-ineligible) or
+    `none(g2)` (eligible but g2(0) >= 0.5 everywhere), per the bracket's own
+    `reason` (set by _gamma300_threshold_bracket); a bare bracket with no
+    `reason` key falls back to the old "<hi" text."""
     lo, hi = (bracket or {}).get("lo"), (bracket or {}).get("hi")
     if lo is None and hi is None:
         return "n/a"
     if lo is None:
-        return f"<{hi:g}"
+        reason = (bracket or {}).get("reason")
+        return f"none({reason})" if reason else f"<{hi:g}"
     if hi is None:
         return f">={lo:g}"
     return f"{lo:g}-{hi:g}"
@@ -1375,11 +1415,13 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append(
         "**Like-for-like comparison (council review round 5, item 5).** The "
         "paragraph above juxtaposed this sweep's IRF-FREE intrinsic g2_min "
-        f"against Reischle's RAW dip ({REISCHLE_RAW_G2:.2f}, still IRF-"
-        "broadened) -- not a like-for-like convention match. The correct "
+        f"against Reischle's RAW dip ({REISCHLE_RAW_G2:.2f} [V], still IRF-"
+        f"broadened; ledger anchor `{_RAW_G2_ANCHOR_ID}`) -- not a "
+        "like-for-like convention match. The correct "
         "like-for-like anchor is Reischle's IRF-DECONVOLVED-but-background-"
-        f"included value, g2_b(0) = {REISCHLE_DECONV_G2:.2f} +/- "
-        f"{REISCHLE_DECONV_G2_ERR:.2f} (QD C, 80 K; ../_goal/paper_digests.md "
+        f"included value, g2_b(0) = {REISCHLE_DECONV_G2:.2f} [V] +/- "
+        f"{REISCHLE_DECONV_G2_ERR:.2f} (QD C, 80 K; ledger anchor "
+        f"`{_DECONV_G2_ANCHOR_ID}`, ../_goal/paper_digests.md "
         "line ~36), since this sweep's g2_op is likewise background-included "
         "(via drive.b_res/rho) and never IRF-convolved for the pulsed metric.")
     g2_min = verdict.get("g2_min", float("nan"))
@@ -1417,6 +1459,17 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "above it that already fails -- the true threshold lies somewhere inside the "
         "bracket, at the delta_xx shown for that card's gamma300_pass_max row.")
     lines.append("")
+    lines.append(
+        "**When nothing passes (council review round 6, item 2).** If NO sampled gamma300 "
+        "clears the headline gate for a card, `gamma300_threshold` no longer prints a "
+        "numeric bracket like `<6` -- that would misleadingly imply the card passes "
+        "somewhere below 6 meV, when in fact it never passes anywhere in this grid. It "
+        "instead prints the REASON class: `none(flux)` if every sampled row is below the "
+        "collected-flux eligibility floor (headline_pass can never be True there, no "
+        "matter how favourable g2 would be), or `none(g2)` if at least one sampled row IS "
+        "flux-eligible but pulsed intrinsic g2(0) >= 0.5 at every sampled gamma300 (a "
+        "genuine physics shortfall, not an eligibility one).")
+    lines.append("")
     lines.append(f"`gamma300_pass_max` (pooled, both cards): {verdict['gamma300_pass_max']:.4g} meV; "
                  f"`gamma300_threshold` (pooled): "
                  f"{_format_threshold(verdict['gamma300_threshold'])} meV")
@@ -1444,7 +1497,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "between the bracket's two values (at the delta_xx shown above for that row).")
     lines.append("")
     lines.append(f"### Verified {CHATZARAKIS_ANCHOR_GAMMA300_MEV:g} meV anchor "
-                 "(Chatzarakis et al., Phys. Rev. Applied 20, 034011, 2023)")
+                 "(Chatzarakis et al., Phys. Rev. Applied 20, 034011, 2023) -- an InAs/GaAs "
+                 "(211)B single-dot linewidth measurement, used here as a distinct-material "
+                 "class proxy [E] for the InP-dot family, not a direct InP/GaAsP or "
+                 "InP/GaInP measurement")
     lines.append(
         "Fresh evaluation, per card, at the card's OWN default delta_xx (never the sweep's "
         "endpoint grid) -- both cards' own provenance.ranges[\"dot.gamma300\"].note already "
@@ -1508,16 +1564,17 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"{stats['headline_coverage']:.3f}")
     if stats["n_eligible"]:
         lines.append(f"- **headline coverage over ELIGIBLE rows only** (same numerator, "
-                     f"denominator restricted to eligible rows -- this is `coverage` in the "
-                     f"VERDICT line, council review round 5 item 4): "
+                     f"denominator restricted to eligible rows -- this is "
+                     f"`coverage_over_eligible` in the VERDICT line, council review round 6 "
+                     f"item 4, one name per quantity): "
                      f"{stats['n_headline']}/{stats['n_eligible']} = {verdict['coverage']:.3f}")
     else:
         lines.append("- **headline coverage over ELIGIBLE rows only**: n/a (0 eligible rows)")
-    lines.append(f"- pooled pulsed g2 median OVER ELIGIBLE ROWS ONLY (`g2_median` in the "
-                 f"VERDICT line, the contract's median gate): {stats['g2_pulsed_median']:.4g}")
+    lines.append(f"- pooled pulsed g2 median OVER ELIGIBLE ROWS ONLY (`g2_median_eligible` in "
+                 f"the VERDICT line, the contract's median gate): {stats['g2_pulsed_median']:.4g}")
     lines.append(f"- pooled pulsed g2 median over ALL VALID/DIAGNOSTIC rows (eligible rows "
-                 f"plus rows excluded ONLY by the flux floor; `diag_g2_median` in the VERDICT "
-                 f"line): {stats['diag_g2_pulsed_median']:.4g}")
+                 f"plus rows excluded ONLY by the flux floor; `diag_g2_median_diagnostic` in "
+                 f"the VERDICT line): {stats['diag_g2_pulsed_median']:.4g}")
     lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (eligible rows, diagnostic "
                  f"only, does not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
                  f"= {stats['cw0_coverage']:.3f}")
@@ -1579,11 +1636,24 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                               best.get("edge_T_facet")),
                              ("propagation", best.get("edge_eta_prop")),
                              ("NA (numerical aperture)", best.get("edge_eta_NA"))]
-        finite_components = [(n, float(v)) for n, v in component_factors
+        # Council review round 6, item 3: the dominant-limiter comparison
+        # used to run over eta_total's sub-factors only (component_factors:
+        # beta, the combined facet factor, T_facet, propagation, NA), which
+        # can never surface a smaller limiter sitting OUTSIDE eta_total in
+        # the chain (loading, t_X, S) -- e.g. S=0.0046 at the favourable
+        # corner, well below beta=0.029. Comparing across the WHOLE chain
+        # (loading, t_X, S, plus eta_total's own sub-factors -- never
+        # eta_total or rep_rate themselves, which are aggregates/a rate,
+        # not standalone limiting fractions) makes the printed dominant
+        # limiter the smallest factor anywhere in the reported flux product.
+        whole_chain_candidates = [chain[0], chain[1], chain[2]] + component_factors
+        finite_components = [(n, float(v)) for n, v in whole_chain_candidates
                              if v is not None and np.isfinite(v) and v > 0]
         dominant = (min(finite_components, key=lambda x: x[1])[0]
                    if finite_components else "the collection chain")
-        lines.append(f"The dominant brightness limiter at the favourable diagnostic corner is "
+        lines.append(f"The dominant brightness limiter at the favourable diagnostic corner -- "
+                     f"the smallest factor across the WHOLE chain (loading, t_X, S, and "
+                     f"eta_total's own sub-factors; council review round 6, item 3) -- is "
                      f"{dominant}; the multiplicative chain that reproduces the reported "
                      f"collected pulsed flux is:")
         lines.append("")
@@ -1676,13 +1746,24 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "device would be insensitive to linewidth, it is that this filter-window "
         "convention cancels that sensitivity out by construction.")
     lines.append("")
+    # Council review round 6, item 1: the citation below used to be a
+    # hardcoded string ("Reischle et al., Appl. Phys. Lett. 92, 233113
+    # (2008)") that had drifted from the actual source of the rho ~ 0.88
+    # residual-background anchor (Optics Express 16, 12771 (2008), DOI
+    # 10.1364/OE.16.012771). It is now generated FROM the ledger anchor
+    # (verify/data/rt_edge_anchors.yaml, id `reischle08-b-res-80k`) so it
+    # cannot drift again.
+    _bres_anchor = _rt_anchors[BG_RES_ANCHOR_ID]
+    _rho = float(_bres_anchor["value"])
     lines.append(
         "**2. The background-light assumption is borrowed from a different, colder "
         "device.** Every row carries a constant background term (`drive.b_res`) that is "
-        "not measured on this platform: it is transferred from Reischle et al., Appl. "
-        "Phys. Lett. 92, 233113 (2008), whose 80 K electrically driven single-photon "
-        "source had about 88% real signal and 12% background light (signal fraction "
-        "rho ~ 0.88). This sweep assumes the same 12% background fraction still applies "
+        f"not measured on this platform: it is transferred from {_bres_anchor['source']} "
+        f"(DOI {_bres_anchor['doi']} [{_bres_anchor['tag']}], ledger anchor "
+        f"`{BG_RES_ANCHOR_ID}`), whose 80 K electrically driven single-photon "
+        f"source had about {_rho * 100:.0f}% real signal and {(1 - _rho) * 100:.0f}% "
+        f"background light (signal fraction rho ~ {_rho:.2f}). This sweep assumes the "
+        f"same {(1 - _rho) * 100:.0f}% background fraction still applies "
         "at 300 K, on a different material system (InP/GaAsP or InP/GaInP edge "
         "emitters) than the one actually measured. No 300 K electrical background "
         "measurement exists for either card's platform.")

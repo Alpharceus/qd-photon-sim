@@ -32,6 +32,21 @@ entries:
     value: 0.43
     unit: g2(0)
     digest_section: "paper_digests.md, Paper 1, Section 5: 'g2(0) raw dips (Fig. 3a,b): 0.41 (QD B, 4 K); 0.43 (QD C, 80 K).'"
+  # Council review round 6, item 5: matching row for the new
+  # reischle08-g2-80k-deconvolved anchor (IRF-deconvolved, background-
+  # included value). Shares its (doi, quantity) key with the raw entry
+  # above -- load_digest_values() keeps only the LAST entry per key, so
+  # this row (placed after the raw one) is what _check_digest_crosscheck
+  # sees; that is harmless here because the raw anchor's own status is
+  # "missing" (its crosscheck is skipped) and only this new anchor's
+  # status is "verified" (its crosscheck needs THIS row, not the raw one).
+  - doi: "10.1364/OE.16.012771"
+    author: "Reischle"
+    year: 2008
+    quantity: "reischle2008_g2_80K"
+    value: 0.25
+    unit: g2(0)
+    digest_section: "paper_digests.md, Paper 1, Section 5 (line ~36): IRF-deconvolved, background-included g2(0) = 0.25 +/- 0.05 (QD C, 80 K), distinct from the unconvolved 0.43 dip and the further background-corrected 0.03."
   - doi: "10.1364/OE.16.012771"
     author: "Reischle"
     year: 2008
