@@ -41,7 +41,7 @@ design:
   dot:
     linewidth: anchored
     delta_xx: 5.0
-    gamma300: 16.0
+    gamma300: 12.0
   ret:
     mode: confinement
     system:
@@ -52,8 +52,10 @@ design:
       geometry: {height_nm: 4.0, radius_nm: 12.0}
   drive:
     mode: EL-transport
-    diode: {preset: hkust}
-    I_uA: 0.00516156022718501
+    diode: {preset: hkust, tau_pulse_ns: 0.1}
+    I_uA: 0.011314080567212663
+    duty: 0.008
+    b_res: 0.13636363636363635
     cw: true
     cw_irf_fwhm_ps: 50.0
     cw_tau_max_ns: 0.12
@@ -74,6 +76,7 @@ design:
     enabled: false
   filter:
     track_material: dot
+    hold_window: false
   aperture:
     compose: true
     density_cm2: 300000000.0
@@ -81,6 +84,10 @@ design:
   emission:
     type: edge
     ridge_width_nm: 2000.0
+    NA: 0.75
+    R_back: 0.95
+    L_um: 250.0
+    alpha_cm: 5.0
     lambda_nm: 815.7
 
   provenance:
@@ -97,22 +104,40 @@ design:
           (2001), per device.py DotBlock.linewidth's documented convention.
       dot.delta_xx:
         value: 5.0
-        tag: V
+        tag: DR
         source: >
-          Reischle et al., Optics Express 16, 12771 (2008), p. 12774,
+          [DR] Reischle et al., Optics Express 16, 12771 (2008), p. 12774,
           exciton-complex discussion: InP/GaInP-family X-XX binding range
-          4-6 meV, used as the InP-dot-family proxy anchor for this
-          InP/GaAsP design (no InP/GaAsP-dot X-XX measurement exists).
+          4-6 meV, quoted secondarily from Beirne et al., Phys. Rev. B 75,
+          195302 (2007), Ref. 14 (not measured directly by Reischle et al.
+          2008, matching the ledger's own reischle08-delta-xx tag: DR);
+          used as the InP-dot-family proxy anchor for this InP/GaAsP
+          design (no InP/GaAsP-dot X-XX measurement exists).
         anchor_id: reischle08-delta-xx
       dot.gamma300:
-        value: 16.0
-        tag: A
+        value: 12.0
+        tag: E
         source: >
-          Laferriere et al., Nano Letters 23, 962 (2023), Fig. 5: InAsP/InP
-          nanowire dot at 300 K, 25 nm linewidth at 1398 nm converted to
-          meV. Class proxy only -- docs/rt_edge_contract.md Evidence section
-          states the InP/GaAsP 300 K single-dot linewidth is unmeasured.
-        anchor_id: laferriere23-linewidth-class-proxy
+          [E] Class proxy: In0.5Ga0.5As/GaAs single dot at 300 K (Matsuda et
+          al., Physical Review B 63, 121304(R) (2001), ~12 meV homogeneous
+          linewidth); the InP/GaAsP 300 K single-dot linewidth is unmeasured
+          (docs/rt_edge_contract.md Evidence section). Sweep range 6-20 meV:
+          Chatzarakis et al., Physical Review Applied 20, 034011 (2023)
+          provides the 6.5 meV lower anchor (chatzarakis23-gamma300-class);
+          the prior 16 meV entry for this claim is superseded (it was a
+          300 K detection-bandpass filter width, not a measured emission
+          linewidth -- see this field's note).
+        anchor_id: matsuda01-gamma300-class
+        note: >
+          The g2 outcome hinges strongly on this number, evaluated fresh
+          against the final card at its own drive.I_uA=0.011314080567212663
+          (V_j and mu are unchanged across the sweep -- transport is
+          independent of dot.gamma300, Lemma 1): at gamma300 = 6.5 meV
+          (chatzarakis23-gamma300-class lower anchor) g2_op = 0.6522505181;
+          at 12.0 meV (this card's default, Matsuda 2001) g2_op =
+          0.8295595445; at 16.0 meV (the previous, now-superseded
+          Laferriere proxy) g2_op = 0.8690018619. All three recomputed
+          fresh against the final card (council review 2026-09-06 item 1).
       ret.mode:
         value: confinement
         tag: E
@@ -184,26 +209,51 @@ design:
         source: >
           transport.hkust_preset: Gu et al. 2025-like p-i-n stack
           (Al0.4Ga0.6As claddings/barriers each side of the GaAs1-xPx well).
+      drive.diode.tau_pulse_ns:
+        value: 0.1
+        tag: A
+        source: "[A] 0.1 ns pulse width, an 80 MHz-class pulsed electrical drive design choice as in Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) / typical pulsed SPS operation."
+      drive.duty:
+        value: 0.008
+        tag: A
+        source: "[A] 0.008 duty at 80 MHz, the sweep configuration; 80 MHz-class pulsed electrical drive as in Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) / typical pulsed SPS operation."
       drive.I_uA:
-        value: 0.00516156022718501
+        value: 0.011314080567212663
         tag: DR
         source: >
           [DR] Log-spaced grid I_uA=10^-4..10^-1 (31 points), followed by
           a local solve on the loaded card at T_hs=300 K, calling
           fsim_core.device.evaluate: the constrained pulsed-g2 minimum is
-          at I_uA=0.00516156022718501, where V_j=1.4622901632 V,
-          f_qfl=0.1072017813, mu=1.0000000000, rho_op=0.9706953500,
-          g2_op=0.7138882340, and collected_flux_pulsed_s=796.0529352.
-          The flux floor is not attainable in the allowed mu range;
-          this is the flux-maximising allowed current. The 0.5x point is
-          still sub-turn-on and the 2x point has mu=7.6545, so the local
-          optimum comparison is applied only to feasible neighboring
-          points. No literature single-dot InP/GaAsP drive current exists;
-          this is a simulator-derived operating point.
+          at the explicit tau_pulse_ns=0.1 ns, duty=0.008 (80 MHz),
+          I_uA=0.011314080567212663, where V_j=1.5015285054 V,
+          f_qfl=0.4899435282, mu=0.9999999998, rho_op=0.7022708986,
+          g2_op=0.8295595445, and collected_flux_pulsed_s=212.3869297.
+          Recomputed fresh against the final card (council review
+          2026-09-06): V_j/f_qfl/mu are unchanged from the round-3 numbers
+          (transport is independent of dot.gamma300 and the emission
+          block, Lemma 1); g2_op moves with the new dot.gamma300=12.0 meV
+          default (was 0.8690018619 at the superseded 16.0 meV value --
+          see dot.gamma300's note for the full 6.5/12/16 meV sensitivity);
+          rho_op and collected_flux_pulsed_s move upward with the newly
+          explicit emission.NA=0.75/R_back=0.95/L_um=250 collection levers
+          (previously 0.6568195372 and 57.9294657 under undeclared
+          NA=0.5/R_back=None/L_um=500 device.py defaults). The collected
+          flux is still below the 1 kHz floor; the flux floor is not
+          attainable in the allowed mu range; this is the flux-maximising
+          allowed current. The 0.5x point is now feasible (mu=0.1311, not
+          sub-turn-on) with g2_op=0.8983657 there, still worse (higher)
+          than this operating point's g2_op, so it does not beat this
+          point; the 2x point has mu=4.0896, outside the allowed
+          [0.05, 1.0] range. No literature single-dot InP/GaAsP drive
+          current exists; this is a simulator-derived operating point.
       drive.cw:
         value: true
         tag: A
         source: "Opt-in CW g2(tau)/IRF diagnostics (docs/rt_edge_contract.md block schema)."
+      drive.b_res:
+        value: 0.13636363636363635
+        tag: E
+        source: "[E] class value transferred from a different material and temperature: Reischle et al., Optics Express 16, 12771 (2008), InP/AlGaInP QD C at 80 K (raw g2 0.43 -> 0.03 after background correction, rho approximately 0.88 -> b_res = 1/0.88 - 1 = 0.136; ledger anchor reischle08-b-res-80k in verify/data/rt_edge_anchors.yaml states rho = 0.88 directly -- this card's b_res = 1/rho - 1 transformation, and its transfer to 300 K InP/GaAsP, are assumptions of this card, not of that anchor); T-independent residual assumed."
       drive.cw_irf_fwhm_ps:
         value: 50.0
         tag: DR
@@ -297,11 +347,12 @@ design:
           design has no resonant cavity.
       filter.track_material:
         value: dot
-        tag: DR
-        source: >
-          Stack-based Varshni tracking on the InP dot's own bandgap
-          (materials.bandgap), opt-in per docs/rt_edge_contract.md block
-          schema.
+        tag: A
+        source: "[A] inert in this configuration (no cavity); kept for the cavity variant. hold_window is false, so the named material is validated but does not move the filter window."
+      filter.hold_window:
+        value: false
+        tag: A
+        source: "[A] inert in this configuration (no cavity); kept for the cavity variant."
       aperture.compose:
         value: true
         tag: A
@@ -344,6 +395,44 @@ design:
           2 um ridge, within the Chatzarakis et al., Phys. Rev. Applied 20,
           034011 (2023) 0.3-3 um mesa/ridge class; no InP/GaAsP edge-
           emitter ridge width has been published.
+      emission.NA:
+        value: 0.75
+        tag: A
+        source: >
+          [A] 0.75 numeric aperture, within the 0.7-0.8 standard microscope-
+          objective class (Laferriere et al., Nano Letters 23, 962 (2023)
+          used NA 0.81 for first-lens collection); no InP/GaAsP edge-emitter
+          NA has been published. Declared explicitly per council review
+          2026-09-06 item 3 (previously an undeclared device.py default of
+          0.5, which understated the collected-flux calculation).
+      emission.R_back:
+        value: 0.95
+        tag: A
+        source: >
+          [A] HR-coated back facet, standard practice for edge-emitting
+          lasers/SPS devices to force emission out the front facet; no
+          InP/GaAsP edge-emitter back-facet coating has been published, so
+          this is a stated coating assumption. Declared explicitly per
+          council review 2026-09-06 item 3 (previously an undeclared
+          device.py default of None, i.e. two facets sharing emission
+          equally).
+      emission.L_um:
+        value: 250.0
+        tag: A
+        source: >
+          [A] Cleaved ridge length, shorter than the device.py 500 um
+          undeclared default, reducing propagation loss (emission.alpha_cm
+          below) over the shorter path; no InP/GaAsP edge-emitter ridge
+          length has been published. Declared explicitly per council
+          review 2026-09-06 item 3.
+      emission.alpha_cm:
+        value: 5.0
+        tag: E
+        source: >
+          [E] Ridge propagation-loss class value, the same class estimate
+          already carried as device.py's own undeclared EmissionBlock.
+          alpha_cm default (waveguide.py). Declared explicitly on the card
+          per council review 2026-09-06 item 3 rather than left implicit.
       emission.lambda_nm:
         value: 815.7
         tag: DR
@@ -381,10 +470,16 @@ design:
     ranges:
       dot.delta_xx:
         lo: 4.0
-        hi: 7.0
+        hi: 8.0
         unit: meV
-        tag: V
-        source: "Reischle 2008 (5 meV) / Bommer 2011 (7 meV) InP-dot-family X-XX splitting range, docs/rt_edge_contract.md."
+        tag: DR
+        source: >
+          docs/rt_edge_contract.md Evidence section's restated union across
+          both independent sources: Beirne et al., Phys. Rev. B 75, 195302
+          (2007) 4 meV lower bound (quoted secondarily by Reischle et al.,
+          Optics Express 16, 12771 (2008), p. 12774) and Bommer et al., J.
+          Appl. Phys. 110, 063108 (2011) 7 +/- 1 meV upper bound; union
+          4-8 meV, overlapping only marginally near 6 meV.
       dot.gamma300:
         lo: 6.0
         hi: 20.0
@@ -400,9 +495,39 @@ design:
           Fast-SPAD-class detector-IRF sweep window for the acceptance
           sweep's CW diagnostics; maps onto drive.cw_irf_fwhm_ps
           (docs/rt_edge_contract.md).
+      emission.NA:
+        lo: 0.5
+        hi: 0.8
+        unit: dimensionless
+        tag: A
+        source: >
+          Collection-lever sweep range: 0.5-0.8 spans typical microscope-
+          objective/first-lens NAs used for QD single-photon collection
+          (Laferriere et al., Nano Letters 23, 962 (2023) used NA 0.81);
+          the card's own emission.NA = 0.75 sits inside this range.
+      emission.R_back:
+        lo: 0.0
+        hi: 0.95
+        unit: fraction
+        tag: A
+        source: >
+          Collection-lever sweep range: 0 (no back-facet coating, legacy
+          equal-split default) to 0.95 (HR-coated back facet, this card's
+          own emission.R_back default), spanning uncoated to standard
+          HR-coated edge-emitter facets.
+      emission.L_um:
+        lo: 250.0
+        hi: 500.0
+        unit: um
+        tag: A
+        source: >
+          Collection-lever sweep range: 250 um (this card's own cleaved-
+          ridge default) to 500 um (the previous undeclared device.py
+          default), spanning shorter-to-longer ridge propagation lengths.
 
     assumptions:
       - dot.gamma300
+      - drive.b_res
 
     single_dot_selection:
       aperture_um2: 0.12566370614359174

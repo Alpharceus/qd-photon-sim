@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "evidence_complete": false,
-  "hallucination_tests_passed": false,
+  "all_checks_passed": false,
   "claim_results": {
     "reischle2008_g2_80K": {
       "anchors": [
@@ -48,6 +48,14 @@
       "distinct_verified_sources": 2,
       "complete": true,
       "reason": null
+    },
+    "residual_background_80K": {
+      "anchors": [
+        "reischle08-b-res-80k"
+      ],
+      "distinct_verified_sources": 1,
+      "complete": false,
+      "reason": "only 1 distinct verified primary source(s), need 2"
     },
     "gamma300_class_range": {
       "anchors": [
@@ -477,7 +485,7 @@
       "paper_id": "10.1364/OE.474320",
       "expected": 750,
       "tolerance": 5,
-      "context": "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (668 nm) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 668 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor.",
+      "context": "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (815.7 nm, this dot's own confinement-derived design point) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 815.7 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor.",
       "tag": "V",
       "status": "verified",
       "applicability": "direct",
@@ -792,6 +800,72 @@
           "check": "_check_digest_crosscheck",
           "ok": true,
           "detail": "matches independent transcription 0.276 fraction (paper_digests.md, Paper 5, Section 5: '28.2% -> reduced to 27.6% after multiphoton correction'; fact-checked in paper_digests_factcheck.md item 38.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "reischle08-b-res-80k": {
+      "claim": "residual_background_80K",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 0.88,
+      "tolerance": {
+        "abs": 0.01
+      },
+      "context": "InP/AlGaInP p-i-n EL, QD C, 80 K; signal fraction rho = S/(S+B) used in the background correction (raw g2(0)=0.43 -> background-corrected g2(0)=0.03, their Eq. 1). The paper does not state an explicit uncertainty on rho itself; the tolerance here is an assumed +/-0.01 reading-precision bound on the reported two-significant-figure value. Transferring this InP/AlGaInP, 80 K measurement to 300 K and to the cards' other material platforms (drive.b_res in cards/edge-inp-gaasp-design.yaml, cards/edge-inp-gainp-design.yaml) is an [A] of the cards, not of this anchor.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "no claim metadata (unmanaged claim)"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "no claim metadata or declared gap (skipped)"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 0.88 fraction (paper_digests.md, Paper 1, Section 5: 'g2(0) after background correction with rho = S/(S+B) = 0.94 (QD B) and 0.88 (QD C): 0.04 (QD B, 4 K); 0.03 (QD C, 80 K).')"
         }
       ],
       "effective_verified": true
@@ -1317,11 +1391,11 @@
       "paper_id": "10.1103/PhysRevB.75.195302",
       "expected": 5,
       "tolerance": 1,
-      "context": "[DR] Midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence.",
+      "context": "[DR] InP/GaInP dots: midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 ('this InP/GaInP system') from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence.",
       "tag": "DR",
       "status": "missing",
       "applicability": "proxy",
-      "structural_checks_passed": false,
+      "structural_checks_passed": true,
       "checks": [
         {
           "check": "_check_tag_valid",
@@ -1360,8 +1434,8 @@
         },
         {
           "check": "_check_context_tokens",
-          "ok": false,
-          "detail": "conditions missing all of ['InP'] (material_tokens)"
+          "ok": true,
+          "detail": "context tokens present"
         },
         {
           "check": "_check_raw_vs_corrected",
@@ -1458,15 +1532,109 @@
         "hkust22-wavelength-independent-gap",
         "luo22-hkust-wavelength-si"
       ]
+    },
+    {
+      "claim": "residual_background_80K",
+      "reason": "only 1 distinct verified primary source(s), need 2",
+      "anchors": [
+        "reischle08-b-res-80k"
+      ]
     }
   ],
-  "source_ledger_sha256": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
+  "check_details": [
+    {
+      "name": "claim [reischle2008_g2_80K] has two distinct verified primary sources",
+      "status": "FAIL",
+      "reason": "only 0 distinct verified primary source(s), need 2"
+    },
+    {
+      "name": "claim [temperature_trend_g2] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "claim [hkust_inp_gaasp_wavelength] has two distinct verified primary sources",
+      "status": "FAIL",
+      "reason": "only 1 distinct verified primary source(s), need 2"
+    },
+    {
+      "name": "claim [gaas_pin_iv] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "claim [edge_extraction_efficiency] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "claim [residual_background_80K] has two distinct verified primary sources",
+      "status": "FAIL",
+      "reason": "only 1 distinct verified primary source(s), need 2"
+    },
+    {
+      "name": "claim [gamma300_class_range] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "claim [retention_Ea_inp_algainp] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "claim [delta_xx_inp_gaasp] has two distinct verified primary sources",
+      "status": "ok",
+      "reason": null
+    },
+    {
+      "name": "evaluator cross-check [delta_xx_inp_gaasp]",
+      "status": "ok",
+      "reason": "gaasp card dot.delta_xx=5.0 vs anchor 4; gainp card dot.delta_xx=7.0 vs anchor 7; evaluator-fed (eps_op differs)=True"
+    },
+    {
+      "name": "evaluator cross-check [gamma300_class_range]",
+      "status": "ok",
+      "reason": "gaasp card dot.gamma300=12.0 (nearest verified anchor matsuda01-gamma300-class (12+/-1 meV)) and gainp card dot.gamma300=12.0 (nearest verified anchor matsuda01-gamma300-class (12+/-1 meV)) both fall within [6, 20] meV, the class band declared in fsim_core/linewidth.py -- laferriere23-linewidth-class-proxy is status: missing and no longer anchors this check; evaluator-fed anchored linewidth=True"
+    },
+    {
+      "name": "evaluator cross-check [hkust_inp_gaasp_wavelength]",
+      "status": "ok",
+      "reason": "card's own modeled edge_lambda_nm=815.7 (the explicit tabulated-index design point) stays distinct from both unverified HKUST-target wavelength anchors (755, 750) -- the design does not claim to have reached the HKUST wavelength"
+    },
+    {
+      "name": "evaluator cross-check [gaas_pin_iv]",
+      "status": "ok",
+      "reason": "reischle08-gaas-pin-iv: V_bi=2.322 (distinct from anchor, True); V_j_op=1.842 vs anchor 1.97 (class-consistent <25%, True); reischle10-gaas-pin-iv: V_bi=2.358 (distinct from anchor, True); V_j_op=1.829 vs anchor 2.07 (class-consistent <25%, True)"
+    },
+    {
+      "name": "evaluator cross-check [edge_extraction_efficiency]",
+      "status": "ok",
+      "reason": "gainp card edge_beta=0.0292 sits in its own [E] ridge class (0.3%-3%, True) and stays distinct from both vertical-reference anchors (0.276, 9e-05) -- a vertical collection efficiency does not validate this edge ridge's beta"
+    },
+    {
+      "name": "evaluator cross-check [retention_Ea_inp_algainp]",
+      "status": "ok",
+      "reason": "Ea=96 meV with the sourced Bommer-class prefactor gives S(300K)=0.001289; the SAME Ea with a different class prefactor gives 0.001512 (14.8% different) -- Ea alone does not determine S"
+    },
+    {
+      "name": "evaluator cross-check [temperature_trend_g2]",
+      "status": "ok",
+      "reason": "Chatzarakis-class fixture g2(T) over [200.0, 230.0, 260.0, 300.0] = [np.float64(0.5857), np.float64(0.6982), np.float64(0.775), np.float64(0.8548)]: non-decreasing with T (True), matching the direction BOTH independent papers (Chatzarakis 0.36@230K, Laferriere 0.57@300K) report; not a claim that the model reproduces their absolute numbers (different material systems)"
+    },
+    {
+      "name": "evaluator cross-check [reischle2008_g2_80K]",
+      "status": "ok",
+      "reason": "InP/AlGaInP EL fixture at 80 K evaluates to a physically eligible corner (g2_op=0.0336); this is delegation-wiring evidence that the simulator can represent this device class, NOT a reproduction of Reischle's measured 0.43 -- the claim stays gated on missing second-source evidence regardless"
+    }
+  ],
+  "source_ledger_sha256": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
   "evaluator_input_hashes": {
-    "verify/data/rt_edge_anchors.yaml": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
-    "cards/edge-inp-gaasp-design.yaml": "f10eb1a8f853cbedf8b2bedea23a1d64d2f8b038fb092f35c200a8239e5f0d9d",
-    "cards/edge-inp-gainp-design.yaml": "82df316cea75617139d1f60829367d1d85df55d583d2014098d0f9a912723c4f"
+    "verify/data/rt_edge_anchors.yaml": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
+    "cards/edge-inp-gaasp-design.yaml": "725f753ded4c38049af9b090ca4fbcc3e2b3bb3b8ba63d163078e3a5ee4bf95b",
+    "cards/edge-inp-gainp-design.yaml": "78f971c6a402316f79279f1a8d51a7f2a557ad7309b2608c5edd0a200d52a3f6"
   },
   "checks_passed": 14,
-  "checks_total": 16,
+  "checks_total": 17,
   "self_test": false
 }

@@ -77,7 +77,9 @@ BAD_HALLU = {"hallucination_tests_passed": False}
 
 
 def make_row(card_id, card_class, g2_pulsed, g2_cw0, g2_cw0_raw, eligible_row,
-            assumptions="dot.gamma300; emission.lambda_nm") -> dict:
+            assumptions="dot.gamma300; emission.lambda_nm", gamma300_meV=6.0,
+            delta_xx_meV=4.0, irf_ps=50.0, emission_NA=0.75, emission_R_back=0.95,
+            emission_L_um=250.0) -> dict:
     """Minimal synthetic row: headline_pass/secondary_pass are worked out
     here by the SAME plain formulas docs/rt_edge_contract.md states (the
     headline metric is pulsed intrinsic g2(0) alone; g2_cw0/g2_cw0_raw are
@@ -91,7 +93,9 @@ def make_row(card_id, card_class, g2_pulsed, g2_cw0, g2_cw0_raw, eligible_row,
     return {"card_id": card_id, "card_class": card_class, "g2_pulsed": g2_pulsed,
             "g2_cw0": g2_cw0, "g2_cw0_raw": g2_cw0_raw, "eligible_row": eligible_row,
             "headline_pass": headline_pass, "secondary_pass": secondary_pass,
-            "assumptions": assumptions}
+            "assumptions": assumptions, "gamma300_meV": gamma300_meV,
+            "delta_xx_meV": delta_xx_meV, "irf_ps": irf_ps, "emission_NA": emission_NA,
+            "emission_R_back": emission_R_back, "emission_L_um": emission_L_um}
 
 
 def full_row(**overrides) -> dict:
@@ -117,6 +121,7 @@ def full_row(**overrides) -> dict:
         "pulse_width_ns": rte.PULSE_WIDTH_NS, "rep_rate_hz": rte.REP_RATE_HZ,
         "duty_pulsed": rte.PULSE_WIDTH_NS * 1e-9 * rte.REP_RATE_HZ,
         "diagnostic_valid": False,
+        "emission_NA": 0.75, "emission_R_back": 0.95, "emission_L_um": 250.0,
     }
     base.update(overrides)
     return base
@@ -262,22 +267,198 @@ ok("median fail: pooled pulsed median matches an independent statistics.median",
 ok("median fail: best corner still passes overall while the median does not",
    v["pass"] and not v["median_pass"] and "median" in v["note"])
 
-# -- only-[A]/[E]-corner: a favorable corner's assumptions carry into "conditional"
+# -- only-[A]/[E]-corner: assumptions_used still names the passing corner's
+# stated assumptions (informational), independent of the "conditional" flag.
 rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True, assumptions="dot.gamma300; emission.lambda_nm")]
 stats = rte.compute_stats(rows)
 v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
-ok("only-[A]/[E]-corner: PASS is flagged conditional on its stated assumptions",
-   v["pass"] and v["conditional"] and set(v["assumptions_used"]) == {"dot.gamma300", "emission.lambda_nm"})
+ok("only-[A]/[E]-corner: assumptions_used names the passing corner's stated assumptions",
+   v["pass"] and set(v["assumptions_used"]) == {"dot.gamma300", "emission.lambda_nm"})
 rows_noassum = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True, assumptions="")]
 v_noassum = rte.compute_verdict(rows_noassum, rte.compute_stats(rows_noassum), True,
                                 GOOD_EVIDENCE, GOOD_HALLU)
-ok("conditional is False only when the passing corner truly carries no assumptions",
-   v_noassum["pass"] and not v_noassum["conditional"])
+ok("assumptions_used is empty when the passing corner truly carries none",
+   v_noassum["pass"] and not v_noassum["assumptions_used"])
+
+# -- council review round 4 item 2: "conditional" now means "a headline-
+# passing eligible row exists but evidence is incomplete" -- NOT "the
+# passing corner carries assumptions" (true of essentially every corner,
+# hence uninformative). A PASS (evidence complete) is never conditional;
+# a headline pass blocked only by incomplete evidence IS conditional.
+ok("conditional is False for a genuine PASS (evidence complete), even though "
+   "the passing corner carries [A]/[E] assumptions",
+   v["pass"] and not v["conditional"])
+v_cond = rte.compute_verdict(rows, stats, True, BAD_EVIDENCE, GOOD_HALLU)
+ok("conditional is True when a headline-passing eligible row exists but "
+   "evidence is incomplete (physics clears the gate, evidence gate does not)",
+   not v_cond["pass"] and "evidence_incomplete" in v_cond["fail_reasons"] and v_cond["conditional"])
+rows_nopass = [make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True)]
+v_nopass_badevidence = rte.compute_verdict(rows_nopass, rte.compute_stats(rows_nopass), True,
+                                           BAD_EVIDENCE, GOOD_HALLU)
+ok("conditional is False when there is no headline-passing row at all, "
+   "even with incomplete evidence",
+   not v_nopass_badevidence["conditional"])
 
 # -- an incomplete (--quick) grid can never PASS, regardless of how good the metrics are
 v_quick = rte.compute_verdict(rows, stats, False, GOOD_EVIDENCE, GOOD_HALLU)
 ok("incomplete grid cannot grant PASS even with a favorable, well-evidenced corner",
    not v_quick["pass"] and "grid_incomplete" in v_quick["fail_reasons"])
+
+
+# ================================== 1b. collection-lever axes (council review round 4, item 1)
+
+class _FakeBlock:
+    def __init__(self, **kw):
+        for k, v in kw.items():
+            setattr(self, k, v)
+
+
+class _FakeDesign:
+    def __init__(self, provenance, **blocks):
+        self.provenance = provenance
+        for name, block in blocks.items():
+            setattr(self, name, block)
+
+
+# -- a card with NO declared range for a lever path falls back to that
+# card's own scalar (a single-value axis), never inventing a range.
+fake_no_range = _FakeDesign({"ranges": {}},
+                            emission=_FakeBlock(NA=0.6, R_back=None, L_um=300.0))
+grid_no_range = rte.resolve_lever_grid(fake_no_range, quick=False)
+ok("lever axis fallback: a card with no declared range collapses to its own scalar",
+   grid_no_range == {"emission.NA": [0.6], "emission.R_back": [None], "emission.L_um": [300.0]})
+
+# -- a declared range is sampled at lo/hi plus the card's own scalar
+# (dedup order preserved: lo, hi, card value).
+fake_with_range = _FakeDesign(
+    {"ranges": {"emission.NA": {"lo": 0.5, "hi": 0.8}}},
+    emission=_FakeBlock(NA=0.75, R_back=0.95, L_um=250.0))
+grid_range = rte.resolve_lever_grid(fake_with_range, quick=False)
+ok("lever axis oracle: a declared range is sampled at [lo, hi, card value]",
+   grid_range["emission.NA"] == [0.5, 0.8, 0.75])
+ok("lever axis oracle: a path with no declared range still falls back correctly "
+   "alongside a sibling path that does have one",
+   grid_range["emission.R_back"] == [0.95] and grid_range["emission.L_um"] == [250.0])
+
+# -- a card value sitting exactly on a declared endpoint is not duplicated
+# (this repo's real cards: R_back=0.95=hi, L_um=250.0=lo).
+fake_dedup = _FakeDesign(
+    {"ranges": {"emission.R_back": {"lo": 0.0, "hi": 0.95},
+               "emission.L_um": {"lo": 250.0, "hi": 500.0}}},
+    emission=_FakeBlock(NA=0.75, R_back=0.95, L_um=250.0))
+grid_dedup = rte.resolve_lever_grid(fake_dedup, quick=False)
+ok("lever axis oracle: a card value exactly at a declared endpoint is not duplicated",
+   grid_dedup["emission.R_back"] == [0.0, 0.95] and grid_dedup["emission.L_um"] == [250.0, 500.0])
+
+# -- --quick collapses every lever to the card's own scalar only (single
+# point, matching --quick's existing "smaller, explicitly incomplete"
+# convention for the other axes).
+grid_quick = rte.resolve_lever_grid(fake_with_range, quick=True)
+ok("lever axis quick mode: collapses every lever to the card's own scalar only",
+   grid_quick == {"emission.NA": [0.75], "emission.R_back": [0.95], "emission.L_um": [250.0]})
+
+# -- build_lever_combos is the full cartesian product of the resolved grid
+combos = rte.build_lever_combos({"emission.NA": [0.5, 0.8], "emission.R_back": [0.0, 0.95],
+                                 "emission.L_um": [250.0]})
+ok("lever combos oracle: full cartesian product size (2 x 2 x 1 = 4)", len(combos) == 4)
+ok("lever combos oracle: every combo is a well-formed overrides dict, both corners present",
+   {"emission.NA": 0.5, "emission.R_back": 0.0, "emission.L_um": 250.0} in combos
+   and {"emission.NA": 0.8, "emission.R_back": 0.95, "emission.L_um": 250.0} in combos)
+
+
+# ======================== 1c. gamma300_pass_max / conditional-on-linewidth (round 4, item 2)
+
+gamma_rows = [
+    {"card_id": PRIMARY_ID, "headline_pass": True, "gamma300_meV": 6.0, "g2_pulsed": 0.30,
+     "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75, "emission_R_back": 0.95,
+     "emission_L_um": 250.0, "assumptions": "dot.gamma300"},
+    {"card_id": PRIMARY_ID, "headline_pass": True, "gamma300_meV": 13.0, "g2_pulsed": 0.45,
+     "delta_xx_meV": 5.5, "irf_ps": 125.0, "emission_NA": 0.8, "emission_R_back": 0.0,
+     "emission_L_um": 500.0, "assumptions": "dot.gamma300"},
+    {"card_id": PRIMARY_ID, "headline_pass": False, "gamma300_meV": 20.0, "g2_pulsed": 0.90,
+     "delta_xx_meV": 7.0, "irf_ps": 200.0, "emission_NA": 0.5, "emission_R_back": 0.95,
+     "emission_L_um": 250.0, "assumptions": ""},
+    {"card_id": FALLBACK_ID, "headline_pass": False, "gamma300_meV": 6.0, "g2_pulsed": 0.90,
+     "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75, "emission_R_back": 0.95,
+     "emission_L_um": 250.0, "assumptions": ""},
+]
+gmax_by_card = rte._card_gamma300_pass_max(gamma_rows)
+ok("gamma300_pass_max oracle: picks the LARGEST passing gamma300 (13.0), not the first (6.0)",
+   gmax_by_card[PRIMARY_ID]["gamma300_pass_max_meV"] == 13.0
+   and gmax_by_card[PRIMARY_ID]["g2_pulsed"] == 0.45
+   and gmax_by_card[PRIMARY_ID]["emission_NA"] == 0.8)
+ok("gamma300_pass_max oracle: a card with zero headline-passing rows reports nan",
+   math.isnan(gmax_by_card[FALLBACK_ID]["gamma300_pass_max_meV"]))
+
+
+# ============================= 1d. brightness factor self-check (round 4, item 3)
+
+from fsim_core.loading import loading_probs as _loading_probs_ref  # noqa: E402
+
+for _mu in (0.0, 0.1, 0.5, 1.0, 3.0):
+    _, _p1, _p2 = _loading_probs_ref(_mu)
+    ok(f"_loading_term oracle: matches fsim_core.loading.loading_probs' own P1+P2 at mu={_mu}",
+       abs(rte._loading_term(_mu) - (_p1 + _p2)) < 1e-12)
+
+_mu_test = 0.4
+_loading_expected = 1.0 - math.exp(-_mu_test)
+_factor_row = {"mu_pulsed": _mu_test, "t_x_pulsed": 0.5, "S_retention_pulsed": 0.8,
+              "edge_eta_total": 0.002, "rep_rate_hz": 80.0e6,
+              "collected_flux_pulsed_s": _loading_expected * 0.5 * 0.8 * 0.002 * 80.0e6}
+_check = rte._brightness_factor_check(_factor_row)
+ok("factor self-check oracle: loading term is the exact Poisson complement 1-e^-mu",
+   abs(_check["loading"] - _loading_expected) < 1e-12)
+ok("factor self-check oracle: product x rep_rate reproduces a consistent reported flux "
+   "within 1% (constructed exactly, so within float precision)",
+   _check["ok"] and _check["rel_diff"] < 1e-9)
+
+_bad_row = dict(_factor_row)
+_bad_row["collected_flux_pulsed_s"] = _factor_row["collected_flux_pulsed_s"] * 1.5
+_check_bad = rte._brightness_factor_check(_bad_row)
+ok("factor self-check oracle: a reported flux 50% off the factor product fails the 1% self-check",
+   not _check_bad["ok"] and _check_bad["rel_diff"] > 0.01)
+
+_nan_row = dict(_factor_row)
+_nan_row["S_retention_pulsed"] = float("nan")
+_check_nan = rte._brightness_factor_check(_nan_row)
+ok("factor self-check oracle: non-finite inputs yield ok=False without raising",
+   not _check_nan["ok"] and math.isnan(_check_nan["rel_diff"]))
+
+# -- front-facet-split oracle: beta * front * T_facet * eta_prop * eta_NA
+# must reproduce edge_eta_total EXACTLY (front is back-solved as the one
+# missing factor) -- this is council review round 4 item 3's exact
+# complaint (the 0.5 front-facet split was hidden inside eta_total with no
+# component list reproducing it); confirms beta is NOT the front-facet
+# split (a plain relabeling bug would make this fail).
+_edge_row = {"edge_beta": 0.03, "edge_T_facet": 0.72, "edge_eta_prop": 0.78,
+            "edge_eta_NA": 0.30, "edge_eta_total": 0.03 * 0.42 * 0.72 * 0.78 * 0.30}
+_front = rte._front_facet_split(_edge_row)
+ok("front-facet-split oracle: back-solved front reproduces the constructed value (0.42)",
+   abs(_front - 0.42) < 1e-9)
+ok("front-facet-split oracle: beta * front * facet * propagation * NA reproduces "
+   "edge_eta_total exactly",
+   abs(_edge_row["edge_beta"] * _front * _edge_row["edge_T_facet"]
+       * _edge_row["edge_eta_prop"] * _edge_row["edge_eta_NA"]
+       - _edge_row["edge_eta_total"]) < 1e-12)
+ok("front-facet-split oracle: non-finite/zero component inputs yield nan without raising",
+   math.isnan(rte._front_facet_split({"edge_beta": 0.0, "edge_T_facet": 0.72,
+                                      "edge_eta_prop": 0.78, "edge_eta_NA": 0.30,
+                                      "edge_eta_total": 0.001})))
+
+
+# ============================================= 1e. self-test field rename (round 4, item 5)
+
+ok("_self_test_passed: reads the legacy hallucination_tests_passed key",
+   rte._self_test_passed({"hallucination_tests_passed": True}) is True
+   and rte._self_test_passed({"hallucination_tests_passed": False}) is False)
+ok("_self_test_passed: prefers the renamed all_checks_passed key when both are present",
+   rte._self_test_passed({"all_checks_passed": True, "hallucination_tests_passed": False}) is True)
+ok("_self_test_passed: works with ONLY the renamed all_checks_passed key "
+   "(the concurrently-renamed verify_rt_edge_papers.py case)",
+   rte._self_test_passed({"all_checks_passed": True}) is True
+   and rte._self_test_passed({"all_checks_passed": False}) is False)
+ok("_self_test_passed: missing key defaults to False rather than raising",
+   rte._self_test_passed({}) is False)
 
 
 # ============================================= 2. --quick real-evaluator smoke
@@ -410,6 +591,41 @@ with tempfile.TemporaryDirectory() as td:
            for r in passing_rows))
     ok("full run: every headline_pass=True row lists non-empty assumptions",
        all(r["assumptions"].strip() for r in passing_rows))
+
+    # Council review round 4, item 1: the collection-lever axes are actually
+    # varied in a real run against this repo's real cards (which declare
+    # emission.NA/R_back/L_um ranges), not held constant, and the row count
+    # matches n_combos * (axis samples)^3 exactly (independent recount).
+    ok("full run: manifest records a resolved per-card lever grid for both cards",
+       all(cid in manifest_full["lever_info"] for cid in (PRIMARY_ID, FALLBACK_ID))
+       and all(manifest_full["lever_info"][cid]["n_combos"] >= 1
+               for cid in (PRIMARY_ID, FALLBACK_ID)))
+    for card_id in (PRIMARY_ID, FALLBACK_ID):
+        card_rows_full = [r for r in full_rows if r["card_id"] == card_id]
+        n_combos = manifest_full["lever_info"][card_id]["n_combos"]
+        expected_n_rows = n_combos * (rte._FULL_N ** 3)
+        ok(f"full run: {card_id} row count matches n_combos * (delta_xx x gamma300 x irf) "
+           f"sample counts exactly",
+           len(card_rows_full) == expected_n_rows)
+        distinct_na = {r["emission_NA"] for r in card_rows_full}
+        if len(manifest_full["lever_info"][card_id]["grid"]["emission.NA"]) > 1:
+            ok(f"full run: {card_id} sweep.csv actually varies emission.NA "
+               f"(this card declares a range for it)",
+               len(distinct_na) > 1)
+
+    # Council review round 4, item 2: gamma300_pass_max is present in the
+    # printed VERDICT line and the manifest, and is finite whenever any
+    # card actually has a headline-passing row.
+    ok("full run: printed VERDICT line carries gamma300_pass_max=",
+       "gamma300_pass_max=" in stdout_full)
+    ok("full run: manifest verdict section carries gamma300_pass_max and "
+       "gamma300_pass_max_by_card for both cards",
+       "gamma300_pass_max" in manifest_full["verdict"]
+       and all(cid in manifest_full["verdict"]["gamma300_pass_max_by_card"]
+               for cid in (PRIMARY_ID, FALLBACK_ID)))
+    if manifest_full["stats"]["n_headline"] > 0:
+        ok("full run: gamma300_pass_max is finite whenever at least one row headline-passes",
+           math.isfinite(manifest_full["verdict"]["gamma300_pass_max"]))
 
 
 # ============================================== 4. artifacts, hashes, determinism

@@ -79,13 +79,15 @@ anchors:
   # Council review (2026-09-05): status corrected from "missing" to
   # "verified". It was previously kept "missing" only to avoid tripping
   # verify_rt_edge_cards.py's tolerance check on cards/edge-inp-gaasp-
-  # design.yaml's emission.lambda_nm (668 nm, the tabulated-index design
-  # point) against the unconfirmed 755 nm HKUST target -- but that card's
-  # anchor_id for emission.lambda_nm is gu25-hkust-wavelength (still
-  # "missing", unchanged above), NOT this anchor, so promoting THIS anchor to
-  # "verified" does not touch that gate. The 668 nm vs 750 nm design-point
-  # mismatch is a card-level provenance.assumptions entry for the concurrent
-  # cards spec to record, not evidence-ledger "missing" status: the
+  # design.yaml's emission.lambda_nm (815.7 nm, this dot's own confinement-
+  # derived design point -- round 4 council review corrected this comment's
+  # earlier, now-stale "668 nm" reading) against the unconfirmed 755 nm
+  # HKUST target -- but that card's anchor_id for emission.lambda_nm is
+  # gu25-hkust-wavelength (still "missing", unchanged above), NOT this
+  # anchor, so promoting THIS anchor to "verified" does not touch that gate.
+  # The 815.7 nm vs 750 nm design-point mismatch is a card-level
+  # provenance.assumptions entry for the concurrent cards spec to record,
+  # not evidence-ledger "missing" status: the
   # underlying literature fact (a real, DOI-sourced InP/GaAsP QD laser near
   # this wavelength class exists) IS verified, even though hkust_inp_gaasp_
   # wavelength as a CLAIM still needs 2 distinct verified sources and has
@@ -97,7 +99,7 @@ anchors:
     value: 750
     unit: nm
     tolerance: 5
-    conditions: "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (668 nm) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 668 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor."
+    conditions: "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (815.7 nm, this dot's own confinement-derived design point) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 815.7 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor."
     source: "Luo et al., Optics Express 30, 40750 (2022)"
     doi: "10.1364/OE.474320"
     locator: "title / device wavelength"
@@ -137,6 +139,21 @@ anchors:
     locator: "p. 12775, collection-efficiency paragraph"
     tag: DR
     status: verified
+  # council review round 4 item 3: anchor for the residual electrical
+  # background used by cards/edge-inp-gaasp-design.yaml and
+  # cards/edge-inp-gainp-design.yaml drive.b_res (b_res = 1/rho - 1).
+  - id: reischle08-b-res-80k
+    claim: residual_background_80K
+    value: 0.88
+    unit: fraction
+    tolerance: {abs: 0.01}
+    conditions: "InP/AlGaInP p-i-n EL, QD C, 80 K; signal fraction rho = S/(S+B) used in the background correction (raw g2(0)=0.43 -> background-corrected g2(0)=0.03, their Eq. 1). The paper does not state an explicit uncertainty on rho itself; the tolerance here is an assumed +/-0.01 reading-precision bound on the reported two-significant-figure value. Transferring this InP/AlGaInP, 80 K measurement to 300 K and to the cards' other material platforms (drive.b_res in cards/edge-inp-gaasp-design.yaml, cards/edge-inp-gainp-design.yaml) is an [A] of the cards, not of this anchor."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "Section 5, background-corrected results (Eq. 1 in Section 6: rho = S/(S+B) = 0.88, QD C, 80 K)"
+    tag: V
+    status: verified
+    verification: "digest:../_goal/paper_digests.md Paper 1, Section 5: 'g2(0) after background correction with rho = S/(S+B) = 0.94 (QD B) and 0.88 (QD C): 0.04 (QD B, 4 K); 0.03 (QD C, 80 K).'"
   - id: laferriere23-first-lens-efficiency
     claim: edge_extraction_efficiency
     value: 0.276
@@ -274,7 +291,7 @@ anchors:
     value: 5
     unit: meV
     tolerance: 1
-    conditions: "[DR] Midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence."
+    conditions: "[DR] InP/GaInP dots: midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 ('this InP/GaInP system') from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence."
     source: "Beirne et al., Physical Review B 75, 195302 (2007); value quoted secondarily by Reischle et al. 2008"
     doi: "10.1103/PhysRevB.75.195302"
     locator: "not independently located in Beirne 2007; Reischle et al. 2008, p. 12774 (Ref. 14)"

@@ -46,6 +46,13 @@ entries:
     value: 0.00009
     unit: fraction
     digest_section: "paper_digests.md, Paper 1, Section 5: 'collection efficiency 0.9e-4 (4 K) and 1.8e-5 (80 K)' -- 0.9e-4 = 9e-5 = 0.00009, the 4 K value."
+  - doi: "10.1364/OE.16.012771"
+    author: "Reischle"
+    year: 2008
+    quantity: "residual_background_80K"
+    value: 0.88
+    unit: fraction
+    digest_section: "paper_digests.md, Paper 1, Section 5: 'g2(0) after background correction with rho = S/(S+B) = 0.94 (QD B) and 0.88 (QD C): 0.04 (QD B, 4 K); 0.03 (QD C, 80 K).'"
 
   # --- Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) -- in the digest set
   - doi: "10.1063/1.3497016"

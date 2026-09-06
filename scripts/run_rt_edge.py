@@ -41,6 +41,20 @@ assumptions column and in manifest.json, and are used ONLY for (a) the pulsed
 duty/tau_pulse_ns inputs above and (b) the reported collected_flux_s column
 (brightness_per_pulse * rep_rate_hz); they never feed g2 or Tj directly.
 
+Fourth council review (2026-09-06) additions: three collection-lever axes --
+emission.NA, emission.R_back, emission.L_um -- are now genuine sweep axes,
+read from EACH card's own provenance.ranges (per-card, unlike the shared
+RANGE_BOUNDS below, since the two cards' collection-lever ranges need not be
+identical); a card lacking a declared range for one of these falls back to
+that card's own scalar (single value). Because these three axes multiply the
+grid size, the shared dot.delta_xx/dot.gamma300/irf_ps axes are sampled at
+their declared endpoints only for the full (non-quick) grid too (_FULL_N=2,
+down from 3) to keep the whole sweep under the ~15 minute budget -- this
+interior-sample reduction (and every axis's resolved sample count) is
+recorded in manifest.json's "grid"/"lever_info" sections, per the review's
+explicit "reduce interior samples on the other axes if needed and say so in
+the manifest" instruction.
+
 CLI: python scripts/run_rt_edge.py [--quick] [--out-dir PATH]
 --quick uses a 2-point (endpoints-only) grid, explicitly marked incomplete;
 an incomplete grid can never grant VERDICT: PASS (see compute_verdict).
@@ -52,9 +66,12 @@ artifact-writing error.
 
 Standalone, side-effect-free on import (all work happens under
 `if __name__ == "__main__"`); verify/verify_rt_edge_sweep.py imports the
-functions below directly (grid, resolve_device_card, eval_pulsed_point,
-eval_cw_point, compute_stats, compute_verdict, write_csv, write_png,
-write_markdown, write_manifest) rather than parsing this script's stdout.
+functions below directly (grid, resolve_lever_grid, build_lever_combos,
+resolve_device_card, eval_pulsed_point, eval_cw_point, compute_stats,
+compute_verdict, _card_gamma300_pass_max, _loading_term,
+_brightness_factor_check, _front_facet_split, _self_test_passed, write_csv,
+write_png, write_markdown, write_manifest) rather than parsing this
+script's stdout.
 """
 from __future__ import annotations
 
@@ -62,6 +79,7 @@ import argparse
 import copy
 import csv
 import hashlib
+import itertools
 import json
 import platform
 import sys
@@ -97,6 +115,13 @@ RANGE_BOUNDS = {
     "irf_ps": (50.0, 200.0, "ps"),
 }
 
+# Collection-lever axes (council review round 4, item 1): unlike RANGE_BOUNDS
+# above, these are declared per-card in each card's own provenance.ranges
+# (the two cards' collection-lever ranges need not agree), so there is no
+# shared (lo, hi) tuple here -- resolve_lever_grid() reads each card's own
+# declared range (or falls back to that card's own scalar) at run time.
+LEVER_PATHS = ["emission.NA", "emission.R_back", "emission.L_um"]
+
 # [A] pulsed-drive assumption: no published single-dot InP/GaAsP or
 # InP/GaInP pulsed excitation scheme exists at this design's pA-nA current
 # scale (cards/edge-inp-*-design.yaml provenance.sources["drive.I_uA"]).
@@ -124,7 +149,15 @@ G2_THRESHOLD = 0.5
 # an eligibility/reporting floor only; it is never fed into device physics.
 FLUX_FLOOR_PULSED_S = 1.0e3
 _ENDPOINT_N = 2
-_FULL_N = 3
+# Reduced from 3 to 2 (council review round 4, item 1): adding the three
+# emission.NA/R_back/L_um lever axes below multiplies the grid size by up to
+# ~12 (this repo's two cards' own declared ranges); keeping the prior
+# endpoints+interior (n=3) sampling on dot.delta_xx/dot.gamma300/irf_ps as
+# well would push the full sweep to ~20+ minutes. Endpoints-only (n=2) on
+# these three axes keeps the full sweep under the ~15 minute budget; this
+# is the documented "reduce interior samples on the other axes" trade-off
+# the review explicitly allows, recorded in manifest.json's grid section.
+_FULL_N = 2
 
 
 # --------------------------------------------------------------------- grid
@@ -132,15 +165,59 @@ _FULL_N = 3
 def build_grid(quick: bool) -> dict:
     """{"dot.delta_xx": [...], "dot.gamma300": [...], "irf_ps": [...]}, always
     including both declared endpoints; quick=True is endpoints-only (spec:
-    "explicitly marked incomplete and cannot grant scientific PASS"); the
-    full grid adds one interior sample per axis (device.py evaluate_envelope's
-    own caveat: a bare 2-level factorial only bounds a monotone response)."""
-    # n=3 -> endpoints plus one interior (midpoint) sample per axis: a
-    # genuine (non-degenerate) grid, catching a non-monotone response the
-    # bare 2-level factorial (quick=True) cannot.
+    "explicitly marked incomplete and cannot grant scientific PASS"). The
+    full grid was endpoints-plus-one-interior-sample (n=3) before council
+    review round 4; it is now endpoints-only (n=2, same as --quick) so the
+    three new emission.NA/R_back/L_um lever axes below (up to ~12 combos
+    per card) fit the ~15 minute runtime budget -- see _FULL_N above."""
     n = _ENDPOINT_N if quick else _FULL_N
     return {path: [float(v) for v in np.linspace(lo, hi, n)]
             for path, (lo, hi, _unit) in RANGE_BOUNDS.items()}
+
+
+def resolve_lever_grid(design0: DeviceDesign, quick: bool) -> dict:
+    """Per-card sample set for each of the three collection-lever axes
+    (LEVER_PATHS): the card's own declared provenance.ranges endpoints plus
+    the card's own scalar value, deduplicated (spec: "sampled at the range
+    ends plus the card value"); a card with no declared range for one of
+    these paths falls back to that card's single declared scalar (== the
+    device.py class default whenever the card does not override it) --
+    this file never invents a range the card does not state. --quick
+    collapses every lever to the card's own scalar only (a single point),
+    matching --quick's existing endpoints-only-but-smaller convention for
+    the other axes (still explicitly incomplete; grid_complete governs
+    PASS eligibility, not this axis's density)."""
+    ranges = (design0.provenance or {}).get("ranges", {})
+    grid = {}
+    for path in LEVER_PATHS:
+        block_name, field_name = path.split(".", 1)
+        card_value = getattr(getattr(design0, block_name), field_name)
+        if quick:
+            grid[path] = [card_value]
+            continue
+        rng = ranges.get(path)
+        if not rng or rng.get("lo") is None or rng.get("hi") is None:
+            grid[path] = [card_value]
+            continue
+        candidates = [float(rng["lo"]), float(rng["hi"])]
+        if card_value is not None:
+            candidates.append(float(card_value))
+        deduped = []
+        for v in candidates:
+            if not any(abs(v - seen) < 1e-12 for seen in deduped):
+                deduped.append(v)
+        grid[path] = deduped
+    return grid
+
+
+def build_lever_combos(lever_grid: dict) -> list:
+    """Full cartesian product of the per-card lever grid -- LEVER_PATHS are
+    genuine sweep axes, exactly like dot.delta_xx/dot.gamma300/irf_ps, just
+    resolved per-card rather than from the shared RANGE_BOUNDS. Each entry
+    is an overrides dict ({"emission.NA": v, "emission.R_back": v,
+    "emission.L_um": v}) directly consumable by resolve_device_card."""
+    return [dict(zip(LEVER_PATHS, combo))
+            for combo in itertools.product(*(lever_grid[p] for p in LEVER_PATHS))]
 
 
 # ------------------------------------------------------------ card plumbing
@@ -164,19 +241,27 @@ def _sha256_file(path: Path) -> str:
 # --------------------------------------------------------------- evaluation
 
 def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
-                      cache: dict | None = None) -> dict:
-    """Pulsed sub-result at (delta_xx, gamma300); irf_ps-independent, so
-    cache is keyed without it and reused across the irf_ps sweep axis."""
-    key = (str(card_path), "pulsed", delta_xx, gamma300)
+                      lever: dict, cache: dict | None = None) -> dict:
+    """Pulsed sub-result at (delta_xx, gamma300, lever); irf_ps-independent,
+    so cache is keyed without it and reused across the irf_ps sweep axis.
+    g2_op itself does not depend on the emission.NA/R_back/L_um collection
+    levers (device.py's edge-out-coupling factor only multiplies into
+    brightness_per_pulse, never into op["g2"]) but brightness/collected
+    flux do, so the lever values are still part of the cache key -- a
+    lever-varying row cannot reuse another lever's cached brightness."""
+    key = (str(card_path), "pulsed", delta_xx, gamma300,
+          lever["emission.NA"], lever["emission.R_back"], lever["emission.L_um"])
     if cache is not None and key in cache:
         return cache[key]
     base = DeviceDesign.load(card_path)
     duty = PULSE_WIDTH_NS * 1e-9 * REP_RATE_HZ
-    design = resolve_device_card(card_path, {
+    overrides = {
         "dot.delta_xx": delta_xx, "dot.gamma300": gamma300,
         "drive.duty": duty, "drive.cw": False,
         "drive.diode": {**base.drive.diode, "tau_pulse_ns": PULSE_WIDTH_NS},
-    })
+    }
+    overrides.update(lever)
+    design = resolve_device_card(card_path, overrides)
     sc = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
     flux = _collected_flux_s(sc)
     eligible, reasons = _classify(sc, flux, "pulsed")
@@ -188,13 +273,15 @@ def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
 
 
 def eval_cw_point(card_path: Path, delta_xx: float, gamma300: float,
-                  irf_ps: float) -> dict:
+                  irf_ps: float, lever: dict) -> dict:
     """CW (duty=1 DC) sub-result; genuinely irf_ps-dependent (g2_cw0_raw),
     so every irf_ps grid value gets its own evaluate() call."""
-    design = resolve_device_card(card_path, {
+    overrides = {
         "dot.delta_xx": delta_xx, "dot.gamma300": gamma300,
         "drive.duty": 1.0, "drive.cw": True, "drive.cw_irf_fwhm_ps": irf_ps,
-    })
+    }
+    overrides.update(lever)
+    design = resolve_device_card(card_path, overrides)
     sc = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
     flux = _collected_flux_s(sc)
     eligible, reasons = _classify(sc, flux, "cw")
@@ -258,29 +345,33 @@ def _classify(sc: dict, flux_s: float, role: str) -> tuple[bool, list]:
 
 # ------------------------------------------------------------------ sweep
 
-def sweep_card(card: dict, grid: dict, pulsed_cache: dict) -> list:
-    """One card's full cartesian (delta_xx, gamma300, irf_ps) grid -> rows.
-    Every scheduled row is emitted, eligible or not (spec: never drop invalid
-    rows)."""
+def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple:
+    """One card's full cartesian (delta_xx, gamma300, irf_ps, lever) grid ->
+    rows, plus the resolved per-card lever grid/combo count for manifest
+    reporting. Every scheduled row is emitted, eligible or not (spec: never
+    drop invalid rows)."""
     card_path = card["path"]
     design0 = DeviceDesign.load(card_path)
     provenance = design0.provenance or {}
     ranges = provenance.get("ranges", {})
     card_assumptions = list(provenance.get("assumptions", []))
     i_ua = design0.drive.I_uA
+    lever_grid = resolve_lever_grid(design0, quick)
+    combos = build_lever_combos(lever_grid)
     rows = []
-    for delta_xx in grid["dot.delta_xx"]:
-        for gamma300 in grid["dot.gamma300"]:
-            pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, pulsed_cache)
-            for irf_ps in grid["irf_ps"]:
-                cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps)
-                rows.append(_build_row(card, ranges, card_assumptions, i_ua,
-                                       delta_xx, gamma300, irf_ps, pulsed, cw))
-    return rows
+    for lever in combos:
+        for delta_xx in grid["dot.delta_xx"]:
+            for gamma300 in grid["dot.gamma300"]:
+                pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache)
+                for irf_ps in grid["irf_ps"]:
+                    cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever)
+                    rows.append(_build_row(card, ranges, card_assumptions, i_ua,
+                                           delta_xx, gamma300, irf_ps, lever, pulsed, cw))
+    return rows, lever_grid, len(combos)
 
 
 def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
-              pulsed, cw) -> dict:
+              lever, pulsed, cw) -> dict:
     scp, sccw = pulsed["scalars"], cw["scalars"]
     eligible_row = bool(pulsed["eligible"] and cw["eligible"])
     g2_p, g2_cw0, g2_cw0_raw = scp.get("g2_op"), sccw.get("g2_cw0"), sccw.get("g2_cw0_raw")
@@ -296,7 +387,8 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
     assumptions = sorted(set(card_assumptions) | set(SWEEP_ASSUMPTION_KEYS))
     config_hash = hashlib.sha256(json.dumps(
         {"card": card["id"], "delta_xx": delta_xx, "gamma300": gamma300,
-         "irf_ps": irf_ps, "pulse_width_ns": PULSE_WIDTH_NS, "rep_rate_hz": REP_RATE_HZ},
+         "irf_ps": irf_ps, "pulse_width_ns": PULSE_WIDTH_NS, "rep_rate_hz": REP_RATE_HZ,
+         "lever": lever},
         sort_keys=True).encode()).hexdigest()[:16]
     return {
         "card_id": card["id"], "card_class": card["class"], "config_id": config_hash,
@@ -332,6 +424,10 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         "assumptions": "; ".join(assumptions),
         "pulse_width_ns": PULSE_WIDTH_NS, "rep_rate_hz": REP_RATE_HZ,
         "duty_pulsed": pulsed["duty"],
+        # Collection-lever axes (council review round 4, item 1): which
+        # emission.NA/R_back/L_um values produced THIS row.
+        "emission_NA": lever["emission.NA"], "emission_R_back": lever["emission.R_back"],
+        "emission_L_um": lever["emission.L_um"],
     }
 
 
@@ -348,7 +444,7 @@ def csv_fieldnames() -> list:
             "invalid_reasons_cw", "assumptions", "pulse_width_ns", "rep_rate_hz",
             "duty_pulsed", "edge_T_facet", "edge_eta_prop", "edge_eta_NA",
             "diagnostic_valid", "diag_g2_pulsed", "diag_g2_cw0",
-            "diag_g2_cw0_raw"]
+            "diag_g2_cw0_raw", "emission_NA", "emission_R_back", "emission_L_um"]
 
 
 # -------------------------------------------------------------- statistics
@@ -475,6 +571,14 @@ def _max_finite(values):
 
 
 def _best_diagnostic_row(rows):
+    """Lowest g2_pulsed wins; ties are broken by the HIGHEST collected flux,
+    not the lowest. g2_op does not depend on the emission.NA/R_back/L_um
+    collection levers (device.py's edge out-coupling factor only multiplies
+    into brightness, never into g2), so council review round 4's lever axes
+    (item 1) now routinely produce many rows tied on g2_pulsed that differ
+    only in collected flux; the "favourable diagnostic corner" this feeds
+    (write_markdown's brightness decomposition) is the best-g2,
+    most-measurable operating point, so the highest-flux tie is preferred."""
     valid = []
     for row in rows:
         try:
@@ -482,8 +586,148 @@ def _best_diagnostic_row(rows):
                 valid.append(row)
         except (TypeError, ValueError):
             pass
-    return min(valid, key=lambda r: (float(r["g2_pulsed"]),
-                                     float(r.get("collected_flux_pulsed_s", float("inf"))))) if valid else None
+
+    def _key(row):
+        g2 = float(row["g2_pulsed"])
+        try:
+            flux = float(row.get("collected_flux_pulsed_s", float("nan")))
+        except (TypeError, ValueError):
+            flux = float("nan")
+        return (g2, -flux if np.isfinite(flux) else float("inf"))
+
+    return min(valid, key=_key) if valid else None
+
+
+def _self_test_passed(report: dict) -> bool:
+    """verify/verify_rt_edge_papers.py (out of this file's scope) is
+    concurrently being renamed by another worker: its self-test flag is
+    moving from `hallucination_tests_passed` to `all_checks_passed`. Read
+    whichever key the installed module actually returns, preferring the
+    new name."""
+    if "all_checks_passed" in report:
+        return bool(report["all_checks_passed"])
+    return bool(report.get("hallucination_tests_passed", False))
+
+
+def _f_or_none(value):
+    try:
+        return float(value) if value is not None and np.isfinite(float(value)) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _card_gamma300_pass_max(rows: list) -> dict:
+    """Per-card ceiling on the (currently unmeasured, [E]-class) 300 K
+    linewidth gamma300 (council review round 4, item 2): the largest
+    gamma300_meV at which ANY eligible row (any lever/delta_xx/irf
+    combination) still clears the headline pulsed g2(0)<0.5 gate --
+    restates the verdict as conditional on this one unmeasured input
+    rather than as an absolute platform ceiling. Returns {card_id: {...}},
+    "gamma300_pass_max_meV": nan when the card has no headline-passing row."""
+    by_card: dict = {}
+    for r in rows:
+        by_card.setdefault(r["card_id"], []).append(r)
+    result = {}
+    for card_id, card_rows in by_card.items():
+        passing = [r for r in card_rows if r["headline_pass"]]
+        if not passing:
+            result[card_id] = {"gamma300_pass_max_meV": float("nan")}
+            continue
+        gmax = max(float(r["gamma300_meV"]) for r in passing)
+        at_max = [r for r in passing if float(r["gamma300_meV"]) == gmax]
+        best = min(at_max, key=lambda r: float(r["g2_pulsed"]))
+        result[card_id] = {
+            "gamma300_pass_max_meV": gmax,
+            "g2_pulsed": _f_or_none(best.get("g2_pulsed")),
+            "delta_xx_meV": _f_or_none(best.get("delta_xx_meV")),
+            "irf_ps": _f_or_none(best.get("irf_ps")),
+            "emission_NA": _f_or_none(best.get("emission_NA")),
+            "emission_R_back": _f_or_none(best.get("emission_R_back")),
+            "emission_L_um": _f_or_none(best.get("emission_L_um")),
+            "assumptions": str(best.get("assumptions", "")),
+        }
+    return result
+
+
+def _loading_term(mu) -> float:
+    """The Poisson cap-2 loading multiplier actually used in
+    brightness_per_pulse (fsim_core.loading.loading_probs: P0=e^-mu,
+    P1+P2 = 1-P0 EXACTLY -- brightness_per_pulse's own P1+P2 factor, loading.py
+    lines 49-54/69-72) -- a plain algebraic identity on the already-computed
+    mu_resolved scalar, not new physics; council review round 4 item 3's
+    complaint was that the old factor table printed bare `mu` as if IT were
+    the multiplier, when the actual multiplier is this quantity."""
+    try:
+        mu_f = float(mu)
+    except (TypeError, ValueError):
+        return float("nan")
+    return 1.0 - np.exp(-mu_f) if np.isfinite(mu_f) else float("nan")
+
+
+def _brightness_factor_check(row: dict) -> dict:
+    """Reconstructs collected_flux_pulsed_s as the plain product of
+    device.py's own already-computed scalars -- loading (1-e^-mu), t_X, S
+    (confinement retention), edge_eta_total (edge out-coupling, which
+    itself already contains beta/T_facet/eta_prop/eta_NA exactly once
+    each), times rep_rate_hz -- with NO duty term (duty is already folded
+    into rep_rate_hz's own derivation, device.py's rep_rate_hz = duty_eff /
+    tau_pulse_ns) and no separate beta/facet/propagation/NA terms (already
+    inside edge_eta_total): council review round 4 item 3's exact
+    complaint was that the old table's `duty` row and standalone `beta` row
+    were NOT independent multipliers on top of rep_rate/eta_total, so
+    multiplying every printed row together double-counted / mis-stated the
+    chain. This IS that same chain, reconstructed field-by-field, so its
+    product times rep_rate reproduces the reported flux to float precision
+    (checked here at a generous 1% tolerance)."""
+    mu, t_x = row.get("mu_pulsed"), row.get("t_x_pulsed")
+    S, eta_total = row.get("S_retention_pulsed"), row.get("edge_eta_total")
+    rep_rate, reported_flux = row.get("rep_rate_hz"), row.get("collected_flux_pulsed_s")
+    loading = _loading_term(mu)
+    fields = [loading, t_x, S, eta_total, rep_rate]
+    try:
+        fields_f = [float(v) for v in fields]
+    except (TypeError, ValueError):
+        fields_f = [float("nan")] * len(fields)
+    if not all(np.isfinite(v) for v in fields_f):
+        return {"ok": False, "loading": loading, "product_flux": float("nan"),
+                "reported_flux": _f_or_none(reported_flux) or float("nan"),
+                "rel_diff": float("nan")}
+    loading_f, t_x_f, S_f, eta_f, rep_f = fields_f
+    product_flux = loading_f * t_x_f * S_f * eta_f * rep_f
+    reported_flux_f = _f_or_none(reported_flux)
+    if reported_flux_f is None or reported_flux_f == 0:
+        rel_diff = float("nan")
+    else:
+        rel_diff = abs(product_flux - reported_flux_f) / reported_flux_f
+    ok = bool(np.isfinite(rel_diff) and rel_diff < 0.01)
+    return {"ok": ok, "loading": loading_f, "t_x": t_x_f, "S": S_f, "eta_total": eta_f,
+            "rep_rate": rep_f, "product_flux": product_flux,
+            "reported_flux": reported_flux_f if reported_flux_f is not None else float("nan"),
+            "rel_diff": rel_diff}
+
+
+def _front_facet_split(row: dict) -> float:
+    """The front/back facet emission split (waveguide.edge_emission's own
+    `front` local -- 0.5 with no R_back, else T_facet/(T_facet+(1-R_back)))
+    is folded into edge_eta_total exactly once but never separately exposed
+    as its own device.py/EdgeResult scalar -- council review round 4 item
+    3's exact complaint ("hides the 0.5 front-facet split inside
+    eta_total"). It is NOT the same quantity as `beta` (the waveguide
+    spontaneous-emission coupling factor). Back-solved here as a pure
+    division of four already-computed evaluator scalars (no new physics):
+    eta_total = beta * front * T_facet * eta_prop * eta_NA."""
+    try:
+        beta = float(row.get("edge_beta"))
+        t_facet = float(row.get("edge_T_facet"))
+        eta_prop = float(row.get("edge_eta_prop"))
+        eta_na = float(row.get("edge_eta_NA"))
+        eta_total = float(row.get("edge_eta_total"))
+    except (TypeError, ValueError):
+        return float("nan")
+    denom = beta * t_facet * eta_prop * eta_na
+    if not (np.isfinite(denom) and denom != 0 and np.isfinite(eta_total)):
+        return float("nan")
+    return eta_total / denom
 
 
 def compute_verdict(rows: list, stats: dict, grid_complete: bool,
@@ -500,7 +744,7 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     never stated and which made the raw-CW gate (structurally >= ~0.89 for
     every corner) force coverage=0 regardless of the headline metric."""
     evidence_complete = bool(evidence_report.get("evidence_complete", False))
-    hallucination_ok = bool(hallucination_report.get("hallucination_tests_passed", False))
+    hallucination_ok = _self_test_passed(hallucination_report)
     headline_rows = [r for r in rows if r["headline_pass"]]
     headline_by_card: dict = {}
     for r in headline_rows:
@@ -524,7 +768,19 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
 
     assumptions_used = sorted(set(
         a for r in headline_rows for a in r["assumptions"].split("; ") if a))
-    conditional = bool(passed and assumptions_used)
+    # Council review round 4, item 2: `conditional` no longer means "PASS
+    # relies on some assumption" (true of essentially every corner, since
+    # every row is [A]/[E]-tagged -- an uninformative signal). It now marks
+    # the specific, actionable state where the physics already clears the
+    # headline gate but the run cannot declare PASS only because the
+    # evidence gate (verify_rt_edge_papers.py's two-source-per-claim rule)
+    # is not yet satisfied -- i.e. a result that is conditional on evidence
+    # completion, not on the science itself.
+    conditional = bool(headline_rows) and not evidence_complete
+
+    gamma300_pass_max_by_card = _card_gamma300_pass_max(rows)
+    gamma300_pass_max = _max_finite(
+        [v["gamma300_pass_max_meV"] for v in gamma300_pass_max_by_card.values()])
 
     fallback_only = bool(passed and headline_by_card
                          and all(r["card_class"] != "primary"
@@ -558,6 +814,8 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "conditional": conditional, "assumptions_used": assumptions_used,
         "headline_rows": headline_rows, "headline_by_card": headline_by_card,
         "fallback_only": fallback_only, "note": note,
+        "gamma300_pass_max": gamma300_pass_max,
+        "gamma300_pass_max_by_card": gamma300_pass_max_by_card,
     }
 
 
@@ -575,7 +833,8 @@ def verdict_line(verdict: dict) -> str:
             f"evidence={'complete' if verdict['evidence_complete'] else 'incomplete'} "
             f"conditional={'true' if verdict['conditional'] else 'false'} "
             f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
-            f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']}")
+            f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']} "
+            f"gamma300_pass_max={verdict['gamma300_pass_max']:.4g}")
 
 
 def card_line(card_id: str, card_stats: dict) -> str:
@@ -677,7 +936,9 @@ def write_png(rows: list, stats: dict, path: Path) -> None:
 
 def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                    grid_complete: bool, evidence_report: dict,
-                   hallucination_report: dict, path: Path) -> None:
+                   hallucination_report: dict, path: Path,
+                   lever_info: dict | None = None) -> None:
+    lever_info = lever_info or {}
     lines = []
     lines.append("# RT edge-emitter acceptance sweep verdict")
     lines.append("")
@@ -703,12 +964,45 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "electrical-vs-optical literature picture, not as a claim of an "
         "existing electrical 300 K result to exceed.")
     lines.append("")
+    lines.append("## Conditional on the 300 K linewidth")
+    lines.append(
+        "The 300 K single-dot linewidth gamma300 is not a platform ceiling -- it is an "
+        "unmeasured [E]-class quantity (see Assumptions below) whose actual value decides "
+        "whether the headline gate passes. The table below reports, per card, the LARGEST "
+        "gamma300 in this sweep's grid at which any eligible row (any lever/delta_xx/irf "
+        "combination) still clears pulsed intrinsic g2(0) < 0.5; a smaller real-world "
+        "gamma300 than this value keeps the corresponding card passing, a larger one does not.")
+    lines.append("")
+    lines.append(f"`gamma300_pass_max` (pooled, both cards): {verdict['gamma300_pass_max']:.4g} meV")
+    lines.append("")
+    lines.append("| card | gamma300_pass_max (meV) | delta_xx | irf | lever values | assumptions |")
+    lines.append("|---|---:|---:|---:|---|---|")
+    for card_id, info in verdict["gamma300_pass_max_by_card"].items():
+        gmax = info.get("gamma300_pass_max_meV", float("nan"))
+        if not np.isfinite(gmax):
+            lines.append(f"| {card_id} | n/a (no headline-passing row in this grid) | | | | |")
+            continue
+        def _g(key):
+            v = info.get(key)
+            return f"{v:g}" if v is not None else "n/a"
+        lever_text = f"NA={_g('emission_NA')}, R_back={_g('emission_R_back')}, L_um={_g('emission_L_um')}"
+        lines.append(f"| {card_id} | {gmax:.4g} | {_g('delta_xx_meV')} meV | {_g('irf_ps')} ps | "
+                     f"{lever_text} | {info.get('assumptions', '')} |")
+    lines.append("")
     lines.append("## Grid")
     lines.append(f"Grid complete: {grid_complete}"
                  + ("" if grid_complete else " (--quick: endpoints-only, cannot grant PASS)"))
     for path_key, (lo, hi, unit) in RANGE_BOUNDS.items():
         vals = ", ".join(f"{v:g}" for v in grid[path_key])
         lines.append(f"- `{path_key}` in [{lo}, {hi}] {unit}: sampled at {vals}")
+    if lever_info:
+        lines.append("")
+        lines.append("Collection-lever axes (per-card, council review round 4 item 1):")
+        for card_id, info in lever_info.items():
+            for lever_path, values in info.get("grid", {}).items():
+                vals = ", ".join(f"{v:g}" if v is not None else "None" for v in values)
+                lines.append(f"- `{card_id}` `{lever_path}`: sampled at {vals}")
+            lines.append(f"- `{card_id}` lever combinations evaluated: {info.get('n_combos')}")
     lines.append("")
     lines.append("## Coverage")
     lines.append(f"- eligible coverage: {stats['n_eligible']}/{stats['n_total']} "
@@ -725,11 +1019,11 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append(f"- **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- "
                  f"the contract's PASS metric): "
                  f"{stats['n_headline']}/{stats['n_total']} = {stats['headline_coverage']:.3f}")
-    lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (diagnostic only, does "
-                 f"not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
+    lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (eligible rows, diagnostic "
+                 f"only, does not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
                  f"= {stats['cw0_coverage']:.3f}")
-    lines.append(f"- secondary coverage, CW IRF-convolved g2_cw0_raw < 0.5 (diagnostic "
-                 f"only, does not gate PASS): {stats['n_cw_raw_pass']}/{stats['n_total']} "
+    lines.append(f"- secondary coverage, CW IRF-convolved g2_cw0_raw < 0.5 (eligible rows, "
+                 f"diagnostic only, does not gate PASS): {stats['n_cw_raw_pass']}/{stats['n_total']} "
                  f"= {stats['cw_raw_coverage']:.3f}")
     lines.append("")
     lines.append("## Per-card statistics")
@@ -754,34 +1048,81 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                          f"(floor/maximum = {verdict['flux_shortfall']:.4g}).")
         else:
             lines.append("## Best diagnostic-g2 row and brightness decomposition")
-        factors = [("mu", best.get("mu_pulsed")), ("S", best.get("S_retention_pulsed")),
-                       ("t_X", best.get("t_x_pulsed")), ("beta", best.get("edge_beta")),
-                       ("facet", best.get("edge_T_facet")), ("propagation", best.get("edge_eta_prop")),
-                       ("NA", best.get("edge_eta_NA"))]
-        finite_factors = [(n, float(v)) for n, v in factors if v is not None and np.isfinite(v) and v > 0]
-        dominant = min(finite_factors, key=lambda x: x[1])[0] if finite_factors else "the collection chain"
+        # Council review round 4, item 3: print the ACTUAL multiplicative
+        # chain (loading term, t_X, S, eta_total, rep rate) with a
+        # self-check that their product reproduces the reported flux --
+        # not a decorative list that double-counts beta/facet/propagation/
+        # NA (already folded into eta_total) or duty (already folded into
+        # rep_rate_hz's own derivation).
+        check = _brightness_factor_check(best)
+        chain = [("loading = 1 - e^-mu (mu={:.4g})".format(
+                     float(best["mu_pulsed"]) if best.get("mu_pulsed") is not None
+                     and np.isfinite(best.get("mu_pulsed")) else float("nan")),
+                 check.get("loading")),
+                ("t_X (spectral transmission)", check.get("t_x")),
+                ("S (confinement retention)", check.get("S")),
+                ("eta_total (edge out-coupling: waveguide coupling x front/back facet "
+                 "split x facet transmission x propagation x NA, all in one factor)",
+                 check.get("eta_total")),
+                ("rep rate (Hz)", check.get("rep_rate"))]
+        front_split = _front_facet_split(best)
+        component_factors = [("beta (waveguide coupling / spontaneous-emission factor)",
+                              best.get("edge_beta")),
+                             ("front (front/back facet split: 0.5 with no R_back, else "
+                              "T_facet/(T_facet+(1-R_back)); back-solved -- device.py folds "
+                              "it into eta_total but never exposes it on its own)", front_split),
+                             ("facet (Fresnel transmission)", best.get("edge_T_facet")),
+                             ("propagation", best.get("edge_eta_prop")),
+                             ("NA (numerical aperture)", best.get("edge_eta_NA"))]
+        finite_components = [(n, float(v)) for n, v in component_factors
+                             if v is not None and np.isfinite(v) and v > 0]
+        dominant = (min(finite_components, key=lambda x: x[1])[0]
+                   if finite_components else "the collection chain")
         lines.append(f"The dominant brightness limiter at the favourable diagnostic corner is "
-                     f"{dominant}; the factor decomposition is:")
+                     f"{dominant}; the multiplicative chain that reproduces the reported "
+                     f"collected pulsed flux is:")
         lines.append("")
         lines.append("| factor | value |")
         lines.append("|---|---:|")
-        for name, value in factors + [("eta_total", best.get("edge_eta_total")),
-                                           ("rep rate", best.get("rep_rate_hz")),
-                                           ("duty", best.get("duty_pulsed"))]:
+        for name, value in chain:
+            lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
+                         else f"| {name} | nan |")
+        lines.append(f"| **product x rep rate** | {check['product_flux']:.6g} photons/s |"
+                     if np.isfinite(check.get("product_flux", float("nan")))
+                     else "| **product x rep rate** | nan |")
+        lines.append(f"| reported collected_flux_pulsed_s | {check['reported_flux']:.6g} photons/s |"
+                     if np.isfinite(check.get("reported_flux", float("nan")))
+                     else "| reported collected_flux_pulsed_s | nan |")
+        lines.append(
+            f"| self-check: relative difference | {check['rel_diff']:.4%} "
+            f"({'PASS, within 1%' if check['ok'] else 'FAIL, exceeds 1%'}) |"
+            if np.isfinite(check.get("rel_diff", float("nan")))
+            else "| self-check: relative difference | nan (non-finite inputs) |")
+        lines.append("")
+        lines.append(f"`beta`/`front`/`facet`/`propagation`/`NA` are shown below for diagnosis "
+                     f"only -- they are already folded into `eta_total` above exactly once each "
+                     f"(their product reproduces eta_total) and must NOT also be multiplied "
+                     f"into the flux self-check:")
+        lines.append("")
+        lines.append("| component (already inside eta_total) | value |")
+        lines.append("|---|---:|")
+        for name, value in component_factors:
             lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
                          else f"| {name} | nan |")
         lines.append("")
         lines.append("## Diagnostic g2 landscape")
-        lines.append("| corner | pulsed g2 min | pooled diagnostic median | assumptions |")
-        lines.append("|---|---:|---:|---|")
+        lines.append("| corner | pulsed g2 min | pooled diagnostic median | lever values | assumptions |")
+        lines.append("|---|---:|---:|---|---|")
         def _grid_text(key):
             value = best.get(key)
             return f"{value:g}" if value is not None and np.isfinite(value) else "n/a"
+        lever_text = (f"NA={_grid_text('emission_NA')}, R_back={_grid_text('emission_R_back')}, "
+                     f"L_um={_grid_text('emission_L_um')}")
         lines.append(f"| {best.get('card_id', 'unknown')} ({_grid_text('delta_xx_meV')} meV, "
                      f"gamma300={_grid_text('gamma300_meV')} meV, "
                      f"irf={_grid_text('irf_ps')} ps) | "
                          f"{best['g2_pulsed']:.6g} | {stats['diag_g2_pulsed_median']:.6g} | "
-                         f"{best.get('assumptions', '')} |")
+                         f"{lever_text} | {best.get('assumptions', '')} |")
     lines.append("")
     lines.append("## Assumptions required by any headline-passing corner")
     if verdict["assumptions_used"]:
@@ -793,10 +1134,61 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     if verdict["note"]:
         lines.append(f"**Note:** {verdict['note']}")
         lines.append("")
+    lines.append("## Assumptions in plain words")
+    lines.append(
+        "**1. The collection window assumption makes flux look independent of the "
+        "300 K linewidth.** Every row's spectral filter is set automatically to exactly "
+        "match the exciton line's own width at the operating temperature "
+        "(device.py's `filter.auto_w` convention; `filter.auto_w_scale` can widen or "
+        "narrow it, 1.0 = as-is here). A plain mathematical consequence of matching the "
+        "window to the line's own width is that exactly HALF of the X-line's photons fall "
+        "inside the window in every single row of this sweep (t_X = 0.5, column "
+        "`t_x_pulsed`) -- no matter how wide or narrow the real (currently unmeasured) "
+        "300 K linewidth gamma300 turns out to be. That is why the reported collected "
+        "photon flux does not move with gamma300 in this sweep: it is not that the real "
+        "device would be insensitive to linewidth, it is that this filter-window "
+        "convention cancels that sensitivity out by construction.")
+    lines.append("")
+    lines.append(
+        "**2. The background-light assumption is borrowed from a different, colder "
+        "device.** Every row carries a constant background term (`drive.b_res`) that is "
+        "not measured on this platform: it is transferred from Reischle et al., Appl. "
+        "Phys. Lett. 92, 233113 (2008), whose 80 K electrically driven single-photon "
+        "source had about 88% real signal and 12% background light (signal fraction "
+        "rho ~ 0.88). This sweep assumes the same 12% background fraction still applies "
+        "at 300 K, on a different material system (InP/GaAsP or InP/GaInP edge "
+        "emitters) than the one actually measured. No 300 K electrical background "
+        "measurement exists for either card's platform.")
+    lines.append("")
+    _plain_best = stats.get("best_diagnostic_row")
+    if _plain_best is not None and np.isfinite(_plain_best.get("g2_cw0", float("nan"))) \
+            and np.isfinite(_plain_best.get("g2_cw0_raw", float("nan"))):
+        lines.append(
+            "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the "
+            f"best diagnostic operating point in this sweep, the intrinsic CW g2(0) is "
+            f"{_plain_best['g2_cw0']:.3g} (that alone would already satisfy the g2 < 0.5 "
+            f"single-photon criterion), but once a realistic single-photon detector's "
+            f"finite timing resolution (instrument response function, IRF) is folded in, "
+            f"the measured raw CW g2(0) rises to {_plain_best['g2_cw0_raw']:.3g} -- ABOVE "
+            f"the 0.5 threshold. In plain terms: the antibunching dip this device produces "
+            f"under continuous drive is narrower in time than a real detector can resolve, "
+            f"so a CW measurement alone could never demonstrate single-photon emission on "
+            f"this platform. Pulsed (gated) operation sidesteps the detector's timing "
+            f"resolution and is therefore required, not optional.")
+    else:
+        lines.append(
+            "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** No "
+            "diagnostic row with both a finite intrinsic and IRF-convolved CW g2(0) is "
+            "available in this run to quote a concrete pair of numbers, but the "
+            "underlying reason pulsed drive is used is the same in every corner: the "
+            "antibunching dip this device produces under continuous drive is narrower in "
+            "time than a real single-photon detector's instrument response, so a CW "
+            "measurement alone cannot demonstrate single-photon emission on this "
+            "platform.")
+    lines.append("")
     lines.append("## Evidence gate")
     lines.append(f"- evidence_complete: {evidence_report.get('evidence_complete')}")
-    lines.append(f"- hallucination_tests_passed (self-test): "
-                 f"{hallucination_report.get('hallucination_tests_passed')}")
+    lines.append(f"- self_test_passed (self-test): {_self_test_passed(hallucination_report)}")
     missing = evidence_report.get("missing_evidence", [])
     if missing:
         lines.append("- missing/incomplete evidence claims:")
@@ -826,12 +1218,16 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
 def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
                    grid_complete: bool, evidence_report: dict,
                    hallucination_report: dict, runtime_s: float, quick: bool,
-                   path: Path) -> None:
+                   path: Path, lever_info: dict | None = None) -> None:
     manifest = {
         "schema_version": 1,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "quick": quick, "grid_complete": grid_complete, "grid": grid,
         "range_bounds": RANGE_BOUNDS,
+        # Per-card resolved collection-lever grid (council review round 4,
+        # item 1) -- {card_id: {"grid": {path: [values]}, "n_combos": int}};
+        # unlike range_bounds/grid above these are per-card, not shared.
+        "lever_info": lever_info or {},
         "pulse_assumption": PULSE_ASSUMPTION,
         "cards": [{"id": c["id"], "class": c["class"], "path": str(c["path"]),
                   "sha256": _sha256_file(c["path"])} for c in CARDS],
@@ -844,7 +1240,7 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
             "pulsed_collected_flux_floor_s": FLUX_FLOOR_PULSED_S,
             "pulsed_collected_flux_floor_basis": "[A] below ~1 kHz a g2 measurement is not practical within hours at single-photon-detector counting rates",
             "pass_requires": ["grid_complete", "evidence_complete",
-                              "hallucination_tests_passed",
+                              "self_test_passed",
                               "at least one eligible row with pulsed intrinsic g2(0)<0.5 "
                               "(the headline metric; g2_cw0 and g2_cw0_raw are secondary "
                               "diagnostics reported as coverage fractions but do not gate PASS)"],
@@ -859,8 +1255,12 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
         "evidence": {k: evidence_report.get(k) for k in
                     ("evidence_complete", "source_ledger_sha256", "evaluator_input_hashes",
                      "missing_evidence")},
-        "hallucination_self_test": {"hallucination_tests_passed":
-                                    hallucination_report.get("hallucination_tests_passed")},
+        # Field renamed from hallucination_tests_passed to self_test_passed
+        # (spec item 5); verify/verify_rt_edge_papers.py (out of this file's
+        # scope) is concurrently renaming its OWN key from
+        # hallucination_tests_passed to all_checks_passed -- _self_test_passed
+        # reads whichever key that module actually returns.
+        "hallucination_self_test": {"self_test_passed": _self_test_passed(hallucination_report)},
         "runtime_seconds": runtime_s,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -873,10 +1273,13 @@ def run_sweep(quick: bool) -> tuple:
     grid = build_grid(quick)
     pulsed_cache: dict = {}
     rows = []
+    lever_info = {}
     for card in CARDS:
-        rows.extend(sweep_card(card, grid, pulsed_cache))
+        card_rows, lever_grid, n_combos = sweep_card(card, grid, pulsed_cache, quick)
+        rows.extend(card_rows)
+        lever_info[card["id"]] = {"grid": lever_grid, "n_combos": n_combos}
     stats = compute_stats(rows)
-    return rows, stats, grid
+    return rows, stats, grid, lever_info
 
 
 def main(argv=None) -> int:
@@ -888,7 +1291,7 @@ def main(argv=None) -> int:
     out_dir = Path(args.out_dir)
 
     t0 = time.time()
-    rows, stats, grid = run_sweep(args.quick)
+    rows, stats, grid, lever_info = run_sweep(args.quick)
 
     # Fresh paper-check invocation (spec: "Invoke paper-check run_checks()
     # freshly"); this file never writes evidence.json (out of scope --
@@ -904,9 +1307,11 @@ def main(argv=None) -> int:
         write_csv(rows, out_dir / "sweep.csv")
         write_png(rows, stats, out_dir / "envelope.png")
         write_markdown(rows, stats, verdict, grid, grid_complete,
-                       evidence_report, hallucination_report, out_dir / "verdict.md")
+                       evidence_report, hallucination_report, out_dir / "verdict.md",
+                       lever_info=lever_info)
         write_manifest(rows, stats, verdict, grid, grid_complete, evidence_report,
-                       hallucination_report, runtime_s, args.quick, out_dir / "manifest.json")
+                       hallucination_report, runtime_s, args.quick, out_dir / "manifest.json",
+                       lever_info=lever_info)
     except OSError as exc:
         print(f"FAIL: could not write output artifacts: {exc}", file=sys.stderr)
         return 1
