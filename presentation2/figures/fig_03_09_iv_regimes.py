@@ -40,7 +40,12 @@ def main() -> None:
     diode = transport.red_diode_preset()
     T = 300.0
 
-    V_j = np.linspace(0.05, 2.2, 400)
+    # V_j is capped well below V_bi (2.10 V): beyond ~1.95 V, J grows so
+    # steeply that I*R_s alone reaches kV-scale voltages no real mesa
+    # survives (that failure regime is regimes IV, the previous slide, not
+    # this one) -- this range covers J from ~1e-12 to ~4.5e6 A/cm^2, ample
+    # to show both the exponential knee and the R_s rollover on one axis.
+    V_j = np.linspace(0.05, 1.95, 400)
     J = np.array([diode.j_of_vj(v, T) for v in V_j])
     V_applied = V_j + (J * diode.area_cm2) * diode.R_s_ohm
 
@@ -50,12 +55,11 @@ def main() -> None:
     ax1.semilogy(V_j, J, color="#1769aa", lw=2.5, label=r"$J(V_j)$ -- junction voltage")
     ax1.semilogy(V_applied, J, color="#c43d3d", lw=2.5, ls="--",
                  label=r"$J(V_{applied})$ -- includes series resistance $R_s$")
-    ax1.axvline(diode.vbi(T), color="gray", ls=":", lw=1.5)
-    ax1.text(diode.vbi(T) + 0.02, J.min() * 3, r"$V_{bi}$", fontsize=13, color="gray")
-    ax1.annotate("diffusion + SRH\n(exponential)", xy=(0.9, 1e0), fontsize=12,
+    ax1.annotate("diffusion + SRH\n(exponential)", xy=(0.4, 1e-6), fontsize=12,
                  color="#1769aa")
-    ax1.annotate("$R_s$ rollover\n(linear-ish)", xy=(1.7, 3e2), fontsize=12,
-                 color="#c43d3d")
+    ax1.annotate("$R_s$ rollover\n(bends right,\nsame $J$ needs\nmore $V$)", xy=(2.3, 1e4),
+                 fontsize=12, color="#c43d3d")
+    ax1.set_xlim(0, 3.8)
     ax1.set_xlabel("voltage (V)", fontsize=15)
     ax1.set_ylabel(r"current density $J$ (A/cm$^2$)", fontsize=15)
     ax1.set_title("Two-diode I-V: from exponential to $R_s$-limited", fontsize=15)

@@ -46,7 +46,7 @@ def main() -> None:
             label=r"$V_{bi} = (kT/q)\,\ln(N_A N_D / n_i^2)$, GaAs, 300 K")
     ax.plot(N_mark, vbi_mark, "o", color="#c43d3d", markersize=12, zorder=5)
     ax.annotate(f"$N_A = N_D = 10^{{17}}$ cm$^{{-3}}$\n$V_{{bi}}$ = {vbi_mark:.4f} V",
-                xy=(N_mark, vbi_mark), xytext=(3e15, vbi_mark + 0.25),
+                xy=(N_mark, vbi_mark), xytext=(2e17, vbi_mark - 0.18),
                 fontsize=14, fontweight="bold", color="#c43d3d",
                 arrowprops=dict(arrowstyle="->", color="#c43d3d", lw=1.5))
 
