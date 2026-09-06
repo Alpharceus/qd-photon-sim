@@ -141,6 +141,30 @@ class DriveBlock:
     cw_irf_shape: str = "gaussian"  # cw_g2.IRF_SHAPES
     cw_pump_ratio: float = 1.0    # X->XX secondary CW pump ratio [A]
     cw_tau_max_ns: float = 10.0   # CW g2(tau) window half-width, ns [A]
+    rep_rate_hz: float = 0.0      # council review 2026-09-05 item 1 -- pulse
+                                  # repetition rate, Hz. 0 (default): derive
+                                  # from duty/tau_pulse_ns as before (legacy).
+                                  # An explicit EL-transport pulsed card MUST
+                                  # set drive.diode['tau_pulse_ns'] and either
+                                  # duty or this field (evaluate() raises
+                                  # otherwise): DriveBlock's own defaults
+                                  # (duty=1.0, tau_pulse_ns=1.0) silently read
+                                  # as a 1 GHz/100%-duty DC drive [A].
+    b_res: float = 0.0            # council review 2026-09-05 item 8 -- residual
+                                  # background channel, T-independent:
+                                  # background photons in the collection
+                                  # window per COLLECTED X photon (same
+                                  # normalization as the item-2 fixed b_e/t_X
+                                  # ratio). 0.0 (default): legacy, no residual
+                                  # channel. Models whatever the injection
+                                  # background model does not capture (e.g.
+                                  # the 80 K electrical anchor, Reischle et
+                                  # al., Appl. Phys. Lett. 92, 233113 (2008),
+                                  # measured rho ~ 0.88 -> b_res = 1/0.88-1 =
+                                  # 0.136); a card setting this NON-zero must
+                                  # carry its own provenance note for the
+                                  # anchor [E/A] -- device.py does not invent
+                                  # a value here, only the mechanism.
 
 
 @dataclass
@@ -177,6 +201,15 @@ class CavityBlock:
 class FilterBlock:
     enabled: bool = True
     auto_w: bool = True          # w = Gamma(T_j) operating convention [A]
+    auto_w_scale: float = 1.0    # council review 2026-09-05 item 9: multiplies
+                                 #   the auto_w window (1.0 = legacy). auto_w
+                                 #   sets the collection window to the FULL
+                                 #   linewidth Gamma(T_j) -- the F-series
+                                 #   operating convention, not a bug -- but a
+                                 #   sweep must be able to vary how wide that
+                                 #   window is relative to the line without
+                                 #   abandoning the auto_w convention entirely
+                                 #   (auto_w=False, an explicit fixed w) [A].
     w: float = 2.0               # meV, used when auto_w = False
     dx: float = 0.0              # X offset from window center (meV)
     track: str = "mode"          # "mode": slit follows the cavity mode (legacy,
@@ -454,12 +487,21 @@ def _resolve_edge(ret: RetentionBlock, emission: EmissionBlock, Tj: float):
     def n_at(mat):
         return materials.refractive_index(mat.label, lambda_nm)
 
+    # council review 2026-09-05 item 5: each layer carries its materials.py
+    # label so edge_emission's group-index finite difference can re-resolve
+    # it at a shifted wavelength (generalizes beyond the hkust_ridge_stack
+    # special case that used to be the only dispersive stack).
     layers = [
-        waveguide.Layer("barrier_lower", n_at(system.barrier), emission.cladding_nm),
-        waveguide.Layer("matrix_lower", n_at(system.matrix), emission.core_half_nm),
-        waveguide.Layer("dot", n_at(system.dot), max(g.height_nm, 0.1), True),
-        waveguide.Layer("matrix_upper", n_at(system.matrix), emission.core_half_nm),
-        waveguide.Layer("barrier_upper", n_at(system.barrier), emission.cladding_nm),
+        waveguide.Layer("barrier_lower", n_at(system.barrier), emission.cladding_nm,
+                        material=system.barrier.label),
+        waveguide.Layer("matrix_lower", n_at(system.matrix), emission.core_half_nm,
+                        material=system.matrix.label),
+        waveguide.Layer("dot", n_at(system.dot), max(g.height_nm, 0.1), True,
+                        material=system.dot.label),
+        waveguide.Layer("matrix_upper", n_at(system.matrix), emission.core_half_nm,
+                        material=system.matrix.label),
+        waveguide.Layer("barrier_upper", n_at(system.barrier), emission.cladding_nm,
+                        material=system.barrier.label),
     ]
     edge = waveguide.edge_emission(
         layers, emission.ridge_width_nm, emission.etch_depth_nm, lambda_nm,
@@ -510,6 +552,39 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # The CW pump rate is transport.loading.r_dot; never inferred from
         # the dimensionless pulsed mu (docs/rt_edge_contract.md).
         raise ValueError("drive.cw=True requires drive.mode='EL-transport'")
+    # council review 2026-09-05 item 1: DriveBlock's own defaults (duty=1.0,
+    # drive.diode's tau_pulse_ns default 1.0) silently read as a 1 GHz, 100%
+    # duty DC drive under EL-transport pulsed operation (device.py:944-949,
+    # pre-fix) -- a card that never touched either field got a fabricated
+    # repetition rate with no warning. Pulsed (drive.cw=False) EL-transport
+    # now REQUIRES the card to set drive.diode['tau_pulse_ns'] and either
+    # drive.duty or drive.rep_rate_hz explicitly (away from their untouched
+    # defaults); CW is exempt (no pulsing, no repetition rate to fabricate).
+    tau_pulse_ns_val = float((d.drive.diode or {}).get("tau_pulse_ns", 1.0))
+    tau_pulse_explicit = "tau_pulse_ns" in (d.drive.diode or {})
+    duty_explicit = d.drive.duty != DriveBlock.duty
+    rep_explicit = d.drive.rep_rate_hz > 0.0
+    if d.drive.mode == "EL-transport" and not d.drive.cw:
+        if not (tau_pulse_explicit and (duty_explicit or rep_explicit)):
+            missing = []
+            if not tau_pulse_explicit:
+                missing.append("drive.diode['tau_pulse_ns']")
+            if not (duty_explicit or rep_explicit):
+                missing.append("drive.duty or drive.rep_rate_hz")
+            raise ValueError(
+                "drive.mode='EL-transport' pulsed operation (drive.cw=False) requires "
+                "explicit " + " and ".join(missing) + " -- unset defaults (duty=1.0, "
+                "tau_pulse_ns=1.0) silently report a 1 GHz/100%-duty DC drive "
+                "(council review 2026-09-05 item 1)")
+    # duty_eff feeds the thermal-power calculation below (P, and the
+    # transport self-heating loop's own duty*P_junction average) in place of
+    # the raw d.drive.duty field: when the card gave rep_rate_hz explicitly
+    # instead of duty, the physically consistent duty is tau_pulse*rep_rate,
+    # never the untouched duty=1.0 default. Whenever rep_rate_hz is NOT the
+    # (sole) explicit choice -- every legacy caller, since rep_rate_hz
+    # defaults to 0 -- duty_eff is exactly d.drive.duty (bit-identical).
+    duty_eff = (d.drive.rep_rate_hz * tau_pulse_ns_val * 1e-9
+               if (rep_explicit and not duty_explicit) else d.drive.duty)
     proxy = class_proxy_params() if (d.dot.linewidth == "class" or d.ret.mode == "proxy") else {}
     gp = ({k: proxy[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo")}
           if d.dot.linewidth == "class" else None)
@@ -523,12 +598,22 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
 
     a = 0.5 * d.thermal.mesa_diameter_um * 1e-6
     st = _stack(d.thermal)
-    P = d.drive.duty * d.drive.I_uA * 1e-6 * d.drive.V
+    P = duty_eff * d.drive.I_uA * 1e-6 * d.drive.V
     chan = [BackgroundChannel("injection", A=d.drive.b_e, m=d.drive.b_e_m,
                               E_act=d.drive.b_e_Eact, I_ref=d.drive.I_ref_uA)]
     # SiN evanescent coupling: no resonant line (no kappa acceptance, no G boost);
     # beta_sin is applied to brightness only, below -- never to eps/rho/g2/T_c (Lemma 1).
     sin_mode = d.cavity.enabled and d.cavity.type == "sin_waveguide"
+    # council review 2026-09-05 item 7: filter.track_material only actually
+    # moves the filter window (a) whenever the cavity tracks it (cavity
+    # enabled, non-SiN -- dx is always recomputed from the stack there), or
+    # (b) cavity-less/SiN with the explicit hold_window opt-in. Cavity-less
+    # with hold_window=False (the default) resolves _tracked_material only to
+    # validate the name -- dx stays filter.dx, exactly as if track_material
+    # were never set -- so the provenance note below must say so, not claim
+    # "materials.bandgap on stack layer ..." as if it were effective.
+    cavity_tracks = d.cavity.enabled and not sin_mode
+    track_material_effective = bool(d.filter.track_material) and (cavity_tracks or d.filter.hold_window)
 
     def one(T_hs):
         # The legacy branch deliberately retains its one-shot P=IV calculation.
@@ -540,7 +625,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             g2=np.nan, t_x=np.nan, runaway=False, mu=np.nan,
                             eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
-                            cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                            cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                             invalid_reason="EL-transport requires positive current")
             converged = False
             for _ in range(12):
@@ -549,7 +634,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
                     aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
                     **_transport_options(d.drive, 1.0))
-                next_Tj = t_junction(d.drive.duty * trial.P_junction_W, a, st, T_hs)
+                next_Tj = t_junction(duty_eff * trial.P_junction_W, a, st, T_hs)
                 if abs(next_Tj - Tj) < 1e-10:
                     converged = True
                     break
@@ -559,14 +644,14 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             g2=np.nan, t_x=np.nan, runaway=False, mu=np.nan,
                             eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
-                            cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                            cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                             invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
                         g2=np.nan, t_x=np.nan, runaway=True, mu=np.nan,
                         eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                         g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
-                        cw_gamma_X_ns=np.nan, cw_rho=np.nan,
+                        cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                         invalid_reason="thermal runaway")
         gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
                     d.dot.E_LO, d.dot.gamma300))) if d.dot.linewidth == "anchored"
@@ -616,7 +701,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 dx = d.filter.dx
         w = None
         if d.filter.enabled:
-            w = gam if d.filter.auto_w else d.filter.w
+            # item 9 (council review 2026-09-05): auto_w_scale multiplies the
+            # auto_w (full-linewidth) convention window; 1.0 (default) is
+            # exactly legacy.
+            w = gam * d.filter.auto_w_scale if d.filter.auto_w else d.filter.w
         # Slit-held tracking (T-1): slit centered on X (dx_w = user offset
         # only), cavity at the physical mode walk (dx stays the tracking
         # detuning). Under "mode" (legacy) both centers share dx exactly.
@@ -723,7 +811,23 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         else:
             inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
         G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
-        B = params["b0"] + params["beta"] * (1.0 - S) + (G * S * inj_bg if diode else inj_bg)
+        if diode:
+            # item 2 (council review 2026-09-05, round 3): inj_bg (==
+            # injection.b_e * win_scale) is transport's background
+            # normalized per UNFILTERED X photon (transport.py's rate_x
+            # carries no t_X), while docs/rt_edge_contract.md's rho is "per
+            # COLLECTED X photon" -- the CW path already divides by t_X
+            # (sig = t_X*I_X + t_XX*I_XX below); the pulsed path did not
+            # (rho_op 0.98896 vs the correct 0.97815 == cw_rho_op at the
+            # gaasp operating point). Dividing by spec.t_x converts the
+            # per-emitted-X ratio into per-collected-X, matching the CW
+            # convention exactly.
+            bg_per_collected = inj_bg / spec.t_x if spec.t_x > 0 else float("inf")
+            # item 8: drive.b_res is already stated per collected X photon
+            # (same normalization) -- added once, alongside it.
+            B = params["b0"] + params["beta"] * (1.0 - S) + G * S * (bg_per_collected + d.drive.b_res)
+        else:
+            B = params["b0"] + params["beta"] * (1.0 - S) + inj_bg + d.drive.b_res
         rho = G * S / (G * S + B)
         # T1 mechanism library (opt-in): resolve the card's mechanism into the
         # DriveInterface at THIS junction temperature (SET pricing is T-honest)
@@ -770,7 +874,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # once. Legacy (compose=False) leaves g2_dot untouched; the rounded
         # aperture_g2_penalty scalar (below, at the operating point only)
         # stays informational-only in that case, unchanged from before.
-        w_ap = gam if (d.filter.auto_w or not d.filter.enabled) else d.filter.w
+        # item 9: w_ap is the SAME collection-window concept as the filter's
+        # own w above, so it carries the same auto_w_scale (1.0 = legacy).
+        w_ap = gam * d.filter.auto_w_scale if (d.filter.auto_w or not d.filter.enabled) else d.filter.w
         if d.aperture.compose:
             _, lam_row = _aperture_lambda(
                 d.aperture.density_cm2, np.pi * (d.aperture.diameter_um / 2) ** 2,
@@ -826,7 +932,12 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 # drive.diode.w_meV explicitly overrides the transport
                 # window away from the filter's own).
                 abs_bg_in_window_ns = injection.background.rate_bg_window / 1e9
-                bg = abs_bg_in_window_ns * win_scale
+                # item 8 (council review 2026-09-05, round 3): drive.b_res is
+                # stated per collected X photon (t_X*I_X, the same
+                # normalization the pulsed path now uses) -- added once,
+                # alongside the transport background, so pulsed and CW share
+                # the identical residual-channel convention.
+                bg = abs_bg_in_window_ns * win_scale + d.drive.b_res * t_X * I_X
                 rho_cw = sig / (sig + bg) if (sig + bg) > 0 else float("nan")
                 report = cw_g2.cw_report(
                     r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX, rho_cw,
@@ -849,7 +960,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     g2=g2_from(g2_dot, rho), t_x=spec.t_x, runaway=False,
                     mu=mu_use, eta_capture=eta_use, b_e=inj_bg,
                     injection=injection, S=S, g2_cw0=g2_cw0, g2_cw0_raw=g2_cw0_raw,
-                    cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho)
+                    cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho,
+                    w=(w if w is not None else float("nan")))
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     rows = [one(T) for T in Ts]
@@ -879,7 +991,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 break
 
     _, P1, P2 = loading_probs(op["mu"])
-    w_ap = op["gam"] if d.filter.auto_w or not d.filter.enabled else d.filter.w
+    # item 9: same auto_w_scale as the filter's own resolved w (1.0 = legacy).
+    w_ap = op["gam"] * d.filter.auto_w_scale if d.filter.auto_w or not d.filter.enabled else d.filter.w
     if np.isfinite(w_ap):
         Nw = float(n_window_competitors(
             d.aperture.density_cm2, np.pi * (d.aperture.diameter_um / 2) ** 2,
@@ -901,8 +1014,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         brightness *= op["S"]
 
     # emission.type="edge" (Lemma 1: brightness only -- eta_total already
-    # contains beta and the chosen front-facet fraction exactly once; T_facet/
-    # beta/cavity.beta_sin are never applied a second time here).
+    # contains beta, the chosen front-facet fraction, AND the Fresnel facet
+    # transmission T_facet (council review 2026-09-05 item 3: T_facet was
+    # previously solved for and returned but never multiplied in, 1.37x
+    # optimistic) exactly once each; none of beta/front/T_facet/
+    # cavity.beta_sin are applied a second time here).
     edge, edge_lambda_nm, edge_err = None, float("nan"), None
     if d.emission.type == "edge" and np.isfinite(op["Tj"]):
         try:
@@ -925,29 +1041,55 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         injection_f_qfl_bg = inj_op.background.f_qfl_bg
         supply_active = inj_op.leakage.eta_inj * (d.drive.I_uA * 1e-6 / transport.Q_SI)
         ld_op = inj_op.loading
-        carrier_budget_closure = ((ld_op.r_captured + ld_op.r_matrix) / supply_active
-                                  if supply_active > 0 else float("nan"))
+        # item 6 (council review 2026-09-05, round 3): the round-2
+        # carrier_budget_closure = (r_captured+r_matrix)/supply_active was
+        # identically 1 BY CONSTRUCTION (transport.py's dot_loading defines
+        # r_matrix as supply_active - r_captured's complement exactly, see
+        # its own docstring item 2) -- it could never fail, so it caught
+        # nothing. photon_budget instead sums FOUR independently-read-off
+        # channels -- dot radiative (X+XX, the S-survived share of
+        # r_captured), dot non-radiative (the (1-S) escape/retention loss),
+        # matrix radiative (the eta_rad_matrix share of r_matrix, the FULL
+        # emission, not the b_e collection window slice), matrix
+        # non-radiative -- each a genuinely separate term rather than a
+        # pre-closed pair, so a future change that drops one silently is
+        # visible here (verify's own self-test drops one deliberately and
+        # confirms the ratio moves off 1).
+        eta_rad_matrix_op = float((d.drive.diode or {}).get("eta_rad_matrix", 0.1))
+        pb_dot_rad = ld_op.r_captured * op["S"]
+        pb_dot_nonrad = ld_op.r_captured * (1.0 - op["S"])
+        pb_matrix_rad = ld_op.r_matrix * eta_rad_matrix_op
+        pb_matrix_nonrad = ld_op.r_matrix * (1.0 - eta_rad_matrix_op)
+        photon_budget = ((pb_dot_rad + pb_dot_nonrad + pb_matrix_rad + pb_matrix_nonrad)
+                        / supply_active if supply_active > 0 else float("nan"))
     else:
         injection_area_um2 = float("nan")
         injection_f_qfl_bg = float("nan")
-        carrier_budget_closure = float("nan")
+        supply_active = float("nan")
+        pb_dot_rad = pb_dot_nonrad = pb_matrix_rad = pb_matrix_nonrad = float("nan")
+        photon_budget = float("nan")
 
-    # item 9 (council review 2026-09-05, device side only -- the sweep's own
-    # eligibility floor is a separate spec): the pulsed collected photon flux
-    # [A] converts brightness_per_pulse (photons collected per pulse) to a
-    # rate via the repetition period implied by drive.duty = tau_pulse /
-    # period (the SAME duty already used for the thermal average power
-    # above), so period = tau_pulse_ns / duty; only meaningful for the
-    # EL-transport diode path, which is the only place tau_pulse_ns is a
-    # physical pulse width rather than an unused legacy field.
+    # item 1 (council review 2026-09-05, round 3): the pulsed collected photon
+    # flux [A] converts brightness_per_pulse (photons collected per pulse) to
+    # a rate via the repetition period tau_pulse_ns/duty_eff -- rep_rate_hz is
+    # now either the card's own explicit drive.rep_rate_hz, or derived from
+    # duty_eff/tau_pulse_ns_val (both resolved in the validation block above;
+    # duty_eff already equals d.drive.duty whenever rep_rate_hz was not the
+    # explicit choice, so this reduces to the legacy formula exactly). Only
+    # meaningful for the EL-transport diode path, which is the only place
+    # tau_pulse_ns is a physical pulse width rather than an unused legacy
+    # field.
     if diode is not None:
-        tau_pulse_ns = float((d.drive.diode or {}).get("tau_pulse_ns", 1.0))
-        rep_rate_hz = (d.drive.duty / (tau_pulse_ns * 1e-9)
-                       if tau_pulse_ns > 0 and d.drive.duty > 0 else float("nan"))
+        tau_pulse_ns = tau_pulse_ns_val
+        rep_rate_hz = (d.drive.rep_rate_hz if rep_explicit
+                       else (duty_eff / (tau_pulse_ns * 1e-9)
+                             if tau_pulse_ns > 0 and duty_eff > 0 else float("nan")))
         collected_flux_pulsed_s = (brightness * rep_rate_hz
                                    if np.isfinite(brightness) and np.isfinite(rep_rate_hz)
                                    else float("nan"))
     else:
+        tau_pulse_ns = float("nan")
+        rep_rate_hz = float("nan")
         collected_flux_pulsed_s = float("nan")
     flux_measurable = bool(np.isfinite(collected_flux_pulsed_s) and collected_flux_pulsed_s >= 1e3)
 
@@ -987,13 +1129,24 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                       if op["injection"] is not None else np.nan),
         "background.rate_x": (op["injection"].background.rate_x
                               if op["injection"] is not None else np.nan),
-        # council review 2026-09-05: injection area used (item 3), the
-        # background's own sub-turn-on suppression (item 1), carrier-budget
-        # closure (item 2), and the pulsed flux eligibility floor inputs
-        # (item 9).
+        # council review 2026-09-05 round 2: injection area used (item 3),
+        # the background's own sub-turn-on suppression (item 1), and the
+        # pulsed flux eligibility floor inputs (item 9).
         "injection.area_um2": injection_area_um2,
         "injection.f_qfl_bg": injection_f_qfl_bg,
-        "carrier_budget_closure": carrier_budget_closure,
+        # round 3 item 6: photon_budget replaces the tautological
+        # carrier_budget_closure; the four summed channels are exposed too so
+        # a self-test can recompute the ratio with one deliberately dropped.
+        "photon_budget": photon_budget,
+        "photon_budget.dot_radiative": pb_dot_rad,
+        "photon_budget.dot_nonradiative": pb_dot_nonrad,
+        "photon_budget.matrix_radiative": pb_matrix_rad,
+        "photon_budget.matrix_nonradiative": pb_matrix_nonrad,
+        "photon_budget.supply_active": supply_active,
+        # round 3 item 1: the repetition-rate bookkeeping, now explicit.
+        "rep_rate_hz": rep_rate_hz,
+        "tau_pulse_ns": tau_pulse_ns,
+        "duty_resolved": duty_eff,
         "collected_flux_pulsed_s": collected_flux_pulsed_s,
         "flux_measurable": flux_measurable,
         # emission.type="edge" (Lemma 1: reported, never re-multiplied into
@@ -1015,6 +1168,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "aperture_lambda_op": lam_op,
         # material tracking (filter.track_material)
         "track_material": d.filter.track_material,
+        "track_material_effective": track_material_effective,
+        # item 9 (council review 2026-09-05, round 3): the resolved collection
+        # window and the fraction of the XX line inside it -- eps == t_xx/t_x
+        # by construction (spectral.epsilon), so t_xx = eps_op * t_x_op reads
+        # off the SAME transmission the g2/eps chain already used, never a
+        # second spectral evaluation.
+        "w_resolved": op["w"],
+        "xx_in_window": (op["eps"] * op["t_x"]
+                         if np.isfinite(op["eps"]) and np.isfinite(op["t_x"]) else np.nan),
         # CW diagnostics (drive.cw)
         "g2_cw0": op["g2_cw0"], "g2_cw0_raw": op["g2_cw0_raw"],
         "cw_r_ns": op["cw_r_ns"], "cw_gamma_X_ns": op["cw_gamma_X_ns"],
@@ -1051,11 +1213,36 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                         "note": ("continuous Poisson competitor-bath composition"
                                  if d.aperture.compose
                                  else "legacy informational aperture_g2_penalty only")},
-            "tracking": {"tag": "DR" if d.filter.track_material else "A",
+            # item 7 (council review 2026-09-05, round 3): the note must say
+            # "materials.bandgap on stack layer ..." ONLY when track_material
+            # actually moves the filter window (track_material_effective,
+            # computed above) -- cavity disabled + hold_window=False resolves
+            # the material only to validate the name, changes nothing, and
+            # must not claim otherwise.
+            "tracking": {"tag": "DR" if track_material_effective else "A",
                         "note": (f"materials.bandgap on stack layer {d.filter.track_material!r}"
-                                 if d.filter.track_material else "legacy hard-coded GaAs Varshni")},
+                                 if track_material_effective
+                                 else ("track_material set but inert (cavity disabled, "
+                                       "hold_window false)" if d.filter.track_material
+                                       else "legacy hard-coded GaAs Varshni"))},
             "cw": {"tag": "A", "note": ("cw_g2 rate-equation model, transport-derived pump rate"
                                         if d.drive.cw else "not requested")},
+            # item 8: b_res is a residual background channel that this module
+            # never invents a value for -- 0.0 (legacy) carries no anchor; a
+            # non-zero value's own provenance (e.g. the 80 K Reischle 2008
+            # electrical anchor) is set by the CARD, not fabricated here.
+            "b_res": {"tag": "E" if d.drive.b_res != 0.0 else "A",
+                     "note": ("residual background channel, applied once in the pulsed and "
+                              "CW rho -- value and anchor must come from the card's own "
+                              "provenance" if d.drive.b_res != 0.0
+                              else "not requested (0.0, legacy)")},
+            # item 9: document the auto_w operating convention explicitly.
+            "filter_window": {"tag": "A",
+                             "note": (f"auto_w sets the collection window to the full "
+                                      f"linewidth Gamma(T_j) (F-series operating convention); "
+                                      f"auto_w_scale={d.filter.auto_w_scale:g} scales it "
+                                      f"(1.0 = legacy)" if d.filter.auto_w
+                                      else "explicit fixed filter.w")},
         },
     }
     return {"curves": curves, "scalars": scalars}

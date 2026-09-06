@@ -236,7 +236,12 @@ ok("inline DotSystem matches its equivalent preset exactly",
    r_preset["scalars"]["S_resolved"] == r_inline["scalars"]["S_resolved"])
 
 # =============================================================== 4. EL-transport drive
-d = DeviceDesign(); d.drive.mode = "EL-transport"; d.drive.diode = {"preset": "hkust"}
+# council review 2026-09-05 item 1: EL-transport pulsed drive (drive.cw is
+# False, the default) now REQUIRES an explicit drive.diode['tau_pulse_ns'] and
+# either drive.duty or drive.rep_rate_hz -- every fixture below states both
+# explicitly instead of relying on the (now-rejected) untouched defaults.
+d = DeviceDesign(); d.drive.mode = "EL-transport"
+d.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}; d.drive.duty = 0.008
 d.drive.n_dot_cm2 = 1e10
 r = evaluate(d, [d.thermal.T_hs])
 sc = r["scalars"]
@@ -265,7 +270,8 @@ ok("EL transport self-heating residual is converged", abs(Tj_check - sc["T_j_op"
 
 # zero current: no injected flux is an invalid operating point, not a
 # silently-coerced zero.
-d0 = DeviceDesign(); d0.drive.mode = "EL-transport"; d0.drive.diode = {"preset": "hkust"}
+d0 = DeviceDesign(); d0.drive.mode = "EL-transport"
+d0.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}; d0.drive.duty = 0.008
 d0.drive.I_uA = 0.0
 r0 = evaluate(d0, [d0.thermal.T_hs])
 ok("zero-current EL-transport is an invalid operating point",
@@ -280,7 +286,8 @@ d = DeviceDesign(); d.drive.mode = "PL"; d.drive.diode = {"preset": "red"}
 raises("reject PL diode", lambda: evaluate(d))
 
 # ==================================================== 5. photon accounting (once each)
-d = DeviceDesign(); d.drive.mode = "EL-transport"; d.drive.diode = {"preset": "hkust"}
+d = DeviceDesign(); d.drive.mode = "EL-transport"
+d.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}; d.drive.duty = 0.008
 d.drive.n_dot_cm2 = 1e10
 r = evaluate(d, [d.thermal.T_hs])
 sc = r["scalars"]
@@ -316,7 +323,8 @@ ok("YAML preserves RT fields, overrides and provenance", loaded == d)
 
 d2 = DeviceDesign(); d2.dot.linewidth = "anchored"; d2.ret.mode = "confinement"
 d2.ret.preset = "InP/GaAsP0.4/AlGaAs0.4 on GaAs"; d2.ret.overrides = {"b0": 0.001}
-d2.drive.mode = "EL-transport"; d2.drive.diode = {"preset": "red", "R_s_ohm": 7.}
+d2.drive.mode = "EL-transport"
+d2.drive.diode = {"preset": "red", "R_s_ohm": 7., "tau_pulse_ns": 0.1}; d2.drive.duty = 0.008
 d2.drive.n_dot_cm2 = 3e9
 before = copy.deepcopy(d2)
 evaluate(d2, [300.])
@@ -358,10 +366,15 @@ T_recomputed = waveguide.facet_transmission(sc_edge["edge_n_eff"])
 ok("T_facet matches an independent facet_transmission(n_eff) recomputation",
    abs(T_recomputed - sc_edge["edge_T_facet"]) < 1e-9)
 # Facet convention: R_back=None -> front=0.5 exactly (waveguide.edge_emission
-# docstring); eta_total = beta * front * eta_prop * eta_NA -- T_facet is NOT
-# a second factor (spec: "do not multiply beta, T_facet ... again").
-eta_recomputed = sc_edge["edge_beta"] * 0.5 * sc_edge["edge_eta_prop"] * sc_edge["edge_eta_NA"]
-ok("eta_total = beta * front(=0.5) * eta_prop * eta_NA, T_facet not reapplied",
+# docstring); eta_total = beta * front * T_facet * eta_prop * eta_NA (council
+# review 2026-09-05 item 3: T_facet is now included in eta_total exactly
+# once -- it was previously solved for and returned but never multiplied in,
+# 1.37x optimistic collected flux at the class edge_T_facet~0.73 point).
+ok("edge_T_facet is not unity (so the item-3 check below is not vacuous)",
+   sc_edge["edge_T_facet"] < 1.0)
+eta_recomputed = (sc_edge["edge_beta"] * 0.5 * sc_edge["edge_T_facet"]
+                  * sc_edge["edge_eta_prop"] * sc_edge["edge_eta_NA"])
+ok("eta_total = beta * front(=0.5) * T_facet * eta_prop * eta_NA, each exactly once",
    abs(eta_recomputed - sc_edge["edge_eta_total"]) < 1e-9 * sc_edge["edge_eta_total"])
 
 # Lemma 1: emission.type "none" -> "edge" changes brightness only, never the
@@ -827,6 +840,173 @@ ok("filter.hold_window=True is the explicit, differently-named opt-in for a fixe
    "t_X at 300 K matches the held Varshni-walk offset, not the centred value",
    abs(r_hold4["scalars"]["t_x_op"] - spec_hold4.t_x) < 1e-6
    and r_hold4["scalars"]["t_x_op"] != r_track4["scalars"]["t_x_op"])
+
+# ============================================ 13. council review 2026-09-05 round 3
+# Item 1: repetition rate must be explicit under EL-transport pulsed drive
+# (drive.cw=False); the untouched defaults (duty=1.0, tau_pulse_ns=1.0) used
+# to silently report a 1 GHz/100%-duty DC drive.
+d_rep_default = DeviceDesign(); d_rep_default.drive.mode = "EL-transport"
+d_rep_default.drive.diode = {"preset": "hkust"}
+raises("item 1: EL-transport pulsed drive with default duty/tau_pulse/rep_rate_hz raises",
+       lambda: evaluate(d_rep_default, [d_rep_default.thermal.T_hs]))
+
+d_rep_tau_only = DeviceDesign(); d_rep_tau_only.drive.mode = "EL-transport"
+d_rep_tau_only.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}
+raises("item 1: tau_pulse_ns alone (duty and rep_rate_hz both still default) still raises",
+       lambda: evaluate(d_rep_tau_only, [d_rep_tau_only.thermal.T_hs]))
+
+d_rep_duty_only = DeviceDesign(); d_rep_duty_only.drive.mode = "EL-transport"
+d_rep_duty_only.drive.diode = {"preset": "hkust"}; d_rep_duty_only.drive.duty = 0.008
+raises("item 1: duty alone (tau_pulse_ns still default) still raises",
+       lambda: evaluate(d_rep_duty_only, [d_rep_duty_only.thermal.T_hs]))
+
+d_rep_cw_exempt = DeviceDesign(); d_rep_cw_exempt.drive.mode = "EL-transport"
+d_rep_cw_exempt.drive.diode = {"preset": "hkust"}; d_rep_cw_exempt.drive.cw = True
+try:
+    evaluate(d_rep_cw_exempt, [d_rep_cw_exempt.thermal.T_hs])
+    ok("item 1: drive.cw=True is exempt from the explicit tau_pulse/rep-rate requirement", True)
+except ValueError:
+    ok("item 1: drive.cw=True is exempt from the explicit tau_pulse/rep-rate requirement", False)
+
+d_rep_ok = DeviceDesign(); d_rep_ok.drive.mode = "EL-transport"
+d_rep_ok.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}
+d_rep_ok.drive.rep_rate_hz = 8.0e7
+d_rep_ok.drive.n_dot_cm2 = 1e10
+sc_rep = evaluate(d_rep_ok, [d_rep_ok.thermal.T_hs])["scalars"]
+ok("item 1: explicit tau_pulse_ns=0.1 ns / rep_rate_hz=80 MHz resolves rep_rate_hz = 8e7",
+   abs(sc_rep["rep_rate_hz"] - 8.0e7) < 1.0)
+ok("item 1: resolved tau_pulse_ns matches the card's explicit value",
+   abs(sc_rep["tau_pulse_ns"] - 0.1) < 1e-9)
+diode_rep = _diode_from_drive(d_rep_ok.drive, d_rep_ok.aperture.diameter_um)
+ld_rep = diode_rep.dot_loading(d_rep_ok.drive.I_uA, sc_rep["T_j_op"], d_rep_ok.drive.n_dot_cm2,
+                               float(np.pi * (d_rep_ok.aperture.diameter_um / 2) ** 2),
+                               tau_pulse_ns=0.1)
+ok("item 1: mu is consistent with the explicit tau_pulse_ns (mu is independent of the "
+   "duty/rep-rate bookkeeping -- mu = r_dot * tau_pulse_ns)",
+   abs(sc_rep["mu_resolved"] - ld_rep.mu) < 1e-9 * max(1.0, ld_rep.mu))
+
+# duty=0.008 (explicit) and rep_rate_hz=8e7 (== 0.1ns*0.008/1e-9... i.e. the
+# SAME physical repetition rate stated the other way) must resolve to the
+# same rep_rate_hz and duty_resolved either way.
+d_rep_duty = DeviceDesign(); d_rep_duty.drive.mode = "EL-transport"
+d_rep_duty.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}
+d_rep_duty.drive.duty = 8.0e-3
+d_rep_duty.drive.n_dot_cm2 = 1e10
+sc_rep_duty = evaluate(d_rep_duty, [d_rep_duty.thermal.T_hs])["scalars"]
+ok("item 1: an equivalent explicit duty=0.008 (tau_pulse_ns=0.1 ns) resolves the SAME rep_rate_hz",
+   abs(sc_rep_duty["rep_rate_hz"] - sc_rep["rep_rate_hz"]) < 1.0)
+ok("item 1: duty_resolved reproduces the card's explicit duty",
+   abs(sc_rep_duty["duty_resolved"] - 8.0e-3) < 1e-12)
+
+# Item 2: pulsed rho_op must equal cw_rho_op (both now "per collected X
+# photon") at the gaasp card's own EL-transport + confinement operating
+# point -- the round-3 council text's own numeric anchor (rho_op 0.98896 vs
+# the correct 1/(1+b_e/t_X) = 0.97815 = cw_rho_op, pre-fix).
+d_gaasp = DeviceDesign.load(ROOT / "cards" / "edge-inp-gaasp-design.yaml")
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    sc_gaasp = evaluate(d_gaasp)["scalars"]
+ok("item 2: pulsed rho_op equals cw_rho_op within 1e-5 relative at the gaasp card's "
+   "operating point (per-collected-X-photon convention shared by both paths)",
+   abs(sc_gaasp["rho_op"] - sc_gaasp["cw_rho_op"]) < 1e-5 * sc_gaasp["rho_op"])
+ok("item 2: the fixed pulsed rho_op matches the closed form 1/(1+b_e_resolved/t_x_op)",
+   abs(sc_gaasp["rho_op"] - 1.0 / (1.0 + sc_gaasp["b_e_resolved"] / sc_gaasp["t_x_op"])) < 1e-9)
+
+# Item 6: photon_budget replaces the tautological carrier_budget_closure --
+# it must equal 1 within 1e-6 at a real operating point, AND the self-test
+# below must show the check has teeth: dropping one of the four exposed
+# channels from the numerator moves the ratio measurably off 1.
+sc_pb = evaluate(d_gainp)["scalars"]
+ok("item 6: photon_budget closes to 1 within 1e-6 at the gainp card's operating point",
+   abs(sc_pb["photon_budget"] - 1.0) < 1e-6)
+channels_pb = ("photon_budget.dot_radiative", "photon_budget.dot_nonradiative",
+              "photon_budget.matrix_radiative", "photon_budget.matrix_nonradiative")
+supply_pb = sc_pb["photon_budget.supply_active"]
+full_sum_pb = sum(sc_pb[k] for k in channels_pb)
+ok("item 6: the four exposed channels independently sum to supply_active (consistent with "
+   "the reported photon_budget)", abs(full_sum_pb / supply_pb - sc_pb["photon_budget"]) < 1e-9)
+for dropped in channels_pb:
+    dropped_sum = sum(sc_pb[k] for k in channels_pb if k != dropped) / supply_pb
+    ok(f"item 6 self-test: dropping {dropped} from the sum moves the ratio measurably off 1 "
+       "(the diagnostic has teeth -- the OLD carrier_budget_closure could never fail like this)",
+       abs(dropped_sum - 1.0) > 1e-3)
+
+# Item 7: track_material provenance must say "inert" when cavity is disabled
+# and hold_window is False (the setting changes nothing), and must claim
+# "materials.bandgap ..." only when it is actually effective.
+d_prov_inert = DeviceDesign(); d_prov_inert.ret.mode = "confinement"
+d_prov_inert.ret.system = EDGE_SYSTEM; d_prov_inert.filter.track_material = "dot"
+r_prov_inert = evaluate(d_prov_inert, [300.0])
+ok("item 7: inert track_material (cavity disabled, hold_window false) reports the honest "
+   "'inert' provenance note, not a false 'materials.bandgap ...' claim",
+   r_prov_inert["scalars"]["provenance"]["tracking"]["note"]
+   == "track_material set but inert (cavity disabled, hold_window false)")
+ok("item 7: inert track_material is NOT reported as track_material_effective",
+   r_prov_inert["scalars"]["track_material_effective"] is False)
+
+d_prov_active = DeviceDesign(); d_prov_active.cavity.enabled = True
+d_prov_active.ret.mode = "confinement"; d_prov_active.ret.system = EDGE_SYSTEM
+d_prov_active.filter.track_material = "dot"; d_prov_active.thermal.T_hs = 300.0
+r_prov_active = evaluate(d_prov_active, [300.0])
+ok("item 7: effective track_material (cavity enabled) reports the 'materials.bandgap ...' note",
+   r_prov_active["scalars"]["provenance"]["tracking"]["note"]
+   == "materials.bandgap on stack layer 'dot'")
+ok("item 7: effective track_material IS reported as track_material_effective",
+   r_prov_active["scalars"]["track_material_effective"] is True)
+
+d_prov_hold = copy.deepcopy(d_prov_inert); d_prov_hold.filter.hold_window = True
+r_prov_hold = evaluate(d_prov_hold, [300.0])
+ok("item 7: cavity-less hold_window=True is ALSO effective (materials.bandgap note)",
+   r_prov_hold["scalars"]["provenance"]["tracking"]["note"]
+   == "materials.bandgap on stack layer 'dot'"
+   and r_prov_hold["scalars"]["track_material_effective"] is True)
+
+# Item 8: the residual background channel drive.b_res reproduces the
+# Reischle 2008 80 K electrical anchor rho ~ 0.88 when the Urbach injection
+# channel is negligible (rho = 1/(1+b_res) exactly, independent of G, S,
+# whenever the other background terms vanish).
+d_bres = DeviceDesign(); d_bres.thermal.T_hs = 80.0; d_bres.drive.mode = "EL-transport"
+d_bres.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}; d_bres.drive.duty = 0.008
+d_bres.drive.n_dot_cm2 = 1e10; d_bres.drive.I_uA = 1e-5
+# confinement mode with RetentionBlock's own (0.0) b0/beta defaults, so the
+# ONLY background channels present are the Urbach injection tail and b_res --
+# the proxy-fit b0/beta terms (unrelated to either) would otherwise
+# contaminate the "Urbach negligible" isolation this check needs.
+d_bres.ret.mode = "confinement"; d_bres.ret.preset = "InP/GaAsP0.4/AlGaAs0.4 on GaAs"
+d_bres.drive.b_res = 1.0 / 0.88 - 1.0
+sc_bres = evaluate(d_bres, [80.0])["scalars"]
+ok("item 8: at 80 K the Urbach injection channel is negligible (b_e_resolved << b_res)",
+   sc_bres["b_e_resolved"] < 1e-3 * d_bres.drive.b_res)
+ok("item 8: b_res = 1/0.88-1 reproduces rho_op = 0.88 within 1e-3",
+   abs(sc_bres["rho_op"] - 0.88) < 1e-3)
+d_bres0 = copy.deepcopy(d_bres); d_bres0.drive.b_res = 0.0
+sc_bres0 = evaluate(d_bres0, [80.0])["scalars"]
+ok("item 8: drive.b_res=0.0 (default) leaves rho_op at its legacy (no residual channel) value",
+   sc_bres0["rho_op"] > 0.999)
+ok("item 8: b_res provenance is tagged [E] with an anchor note when non-zero",
+   sc_bres["provenance"]["b_res"]["tag"] == "E"
+   and "anchor" in sc_bres["provenance"]["b_res"]["note"])
+ok("item 8: b_res provenance says 'not requested' when 0.0 (legacy)",
+   sc_bres0["provenance"]["b_res"]["note"] == "not requested (0.0, legacy)")
+
+# Item 9: filter.auto_w_scale halves the resolved collection window and
+# lowers eps at Gamma300 = 20 meV (the XX line sits partly inside the full-
+# linewidth window; a narrower window excludes more of it).
+d_w1 = DeviceDesign(); d_w1.dot.gamma300 = 20.0; d_w1.dot.linewidth = "anchored"
+d_w1.dot.delta_xx = 4.0; d_w1.thermal.T_hs = 300.0; d_w1.drive.V = 0.0
+r_w1 = evaluate(d_w1, [300.0])
+d_w05 = copy.deepcopy(d_w1); d_w05.filter.auto_w_scale = 0.5
+r_w05 = evaluate(d_w05, [300.0])
+ok("item 9: auto_w_scale=0.5 exactly halves the resolved w",
+   abs(r_w05["scalars"]["w_resolved"] - 0.5 * r_w1["scalars"]["w_resolved"]) < 1e-9)
+ok("item 9: halving the window lowers eps at Gamma300=20 meV",
+   r_w05["scalars"]["eps_op"] < r_w1["scalars"]["eps_op"])
+ok("item 9: xx_in_window is a finite fraction and equals eps_op * t_x_op",
+   abs(r_w1["scalars"]["xx_in_window"] - r_w1["scalars"]["eps_op"] * r_w1["scalars"]["t_x_op"]) < 1e-12)
+ok("item 9: auto_w_scale=1.0 (default) reproduces the legacy w exactly",
+   DeviceDesign().filter.auto_w_scale == 1.0)
+ok("item 9: the resolved provenance documents the auto_w operating convention",
+   "auto_w" in r_w1["scalars"]["provenance"]["filter_window"]["note"])
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)

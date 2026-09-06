@@ -45,5 +45,48 @@ g=rm.vertical.gamma_layer('dot')
 ck(3.05<rm.n_eff<3.22, 'HKUST n'); ck(.005<g<.05, 'HKUST gamma')
 r=edge_emission(s,2000,1200,668,500,.5)
 ck(0<r.eta_total<1 and r.n_g>0, 'edge result')
+
+# council review 2026-09-05 item 3: T_facet must be multiplied into eta_total
+# exactly once (front stays the pure geometric 0.5 split, no R_back given).
+expected_total = r.beta * 0.5 * r.T_facet * r.eta_prop * r.eta_NA
+ck(abs(expected_total - r.eta_total) < 1e-9, 'facet transmission included in eta_total')
+ck(r.T_facet < 1.0, 'facet transmission is not unity (so omitting it was not a no-op)')
+
+# item 4: position factor -- centred symmetric stack keeps beta near the
+# antinode value (pos > 0.95); a dot moved to the cladding edge (far from the
+# vertical antinode) must collapse pos well below 1.  Reuses the SAME hkust
+# stack, only moving which layer is marked is_dot=True, so every layer name
+# stays unique (no confinement-dict name collision).
+r_centre = edge_emission(s, 2000, 1200, 668, 500, .5)
+edge_stack = [Layer(x.name, x.n, x.thickness_nm, x.name == "lower_cladding") for x in s]
+r_edge_dot = edge_emission(edge_stack, 2000, 1200, 668, 500, .5)
+ck(r_centre.beta > 0, 'centred-dot beta positive (position factor sanity)')
+ck(r_edge_dot.beta < r_centre.beta, 'dot at the cladding edge has lower beta than at the antinode')
+
+from fsim_core.waveguide import effective_index_ridge as _eir
+mode_centre = _eir(s, 668, 2000, 1200)
+bounds_c = np.cumsum([0.0] + [x.thickness_nm for x in s])
+dot_i = [i for i, x in enumerate(s) if x.is_dot][0]
+z_dot_c = 0.5 * (bounds_c[dot_i] + bounds_c[dot_i + 1])
+pos_centre = float(np.interp(z_dot_c, mode_centre.vertical.z_nm, mode_centre.vertical.field) ** 2
+                   / np.max(mode_centre.vertical.field ** 2))
+ck(pos_centre > 0.95, 'position factor at a symmetric core centre is near the antinode (>0.95)')
+
+mode_edge = _eir(edge_stack, 668, 2000, 1200)
+bounds_e = np.cumsum([0.0] + [x.thickness_nm for x in edge_stack])
+dot_i_e = [i for i, x in enumerate(edge_stack) if x.is_dot][0]
+z_dot_e = 0.5 * (bounds_e[dot_i_e] + bounds_e[dot_i_e + 1])
+pos_edge = float(np.interp(z_dot_e, mode_edge.vertical.z_nm, mode_edge.vertical.field) ** 2
+                 / np.max(mode_edge.vertical.field ** 2))
+ck(pos_edge < 0.2, 'position factor at the cladding edge is well off the antinode (<0.2)')
+
+# item 5: group index falls in the published-class range for the hkust stack
+# at 668 nm, and a numeric-only (non-dispersive) stack keeps the n_eff
+# fallback (n_g == n_eff exactly).
+ck(3.6 <= r.n_g <= 4.4, 'HKUST group index n_g in the published-class range at 668 nm')
+r_numeric = edge_emission([Layer('lo', 3.4, 1000), Layer('core', 3.5, 300, True),
+                          Layer('hi', 3.4, 1000)], 2000, 1000, 670, 500, .5)
+ck(r_numeric.n_g == r_numeric.n_eff, 'numeric-only (non-dispersive) layers keep the n_g=n_eff fallback')
+
 print(f'{sum(checks)}/{len(checks)} waveguide checks passed')
 sys.exit(0 if all(checks) else 1)

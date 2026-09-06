@@ -22,11 +22,20 @@ from .materials import refractive_index
 
 @dataclass(frozen=True)
 class Layer:
-    """A vertical layer.  First and last layers also define the exterior [A]."""
+    """A vertical layer.  First and last layers also define the exterior [A].
+
+    `material` (council review 2026-09-05 item 5) is an OPTIONAL materials.py
+    label ("InP", "Al0.52In0.48P", ...) naming the source of `n`.  It is never
+    consulted for the mode solve itself (that always uses the numeric `n`
+    supplied); it exists so edge_emission's group-index finite difference can
+    re-resolve a wavelength-aware layer's index at lambda +/- 5 nm via
+    materials.refractive_index.  None (default; every pre-existing call site)
+    means "numeric-only, non-dispersive" -- legacy behaviour is unaffected."""
     name: str
     n: float
     thickness_nm: float
     is_dot: bool = False
+    material: str | None = None
 
 
 @dataclass
@@ -228,15 +237,48 @@ def hkust_ridge_stack(lambda_nm=668.0):
     """AlInP / AlGaInP core with an InP dot in a GaAsP well [E].
 
     The one-nm well barriers are a thin effective active-region proxy [A].
+    Every Layer carries its materials.py label (council review 2026-09-05
+    item 5) so edge_emission's group-index finite difference can re-resolve
+    it at a shifted wavelength; this is the sole reason hkust_ridge_stack no
+    longer needs its own special-cased identity check there.
     """
-    cl = refractive_index("Al0.52In0.48P", lambda_nm)
-    core = refractive_index("(Al0.50Ga0.50)0.51In0.49P", lambda_nm)
-    well = refractive_index("GaAs0.60P0.40", lambda_nm)
-    dot = refractive_index("InP", lambda_nm)
-    return [Layer("lower_cladding", cl, 1000), Layer("core_lower", core, 148),
-            Layer("well_lower", well, 1), Layer("dot", dot, 2, True),
-            Layer("well_upper", well, 1), Layer("core_upper", core, 148),
-            Layer("upper_cladding", cl, 1000)]
+    cl_label, core_label = "Al0.52In0.48P", "(Al0.50Ga0.50)0.51In0.49P"
+    well_label, dot_label = "GaAs0.60P0.40", "InP"
+    cl = refractive_index(cl_label, lambda_nm)
+    core = refractive_index(core_label, lambda_nm)
+    well = refractive_index(well_label, lambda_nm)
+    dot = refractive_index(dot_label, lambda_nm)
+    return [Layer("lower_cladding", cl, 1000, material=cl_label),
+            Layer("core_lower", core, 148, material=core_label),
+            Layer("well_lower", well, 1, material=well_label),
+            Layer("dot", dot, 2, True, material=dot_label),
+            Layer("well_upper", well, 1, material=well_label),
+            Layer("core_upper", core, 148, material=core_label),
+            Layer("upper_cladding", cl, 1000, material=cl_label)]
+
+
+def _redispersed(stack, lambda_nm):
+    """Rebuild `stack` with each wavelength-aware Layer's n re-evaluated at
+    lambda_nm via materials.refractive_index (council review 2026-09-05 item
+    5). A numeric-only layer (material is None) keeps its original n
+    unchanged, and so does a labelled layer whose OWN material table does not
+    reach lambda_nm (graceful per-layer degrade -- one thin layer's sparser
+    table (e.g. a 1-2 nm well/dot sheet tabulated only at a few points)
+    should not block re-solving the layers whose tables DO reach the shifted
+    wavelength; whether the stack is dispersive AT ALL is decided by the
+    caller from the un-shifted Layer.material fields, not from this
+    best-effort per-layer attempt)."""
+    out = []
+    for x in stack:
+        if x.material is not None:
+            try:
+                out.append(Layer(x.name, refractive_index(x.material, lambda_nm),
+                                 x.thickness_nm, x.is_dot, x.material))
+                continue
+            except ValueError:
+                pass
+        out.append(x)
+    return out
 
 
 def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
@@ -249,35 +291,73 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
     if L_um < 0 or alpha_cm < 0 or R_back is not None and not 0 <= R_back <= 1:
         raise ValueError("invalid length, loss, or back reflectance")
     mode = effective_index_ridge(stack, lambda_nm, ridge_width_nm, etch_depth_nm)
-    # Material tabulations are sparse; use a 1-nm symmetric difference only
-    # when this is the supplied named HKUST stack, otherwise constant-n [A].
+    notes = ["[DR] scalar effective-index mode", "[E] Gaussian NA", "[A] antinode dipole"]
+    # Group index (council review 2026-09-05 item 5): a 5 nm central finite
+    # difference on n_eff, re-solving every WAVELENGTH-AWARE layer (one that
+    # carries a materials.py label) at lambda +/- 5 nm -- generalizes the
+    # former hkust_ridge_stack-only special case to any stack built with
+    # dispersive Layers (device.py's _resolve_edge included). A stack with no
+    # labelled layer (numeric-only n, e.g. verify's synthetic slabs) keeps the
+    # n_g = n_eff fallback and says so in notes, exactly as before.
     ng = mode.n_eff
-    if [x.name for x in stack] == [x.name for x in hkust_ridge_stack(lambda_nm)]:
+    dispersive = any(x.material is not None for x in stack)
+    if dispersive:
+        mminus = mplus = None
         try:
-            mminus = effective_index_ridge(hkust_ridge_stack(lambda_nm-1), lambda_nm-1,
-                                            ridge_width_nm, etch_depth_nm)
-            try:
-                mplus = effective_index_ridge(hkust_ridge_stack(lambda_nm+1), lambda_nm+1,
-                                               ridge_width_nm, etch_depth_nm)
-                slope = (mplus.n_eff-mminus.n_eff)/2
-            except ValueError:  # use a one-sided endpoint difference [DR]
-                slope = mode.n_eff-mminus.n_eff
-            ng = mode.n_eff - lambda_nm*slope
-        except ValueError:  # endpoint outside an input material table [A]
+            stack_minus = _redispersed(stack, lambda_nm - 5.0)
+            mminus = effective_index_ridge(stack_minus, lambda_nm - 5.0,
+                                           ridge_width_nm, etch_depth_nm)
+        except ValueError:  # no bound mode at the shifted wavelength [A]
             pass
+        try:
+            stack_plus = _redispersed(stack, lambda_nm + 5.0)
+            mplus = effective_index_ridge(stack_plus, lambda_nm + 5.0,
+                                          ridge_width_nm, etch_depth_nm)
+        except ValueError:  # no bound mode at the shifted wavelength [A]
+            pass
+        if mminus is not None and mplus is not None:
+            slope = (mplus.n_eff - mminus.n_eff) / 10.0
+            notes.append("[DR] n_g: 5 nm central finite difference on wavelength-aware layers")
+            ng = mode.n_eff - lambda_nm * slope
+        elif mplus is not None:  # one-sided forward difference [DR]
+            slope = (mplus.n_eff - mode.n_eff) / 5.0
+            notes.append("[DR] n_g: 5 nm forward finite difference (blue endpoint out of table)")
+            ng = mode.n_eff - lambda_nm * slope
+        elif mminus is not None:  # one-sided backward difference [DR]
+            slope = (mode.n_eff - mminus.n_eff) / 5.0
+            notes.append("[DR] n_g: 5 nm backward finite difference (red endpoint out of table)")
+            ng = mode.n_eff - lambda_nm * slope
+        else:
+            notes.append("[A] n_g fallback to n_eff: both dispersion endpoints out of table")
+    else:
+        notes.append("[A] n_g fallback to n_eff: no wavelength-aware (materials-labelled) layer")
     dots = [x for x in stack if x.is_dot]
     if not dots:
         raise ValueError("stack must mark one Layer as is_dot=True")
     gamma = sum(mode.vertical.confinement.get(x.name, 0.0) for x in dots)
     n_dot = dots[0].n
-    # Dot is assumed at the ridge centre and vertical antinode [A].
-    pos = float((mode.vertical.field[np.argmax(np.abs(mode.vertical.field))] ** 2) /
-                np.max(mode.vertical.field**2))
+    # Position factor (council review 2026-09-05 item 4): |E(z_dot)|^2 /
+    # max|E|^2 evaluated at the DOT LAYER'S OWN centre z (thickness-weighted
+    # mean centre if more than one dot layer), not at wherever the field
+    # happens to peak -- the latter is identically 1 by construction and
+    # cannot express a dot placed off the vertical antinode.
+    bounds = np.r_[0.0, np.cumsum([x.thickness_nm for x in stack])]
+    centres = [0.5 * (bounds[i] + bounds[i + 1]) for i, x in enumerate(stack) if x.is_dot]
+    z_dot = float(np.average(centres, weights=[x.thickness_nm for x in dots]))
+    field_at_dot = float(np.interp(z_dot, mode.vertical.z_nm, mode.vertical.field))
+    pos = min(1.0, float(field_at_dot ** 2 / np.max(mode.vertical.field ** 2)))
     F, beta = beta_factor(mode.A_mode_um2, lambda_nm, n_dot, ng, pos)
     T = facet_transmission(mode.n_eff, coating)
     front = 0.5 if R_back is None else T / (T + (1-R_back))
     prop = exp(-alpha_cm * (L_um*1e-4))
     eta_na = na_collection(mode.wx_um, mode.wy_um, lambda_nm, NA)
-    total = beta * front * prop * eta_na
+    # Council review 2026-09-05 item 3: T (the Fresnel facet transmission just
+    # computed above) was solved for and returned but never multiplied into
+    # the collected total (1.37x optimistic at the class edge_T_facet~0.73
+    # point). front stays the purely GEOMETRIC front-vs-back emission split
+    # (0.5 with no R_back, i.e. no HR coating -- a symmetric structure sends
+    # equal guided-mode power each way); T is the separate per-facet
+    # transmission loss, now applied exactly once.
+    total = beta * front * T * prop * eta_na
     return EdgeResult(mode.n_eff, float(ng), float(gamma), mode.A_mode_um2, F, beta, T,
-                      prop, eta_na, float(total), ["[DR] scalar effective-index mode", "[E] Gaussian NA", "[A] antinode dipole"])
+                      prop, eta_na, float(total), notes)
