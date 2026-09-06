@@ -351,7 +351,7 @@
         "Poisson effect induces perpendicular strain: eps_zz = -2 (C12 / C11) eps_par",
         "Hydrostatic strain tr(eps) shifts bandgap: dE_c = a_c tr(eps) and dE_av = a_v tr(eps)",
         "Tetragonal shear strain Q = b (eps_zz - eps_par) breaks cubic symmetry and splits HH from LH",
-        "Compressive strain lifts heavy holes above light holes; exact LH-SO mixing saturates splitting near Delta_so/2",
+        "Compressive strain lifts heavy holes above light holes; LH-SO mixing saturates splitting at 2Delta_so/3 = 72 meV",
         "InP on GaAs has f = -3.7%; on GaAs0.6P0.4 f = -5.1% (stronger compression and larger shift)"
       ],
       "equations": [
@@ -369,7 +369,7 @@
         "caption": "Band edge energy shifts and HH-LH splitting vs strain from fsim_core.materials.strain_shifts",
         "script": "presentation2/figures/fig_01_10_strain_shifts.py"
       },
-      "notes": "Epitaxial growth of a lattice-mismatched semiconductor layer on a thick substrate forces the in-plane lattice constant of the layer to conform to the substrate, establishing pseudomorphic biaxial strain [Van de Walle, PRB 39, 1871 (1989)]. The in-plane misfit strain is f = (a_sub - a_layer) / a_layer, where negative f represents compressive strain. Due to the Poisson effect, in-plane compression forces a perpendicular expansion along the growth axis: eps_zz = -2 (C12 / C11) eps_par, where C11 and C12 are elastic stiffness constants. The resulting strain tensor decomposes into a hydrostatic component, given by the trace tr(eps) = 2 eps_par + eps_zz, and an axial shear component Q = b (eps_zz - eps_par), governed by the Pikus-Bir deformation potential b. Under compressive strain (f < 0), Q is negative. The small-strain linear formula Delta E_HH-LH = -2Q with b = -2.0 eV would predict splittings of 311 meV on GaAs and 428 meV on GaAs0.60P0.40. However, because |Q| >> Delta_so (where Delta_so = 108 meV for InP), this linear form fails; the light-hole and spin-orbit bands mix strongly. As implemented in fsim_core/materials.py using Van de Walle's exact k=0 LH-SO secular block, the splitting saturates near Delta_so / 2 = 54 meV, evaluating to 66.1 meV on GaAs and 67.8 meV on GaAs0.60P0.40. Because the hydrostatic valence-band shift dE_av = a_v tr(eps) is positive (+183 meV on GaAs, +251 meV on GaAsP), both hole bands move upwards in energy (for InP on GaAs0.60P0.40, dE_hh = +186.8 meV and dE_lh = +119.1 meV), with HH topping the valence band.",
+      "notes": "Epitaxial growth on a lattice-mismatched substrate establishes pseudomorphic biaxial strain [Van de Walle, PRB 39, 1871 (1989)]. In-plane compression (f < 0) induces perpendicular expansion eps_zz = -2 (C12 / C11) eps_par via Poisson deformation. This decomposes into hydrostatic strain tr(eps) = 2 eps_par + eps_zz and axial shear Q = b (eps_zz - eps_par). Under compression, Q < 0. The small-strain linear formula Delta E_HH-LH = -2Q would predict unphysical splittings of 311 meV on GaAs and 428 meV on GaAs0.60P0.40. Because |Q| >> Delta_so (Delta_so = 108 meV for InP), the light-hole and spin-orbit bands mix strongly. As implemented in fsim_core/materials.py from Van de Walle's exact k=0 LH-SO block, the HH-LH splitting saturates at 2 Delta_so / 3 = 72 meV (evaluated to 71.96 meV at Q = -20 eV); evaluated values of 66.1 meV on GaAs and 67.8 meV on GaAs0.60P0.40 sit just below this ceiling. Crucially, the hydrostatic valence-band shift dE_av = a_v,VdW tr(eps) is negative: -19.7 meV on GaAs and -27.1 meV on GaAs0.6P0.4 (a_v,VdW = +0.6 eV, tr eps = -0.0328 / -0.0451). Hole bands move up entirely due to the shear term (-Q = +155.6 meV on GaAs, +213.9 meV on GaAs0.6P0.4), not the hydrostatic shift, yielding dE_hh = +186.8 meV and dE_lh = +119.1 meV on GaAs0.60P0.40.",
       "sources": [
         "Van de Walle 1989 PRB 39 1871",
         "Vurgaftman et al. 2001 JAP 89 5815",
@@ -411,6 +411,36 @@
           "value": 186.83,
           "tolerance": 0.001,
           "how": "__import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4)).dE_hh * 1e3"
+        },
+        "dE_av_gaas_meV": {
+          "value": -19.6963,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs')).tr_eps * (-__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['a_v']) * 1e3"
+        },
+        "dE_av_gaasp_meV": {
+          "value": -27.0761,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4)).tr_eps * (-__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['a_v']) * 1e3"
+        },
+        "neg_Q_gaas_meV": {
+          "value": 155.601,
+          "tolerance": 0.001,
+          "how": "-__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['b'] * (__import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs')).eps_perp - __import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs')).eps_par) * 1e3"
+        },
+        "neg_Q_gaasp_meV": {
+          "value": 213.901,
+          "tolerance": 0.001,
+          "how": "-__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['b'] * (__import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4)).eps_perp - __import__('fsim_core.materials', fromlist=['x']).strain_shifts(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4)).eps_par) * 1e3"
+        },
+        "split_asymptote_ceiling_meV": {
+          "value": 72.0,
+          "tolerance": 0.001,
+          "how": "2.0 * __import__('fsim_core.materials', fromlist=['x']).binary('InP').p['d_so'] / 3.0 * 1e3"
+        },
+        "split_asymptote_Q20_meV": {
+          "value": 71.957,
+          "tolerance": 0.001,
+          "how": "(20.0 - (-__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['d_so']/2.0 - 10.0 + 0.5 * __import__('numpy').sqrt(__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['d_so']**2 - 40.0*__import__('fsim_core.materials', fromlist=['x']).binary('InP').p['d_so'] + 3600.0))) * 1e3"
         }
       }
     },
@@ -450,6 +480,16 @@
         "wl_thickness_nm": {
           "value": 0.5,
           "file": "fsim_core/dot_levels.py"
+        },
+        "h_c_gaas_nm": {
+          "value": 1.2768,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).critical_thickness_nm(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs'), 300.0)"
+        },
+        "h_c_gaasp_nm": {
+          "value": 0.5945,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).critical_thickness_nm(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4), 300.0)"
         }
       }
     },
@@ -471,7 +511,7 @@
         "caption": "Strained band alignment diagrams for InP in GaAs0.60P0.40 and InP in GaInP on GaAs substrate",
         "script": "presentation2/figures/fig_01_12_band_offsets.py"
       },
-      "notes": "Determining how conduction and valence band edges line up across a heterointerface is central to semiconductor device design. In 1989, Chris Van de Walle formulated the model-solid theory, which defines an absolute energy reference by aligning the electrostatic potential of neutral atomic spheres [Van de Walle, PRB 39, 1871 (1989)]. This provides the unstrained valence band offset Delta E_v0. Applying spin-orbit splitting delta_so and hydrostatic and shear strain shifts gives the absolute strained conduction and valence band edges. In a Type-I (straddling) heterostructure, the lower-gap material has both a lower conduction band and a higher valence band than the barrier. Both electrons and holes are trapped in the same spatial volume, providing strong spatial wavefunction overlap and rapid spontaneous emission (tau_rad ~ 1 ns) [Bimberg et al., 1999]. In a Type-II (staggered) alignment, one band edge forms a well while the other forms a barrier, separating electrons and holes spatially and reducing radiative rates by orders of magnitude. The repository module fsim_core/materials.py computes these alignments via materials.offsets. For an InP dot inside a GaAs0.60P0.40 matrix on a GaAs substrate, materials.offsets yields a conduction band offset of Delta E_c = 200.3 meV and valence subband offsets of dE_v_hh = 213.1 meV (dot HH to barrier HH) and dE_v_lh = 27.7 meV (dot LH to barrier LH). Because the GaAsP barrier on GaAs is under biaxial tension, its light-hole edge lies above its heavy-hole edge by 119 meV, making LH the topmost valence band in the barrier. Consequently, the actual confining well depth for bound heavy holes escaping to the barrier continuum is V_h = E_hh,dot - E_lh,barrier = 93.8 meV (~94 meV), as evaluated in fsim_core/dot_levels.py. For InP in Ga0.51In0.49P, the model-solid alignment is also Type-I with Delta E_c = 202 meV and Delta E_v,hh = 303 meV.",
+      "notes": "Determining how conduction and valence band edges line up across a heterointerface is central to device design. In 1989, Chris Van de Walle formulated model-solid theory, establishing an absolute energy reference by aligning electrostatic potentials of neutral atomic spheres [Van de Walle, PRB 39, 1871 (1989)]. This yields the unstrained valence band offset Delta E_v0; applying spin-orbit splitting delta_so and strain shifts yields the strained band edges. In a Type-I (straddling) alignment, the narrower-gap dot confines both electrons and holes, giving high spatial overlap and rapid radiative decay (tau_rad ~ 1 ns) [Bimberg et al., 1999]. In Type-II (staggered) alignment, one carrier is confined in the dot and the other in the matrix, drastically suppressing recombination. The module fsim_core/materials.py computes these alignments via materials.offsets. For InP in GaAs0.60P0.40 on GaAs, materials.offsets yields a conduction offset Delta E_c = 200.3 meV (200 meV in dot_levels) and valence offsets dE_v_hh = 213.1 meV and dE_v_lh = 27.7 meV. Because tensile strain pushes the barrier light-hole edge 119 meV above heavy holes, the barrier LH is the topmost valence band. The effective hole confining depth is therefore V_h = E_hh,dot - E_lh,barrier = 93.8 meV (~94 meV). For InP in Ga0.51In0.49P on GaAs, model-solid alignment is also Type-I, with Delta E_c = 202.05 meV (~202 meV) and Delta E_v,hh = 303.10 meV (~303 meV).",
       "sources": [
         "Van de Walle 1989 PRB 39 1871",
         "Vurgaftman et al. 2001 JAP 89 5815",
@@ -499,6 +539,16 @@
           "value": 93.81,
           "tolerance": 0.001,
           "how": "(__import__('fsim_core.materials', fromlist=['x']).offsets(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs')).well.E_hh - __import__('fsim_core.materials', fromlist=['x']).offsets(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaAsP(0.4), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs')).barrier.E_lh) * 1e3"
+        },
+        "dE_c_gainp_gaas_meV": {
+          "value": 202.05,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).offsets(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaInP(0.51), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs'), 300.0).dE_c * 1e3"
+        },
+        "dE_v_hh_gainp_gaas_meV": {
+          "value": 303.1,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).offsets(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaInP(0.51), __import__('fsim_core.materials', fromlist=['x']).binary('GaAs'), 300.0).dE_v_hh * 1e3"
         }
       }
     },
@@ -529,7 +579,7 @@
           ]
         }
       ],
-      "notes": "A fundamental engineering problem in this project, detailed in docs/rt_edge_tier.md, is the materials paradox of designing a room-temperature edge-emitting single-photon diode [docs/rt_edge_tier.md]. A naive reading of the device tier might suggest using literal bulk InP cladding layers surrounding a GaAsP active region. However, basic solid-state optics rules this out completely. From fsim_core/materials.py, the bulk bandgap of InP at 300 K is 1.3529 eV (1.353 eV), corresponding to an absorption edge at 916 nm. An InP/GaAsP quantum dot emits in the range of 750 nm to 816 nm (1.52 eV to 1.65 eV). Because the photon energy significantly exceeds the bandgap of InP, literal InP cladding would be completely opaque, absorbing 100% of the single photons before they could escape the waveguide. Moreover, InP has a lattice constant of 5.8697 A compared to 5.6533 A for the GaAs substrate, representing a large -3.69% lattice mismatch. Growing micron-thick InP optical claddings on GaAs would exceed critical thickness by orders of magnitude, riddling the device with non-radiative misfit dislocations. The workable solution implemented in the design cards (cards/edge-inp-gaasp-design.yaml) uses an InP quantum dot inside a thin GaAs0.60P0.40 well, clad with (Al_x Ga_{1-x})0.51 In0.49 P quaternary alloys. At x_III = 0.51, AlGaInP lattice-matches GaAs (a = 5.656 A). Although both the x_Al = 0.50 core (Eg_G = 2.256 eV, Eg_X = 2.247 eV) and x_Al = 0.70 outer cladding (Eg_G = 2.391 eV, Eg_X = 2.261 eV) are indirect per materials.is_direct, their minimum bandgaps (> 2.24 eV) guarantee complete optical transparency and defect-free epitaxy.",
+      "notes": "A fundamental engineering problem in this project is the materials paradox of designing a room-temperature edge-emitting single-photon diode [docs/rt_edge_tier.md]. A naive reading might suggest using bulk InP cladding layers surrounding a GaAsP active region. Solid-state optics rules this out completely: from fsim_core/materials.py, the 300 K bulk bandgap of InP is 1.3529 eV (absorption edge at 916 nm). Because the InP/GaAsP dot emits between 750 nm and 816 nm (1.52 eV to 1.65 eV), literal InP claddings would absorb 100% of emitted photons. Furthermore, InP has a lattice constant of 5.8697 A compared to 5.6533 A for GaAs (-3.69% mismatch), so micron-thick InP claddings would exceed critical thickness and generate dense dislocations. The workable solution implemented in cards/edge-inp-gaasp-design.yaml embeds the dot in a GaAs0.60P0.40 well clad by (Al_x Ga_{1-x})0.51 In0.49 P quaternary alloys. While ternary Ga0.51In0.49P has a = 5.656 A closely matching GaAs (5.653 A), the quaternary claddings have lattice constants of 5.6602 A (x_Al = 0.50) and 5.6619 A (x_Al = 0.70), maintaining negligible residual mismatch (<0.16%). Although both the x_Al = 0.50 core (Eg_G = 2.256 eV, Eg_X = 2.247 eV) and x_Al = 0.70 outer cladding (Eg_G = 2.391 eV, Eg_X = 2.261 eV) are indirect per materials.is_direct, their large minimum bandgaps (> 2.24 eV) guarantee complete optical transparency and low-defect epitaxy.",
       "sources": [
         "docs/rt_edge_tier.md",
         "cards/edge-inp-gaasp-design.yaml",
@@ -558,6 +608,21 @@
           "value": 2.2611,
           "tolerance": 0.001,
           "how": "__import__('fsim_core.materials', fromlist=['x']).bandgap(__import__('fsim_core.materials', fromlist=['x']).AlGaInP(0.7, 0.51), 300.0, valley='min')"
+        },
+        "a_AlGaInP_050": {
+          "value": 5.6602,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).lattice_constant(__import__('fsim_core.materials', fromlist=['x']).AlGaInP(0.5, 0.51), 300.0)"
+        },
+        "a_AlGaInP_070": {
+          "value": 5.6619,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).lattice_constant(__import__('fsim_core.materials', fromlist=['x']).AlGaInP(0.7, 0.51), 300.0)"
+        },
+        "a_GaInP": {
+          "value": 5.6559,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).lattice_constant(__import__('fsim_core.materials', fromlist=['x']).GaInP(0.51), 300.0)"
         }
       }
     },
@@ -574,7 +639,7 @@
         "Model limits: single-band without k.p mixing; elastic relaxation lowers the gap and cannot explain blue-shift",
         "Honest modeling: simulator uses the physical solver output rather than fitting an unmeasured parameter"
       ],
-      "notes": "A rigorous engineering lecture must confront the discrepancies between theoretical models and real experimental devices. In a landmark 2025 paper, Gu and coworkers at HKUST reported the epitaxial growth of InP self-assembled quantum dots embedded in GaAs0.65P0.35 quantum wells on GaAs substrates [Gu et al., Opt. Express 33, 23732 (2025)]. Using cross-sectional transmission electron microscopy, they measured dot heights of 4 to 7 nm (midpoint 5.5 nm) and base diameters around 25 nm, observing ensemble photoluminescence and lasing around 750 to 755 nm (1.64 to 1.65 eV). When the repository's single-band separable disk solver (fsim_core/dot_levels.py) is run on Gu's exact composition and geometry at 300 K, it yields an emission wavelength of 836 nm (1.484 eV); for the design card variant at h = 4.0 nm in GaAs0.60P0.40, it gives 815.7 nm (1.520 eV). This ~160 meV discrepancy is explicitly tracked and documented as a known deviation in verify/verify_dot_levels.py (deviation d-iv-a) rather than hidden [docs/rt_edge_tier.md]. Crucially, partial elastic strain relaxation cannot explain this blue-shift: in compressively strained InP, elastic relaxation lowers the bandgap and produces a red-shift (materials.strain_shifts gives Eg_hh = 1.4368 eV at eps = -5.07% relaxing toward 1.3529 eV at eps = 0). As documented in verify/verify_dot_levels.py, the deviation stems from the inherent limitations of a coherent single-band separable disk model lacking multiband k.p mixing [Stier, Grundmann, Bimberg, PRB 59, 5688 (1999)] and 3D strain distributions [Grundmann, Stier, Bimberg, PRB 52, 11969 (1995)], compounded by unknown alloy ordering and the fact that Gu's laser line is an ensemble, type-I/II-mixed observable.",
+      "notes": "A rigorous engineering lecture must confront discrepancies between theoretical models and real experimental devices. In a landmark 2025 paper, Gu and coworkers at HKUST reported epitaxial InP quantum dots embedded in GaAs0.65P0.35 wells on GaAs substrates [Gu et al., Opt. Express 33, 23732 (2025)]. Cross-sectional TEM revealed dot heights of 4 to 7 nm and diameters around 25 nm, with ensemble emission around 750 to 755 nm (1.64 to 1.65 eV). When the repository single-band separable disk solver (fsim_core/dot_levels.py) is run on Gu geometry at 300 K, it predicts 836 nm (1.484 eV); the design card at h = 4.0 nm in GaAs0.60P0.40 predicts 815.7 nm (1.520 eV). This ~160 meV discrepancy is tracked as a documented deviation in verify/verify_dot_levels.py (deviation d-iv-a) rather than hidden [docs/rt_edge_tier.md]. Crucially, partial elastic strain relaxation cannot explain this blue-shift: in compressively strained InP, relaxation lowers the bandgap toward unstrained bulk, creating a red-shift (materials.strain_shifts gives Eg_hh = 1.4368 eV at eps = -5.07% relaxing toward 1.3529 eV at eps = 0). As documented in verify/verify_dot_levels.py, the discrepancy arises because the coherent single-band disk model neglects multiband k.p mixing [Stier et al., PRB 59, 5688 (1999)] and 3D strain tensors [Grundmann et al., PRB 52, 11969 (1995)], compounded by alloy ordering and ensemble type-I/II mixing.",
       "sources": [
         "Gu et al. 2025 OE 33 23732",
         "verify/verify_dot_levels.py",
@@ -635,7 +700,7 @@
         "caption": "Potential wells, bound states, and Arrhenius retention curves S(T) from fsim_core.dot_levels",
         "script": "presentation2/figures/fig_01_15_carrier_levels.py"
       },
-      "notes": "We now summarize the full electronic eigenstate solution computed by fsim_core/dot_levels.py for our two primary heterostructure systems. For an InP quantum dot in GaAs0.60P0.40 at 300 K (height 4.0 nm, radius 12.0 nm), the potential depths are V_e = 200 meV for electrons and V_h = 94 meV for holes. The single-particle confinement energies are E_e = 97 meV (83 meV from vertical confinement, 14 meV from lateral confinement) and E_h = 31 meV (23 meV vertical, 8 meV lateral). Consequently, the remaining escape barriers to the matrix continuum are dE_e = V_e - E_e = 103 meV and dE_h = V_h - E_h = 63 meV. For the InP/Ga0.51In0.49P preset at 300 K, the conduction band well is deeper (V_e = 415 meV with Pryor's VBO), yielding E_e = 180 meV and an electron escape barrier of 235 meV (at 5 K these are 436 meV, 184 meV, and 251 meV). As temperature rises toward 300 K (where k_B T = 25.85 meV), carriers escape from the dot into the surrounding matrix via phonon-assisted thermal activation at rate R_esc ~ nu_0 exp(-E_a / k_B T) [Chatzarakis et al., Phys. Rev. Appl. 20, 034011 (2023)]. For InP/GaAsP, the relatively shallow barriers yield E_a = 83.8 meV, causing retention S(300 K) to collapse to 0.000964 (~0.0010 in fig_01_15). The deeper InP/GaInP system (E_a = 135.0 meV) retains S(300 K) = 0.004617 (~0.0046). With two-channel retention parameters (a_esc = 24873, b_p = 100, E_b = 11.6 meV), E_a = 150 meV still gives only S = 0.0072, and the second channel caps S at 0.0154 even as E_a -> infinity; reaching 50% single-channel retention would require E_a ~ 262 meV.",
+      "notes": "We summarize the electronic eigenstate solutions computed by fsim_core/dot_levels.py for our two primary systems. For an InP dot in GaAs0.60P0.40 at 300 K (height 4.0 nm, radius 12.0 nm), potential depths are V_e = 200 meV and V_h = 94 meV. Single-particle confinement energies are E_e = 97 meV (83 meV vertical, 14 meV lateral) and E_h = 31 meV (23 meV vertical, 8 meV lateral), leaving escape barriers dE_e = 103 meV and dE_h = 63 meV. For the InP/Ga0.51In0.49P preset at 300 K, deeper conduction confinement (V_e = 415 meV) yields E_e = 180 meV and dE_e = 235 meV (at 5 K: 436 meV, 184 meV, and 251 meV). As temperature reaches 300 K (k_B T = 25.85 meV), carriers escape via phonon-assisted activation at rate R_esc ~ nu_0 exp(-E_a / k_B T) [Chatzarakis et al., Phys. Rev. Appl. 20, 034011 (2023)]. For InP/GaAsP, shallow barriers yield E_a = 83.8 meV, collapsing retention S(300 K) to 0.000964 (~0.0010 in fig_01_15). The deeper InP/GaInP system (E_a = 135.0 meV) retains S(300 K) = 0.004617 (~0.0046). With two-channel parameters (a_esc = 24873, b_p = 100, E_b = 11.6 meV), E_a = 150 meV still yields only S = 0.0072, and the second channel caps S at 0.0154 even as E_a -> infinity; achieving 50% single-channel retention would require E_a ~ 262 meV.",
       "sources": [
         "fsim_core/dot_levels.py",
         "Chatzarakis 2023 PRA 20 034011",
@@ -669,6 +734,41 @@
           "value": 234.9,
           "tolerance": 0.001,
           "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaInP/AlGaInP0.55 on GaAs'](T=300.0)).dE_e_matrix"
+        },
+        "E_a_gaasp_meV": {
+          "value": 83.8,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['E_a']"
+        },
+        "E_a_gainp_meV": {
+          "value": 135.0,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaInP/AlGaInP0.55 on GaAs'](T=300.0)), 1.0, channel='pair_half', verbose=False)['E_a']"
+        },
+        "a_esc_gaasp": {
+          "value": 24873.0,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['a_esc']"
+        },
+        "E_b_gaasp_meV": {
+          "value": 11.6,
+          "tolerance": 0.005,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['E_b']"
+        },
+        "S_Ea150_gaasp": {
+          "value": 0.00715,
+          "tolerance": 0.005,
+          "how": "1.0 / (1.0 + __import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['a_esc'] * __import__('numpy').exp(-150.0 / (__import__('fsim_core.dot_levels', fromlist=['x']).KB_MEV * 300.0)) + __import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['b_p'] * __import__('numpy').exp(-__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['E_b'] / (__import__('fsim_core.dot_levels', fromlist=['x']).KB_MEV * 300.0)))"
+        },
+        "S_cap_gaasp": {
+          "value": 0.0154,
+          "tolerance": 0.005,
+          "how": "1.0 / (1.0 + 100.0 * __import__('numpy').exp(-__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['E_b'] / (__import__('fsim_core.dot_levels', fromlist=['x']).KB_MEV * 300.0)))"
+        },
+        "E_a_req_50pct_meV": {
+          "value": 261.66,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).KB_MEV * 300.0 * __import__('numpy').log(__import__('fsim_core.dot_levels', fromlist=['x']).retention_params(__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()), 1.0, channel='pair_half', verbose=False)['a_esc'])"
         }
       }
     },
@@ -683,7 +783,7 @@
         "With Gaussian envelopes exp(-r^2 / l^2), relative coordinate rho has width L = sqrt(l_e^2 + l_h^2)",
         "Integrating 2D density p(rho) = (2 rho / L^2) exp(-rho^2 / L^2) yields <1/rho> = sqrt(pi) / L",
         "Closed-form binding formula: E_bind = (e^2 / (4 pi eps_0 eps_r)) * sqrt(pi) / sqrt(l_e^2 + l_h^2)",
-        "InP/GaAsP dot: l_e = 6.62 nm, l_h = 6.54 nm, eps_r = 12.5 yields E_bind = 21.8 meV"
+        "InP/GaAsP dot: e_r = 6.704 nm, h_r = 6.541 nm, eps_r = 12.5 yields E_bind = 21.798 meV"
       ],
       "equations": [
         {
@@ -726,6 +826,16 @@
           "value": 6.6233,
           "tolerance": 0.001,
           "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()).l_xy_nm"
+        },
+        "e_r_gaasp_nm": {
+          "value": 6.704,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()).rms['e_r']"
+        },
+        "h_r_gaasp_nm": {
+          "value": 6.541,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaAsP0.4/AlGaAs0.4 on GaAs']()).rms['h_r']"
         }
       }
     },
@@ -757,7 +867,7 @@
         "caption": "Biexciton cascade ladder and spectral line separation Delta_XX used for single-photon filtering",
         "script": "presentation2/figures/fig_01_17_biexciton_cascade.py"
       },
-      "notes": "When two electron-hole pairs occupy the quantum dot simultaneously, they form a biexciton, denoted |XX> [Michler ed., 2017, ch. 2]. By the Pauli exclusion principle, two electrons can occupy the lowest s-shell provided their spins are antiparallel (total spin S = 0), and similarly two heavy holes form a pseudospin singlet (total angular momentum J = 0). The total energy of the biexciton is written as E(XX) = 2 E_X - Delta_XX, where Delta_XX is the biexciton binding energy or spectral splitting. Delta_XX arises from the delicate balance between electron-hole Coulomb attraction (four attractive terms), electron-electron repulsion (one term), hole-hole repulsion (one term), and quantum correlation/exchange energy. In most self-assembled dots, Delta_XX is positive (bound biexciton). For InP/GaInP dots, the evidence ledger documents Delta_XX = 4-6 meV from Beirne et al. [Phys. Rev. B 75, 195302 (2007)], quoted secondarily in Reischle et al. [Opt. Express 16, 12771 (2008)], and 7 +/- 1 meV measured by Bommer et al. [J. Appl. Phys. 110, 063108 (2011)], while Chatzarakis-class InAs/GaAs dots exhibit 5.9 meV [Chatzarakis et al., Phys. Rev. Appl. 20, 034011 (2023)]. Relaxation occurs via a two-photon radiative cascade: first, |XX> transitions to |X>, emitting a photon at h nu_XX = E(XX) - E_X = E_X - Delta_XX. Next, the single exciton |X> decays to the empty ground state |0>, emitting at h nu_X = E_X. Because the two photons differ in energy by Delta_XX, placing a narrow spectral bandpass filter around the X line completely blocks the XX photon, enforcing single-photon purity.",
+      "notes": "When two electron-hole pairs occupy a quantum dot simultaneously, they form a biexciton state |XX> [Michler ed., 2017, ch. 2]. By the Pauli exclusion principle, two electrons occupy the ground s-shell in a spin-singlet (S = 0), and two heavy holes form a pseudospin singlet (J = 0). The total biexciton energy is E(XX) = 2 E_X - Delta_XX, where Delta_XX is the biexciton binding energy or spectral shift. Delta_XX balances electron-hole Coulomb attraction, carrier-carrier repulsion, and exchange-correlation effects. In self-assembled dots, Delta_XX is typically positive (bound biexciton). For InP/GaInP dots, the evidence ledger records Delta_XX = 4-6 meV from Beirne et al. [PRB 75, 195302 (2007); Reischle et al., Opt. Express 16, 12771 (2008)] and 7 +/- 1 meV from Bommer et al. [JAP 110, 063108 (2011)], while Chatzarakis-class dots exhibit 5.9 meV [DR] [Chatzarakis et al., PR Applied 20, 034011 (2023); fsim_core/presets.py]. Relaxation proceeds through a two-photon cascade: |XX> decays to |X>, emitting at h nu_XX = E_X - Delta_XX, after which |X> decays to the empty state |0> at h nu_X = E_X. Because the two photons differ by Delta_XX, a narrow bandpass filter around the exciton line rejects the biexciton photon, enforcing high single-photon purity.",
       "sources": [
         "Michler 2017 ch. 2",
         "Reischle 2008 OE 16 12771",
@@ -773,6 +883,11 @@
         "delta_xx_bommer_meV": {
           "value": 7.0,
           "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "delta_xx_chatzarakis_meV": {
+          "value": 5.9,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.presets', fromlist=['x']).DOT_PRESETS['chatzarakis-class']['delta_xx']"
         }
       }
     },
@@ -931,9 +1046,9 @@
           ],
           [
             "Lattice mismatch f",
-            "-6.69% (compressive)",
-            "-3.69% (compressive)",
-            "-5.07% (compressive)"
+            "-6.69% (vs GaAs)",
+            "-3.642% (vs GaInP)",
+            "-5.07% (vs GaAsP)"
           ],
           [
             "Conduction offset V_e",
@@ -950,7 +1065,7 @@
           [
             "Hole escape dE_h",
             "110 - 150 meV",
-            "48 - 60 meV",
+            "48.4 meV (300 K; 49.2 at 5 K)",
             "63 meV"
           ],
           [
@@ -973,7 +1088,7 @@
           ]
         ]
       },
-      "notes": "To provide broad context for this lecture series, this table compares the three leading semiconductor quantum dot platforms: the mature near-infrared InAs/GaAs system, the visible-red InP/GaInP system, and the far-red InP/GaAsP system evaluated in this project [verify/verify_dot_levels.py]. InAs on GaAs features a large -6.69% lattice mismatch (eps_par = (a_sub - a_layer)/a_layer, matching the module convention in fsim_core/materials.py) and deep conduction band confinement (V_e ~ 500 meV), enabling high-temperature operation up to 230 K when embedded in short-period superlattices (SSL) [Chatzarakis et al., 2023]. However, its emission lies beyond the peak quantum efficiency of silicon single-photon avalanche diodes. InP dots in Ga0.51In0.49P emit in the red region (650-750 nm), matching silicon SPAD sensitivity, with hole escape energies around 48-60 meV (48-49 meV in our dot_levels presets, extending to ~60 meV under alternative VBO models). Reischle et al. (2008) demonstrated pulsed electrical single-photon emission at 80 K. Our primary candidate, InP in GaAs0.60P0.40, bridges these regimes: it emits between 750 nm and 816 nm, maintaining moderate optical transparency and silicon detector compatibility. However, its conduction offset is shallower (V_e = 200 meV), resulting in an electron escape energy of 103 meV and a hole escape energy of 63 meV. The optical phonon energies also vary: InP has a high LO phonon energy of 43.4 meV compared to 36.6 meV in GaAs. These confinement and phonon scales govern thermal quenching and dephasing across platforms.",
+      "notes": "To provide broad context, this table compares three leading quantum dot platforms: near-infrared InAs/GaAs, visible-red InP/GaInP, and far-red InP/GaAsP [verify/verify_dot_levels.py]. Each column evaluates lattice mismatch relative to its matrix host: -6.69% for InAs on GaAs, -3.642% for InP on Ga0.51In0.49P (materials.mismatch(InP, GaInP) = -3.642%, distinct from -3.69% on GaAs substrate), and -5.07% for InP on GaAs0.60P0.40. InAs/GaAs features deep conduction confinement (V_e ~ 500 meV), enabling operation up to 230 K with short-period superlattices (SSL) [Chatzarakis et al., 2023], but emits beyond peak silicon SPAD efficiency. InP dots in Ga0.51In0.49P emit in the red (650-750 nm), well matched to silicon SPADs, with hole escape barrier dE_h = 48.4 meV at 300 K (49.2 meV at 5 K) from dot_levels; the Bommer-class preset (InP/AlGaInP0.2/AlGaInP0.55) deepens this to 90.6 meV. Reischle et al. (2008) demonstrated pulsed single-photon emission at 80 K. Our primary candidate, InP in GaAs0.60P0.40, bridges these regimes (750-816 nm), maintaining transparency and silicon compatibility, but shallower conduction offset (V_e = 200 meV) gives electron escape dE_e = 103 meV and hole escape dE_h = 63 meV. High LO phonon energies (43.4 meV in InP vs 36.6 meV in GaAs) also shape dephasing across platforms.",
       "sources": [
         "verify/verify_dot_levels.py",
         "Chatzarakis 2023 PRA 20 034011",
@@ -1005,6 +1120,21 @@
         "Chatzarakis_WL_meV": {
           "value": 110,
           "file": "verify/verify_dot_levels.py"
+        },
+        "mismatch_InP_GaInP": {
+          "value": -0.03642,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).mismatch(__import__('fsim_core.materials', fromlist=['x']).binary('InP'), __import__('fsim_core.materials', fromlist=['x']).GaInP(0.51))"
+        },
+        "dE_h_gainp_5K_meV": {
+          "value": 49.19,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/GaInP/AlGaInP0.55 on GaAs'](T=5.0)).dE_h_matrix"
+        },
+        "dE_h_bommer_5K_meV": {
+          "value": 90.61,
+          "tolerance": 0.001,
+          "how": "__import__('fsim_core.dot_levels', fromlist=['x']).levels(__import__('fsim_core.dot_levels', fromlist=['x']).class_presets()['InP/AlGaInP0.2/AlGaInP0.55 on GaAs']()).dE_h_matrix"
         }
       }
     },
@@ -1018,10 +1148,10 @@
         "Strong confinement regime decouples electron and hole; Coulomb acts as a ~22 meV binding correction",
         "Compressive biaxial strain lifts HH-LH degeneracy by ~68 meV, ensuring a pure heavy-hole ground state",
         "Model-solid theory confirms Type-I band alignment; (Al,Ga)InP claddings resolve the transparency paradox",
-        "Biexciton binding Delta_XX (3-7 meV) enables clean single-photon spectral filtering against multi-photon pulses",
+        "Biexciton binding Delta_XX (4-8 meV) enables clean single-photon spectral filtering against multi-photon pulses",
         "Submicron spatial apertures with low-density growth (N = 0.377) yield >82% single-dot device isolation"
       ],
-      "notes": "In this opening section, we have established the complete physical foundation of quantum dot single-photon emitters [Bimberg et al., 1999] [Michler ed., 2017]. We saw how spatial confinement along all three dimensions collapses the continuous band spectrum into discrete Dirac delta-function states, creating an 'artificial atom'. Because self-assembled dots reside in the strong confinement regime, the single-particle kinetic energies dominate, while the electron-hole Coulomb attraction acts perturbatively with a Gaussian binding energy of ~22 meV. Biaxial compressive strain from lattice mismatch (f = -3.7% to -5.1%) shifts the conduction band upward and induces a tetragonal shear splitting that pushes the heavy-hole band ~68 meV above the light-hole band, ensuring that the optically active ground state involves pure heavy holes with high in-plane dipole strength. We resolved the materials question of the device tier: literal InP claddings are opaque and dislocated, whereas lattice-matched (Al,Ga)InP quaternary claddings provide wide bandgaps, high optical transparency, and excellent waveguiding contrast. Finally, biexciton Coulomb correlation provides a 3 to 7 meV spectral shift Delta_XX, allowing narrow optical filtering to isolate single photons, while spatial apertures with mean expectation N = 0.377 guarantee that over 82% of light-emitting devices contain strictly one isolated quantum dot.",
+      "notes": "In this opening section, we have established the complete physical foundation of quantum dot single-photon emitters [Bimberg et al., 1999] [Michler ed., 2017]. We saw how spatial confinement along all three dimensions collapses the continuous band spectrum into discrete Dirac delta-function states, creating an 'artificial atom'. Because self-assembled dots reside in the strong confinement regime, the single-particle kinetic energies dominate, while the electron-hole Coulomb attraction acts perturbatively with a Gaussian binding energy of ~22 meV. Biaxial compressive strain from lattice mismatch (f = -3.7% to -5.1%) shifts the conduction band upward and induces a tetragonal shear splitting that pushes the heavy-hole band ~68 meV above the light-hole band, ensuring that the optically active ground state involves pure heavy holes with high in-plane dipole strength. We resolved the materials question of the device tier: literal InP claddings are opaque and dislocated, whereas lattice-matched (Al,Ga)InP quaternary claddings provide wide bandgaps, high optical transparency, and excellent waveguiding contrast. Finally, biexciton Coulomb correlation provides a 4 to 8 meV spectral shift Delta_XX (Beirne 4-6 meV [DR via Reischle 2008], Bommer 7 +/- 1 meV [V]), allowing narrow optical filtering to isolate single photons, while spatial apertures with mean expectation N = 0.377 guarantee that over 82% of light-emitting devices contain strictly one isolated quantum dot.",
       "sources": [
         "Bimberg 1999 ch. 1",
         "Michler 2017 ch. 1",

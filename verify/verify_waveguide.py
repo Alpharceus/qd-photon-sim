@@ -7,7 +7,7 @@ from scipy.optimize import brentq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fsim_core.waveguide import (Layer, slab_modes, effective_index_ridge, beta_factor,
                                  facet_transmission, na_collection, hkust_ridge_stack,
-                                 edge_emission)
+                                 edge_emission, na_collection_numeric)
 
 checks = []
 def ck(ok, name):
@@ -39,12 +39,47 @@ n0=na_collection(.5,.4,670,0)
 n1=na_collection(.5,.4,670,1)
 nmid=na_collection(.5,.4,670,.5)
 ck(n0==0, 'NA zero'); ck(n1>.99, 'NA one'); ck(0<nmid<n1, 'NA monotonic')
+
+# Round-NA aperture regression (waveguide-na-collection-fix, 2026-09-06).
+# For an isotropic 1/e^2 intensity radius w0, eta=1-exp(-2 asin(NA)^2 /
+# (lambda/(pi*w0))^2), independently of the implementation's quadrature.
+w0, lam0, na0 = 1.5, 770.0, 0.1
+eta_gaussian = na_collection(w0, w0, lam0, na0)
+ck(abs(eta_gaussian - 0.527) < 0.01 * 0.527,
+   'round-cone Gaussian NA=0.1 gives published review anchor 0.527')
+xg = (np.arange(4096) - 2048) * 0.025
+fg = np.exp(-xg**2 / w0**2)  # amplitude: I=exp(-2 x^2/w0^2)
+eta_gaussian_numeric = na_collection_numeric(fg, fg, 0.025, 0.025, lam0, na0)
+ck(abs(eta_gaussian_numeric - eta_gaussian) < 0.01 * eta_gaussian,
+   'FFT Gaussian far field agrees with circular closed form within 1%')
+ck(abs(na_collection(w0, w0, lam0, .8)
+       - (1 - np.exp(-2 * np.arcsin(.8)**2 / (lam0 * 1e-3 / (pi*w0))**2))) < 1e-12,
+   'equal-width Gaussian uses the analytic round-cone closed form at NA=0.8')
+
+# The effective-width definition is (int I)^2/int I^2.  For a Gaussian it
+# yields sqrt(pi)*w per axis, hence A_mode=pi*wx*wy for 1/e^2 radii.
+xw = np.linspace(-8.0, 8.0, 20001)
+iwx, iwy = np.exp(-2*xw**2 / 1.2**2), np.exp(-2*xw**2 / .8**2)
+wx = np.trapezoid(iwx, xw)**2 / np.trapezoid(iwx**2, xw) / np.sqrt(pi)
+wy = np.trapezoid(iwy, xw)**2 / np.trapezoid(iwy**2, xw) / np.sqrt(pi)
+ck(abs((np.trapezoid(iwx, xw)**2 / np.trapezoid(iwx**2, xw))
+       * (np.trapezoid(iwy, xw)**2 / np.trapezoid(iwy**2, xw)) - pi*wx*wy) < 1e-10,
+   'Gaussian effective area equals pi wx wy for 1/e^2 intensity radii')
 s=hkust_ridge_stack()
 rm=effective_index_ridge(s,668,2000,1200)
 g=rm.vertical.gamma_layer('dot')
 ck(3.05<rm.n_eff<3.22, 'HKUST n'); ck(.005<g<.05, 'HKUST gamma')
 r=edge_emission(s,2000,1200,668,500,.5)
 ck(0<r.eta_total<1 and r.n_g>0, 'edge result')
+ck(any('NA collection method: gaussian' in note for note in r.notes)
+   and any('1/e^2 intensity radii' in note for note in r.notes),
+   'edge notes state NA method and width convention')
+r_na_numeric = edge_emission(s, 2000, 1200, 668, 500, .8, na_method='numeric')
+r_na_gaussian = edge_emission(s, 2000, 1200, 668, 500, .8)
+ck(abs(r_na_gaussian.eta_NA - r_na_numeric.eta_NA) < 0.03 * r_na_numeric.eta_NA,
+   'solved GaInP ridge Gaussian NA estimate agrees with FFT oracle within 3%')
+ck(any('NA collection method: numeric' in note for note in r_na_numeric.notes),
+   'numeric NA method is recorded in edge notes')
 
 # council review 2026-09-05 item 3: T_facet must be multiplied into eta_total
 # exactly once (front stays the pure geometric 0.5 split, no R_back given).

@@ -68,7 +68,7 @@ S_gaasp = calc_S(T_range, p_gaasp)
 S_gainp = calc_S(T_range, p_gainp)
 
 ax2.semilogy(T_range, S_gainp, color='#2e7d32', lw=3,
-             label=rf'InP/GaInP: $E_a = {p_gainp["E_a"]:.0f}$ meV, $S(300\mathrm{{K}}) \approx {calc_S(300, p_gainp):.3f}$')
+             label=rf'InP/GaInP: $E_a = {p_gainp["E_a"]:.0f}$ meV, $S(300\mathrm{{K}}) \approx {calc_S(300, p_gainp):.4f}$')
 ax2.semilogy(T_range, S_gaasp, color='#c43d3d', lw=3,
              label=rf'InP/GaAsP0.4: $E_a = {p_gaasp["E_a"]:.0f}$ meV, $S(300\mathrm{{K}}) \approx {calc_S(300, p_gaasp):.4f}$')
 

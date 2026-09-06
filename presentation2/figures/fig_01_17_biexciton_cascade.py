@@ -14,7 +14,7 @@ plt.rcParams.update({'font.size': 14})
 # Left panel: Three-level ladder
 # Energies
 E_0 = 0.0
-E_X = 1.650      # eV
+E_X = 1.520      # eV (deck card exciton)
 delta_xx = 0.005  # 5 meV
 E_XX = 2 * E_X - delta_xx
 

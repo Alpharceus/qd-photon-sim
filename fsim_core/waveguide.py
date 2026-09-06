@@ -13,9 +13,10 @@ estimates [E].
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import erf, exp, pi, sin
+from math import exp, pi
 import numpy as np
 from scipy.linalg import eigh_tridiagonal
+from scipy.special import erf
 
 from .materials import refractive_index
 
@@ -59,6 +60,7 @@ class RidgeMode:
     n_ridge: float
     n_outside: float
     A_mode_um2: float
+    # Gaussian-equivalent 1/e^2 intensity radii (not 1/e radii), in um.
     wx_um: float
     wy_um: float
 
@@ -165,7 +167,11 @@ def _etched(layers, etch_depth_nm):
 
 
 def effective_index_ridge(layers, lambda_nm, ridge_width_nm, etch_depth_nm, pol="TE"):
-    """Effective-index ridge mode and separable intensity-effective area [DR]."""
+    """Effective-index ridge mode and separable intensity-effective area [DR].
+
+    ``wx_um`` and ``wy_um`` are Gaussian-equivalent 1/e^2 *intensity*
+    radii.  Thus a Gaussian has ``A_mode = pi * wx_um * wy_um``.
+    """
     if ridge_width_nm <= 0:
         raise ValueError("ridge_width_nm must be positive")
     vertical = slab_modes(layers, lambda_nm, pol, 1)[0]
@@ -187,9 +193,10 @@ def effective_index_ridge(layers, lambda_nm, ridge_width_nm, etch_depth_nm, pol=
     lateral = slab_modes(lateral_layers, lambda_nm, pol, 1)[0]
     # Aeff=(int I)^2/int I^2; separability gives product of the two widths [DR].
     A = vertical.mode_width_um * lateral.mode_width_um
-    # Gaussian-equivalent 1/e^2 intensity radii: Aeff=sqrt(2*pi)*w per axis.
-    wx = lateral.mode_width_um / np.sqrt(2*pi)
-    wy = vertical.mode_width_um / np.sqrt(2*pi)
+    # For I=exp(-2 x^2/w^2), (int I)^2/int I^2=sqrt(pi)*w.
+    # Hence these are 1/e^2 intensity radii and Aeff=pi*wx*wy. [DR]
+    wx = lateral.mode_width_um / np.sqrt(pi)
+    wy = vertical.mode_width_um / np.sqrt(pi)
     return RidgeMode(lateral.n_eff, vertical, lateral, vertical.n_eff, n_outside,
                      float(A), float(wx), float(wy))
 
@@ -219,7 +226,14 @@ def facet_transmission(n_eff, coating=None):
 
 
 def na_collection(wx_um, wy_um, lambda_nm, NA):
-    """Gaussian far-field lens collection estimate [E]."""
+    """Circular-NA collection of an elliptical Gaussian far field [DR].
+
+    ``wx_um`` and ``wy_um`` are 1/e^2 intensity radii.  The paraxial
+    far-field intensity is ``exp(-2 tx^2/theta_x^2 - 2 ty^2/theta_y^2)``,
+    with ``theta_i=lambda/(pi*w_i)``.  This integrates that distribution over
+    the circular lens cone ``sqrt(tx^2 + ty^2) <= asin(NA)``.  Equal widths
+    use the analytic circular result.
+    """
     if wx_um <= 0 or wy_um <= 0 or not 0 <= NA <= 1:
         raise ValueError("widths must be positive and NA must be in [0, 1]")
     if NA == 0:
@@ -227,10 +241,47 @@ def na_collection(wx_um, wy_um, lambda_nm, NA):
     if NA == 1:
         return 1.0
     lam = lambda_nm * 1e-3
-    tx, ty = lam/(pi*wx_um), lam/(pi*wy_um)
-    # Clamp angles: the paraxial Gaussian expression becomes a full hemisphere.
-    return float(erf(NA/(np.sqrt(2)*sin(min(tx, pi/2)))) *
-                 erf(NA/(np.sqrt(2)*sin(min(ty, pi/2)))))
+    theta_x, theta_y = lam/(pi*wx_um), lam/(pi*wy_um)
+    theta_max = np.arcsin(NA)
+    if np.isclose(theta_x, theta_y, rtol=1e-12, atol=0.0):
+        return float(1.0 - np.exp(-2.0 * theta_max**2 / theta_x**2))
+
+    # Integrate the normalized 2-D Gaussian over a disk.  Conditional on x,
+    # the y integral is an erf; Gauss-Legendre quadrature avoids an arbitrary
+    # Cartesian cutoff while retaining the round-aperture geometry. [DR]
+    nodes, weights = np.polynomial.legendre.leggauss(96)
+    x = theta_max * nodes
+    y_extent = theta_max * np.sqrt(1.0 - nodes**2)
+    px = (np.sqrt(2.0 / pi) / theta_x) * np.exp(-2.0 * x**2 / theta_x**2)
+    integral = theta_max * np.sum(weights * px * erf(np.sqrt(2.0) * y_extent / theta_y))
+    return float(np.clip(integral, 0.0, 1.0))
+
+
+def na_collection_numeric(field_x, field_y, dx, dy, lambda_nm, NA):
+    """Fourier-plane circular-NA collection for a separable scalar mode [DR].
+
+    ``field_x``/``field_y`` are uniformly sampled complex field amplitudes;
+    ``dx``/``dy`` are their sample spacings in um.  The result is normalized
+    to the propagating forward hemisphere, so ``NA=1`` is exactly one.
+    """
+    if dx <= 0 or dy <= 0 or lambda_nm <= 0 or not 0 <= NA <= 1:
+        raise ValueError("sample spacings and wavelength must be positive and NA must be in [0, 1]")
+    fx_field = np.asarray(field_x)
+    fy_field = np.asarray(field_y)
+    if fx_field.ndim != 1 or fy_field.ndim != 1 or fx_field.size < 2 or fy_field.size < 2:
+        raise ValueError("field_x and field_y must be one-dimensional sampled fields")
+    if NA == 0:
+        return 0.0
+    spectrum = np.abs(np.outer(np.fft.fftshift(np.fft.fft(fy_field)),
+                               np.fft.fftshift(np.fft.fft(fx_field))))**2
+    fx = np.fft.fftshift(np.fft.fftfreq(fx_field.size, d=dx))
+    fy = np.fft.fftshift(np.fft.fftfreq(fy_field.size, d=dy))
+    transverse_na = (lambda_nm * 1e-3) * np.hypot(fy[:, None], fx[None, :])
+    propagating = transverse_na <= 1.0
+    denominator = spectrum[propagating].sum()
+    if denominator == 0:
+        raise ValueError("field spectra contain no propagating power")
+    return float(spectrum[propagating & (transverse_na <= NA)].sum() / denominator)
 
 
 def hkust_ridge_stack(lambda_nm=668.0):
@@ -282,7 +333,7 @@ def _redispersed(stack, lambda_nm):
 
 
 def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
-                  alpha_cm=5.0, R_back=None, coating=None):
+                  alpha_cm=5.0, R_back=None, coating=None, na_method="gaussian"):
     """Calculate the collected forward edge-emission probability.
 
     With no ``R_back``, or ``R_back=0`` (no back-facet reflection to speak
@@ -310,8 +361,12 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
     """
     if L_um < 0 or alpha_cm < 0 or R_back is not None and not 0 <= R_back <= 1:
         raise ValueError("invalid length, loss, or back reflectance")
+    if na_method not in ("gaussian", "numeric"):
+        raise ValueError("na_method must be 'gaussian' or 'numeric'")
     mode = effective_index_ridge(stack, lambda_nm, ridge_width_nm, etch_depth_nm)
-    notes = ["[DR] scalar effective-index mode", "[E] Gaussian NA", "[A] antinode dipole"]
+    notes = ["[DR] scalar effective-index mode",
+             "[DR] mode widths are Gaussian-equivalent 1/e^2 intensity radii; A_mode = pi wx wy",
+             f"[DR] NA collection method: {na_method}", "[A] antinode dipole"]
     # Group index (council review 2026-09-05 item 5): a 5 nm central finite
     # difference on n_eff, re-solving every WAVELENGTH-AWARE layer (one that
     # carries a materials.py label) at lambda +/- 5 nm -- generalizes the
@@ -398,7 +453,13 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
         facet_factor = T / (T + (1 - R_back))
     notes.append(facet_model)
     prop = exp(-alpha_cm * (L_um*1e-4))
-    eta_na = na_collection(mode.wx_um, mode.wy_um, lambda_nm, NA)
+    if na_method == "gaussian":
+        eta_na = na_collection(mode.wx_um, mode.wy_um, lambda_nm, NA)
+    else:
+        dx = (mode.lateral.z_nm[1] - mode.lateral.z_nm[0]) * 1e-3
+        dy = (mode.vertical.z_nm[1] - mode.vertical.z_nm[0]) * 1e-3
+        eta_na = na_collection_numeric(mode.lateral.field, mode.vertical.field,
+                                       dx, dy, lambda_nm, NA)
     total = beta * facet_factor * prop * eta_na
     return EdgeResult(mode.n_eff, float(ng), float(gamma), mode.A_mode_um2, F, beta, T,
                       prop, eta_na, float(total), notes)
