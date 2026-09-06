@@ -150,6 +150,7 @@ _RANGE_BOUNDS_FALLBACK = {
     "dot.delta_xx": (4.0, 8.0, "meV"),
     "dot.gamma300": (6.0, 20.0, "meV"),
     "irf_ps": (50.0, 200.0, "ps"),
+    "thermal.T_hs": (230.0, 300.0, "K"),
 }
 
 
@@ -314,8 +315,12 @@ def build_grid(quick: bool) -> dict:
     three new emission.NA/R_back/L_um lever axes below (up to ~12 combos
     per card) fit the ~15 minute runtime budget -- see _FULL_N above."""
     n = _ENDPOINT_N if quick else _FULL_N
-    return {path: [float(v) for v in np.linspace(lo, hi, n)]
+    grid = {path: [float(v) for v in np.linspace(lo, hi, n)]
             for path, (lo, hi, _unit) in RANGE_BOUNDS.items()}
+    lo, hi, _unit = RANGE_BOUNDS["thermal.T_hs"]
+    grid["thermal.T_hs"] = ([float(lo), 250.0, 273.0, float(hi)]
+                             if not quick else [float(lo), float(hi)])
+    return grid
 
 
 def resolve_lever_grid(design0: DeviceDesign, quick: bool) -> dict:
@@ -384,7 +389,8 @@ def _sha256_file(path: Path) -> str:
 # --------------------------------------------------------------- evaluation
 
 def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
-                      lever: dict, cache: dict | None = None) -> dict:
+                      lever: dict, cache: dict | None = None,
+                      T_hs: float | None = None) -> dict:
     """Pulsed sub-result at (delta_xx, gamma300, lever); irf_ps-independent,
     so cache is keyed without it and reused across the irf_ps sweep axis.
     g2_op itself does not depend on the emission.NA/R_back/L_um collection
@@ -392,14 +398,15 @@ def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
     brightness_per_pulse, never into op["g2"]) but brightness/collected
     flux do, so the lever values are still part of the cache key -- a
     lever-varying row cannot reuse another lever's cached brightness."""
-    key = (str(card_path), "pulsed", delta_xx, gamma300,
+    base_T_hs = DeviceDesign.load(card_path).thermal.T_hs if T_hs is None else T_hs
+    key = (str(card_path), "pulsed", delta_xx, gamma300, base_T_hs,
           lever["emission.NA"], lever["emission.R_back"], lever["emission.L_um"])
     if cache is not None and key in cache:
         return cache[key]
     base = DeviceDesign.load(card_path)
     duty = PULSE_WIDTH_NS * 1e-9 * REP_RATE_HZ
     overrides = {
-        "dot.delta_xx": delta_xx, "dot.gamma300": gamma300,
+        "dot.delta_xx": delta_xx, "dot.gamma300": gamma300, "thermal.T_hs": base_T_hs,
         "drive.duty": duty, "drive.cw": False,
         "drive.diode": {**base.drive.diode, "tau_pulse_ns": PULSE_WIDTH_NS},
     }
@@ -416,11 +423,12 @@ def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
 
 
 def eval_cw_point(card_path: Path, delta_xx: float, gamma300: float,
-                  irf_ps: float, lever: dict) -> dict:
+                  irf_ps: float, lever: dict, T_hs: float | None = None) -> dict:
     """CW (duty=1 DC) sub-result; genuinely irf_ps-dependent (g2_cw0_raw),
     so every irf_ps grid value gets its own evaluate() call."""
     overrides = {
         "dot.delta_xx": delta_xx, "dot.gamma300": gamma300,
+        "thermal.T_hs": (DeviceDesign.load(card_path).thermal.T_hs if T_hs is None else T_hs),
         "drive.duty": 1.0, "drive.cw": True, "drive.cw_irf_fwhm_ps": irf_ps,
     }
     overrides.update(lever)
@@ -503,18 +511,19 @@ def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple
     combos = build_lever_combos(lever_grid)
     rows = []
     for lever in combos:
-        for delta_xx in grid["dot.delta_xx"]:
-            for gamma300 in grid["dot.gamma300"]:
-                pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache)
-                for irf_ps in grid["irf_ps"]:
-                    cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever)
-                    rows.append(_build_row(card, ranges, card_assumptions, i_ua,
-                                           delta_xx, gamma300, irf_ps, lever, pulsed, cw))
+        for T_hs in grid["thermal.T_hs"]:
+            for delta_xx in grid["dot.delta_xx"]:
+                for gamma300 in grid["dot.gamma300"]:
+                    pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache, T_hs)
+                    for irf_ps in grid["irf_ps"]:
+                        cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever, T_hs)
+                        rows.append(_build_row(card, ranges, card_assumptions, i_ua,
+                                               delta_xx, gamma300, irf_ps, T_hs, lever, pulsed, cw))
     return rows, lever_grid, len(combos)
 
 
 def refine_gamma300(card: dict, delta_xx_grid: list, lever_combos: list,
-                    pulsed_cache: dict) -> list:
+                    pulsed_cache: dict, T_hs_values: list) -> list:
     """Council review round 5, item 2: headline_pass at every (delta_xx,
     lever-combo) x GAMMA300_REFINE_MEV sample -- "keep the lever axes"
     (every lever combo is still searched, since eligibility, via the
@@ -537,16 +546,18 @@ def refine_gamma300(card: dict, delta_xx_grid: list, lever_combos: list,
     assumptions = "; ".join(sorted(set(provenance.get("assumptions", []))
                                    | set(SWEEP_ASSUMPTION_KEYS)))
     rows = []
-    for lever in lever_combos:
+    for T_hs in T_hs_values:
+      for lever in lever_combos:
         for delta_xx in delta_xx_grid:
             for gamma300 in GAMMA300_REFINE_MEV:
-                pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache)
+                pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache, T_hs)
                 g2_p = _f_or_none(pulsed["scalars"].get("g2_op"))
                 headline_pass = bool(pulsed["eligible"] and g2_p is not None
                                      and g2_p < G2_THRESHOLD)
                 rows.append({
                     "card_id": card["id"], "headline_pass": headline_pass,
                     "eligible": bool(pulsed["eligible"]),
+                    "T_hs_K": T_hs,
                     "gamma300_meV": gamma300, "g2_pulsed": g2_p,
                     "delta_xx_meV": delta_xx, "irf_ps": None,
                     "emission_NA": lever["emission.NA"],
@@ -580,7 +591,7 @@ def anchor_check(card: dict, pulsed_cache: dict) -> dict:
            "passes": passes}
 
 
-def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
+def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps, T_hs,
               lever, pulsed, cw) -> dict:
     scp, sccw = pulsed["scalars"], cw["scalars"]
     eligible_row = bool(pulsed["eligible"] and cw["eligible"])
@@ -596,7 +607,7 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         and g2_cw0 < G2_THRESHOLD and g2_cw0_raw < G2_THRESHOLD)
     assumptions = sorted(set(card_assumptions) | set(SWEEP_ASSUMPTION_KEYS))
     config_hash = hashlib.sha256(json.dumps(
-        {"card": card["id"], "delta_xx": delta_xx, "gamma300": gamma300,
+        {"card": card["id"], "delta_xx": delta_xx, "gamma300": gamma300, "T_hs": T_hs,
          "irf_ps": irf_ps, "pulse_width_ns": PULSE_WIDTH_NS, "rep_rate_hz": REP_RATE_HZ,
          "lever": lever},
         sort_keys=True).encode()).hexdigest()[:16]
@@ -605,13 +616,14 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         "delta_xx_meV": delta_xx, "delta_xx_tag": ranges.get("dot.delta_xx", {}).get("tag", ""),
         "gamma300_meV": gamma300, "gamma300_tag": ranges.get("dot.gamma300", {}).get("tag", ""),
         "irf_ps": irf_ps, "irf_tag": ranges.get("irf_ps", {}).get("tag", ""),
-        "T_hs_K": scp.get("T_j_op", float("nan")) - scp.get("dT_J", 0.0),
+        "T_hs_K": T_hs,
         "Tj_pulsed_K": scp.get("T_j_op"), "Tj_cw_K": sccw.get("T_j_op"),
         "I_uA": i_ua,
         "V_j_pulsed_V": scp.get("V_j_op"), "V_j_cw_V": sccw.get("V_j_op"),
         "mu_pulsed": scp.get("mu_resolved"),
         "eta_inj_pulsed": scp.get("eta_inj"), "eta_inj_cw": sccw.get("eta_inj"),
         "S_retention_pulsed": scp.get("S_resolved"), "S_retention_cw": sccw.get("S_resolved"),
+        "Gamma_pulsed_meV": scp.get("gamma_op"),
         "b_e_window_pulsed": scp.get("b_e_resolved"), "b_e_window_cw": sccw.get("b_e_resolved"),
         "t_x_pulsed": scp.get("t_x_op"), "eps_pulsed": scp.get("eps_op"),
         "t_x_cw": sccw.get("t_x_op"), "eps_cw": sccw.get("eps_op"),
@@ -646,7 +658,7 @@ def csv_fieldnames() -> list:
             "gamma300_meV", "gamma300_tag", "irf_ps", "irf_tag", "T_hs_K",
             "Tj_pulsed_K", "Tj_cw_K", "I_uA", "V_j_pulsed_V", "V_j_cw_V",
             "mu_pulsed", "eta_inj_pulsed", "eta_inj_cw", "S_retention_pulsed",
-            "S_retention_cw", "b_e_window_pulsed", "b_e_window_cw", "t_x_pulsed",
+            "S_retention_cw", "Gamma_pulsed_meV", "b_e_window_pulsed", "b_e_window_cw", "t_x_pulsed",
             "eps_pulsed", "t_x_cw", "eps_cw", "edge_beta", "edge_eta_total",
             "collected_flux_pulsed_s", "collected_flux_cw_s", "g2_pulsed",
             "g2_cw0", "g2_cw0_raw", "eligible_pulsed", "eligible_cw",
@@ -747,15 +759,27 @@ def compute_stats(rows: list) -> dict:
                      and np.isfinite(r["g2_cw0"]) and r["g2_cw0"] < G2_THRESHOLD)
     n_cw_raw_pass = sum(1 for r in rows if r["eligible_row"]
                         and np.isfinite(r["g2_cw0_raw"]) and r["g2_cw0_raw"] < G2_THRESHOLD)
+    per_T = {}
+    for T_hs in (230.0, 250.0, 273.0, 300.0):
+        t_rows = [r for r in rows if float(r.get("T_hs_K", float("nan"))) == T_hs]
+        t_eligible = [r for r in t_rows if r.get("eligible_row")]
+        t_headline = [r for r in t_rows if r.get("headline_pass")]
+        per_T[str(int(T_hs))] = {
+            "n_total": len(t_rows), "n_eligible": len(t_eligible),
+            "n_headline": len(t_headline),
+            "g2_min": _finite_stats([r.get("g2_pulsed") for r in t_eligible])[0],
+            "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in t_rows]),
+        }
     return {
         "per_card": per_card, "n_total": n_total, "n_eligible": n_eligible,
         "eligible_coverage": (n_eligible / n_total) if n_total else 0.0,
         "n_headline": n_headline,
         "headline_coverage": (n_headline / n_total) if n_total else 0.0,
         "n_cw0_pass": n_cw0_pass,
-        "cw0_coverage": (n_cw0_pass / n_total) if n_total else 0.0,
+        "cw0_coverage": (n_cw0_pass / n_eligible) if n_eligible else 0.0,
         "n_cw_raw_pass": n_cw_raw_pass,
-        "cw_raw_coverage": (n_cw_raw_pass / n_total) if n_total else 0.0,
+        "cw_raw_coverage": (n_cw_raw_pass / n_eligible) if n_eligible else 0.0,
+        "per_T": per_T,
         "n_flux_floor_excluded": n_flux_floor_excluded,
         "g2_pulsed_min": pooled_min, "g2_pulsed_median": pooled_median,
         "diag_g2_pulsed_min": _finite_stats([r.get("diag_g2_pulsed", r.get("g2_pulsed")) for r in diagnostic_rows])[0],
@@ -880,7 +904,12 @@ def _no_pass_reason(card_rows: list) -> str:
     below the 1 kHz floor); `"g2"` when at least one row IS eligible but
     g2(0) >= 0.5 at every sampled gamma300 (a genuine physics shortfall, not
     a flux-eligibility one)."""
-    return "g2" if any(r.get("eligible") for r in card_rows) else "flux"
+    flux_blocks = not any(r.get("eligible") for r in card_rows)
+    g2_blocks = not any(_f_or_none(r.get("g2_pulsed")) is not None
+                        and _f_or_none(r.get("g2_pulsed")) < G2_THRESHOLD
+                        for r in card_rows)
+    reasons = [name for name, blocked in (("flux", flux_blocks), ("g2", g2_blocks)) if blocked]
+    return ",".join(reasons) or "g2"
 
 
 def _gamma300_threshold_bracket(rows: list, gamma300_pass_max_by_card: dict) -> dict:
@@ -1145,6 +1174,9 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     evidence_complete = bool(evidence_report.get("evidence_complete", False))
     hallucination_ok = _self_test_passed(hallucination_report)
     headline_rows = [r for r in rows if r["headline_pass"]]
+    passing_temperatures = [int(T) for T, info in stats.get("per_T", {}).items()
+                            if info.get("n_headline", 0) > 0]
+    T_pass_min = min(passing_temperatures) if passing_temperatures else None
     headline_by_card: dict = {}
     for r in headline_rows:
         headline_by_card.setdefault(r["card_id"], []).append(r)
@@ -1190,6 +1222,13 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         gamma_source_rows, gamma300_pass_max_by_card)
     gamma300_threshold = _pooled_gamma300_threshold(
         gamma300_pass_max_by_card, gamma300_threshold_by_card)
+    gamma300_threshold_by_T = {}
+    for T in stats.get("per_T", {}):
+        t_rows = [r for r in gamma_source_rows if str(int(round(float(r.get("T_hs_K", 300))))) == T]
+        if t_rows:
+            t_max = _card_gamma300_pass_max(t_rows)
+            gamma300_threshold_by_T[T] = _pooled_gamma300_threshold(
+                t_max, _gamma300_threshold_bracket(t_rows, t_max))
 
     fallback_only = bool(passed and headline_by_card
                          and all(r["card_class"] != "primary"
@@ -1226,8 +1265,8 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "g2_min": g2_min, "g2_median": g2_median, "median_pass": median_pass,
         "coverage": coverage_over_eligible, "eligible_fraction": eligible_fraction,
         "headline_coverage_n": stats["n_headline"], "headline_coverage_total": stats["n_total"],
-        "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_total"],
-        "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_total"],
+        "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_eligible"],
+        "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_eligible"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
         "flux_floor_excluded": stats["n_flux_floor_excluded"],
         "diag_g2_min": stats["diag_g2_pulsed_min"],
@@ -1244,6 +1283,9 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "gamma300_threshold_by_card": gamma300_threshold_by_card,
         "gamma300_threshold": gamma300_threshold,
         "anchor_6_5mev_by_card": anchor_report or {},
+        "T_pass_min": T_pass_min,
+        "headline_by_T": stats.get("per_T", {}),
+        "gamma300_threshold_by_T": gamma300_threshold_by_T,
     }
 
 
@@ -1265,7 +1307,11 @@ def verdict_line(verdict: dict) -> str:
             f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
             f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']} "
             f"gamma300_pass_max={verdict['gamma300_pass_max']:.4g} "
-            f"gamma300_threshold={_format_threshold(verdict['gamma300_threshold'])}")
+            f"gamma300_threshold={_format_threshold(verdict['gamma300_threshold'])} "
+            f"T_pass_min={verdict.get('T_pass_min') if verdict.get('T_pass_min') is not None else 'none'} "
+            f"headline_by_T=" + ",".join(
+                f"{T}:{info.get('n_headline', 0)}/{info.get('n_total', 0)}"
+                for T, info in verdict.get('headline_by_T', {}).items()))
 
 
 def card_line(card_id: str, card_stats: dict) -> str:
@@ -1468,7 +1514,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "collected-flux eligibility floor (headline_pass can never be True there, no "
         "matter how favourable g2 would be), or `none(g2)` if at least one sampled row IS "
         "flux-eligible but pulsed intrinsic g2(0) >= 0.5 at every sampled gamma300 (a "
-        "genuine physics shortfall, not an eligibility one).")
+        "genuine physics shortfall, not an eligibility one); `none(flux,g2)` reports both "
+        "blocking conditions when neither a flux-eligible row nor a diagnostic g2 < 0.5 row exists.")
     lines.append("")
     lines.append(f"`gamma300_pass_max` (pooled, both cards): {verdict['gamma300_pass_max']:.4g} meV; "
                  f"`gamma300_threshold` (pooled): "
@@ -1543,6 +1590,23 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                 lines.append(f"- `{card_id}` `{lever_path}`: sampled at {vals}")
             lines.append(f"- `{card_id}` lever combinations evaluated: {info.get('n_combos')}")
     lines.append("")
+    lines.append("## Per-temperature acceptance")
+    lines.append("| T_hs (K) | eligible | headline passes | pulsed g2 min | flux max (photons/s) | gamma300 threshold |")
+    lines.append("|---:|---:|---:|---:|---:|---|")
+    for T, info in verdict.get("headline_by_T", {}).items():
+        threshold = verdict.get("gamma300_threshold_by_T", {}).get(T, {"lo": None, "hi": None})
+        lines.append(f"| {T} | {info['n_eligible']}/{info['n_total']} | {info['n_headline']}/{info['n_total']} | "
+                     f"{_fmt_or_na(info['g2_min'])} | {_fmt_or_na(info['flux_max'])} | {_format_threshold(threshold)} |")
+    lines.append("")
+    lines.append("## What cooling buys")
+    for T, info in verdict.get("headline_by_T", {}).items():
+        candidates = [r for r in rows if int(round(float(r.get("T_hs_K", -1)))) == int(T)]
+        best = _best_diagnostic_row(candidates)
+        if best:
+            lines.append(f"At T_hs={T} K, the favourable corner has retention S={_fmt_or_na(best.get('S_retention_pulsed'))}, "
+                         f"linewidth Gamma(T)={_fmt_or_na(best.get('Gamma_pulsed_meV'))} meV, and window background "
+                         f"b_e={_fmt_or_na(best.get('b_e_window_pulsed'))}.")
+    lines.append("")
     lines.append("## Coverage")
     lines.append(f"- **eligible fraction** (eligible/total; council review round 5, item 4 -- "
                  f"one word per quantity): {stats['n_eligible']}/{stats['n_total']} "
@@ -1576,10 +1640,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"plus rows excluded ONLY by the flux floor; `diag_g2_median_diagnostic` in "
                  f"the VERDICT line): {stats['diag_g2_pulsed_median']:.4g}")
     lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (eligible rows, diagnostic "
-                 f"only, does not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
+                 f"only, does not gate PASS): {stats['n_cw0_pass']}/{stats['n_eligible']} "
                  f"= {stats['cw0_coverage']:.3f}")
     lines.append(f"- secondary coverage, CW IRF-convolved g2_cw0_raw < 0.5 (eligible rows, "
-                 f"diagnostic only, does not gate PASS): {stats['n_cw_raw_pass']}/{stats['n_total']} "
+                 f"diagnostic only, does not gate PASS): {stats['n_cw_raw_pass']}/{stats['n_eligible']} "
                  f"= {stats['cw_raw_coverage']:.3f}")
     lines.append("")
     lines.append("## Per-card statistics")
@@ -1896,12 +1960,21 @@ def run_sweep(quick: bool) -> tuple:
     # cost) and is always computed.
     gamma300_refine_rows = []
     if not quick:
+        passing_T = [float(T) for T, info in stats.get("per_T", {}).items()
+                     if info.get("n_headline", 0) > 0]
+        # The eight-point linewidth refinement is deliberately restricted to
+        # the lowest passing TEC set point and the retained 300 K headline.
+        refine_T = sorted(set(([min(passing_T)] if passing_T else []) + [300.0]))
         for card in CARDS:
             design0 = DeviceDesign.load(card["path"])
-            lever_grid = resolve_lever_grid(design0, quick)
-            combos = build_lever_combos(lever_grid)
+            # Refinement is a threshold diagnostic, not another full
+            # collection-lever sweep: use each card's declared operating
+            # corner so the eight samples remain affordable at two T values.
+            combos = [{"emission.NA": design0.emission.NA,
+                       "emission.R_back": design0.emission.R_back,
+                       "emission.L_um": design0.emission.L_um}]
             gamma300_refine_rows.extend(
-                refine_gamma300(card, grid["dot.delta_xx"], combos, pulsed_cache))
+                refine_gamma300(card, [design0.dot.delta_xx], combos, pulsed_cache, refine_T))
     anchor_report = {card["id"]: anchor_check(card, pulsed_cache) for card in CARDS}
     return rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report
 

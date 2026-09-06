@@ -26,7 +26,7 @@ The aperture-derived competitor count is continuous in the new composed model: i
 
 ## Acceptance gates
 
-The headline metric is pulsed intrinsic `g2(0)`. `g2_cw0` and `g2_cw0_raw` are secondary diagnostics: reported per-row and as coverage fractions, but they never gate PASS. PASS requires at least one physically eligible corner whose pulsed intrinsic `g2(0)` is below the 0.5 acceptance threshold, plus every paper gate (evidence completeness and the hallucination self-test) to pass. Any missing-evidence anchor blocks PASS. A corner relying on `[A]` or `[E]` inputs must be tagged as such in its report, even if its numerical metric is favorable.
+The headline metric is pulsed intrinsic `g2(0)`. `g2_cw0` and `g2_cw0_raw` are secondary diagnostics: reported per-row and as coverage fractions, but they never gate PASS. Non-cryogenic operation means a thermoelectrically cooled package with heat-sink temperature `T_hs >= 230 K` (no cryogen). As requested in `../_goal/GOAL_PROMPT.md`, “Update 2026-09-06”, PASS requires that at least one `T_hs` in `{230, 250, 273, 300}` K has a physically eligible corner (collected pulsed flux >= 1 kHz) whose pulsed intrinsic `g2(0)` is below 0.5, plus every paper gate (evidence completeness and the hallucination self-test) to pass. The verdict reports `T_pass_min`, per-temperature headline coverage, and retains the 300 K result as the “room-temperature” line. Any missing-evidence anchor blocks PASS. A corner relying on `[A]` or `[E]` inputs must be tagged as such in its report, even if its numerical metric is favorable.
 
 ## Evidence status
 

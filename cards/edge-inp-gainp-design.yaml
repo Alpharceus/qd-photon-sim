@@ -129,7 +129,7 @@ design:
           The g2 outcome hinges strongly on this number, evaluated fresh
           against the final card at its own drive.I_uA=0.0018830313178885266
           (V_j and mu are unchanged across the sweep -- transport is
-          independent of dot.gamma300, Lemma 1): at gamma300 = 6.5 meV
+          independent of dot.gamma300 (the linewidth enters only the spectral overlap and filter stages): at gamma300 = 6.5 meV
           (chatzarakis23-gamma300-class lower anchor) g2_op = 0.4563238376
           (~0.46); at 12.0 meV (this card's default, Matsuda 2001) g2_op =
           0.6890713444 (~0.69); at 16.0 meV (the previous, now-superseded
@@ -239,7 +239,7 @@ design:
           at the explicit tau_pulse_ns=0.1 ns, duty=0.008 (80 MHz),
           I_uA=0.0018830313178885266, where V_j=1.6417720892 V,
           f_qfl=1.0000000000, mu=0.9999999987, rho_op=0.8427621125,
-          g2_op=0.6890713444, and collected_flux_pulsed_s=1440.7486360.
+          g2_op=0.6890713444, and collected_flux_pulsed_s=2308.1279594.
           Recomputed fresh against the final card (council review
           2026-09-06): V_j/f_qfl/mu are unchanged from the round-3 numbers
           (transport is independent of dot.gamma300 and the emission
@@ -252,15 +252,12 @@ design:
           gamma300=16.0 meV for reference; both values are unchanged when
           evaluated with NA=0.5/R_back=None/L_um=500 device.py defaults.
           The value changed only because gamma300 moved from 16.0 to 12.0
-          meV. collected_flux_pulsed_s was 1036.4321421 under those
-          same newly-explicit collection levers before this round's facet
-          fix (fifth council review item 1: waveguide.edge_emission's
-          escape-rate facet fraction was double-counting the front-facet
-          transmission T_facet with R_back=0.95 set); it is now
-          1440.7486360 with T_facet applied exactly once (286.4145141 was
-          the still-earlier value under undeclared NA=0.5/R_back=None/
-          L_um=500 device.py defaults). The collected
-          flux now clears the 1 kHz floor (1440.7/s), unlike the prior
+          meV. Following waveguide-na-collection-fix's circular NA-cone
+          collection and 1/e^2-width convention (A_mode = pi w_x w_y),
+          fresh evaluation gives eta_NA=0.8193558507,
+          eta_total=0.0197695945, and collected_flux_pulsed_s=2308.1279594
+          at this operating point. The collected
+          flux now clears the 1 kHz floor (2308.1/s), unlike the prior
           round-3 number; this is the flux-maximising allowed current. The
           0.5x point is feasible (mu=0.4278, not sub-turn-on) with
           g2_op=0.7038910 there, still worse (higher) than this operating
@@ -275,7 +272,7 @@ design:
       drive.b_res:
         value: 0.13636363636363635
         tag: A
-        source: "[E] class value transferred from a different material and temperature: Reischle et al., Optics Express 16, 12771 (2008), InP/AlGaInP QD C at 80 K (raw g2 0.43 -> 0.03 after background correction, rho approximately 0.88 -> b_res = 1/0.88 - 1 = 0.136; ledger anchor reischle08-b-res-80k in verify/data/rt_edge_anchors.yaml states rho = 0.88 directly -- this card's b_res = 1/rho - 1 transformation, and its transfer to this 300 K design, are assumptions of this card, not of that anchor); T-independent residual assumed."
+        source: "[A] class value transferred from a different material and temperature: Reischle et al., Optics Express 16, 12771 (2008), InP/AlGaInP QD C at 80 K (raw g2 0.43 -> 0.03 after background correction, rho approximately 0.88 -> b_res = 1/rho - 1 = 0.136; ledger anchor reischle08-b-res-80k in verify/data/rt_edge_anchors.yaml states rho = 0.88 directly -- this card's b_res = 1/rho - 1 transformation, and its transfer to this 300 K design, are assumptions of this card, not of that anchor); T-independent residual assumed."
       drive.cw_irf_fwhm_ps:
         value: 100.0
         tag: E
@@ -301,7 +298,7 @@ design:
       thermal.T_hs:
         value: 300.0
         tag: A
-        source: "Room-temperature operating point, the RT edge-emitter tier's target (docs/rt_edge_contract.md)."
+        source: "[A] TEC-cooled package; the junction temperature is still solved self-consistently from the drive power. Default is the 300 K room-temperature operating point (docs/rt_edge_contract.md)."
       thermal.layers.0.t_um:
         value: 1.5
         tag: E
@@ -454,6 +451,12 @@ design:
           instead of the solver's.
 
     ranges:
+      thermal.T_hs:
+        lo: 230.0
+        hi: 300.0
+        unit: K
+        tag: A
+        note: "[A] TEC-cooled package; the junction temperature is still solved self-consistently from the drive power."
       dot.delta_xx:
         lo: 4.0
         hi: 8.0

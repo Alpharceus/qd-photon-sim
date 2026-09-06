@@ -114,6 +114,7 @@ REQUIRED_RANGES = {
     "dot.delta_xx": (4.0, 8.0, "meV"),
     "dot.gamma300": (6.0, 20.0, "meV"),
     "irf_ps": (50.0, 200.0, "ps"),
+    "thermal.T_hs": (230.0, 300.0, "K"),
     "emission.NA": (0.5, 0.8, "dimensionless"),
     "emission.R_back": (0.0, 0.95, "fraction"),
     "emission.L_um": (250.0, 500.0, "um"),
@@ -254,6 +255,12 @@ def check_card(path: Path, anchors: dict) -> set:
     ok(f"{tag}: drive.b_res is tagged A (80 K -> 300 K transfer is an "
        "assumption of the cards, per the reischle08-b-res-80k anchor)",
        bres_entry.get("tag") == "A")
+    ok(f"{tag}: drive.b_res text tag matches tag A",
+       bres_source.startswith("[A]"))
+    thermal_entry = provenance.get("sources", {}).get("thermal.T_hs", {})
+    ok(f"{tag}: thermal.T_hs declares TEC cooling while retaining 300 K default",
+       "TEC-cooled package" in thermal_entry.get("source", "")
+       and "self-consistently" in thermal_entry.get("source", ""))
 
     # Council review 2026-09-06 item 3: the collection levers (emission.NA,
     # emission.R_back, emission.L_um, emission.alpha_cm) must be explicit,

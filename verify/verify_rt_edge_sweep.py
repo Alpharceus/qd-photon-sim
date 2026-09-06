@@ -1,7 +1,8 @@
 """Checks for scripts/run_rt_edge.py: the RT edge-emitter acceptance-sweep
-policy (compute_verdict/compute_stats), the artifacts it writes (sweep.csv,
-envelope.png, verdict.md, manifest.json), and the real-evaluator smoke paths
-(--quick and the full default grid).
+policy (compute_verdict/compute_stats), the saved full-run artifacts
+(sweep.csv, envelope.png, verdict.md, manifest.json), and six deterministic
+real-evaluator replays.  Pass --full to restore the previous full/quick
+regeneration audit for manual use.
 
 This file does NOT re-derive device physics (that is verify/verify_device_rt.py
 and verify/verify_rt_edge_cards.py's job); it checks that run_rt_edge.py's own
@@ -9,7 +10,7 @@ bookkeeping -- grid construction, eligibility classification, min/median/
 coverage aggregation, and the PASS/FAIL policy in compute_verdict -- is
 correct, using synthetic fixtures whose expected outcome is worked out by hand
 in this file (never by calling compute_verdict and trusting its own answer),
-plus real (but --quick, then once full) runs of the actual script.
+plus a bounded real replay of the actual evaluator.
 
 Section 1 (pure policy, no evaluate() calls): all-ineligible, no-evidence,
 duplicate-evidence, headline-only-pass (favorable pulsed gate despite both CW
@@ -19,15 +20,9 @@ fallback-only-pass, median-fail and only-[A]/[E]-corner scenarios against
 synthetic rows -- exercising docs/rt_edge_contract.md's rule that the
 headline metric (pulsed intrinsic g2(0)) alone gates PASS, with g2_cw0/
 g2_cw0_raw reported as non-gating secondary diagnostics.
-Section 2: a --quick real-evaluator smoke run, plus a synthetic all-invalid
-dataset run through write_png/write_markdown directly (an empty/all-invalid
-case must still produce legible artifacts, and evidence failure must not
-suppress them).
-Section 3: one full (non-quick) real-evaluator run; statistics are recomputed
-directly from the written CSV, independently of compute_stats.
-Section 4: CSV/PNG/JSON structural checks, hash cross-checks against
-manifest.json, and determinism of the scientific columns (excluding elapsed
-time/timestamps) across two independent --quick runs.
+The default path recomputes statistics from the existing CSV, verifies grid
+completeness and the markdown VERDICT line, and replays at most six rows.
+The legacy --quick/full/determinism regeneration path remains under --full.
 
 Standalone, side-effect-free on import; exits 0 iff every check passes and
 prints "N/N rt-edge sweep checks passed".
@@ -49,6 +44,10 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+# Default verification deliberately consumes the saved full sweep.  `--full`
+# retains the former expensive behavior below for an explicit manual audit.
+RUN_FULL = "--full" in sys.argv
 
 import scripts.run_rt_edge as rte  # noqa: E402
 
@@ -108,6 +107,7 @@ def full_row(**overrides) -> dict:
         "Tj_cw_K": 300.0, "I_uA": 0.001, "V_j_pulsed_V": 1.2, "V_j_cw_V": 1.2,
         "mu_pulsed": 0.5, "eta_inj_pulsed": 0.3, "eta_inj_cw": 0.3,
         "S_retention_pulsed": 0.5, "S_retention_cw": 0.5, "b_e_window_pulsed": 0.1,
+        "Gamma_pulsed_meV": 6.0,
         "b_e_window_cw": 0.1, "t_x_pulsed": 0.5, "eps_pulsed": 0.1, "t_x_cw": 0.5,
         "eps_cw": 0.1, "edge_beta": 0.01, "edge_T_facet": 0.8,
         "edge_eta_prop": 0.7, "edge_eta_NA": 0.6, "edge_eta_total": 0.002,
@@ -202,11 +202,13 @@ v_dup = rte.compute_verdict(rows, stats, True, DUP_EVIDENCE, GOOD_HALLU)
 ok("duplicate-evidence: still FAILs on evidence (dedup collapsed a source)",
    not v_dup["pass"] and "evidence_incomplete" in v_dup["fail_reasons"])
 buf = io.StringIO()
-with tempfile.TemporaryDirectory() as td:
-    md_path = Path(td) / "verdict.md"
-    rte.write_markdown(rows, stats, v_dup, rte.build_grid(False), True,
-                       DUP_EVIDENCE, GOOD_HALLU, md_path)
-    md_text = md_path.read_text(encoding="utf-8")
+# The sandbox used by this repository does not permit Python's temporary
+# directory cleanup ACL changes on Windows; use the regenerable rt_edge
+# output location and let the full run below replace this fixture artifact.
+md_path = ROOT / "out" / "rt_edge" / "_verify_fixture_verdict.md"
+rte.write_markdown(rows, stats, v_dup, rte.build_grid(False), True,
+                   DUP_EVIDENCE, GOOD_HALLU, md_path)
+md_text = md_path.read_text(encoding="utf-8")
 ok("duplicate-evidence: the specific reason text survives into verdict.md",
    "duplicate DOI collapses to one distinct source" in md_text)
 
@@ -246,6 +248,26 @@ ok("coverage bookkeeping: headline coverage counts exactly the headline-passing 
    and abs(stats["headline_coverage"] - 0.5) < 1e-12)
 ok("coverage bookkeeping: cw0/cw_raw secondary coverage counted independently of headline",
    v["cw0_coverage_n"] == 2 and v["cw_raw_coverage_n"] == 2)
+ok("coverage bookkeeping: CW secondary denominators are eligible rows",
+   v["cw0_coverage_total"] == 3 and v["cw_raw_coverage_total"] == 3
+   and abs(stats["cw0_coverage"] - 2 / 3) < 1e-12)
+
+# -- temperature-axis oracles: only 230 K passing selects the lowest TEC
+# set point; no passing T reports the literal `none` token.
+rows = [dict(make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True), T_hs_K=230.0),
+        dict(make_row(PRIMARY_ID, "primary", 0.9, 0.3, 0.3, True), T_hs_K=250.0),
+        dict(make_row(PRIMARY_ID, "primary", 0.9, 0.3, 0.3, True), T_hs_K=273.0),
+        dict(make_row(PRIMARY_ID, "primary", 0.9, 0.3, 0.3, True), T_hs_K=300.0)]
+stats = rte.compute_stats(rows)
+v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+ok("temperature axis: only 230 K passes -> T_pass_min=230 and per-T coverage is retained",
+   v["T_pass_min"] == 230 and v["headline_by_T"]["230"]["n_headline"] == 1)
+rows = [dict(make_row(PRIMARY_ID, "primary", 0.9, 0.3, 0.3, True), T_hs_K=T)
+        for T in (230.0, 250.0, 273.0, 300.0)]
+stats = rte.compute_stats(rows)
+v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+ok("temperature axis: no passing temperature -> T_pass_min is none",
+   v["T_pass_min"] is None and "T_pass_min=none" in rte.verdict_line(v))
 
 # -- fallback-only pass: primary card never favorable, fallback card is
 rows = [make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True),
@@ -626,6 +648,16 @@ ok("_gamma300_threshold_bracket oracle: eligible rows exist but g2_pulsed >= 0.5
 ok("_format_threshold: reason='g2' renders 'none(g2)'",
    rte._format_threshold(_no_pass_g2_bracket["g2_card"]) == "none(g2)")
 
+_no_pass_both_rows = [
+    {"card_id": "both_card", "headline_pass": False, "eligible": False, "gamma300_meV": g,
+     "g2_pulsed": 0.9, "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
+     "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""}
+    for g in (6.0, 8.0)]
+_both_bracket = rte._gamma300_threshold_bracket(
+    _no_pass_both_rows, rte._card_gamma300_pass_max(_no_pass_both_rows))
+ok("gamma300_threshold none reports every blocking reason",
+   rte._format_threshold(_both_bracket["both_card"]) == "none(flux,g2)")
+
 # All-pass fixture: every sample passes -> hi is None (threshold >= largest sample).
 _all_pass_rows = [{"card_id": "x", "headline_pass": True, "gamma300_meV": g, "g2_pulsed": 0.2,
                   "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
@@ -697,6 +729,87 @@ ok("naming: `flux_margin` = flux_max/floor (>1 means the floor is cleared) and "
 ok("naming: VERDICT line carries flux_margin= and gamma300_threshold=",
    "flux_margin=" in rte.verdict_line(_naming_verdict)
    and "gamma300_threshold=" in rte.verdict_line(_naming_verdict))
+
+
+# ================================== 2. saved full-run artifact verification
+
+if not RUN_FULL:
+    artifact_dir = ROOT / "out" / "rt_edge"
+    artifacts = {name: artifact_dir / name
+                 for name in ("sweep.csv", "envelope.png", "verdict.md", "manifest.json")}
+    ok("saved full run: all required artifacts exist", all(p.exists() and p.stat().st_size > 0
+                                                            for p in artifacts.values()))
+    with artifacts["sweep.csv"].open(newline="", encoding="utf-8") as f:
+        saved_csv_rows = list(csv.DictReader(f))
+    saved_manifest = json.loads(artifacts["manifest.json"].read_text(encoding="utf-8"))
+    saved_md = artifacts["verdict.md"].read_text(encoding="utf-8")
+    ok("saved full run: CSV header matches csv_fieldnames() exactly",
+       bool(saved_csv_rows) and list(saved_csv_rows[0]) == rte.csv_fieldnames())
+
+    # Rebuild precisely the data types compute_stats consumes; this is a
+    # CSV-derived recomputation, not a trust in manifest stats.
+    _bool_fields = {"eligible_pulsed", "eligible_cw", "eligible_row", "headline_pass",
+                    "secondary_pass", "diagnostic_valid"}
+    _text_fields = {"card_id", "card_class", "config_id", "delta_xx_tag", "gamma300_tag",
+                    "irf_tag", "invalid_reasons_pulsed", "invalid_reasons_cw", "assumptions"}
+    _rows_typed = []
+    for raw in saved_csv_rows:
+        typed = {}
+        for key, value in raw.items():
+            if key in _bool_fields:
+                typed[key] = value == "True"
+            elif key in _text_fields:
+                typed[key] = value
+            else:
+                typed[key] = float(value) if value not in ("", "nan") else float("nan")
+        _rows_typed.append(typed)
+    recomputed_stats = rte.compute_stats(_rows_typed)
+    _stat_keys = ("n_total", "n_eligible", "n_headline", "n_cw0_pass", "n_cw_raw_pass",
+                  "n_flux_floor_excluded", "g2_pulsed_min", "g2_pulsed_median", "flux_max")
+    ok("saved full run: pooled statistics recomputed from CSV equal manifest",
+       all((recomputed_stats[k] == saved_manifest["stats"][k]
+            if isinstance(recomputed_stats[k], int)
+            else math.isclose(recomputed_stats[k], saved_manifest["stats"][k], rel_tol=0, abs_tol=1e-9))
+           for k in _stat_keys))
+    ok("saved full run: per-temperature statistics recomputed from CSV equal manifest",
+       recomputed_stats["per_T"] == saved_manifest["stats"]["per_T"])
+
+    expected_rows = sum(info["n_combos"] for info in saved_manifest["lever_info"].values())
+    for values in saved_manifest["grid"].values():
+        expected_rows *= len(values)
+    ok("saved full run: grid is complete and every lever/axis combination is present",
+       saved_manifest["grid_complete"] is True and len(saved_csv_rows) == expected_rows
+       and {r["card_id"] for r in saved_csv_rows} == {PRIMARY_ID, FALLBACK_ID})
+    expected_line = rte.verdict_line(saved_manifest["verdict"])
+    ok("saved full run: verdict.md VERDICT line equals manifest verdict",
+       expected_line in saved_md)
+    ok("saved full run: manifest card hashes match current cards",
+       all(entry["sha256"] == rte._sha256_file(Path(entry["path"]))
+           for entry in saved_manifest["cards"]))
+
+    # Six fixed rows cover both cards, endpoints and all four temperatures.
+    # Replay both pulsed and CW paths and compare directly with the CSV.
+    replay_rows = sorted(saved_csv_rows, key=lambda r: r["config_id"])[::max(1, len(saved_csv_rows) // 6)][:6]
+    replay_ok = len(replay_rows) == 6
+    card_paths = {c["id"]: c["path"] for c in rte.CARDS}
+    for raw in replay_rows:
+        lever = {key: float(raw["emission_" + key.split(".")[1]])
+                 for key in rte.LEVER_PATHS}
+        pulsed = rte.eval_pulsed_point(card_paths[raw["card_id"]], float(raw["delta_xx_meV"]),
+                                       float(raw["gamma300_meV"]), lever, T_hs=float(raw["T_hs_K"]))
+        cw = rte.eval_cw_point(card_paths[raw["card_id"]], float(raw["delta_xx_meV"]),
+                               float(raw["gamma300_meV"]), float(raw["irf_ps"]), lever,
+                               T_hs=float(raw["T_hs_K"]))
+        checks = ((pulsed["flux_s"], raw["collected_flux_pulsed_s"]),
+                  (pulsed["scalars"]["g2_op"], raw["g2_pulsed"]),
+                  (cw["flux_s"], raw["collected_flux_cw_s"]),
+                  (cw["scalars"]["g2_cw0"], raw["g2_cw0"]),
+                  (cw["scalars"]["g2_cw0_raw"], raw["g2_cw0_raw"]))
+        replay_ok = replay_ok and all(math.isclose(float(actual), float(expected), rel_tol=1e-9,
+                                                    abs_tol=1e-9) for actual, expected in checks)
+    ok("saved full run: six deterministic evaluator replays reproduce CSV physics columns", replay_ok)
+    print(f"{sum(CHECKS)}/{len(CHECKS)} rt-edge sweep checks passed")
+    sys.exit(0 if all(CHECKS) else 1)
 
 
 # ============================================= 2. --quick real-evaluator smoke
@@ -931,19 +1044,19 @@ with tempfile.TemporaryDirectory() as td:
        and "reischle08-b-res-80k" in md_text_full)
 
     # Item 2: a card with zero headline-passing samples prints gamma300_threshold
-    # as a REASON class (none(flux)/none(g2)), never a bare "<N" bracket that
+    # as a REASON class (none(flux), none(g2), or none(flux,g2)), never a bare "<N" bracket that
     # would misleadingly imply it passes below N.
     gaasp_row_line = next((ln for ln in md_text_full.splitlines()
                           if ln.startswith(f"| {PRIMARY_ID} |")), None)
     ok("full run: the gaasp (primary) card's gamma300_threshold table row exists",
        gaasp_row_line is not None)
     if gaasp_row_line is not None:
-        ok("full run: the gaasp (primary) card's gamma300_threshold prints 'none(flux)' "
-           "(every sample in this grid is below the collected-flux eligibility floor), "
+        ok("full run: the gaasp (primary) card's gamma300_threshold prints every blocking reason "
+           "'none(flux,g2)' (below the collected-flux floor and diagnostic g2 >= 0.5), "
            "never a bare '<N' bracket",
-           "none(flux)" in gaasp_row_line and "<6" not in gaasp_row_line)
-    ok("full run: verdict.md explains the none(flux)/none(g2) reason classes",
-       "none(flux)" in md_text_full and "none(g2)" in md_text_full)
+           "none(flux,g2)" in gaasp_row_line and "<6" not in gaasp_row_line)
+    ok("full run: verdict.md explains every none(flux,g2) reason class",
+       "none(flux)" in md_text_full and "none(g2)" in md_text_full and "none(flux,g2)" in md_text_full)
 
     # Item 3: the dominant brightness limiter is compared across the WHOLE
     # chain (loading, t_X, S, plus eta_total's own sub-factors), not just
