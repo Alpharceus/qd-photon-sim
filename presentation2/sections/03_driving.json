@@ -136,7 +136,8 @@
       "repo_numbers": {
         "vbi_gaas_1e17_1e17_300K": {
           "value": 1.2666041268449586,
-          "file": "fsim_core/transport.py (fresh evaluate: transport.homojunction_vbi(binary('GaAs'), 1e17, 1e17, 300.0))"
+          "file": "fsim_core/transport.py",
+          "how": "__import__('fsim_core.transport',fromlist=['x']).homojunction_vbi(__import__('fsim_core.materials',fromlist=['x']).binary('GaAs'), 1e17, 1e17, 300.0)"
         }
       }
     },
@@ -235,7 +236,8 @@
       "repo_numbers": {
         "mesa_over_aperture_area_ratio": {
           "value": 6.246831516356892,
-          "file": "fsim_core/transport.py (fresh evaluate: Diode default area_um2=0.785 / (pi*(0.4/2)**2))"
+          "file": "fsim_core/transport.py",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).mesa_over_aperture_area_ratio(0.4)"
         }
       }
     },
@@ -286,11 +288,13 @@
       "repo_numbers": {
         "f_qfl_bg_at_default_op_point_300K": {
           "value": 0.07106696420230808,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['injection.f_qfl_bg'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'injection.f_qfl_bg')"
         },
         "mu_at_default_op_point_300K": {
           "value": 0.9999999987213851,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['mu_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'mu_resolved')"
         }
       }
     },
@@ -320,19 +324,23 @@
       "repo_numbers": {
         "eta_inj_gaasp_300K": {
           "value": 0.33782403373133707,
-          "file": "cards/edge-inp-gaasp-design.yaml (fresh evaluate(), scalars['eta_inj'])"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'eta_inj')"
         },
         "eta_inj_gaasp_80K": {
           "value": 0.9999971341649136,
-          "file": "cards/edge-inp-gaasp-design.yaml (fresh evaluate() at thermal.T_hs=80, scalars['eta_inj'])"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'eta_inj', T_hs=80.0)"
         },
         "eta_inj_gainp_300K": {
           "value": 0.9926579833552509,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['eta_inj'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eta_inj')"
         },
         "eta_inj_gainp_80K": {
           "value": 0.9999999999999925,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=80, scalars['eta_inj'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eta_inj', T_hs=80.0)"
         }
       }
     },
@@ -356,15 +364,18 @@
       "repo_numbers": {
         "f_QD_at_1e10_cm2": {
           "value": 0.9950248756218907,
-          "file": "fsim_core/transport.py (fresh evaluate: Diode().f_qd(1e10))"
+          "file": "fsim_core/transport.py",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qd(1e10)"
         },
         "f_QD_at_7e8_cm2": {
           "value": 0.9333333333333333,
-          "file": "fsim_core/transport.py (fresh evaluate: Diode().f_qd(7e8))"
+          "file": "fsim_core/transport.py",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).f_qd(7e8)"
         },
         "N_dots_expected_in_aperture": {
           "value": 0.3769911184307752,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate: aperture.density_cm2 * pi*(aperture.diameter_um/2)**2 * 1e-8)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).n_dots_expected('cards/edge-inp-gainp-design.yaml')"
         }
       }
     },
@@ -412,19 +423,23 @@
       "repo_numbers": {
         "I_uA_gainp": {
           "value": 0.0018830313178885266,
-          "file": "cards/edge-inp-gainp-design.yaml (drive.I_uA)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).drive_field('cards/edge-inp-gainp-design.yaml', 'I_uA')"
         },
         "I_uA_gaasp": {
           "value": 0.011314080567212663,
-          "file": "cards/edge-inp-gaasp-design.yaml (drive.I_uA)"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).drive_field('cards/edge-inp-gaasp-design.yaml', 'I_uA')"
         },
         "mu_resolved_gainp_300K": {
           "value": 0.9999999987213851,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['mu_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'mu_resolved')"
         },
         "mu_resolved_gaasp_300K": {
           "value": 0.9999999997568025,
-          "file": "cards/edge-inp-gaasp-design.yaml (fresh evaluate(), scalars['mu_resolved'])"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'mu_resolved')"
         }
       }
     },
@@ -459,15 +474,18 @@
       "repo_numbers": {
         "b_res_from_reischle_rho088": {
           "value": 0.13636363636363635,
-          "file": "cards/edge-inp-gainp-design.yaml, cards/edge-inp-gaasp-design.yaml (drive.b_res = (1-0.88)/0.88)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "(1 - 0.88) / 0.88"
         },
         "b_e_resolved_gainp_300K": {
           "value": 0.025105412712542366,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['b_e_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'b_e_resolved')"
         },
         "b_e_resolved_gaasp_300K": {
           "value": 0.14379414576550573,
-          "file": "cards/edge-inp-gaasp-design.yaml (fresh evaluate(), scalars['b_e_resolved'])"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'b_e_resolved')"
         }
       }
     },
@@ -516,19 +534,25 @@
       "repo_numbers": {
         "g2_cw0_intrinsic_favorable_300K": {
           "value": 0.3586,
-          "file": "out/rt_edge/verdict.md (Assumptions in plain words, item 3)"
+          "file": "out/rt_edge/verdict.md",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_cw0', favorable=True, cw=True, irf_ps=50.0)",
+          "tolerance": 0.001
         },
         "g2_cw0_raw_irf_favorable_300K": {
           "value": 0.895,
-          "file": "out/rt_edge/verdict.md (Assumptions in plain words, item 3)"
+          "file": "out/rt_edge/verdict.md",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_cw0_raw', favorable=True, cw=True, irf_ps=50.0)",
+          "tolerance": 0.001
         },
         "g2_cw0_gainp_default_300K": {
           "value": 0.7415275758244579,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['g2_cw0'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_cw0')"
         },
         "g2_cw0_raw_gainp_default_300K": {
           "value": 0.9777344806603223,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['g2_cw0_raw'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_cw0_raw')"
         }
       }
     },
@@ -560,15 +584,18 @@
       "repo_numbers": {
         "dT_J_gainp_300K": {
           "value": 8.002647859939316e-06,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['dT_J'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'dT_J')"
         },
         "dT_J_gaasp_300K": {
           "value": 5.824616556537876e-05,
-          "file": "cards/edge-inp-gaasp-design.yaml (fresh evaluate(), scalars['dT_J'])"
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'dT_J')"
         },
         "P_junction_W_gainp_300K": {
           "value": 3.0553712711693464e-09,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate(), scalars['P_junction_W'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'P_junction_W')"
         }
       }
     },
@@ -626,39 +653,48 @@
       "repo_numbers": {
         "g2_op_gainp_80K": {
           "value": 0.22901211331995874,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=80)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0)"
         },
         "g2_op_gainp_230K": {
           "value": 0.5001499929250597,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=230)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0)"
         },
         "g2_op_gainp_300K": {
           "value": 0.6890713444347775,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=300)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0)"
         },
         "flux_gainp_80K": {
           "value": 23737.84782846043,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=80, scalars['collected_flux_pulsed_s'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0)"
         },
         "flux_gainp_230K": {
           "value": 4107.797325879014,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=230, scalars['collected_flux_pulsed_s'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0)"
         },
         "flux_gainp_300K": {
           "value": 1440.7486360487203,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=300, scalars['collected_flux_pulsed_s'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0)"
         },
         "S_gainp_80K": {
           "value": 0.0757524707852274,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=80, scalars['S_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=80.0)"
         },
         "S_gainp_230K": {
           "value": 0.01311117512703881,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=230, scalars['S_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=230.0)"
         },
         "S_gainp_300K": {
           "value": 0.004617450134914658,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=300, scalars['S_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=300.0)"
         }
       }
     },
@@ -752,23 +788,28 @@
       "repo_numbers": {
         "loading_1_minus_e_neg_mu": {
           "value": 0.632121,
-          "file": "out/rt_edge/verdict.md (fresh evaluate() at favourable corner, 1 - exp(-mu_resolved))"
+          "file": "out/rt_edge/verdict.md",
+          "how": "1.0 - __import__('math').exp(-__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'mu_resolved', favorable=True))"
         },
         "t_X_favorable_corner": {
           "value": 0.5,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['t_x_op'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 't_x_op', favorable=True)"
         },
         "S_favorable_corner": {
           "value": 0.004617450134914658,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['S_resolved'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', favorable=True)"
         },
         "eta_total_favorable_corner": {
           "value": 0.013228144766681021,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['edge_eta_total'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'edge_eta_total', favorable=True)"
         },
         "collected_flux_favorable_corner": {
           "value": 1544.4045042358741,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['collected_flux_pulsed_s'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True)"
         }
       }
     },
@@ -800,15 +841,18 @@
       "repo_numbers": {
         "rho_favorable_corner": {
           "value": 0.8611032296998459,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['rho_op'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', favorable=True)"
         },
         "eps_favorable_corner": {
           "value": 0.13616541706364768,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['eps_op'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'eps_op', favorable=True)"
         },
         "g2_favorable_corner": {
           "value": 0.398621373709134,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner, scalars['g2_op'])"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True)"
         }
       }
     },
@@ -894,15 +938,18 @@
       "repo_numbers": {
         "gate_pass_80K": {
           "value": 1,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=80: g2_op=0.229 < 0.5)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=80.0)"
         },
         "gate_pass_300K_default": {
           "value": 0,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at thermal.T_hs=300: g2_op=0.689 >= 0.5)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=300.0)"
         },
         "gate_pass_300K_favorable": {
           "value": 1,
-          "file": "cards/edge-inp-gainp-design.yaml (fresh evaluate() at favourable corner: g2_op=0.399 < 0.5)"
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', favorable=True)"
         }
       }
     },
