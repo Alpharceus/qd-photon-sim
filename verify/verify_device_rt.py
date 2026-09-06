@@ -24,12 +24,13 @@ sys.path.insert(0, str(ROOT))
 import fsim_core.device as devmod
 from fsim_core.device import (DeviceDesign, EmissionBlock, evaluate, evaluate_envelope,
                               _stack, _resolve_edge, _compose_aperture_g2, _aperture_lambda,
-                              _tracked_material, _diode_from_drive)
+                              _tracked_material, _diode_from_drive, _confinement_params)
 from fsim_core.linewidth import LinewidthParams, gamma_anchor
 from fsim_core.integrator import retention, g2_from
 from fsim_core.loading import loading_probs
 from fsim_core.thermal import t_junction
 from fsim_core.cavity import tracking_detuning
+from fsim_core.spectral import epsilon
 from fsim_core import dot_levels, transport, waveguide, cw_g2, materials
 
 # transport's fermi_levels() warns at some (preset, T) combinations that this
@@ -389,8 +390,17 @@ raises("reject emission.type='edge' combined with cavity.enabled", lambda: evalu
 
 # Missing optical-index evidence at the natural (un-pinned) wavelength is an
 # ineligible point with a stated reason, not a crash.
+#
+# Item 8 (council review 2026-09-05): EDGE_SYSTEM's own natural (3/10 nm dot)
+# confinement wavelength (~788 nm) now falls INSIDE MATERIAL_EXTRA's 700-850
+# nm Ga0.51In0.49P/(AlGa)InP table added since this check was written, so it
+# is no longer a genuine "missing evidence" case. A larger dot (lower
+# confinement energy -> longer wavelength) is retargeted just past the
+# table's 850 nm edge (~860 nm) instead, so the check still exercises the
+# ineligible-not-crash path against data that is genuinely absent.
+MISSING_SYSTEM = dict(EDGE_SYSTEM, geometry={"height_nm": 10.0, "radius_nm": 24.0})
 d_missing = DeviceDesign(); d_missing.thermal.T_hs = 300.; d_missing.drive.V = 0.
-d_missing.ret.mode = "confinement"; d_missing.ret.system = EDGE_SYSTEM
+d_missing.ret.mode = "confinement"; d_missing.ret.system = MISSING_SYSTEM
 d_missing.emission.type = "edge"  # no lambda_nm override -> natural, out-of-table wavelength
 r_missing = evaluate(d_missing, [300.])
 ok("missing optical index data at the natural wavelength is ineligible with a reason, not a crash",
@@ -600,24 +610,74 @@ r_ns = sc_cw["loading.r_dot"] / 1e9
 t_X, t_XX = sc_cw["t_x_op"], sc_cw["eps_op"] * sc_cw["t_x_op"]
 I_X, I_XX = cw_g2.photon_rates(r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, 1.0)
 sig = t_X * I_X + t_XX * I_XX
-# item 3 fix (council review 2026-09-05): the absolute in-window background
-# rate is transport's OWN accounting (Background.rate_bg_window, photons/s
-# -- the same physical operating point regardless of pulsed/CW framing);
-# forming b_e_cw = abs_bg_in_window / I_X (the SAME CW rate-equation X rate
-# that feeds sig) and then multiplying back by t_X * I_X cancels I_X
-# exactly, leaving bg = abs_bg_in_window * t_X -- one consistent ratio,
-# never the pulsed model's own rate_x (b_e_resolved's denominator) chained
-# onto this I_X (that was the bug: two different X-rate models mixed
-# across the multiplication, 13x too large at a saturated operating point).
+# item 5 fix (round 2, council review 2026-09-05): the absolute in-window
+# background rate is transport's OWN accounting (Background.rate_bg_window,
+# photons/s -- the same physical operating point regardless of pulsed/CW
+# framing); a flat continuum's collected rate scales with the collection
+# (filter) window width, never with the X LINE's own transmission t_X
+# (round 1's `abs_bg_in_window_ns * t_X`, a ~940x undercount at the sweep's
+# worst corner) -- d_cw's design carries no drive.diode.w_meV override, so
+# the filter window equals the transport window and the scale is 1 exactly.
 abs_bg_in_window_ns = sc_cw["background.rate_bg_window"] / 1e9
-b_e_cw = abs_bg_in_window_ns / I_X
-bg = b_e_cw * t_X * I_X
+bg = abs_bg_in_window_ns
 rho_cw_expected = sig / (sig + bg)
-ok("reconstruction: abs_bg_in_window == b_e * X_rate_collected, pulsed path",
-   abs(sc_cw["background.rate_bg_window"] - sc_cw["b_e_resolved"] * sc_cw["background.rate_x"])
-   < 1e-6 * max(1.0, sc_cw["background.rate_bg_window"]))
-ok("reconstruction: abs_bg_in_window == b_e * X_rate_collected, CW path",
-   abs(abs_bg_in_window_ns - b_e_cw * I_X) < 1e-9 * max(1.0, abs_bg_in_window_ns))
+
+# Item 6 (council review 2026-09-05): the round-1 "reconstruction" checks
+# here were tautologies -- they re-derived abs_bg_in_window from b_e_resolved
+# and background.rate_x, device.py's OWN pre-computed ratio, so they could
+# not have caught a wrong rate_bg formula. Reconstruct rate_bg INDEPENDENTLY
+# instead, straight from transport's public primitives -- (1-f_QD) eta_inj
+# I/q eta_rad_matrix xi PLUS the routed (1-f_qfl) share (item 2) -- never
+# from device.py's own Background object.
+diode_cw = _diode_from_drive(d_cw.drive, d_cw.aperture.diameter_um)
+n_dot_cw = d_cw.drive.n_dot_cm2 or d_cw.aperture.density_cm2
+lk_cw = diode_cw.eta_inj(Tj_cw)
+f_QD_cw = diode_cw.f_qd(n_dot_cw)
+E_X_cw = _confinement_params(d_cw.ret, Tj_cw)["E_X_eV"]
+V_j_cw = diode_cw.vj_of_j(d_cw.drive.I_uA * 1e-6 / diode_cw.area_cm2, Tj_cw)
+kT_eV_cw = materials.KB_EV * Tj_cw
+supply_cw = lk_cw.eta_inj * (d_cw.drive.I_uA * 1e-6 / transport.Q_SI)
+f_qfl_cw = transport.qfl_suppression(E_X_cw, V_j_cw, kT_eV_cw)
+r_matrix_cw = (1.0 - f_QD_cw) * supply_cw + f_QD_cw * supply_cw * (1.0 - f_qfl_cw)
+w_f_cw = sc_cw["gamma_op"]  # filter.auto_w default: w = Gamma(Tj); no drive.diode.w_meV here
+kT_meV_cw = 1e3 * kT_eV_cw
+xi_cw = float(transport.xi_window(w_f_cw, 100.0, kT_meV_cw))  # dE_WL_meV default 100.0
+f_qfl_bg_cw = transport.qfl_suppression(E_X_cw + 100.0e-3, V_j_cw, kT_eV_cw)
+rate_bg_independent_ns = r_matrix_cw * 0.1 * xi_cw * f_qfl_bg_cw / 1e9  # eta_rad_matrix default 0.1
+ok("independent reconstruction of the in-window background rate matches device.py's "
+   "(from transport primitives directly, not device.py's own Background object)",
+   abs(rate_bg_independent_ns - abs_bg_in_window_ns) < 1e-6 * max(1.0, abs_bg_in_window_ns))
+ok("CW rho reconstructed from the independently-derived background matches device.py's cw_rho_op",
+   abs(rho_cw_expected - sc_cw["cw_rho_op"]) < 1e-9)
+
+# Item 5 (council review 2026-09-05): a flat background continuum must be
+# independent of the X line's own spectral transmission t_X (dx) -- moving
+# the filter off the line must degrade rho_cw (background stays fixed while
+# signal shrinks), which round 1's `bg = abs_bg_in_window * t_X` masked
+# (bg shrank in lockstep with the signal, leaving rho roughly dx-insensitive).
+d_cw_dx = copy.deepcopy(d_cw); d_cw_dx.filter.dx = 10.0
+sc_cw_dx = evaluate(d_cw_dx, [200.])["scalars"]
+ok("item 5: background.rate_bg_window (flat continuum) is independent of the filter's dx",
+   abs(sc_cw_dx["background.rate_bg_window"] - sc_cw["background.rate_bg_window"])
+   < 1e-9 * max(1.0, sc_cw["background.rate_bg_window"]))
+ok("item 5: moving the filter off the X line degrades CW rho (background no longer "
+   "shrinks alongside t_X, unlike round 1) -- dx=10 meV clears the XX-line crossover "
+   "region (dx near dot.delta_xx=3.5 briefly INCREASES total X+XX transmission)",
+   sc_cw_dx["t_x_op"] < sc_cw["t_x_op"] and sc_cw_dx["cw_rho_op"] < sc_cw["cw_rho_op"])
+
+# Item 5: a flat continuum's collected rate scales as min(1, w_f/w_transport)
+# when drive.diode.w_meV gives the transport window a different width than
+# the filter's own -- never by t_X. Checked on the simpler pulsed path
+# (b_e_resolved); pulsed and CW share the identical win_scale computation.
+d_cw_wide = copy.deepcopy(d_cw)
+d_cw_wide.drive.diode = dict(d_cw.drive.diode)
+d_cw_wide.drive.diode["w_meV"] = w_f_cw * 4.0  # transport window 4x WIDER than the filter
+sc_cw_wide = evaluate(d_cw_wide, [200.])["scalars"]
+raw_ratio_wide = sc_cw_wide["background.rate_bg_window"] / sc_cw_wide["background.rate_x"]
+ok("item 5: b_e_resolved applies min(1, w_f/w_transport) window scaling, not t_X, when the "
+   "transport window differs from the filter's own",
+   abs(sc_cw_wide["b_e_resolved"] - raw_ratio_wide * 0.25) < 1e-9 * max(1.0, sc_cw_wide["b_e_resolved"]))
+
 report_cw = cw_g2.cw_report(r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX,
                             rho_cw_expected, d_cw.drive.cw_irf_fwhm_ps,
                             tau_max_ns=d_cw.drive.cw_tau_max_ns,
@@ -682,43 +742,91 @@ ok("evaluate_envelope sweeps a new-block field without error and preserves Lemma
 # ============================================== 12. council review 2026-09-05 fixes
 # Item 1: carrier conservation at the gainp card's own EL-transport +
 # confinement operating point -- a single dot cannot receive more than the
-# supply-limited flux f_QD*eta_inj*(I/q) (the reviewer's own bound, 0.53).
+# supply-limited flux f_QD*eta_inj*(I/q).
 d_gainp = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
 sc_gainp = evaluate(d_gainp)["scalars"]
 Tj_gainp = sc_gainp["T_j_op"]
-diode_gainp = _diode_from_drive(d_gainp.drive)
+diode_gainp = _diode_from_drive(d_gainp.drive, d_gainp.aperture.diameter_um)
 n_dot_cm2_gainp = d_gainp.drive.n_dot_cm2 or d_gainp.aperture.density_cm2
 lk_gainp = diode_gainp.eta_inj(Tj_gainp)
 f_QD_gainp = diode_gainp.f_qd(n_dot_cm2_gainp)
 supply_bound_gainp = f_QD_gainp * lk_gainp.eta_inj * (d_gainp.drive.I_uA * 1e-6 / transport.Q_SI)
-ok("gainp card: mu stays at or below the reviewer's supply-limited bound (0.53)",
-   sc_gainp["mu_resolved"] <= 0.53 + 1e-9)
 ok("gainp card: loading.r_dot never exceeds f_QD*eta_inj*(I/q) (carrier conservation)",
    sc_gainp["loading.r_dot"] <= supply_bound_gainp * (1.0 + 1e-6))
 
-# Item 3: CW rho must match pulsed rho within 2% in the linear (unsaturated)
-# pump regime -- both derive from the SAME transport background/X-rate
-# accounting once the ratio is formed with a single, consistent denominator
-# (device.py bg = injection.background.rate_bg_window * t_X, item 3 fix).
-d_linear = copy.deepcopy(d_gainp)
-d_linear.drive.I_uA = 1e-6  # deep linear regime: mu << 1, well off dot saturation
-sc_linear = evaluate(d_linear)["scalars"]
-ok("CW rho matches pulsed rho within 2% in the linear pump regime",
-   sc_linear["mu_resolved"] < 0.01
-   and abs(sc_linear["cw_rho_op"] - sc_linear["rho_op"]) < 0.02 * sc_linear["rho_op"])
+# Item 6 (council review 2026-09-05): the round-1 mu bound (0.53) was a
+# hard-coded magic number, not computed from the card -- mu = r_dot *
+# tau_pulse, and r_dot is bounded by the (per-dot, N_eff-capped) supply, so
+# mu's own supply bound is f_QD * eta_inj * (I/q) * tau_pulse at the card's
+# current (never tighter than dividing by N_eff first, so this is always a
+# valid, if sometimes loose, bound).
+tau_pulse_gainp = float(d_gainp.drive.diode.get("tau_pulse_ns", 1.0))
+mu_bound_gainp = supply_bound_gainp * tau_pulse_gainp * 1e-9
+ok("gainp card: mu stays at or below the supply bound f_QD*eta_inj*(I/q)*tau_pulse",
+   sc_gainp["mu_resolved"] <= mu_bound_gainp * (1.0 + 1e-9))
 
-# Item 4: filter.track_material must no longer be inert with cavity.enabled
-# False (both edge-emitter cards run cavity-less) -- the stack-derived
-# Varshni walk of the filter window must move g2_op at a T away from
-# cavity.T_track, where the InP and GaAs walks differ by more than the
-# window-width tolerance.
+# Item 6 (council review 2026-09-05): the round-1 CW/pulsed rho comparison
+# ran at I=1e-6 uA, deep enough sub-turn-on that BOTH rho values were ~5e-7
+# -- a vacuous "0 == 0"-class agreement that could not have caught the item
+# 3/13x CW bug. Run it instead at the highest current under this card's own
+# transport parameters where mu is still inside the cap-2 domain (0.01 < mu
+# < 1) -- I=5e-4 uA, mu=0.64, the dot's own f_qfl (loading suppression at
+# E_X) = 0.24, i.e. meaningfully turned on rather than the previous probe's
+# ~1e-8 -- both rho values must still derive from the SAME transport
+# background/X-rate accounting. (f_qfl -> 1 only above mu ~ 5 for this
+# card's diode, outside the cap-2 domain -- 0.24 is the closest to full
+# turn-on reachable while 0.01 < mu < 1 holds.)
+d_linear = copy.deepcopy(d_gainp)
+d_linear.drive.I_uA = 5e-4
+sc_linear = evaluate(d_linear)["scalars"]
+Tj_linear = sc_linear["T_j_op"]
+diode_linear = _diode_from_drive(d_linear.drive, d_linear.aperture.diameter_um)
+E_X_linear = _confinement_params(d_linear.ret, Tj_linear)["E_X_eV"]
+V_j_linear = diode_linear.vj_of_j(d_linear.drive.I_uA * 1e-6 / diode_linear.area_cm2, Tj_linear)
+f_qfl_linear = transport.qfl_suppression(E_X_linear, V_j_linear, materials.KB_EV * Tj_linear)
+ok("linear-regime probe is not vacuous: 0.01 < mu < 1 and the dot's own f_qfl is well off "
+   "the ~1e-8 previous probe (meaningfully turned on, not deep sub-turn-on)",
+   0.01 < sc_linear["mu_resolved"] < 1.0 and f_qfl_linear > 0.1)
+ok("CW rho matches pulsed rho within 2% in the linear pump regime",
+   abs(sc_linear["cw_rho_op"] - sc_linear["rho_op"]) < 0.02 * sc_linear["rho_op"])
+
+# Item 4, round 2 (council review 2026-09-05): round 1 made cavity-less
+# track_material do SOMETHING (it had been gated behind cavity.enabled and
+# was a no-op) -- but the something was wrong: it held the filter window
+# FIXED at cavity.T_track and let the dot's own Varshni-walked line drift
+# out of it (t_X 0.5 -> 0.00106 at the worst sweep corner, the regression's
+# largest single term). A TRACKING filter is centred ON the dot at every T
+# (hold_window default False): dx = filter.dx, so t_X must equal the
+# independently-computed centred-window value, and must be UNCHANGED from
+# no track_material at all. filter.hold_window=True is the explicit,
+# differently-named opt-in for the fixed-window behaviour.
 d_notrack = DeviceDesign(); d_notrack.ret.mode = "confinement"; d_notrack.ret.system = EDGE_SYSTEM
-d_notrack.thermal.T_hs = 400.0
-r_notrack = evaluate(d_notrack, [400.0])
+d_notrack.thermal.T_hs = 300.0; d_notrack.drive.V = 0.0
+r_notrack = evaluate(d_notrack, [300.0])
 d_track4 = copy.deepcopy(d_notrack); d_track4.filter.track_material = "dot"
-r_track4 = evaluate(d_track4, [400.0])
-ok("filter.track_material is no longer inert with cavity.enabled=False (g2_op moves)",
-   r_notrack["scalars"]["g2_op"] != r_track4["scalars"]["g2_op"])
+r_track4 = evaluate(d_track4, [300.0])
+w_track4 = r_track4["scalars"]["gamma_op"]  # auto_w default: w = Gamma(Tj)
+spec_centred = epsilon(d_track4.dot.delta_xx, w_track4, d_track4.dot.r_xx * w_track4,
+                      w=w_track4, kappa=None, dx=d_track4.filter.dx)
+ok("filter.track_material (hold_window=False, default) centres the window on the dot: "
+   "t_X at 300 K equals the independently-computed centred-window value",
+   abs(r_track4["scalars"]["t_x_op"] - spec_centred.t_x) < 1e-6)
+ok("centred tracking leaves t_X unchanged from no track_material at all (no longer an artefact)",
+   r_track4["scalars"]["t_x_op"] == r_notrack["scalars"]["t_x_op"])
+
+d_hold4 = copy.deepcopy(d_track4); d_hold4.filter.hold_window = True
+r_hold4 = evaluate(d_hold4, [300.0])
+Tj_hold4 = r_hold4["scalars"]["T_j_op"]
+mat_hold4 = _tracked_material(d_hold4.ret, "dot")
+dx_hold4 = 1e3 * (materials.bandgap(mat_hold4, Tj_hold4)
+                  - materials.bandgap(mat_hold4, d_hold4.cavity.T_track))
+w_hold4 = r_hold4["scalars"]["gamma_op"]
+spec_hold4 = epsilon(d_hold4.dot.delta_xx, w_hold4, d_hold4.dot.r_xx * w_hold4,
+                     w=w_hold4, kappa=None, dx=dx_hold4)
+ok("filter.hold_window=True is the explicit, differently-named opt-in for a fixed window: "
+   "t_X at 300 K matches the held Varshni-walk offset, not the centred value",
+   abs(r_hold4["scalars"]["t_x_op"] - spec_hold4.t_x) < 1e-6
+   and r_hold4["scalars"]["t_x_op"] != r_track4["scalars"]["t_x_op"])
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)

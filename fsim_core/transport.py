@@ -343,6 +343,19 @@ def xi_window_unclipped(w_meV, dE_WL_meV, E_U_meV):
         0.5 * np.asarray(w_meV, float) / E_U_meV)
 
 
+def qfl_suppression(E_eV: float, V_j: float, kT_eV: float) -> float:
+    """min(1, exp(-(E_eV - V_j)/kT_eV)) -- the Boltzmann-tail sub-turn-on
+    loading suppression (Sze & Ng 3rd ed. ch. 12) evaluated at an arbitrary
+    reservoir energy E_eV, shared by the dot channel (E_X, module docstring
+    item 2) and any background sub-channel evaluated at its OWN, generally
+    higher, energy [DR, council review 2026-09-05 item 1] -- e.g. the WL/
+    matrix reservoir at E_X + dE_WL.  exponent >= 0 (qV_j >= E_eV) returns
+    1.0 exactly without evaluating exp() (never overflows on a deeply
+    above-turn-on trial operating point)."""
+    exponent = -(E_eV - V_j) / kT_eV
+    return 1.0 if exponent >= 0.0 else float(np.exp(exponent))
+
+
 # ================================================================ result types
 
 @dataclass
@@ -386,6 +399,16 @@ class DotLoading:
     eta_capture_dot: float  # per-dot thinning probability of the injected stream
     f_qfl: float = 1.0     # [DR] sub-turn-on quasi-Fermi-level loading suppression
                             # applied to r_dot (1.0 when E_X_eV is not supplied)
+    V_j: float | None = None  # [DR] junction voltage at this (I, T); only resolved
+                            # when E_X_eV is supplied (same solve f_qfl needs)
+    r_captured: float = 0.0  # [DR, council review 2026-09-05 item 2] TOTAL (all-dot,
+                            # not per-dot -- N_eff cancels) successfully dot-loaded
+                            # rate = f_QD * eta_inj * (I/q) * f_qfl
+    r_matrix: float = 0.0  # [DR, item 2] everything else reaching the active layer:
+                            # (1-f_QD) eta_inj (I/q) [never captured] PLUS
+                            # f_QD eta_inj (I/q) (1-f_qfl) [captured but sub-turn-on
+                            # suppressed, routed here rather than vanishing] --
+                            # r_captured + r_matrix == eta_inj (I/q) exactly
 
 
 @dataclass
@@ -402,6 +425,10 @@ class Background:
     r_dot: float
     S_dot: float
     saturated: bool
+    f_qfl_bg: float = 1.0  # [DR, council review 2026-09-05 item 1] the background's
+                            # OWN sub-turn-on suppression, evaluated at the WL/matrix
+                            # reservoir energy E_X + dE_WL (1.0 when E_X_eV is not
+                            # supplied -- legacy numerics unchanged)
     note: str = ("neighbour dots enter only via loading.aperture_g2 / "
                  "n_window_competitors -- not counted here")
 
@@ -692,22 +719,40 @@ class Diode:
         N_eff = max(N_dots, 1.0)
         r_dot = f_QD * lk.eta_inj * (I_uA * 1e-6 / Q_SI) / N_eff
         f_qfl = 1.0
+        V_j = None
         if E_X_eV is not None:
             V_j = self.vj_of_j(I_uA * 1e-6 / self.area_cm2, T)
             kT_eV = KB_EV * T
-            exponent = -(E_X_eV - V_j) / kT_eV
             # exponent >= 0 (qV_j >= E_X, above turn-on) -> f_qfl = 1 exactly;
-            # evaluate exp() only for the sub-turn-on branch so a deeply
-            # above-turn-on operating point (large positive exponent, e.g.
-            # a cold-T self-heating trial before Tj converges) never
-            # overflows exp() before the clip gets applied.
-            f_qfl = 1.0 if exponent >= 0.0 else float(np.exp(exponent))
+            # qfl_suppression evaluates exp() only for the sub-turn-on branch
+            # so a deeply above-turn-on operating point (large positive
+            # exponent, e.g. a cold-T self-heating trial before Tj converges)
+            # never overflows exp() before the clip gets applied.
+            f_qfl = qfl_suppression(E_X_eV, V_j, kT_eV)
             r_dot *= f_qfl
         mu = r_dot * tau_pulse_ns * 1e-9 if tau_pulse_ns is not None else None
         n_occ = float(r_dot * tau_rad_ns * 1e-9)
+        # Carrier budget [DR, council review 2026-09-05 item 2]: r_captured is
+        # the TOTAL (all-dot, N_eff cancels -- see the docstring above) rate
+        # that actually loads a dot; the (1-f_qfl) fraction of the carriers
+        # that WOULD have been captured (f_QD eta_inj I/q) but were sub-turn-
+        # on suppressed does not vanish -- it is routed into r_matrix
+        # alongside the carriers f_QD never sent to a dot in the first place,
+        # so r_captured + r_matrix == eta_inj I/q exactly, by construction,
+        # for every f_QD/f_qfl (E_X_eV=None -> f_qfl=1 -> r_matrix reduces to
+        # the legacy (1-f_QD) eta_inj I/q term exactly).
+        supply_active = lk.eta_inj * (I_uA * 1e-6 / Q_SI)
+        r_captured = f_QD * supply_active * f_qfl
+        r_matrix = (1.0 - f_QD) * supply_active + f_QD * supply_active * (1.0 - f_qfl)
+        # item 7: eta_capture_dot (the per-dot thinning probability F8b/F_p
+        # feeds on) must include the SAME f_qfl suppression as r_dot/mu --
+        # otherwise drive.F_p != 1 could feed f8b_thin_fano an inconsistent
+        # thinning probability (f_qfl = 1 leaves this exactly as before).
+        eta_capture_dot = f_QD * lk.eta_inj * f_qfl / N_eff
         return DotLoading(float(I_uA), T, float(lk.eta_inj), float(f_QD), float(N_dots),
                           float(r_dot), None if mu is None else float(mu), n_occ,
-                          bool(n_occ > 1.0), float(f_QD * lk.eta_inj / N_eff), f_qfl)
+                          bool(n_occ > 1.0), float(eta_capture_dot), f_qfl, V_j,
+                          float(r_captured), float(r_matrix))
 
     def current_for_mu(self, mu_target: float, T=None, n_dot_cm2: float = 1e10,
                        aperture_um2: float = 0.785, tau_pulse_ns: float = 1.0,
@@ -730,7 +775,16 @@ class Diode:
         retention factor, a float or a callable S_dot(T).  E_X_eV: same
         sub-turn-on loading suppression as dot_loading (item 2), so rate_x
         here stays the SAME (suppressed) X rate that r_dot/mu report --
-        None (default) reproduces legacy numerics exactly."""
+        None (default) reproduces legacy numerics exactly.
+
+        Council review 2026-09-05, item 1: rate_bg used ld.r_matrix's legacy
+        (1-f_QD) share with NO sub-turn-on suppression at all while rate_x
+        carried f_qfl -- a one-sided bug (rho 0.541 at the gainp point).  The
+        WL/matrix reservoir sits dE_WL ABOVE E_X, so it needs its OWN,
+        generally much stronger, suppression at ITS OWN energy E_X + dE_WL:
+        f_qfl_bg = min(1, exp(-(E_X + dE_WL - V_j)/kT)) (rho ~0.999).  Item 2:
+        ld.r_matrix already carries the (1-f_qfl) share of the captured
+        supply that dot_loading routes here instead of discarding it."""
         T = self._T(T)
         kT_meV = 1e3 * KB_EV * T
         E_U = max(kT_meV, E_urbach_meV if E_urbach_meV is not None else kT_meV)
@@ -738,11 +792,14 @@ class Diode:
                               tau_rad_ns, leakage, E_X_eV)
         S = float(S_dot(T)) if callable(S_dot) else float(S_dot)
         xi = float(xi_window(w_meV, dE_WL_meV, E_U))
-        rate_bg = (1.0 - ld.f_QD) * ld.eta_inj * (I_uA * 1e-6 / Q_SI) * eta_rad_matrix * xi
+        f_qfl_bg = 1.0
+        if E_X_eV is not None:
+            f_qfl_bg = qfl_suppression(E_X_eV + dE_WL_meV * 1e-3, ld.V_j, KB_EV * T)
+        rate_bg = ld.r_matrix * eta_rad_matrix * xi * f_qfl_bg
         rate_x = min(ld.r_dot, 1.0 / (tau_rad_ns * 1e-9)) * S
         b = rate_bg / rate_x if rate_x > 0 else np.inf
         return Background(float(b), T, I_uA, xi, E_U, ld.eta_inj, ld.f_QD, rate_bg,
-                          rate_x, ld.r_dot, S, ld.saturated)
+                          rate_x, ld.r_dot, S, ld.saturated, f_qfl_bg)
 
     # ------------------------------------------------------------ heating
     def junction_power(self, I_uA: float, T=None, eta_total: float = 0.01,

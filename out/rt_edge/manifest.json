@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-09-05T21:20:46.482860+00:00",
+  "generated_utc": "2026-09-06T02:52:00.771953+00:00",
   "quick": false,
   "grid_complete": true,
   "grid": {
@@ -48,13 +48,13 @@
       "id": "edge-inp-gaasp-design",
       "class": "primary",
       "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gaasp-design.yaml",
-      "sha256": "5b76c6ccfde7249573e8fe15af614dbccee6ff80de4d38c3f105691d6e16fa5d"
+      "sha256": "94c4bbe431787299ed47c914f328f9b9e4046fb8553789fe7eaca32ca1dc7671"
     },
     {
       "id": "edge-inp-gainp-design",
       "class": "fallback",
       "path": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\cards\\edge-inp-gainp-design.yaml",
-      "sha256": "5289e9037b4a3bd5dec10e45a29fe86b7a8f8319dcb5f34665d7f90cf2955534"
+      "sha256": "9001cce265c319c9631cf3efe97e6d1dbcbfd1c63afb0a12d9fdf4e60d23e8cd"
     }
   ],
   "runtime_versions": {
@@ -65,6 +65,8 @@
   },
   "policy": {
     "g2_threshold": 0.5,
+    "pulsed_collected_flux_floor_s": 1000.0,
+    "pulsed_collected_flux_floor_basis": "[A] below ~1 kHz a g2 measurement is not practical within hours at single-photon-detector counting rates",
     "pass_requires": [
       "grid_complete",
       "evidence_complete",
@@ -123,51 +125,54 @@
   },
   "stats": {
     "n_total": 54,
-    "n_eligible": 54,
-    "eligible_coverage": 1.0,
+    "n_eligible": 0,
+    "eligible_coverage": 0.0,
     "n_headline": 0,
     "headline_coverage": 0.0,
     "n_cw0_pass": 0,
     "cw0_coverage": 0.0,
     "n_cw_raw_pass": 0,
     "cw_raw_coverage": 0.0,
-    "g2_pulsed_min": 0.7723495400707897,
-    "g2_pulsed_median": 0.950919484031135
+    "n_flux_floor_excluded": 54,
+    "g2_pulsed_min": NaN,
+    "g2_pulsed_median": NaN
   },
   "per_card_stats": {
     "edge-inp-gaasp-design": {
       "card_class": "primary",
       "n_rows": 27,
-      "n_eligible": 27,
-      "g2_pulsed_min": 0.976295214310525,
-      "g2_pulsed_median": 0.9941354946435668,
-      "g2_cw0_min": 0.9400446157284583,
-      "g2_cw0_median": 0.9823465181856248,
-      "g2_cw0_raw_min": 0.9978331075752384,
-      "g2_cw0_raw_median": 0.9997076033398508,
-      "n_favorable": 0
+      "n_eligible": 0,
+      "g2_pulsed_min": NaN,
+      "g2_pulsed_median": NaN,
+      "g2_cw0_min": NaN,
+      "g2_cw0_median": NaN,
+      "g2_cw0_raw_min": NaN,
+      "g2_cw0_raw_median": NaN,
+      "n_favorable": 0,
+      "n_flux_floor_excluded": 27
     },
     "edge-inp-gainp-design": {
       "card_class": "fallback",
       "n_rows": 27,
-      "n_eligible": 27,
-      "g2_pulsed_min": 0.7723495400707897,
-      "g2_pulsed_median": 0.8746898231794931,
-      "g2_cw0_min": 0.7762003312009531,
-      "g2_cw0_median": 0.8772564238303446,
-      "g2_cw0_raw_min": 0.9627819895060514,
-      "g2_cw0_raw_median": 0.9908741503378591,
-      "n_favorable": 0
+      "n_eligible": 0,
+      "g2_pulsed_min": NaN,
+      "g2_pulsed_median": NaN,
+      "g2_cw0_min": NaN,
+      "g2_cw0_median": NaN,
+      "g2_cw0_raw_min": NaN,
+      "g2_cw0_raw_median": NaN,
+      "n_favorable": 0,
+      "n_flux_floor_excluded": 27
     }
   },
   "verdict": {
     "pass": false,
     "fail_reasons": [
       "evidence_incomplete",
-      "no_headline_pass"
+      "no_eligible_rows"
     ],
-    "g2_min": 0.7723495400707897,
-    "g2_median": 0.950919484031135,
+    "g2_min": NaN,
+    "g2_median": NaN,
     "median_pass": false,
     "coverage": 0.0,
     "headline_coverage_n": 0,
@@ -176,8 +181,9 @@
     "cw0_coverage_total": 54,
     "cw_raw_coverage_n": 0,
     "cw_raw_coverage_total": 54,
-    "eligible_n": 54,
+    "eligible_n": 0,
     "eligible_total": 54,
+    "flux_floor_excluded": 54,
     "evidence_complete": false,
     "hallucination_ok": true,
     "conditional": false,
@@ -187,11 +193,11 @@
   },
   "evidence": {
     "evidence_complete": false,
-    "source_ledger_sha256": "5184eed5c4614dcaba3be25bc079e2085fadaaf53be19c4e35b34d8706333242",
+    "source_ledger_sha256": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
     "evaluator_input_hashes": {
-      "verify/data/rt_edge_anchors.yaml": "5184eed5c4614dcaba3be25bc079e2085fadaaf53be19c4e35b34d8706333242",
-      "cards/edge-inp-gaasp-design.yaml": "5b76c6ccfde7249573e8fe15af614dbccee6ff80de4d38c3f105691d6e16fa5d",
-      "cards/edge-inp-gainp-design.yaml": "5289e9037b4a3bd5dec10e45a29fe86b7a8f8319dcb5f34665d7f90cf2955534"
+      "verify/data/rt_edge_anchors.yaml": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
+      "cards/edge-inp-gaasp-design.yaml": "94c4bbe431787299ed47c914f328f9b9e4046fb8553789fe7eaca32ca1dc7671",
+      "cards/edge-inp-gainp-design.yaml": "9001cce265c319c9631cf3efe97e6d1dbcbfd1c63afb0a12d9fdf4e60d23e8cd"
     },
     "missing_evidence": [
       {
@@ -216,5 +222,5 @@
   "hallucination_self_test": {
     "hallucination_tests_passed": true
   },
-  "runtime_seconds": 112.95472145080566
+  "runtime_seconds": 100.24576354026794
 }

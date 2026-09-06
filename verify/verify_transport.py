@@ -12,7 +12,7 @@ from fsim_core import materials as M  # noqa: E402
 from fsim_core.transport import (  # noqa: E402
     Q_SI, binary, evaluate_injection, fermi_levels, gaas_homojunction,
     hkust_preset, homojunction_vbi, n_c_eff, n_i, n_v,
-    qcse_shift_meV, red_diode_preset, to_background_channel,
+    qcse_shift_meV, qfl_suppression, red_diode_preset, to_background_channel,
     xi_window, xi_window_unclipped,
 )
 
@@ -148,6 +148,60 @@ ld_above = hk.dot_loading(I_test_uA, 300.0, 1e10, 0.785, leakage=lk_test,
                           E_X_eV=V_j_ref - 0.1)
 check("f_qfl = 1 exactly when qV_j >= E_X", ld_above.f_qfl, 1.0, 1e-12,
       note="min(1, exp(...)) clip; loading unsuppressed above turn-on")
+
+print("== 7. Council review 2026-09-05, round 2 (background suppression, budget, area, eta_capture) ==")
+# Item 1: the WL/matrix reservoir sits dE_WL ABOVE E_X and needs its OWN,
+# generally much stronger, suppression than the dot's own f_qfl -- a one-
+# sided bug (rate_bg unsuppressed while rate_x carried f_qfl) drove the
+# 300 K sweep's pulsed g2 minimum artefact.
+dE_WL_meV = 100.0
+E_X_sub = V_j_ref + 0.05
+bg_sub = hk.b_e(I_test_uA, 300.0, w_meV=1.0, dE_WL_meV=dE_WL_meV, n_dot_cm2=1e10,
+                aperture_um2=0.1257, leakage=lk_test, E_X_eV=E_X_sub)
+ld_sub = hk.dot_loading(I_test_uA, 300.0, 1e10, 0.1257, leakage=lk_test, E_X_eV=E_X_sub)
+check("background suppression f_qfl_bg matches the closed form at E_X + dE_WL",
+      bg_sub.f_qfl_bg,
+      qfl_suppression(E_X_sub + dE_WL_meV * 1e-3, ld_sub.V_j, M.KB_EV * 300.0),
+      1e-9, rel=True, note="council item 1: background suppressed at its OWN, higher, energy")
+bool_check("background suppression is strictly stronger than the dot's own f_qfl when sub-turn-on",
+           bg_sub.f_qfl_bg < ld_sub.f_qfl,
+           "council item 1: E_X + dE_WL sits further above qV_j than E_X alone")
+bg_legacy = hk.b_e(I_test_uA, 300.0, w_meV=1.0, dE_WL_meV=dE_WL_meV, n_dot_cm2=1e10,
+                   aperture_um2=0.1257, leakage=lk_test)
+bool_check("E_X_eV=None leaves the background suppression at 1.0 (legacy numerics unchanged)",
+           bg_legacy.f_qfl_bg == 1.0, "council item 1: legacy default path untouched")
+
+# Item 2: the carrier budget closes to eta_inj*I/q EXACTLY (r_captured +
+# r_matrix), at three currents spanning sub-turn-on to near-saturated -- the
+# (1-f_qfl) share that dot_loading used to just multiply away no longer
+# vanishes; it is routed into r_matrix instead.
+for I_budget_uA in (0.001, 0.05, 1.0):
+    ld_b = hk.dot_loading(I_budget_uA, 300.0, 1e10, 0.1257, leakage=lk_test, E_X_eV=E_X_sub)
+    supply_budget = lk_test.eta_inj * (I_budget_uA * 1e-6 / Q_SI)
+    check(f"carrier budget r_captured+r_matrix == eta_inj*I/q at I={I_budget_uA} uA",
+          ld_b.r_captured + ld_b.r_matrix, supply_budget, 1e-9, rel=True,
+          note="council item 2: sub-turn-on-suppressed carriers routed, not discarded")
+
+# Item 3 (area consistency): at fixed current, a SMALLER injection area
+# gives a HIGHER current density and therefore a HIGHER V_j (Sze & Ng ideal-
+# diode J(V) is monotone increasing) -- the mechanism device.py's aperture-
+# area default leans on to fix V_j/N_dots/per-dot-share area consistency.
+small_area = hkust_preset(area_um2=0.1257)
+big_area = hkust_preset(area_um2=0.785)
+V_j_small = small_area.vj_of_j(I_test_uA * 1e-6 / small_area.area_cm2, 300.0)
+V_j_big = big_area.vj_of_j(I_test_uA * 1e-6 / big_area.area_cm2, 300.0)
+bool_check("a smaller injection area gives a higher V_j at fixed current (area consistency)",
+           V_j_small > V_j_big,
+           "council item 3: J = I/area, ideal-diode J(V) monotone increasing")
+
+# Item 7: eta_capture_dot and mu (via r_dot) must carry the SAME f_qfl
+# suppression -- drive.F_p != 1 must not feed f8b_thin_fano an inconsistent
+# thinning probability.
+expected_eta_capture = ld_sub.f_QD * lk_test.eta_inj * ld_sub.f_qfl / max(
+    1e10 * 0.1257 * 1e-8, 1.0)
+check("eta_capture_dot includes the same f_qfl suppression as r_dot/mu",
+      ld_sub.eta_capture_dot, expected_eta_capture, 1e-9, rel=True,
+      note="council item 7: eta_capture_dot must not omit f_qfl while mu/r_dot include it")
 
 n_pass = sum(RESULTS)
 print(f"\n{n_pass}/{len(RESULTS)} transport checks passed")

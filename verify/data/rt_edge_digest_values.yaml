@@ -21,6 +21,13 @@ entries:
   - doi: "10.1364/OE.16.012771"
     author: "Reischle"
     year: 2008
+    quantity: "delta_xx_inp_gaasp"
+    value: 4
+    unit: meV
+    digest_section: "paper_digests.md, Paper 1, Section 5: 'Typical X-XX binding energy in this InP/GaInP system quoted as ~4-6 meV ... not measured here.' Lower endpoint recorded; this is Reischle's secondary quotation, not a direct Beirne measurement."
+  - doi: "10.1364/OE.16.012771"
+    author: "Reischle"
+    year: 2008
     quantity: "reischle2008_g2_80K"
     value: 0.43
     unit: g2(0)
@@ -148,14 +155,3 @@ entries:
     value: 150
     unit: meV
     digest_section: "not in paper_digests.md; full-text-confirmed 2026-09-05 (arXiv:0812.0452, Table 1): 'Structure (a) (b) (c) (d) (e) / EA (meV) 150 205 220 251 272' -- structure (a) is the reference Al0.20Ga0.80InP barrier with no additional cladding or tunnel barrier."
-
-  # --- Beirne et al., Phys. Rev. B 75, 195302 (2007) -- NOT itself in the
-  # digest set, but the value is transcribed from Reischle et al. 2008's own
-  # (digest-covered) quotation of it, not from Beirne's own text.
-  - doi: "10.1103/PhysRevB.75.195302"
-    author: "Beirne"
-    year: 2007
-    quantity: "delta_xx_inp_gaasp"
-    value: 5
-    unit: meV
-    digest_section: "value transcribed from paper_digests.md Paper 1, Section 5 (Reischle et al. 2008 quoting Beirne et al. 2007, Ref. 14): 'Typical X-XX binding energy in this InP/GaInP system quoted as ~4-6 meV ... not measured here.' (midpoint of the quoted 4-6 meV range); Beirne 2007's own paper is not in the digest set, existence/venue/authorship only confirmed via WebSearch 2026-09-05."

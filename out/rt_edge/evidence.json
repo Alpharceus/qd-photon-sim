@@ -5,11 +5,11 @@
   "claim_results": {},
   "anchor_results": {},
   "missing_evidence": [],
-  "source_ledger_sha256": "5184eed5c4614dcaba3be25bc079e2085fadaaf53be19c4e35b34d8706333242",
+  "source_ledger_sha256": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
   "evaluator_input_hashes": {
-    "verify/data/rt_edge_anchors.yaml": "5184eed5c4614dcaba3be25bc079e2085fadaaf53be19c4e35b34d8706333242",
+    "verify/data/rt_edge_anchors.yaml": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
     "cards/edge-inp-gaasp-design.yaml": "94c4bbe431787299ed47c914f328f9b9e4046fb8553789fe7eaca32ca1dc7671",
-    "cards/edge-inp-gainp-design.yaml": "7f6ab166af7e57e89929bf74d6602ac65f3857fcec271dcbc40b868c79669eef"
+    "cards/edge-inp-gainp-design.yaml": "9001cce265c319c9631cf3efe97e6d1dbcbfd1c63afb0a12d9fdf4e60d23e8cd"
   },
   "checks_passed": 32,
   "checks_total": 32,

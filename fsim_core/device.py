@@ -121,6 +121,15 @@ class DriveBlock:
                                   # (poisson-rail/quiet-rail/pulsed/set-*/rti)
     mech_params: dict = field(default_factory=dict)  # per-mechanism params [A]
     diode: dict = field(default_factory=dict)  # transport preset plus Diode overrides [E/DR]
+    diode_area_um2: float = 0.0  # um^2; council review 2026-09-05 item 3 -- 0 (default)
+                                  # means the diode's injection area defaults to the
+                                  # APERTURE area pi*(aperture.diameter_um/2)^2 (V_j,
+                                  # N_dots and the per-dot share must all use the SAME
+                                  # area the current/dots actually occupy); > 0 is an
+                                  # explicit [A] override for current crowding (a
+                                  # current path narrower than the optical aperture).
+                                  # drive.diode's own "area_um2" key (a literal Diode
+                                  # field override) still wins over both if given.
     n_dot_cm2: float = 0.0       # cm^-2; 0 uses aperture density [A]
     cw: bool = False              # opt-in CW g2(tau)/IRF diagnostics (docs/
                                   # rt_edge_contract.md); requires mode=
@@ -182,7 +191,28 @@ class FilterBlock:
                                  #   tracking via materials.bandgap() on the
                                  #   named layer of the shared inline stack
                                  #   (ret.preset / ret.system) -- never GaAs
-                                 #   by default for a non-GaAs stack [DR].
+                                 #   by default for a non-GaAs stack [DR].  With
+                                 #   cavity.enabled=False (no cavity mode to net
+                                 #   the walk against) a TRACKING filter is
+                                 #   centred ON the dot at every T: dx = filter.dx
+                                 #   (0 by default), never the material's own
+                                 #   Varshni walk -- see hold_window below
+                                 #   [DR, council review 2026-09-05 item 4].
+    hold_window: bool = False    # cavity-less only: explicit opt-in for a filter
+                                 #   window HELD FIXED at its cavity.T_track
+                                 #   position (e.g. a physically fixed
+                                 #   monochromator slit calibrated at T_track)
+                                 #   while the named track_material layer's own
+                                 #   Varshni walk moves the line underneath it --
+                                 #   dx = 1e3*(bandgap(mat,Tj)-bandgap(mat,T_track)).
+                                 #   Deliberately NOT named "tracking": a filter
+                                 #   that tracks the line follows it (dx=0
+                                 #   above); this is the opposite, explicitly
+                                 #   named case [A, council review 2026-09-05
+                                 #   item 4 -- round 1 hard-coded this dx as the
+                                 #   ONLY cavity-less track_material behaviour,
+                                 #   an artefact that collapsed t_X 0.5 ->
+                                 #   0.00106 at the worst sweep corner].
 
 
 @dataclass
@@ -314,7 +344,7 @@ def _retention_system(ret: RetentionBlock):
     )
 
 
-def _diode_from_drive(drive: DriveBlock):
+def _diode_from_drive(drive: DriveBlock, aperture_diameter_um: float):
     raw = dict(drive.diode)
     preset = raw.pop("preset", "")
     for key in ("tau_pulse_ns", "tau_rad_ns", "w_meV", "dE_WL_meV",
@@ -325,6 +355,20 @@ def _diode_from_drive(drive: DriveBlock):
     for key in ("p_cladding", "n_cladding", "active", "barrier", "substrate"):
         if key in raw:
             raw[key] = _material_from_mapping(raw[key])
+    if "area_um2" not in raw:
+        # item 3 (council review 2026-09-05): V_j was solved at J = I / a
+        # PRESET mesa area (Diode.area_um2's own 0.785 um^2 default) while
+        # N_dots and the per-dot share use the APERTURE area -- 6.25x
+        # smaller at the edge-emitter cards' 0.4 um aperture -- so the two
+        # halves of the same injection disagreed about where the current
+        # actually flows.  Default the diode's injection area to the SAME
+        # aperture area used everywhere else; drive.diode_area_um2 > 0 is
+        # the explicit [A] override for current crowding (a current path
+        # narrower than the optical aperture); an explicit "area_um2" key
+        # inside drive.diode itself (a literal Diode field override, same
+        # mechanism as R_s_ohm above) still wins over both.
+        raw["area_um2"] = (drive.diode_area_um2 if drive.diode_area_um2 > 0
+                           else float(np.pi * (aperture_diameter_um / 2.0) ** 2))
     if preset == "hkust":
         return transport.hkust_preset(**raw)
     if preset in ("red", "red_diode"):
@@ -474,7 +518,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     if d.ret.mode == "proxy":
         rp["E_b"] = d.ret.E_b or proxy["E_b"]
     retention_note = "class-proxy Arrhenius fit [A]"
-    diode = _diode_from_drive(d.drive) if d.drive.mode == "EL-transport" else None
+    diode = (_diode_from_drive(d.drive, d.aperture.diameter_um)
+             if d.drive.mode == "EL-transport" else None)
 
     a = 0.5 * d.thermal.mesa_diameter_um * 1e-6
     st = _stack(d.thermal)
@@ -546,18 +591,29 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 dx = 1e3 * float(tracking_detuning(Tj, d.cavity.E_X0, d.cavity.T_track,
                                                    "GaAs", d.cavity.dEdT_cav * 1e-3))
         elif d.filter.track_material:
-            # item 4 (council review 2026-09-05): track_material was gated
-            # behind cavity.enabled, so it did nothing on any cavity-less
-            # design (both edge-emitter cards) -- g2_op was bit-identical
-            # for track_material in {dot, matrix, ""}.  With no cavity mode
-            # to net against, the filter window still follows the dot's OWN
-            # Varshni walk relative to cavity.T_track (the only reference
-            # temperature this block carries); no dEdT_cav subtraction here
-            # (there is no cavity mode drifting to subtract).  Legacy
-            # default path (track_material == "") is untouched: dx stays
-            # d.filter.dx exactly as before.
+            # item 4, round 2 (council review 2026-09-05): round 1's fix here
+            # made track_material do SOMETHING with cavity.enabled=False (it
+            # was previously gated behind cavity.enabled and did nothing at
+            # all), but the something was wrong: it held the filter window
+            # FIXED at its cavity.T_track position and let the dot's own
+            # Varshni-walked line drift out of it (t_X 0.5 -> 0.00106 at the
+            # worst sweep corner -- the regression's largest single term). A
+            # filter that TRACKS the dot is, by definition, centred ON the
+            # dot at every T: dx stays d.filter.dx (0 by default; any
+            # explicit manual offset still applies), exactly like the
+            # track_material == "" path -- there is no cavity mode here for a
+            # tracking filter to net against, so nothing computed from the
+            # material's Varshni shape belongs in dx by default.
+            # filter.hold_window=True is the explicit, differently-named
+            # opt-in for the round-1 behaviour (a genuinely fixed window,
+            # e.g. a monochromator slit calibrated at T_track and never
+            # retuned): _tracked_material is still resolved unconditionally
+            # so an unknown track_material name is rejected either way.
             mat = _tracked_material(d.ret, d.filter.track_material)
-            dx = 1e3 * (materials.bandgap(mat, Tj) - materials.bandgap(mat, d.cavity.T_track))
+            if d.filter.hold_window:
+                dx = 1e3 * (materials.bandgap(mat, Tj) - materials.bandgap(mat, d.cavity.T_track))
+            else:
+                dx = d.filter.dx
         w = None
         if d.filter.enabled:
             w = gam if d.filter.auto_w else d.filter.w
@@ -645,13 +701,25 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # PL mode: optical excitation, no injection-current background channel.
         injection = None
         if diode is not None:
-            opts = _transport_options(d.drive, w if w is not None else 1.0)
+            w_f = w if w is not None else 1.0
+            opts = _transport_options(d.drive, w_f)
             injection = transport.evaluate_injection(
                 diode=diode, I_uA=d.drive.I_uA, T=Tj,
                 n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
                 aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
                 S_dot=S, E_X_eV=E_X_eV, **opts)
-            inj_bg = injection.b_e
+            # item 5 (council review 2026-09-05): injection.b_e integrates the
+            # matrix/WL continuum over the TRANSPORT window opts['w_meV']
+            # (== w_f unless drive.diode.w_meV explicitly overrides it, e.g.
+            # to model a collection bandwidth different from the filter's
+            # own). A flat continuum's collected rate scales linearly with
+            # the actual filter window width -- never by the X line's own
+            # transmission (that would be item 5's CW-path bug, below, for a
+            # broadband background) -- so rescale by min(1, w_f/w_transport);
+            # a no-op (1.0) whenever no such override is given.
+            w_transport = opts["w_meV"]
+            win_scale = min(1.0, w_f / w_transport) if w_transport > 0 else 0.0
+            inj_bg = injection.b_e * win_scale
         else:
             inj_bg = float(b_injection(chan, d.drive.I_uA, Tj)) if d.drive.mode != "PL" else 0.0
         G = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
@@ -733,7 +801,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 I_X, I_XX = cw_g2.photon_rates(r_ns, gamma_X_ns, 2.0 * gamma_X_ns,
                                                k_X, k_XX, d.drive.cw_pump_ratio)
                 sig = t_X * I_X + t_XX * I_XX
-                # item 3 fix (council review 2026-09-05): the old
+                # item 3 fix (round 1, council review 2026-09-05): the old
                 # `inj_bg * t_X * I_X` chained the PULSED ratio inj_bg
                 # (denominator = transport's own min(r_dot,1/tau_rad)*S,
                 # Background.rate_x) onto the CW rate equation's OWN X rate
@@ -741,13 +809,24 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 # at the card operating point where the two X rates diverge.
                 # Carry transport's absolute in-window background rate
                 # (photons/s, the SAME physical operating point regardless
-                # of pulsed/CW framing) into the CW calculation and divide
-                # by the SAME I_X this rate-equation solution produces --
-                # abs_bg_in_window / I_X * (t_X * I_X) -- so I_X cancels and
-                # the ratio is formed once, consistently, instead of mixing
-                # two different models' X rates across the multiplication.
+                # of pulsed/CW framing) into the CW calculation directly.
+                #
+                # item 5 fix (round 2, council review 2026-09-05):
+                # abs_bg_in_window_ns is a BROADBAND continuum already
+                # integrated over the TRANSPORT window w_transport
+                # (opts['w_meV']); attenuating it a second time by the X
+                # LINE's own spectral transmission t_X (round 1's formula)
+                # undercounts a flat continuum by ~940x at the sweep's worst
+                # corner (the line's own window transmission collapses while
+                # the transport window does not -- unrelated quantities). A
+                # flat continuum's collected rate instead scales linearly
+                # with the actual collection (filter) window width: reuse
+                # the SAME min(1, w_f/w_transport) ratio as the pulsed inj_bg
+                # path above (win_scale; a no-op, 1.0, unless
+                # drive.diode.w_meV explicitly overrides the transport
+                # window away from the filter's own).
                 abs_bg_in_window_ns = injection.background.rate_bg_window / 1e9
-                bg = abs_bg_in_window_ns * t_X
+                bg = abs_bg_in_window_ns * win_scale
                 rho_cw = sig / (sig + bg) if (sig + bg) > 0 else float("nan")
                 report = cw_g2.cw_report(
                     r_ns, gamma_X_ns, 2.0 * gamma_X_ns, k_X, k_XX, t_X, t_XX, rho_cw,
@@ -835,6 +914,43 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     elif d.emission.type == "edge":
         edge_err = "no finite operating temperature for edge emission"
         brightness = float("nan")
+
+    # council review 2026-09-05: injection area actually used (item 3), the
+    # background's own sub-turn-on suppression (item 1), and a carrier-budget
+    # closure diagnostic (item 2) -- all read off the operating-point
+    # InjectionResult, never recomputed.
+    inj_op = op["injection"]
+    if inj_op is not None:
+        injection_area_um2 = diode.area_um2
+        injection_f_qfl_bg = inj_op.background.f_qfl_bg
+        supply_active = inj_op.leakage.eta_inj * (d.drive.I_uA * 1e-6 / transport.Q_SI)
+        ld_op = inj_op.loading
+        carrier_budget_closure = ((ld_op.r_captured + ld_op.r_matrix) / supply_active
+                                  if supply_active > 0 else float("nan"))
+    else:
+        injection_area_um2 = float("nan")
+        injection_f_qfl_bg = float("nan")
+        carrier_budget_closure = float("nan")
+
+    # item 9 (council review 2026-09-05, device side only -- the sweep's own
+    # eligibility floor is a separate spec): the pulsed collected photon flux
+    # [A] converts brightness_per_pulse (photons collected per pulse) to a
+    # rate via the repetition period implied by drive.duty = tau_pulse /
+    # period (the SAME duty already used for the thermal average power
+    # above), so period = tau_pulse_ns / duty; only meaningful for the
+    # EL-transport diode path, which is the only place tau_pulse_ns is a
+    # physical pulse width rather than an unused legacy field.
+    if diode is not None:
+        tau_pulse_ns = float((d.drive.diode or {}).get("tau_pulse_ns", 1.0))
+        rep_rate_hz = (d.drive.duty / (tau_pulse_ns * 1e-9)
+                       if tau_pulse_ns > 0 and d.drive.duty > 0 else float("nan"))
+        collected_flux_pulsed_s = (brightness * rep_rate_hz
+                                   if np.isfinite(brightness) and np.isfinite(rep_rate_hz)
+                                   else float("nan"))
+    else:
+        collected_flux_pulsed_s = float("nan")
+    flux_measurable = bool(np.isfinite(collected_flux_pulsed_s) and collected_flux_pulsed_s >= 1e3)
+
     scalars = {
         "T_j_op": op["Tj"], "dT_J": op["Tj"] - d.thermal.T_hs,
         "runaway": bool(op["runaway"]),
@@ -871,6 +987,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                       if op["injection"] is not None else np.nan),
         "background.rate_x": (op["injection"].background.rate_x
                               if op["injection"] is not None else np.nan),
+        # council review 2026-09-05: injection area used (item 3), the
+        # background's own sub-turn-on suppression (item 1), carrier-budget
+        # closure (item 2), and the pulsed flux eligibility floor inputs
+        # (item 9).
+        "injection.area_um2": injection_area_um2,
+        "injection.f_qfl_bg": injection_f_qfl_bg,
+        "carrier_budget_closure": carrier_budget_closure,
+        "collected_flux_pulsed_s": collected_flux_pulsed_s,
+        "flux_measurable": flux_measurable,
         # emission.type="edge" (Lemma 1: reported, never re-multiplied into
         # g2/eps/rho -- see the brightness composition above).
         "emission_type": d.emission.type,

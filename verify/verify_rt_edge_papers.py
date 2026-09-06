@@ -649,35 +649,54 @@ def run_evaluator_crosschecks(anchors: dict, ok_fn) -> dict:
 
 # --------------------------------------------------------------------- self-test
 
-def _tamper_removed_anchor(anchors: dict) -> dict:
+def _two_source_complete_target(anchors: dict, scored: dict, *,
+                                require_context: bool = False):
+    """Choose a live, exactly-two-source complete claim for structural
+    tampering.  The self-test must test the detector, not assume a particular
+    paper remains verified in the ledger.  Exactly two effective sources make
+    the expected loss of completeness unambiguous for every tamper below."""
+    for claim, result in scored["claim_results"].items():
+        if not result["complete"]:
+            continue
+        aids = [aid for aid in result["anchors"]
+                if scored["anchor_results"][aid]["effective_verified"]]
+        if len(aids) != 2 or len({_distinct_key(anchors[aid]) for aid in aids}) != 2:
+            continue
+        if require_context and not CLAIM_META.get(claim, {}).get("material_tokens"):
+            continue
+        return claim, aids
+    return None, []
+
+
+def _tamper_removed_anchor(anchors: dict, aid: str) -> dict:
     t = copy.deepcopy(anchors)
-    del t["laferriere23-g2-temperature"]
+    del t[aid]
     return t
 
 
-def _tamper_duplicate_doi(anchors: dict) -> dict:
+def _tamper_duplicate_doi(anchors: dict, aids: list[str]) -> dict:
     t = copy.deepcopy(anchors)
-    t["laferriere23-g2-temperature"]["doi"] = t["chatzarakis23-g2-temperature"]["doi"]
+    t[aids[1]]["doi"] = t[aids[0]]["doi"]
     return t
 
 
-def _tamper_incompatible_context(anchors: dict) -> dict:
+def _tamper_incompatible_context(anchors: dict, aid: str) -> dict:
     t = copy.deepcopy(anchors)
-    t["reischle08-gaas-pin-iv"]["conditions"] = \
-        "InP/AlGaInP p-i-n, QD C, 80 K electrical operation."  # drops "GaAs" material token
+    # Drops every claim-required context token, whatever the selected claim.
+    t[aid]["conditions"] = "deliberately incompatible self-test context"
     return t
 
 
-def _tamper_invalid_tag(anchors: dict) -> dict:
+def _tamper_invalid_tag(anchors: dict, aid: str) -> dict:
     t = copy.deepcopy(anchors)
-    t["reischle08-delta-xx"]["tag"] = "downgraded"  # not a valid V/DR/E/A tag
+    t[aid]["tag"] = "downgraded"  # not a valid V/DR/E/A tag
     return t
 
 
-def _tamper_e_class_only(anchors: dict) -> dict:
+def _tamper_e_class_only(anchors: dict, aids: list[str]) -> dict:
     t = copy.deepcopy(anchors)
-    t["reischle08-delta-xx"]["tag"] = "E"
-    t["bommer11-delta-xx"]["tag"] = "E"
+    for aid in aids:
+        t[aid]["tag"] = "E"
     return t
 
 
@@ -769,25 +788,39 @@ def _run_self_test(ok_fn) -> None:
          all(m["reason"] for m in baseline["missing_evidence"]) and
          len(baseline["missing_evidence"]) == len(CLAIM_META) - len(expected_complete))
 
+    structural_claim, structural_aids = _two_source_complete_target(real_anchors, baseline)
+    context_claim, context_aids = _two_source_complete_target(
+        real_anchors, baseline, require_context=True)
+    have_structural_target = structural_claim is not None
+    have_context_target = context_claim is not None
+
     tamper_cases = [
-        ("removed anchor breaks a previously-complete claim", _tamper_removed_anchor,
-         "temperature_trend_g2"),
-        ("duplicate DOI collapses to one distinct source", _tamper_duplicate_doi,
-         "temperature_trend_g2"),
-        ("incompatible (material-dropped) context is rejected", _tamper_incompatible_context,
-         "gaas_pin_iv"),
-        ("invalid/downgraded tag is rejected", _tamper_invalid_tag,
-         "delta_xx_inp_gaasp"),
-        ("[E]-only pair cannot alone establish target validation", _tamper_e_class_only,
-         "delta_xx_inp_gaasp"),
+        ("removed anchor breaks a previously-complete claim",
+         lambda a: _tamper_removed_anchor(a, structural_aids[0]), structural_claim,
+         have_structural_target),
+        ("duplicate DOI collapses to one distinct source",
+         lambda a: _tamper_duplicate_doi(a, structural_aids), structural_claim,
+         have_structural_target),
+        ("incompatible (material-dropped) context is rejected",
+         lambda a: _tamper_incompatible_context(a, context_aids[0]), context_claim,
+         have_context_target),
+        ("invalid/downgraded tag is rejected",
+         lambda a: _tamper_invalid_tag(a, structural_aids[0]), structural_claim,
+         have_structural_target),
+        ("[E]-only pair cannot alone establish target validation",
+         lambda a: _tamper_e_class_only(a, structural_aids), structural_claim,
+         have_structural_target),
         ("value-level hallucination: Chatzarakis g2(0) mutated 0.36->0.90 is "
          "caught by the independent digest-values cross-check",
-         _tamper_mutate_chatzarakis_g2_value, "temperature_trend_g2"),
+         _tamper_mutate_chatzarakis_g2_value, "temperature_trend_g2", True),
         ("value-level hallucination: Matsuda gamma300 mutated 12->30 meV is "
          "caught by the independent digest-values cross-check",
-         _tamper_mutate_matsuda_gamma300_value, "gamma300_class_range"),
+         _tamper_mutate_matsuda_gamma300_value, "gamma300_class_range", True),
     ]
-    for name, tamper_fn, claim in tamper_cases:
+    for name, tamper_fn, claim, target_found in tamper_cases:
+        if not target_found:
+            ok_fn(f"self-test: {name}", False)
+            continue
         was_complete = baseline["claim_results"][claim]["complete"]
         tampered = score_ledger(tamper_fn(real_anchors))
         now_complete = tampered["claim_results"][claim]["complete"]

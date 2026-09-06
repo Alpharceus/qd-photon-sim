@@ -179,7 +179,7 @@ anchors:
     claim: gamma300_class_range
     value: 12
     unit: meV
-    tolerance: 2
+    tolerance: 1
     conditions: "In0.5Ga0.5As/GaAs single quantum dot, near-field scanning optical microscopy, homogeneous linewidth at 300 K; distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement."
     source: "Matsuda et al., Physical Review B 63, 121304(R) (2001)"
     doi: "10.1103/PhysRevB.63.121304"
@@ -252,38 +252,41 @@ anchors:
     locator: "not available"
     tag: A
     status: missing
-  # Re-sourcing (council review, 2026-09-05): the 4-6 meV X-XX binding energy
-  # is secondhand in Reischle et al. 2008 -- their own text says it is
-  # "quoted" from Ref. 14 (Beirne et al., Phys. Rev. B 75, 195302 (2007)) and
-  # "not measured here" (digest Paper 1, Section 5; confirmed against the PDF
-  # by paper_digests_factcheck.md item 10). Re-sourced below so the primary
-  # citation is Beirne 2007, with the Reischle 2008 locator kept as the
-  # (secondary) place this value is actually quoted, since Beirne 2007's own
-  # text was not independently re-read here (existence/authorship/venue
-  # confirmed via WebSearch 2026-09-05: Beirne, Reischle, Rossbach, Schulz,
-  # Jetter, Seebeck, Gartner, Gies, Jahnke, Michler, Phys. Rev. B 75, 195302
-  # (2007), a real, distinct Stuttgart/Bremen-group paper on quantum-dot
-  # exciton complexes). Id kept as "reischle08-delta-xx" (unchanged) because
-  # cards/edge-inp-gaasp-design.yaml references this id directly by name
-  # (out of this spec's scope to edit).
+  # Reischle et al. 2008 directly reports this quoted range, while attributing
+  # it to Beirne et al. 2007 (Ref. 14).  This is verified secondary [DR]
+  # evidence only; the separate Beirne record below remains missing because
+  # its primary text was not read.  The id remains unchanged because the card
+  # references it.
   - id: reischle08-delta-xx
+    claim: delta_xx_inp_gaasp
+    value: 4
+    unit: meV
+    tolerance: 1
+    conditions: "[DR] InP/GaInP proxy: lower endpoint (4 meV) of the X-XX binding-energy range 4-6 meV quoted by Reischle et al. 2008, p. 12774, from its Ref. 14 (Beirne et al. 2007); Reischle says it was not measured there. This is verified secondary evidence, not primary Beirne evidence."
+    source: "Reischle et al., Optics Express 16, 12771 (2008)"
+    doi: "10.1364/OE.16.012771"
+    locator: "p. 12774 (Ref. 14): quoted X-XX binding-energy range ~4-6 meV; not measured here"
+    tag: DR
+    status: verified
+    verification: "digest:../_goal/paper_digests.md Paper 1, Section 5; Reischle et al. 2008 quotes the 4-6 meV range and says it was not measured there."
+  - id: beirne07-delta-xx-primary-gap
     claim: delta_xx_inp_gaasp
     value: 5
     unit: meV
     tolerance: 1
-    conditions: "InP/GaInP proxy: X-XX binding-energy range 4-6 meV, reported by Beirne et al., Phys. Rev. B 75, 195302 (2007) (Ref. 14 of Reischle et al. 2008) and quoted secondarily -- not independently measured -- in Reischle et al. 2008, p. 12774: 'typical X-XX binding energy in this InP/GaInP system quoted as ~4-6 meV ... not measured here.' Union with bommer11-delta-xx (7 +/- 1 meV, i.e. 6-8 meV) spans 4-8 meV, overlapping only marginally near 6 meV -- the two independent sources are consistent but only weakly overlapping."
-    source: "Beirne et al., Physical Review B 75, 195302 (2007); quoted secondarily by Reischle et al., Optics Express 16, 12771 (2008), p. 12774 (Ref. 14)"
+    conditions: "[DR] Midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence."
+    source: "Beirne et al., Physical Review B 75, 195302 (2007); value quoted secondarily by Reischle et al. 2008"
     doi: "10.1103/PhysRevB.75.195302"
-    locator: "as cited in Reischle et al. 2008, p. 12774 (Ref. 14); not independently re-located in Beirne 2007's own text"
-    tag: V
-    status: verified
-    verification: "digest -- value transcribed from ../_goal/paper_digests.md Paper 1, Section 5 (Reischle et al. 2008's own quotation of Beirne et al. 2007, confirmed against the PDF by paper_digests_factcheck.md item 10); Beirne et al., Phys. Rev. B 75, 195302 (2007) confirmed as a genuine paper with this author list and in this venue via WebSearch 2026-09-05 (Beirne 2007 itself is not in the fact-checked six-paper digest set)."
+    locator: "not independently located in Beirne 2007; Reischle et al. 2008, p. 12774 (Ref. 14)"
+    tag: DR
+    status: missing
+    verification: "digest:../_goal/paper_digests.md Paper 1, Section 5; quotation only. Beirne 2007 primary text was not read."
   - id: bommer11-delta-xx
     claim: delta_xx_inp_gaasp
     value: 7
     unit: meV
     tolerance: 1
-    conditions: "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement. Union with reischle08-delta-xx (Beirne 2007, 4-6 meV) spans 4-8 meV, overlapping only marginally near 6 meV."
+    conditions: "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement. Together with Reischle 2008's secondary 4-6 meV quotation, the proxy values span 4-8 meV, overlapping only marginally near 6 meV."
     source: "Bommer et al., Journal of Applied Physics 110, 063108 (2011)"
     doi: "10.1063/1.3633218"
     locator: "biexciton-binding discussion"

@@ -119,6 +119,10 @@ PULSE_ASSUMPTION = {
 SWEEP_ASSUMPTION_KEYS = ["drive.diode.tau_pulse_ns", "drive.duty (rep-rate-derived)"]
 
 G2_THRESHOLD = 0.5
+# [A] Below roughly 1 kHz collected pulsed flux, a g2 measurement is not
+# practical within hours at single-photon-detector counting rates.  This is
+# an eligibility/reporting floor only; it is never fed into device physics.
+FLUX_FLOOR_PULSED_S = 1.0e3
 _ENDPOINT_N = 2
 _FULL_N = 3
 
@@ -207,6 +211,14 @@ def _collected_flux_s(sc: dict) -> float:
     return float(b) * REP_RATE_HZ if np.isfinite(b) else float("nan")
 
 
+def _flux_measurable(sc: dict, flux_s: float) -> bool:
+    """Use device.py's measurability flag when available; otherwise apply
+    the sweep's [A] 1 kHz pulsed collected-flux floor."""
+    if "flux_measurable" in sc:
+        return bool(sc["flux_measurable"])
+    return bool(np.isfinite(flux_s) and flux_s >= FLUX_FLOOR_PULSED_S)
+
+
 def _classify(sc: dict, flux_s: float, role: str) -> tuple[bool, list]:
     """Eligibility per docs/rt_edge_contract.md / the spec's interface
     constraints: supported confinement/transport/thermal/optical results,
@@ -214,8 +226,8 @@ def _classify(sc: dict, flux_s: float, role: str) -> tuple[bool, list]:
     collected_flux_s>0. device.py's own invalid_reasons already covers
     thermal nonconvergence/runaway, zero/negative current, and absorbing/
     unguided/unsupported emission stacks (edge_err); the checks below are
-    additional, never a floor or a way to make an otherwise-invalid row
-    eligible."""
+    additional. Pulsed rows must also meet the [A] 1 kHz collected-flux floor;
+    rows below it remain in the CSV but are ineligible."""
     reasons = list(sc.get("invalid_reasons", []))
     if not np.isfinite(sc.get("T_j_op", float("nan"))):
         reasons.append(f"{role}: non-finite T_j_op")
@@ -225,6 +237,8 @@ def _classify(sc: dict, flux_s: float, role: str) -> tuple[bool, list]:
         reasons.append(f"{role}: eta_inj not positive")
     if not (np.isfinite(flux_s) and flux_s > 0):
         reasons.append(f"{role}: collected_flux_s not positive")
+    if role == "pulsed" and not _flux_measurable(sc, flux_s):
+        reasons.append("ineligible: flux_below_floor")
     if role == "pulsed" and not np.isfinite(sc.get("g2_op", float("nan"))):
         reasons.append("pulsed: g2_op is NaN (zero signal or invalid operating point)")
     if role == "cw":
@@ -352,6 +366,9 @@ def compute_stats(rows: list) -> dict:
         cw_raw_vals = [r["g2_cw0_raw"] for r in eligible_rows]
         cw0_vals = [r["g2_cw0"] for r in eligible_rows]
         headline_rows = [r for r in card_rows if r["headline_pass"]]
+        flux_floor_excluded = sum(
+            1 for r in card_rows
+            if "ineligible: flux_below_floor" in r.get("invalid_reasons_pulsed", ""))
         p_min, p_med = _finite_stats(pulsed_vals)
         r_min, r_med = _finite_stats(cw_raw_vals)
         c_min, c_med = _finite_stats(cw0_vals)
@@ -362,12 +379,16 @@ def compute_stats(rows: list) -> dict:
             "g2_cw0_min": c_min, "g2_cw0_median": c_med,
             "g2_cw0_raw_min": r_min, "g2_cw0_raw_median": r_med,
             "n_favorable": len(headline_rows), "favorable_rows": headline_rows,
+            "n_flux_floor_excluded": flux_floor_excluded,
         }
     all_eligible = [r for r in rows if r["eligible_row"]]
     pooled_min, pooled_median = _finite_stats([r["g2_pulsed"] for r in all_eligible])
     n_total = len(rows)
     n_eligible = len(all_eligible)
     n_headline = sum(1 for r in rows if r["headline_pass"])
+    n_flux_floor_excluded = sum(
+        1 for r in rows
+        if "ineligible: flux_below_floor" in r.get("invalid_reasons_pulsed", ""))
     n_cw0_pass = sum(1 for r in rows if r["eligible_row"]
                      and np.isfinite(r["g2_cw0"]) and r["g2_cw0"] < G2_THRESHOLD)
     n_cw_raw_pass = sum(1 for r in rows if r["eligible_row"]
@@ -381,6 +402,7 @@ def compute_stats(rows: list) -> dict:
         "cw0_coverage": (n_cw0_pass / n_total) if n_total else 0.0,
         "n_cw_raw_pass": n_cw_raw_pass,
         "cw_raw_coverage": (n_cw_raw_pass / n_total) if n_total else 0.0,
+        "n_flux_floor_excluded": n_flux_floor_excluded,
         "g2_pulsed_min": pooled_min, "g2_pulsed_median": pooled_median,
     }
 
@@ -446,6 +468,7 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_total"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_total"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
+        "flux_floor_excluded": stats["n_flux_floor_excluded"],
         "evidence_complete": evidence_complete, "hallucination_ok": hallucination_ok,
         "conditional": conditional, "assumptions_used": assumptions_used,
         "headline_rows": headline_rows, "headline_by_card": headline_by_card,
@@ -459,6 +482,7 @@ def verdict_line(verdict: dict) -> str:
             f"median_pass={'true' if verdict['median_pass'] else 'false'} "
             f"coverage={verdict['coverage']:.4g} "
             f"eligible={verdict['eligible_n']}/{verdict['eligible_total']} "
+            f"flux_floor_excluded={verdict['flux_floor_excluded']} "
             f"evidence={'complete' if verdict['evidence_complete'] else 'incomplete'} "
             f"conditional={'true' if verdict['conditional'] else 'false'} "
             f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
@@ -472,6 +496,7 @@ def card_line(card_id: str, card_stats: dict) -> str:
             f"g2_cw_raw_min={card_stats['g2_cw0_raw_min']:.4g} "
             f"g2_cw_raw_median={card_stats['g2_cw0_raw_median']:.4g} "
             f"eligible={card_stats['n_eligible']}/{card_stats['n_rows']} "
+            f"flux_floor_excluded={card_stats['n_flux_floor_excluded']} "
             f"favorable_rows={card_stats['n_favorable']}")
 
 
@@ -569,12 +594,11 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## Literature ceiling")
     lines.append(
-        "No electrically driven III-V single quantum dot g2(0) at 300 K has "
-        "been published (docs/rt_edge_contract.md Evidence section; "
-        "verify/data/rt_edge_anchors.yaml) -- there is no existing electrical "
-        "300 K baseline for this sweep to exceed. The best reported "
-        "electrically driven single-dot result at any temperature is "
-        "Reischle et al. 2008 at 80 K: g2(0) = 0.43 raw, 0.03 after "
+        "In the reviewed literature set of this repository (six papers, "
+        "../_goal/paper_digests.md) and the anchors ledger, no electrically "
+        "driven III-V single-dot g2(0) at 300 K is reported; the best "
+        "electrical result in that set is Reischle et al. 2008 at 80 K: "
+        "g2(0) = 0.43 raw, 0.03 after "
         "background correction. The best reported 300 K single-dot values "
         "are optically pumped: g2(0) ~ 0.5-0.57 (Laferriere et al. 2023, "
         "InAsP/InP nanowire dot, g2(0) = 0.57 at 300 K). This sweep's pooled "
@@ -593,6 +617,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("## Coverage")
     lines.append(f"- eligible coverage: {stats['n_eligible']}/{stats['n_total']} "
                  f"= {stats['eligible_coverage']:.3f}")
+    lines.append(f"- pulsed collected-flux eligibility floor [A]: "
+                 f"{FLUX_FLOOR_PULSED_S:.0f} photons/s; rows excluded by this floor: "
+                 f"{stats['n_flux_floor_excluded']}")
     lines.append(f"- **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- "
                  f"the contract's PASS metric): "
                  f"{stats['n_headline']}/{stats['n_total']} = {stats['headline_coverage']:.3f}")
@@ -605,15 +632,16 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## Per-card statistics")
     lines.append("| card | role | g2_pulsed min/median | g2_cw0 min/median | "
-                 "g2_cw0_raw min/median | eligible | headline rows |")
-    lines.append("|---|---|---|---|---|---|---|")
+                 "g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |")
+    lines.append("|---|---|---|---|---|---|---|---|")
     for card_id, cs in stats["per_card"].items():
         lines.append(
             f"| {card_id} | {cs['card_class']} | "
             f"{cs['g2_pulsed_min']:.4g} / {cs['g2_pulsed_median']:.4g} | "
             f"{cs['g2_cw0_min']:.4g} / {cs['g2_cw0_median']:.4g} | "
             f"{cs['g2_cw0_raw_min']:.4g} / {cs['g2_cw0_raw_median']:.4g} | "
-            f"{cs['n_eligible']}/{cs['n_rows']} | {cs['n_favorable']} |")
+            f"{cs['n_eligible']}/{cs['n_rows']} | {cs['n_flux_floor_excluded']} | "
+            f"{cs['n_favorable']} |")
     lines.append("")
     lines.append("## Assumptions required by any headline-passing corner")
     if verdict["assumptions_used"]:
@@ -673,6 +701,8 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
         },
         "policy": {
             "g2_threshold": G2_THRESHOLD,
+            "pulsed_collected_flux_floor_s": FLUX_FLOOR_PULSED_S,
+            "pulsed_collected_flux_floor_basis": "[A] below ~1 kHz a g2 measurement is not practical within hours at single-photon-detector counting rates",
             "pass_requires": ["grid_complete", "evidence_complete",
                               "hallucination_tests_passed",
                               "at least one eligible row with pulsed intrinsic g2(0)<0.5 "

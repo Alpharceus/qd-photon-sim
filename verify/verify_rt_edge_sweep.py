@@ -132,6 +132,30 @@ ok("all-ineligible: zero eligible rows despite favorable-looking g2 values",
 ok("all-ineligible: verdict FAILs on eligibility, not metrics",
    not v["pass"] and "no_eligible_rows" in v["fail_reasons"])
 
+# -- flux-floor oracle: evaluate the policy against hand-built valid scalar
+# maps rather than a device-generated flux, so these expected boundaries do
+# not depend on the current cards or transport model.
+floor_scalars = {"invalid_reasons": [], "T_j_op": 300.0, "V_j_op": 1.2,
+                 "eta_inj": 0.2, "g2_op": 0.3}
+eligible_low_flux, low_flux_reasons = rte._classify(
+    floor_scalars, rte.FLUX_FLOOR_PULSED_S - 1.0, "pulsed")
+eligible_at_floor, at_floor_reasons = rte._classify(
+    floor_scalars, rte.FLUX_FLOOR_PULSED_S, "pulsed")
+ok("flux floor: a valid pulsed row below 1 kHz is ineligible with the exact reason",
+   not eligible_low_flux and "ineligible: flux_below_floor" in low_flux_reasons)
+ok("flux floor: a valid pulsed row at 1 kHz remains eligible",
+   eligible_at_floor and "ineligible: flux_below_floor" not in at_floor_reasons)
+flag_false_scalars = {**floor_scalars, "flux_measurable": False}
+eligible_flag_false, flag_false_reasons = rte._classify(
+    flag_false_scalars, rte.FLUX_FLOOR_PULSED_S + 1.0, "pulsed")
+ok("flux floor: device.py flux_measurable=False takes precedence when exposed",
+   not eligible_flag_false and "ineligible: flux_below_floor" in flag_false_reasons)
+flux_excluded_row = make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, False)
+flux_excluded_row["invalid_reasons_pulsed"] = "ineligible: flux_below_floor"
+stats_flux_excluded = rte.compute_stats([flux_excluded_row])
+ok("flux floor: excluded rows are counted separately from eligible statistics",
+   stats_flux_excluded["n_flux_floor_excluded"] == 1 and stats_flux_excluded["n_eligible"] == 0)
+
 # -- no evidence: physics favorable and eligible, but evidence gate FAILs
 rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True)]
 stats = rte.compute_stats(rows)
