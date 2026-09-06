@@ -1,15 +1,15 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-06T02:52:00.771953+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-06T04:16:57.223992+00:00; contract: docs/rt_edge_contract.md.
 
 ```
-VERDICT: FAIL g2_min=nan g2_median=nan median_pass=false coverage=0 eligible=0/54 flux_floor_excluded=54 evidence=incomplete conditional=false headline_coverage=0/54 cw_raw_coverage=0/54
+VERDICT: FAIL g2_min=nan g2_median=nan diag_g2_min=0.2154 diag_g2_median=0.8683 flux_max=43.12 flux_shortfall=23.19 median_pass=false coverage=0 eligible=0/54 flux_floor_excluded=54 evidence=incomplete conditional=false headline_coverage=0/54 cw_raw_coverage=0/54
 ```
 ```
-CARD: edge-inp-gaasp-design role=primary g2_pulsed_min=nan g2_pulsed_median=nan g2_cw_raw_min=nan g2_cw_raw_median=nan eligible=0/27 flux_floor_excluded=27 favorable_rows=0
+CARD: edge-inp-gaasp-design role=primary g2_pulsed_min=nan g2_pulsed_median=nan diagnostic (below flux floor, not measurable) diag_g2_min=0.2437 diag_g2_median=0.8735 diag_g2_cw0_min=0.2413 diag_g2_cw0_median=0.9126 diag_g2_cw0_raw_min=0.9726 diag_g2_cw0_raw_median=0.9987 g2_cw_raw_min=nan g2_cw_raw_median=nan eligible=0/27 flux_floor_excluded=27 favorable_rows=0
 ```
 ```
-CARD: edge-inp-gainp-design role=fallback g2_pulsed_min=nan g2_pulsed_median=nan g2_cw_raw_min=nan g2_cw_raw_median=nan eligible=0/27 flux_floor_excluded=27 favorable_rows=0
+CARD: edge-inp-gainp-design role=fallback g2_pulsed_min=nan g2_pulsed_median=nan diagnostic (below flux floor, not measurable) diag_g2_min=0.2154 diag_g2_median=0.8631 diag_g2_cw0_min=0.2133 diag_g2_cw0_median=0.903 diag_g2_cw0_raw_min=0.8694 diag_g2_cw0_raw_median=0.9933 g2_cw_raw_min=nan g2_cw_raw_median=nan eligible=0/27 flux_floor_excluded=27 favorable_rows=0
 ```
 
 ## Literature ceiling
@@ -24,15 +24,39 @@ Grid complete: True
 ## Coverage
 - eligible coverage: 0/54 = 0.000
 - pulsed collected-flux eligibility floor [A]: 1000 photons/s; rows excluded by this floor: 54
+- diagnostic pooled g2 (below flux floor, not measurable): pulsed 0.2154 / 0.8683; g2_cw0 0.2133 / 0.9078; g2_cw0_raw 0.8694 / 0.9973
+- maximum collected pulsed flux: 43.12 photons/s; shortfall factor (floor/flux_max): 23.19
 - **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- the contract's PASS metric): 0/54 = 0.000
 - secondary coverage, CW intrinsic g2_cw0 < 0.5 (diagnostic only, does not gate PASS): 0/54 = 0.000
 - secondary coverage, CW IRF-convolved g2_cw0_raw < 0.5 (diagnostic only, does not gate PASS): 0/54 = 0.000
 
 ## Per-card statistics
-| card | role | g2_pulsed min/median | g2_cw0 min/median | g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |
+| card | role | diagnostic g2_pulsed min/median | diagnostic g2_cw0 min/median | diagnostic g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |
 |---|---|---|---|---|---|---|---|
-| edge-inp-gaasp-design | primary | nan / nan | nan / nan | nan / nan | 0/27 | 27 | 0 |
-| edge-inp-gainp-design | fallback | nan / nan | nan / nan | nan / nan | 0/27 | 27 | 0 |
+| edge-inp-gaasp-design | primary | 0.2437 / 0.8735 | 0.2413 / 0.9126 | 0.9726 / 0.9987 | 0/27 | 27 | 0 |
+| edge-inp-gainp-design | fallback | 0.2154 / 0.8631 | 0.2133 / 0.903 | 0.8694 / 0.9933 | 0/27 | 27 | 0 |
+
+## Why no row is eligible
+Every row is below the 1000 photons/s collected-flux floor; the grid maximum is only 43.12 photons/s (floor/maximum = 23.19).
+The dominant brightness limiter at the favourable diagnostic corner is S; the factor decomposition is:
+
+| factor | value |
+|---|---:|
+| mu | 0.100002 |
+| S | 0.00461745 |
+| t_X | 0.5 |
+| beta | 0.0292412 |
+| facet | 0.719371 |
+| propagation | 0.778801 |
+| NA | 0.299495 |
+| eta_total | 0.0024532 |
+| rep rate | 8e+07 |
+| duty | 0.008 |
+
+## Diagnostic g2 landscape
+| corner | pulsed g2 min | pooled diagnostic median | assumptions |
+|---|---:|---:|---|
+| edge-inp-gainp-design (7 meV, gamma300=6 meV, irf=50 ps) | 0.2154 | 0.868329 | dot.gamma300; drive.diode.tau_pulse_ns; drive.duty (rep-rate-derived); emission.lambda_nm; ret.system.barrier.x_al |
 
 ## Assumptions required by any headline-passing corner
 - (no row satisfies the headline gate; see fail_reasons below)

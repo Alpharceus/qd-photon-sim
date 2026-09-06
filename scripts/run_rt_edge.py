@@ -314,11 +314,19 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         "t_x_pulsed": scp.get("t_x_op"), "eps_pulsed": scp.get("eps_op"),
         "t_x_cw": sccw.get("t_x_op"), "eps_cw": sccw.get("eps_op"),
         "edge_beta": scp.get("edge_beta"), "edge_eta_total": scp.get("edge_eta_total"),
+        "edge_T_facet": scp.get("edge_T_facet"), "edge_eta_prop": scp.get("edge_eta_prop"),
+        "edge_eta_NA": scp.get("edge_eta_NA"),
         "collected_flux_pulsed_s": pulsed["flux_s"], "collected_flux_cw_s": cw["flux_s"],
         "g2_pulsed": g2_p, "g2_cw0": g2_cw0, "g2_cw0_raw": g2_cw0_raw,
+        # Per-row diagnostic aliases are deliberately written alongside the
+        # legacy metric columns.  They retain finite evaluator values for
+        # below-floor rows; diagnostic_valid is the separate validity gate.
+        "diag_g2_pulsed": g2_p, "diag_g2_cw0": g2_cw0,
+        "diag_g2_cw0_raw": g2_cw0_raw,
         "eligible_pulsed": pulsed["eligible"], "eligible_cw": cw["eligible"],
         "eligible_row": eligible_row, "headline_pass": headline_pass,
         "secondary_pass": secondary_pass,
+        "diagnostic_valid": _diagnostic_valid(pulsed, cw),
         "invalid_reasons_pulsed": "; ".join(pulsed["reasons"]),
         "invalid_reasons_cw": "; ".join(cw["reasons"]),
         "assumptions": "; ".join(assumptions),
@@ -338,7 +346,9 @@ def csv_fieldnames() -> list:
             "g2_cw0", "g2_cw0_raw", "eligible_pulsed", "eligible_cw",
             "eligible_row", "headline_pass", "secondary_pass", "invalid_reasons_pulsed",
             "invalid_reasons_cw", "assumptions", "pulse_width_ns", "rep_rate_hz",
-            "duty_pulsed"]
+            "duty_pulsed", "edge_T_facet", "edge_eta_prop", "edge_eta_NA",
+            "diagnostic_valid", "diag_g2_pulsed", "diag_g2_cw0",
+            "diag_g2_cw0_raw"]
 
 
 # -------------------------------------------------------------- statistics
@@ -348,6 +358,25 @@ def _finite_stats(values: list) -> tuple:
     if arr.size == 0:
         return float("nan"), float("nan")
     return float(np.min(arr)), float(np.median(arr))
+
+
+def _diagnostic_valid(pulsed: dict, cw: dict) -> bool:
+    """A row usable for below-floor diagnostics: only the measurement-floor
+    exclusion is tolerated; all evaluator/classification invalidity remains
+    excluded.  The g2 finiteness check is applied by compute_stats per metric.
+    """
+    allowed = {"ineligible: flux_below_floor"}
+    reasons = set(pulsed.get("reasons", [])) | set(cw.get("reasons", []))
+    return reasons <= allowed
+
+
+def _row_diagnostic_valid(row: dict) -> bool:
+    """CSV/synthetic-row counterpart of _diagnostic_valid."""
+    reasons = []
+    for key in ("invalid_reasons_pulsed", "invalid_reasons_cw"):
+        text = row.get(key, "")
+        reasons.extend(r.strip() for r in text.split(";") if r.strip())
+    return set(reasons) <= {"ineligible: flux_below_floor"}
 
 
 def compute_stats(rows: list) -> dict:
@@ -362,16 +391,29 @@ def compute_stats(rows: list) -> dict:
     per_card = {}
     for card_id, card_rows in by_card.items():
         eligible_rows = [r for r in card_rows if r["eligible_row"]]
-        pulsed_vals = [r["g2_pulsed"] for r in eligible_rows]
-        cw_raw_vals = [r["g2_cw0_raw"] for r in eligible_rows]
-        cw0_vals = [r["g2_cw0"] for r in eligible_rows]
+        diagnostic_rows = [r for r in card_rows if _row_diagnostic_valid(r)]
+        # Preserve the existing g2_* statistics as eligible-row statistics.
+        # The diagnostic_* statistics below intentionally use all valid rows,
+        # including rows excluded only by the collected-flux floor.
+        eligible_pulsed_vals = [r["g2_pulsed"] for r in eligible_rows]
+        eligible_cw_raw_vals = [r["g2_cw0_raw"] for r in eligible_rows]
+        eligible_cw0_vals = [r["g2_cw0"] for r in eligible_rows]
+        pulsed_vals = [r.get("diag_g2_pulsed", r.get("g2_pulsed"))
+                       for r in diagnostic_rows]
+        cw_raw_vals = [r.get("diag_g2_cw0_raw", r.get("g2_cw0_raw"))
+                       for r in diagnostic_rows]
+        cw0_vals = [r.get("diag_g2_cw0", r.get("g2_cw0"))
+                    for r in diagnostic_rows]
         headline_rows = [r for r in card_rows if r["headline_pass"]]
         flux_floor_excluded = sum(
             1 for r in card_rows
             if "ineligible: flux_below_floor" in r.get("invalid_reasons_pulsed", ""))
-        p_min, p_med = _finite_stats(pulsed_vals)
-        r_min, r_med = _finite_stats(cw_raw_vals)
-        c_min, c_med = _finite_stats(cw0_vals)
+        p_min, p_med = _finite_stats(eligible_pulsed_vals)
+        r_min, r_med = _finite_stats(eligible_cw_raw_vals)
+        c_min, c_med = _finite_stats(eligible_cw0_vals)
+        dp_min, dp_med = _finite_stats(pulsed_vals)
+        dr_min, dr_med = _finite_stats(cw_raw_vals)
+        dc_min, dc_med = _finite_stats(cw0_vals)
         per_card[card_id] = {
             "card_class": card_rows[0]["card_class"], "n_rows": len(card_rows),
             "n_eligible": len(eligible_rows),
@@ -380,7 +422,13 @@ def compute_stats(rows: list) -> dict:
             "g2_cw0_raw_min": r_min, "g2_cw0_raw_median": r_med,
             "n_favorable": len(headline_rows), "favorable_rows": headline_rows,
             "n_flux_floor_excluded": flux_floor_excluded,
+            "diag_g2_pulsed_min": dp_min, "diag_g2_pulsed_median": dp_med,
+            "diag_g2_cw0_min": dc_min, "diag_g2_cw0_median": dc_med,
+            "diag_g2_cw0_raw_min": dr_min, "diag_g2_cw0_raw_median": dr_med,
+            "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in diagnostic_rows]),
+            "best_diagnostic_row": _best_diagnostic_row(diagnostic_rows),
         }
+    diagnostic_rows = [r for r in rows if _row_diagnostic_valid(r)]
     all_eligible = [r for r in rows if r["eligible_row"]]
     pooled_min, pooled_median = _finite_stats([r["g2_pulsed"] for r in all_eligible])
     n_total = len(rows)
@@ -404,7 +452,38 @@ def compute_stats(rows: list) -> dict:
         "cw_raw_coverage": (n_cw_raw_pass / n_total) if n_total else 0.0,
         "n_flux_floor_excluded": n_flux_floor_excluded,
         "g2_pulsed_min": pooled_min, "g2_pulsed_median": pooled_median,
+        "diag_g2_pulsed_min": _finite_stats([r.get("diag_g2_pulsed", r.get("g2_pulsed")) for r in diagnostic_rows])[0],
+        "diag_g2_pulsed_median": _finite_stats([r.get("diag_g2_pulsed", r.get("g2_pulsed")) for r in diagnostic_rows])[1],
+        "diag_g2_cw0_min": _finite_stats([r.get("diag_g2_cw0", r.get("g2_cw0")) for r in diagnostic_rows])[0],
+        "diag_g2_cw0_median": _finite_stats([r.get("diag_g2_cw0", r.get("g2_cw0")) for r in diagnostic_rows])[1],
+        "diag_g2_cw0_raw_min": _finite_stats([r.get("diag_g2_cw0_raw", r.get("g2_cw0_raw")) for r in diagnostic_rows])[0],
+        "diag_g2_cw0_raw_median": _finite_stats([r.get("diag_g2_cw0_raw", r.get("g2_cw0_raw")) for r in diagnostic_rows])[1],
+        "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in diagnostic_rows]),
+        "best_diagnostic_row": _best_diagnostic_row(diagnostic_rows),
     }
+
+
+def _max_finite(values):
+    vals = []
+    for value in values:
+        try:
+            if value is not None and np.isfinite(float(value)):
+                vals.append(float(value))
+        except (TypeError, ValueError):
+            pass
+    return max(vals) if vals else float("nan")
+
+
+def _best_diagnostic_row(rows):
+    valid = []
+    for row in rows:
+        try:
+            if np.isfinite(float(row.get("g2_pulsed", float("nan")))):
+                valid.append(row)
+        except (TypeError, ValueError):
+            pass
+    return min(valid, key=lambda r: (float(r["g2_pulsed"]),
+                                     float(r.get("collected_flux_pulsed_s", float("inf"))))) if valid else None
 
 
 def compute_verdict(rows: list, stats: dict, grid_complete: bool,
@@ -469,6 +548,12 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_total"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
         "flux_floor_excluded": stats["n_flux_floor_excluded"],
+        "diag_g2_min": stats["diag_g2_pulsed_min"],
+        "diag_g2_median": stats["diag_g2_pulsed_median"],
+        "flux_max": stats["flux_max"],
+        "flux_shortfall": (FLUX_FLOOR_PULSED_S / stats["flux_max"]
+                           if np.isfinite(stats["flux_max"]) and stats["flux_max"] > 0
+                           else float("nan")),
         "evidence_complete": evidence_complete, "hallucination_ok": hallucination_ok,
         "conditional": conditional, "assumptions_used": assumptions_used,
         "headline_rows": headline_rows, "headline_by_card": headline_by_card,
@@ -479,6 +564,10 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
 def verdict_line(verdict: dict) -> str:
     return (f"VERDICT: {'PASS' if verdict['pass'] else 'FAIL'} "
             f"g2_min={verdict['g2_min']:.4g} g2_median={verdict['g2_median']:.4g} "
+            f"diag_g2_min={verdict['diag_g2_min']:.4g} "
+            f"diag_g2_median={verdict['diag_g2_median']:.4g} "
+            f"flux_max={verdict['flux_max']:.4g} "
+            f"flux_shortfall={verdict['flux_shortfall']:.4g} "
             f"median_pass={'true' if verdict['median_pass'] else 'false'} "
             f"coverage={verdict['coverage']:.4g} "
             f"eligible={verdict['eligible_n']}/{verdict['eligible_total']} "
@@ -493,6 +582,13 @@ def card_line(card_id: str, card_stats: dict) -> str:
     return (f"CARD: {card_id} role={card_stats['card_class']} "
             f"g2_pulsed_min={card_stats['g2_pulsed_min']:.4g} "
             f"g2_pulsed_median={card_stats['g2_pulsed_median']:.4g} "
+            f"diagnostic (below flux floor, not measurable) "
+            f"diag_g2_min={card_stats['diag_g2_pulsed_min']:.4g} "
+            f"diag_g2_median={card_stats['diag_g2_pulsed_median']:.4g} "
+            f"diag_g2_cw0_min={card_stats['diag_g2_cw0_min']:.4g} "
+            f"diag_g2_cw0_median={card_stats['diag_g2_cw0_median']:.4g} "
+            f"diag_g2_cw0_raw_min={card_stats['diag_g2_cw0_raw_min']:.4g} "
+            f"diag_g2_cw0_raw_median={card_stats['diag_g2_cw0_raw_median']:.4g} "
             f"g2_cw_raw_min={card_stats['g2_cw0_raw_min']:.4g} "
             f"g2_cw_raw_median={card_stats['g2_cw0_raw_median']:.4g} "
             f"eligible={card_stats['n_eligible']}/{card_stats['n_rows']} "
@@ -620,6 +716,12 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append(f"- pulsed collected-flux eligibility floor [A]: "
                  f"{FLUX_FLOOR_PULSED_S:.0f} photons/s; rows excluded by this floor: "
                  f"{stats['n_flux_floor_excluded']}")
+    lines.append(f"- diagnostic pooled g2 (below flux floor, not measurable): "
+                 f"pulsed {stats['diag_g2_pulsed_min']:.4g} / {stats['diag_g2_pulsed_median']:.4g}; "
+                 f"g2_cw0 {stats['diag_g2_cw0_min']:.4g} / {stats['diag_g2_cw0_median']:.4g}; "
+                 f"g2_cw0_raw {stats['diag_g2_cw0_raw_min']:.4g} / {stats['diag_g2_cw0_raw_median']:.4g}")
+    lines.append(f"- maximum collected pulsed flux: {stats['flux_max']:.4g} photons/s; "
+                 f"shortfall factor (floor/flux_max): {verdict['flux_shortfall']:.4g}")
     lines.append(f"- **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- "
                  f"the contract's PASS metric): "
                  f"{stats['n_headline']}/{stats['n_total']} = {stats['headline_coverage']:.3f}")
@@ -631,17 +733,55 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"= {stats['cw_raw_coverage']:.3f}")
     lines.append("")
     lines.append("## Per-card statistics")
-    lines.append("| card | role | g2_pulsed min/median | g2_cw0 min/median | "
-                 "g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |")
+    lines.append("| card | role | diagnostic g2_pulsed min/median | diagnostic g2_cw0 min/median | "
+                 "diagnostic g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |")
     lines.append("|---|---|---|---|---|---|---|---|")
     for card_id, cs in stats["per_card"].items():
         lines.append(
             f"| {card_id} | {cs['card_class']} | "
-            f"{cs['g2_pulsed_min']:.4g} / {cs['g2_pulsed_median']:.4g} | "
-            f"{cs['g2_cw0_min']:.4g} / {cs['g2_cw0_median']:.4g} | "
-            f"{cs['g2_cw0_raw_min']:.4g} / {cs['g2_cw0_raw_median']:.4g} | "
+            f"{cs['diag_g2_pulsed_min']:.4g} / {cs['diag_g2_pulsed_median']:.4g} | "
+            f"{cs['diag_g2_cw0_min']:.4g} / {cs['diag_g2_cw0_median']:.4g} | "
+            f"{cs['diag_g2_cw0_raw_min']:.4g} / {cs['diag_g2_cw0_raw_median']:.4g} | "
             f"{cs['n_eligible']}/{cs['n_rows']} | {cs['n_flux_floor_excluded']} | "
-            f"{cs['n_favorable']} |")
+                 f"{cs['n_favorable']} |")
+    if stats.get("best_diagnostic_row") is not None:
+        best = stats.get("best_diagnostic_row")
+        lines.append("")
+        if stats["n_eligible"] == 0:
+            lines.append("## Why no row is eligible")
+            lines.append(f"Every row is below the {FLUX_FLOOR_PULSED_S:.0f} photons/s collected-flux floor; "
+                         f"the grid maximum is only {stats['flux_max']:.4g} photons/s "
+                         f"(floor/maximum = {verdict['flux_shortfall']:.4g}).")
+        else:
+            lines.append("## Best diagnostic-g2 row and brightness decomposition")
+        factors = [("mu", best.get("mu_pulsed")), ("S", best.get("S_retention_pulsed")),
+                       ("t_X", best.get("t_x_pulsed")), ("beta", best.get("edge_beta")),
+                       ("facet", best.get("edge_T_facet")), ("propagation", best.get("edge_eta_prop")),
+                       ("NA", best.get("edge_eta_NA"))]
+        finite_factors = [(n, float(v)) for n, v in factors if v is not None and np.isfinite(v) and v > 0]
+        dominant = min(finite_factors, key=lambda x: x[1])[0] if finite_factors else "the collection chain"
+        lines.append(f"The dominant brightness limiter at the favourable diagnostic corner is "
+                     f"{dominant}; the factor decomposition is:")
+        lines.append("")
+        lines.append("| factor | value |")
+        lines.append("|---|---:|")
+        for name, value in factors + [("eta_total", best.get("edge_eta_total")),
+                                           ("rep rate", best.get("rep_rate_hz")),
+                                           ("duty", best.get("duty_pulsed"))]:
+            lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
+                         else f"| {name} | nan |")
+        lines.append("")
+        lines.append("## Diagnostic g2 landscape")
+        lines.append("| corner | pulsed g2 min | pooled diagnostic median | assumptions |")
+        lines.append("|---|---:|---:|---|")
+        def _grid_text(key):
+            value = best.get(key)
+            return f"{value:g}" if value is not None and np.isfinite(value) else "n/a"
+        lines.append(f"| {best.get('card_id', 'unknown')} ({_grid_text('delta_xx_meV')} meV, "
+                     f"gamma300={_grid_text('gamma300_meV')} meV, "
+                     f"irf={_grid_text('irf_ps')} ps) | "
+                         f"{best['g2_pulsed']:.6g} | {stats['diag_g2_pulsed_median']:.6g} | "
+                         f"{best.get('assumptions', '')} |")
     lines.append("")
     lines.append("## Assumptions required by any headline-passing corner")
     if verdict["assumptions_used"]:

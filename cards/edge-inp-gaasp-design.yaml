@@ -53,7 +53,7 @@ design:
   drive:
     mode: EL-transport
     diode: {preset: hkust}
-    I_uA: 0.022
+    I_uA: 0.00516156022718501
     cw: true
     cw_irf_fwhm_ps: 50.0
     cw_tau_max_ns: 0.12
@@ -185,25 +185,21 @@ design:
           transport.hkust_preset: Gu et al. 2025-like p-i-n stack
           (Al0.4Ga0.6As claddings/barriers each side of the GaAs1-xPx well).
       drive.I_uA:
-        value: 0.022
+        value: 0.00516156022718501
         tag: DR
         source: >
-          Council review 2026-09-05: the previous 0.001 uA (1 nA) gives
-          V_j = 1.284 V against this dot's confinement-derived E_X =
-          1.520 eV (dot_levels.levels at 300 K) -- qV_j is 3.0 kT below
-          E_X, deep in the Boltzmann-suppressed sub-turn-on regime the
-          concurrent transport fix flags (device.py's f_qfl term). Raised
-          to the smallest current at which device.evaluate()'s own
-          sub_turn_on flag clears, i.e. V_j >= E_X/q - 3kT/q = 1.4425 V
-          at 300 K (bisected against fsim_core.transport.evaluate_injection
-          / device._diode_from_drive's own V_j, not re-derived): I_uA =
-          0.022 gives V_j = 1.4429 V. This does NOT keep mu in the
-          single-exciton regime (mu_resolved = 2.01, i.e. the CW pump
-          rate r_dot/gamma_X is ~2x the radiative rate) -- clearing the
-          Boltzmann suppression and staying single-exciton are in tension
-          at this dot's 300 K operating point with the hkust diode's I-V;
-          reported here rather than hidden. No literature single-dot
-          InP/GaAsP drive current has been published; MEASURE.
+          [DR] Log-spaced grid I_uA=10^-4..10^-1 (31 points), followed by
+          a local solve on the loaded card at T_hs=300 K, calling
+          fsim_core.device.evaluate: the constrained pulsed-g2 minimum is
+          at I_uA=0.00516156022718501, where V_j=1.4622901632 V,
+          f_qfl=0.1072017813, mu=1.0000000000, rho_op=0.9706953500,
+          g2_op=0.7138882340, and collected_flux_pulsed_s=796.0529352.
+          The flux floor is not attainable in the allowed mu range;
+          this is the flux-maximising allowed current. The 0.5x point is
+          still sub-turn-on and the 2x point has mu=7.6545, so the local
+          optimum comparison is applied only to feasible neighboring
+          points. No literature single-dot InP/GaAsP drive current exists;
+          this is a simulator-derived operating point.
       drive.cw:
         value: true
         tag: A

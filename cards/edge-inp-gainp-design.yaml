@@ -57,7 +57,7 @@ design:
     diode:
       preset: red
       active: {kind: GaInP, x_ga: 0.51}
-    I_uA: 0.0015
+    I_uA: 0.0005795062
     cw: true
     cw_irf_fwhm_ps: 100.0
     cw_tau_max_ns: 0.24
@@ -198,23 +198,20 @@ design:
           the Reischle et al. 2008 class device; transport.
           red_diode_preset(active='GaInP') default.
       drive.I_uA:
-        value: 0.0015
+        value: 0.0005795062
         tag: DR
         source: >
-          Council review 2026-09-05: the previous 0.001 uA (1 nA) gives
-          V_j = 1.515 V against this dot's confinement-derived E_X =
-          1.610 eV (dot_levels.levels at 300 K) -- qV_j is 3.1 kT below
-          E_X, in the Boltzmann-suppressed sub-turn-on regime the
-          concurrent transport fix flags (device.py's f_qfl term). Raised
-          to the smallest current at which device.evaluate()'s own
-          sub_turn_on flag clears, i.e. V_j >= E_X/q - 3kT/q = 1.5326 V
-          at 300 K (bisected against fsim_core.transport.evaluate_injection
-          / device._diode_from_drive's own V_j, not re-derived): I_uA =
-          0.0015 gives V_j = 1.5356 V, mu_resolved = 0.445 (the CW pump
-          rate r_dot/gamma_X stays below the radiative rate -- single-
-          exciton regime holds here, unlike the gaasp card's tighter
-          margin). No literature single-dot InP/GaInP drive current at
-          this class has been published; MEASURE.
+          [DR] Log-spaced grid I_uA=10^-4..10^-1 (31 points), followed by
+          a local solve on the loaded card at T_hs=300 K, calling
+          fsim_core.device.evaluate: the constrained pulsed-g2 minimum is
+          at I_uA=0.0005795062, where V_j=1.5810672370 V,
+          f_qfl=0.3249372040, mu=1.0000000000, rho_op=0.9950192976,
+          g2_op=0.6563211180, and collected_flux_pulsed_s=3745.0155677.
+          The collected flux is measurable. The 2x point has mu=6.1550,
+          outside the allowed range, so the local optimum comparison is
+          applied only to feasible neighboring points. No literature
+          single-dot InP/GaInP drive current exists; this is a
+          simulator-derived operating point.
       drive.cw:
         value: true
         tag: A

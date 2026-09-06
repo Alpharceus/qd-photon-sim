@@ -285,7 +285,8 @@ def check_card(path: Path, anchors: dict) -> None:
         ok(f"{tag}: resolved scalars report the card's own filter.track_material",
            sc.get("track_material") == design.filter.track_material)
 
-        # ---- 8. wavelength self-consistency, sub_turn_on, CW runtime budget
+        # ---- 8. wavelength self-consistency, corrected injection constraints,
+        # constrained local optimum, and CW runtime budget.
         # (rt-fix-cards-wavelength, council review 2026-09-05).
         system = copy.copy(device_mod._retention_system(design.ret))
         system.T = float(sc.get("T_j_op", design.thermal.T_hs))
@@ -303,6 +304,43 @@ def check_card(path: Path, anchors: dict) -> None:
         sub_turn_on = any("sub_turn_on" in r for r in sc.get("invalid_reasons", []))
         ok(f"{tag}: no sub_turn_on flag at drive.I_uA (qV_j not Boltzmann-suppressed)",
            not sub_turn_on)
+
+        mu_op = sc.get("mu_resolved")
+        ok(f"{tag}: resolved mu is in [0.05, 1.0]",
+           mu_op is not None and math.isfinite(mu_op) and 0.05 <= mu_op <= 1.0)
+        ok(f"{tag}: provenance drive.I_uA contains the [DR] grid derivation",
+           sources.get("drive.I_uA", {}).get("tag") == "DR"
+           and "Log-spaced grid" in sources.get("drive.I_uA", {}).get("source", "")
+           and "V_j" in sources.get("drive.I_uA", {}).get("source", "")
+           and "f_qfl" in sources.get("drive.I_uA", {}).get("source", "")
+           and "g2_op" in sources.get("drive.I_uA", {}).get("source", ""))
+
+        # N_expected is independently recomputed above; repeat the explicit
+        # operating-point gate here so this block mirrors the round-2 card
+        # selection constraints.
+        ok(f"{tag}: operating-point N_expected < 0.5", n_expected_recomputed < 0.5)
+
+        # A boundary optimum is local within the feasible mu interval.  The
+        # out-of-range side is still evaluated for diagnostics, but cannot
+        # disqualify a constrained optimum (both selected cards sit at mu=1).
+        neighbor_checks = []
+        for multiplier in (0.5, 2.0):
+            neighbor = copy.deepcopy(design)
+            neighbor.drive.I_uA *= multiplier
+            neighbor.drive.cw = False
+            try:
+                ns = evaluate(neighbor, T_grid=[neighbor.thermal.T_hs])["scalars"]
+                nmu = ns.get("mu_resolved")
+                feasible = (nmu is not None and math.isfinite(nmu)
+                            and 0.05 <= nmu <= 1.0
+                            and not any("sub_turn_on" in r
+                                        for r in ns.get("invalid_reasons", [])))
+                neighbor_checks.append((not feasible) or
+                                       ns.get("g2_op", math.inf) >= sc.get("g2_op", -math.inf) - 1e-3)
+            except Exception:
+                neighbor_checks.append(False)
+        ok(f"{tag}: constrained local g2 optimum at 0.5x and 2x current",
+           all(neighbor_checks))
 
         ok(f"{tag}: evaluate() completes in under {CW_RUNTIME_BUDGET_S:g} s "
            f"({eval_seconds:.2f} s)",

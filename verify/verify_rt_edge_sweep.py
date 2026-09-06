@@ -105,7 +105,8 @@ def full_row(**overrides) -> dict:
         "mu_pulsed": 0.5, "eta_inj_pulsed": 0.3, "eta_inj_cw": 0.3,
         "S_retention_pulsed": 0.5, "S_retention_cw": 0.5, "b_e_window_pulsed": 0.1,
         "b_e_window_cw": 0.1, "t_x_pulsed": 0.5, "eps_pulsed": 0.1, "t_x_cw": 0.5,
-        "eps_cw": 0.1, "edge_beta": 0.01, "edge_eta_total": 0.002,
+        "eps_cw": 0.1, "edge_beta": 0.01, "edge_T_facet": 0.8,
+        "edge_eta_prop": 0.7, "edge_eta_NA": 0.6, "edge_eta_total": 0.002,
         "collected_flux_pulsed_s": 10.0, "collected_flux_cw_s": 10.0,
         "g2_pulsed": float("nan"), "g2_cw0": float("nan"), "g2_cw0_raw": float("nan"),
         "eligible_pulsed": False, "eligible_cw": False, "eligible_row": False,
@@ -115,6 +116,7 @@ def full_row(**overrides) -> dict:
         "assumptions": "dot.gamma300; emission.lambda_nm",
         "pulse_width_ns": rte.PULSE_WIDTH_NS, "rep_rate_hz": rte.REP_RATE_HZ,
         "duty_pulsed": rte.PULSE_WIDTH_NS * 1e-9 * rte.REP_RATE_HZ,
+        "diagnostic_valid": False,
     }
     base.update(overrides)
     return base
@@ -122,13 +124,19 @@ def full_row(**overrides) -> dict:
 
 # ============================================================ 1. pure policy
 
-# -- all-ineligible: no row eligible -> FAIL for eligibility, nan stats
+# -- all-ineligible: no row eligible -> FAIL for eligibility, but diagnostic
+# statistics remain available when the only invalidity is the flux floor.
 rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, False),
         make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, False)]
+for row in rows:
+    row.update({"collected_flux_pulsed_s": 10.0,
+                "invalid_reasons_pulsed": "ineligible: flux_below_floor",
+                "invalid_reasons_cw": "", "diagnostic_valid": True})
 stats = rte.compute_stats(rows)
 v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
 ok("all-ineligible: zero eligible rows despite favorable-looking g2 values",
-   stats["n_eligible"] == 0 and math.isnan(v["g2_min"]) and math.isnan(v["g2_median"]))
+   stats["n_eligible"] == 0 and math.isnan(v["g2_min"]) and math.isnan(v["g2_median"])
+   and v["diag_g2_min"] == 0.3 and v["diag_g2_median"] == 0.6)
 ok("all-ineligible: verdict FAILs on eligibility, not metrics",
    not v["pass"] and "no_eligible_rows" in v["fail_reasons"])
 
@@ -155,6 +163,24 @@ flux_excluded_row["invalid_reasons_pulsed"] = "ineligible: flux_below_floor"
 stats_flux_excluded = rte.compute_stats([flux_excluded_row])
 ok("flux floor: excluded rows are counted separately from eligible statistics",
    stats_flux_excluded["n_flux_floor_excluded"] == 1 and stats_flux_excluded["n_eligible"] == 0)
+
+# -- diagnostic oracle: below-floor rows expose finite g2 statistics, maximum
+# flux, and the evaluator-factor decomposition; eligible rows expose both too.
+diag_row = full_row(g2_pulsed=0.2, g2_cw0=0.25, g2_cw0_raw=0.3,
+                    collected_flux_pulsed_s=500.0, eligible_row=False,
+                    diagnostic_valid=True, invalid_reasons_pulsed="ineligible: flux_below_floor",
+                    invalid_reasons_cw="")
+eligible_diag = full_row(g2_pulsed=0.2, g2_cw0=0.25, g2_cw0_raw=0.3,
+                        collected_flux_pulsed_s=1500.0, eligible_row=True,
+                        eligible_pulsed=True, eligible_cw=True, diagnostic_valid=True,
+                        invalid_reasons_pulsed="", invalid_reasons_cw="")
+for fixture, expected_flux in (([diag_row], 500.0), ([eligible_diag], 1500.0)):
+    fixture_stats = rte.compute_stats(fixture)
+    fixture_verdict = rte.compute_verdict(fixture, fixture_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+    ok("diagnostic scenarios: stats and decomposition exist below floor and when eligible",
+       fixture_verdict["diag_g2_min"] == 0.2 and fixture_verdict["flux_max"] == expected_flux
+       and fixture_stats["best_diagnostic_row"]["edge_beta"] == 0.01
+       and fixture_stats["best_diagnostic_row"]["edge_T_facet"] == 0.8)
 
 # -- no evidence: physics favorable and eligible, but evidence gate FAILs
 rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True)]

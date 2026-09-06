@@ -1,17 +1,1472 @@
 {
   "schema_version": 1,
   "evidence_complete": false,
-  "hallucination_tests_passed": true,
-  "claim_results": {},
-  "anchor_results": {},
-  "missing_evidence": [],
+  "hallucination_tests_passed": false,
+  "claim_results": {
+    "reischle2008_g2_80K": {
+      "anchors": [
+        "reischle08-g2-80k",
+        "reischle08-g2-80k-independent-gap"
+      ],
+      "distinct_verified_sources": 0,
+      "complete": false,
+      "reason": "only 0 distinct verified primary source(s), need 2"
+    },
+    "temperature_trend_g2": {
+      "anchors": [
+        "chatzarakis23-g2-temperature",
+        "laferriere23-g2-temperature"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    },
+    "hkust_inp_gaasp_wavelength": {
+      "anchors": [
+        "gu25-hkust-wavelength",
+        "hkust22-wavelength-independent-gap",
+        "luo22-hkust-wavelength-si"
+      ],
+      "distinct_verified_sources": 1,
+      "complete": false,
+      "reason": "only 1 distinct verified primary source(s), need 2"
+    },
+    "gaas_pin_iv": {
+      "anchors": [
+        "reischle08-gaas-pin-iv",
+        "reischle10-gaas-pin-iv"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    },
+    "edge_extraction_efficiency": {
+      "anchors": [
+        "reischle08-first-lens-efficiency",
+        "laferriere23-first-lens-efficiency"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    },
+    "gamma300_class_range": {
+      "anchors": [
+        "inp-300k-linewidth-class-gap",
+        "laferriere23-linewidth-class-proxy",
+        "matsuda01-gamma300-class",
+        "chatzarakis23-gamma300-class"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    },
+    "retention_Ea_inp_algainp": {
+      "anchors": [
+        "bommer11-retention-ea",
+        "schulz09-retention-ea-ensemble",
+        "inp-algainp-retention-independent-gap"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    },
+    "delta_xx_inp_gaasp": {
+      "anchors": [
+        "reischle08-delta-xx",
+        "beirne07-delta-xx-primary-gap",
+        "bommer11-delta-xx"
+      ],
+      "distinct_verified_sources": 2,
+      "complete": true,
+      "reason": null
+    }
+  },
+  "anchor_results": {
+    "reischle08-g2-80k": {
+      "claim": "reischle2008_g2_80K",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 0.43,
+      "tolerance": {
+        "rel": 0.12
+      },
+      "context": "InP/AlGaInP p-i-n EL, 80 K, QD C; raw dip. A second independent 80 K electrical single-dot result is not in the digests.",
+      "tag": "V",
+      "status": "missing",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "raw value distinct from known corrected/deconvolved distractors"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "reischle08-g2-80k-independent-gap": {
+      "claim": "reischle2008_g2_80K",
+      "paper_id": "Independent source not retrieved",
+      "expected": null,
+      "tolerance": {
+        "rel": 0.12
+      },
+      "context": "Independent paper required for the 80 K electrical InP-dot g2 anchor.",
+      "tag": "A",
+      "status": "missing",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='A'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "placeholder source tagged 'A'"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "no value to bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "no value to range-check"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "no claim metadata or declared gap (skipped)"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "chatzarakis23-g2-temperature": {
+      "claim": "temperature_trend_g2",
+      "paper_id": "10.1103/PhysRevApplied.20.034011",
+      "expected": 0.36,
+      "tolerance": 0.03,
+      "context": "Pulsed X-line measurement, 230 K, no background correction.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1103/PhysRevApplied.20.034011' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 0.36 g2(0) (paper_digests.md, Paper 3, Section 5: 'g2(0) vs T ... 0.36 +/- 0.03 (230 K)'; fact-checked in paper_digests_factcheck.md item 19.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "laferriere23-g2-temperature": {
+      "claim": "temperature_trend_g2",
+      "paper_id": "10.1021/acs.nanolett.2c04375",
+      "expected": 0.57,
+      "tolerance": {
+        "rel": 0.06
+      },
+      "context": "Pulsed InAsP/InP nanowire measurement, 300 K, fitted with background.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1021/acs.nanolett.2c04375' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 0.57 g2(0) (paper_digests.md, Paper 5, Section 5 (abstract): 'values of 0.11, 0.34, and 0.57 at 77, 220 and 300 K, respectively'; fact-checked in paper_digests_factcheck.md item 35.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "gu25-hkust-wavelength": {
+      "claim": "hkust_inp_gaasp_wavelength",
+      "paper_id": "10.1364/OE.563529",
+      "expected": 755,
+      "tolerance": 5,
+      "context": "Electrically pumped type-I/type-II InP/GaAs0.65P0.35 QD ridge laser on GaAs. Independent matching single-dot evidence is absent.",
+      "tag": "V",
+      "status": "missing",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.563529' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "hkust22-wavelength-independent-gap": {
+      "claim": "hkust_inp_gaasp_wavelength",
+      "paper_id": "Luo et al., HKUST Optics Express news summary (2022)",
+      "expected": 750,
+      "tolerance": 5,
+      "context": "Electrically pumped InP/GaAsP QD laser on Si; digest gives a news summary only, without DOI or figure. Superseded as a citable source by luo22-hkust-wavelength-si below, which carries the confirmed DOI for the same underlying paper; kept here only as the historical news-summary placeholder that first flagged the claim.",
+      "tag": "E",
+      "status": "missing",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='E'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "no DOI asserted (locator-only sourcing)"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "luo22-hkust-wavelength-si": {
+      "claim": "hkust_inp_gaasp_wavelength",
+      "paper_id": "10.1364/OE.474320",
+      "expected": 750,
+      "tolerance": 5,
+      "context": "Electrically pumped InP/GaAsP quantum dot laser grown on (001) Si; ensemble laser target wavelength, not a single-photon emitter. A confirmed, DOI-sourced second candidate for the HKUST-class wavelength; independent matching single-dot evidence remains absent. Card-coordination note: cards/edge-inp-gaasp-design.yaml's emission.lambda_nm (668 nm) is anchored to gu25-hkust-wavelength above (still status: missing), not to this anchor; the 668 nm vs 750 nm design-point gap is to be tracked as a card-level provenance.assumptions entry by the concurrent cards spec, not as missing evidence on this anchor.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.474320' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 750 nm (not in paper_digests.md; web-confirmed 2026-09-05 (opg.optica.org/oe/fulltext.cfm?uri=oe-30-22-40750): 'Electrically pumped InP/GaAsP quantum dot lasers grown on (001) Si emitting at 750 nm.')"
+        }
+      ],
+      "effective_verified": true
+    },
+    "reischle08-gaas-pin-iv": {
+      "claim": "gaas_pin_iv",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 1.97,
+      "tolerance": 0.02,
+      "context": "GaAs-substrate InP/AlGaInP p-i-n, QD C, 80 K electrical operation; autocorrelation bias point.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 1.97 V (paper_digests.md, Paper 1, Section 3: 'Autocorrelation conditions: QD B: U = 2.35 V, 4 K; QD C: U = 1.97 V, 80 K.')"
+        }
+      ],
+      "effective_verified": true
+    },
+    "reischle10-gaas-pin-iv": {
+      "claim": "gaas_pin_iv",
+      "paper_id": "10.1063/1.3497016",
+      "expected": 2.07,
+      "tolerance": 0.03,
+      "context": "GaAs-substrate InP/GaInP p-i-n, Device 2 dc bias before pulsed injection, about 20 K.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1063/1.3497016' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 2.07 V (paper_digests.md, Paper 2, Section 3: 'Device 2 (better contacts): V_dc = 2.07 V (dc 2.2-2.35 V), V_pp = 4.8 V.'; corroborated in Section 5's decay-time-vs-Vdc series ('420 ps for Vdc=2.07 V').)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "reischle08-first-lens-efficiency": {
+      "claim": "edge_extraction_efficiency",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 9e-05,
+      "tolerance": {
+        "rel": 0.15
+      },
+      "context": "Vertical reference device, 4 K; collection efficiency inferred from 90 kHz first-lens rate and 1 GHz maximum rate.",
+      "tag": "DR",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='DR'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 9e-05 fraction (paper_digests.md, Paper 1, Section 5: 'collection efficiency 0.9e-4 (4 K) and 1.8e-5 (80 K)' -- 0.9e-4 = 9e-5 = 0.00009, the 4 K value.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "laferriere23-first-lens-efficiency": {
+      "claim": "edge_extraction_efficiency",
+      "paper_id": "10.1021/acs.nanolett.2c04375",
+      "expected": 0.276,
+      "tolerance": {
+        "rel": 0.05
+      },
+      "context": "Vertical InP photonic-nanowire reference, 4 K, after multiphoton correction.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1021/acs.nanolett.2c04375' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 0.276 fraction (paper_digests.md, Paper 5, Section 5: '28.2% -> reduced to 27.6% after multiphoton correction'; fact-checked in paper_digests_factcheck.md item 38.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "inp-300k-linewidth-class-gap": {
+      "claim": "gamma300_class_range",
+      "paper_id": "Materials research synthesis, Section 6",
+      "expected": null,
+      "tolerance": {
+        "rel": 0.25
+      },
+      "context": "No 300 K single-InP-dot linewidth was retrieved; 15-20 meV is only a III-As/III-P class proxy.",
+      "tag": "E",
+      "status": "missing",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='E'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "no value to bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "no value to range-check"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "no claim metadata or declared gap (skipped)"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "laferriere23-linewidth-class-proxy": {
+      "claim": "gamma300_class_range",
+      "paper_id": "10.1021/acs.nanolett.2c04375",
+      "expected": 16,
+      "tolerance": {
+        "rel": 0.2
+      },
+      "context": "InAsP/InP nanowire dot at 300 K; NOT a measured emission linewidth -- 25 nm is the detection bandpass-filter width at 1398 nm/300 K (an instrument upper bound, widened as the X/XX lines broadened and merged; digest Paper 5, Section 5: 'No numeric Gamma(T) given'), converted here to an energy width. Not an InP/GaAsP-dot measurement; superseded for gamma300_class_range by matsuda01-gamma300-class and chatzarakis23-gamma300-class below, which are genuine measured single-dot linewidths.",
+      "tag": "E",
+      "status": "missing",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='E'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1021/acs.nanolett.2c04375' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "matsuda01-gamma300-class": {
+      "claim": "gamma300_class_range",
+      "paper_id": "10.1103/PhysRevB.63.121304",
+      "expected": 12,
+      "tolerance": 1,
+      "context": "In0.5Ga0.5As/GaAs single quantum dot, near-field scanning optical microscopy, homogeneous linewidth at 300 K; distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1103/PhysRevB.63.121304' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 12 meV (not in paper_digests.md; web-confirmed 2026-09-05 (journals.aps.org/prb/abstract/10.1103/PhysRevB.63.121304): 'the homogeneous linewidth of the quantum dot was estimated to be about 12 meV at 300 K.')"
+        }
+      ],
+      "effective_verified": true
+    },
+    "chatzarakis23-gamma300-class": {
+      "claim": "gamma300_class_range",
+      "paper_id": "10.1103/PhysRevApplied.20.034011",
+      "expected": 6.5,
+      "tolerance": 0.5,
+      "context": "InAs/GaAs (211)B piezoelectric single-quantum-dot linewidth measurement (mesa-isolated dot, Fig. S2); the (211)B and (100) single-dot linewidth curves merge at T >= 250 K to FWHM 6-7 meV (paper text, p. 6). Corrected wording: earlier text here wrongly described this as an 'ensemble (non-SSL/SSL-barrier)' and 'mesa and microcavity-dot' merge -- the ensemble non-SSL/SSL Arrhenius activation energies (125/265 meV) are a different measurement on different (ensemble) samples; the linewidth-curve merge quoted for this anchor is specifically the (211)B vs (100) SINGLE-DOT comparison per paper_digests_factcheck.md item 27. Distinct-material class proxy for the InP-dot family, not a direct InP/GaAsP or InP/GaInP measurement.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1103/PhysRevApplied.20.034011' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 6.5 meV (paper_digests.md, Paper 3, Section 5: '(211)B and (100) curves merge at T >= 250 K' to FWHM 6-7 meV; fact-checked verbatim (p.6 quote) in paper_digests_factcheck.md item 27.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "bommer11-retention-ea": {
+      "claim": "retention_Ea_inp_algainp",
+      "paper_id": "10.1063/1.3633218",
+      "expected": 96,
+      "tolerance": 7,
+      "context": "Single-dot X Arrhenius activation energy for InP/(Al0.20Ga0.80)InP.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1063/1.3633218' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 96 meV (not in paper_digests.md; full-text-confirmed 2026-09-05: 'Activation energy derived from Arrhenius fits: Ea_X = 96 +/- 7 meV, Ea_XX = 80 +/- 8 meV.')"
+        }
+      ],
+      "effective_verified": true
+    },
+    "schulz09-retention-ea-ensemble": {
+      "claim": "retention_Ea_inp_algainp",
+      "paper_id": "10.1002/pssc.200880599",
+      "expected": 150,
+      "tolerance": 20,
+      "context": "Ensemble PL intensity vs temperature, simple thermal-activation-model Arrhenius fit (Table 1, structure (a): reference Al0.20Ga0.80InP barrier, no additional cladding or tunnel barrier); InP quantum dots, same general InP/(Al,Ga)InP thermal-escape activation-energy family as Bommer 2011, but an independent ensemble measurement, not a reproduction of it.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1002/pssc.200880599' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 150 meV (not in paper_digests.md; full-text-confirmed 2026-09-05 (arXiv:0812.0452, Table 1): 'Structure (a) (b) (c) (d) (e) / EA (meV) 150 205 220 251 272' -- structure (a) is the reference Al0.20Ga0.80InP barrier with no additional cladding or tunnel barrier.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "inp-algainp-retention-independent-gap": {
+      "claim": "retention_Ea_inp_algainp",
+      "paper_id": "Independent source not retrieved",
+      "expected": null,
+      "tolerance": 10,
+      "context": "A second independently sourced InP/AlGaInP activation-energy measurement is required.",
+      "tag": "A",
+      "status": "missing",
+      "applicability": "direct",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='A'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "placeholder source tagged 'A'"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "no value to bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "no numeric claim to source (declared gap)"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "no value to range-check"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "no claim metadata or declared gap (skipped)"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "reischle08-delta-xx": {
+      "claim": "delta_xx_inp_gaasp",
+      "paper_id": "10.1364/OE.16.012771",
+      "expected": 4,
+      "tolerance": 1,
+      "context": "[DR] InP/GaInP proxy: lower endpoint (4 meV) of the X-XX binding-energy range 4-6 meV quoted by Reischle et al. 2008, p. 12774, from its Ref. 14 (Beirne et al. 2007); Reischle says it was not measured there. This is verified secondary evidence, not primary Beirne evidence.",
+      "tag": "DR",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='DR'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1364/OE.16.012771' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 4 meV (paper_digests.md, Paper 1, Section 5: 'Typical X-XX binding energy in this InP/GaInP system quoted as ~4-6 meV ... not measured here.' Lower endpoint recorded; this is Reischle's secondary quotation, not a direct Beirne measurement.)"
+        }
+      ],
+      "effective_verified": true
+    },
+    "beirne07-delta-xx-primary-gap": {
+      "claim": "delta_xx_inp_gaasp",
+      "paper_id": "10.1103/PhysRevB.75.195302",
+      "expected": 5,
+      "tolerance": 1,
+      "context": "[DR] Midpoint of the 4-6 meV X-XX binding-energy range quoted in Reischle et al. 2008 from Beirne et al. 2007, Ref. 14. Beirne 2007 primary text was not directly checked; this is not primary evidence.",
+      "tag": "DR",
+      "status": "missing",
+      "applicability": "proxy",
+      "structural_checks_passed": false,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='DR'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1103/PhysRevB.75.195302' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": false,
+          "detail": "conditions missing all of ['InP'] (material_tokens)"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "not a verified numeric claim (skipped)"
+        }
+      ],
+      "effective_verified": false
+    },
+    "bommer11-delta-xx": {
+      "claim": "delta_xx_inp_gaasp",
+      "paper_id": "10.1063/1.3633218",
+      "expected": 7,
+      "tolerance": 1,
+      "context": "InP/GaInP proxy: measured micropillar-dot X-XX splitting, not a GaAsP-host measurement. Together with Reischle 2008's secondary 4-6 meV quotation, the proxy values span 4-8 meV, overlapping only marginally near 6 meV.",
+      "tag": "V",
+      "status": "verified",
+      "applicability": "proxy",
+      "structural_checks_passed": true,
+      "checks": [
+        {
+          "check": "_check_tag_valid",
+          "ok": true,
+          "detail": "tag='V'"
+        },
+        {
+          "check": "_check_citation_present",
+          "ok": true,
+          "detail": "citation present"
+        },
+        {
+          "check": "_check_tag_consistent_with_sourcing",
+          "ok": true,
+          "detail": "sourced (no placeholder check needed)"
+        },
+        {
+          "check": "_check_no_gainp_80k_confusion",
+          "ok": true,
+          "detail": "no InP/GaInP+80K confusion"
+        },
+        {
+          "check": "_check_tolerance_sane",
+          "ok": true,
+          "detail": "tolerance within a plausible measurement/reading bound"
+        },
+        {
+          "check": "_check_doi_plausible",
+          "ok": true,
+          "detail": "DOI '10.1063/1.3633218' carries a registered publisher prefix"
+        },
+        {
+          "check": "_check_unit_and_magnitude",
+          "ok": true,
+          "detail": "unit/magnitude plausible"
+        },
+        {
+          "check": "_check_context_tokens",
+          "ok": true,
+          "detail": "context tokens present"
+        },
+        {
+          "check": "_check_raw_vs_corrected",
+          "ok": true,
+          "detail": "no raw/corrected distractor table for this claim"
+        },
+        {
+          "check": "_check_digest_crosscheck",
+          "ok": true,
+          "detail": "matches independent transcription 7 meV (not in paper_digests.md; full-text-confirmed 2026-09-05: 'the XX binding energy of ~7 meV allows to clearly identify the X and XX decay channels.')"
+        }
+      ],
+      "effective_verified": true
+    }
+  },
+  "missing_evidence": [
+    {
+      "claim": "reischle2008_g2_80K",
+      "reason": "only 0 distinct verified primary source(s), need 2",
+      "anchors": [
+        "reischle08-g2-80k",
+        "reischle08-g2-80k-independent-gap"
+      ]
+    },
+    {
+      "claim": "hkust_inp_gaasp_wavelength",
+      "reason": "only 1 distinct verified primary source(s), need 2",
+      "anchors": [
+        "gu25-hkust-wavelength",
+        "hkust22-wavelength-independent-gap",
+        "luo22-hkust-wavelength-si"
+      ]
+    }
+  ],
   "source_ledger_sha256": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
   "evaluator_input_hashes": {
     "verify/data/rt_edge_anchors.yaml": "95c6b129bf9fc69d2ababf4f5b1d54602dead1fcc357c1c864b78fa0607077cd",
-    "cards/edge-inp-gaasp-design.yaml": "94c4bbe431787299ed47c914f328f9b9e4046fb8553789fe7eaca32ca1dc7671",
-    "cards/edge-inp-gainp-design.yaml": "9001cce265c319c9631cf3efe97e6d1dbcbfd1c63afb0a12d9fdf4e60d23e8cd"
+    "cards/edge-inp-gaasp-design.yaml": "f10eb1a8f853cbedf8b2bedea23a1d64d2f8b038fb092f35c200a8239e5f0d9d",
+    "cards/edge-inp-gainp-design.yaml": "82df316cea75617139d1f60829367d1d85df55d583d2014098d0f9a912723c4f"
   },
-  "checks_passed": 32,
-  "checks_total": 32,
-  "self_test": true
+  "checks_passed": 14,
+  "checks_total": 16,
+  "self_test": false
 }
