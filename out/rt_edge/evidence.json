@@ -1631,8 +1631,8 @@
   "source_ledger_sha256": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
   "evaluator_input_hashes": {
     "verify/data/rt_edge_anchors.yaml": "f1feac576da22da910178e56e176815e7553b21f422a906c2cc67904213c7a95",
-    "cards/edge-inp-gaasp-design.yaml": "725f753ded4c38049af9b090ca4fbcc3e2b3bb3b8ba63d163078e3a5ee4bf95b",
-    "cards/edge-inp-gainp-design.yaml": "78f971c6a402316f79279f1a8d51a7f2a557ad7309b2608c5edd0a200d52a3f6"
+    "cards/edge-inp-gaasp-design.yaml": "668d6aaa1fc0fe3bc05590ca335eee61a9a24698d0c8124d99fd47ef487fca7f",
+    "cards/edge-inp-gainp-design.yaml": "f815687aa439927e1a7a4c7b160b76bdd24e48a7f69ef02a1b801f8b9446e507"
   },
   "checks_passed": 14,
   "checks_total": 17,
