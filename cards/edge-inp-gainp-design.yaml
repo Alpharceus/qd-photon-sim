@@ -246,12 +246,13 @@ design:
           block, Lemma 1); g2_op moves with the new dot.gamma300=12.0 meV
           default (was 0.7604492717 at the superseded 16.0 meV value --
           see dot.gamma300's note for the full 6.5/12/16 meV sensitivity);
-          rho_op moves upward with the newly explicit
-          emission.NA=0.75/R_back=0.95/L_um=250 collection levers
-          (previously 0.8307178323 under undeclared NA=0.5/R_back=None/
-          L_um=500 device.py defaults; unaffected by the facet-model fix
-          below since rho_op is a transport-intrinsic signal fraction,
-          Lemma 1). collected_flux_pulsed_s was 1036.4321421 under those
+          rho_op is independent of the collection levers (Lemma 1): fresh
+          evaluation gives rho_op=0.8427621125 at this card's current
+          gamma300=12.0 meV and rho_op=0.8307178323 at the superseded
+          gamma300=16.0 meV for reference; both values are unchanged when
+          evaluated with NA=0.5/R_back=None/L_um=500 device.py defaults.
+          The value changed only because gamma300 moved from 16.0 to 12.0
+          meV. collected_flux_pulsed_s was 1036.4321421 under those
           same newly-explicit collection levers before this round's facet
           fix (fifth council review item 1: waveguide.edge_emission's
           escape-rate facet fraction was double-counting the front-facet

@@ -385,8 +385,22 @@ def check_card(path: Path, anchors: dict) -> set:
         actual_metrics["f_qfl"] = f_qfl_actual
         ok(f"{tag}: I_uA provenance operating metrics match fresh evaluation",
            all(k in quoted and math.isfinite(quoted[k]) and math.isfinite(actual_metrics[k])
-               and math.isclose(quoted[k], actual_metrics[k], rel_tol=0.05)
+               and math.isclose(quoted[k], actual_metrics[k], rel_tol=1e-6)
                for k in actual_metrics))
+        # Lemma 1 regression: rho_op is transport-intrinsic and must not
+        # depend on the collection levers (NA, R_back, or L_um).
+        default_collection = copy.deepcopy(design)
+        default_collection.emission.NA = 0.5
+        default_collection.emission.R_back = None
+        default_collection.emission.L_um = 500.0
+        default_sc = evaluate(default_collection,
+                               T_grid=[default_collection.thermal.T_hs])["scalars"]
+        ok(f"{tag}: rho_op is unchanged by collection levers (Lemma 1)",
+           math.isclose(float(sc["rho_op"]), float(default_sc["rho_op"]),
+                        rel_tol=0.0, abs_tol=1e-9))
+        ok(f"{tag}: no provenance sentence says rho_op moves upward with",
+           not any("moves upward with" in str(entry.get("source", ""))
+                   for entry in sources.values()))
         ok(f"{tag}: resolved rep_rate_hz is 8e7", math.isclose(
             sc.get("rep_rate_hz", float("nan")), 8.0e7, rel_tol=0.0, abs_tol=1.0))
         ok(f"{tag}: resolved scalars report emission.type='edge' active",
