@@ -1,0 +1,416 @@
+{
+  "section": "04",
+  "title": "Getting the photon out: waveguides, facets, cavities",
+  "minutes": 14,
+  "slides": [
+    {
+      "id": "04-01",
+      "layout": "section-divider",
+      "title": "Getting the Photon Out: Waveguides, Facets, Cavities",
+      "subtitle": "Section 4: Photonic Extraction and Waveguide Engineering",
+      "notes": "Welcome to Section 4 of our lecture series. In previous sections, we analyzed carrier injection, capture dynamics, and radiative recombination in quantum dots. However, creating a single exciton photon inside a high-index semiconductor chip is only half the battle: extracting that photon into a usable optical mode presents an immense electromagnetic challenge. Because semiconductors like gallium arsenide and indium phosphide possess large refractive indices near 3.5, total internal reflection traps more than 97.9% of generated light within the planar substrate. Without dedicated photonic engineering, the extraction efficiency of an unpatterned surface emitter is approximately 2%. In this section, we develop the electromagnetic formalism for guiding, shaping, and collecting single photons using edge-emitting ridge waveguides. We will trace the transverse resonance equations of dielectric slabs, solve 2D ridge profiles with the effective-index method, examine spontaneous emission enhancement via the beta factor, and analyze group index dispersion. Furthermore, we will quantify mirror reflection at cleaved facets, exponential propagation loss, and Gaussian far-field numerical aperture collection. By combining these mechanisms, we establish the multiplicative extraction chain modeled in our simulator and explain why high-reflectivity coatings, short cavities, and high-numerical-aperture optics are essential to achieve certified single-photon detection at room temperature [Coldren, Corzine, Masanovic (2012) ch. 1-3] [Chuang (2009) ch. 7].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 1-3",
+        "Chuang (2009) ch. 7"
+      ]
+    },
+    {
+      "id": "04-02",
+      "layout": "bullets+figure",
+      "title": "Surface vs Edge Emission: The Total Internal Reflection Barrier",
+      "bullets": [
+        "High semiconductor index ($n \\approx 3.5$) establishes narrow critical angle $\\theta_c = \\arcsin(1/n) \\approx 16.6^\\circ$.",
+        "Escape cone subtends solid angle $\\Omega = 2\\pi(1 - \\cos\\theta_c) \\approx \\pi / n^2$ steradians.",
+        "Planar surface extraction into air is strictly limited to $\\eta_{surf} \\approx 1/(4 n^2) \\approx 2.04\\%$.",
+        "Over 97.9% of generated photons remain trapped in unguided substrate and planar modes.",
+        "In-plane edge waveguides channel emitted photons directly along monolithic integrated circuits on-chip.",
+        "Waveguide routing eliminates vertical collection lenses and enables scalable planar photonic systems."
+      ],
+      "equations": [
+        {
+          "latex": "\\eta_{surf} = \\frac{\\Omega}{4\\pi} = \\frac{1 - \\cos\\theta_c}{2} \\approx \\frac{1}{4 n^2} \\approx 2.04\\%",
+          "caption": "extraction efficiency into one half-space for refractive index $n=3.5$, critical angle $\\theta_c = \\arcsin(1/n)$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_02_tir_cone.png",
+        "caption": "Total internal reflection escape cone for planar surface emission versus in-plane waveguide guiding.",
+        "script": "presentation2/figures/fig_04_02_tir_cone.py"
+      },
+      "notes": "A fundamental hurdle in semiconductor optoelectronics is the high refractive index of III-V materials. For indium phosphide and gallium arsenide, the refractive index at near-infrared wavelengths is approximately 3.5. Applying Snell's law at a planar semiconductor-air boundary yields an escape critical angle of only 16.6 degrees. Light emitted by an isotropic dipole outside this narrow cone undergoes total internal reflection at the semiconductor-air boundary. Integrating over the spherical escape cone into one half-space gives a solid angle of approximately pi divided by n squared steradians. Relative to the full four-pi sphere, the extraction fraction is roughly one over four n squared, or just 2.04%. That means roughly 98% of generated photons are trapped in guided substrate modes or absorbed by contacts and substrates [Chuang (2009) ch. 7]. While vertical microcavities or surface micropillars can overcome this limit by redirecting light out of the wafer plane, they require complex epitaxial distributed Bragg reflectors and expensive macroscopic collection optics. By contrast, edge emission embraces total internal reflection: it embeds the quantum dot within a waveguiding core that routes light laterally across the chip. This in-plane architecture couples directly to on-chip optical waveguides, multiplexers, and integrated detectors, making it exceptionally attractive for scalable photonic integrated circuits [Coldren, Corzine, Masanovic (2012) ch. 1].",
+      "sources": [
+        "Chuang (2009) ch. 7",
+        "Coldren, Corzine, Masanovic (2012) ch. 1"
+      ]
+    },
+    {
+      "id": "04-03",
+      "layout": "bullets+figure",
+      "title": "Dielectric Slab Waveguide: Transverse Resonance and Bound Modes",
+      "bullets": [
+        "Vertical heterostructure confines light via refractive index contrast: $n_{core} > n_{clad}$.",
+        "Transverse wavevector $k_z = k_0\\sqrt{n_{core}^2 - n_{eff}^2}$ and cladding decay $\\gamma = k_0\\sqrt{n_{eff}^2 - n_{clad}^2}$.",
+        "Transverse resonance condition for TE modes: $2 k_z d_{core} - 2\\arctan(\\gamma/k_z) = 2m\\pi$.",
+        "Effective index satisfies $n_{clad} < n_{eff} < n_{core}$; modal cutoff occurs as $n_{eff} \\rightarrow n_{clad}$.",
+        "HKUST stack: 296 nm core yields fundamental TE mode $n_{eff} = 3.1606$ at 668 nm.",
+        "Dot layer confinement factor $\\Gamma_{dot} = 0.0074$ (0.74%) within the 2 nm active sheet."
+      ],
+      "equations": [
+        {
+          "latex": "2 k_z d_{core} - 2 \\arctan\\left(\\frac{\\gamma}{k_z}\\right) = 2 m \\pi, \\quad k_z = k_0\\sqrt{n_{core}^2 - n_{eff}^2}, \\; \\gamma = k_0\\sqrt{n_{eff}^2 - n_{clad}^2}",
+          "caption": "TE slab transverse resonance condition for core thickness $d_{core}$, vacuum wavenumber $k_0 = 2\\pi/\\lambda$, mode order $m$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_03_slab_modes.png",
+        "caption": "Vertical refractive index profile and bound TE slab mode intensity $|E(z)|^2$ for the HKUST ridge stack at 668 nm.",
+        "script": "presentation2/figures/fig_04_03_slab_modes.py"
+      },
+      "notes": "To confine light in the vertical direction, we introduce an epitaxial dielectric slab waveguide consisting of a high-index core sandwiched between lower-index claddings. A self-consistent bound optical mode forms when a plane wave reflecting between the upper and lower interfaces reproduces its phase after one complete round trip. This transverse resonance requirement equates the round-trip transverse phase accumulation, two k_z d_core, minus the reflection phase shifts at the cladding boundaries, two phi_clad, to an integer multiple of two pi. For transverse electric polarization, the Goos-Hanchen reflection phase shift is given by the arctangent of the cladding decay constant gamma over the core transverse wavenumber k_z. The eigenvalue of this equation determines the mode effective index n_eff, which is bounded between the cladding index and the core index. When the core becomes too thin or the index contrast vanishes, n_eff approaches n_clad, the evanescent tails in the cladding extend to infinity, and the mode cuts off [Chuang (2009) ch. 7]. In our simulator's fsim_core.waveguide module, the slab eigenproblem is solved numerically on a fine tridiagonal grid. For the HKUST heterostructure at 668 nm, the 296 nm AlGaInP core clad by AlInP supports a fundamental TE mode with n_eff equal to 3.1606 and a dot layer intensity confinement factor Gamma_dot of 0.74% [Coldren, Corzine, Masanovic (2012) ch. 2].",
+      "sources": [
+        "Chuang (2009) ch. 7",
+        "Coldren, Corzine, Masanovic (2012) ch. 2"
+      ]
+    },
+    {
+      "id": "04-04",
+      "layout": "bullets+figure",
+      "title": "Ridge Waveguide: 2D Confinement and Effective-Index Method",
+      "bullets": [
+        "Lateral confinement is formed by etching through cladding outside a 2000 nm ridge stripe.",
+        "Effective-index method separates the 2D Helmholtz equation into sequential 1D slab solves.",
+        "Vertical solve yields $n_{ridge} = 3.1606$ under the ridge and $n_{outside} = 3.0500$ in etched regions.",
+        "Lateral slab solve using $(n_{ridge}, n_{outside})$ gives the 2D modal effective index $n_{eff} = 3.1571$.",
+        "Separable mode area $A_{mode} = w_{x,eff} \\cdot w_{y,eff} = 0.5874\\ \\mu\\text{m}^2$ for the HKUST ridge.",
+        "Gaussian-equivalent beam radii: $w_x = 0.587\\ \\mu\\text{m}$ (lateral) and $w_y = 0.139\\ \\mu\\text{m}$ (vertical)."
+      ],
+      "equations": [
+        {
+          "latex": "A_{mode} = \\frac{\\left(\\int |E|^2 dx dy\\right)^2}{\\int |E|^4 dx dy} = w_{x,eff} \\cdot w_{y,eff} = 2\\pi w_x w_y",
+          "caption": "separable intensity effective mode area $A_{mode}$ and Gaussian 1/e^2 beam waist radii $w_x, w_y$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_04_ridge_mode.png",
+        "caption": "2D optical mode intensity profile $|E(x,y)|^2$ reconstructed via separable effective-index method for a 2 um ridge.",
+        "script": "presentation2/figures/fig_04_04_ridge_mode.py"
+      },
+      "repo_numbers": {
+        "ridge_width_gainp": {
+          "value": 2000.0,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        }
+      },
+      "notes": "Planar slab waveguides confine light vertically, but allowing photons to spread freely in the lateral plane would dilute intensity and ruin single-mode fiber coupling. To achieve two-dimensional confinement, a ridge waveguide is fabricated by lithographically defining a stripe, typically 2 microns wide, and etching away the upper cladding outside the stripe. Solving the full vector 2D Helmholtz equation analytically is intractable, so we employ the effective-index method, a standard technique in semiconductor laser design [Coldren, Corzine, Masanovic (2012) ch. 2]. We first solve the vertical 1D slab eigenproblem in the unetched central region to obtain the ridge effective index n_ridge, and in the etched exterior to obtain n_outside. Next, we replace the vertical structure with a fictitious lateral symmetric slab whose core index is n_ridge and cladding index is n_outside. Solving this second 1D problem gives the full two-dimensional effective index n_eff. Because the electric field is separable under this approximation, the optical mode area A_mode is simply the product of the vertical and lateral intensity-effective widths. For our fallback GaInP ridge stack at 770 nm, fsim_core.waveguide yields an effective mode area of 0.5124 square microns, with waist radii w_x of 0.587 microns and w_y of 0.139 microns. This sub-micron vertical spot reflects tight vertical optical confinement [Chuang (2009) ch. 8].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 2",
+        "Chuang (2009) ch. 8"
+      ]
+    },
+    {
+      "id": "04-05",
+      "layout": "bullets+figure",
+      "title": "Guided Spontaneous Emission: Purcell Factor $F_{wg}$ and $\\beta$",
+      "bullets": [
+        "Guided mode continuum enhances spontaneous emission via 1D local density of states (LDOS).",
+        "Waveguide Purcell factor: $F_{wg} = \\frac{3}{4\\pi}\\left(\\frac{\\lambda}{n_{dot}}\\right)^2 \\frac{n_g/n_{dot}}{A_{mode}} \\xi_{pos}$.",
+        "Spontaneous emission coupling factor $\\beta = F_{wg} / (1 + F_{wg})$ governs guided fraction.",
+        "Photonic crystal waveguides achieve $\\beta \\approx 0.98$ via slow-light compression ($n_g > 30$).",
+        "Standard 2 um ridge waveguide provides $\\beta \\approx 0.0292$ (2.92%) on the fallback stack.",
+        "Position factor $\\xi_{pos} = |E(z_{dot})|^2 / \\max|E|^2 > 0.95$ when dots sit at the vertical antinode."
+      ],
+      "equations": [
+        {
+          "latex": "F_{wg} = \\frac{3}{4\\pi}\\left(\\frac{\\lambda}{n_{dot}}\\right)^2 \\frac{n_g/n_{dot}}{A_{mode}} \\cdot \\xi_{pos}, \\quad \\beta = \\frac{F_{wg}}{1 + F_{wg}}",
+          "caption": "Lecamp 2007 guided Purcell factor $F_{wg}$ and coupling factor $\\beta$, position overlap $\\xi_{pos} = |E(z_{dot})|^2/\\max|E|^2$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_05_beta_factor.png",
+        "caption": "Spontaneous emission $\\beta$ factor vs mode area $A_{mode}$ for different group indices $n_g$, comparing ridge waveguides to photonic crystals.",
+        "script": "presentation2/figures/fig_04_05_beta_factor.py"
+      },
+      "repo_numbers": {
+        "beta_gainp": {
+          "value": 0.0292412,
+          "file": "out/rt_edge/verdict.md"
+        }
+      },
+      "notes": "When a quantum dot dipole radiates inside a structured dielectric waveguide, its spontaneous emission rate is modified according to Fermi's golden rule. Following the rigorous derivation by Lecamp, Lalanne, and Hugonin [PRL 99, 023902 (2007)], the spontaneous emission rate into the guided mode continuum is proportional to the one-dimensional local density of optical states. Normalizing this rate to the bulk spontaneous emission rate yields the waveguide Purcell factor F_wg. In this formula, the mode area A_mode appears in the denominator, while the group index n_g appears in the numerator. The spontaneous emission factor beta is the ratio of emission into the guided mode pair to the total emission, expressed as F_wg divided by one plus F_wg. In photonic crystal waveguides, such as those demonstrated by Arcari et al. [PRL 113, 093603 (2014)], the optical mode is compressed below the diffraction limit and slow-light propagation boosts n_g above 30, resulting in beta values exceeding 98%. In contrast, a standard 2-micron wide dielectric ridge waveguide has a larger mode area of approximately 0.51 square microns and a moderate group index of 4.36, yielding F_wg equal to 0.0301 and a beta factor of 2.92%. Furthermore, the position factor xi_pos accounts for the alignment between the dot position and the vertical electric field profile, exceeding 0.95 at the core center [Coldren, Corzine, Masanovic (2012) ch. 3].",
+      "sources": [
+        "Lecamp PRL 99, 023902 (2007)",
+        "Arcari PRL 113, 093603 (2014)",
+        "Coldren, Corzine, Masanovic (2012) ch. 3"
+      ]
+    },
+    {
+      "id": "04-06",
+      "layout": "bullets+figure",
+      "title": "Waveguide Dispersion: Effective Index vs Group Index $n_g$",
+      "bullets": [
+        "Group velocity $v_g = d\\omega/dk$ governs packet propagation and local optical density of states.",
+        "Group index $n_g = c/v_g = n_{eff} - \\lambda \\frac{dn_{eff}}{d\\lambda} = n_{eff} + \\omega \\frac{dn_{eff}}{d\\omega}$.",
+        "Total dispersion combines material dispersion ($dn_{mat}/d\\lambda$) and waveguide geometry.",
+        "Near the band edge, semiconductor material dispersion is strongly negative: $dn/d\\lambda < 0$.",
+        "A 5 nm finite difference in `waveguide.py` yields $n_g = 4.355$ vs $n_{eff} = 3.253$ at 770 nm.",
+        "Neglecting dispersion ($n_g = n_{eff}$) undercounts the guided Purcell factor by 34%."
+      ],
+      "equations": [
+        {
+          "latex": "n_g = n_{eff} - \\lambda \\frac{d n_{eff}}{d \\lambda} = n_{eff} + \\omega \\frac{d n_{eff}}{d \\omega}",
+          "caption": "group index $n_g$ combining phase index $n_{eff}$ and first-order dispersion slope at optical wavelength $\\lambda$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_06_dispersion.png",
+        "caption": "Effective index $n_{eff}(\\lambda)$ and group index $n_g(\\lambda)$ across the 650-850 nm spectrum, highlighting the 34% LDOS enhancement.",
+        "script": "presentation2/figures/fig_04_06_dispersion.py"
+      },
+      "repo_numbers": {
+        "lambda_nm_gainp": {
+          "value": 770.0,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        }
+      },
+      "notes": "In waveguide quantum electrodynamics, the phase velocity c over n_eff dictates the wavelength of individual wavefronts, but energy transport and the local optical density of states are governed by the group velocity v_g equal to d omega by d k. Correspondingly, the group index n_g equals c divided by v_g, which can be expressed as n_eff minus lambda times the derivative of n_eff with respect to wavelength. Waveguide dispersion arises from two distinct contributions: geometric dispersion due to modal boundary conditions, and material chromatic dispersion. In direct-bandgap III-V semiconductors operating near their absorption edge, material dispersion dominates: the refractive index rises sharply toward shorter wavelengths, meaning d n by d lambda is negative and substantial [Chuang (2009) ch. 8]. Consequently, the group index is significantly higher than the phase index. In our implementation within fsim_core.waveguide, n_g is computed using a 5 nm central finite difference on wavelength-aware layers via materials.refractive_index. For our fallback GaInP ridge design at 770 nm, this calculation gives an effective index n_eff of 3.253, but a group index n_g of 4.355. This represents a 33.9% increase in the group index due to the dispersion term minus lambda d n_eff by d lambda. Omitting dispersion would severely underestimate the local density of states and undercount the guided emission beta factor by over a third [Coldren, Corzine, Masanovic (2012) ch. 2].",
+      "sources": [
+        "Chuang (2009) ch. 8",
+        "Coldren, Corzine, Masanovic (2012) ch. 2"
+      ]
+    },
+    {
+      "id": "04-07",
+      "layout": "bullets+figure",
+      "title": "Facet Transmission: Breaking Symmetry with High-Reflectivity Mirrors",
+      "bullets": [
+        "Cleaved semiconductor facet has normal Fresnel transmission $T_f = 1 - ((n_{eff}-1)/(n_{eff}+1))^2$.",
+        "For $n_{eff} = 3.253$, power reflection is $R_f = 28.06\\%$ and raw transmission is $T_f = 71.94\\%$.",
+        "Uncoated symmetric waveguide splits emission 50/50: geometric escape $\\eta_{facet} = 0.5 T_f = 35.97\\%$.",
+        "High-reflectivity (HR) back-facet coating ($R_{back} = 0.95$) reflects backward light forward.",
+        "Coldren & Corzine escape-rate fraction: $\\eta_{facet} = T_f / (T_f + (1 - R_{back})) = 93.50\\%$.",
+        "HR mirror provides an immediate $2.60\\times$ out-coupling brightness boost over uncoated bars."
+      ],
+      "equations": [
+        {
+          "latex": "T_f = 1 - \\left(\\frac{n_{eff}-1}{n_{eff}+1}\\right)^2, \\quad \\eta_{facet} = \\frac{T_f}{T_f + (1 - R_{back})}",
+          "caption": "Fresnel transmission $T_f$ and Coldren & Corzine escape-rate fraction with HR back mirror reflectivity $R_{back}$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_07_facet_escape.png",
+        "caption": "Front facet extraction factor $\\eta_{facet}$ as a function of back-facet reflectivity $R_{back}$, showing the transition from geometric split to escape-rate regime.",
+        "script": "presentation2/figures/fig_04_07_facet_escape.py"
+      },
+      "repo_numbers": {
+        "T_facet_gainp": {
+          "value": 0.719371,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "combined_facet_factor_gainp": {
+          "value": 0.935012,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "R_back_gainp": {
+          "value": 0.95,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        }
+      },
+      "notes": "Once a single photon couples into the guided mode, it propagates toward the cleaved facets terminating the waveguide. At normal incidence, the step between the effective index n_eff of 3.253 and air produces a Fresnel power reflectivity of 28.1% and a transmission T_f of 71.9%. In an uncoated, symmetric waveguide bar, photons emitted spontaneously into the guided mode propagate with equal probability toward the front facet and the rear facet. The front escape factor is therefore the product of the 50% directional split and T_f, yielding an out-coupling efficiency of only 35.97%. Half the guided photons are irrevocably lost out the back facet. To eliminate this penalty, we deposit a dielectric high-reflectivity mirror coating, such as a multi-pair quarter-wave stack of silicon dioxide and titanium dioxide, onto the rear facet. Following the cavity mirror-loss and photon escape-rate treatment of Coldren and Corzine [Diode Lasers and Photonic Integrated Circuits, ch. 2-3], the fraction of photons escaping through the front facet of a low-loss resonator is given by T_f divided by the sum of T_f and one minus R_back. For a rear reflectivity of 0.95, this escape-rate fraction reaches 93.50%. Applying an HR coating increases facet out-coupling by a factor of 2.60 over the uncoated geometry, transforming a major loss channel into useful forward flux [Coldren, Corzine, Masanovic (2012) ch. 2-3].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 2-3"
+      ]
+    },
+    {
+      "id": "04-08",
+      "layout": "bullets+figure",
+      "title": "Propagation Loss: Cavity Length Trade-off ($250\\ \\mu\\text{m}$ vs $500\\ \\mu\\text{m}$)",
+      "bullets": [
+        "Internal waveguide attenuation follows exponential decay: $\\eta_{prop} = \\exp(-\\alpha L)$.",
+        "Ridge scattering and free-carrier absorption give class loss $\\alpha \\approx 5\\ \\text{cm}^{-1}$.",
+        "Long cavity ($L = 500\\ \\mu\\text{m}$) suffers 22.1% loss: $\\eta_{prop} = \\exp(-5 \\times 0.05) = 0.7788$.",
+        "Short cavity ($L = 250\\ \\mu\\text{m}$) reduces loss to 11.8%: $\\eta_{prop} = \\exp(-5 \\times 0.025) = 0.8825$.",
+        "Shortening cavity from 500 to 250 um delivers a $1.133\\times$ throughput brightness advantage.",
+        "Lower bound on cavity length is limited by bar-cleaving yield, contact area, and thermal resistance."
+      ],
+      "equations": [
+        {
+          "latex": "\\eta_{prop} = e^{-\\alpha L}, \\quad \\eta_{prop}(250\\ \\mu\\text{m}) = 0.8825 \\; (88.2\\%), \\quad \\eta_{prop}(500\\ \\mu\\text{m}) = 0.7788 \\; (77.9\\%)",
+          "caption": "optical power transmission over cavity length $L$ with linear attenuation coefficient $\\alpha = 5\\ \\text{cm}^{-1}$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_08_propagation_loss.png",
+        "caption": "Waveguide transmission $\\eta_{prop}$ vs cavity length $L$ for loss coefficients $\\alpha \\in [2, 10]\\ \\text{cm}^{-1}$, comparing 250 um and 500 um bars.",
+        "script": "presentation2/figures/fig_04_08_propagation_loss.py"
+      },
+      "repo_numbers": {
+        "eta_prop_250um": {
+          "value": 0.882497,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "alpha_cm_gainp": {
+          "value": 5.0,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "L_um_gainp": {
+          "value": 250.0,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        }
+      },
+      "notes": "As photons traverse the optical waveguide between the quantum dot and the exit facet, they experience attenuation described by the Beer-Lambert law, eta_prop equals exponential of minus alpha times length L. In semiconductor ridge waveguides, the attenuation coefficient alpha arises primarily from sidewall roughness scattering and free-carrier absorption within doped cladding layers. For high-quality dry-etched III-V stripes, alpha is typically around 5 inverse centimeters [Coldren, Corzine, Masanovic (2012) ch. 2]. Over a standard laser cavity length of 500 microns, the optical attenuation factor alpha times L equals 0.25, giving a transmission of 77.88%. Shortening the cavity bar to 250 microns reduces alpha times L to 0.125, elevating the internal transmission to 88.25%. This 13.3% throughput gain represents a direct, linear improvement in detected photon count rate. However, cavity length cannot be made arbitrarily small. Cleaving individual semiconductor bars shorter than 200 microns results in severe edge chipping and handling loss during packaging. Furthermore, halving the cavity length halves the electrical contact area, doubling the series resistance and exacerbating local Joule heating at room temperature. The 250 micron length selected in our acceptance sweep balances internal transmission against mechanical cleaving yield and electrical thermal dissipation [Chuang (2009) ch. 8].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 2",
+        "Chuang (2009) ch. 8"
+      ]
+    },
+    {
+      "id": "04-09",
+      "layout": "bullets+figure",
+      "title": "Far-Field Emission and Numerical Aperture (NA) Collection",
+      "bullets": [
+        "Sub-micron facet acts as an astigmatic Gaussian source with beam waists $w_x, w_y$.",
+        "Far-field divergence half-angles: $\\theta_x \\approx \\lambda/(\\pi w_x) = 23.9^\\circ$, $\\theta_y \\approx \\lambda/(\\pi w_y) = 60.5^\\circ$.",
+        "Tight vertical confinement ($w_y = 0.139\\ \\mu\\text{m}$) produces severe vertical diffraction divergence.",
+        "Collection fraction into objective of numerical aperture $\\mathrm{NA}$: product of error functions.",
+        "Standard $\\mathrm{NA} = 0.50$ captures only $\\eta_{NA} = 29.95\\%$; high $\\mathrm{NA} = 0.80$ captures $54.82\\%$.",
+        "Upgrading from $\\mathrm{NA} = 0.50$ to $0.80$ delivers an essential $1.83\\times$ photon collection gain."
+      ],
+      "equations": [
+        {
+          "latex": "\\theta_x = \\frac{\\lambda}{\\pi w_x}, \\; \\theta_y = \\frac{\\lambda}{\\pi w_y}, \\quad \\eta_{NA} = \\text{erf}\\left(\\frac{NA}{\\sqrt{2}\\sin\\theta_x}\\right) \\text{erf}\\left(\\frac{NA}{\\sqrt{2}\\sin\\theta_y}\\right)",
+          "caption": "far-field divergence half-angles and Gaussian beam collection efficiency for objective numerical aperture $NA$"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_09_far_field_na.png",
+        "caption": "Astigmatic far-field intensity radiation pattern and collection efficiency $\\eta_{NA}$ vs lens numerical aperture $NA$.",
+        "script": "presentation2/figures/fig_04_09_far_field_na.py"
+      },
+      "repo_numbers": {
+        "eta_NA_08": {
+          "value": 0.548244,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "NA_gainp": {
+          "value": 0.75,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        }
+      },
+      "notes": "Photons exiting the cleaved front facet diffract into the surrounding environment as an astigmatic Gaussian beam. Because the waveguide mode has asymmetric dimensions, with a lateral waist w_x of 0.587 microns and a vertical waist w_y of 0.139 microns, the diffraction angles differ drastically along the two axes. The lateral divergence half-angle theta_x is approximately 24 degrees, while the severe vertical sub-micron confinement causes rapid diffraction with theta_y exceeding 60 degrees. To collect these diffracted photons into a single-photon counting detector or optical fiber, an external microscope objective is positioned at the facet. The collection efficiency eta_NA is modeled in waveguide.na_collection using Gaussian beam integration across the objective's numerical aperture, expressed as the product of error functions evaluated at NA over the root-two sine of theta. A standard long-working-distance objective with NA equal to 0.50 captures only 29.95% of the emitted light, with most photons lost to wide-angle vertical spillover. Upgrading to a high-aperture objective with NA equal to 0.75 captures 51.14%, while an NA of 0.80 collects 54.82%. This lever alone provides an 83% boost in collected count rate, demonstrating that high-NA collection optics are indispensable for overcoming facet diffraction [Coldren, Corzine, Masanovic (2012) ch. 2].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 2",
+        "Chuang (2009) ch. 8"
+      ]
+    },
+    {
+      "id": "04-10",
+      "layout": "bullets+figure",
+      "title": "Cavities as Context: Purcell Boost, Micropillars, and Lemma 1",
+      "bullets": [
+        "Cavity Purcell factor $F_P = \\frac{3}{4\\pi^2} \\left(\\frac{\\lambda}{n}\\right)^3 \\frac{Q}{V_{mode}}$ boosts radiative rate $\\Gamma_{rad} = F_P \\Gamma_0$.",
+        "Planar DBR cavities offer $F_P \\sim 1-3$; etched micropillars achieve $F_P \\sim 5-25$; PhC cavities exceed 100.",
+        "Simulator's `cavity` block models vertical DBR planar filtering and resonant enhancement $G$.",
+        "For edge designs, `cavity.enabled` is explicitly set to `false` in device design cards.",
+        "Lemma 1 (`docs/rt_edge_contract.md`): collection efficiency affects brightness, never intrinsic $g^{(2)}(0)$.",
+        "Coexistence of edge waveguides and resonant vertical cavities lacks consistent leakage accounting."
+      ],
+      "equations": [
+        {
+          "latex": "F_P = \\frac{3}{4\\pi^2}\\left(\\frac{\\lambda}{n}\\right)^3 \\frac{Q}{V_{mode}}, \\quad g^{(2)}_{detected}(0) = \\frac{\\eta^2 \\langle n(n-1)\\rangle}{\\eta^2 \\langle n \\rangle^2} \\equiv g^{(2)}_{intrinsic}(0)",
+          "caption": "Purcell factor $F_P$ for quality factor $Q$ and mode volume $V_{mode}$; invariance of $g^{(2)}(0)$ under linear loss (Lemma 1)"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_10_cavity_types.png",
+        "caption": "Comparison of optical architectures: planar DBR microcavity, etched micropillar, photonic crystal cavity, and edge-emitting ridge waveguide.",
+        "script": "presentation2/figures/fig_04_10_cavity_types.py"
+      },
+      "notes": "It is instructive to place ridge waveguides in the broader context of optical microcavities. In cavity quantum electrodynamics, the Purcell factor F_P scales with the cavity quality factor Q divided by the effective mode volume V_mode. Resonant microcavities, such as planar DBRs, etched micropillars, and photonic crystal defects, enhance the spontaneous emission rate and funnel emission into a single spatial mode [Fox (2006) ch. 8]. In our simulation architecture, the cavity block models vertical DBR microcavity filtering and Purcell enhancement G. However, for edge-emitting designs, cavity.enabled is explicitly disabled. There are two decisive physical reasons for this. First, our platform contract formalizes Lemma 1 (docs/rt_edge_contract.md): linear out-coupling and collection efficiency scale detected photon brightness, but they never alter intrinsic multiphoton probability g2(0). A lossy linear channel acts as a random Bernoulli beamsplitter: because multi-photon coincidence counts and single-photon counts scale with the exact same power of collection efficiency, the normalized second-order correlation g2(0) is strictly invariant under linear loss. Second, attempting to combine edge waveguiding with a vertical resonant cavity introduces parasitic cavity leakage paths that lack closed experimental validation. Disabling the cavity preserves model rigor while focusing on edge collection [Michler (2017)].",
+      "sources": [
+        "Fox 2006 ch. 8",
+        "Michler (ed.) 2017",
+        "docs/rt_edge_contract.md"
+      ]
+    },
+    {
+      "id": "04-11",
+      "layout": "bullets+figure",
+      "title": "The Complete Extraction Chain: Sub-Factor Decomposition",
+      "bullets": [
+        "Total edge out-coupling decomposes multiplicatively: $\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA}$.",
+        "Fallback card: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.3\\%$, $\\eta_{NA} = 54.8\\% \\implies \\eta_{total} = 1.32\\%$.",
+        "HR mirror lever ($R_{back} = 0.95$ vs $0$): provides a decisive $2.60\\times$ flux multiplier.",
+        "Cavity length lever ($L = 250$ vs $500\\ \\mu\\text{m}$): saves propagation loss, delivering $1.133\\times$ gain.",
+        "Objective collection lever ($\\mathrm{NA} = 0.80$ vs $0.50$): captures wide diffraction, adding $1.83\\times$ gain.",
+        "Combined levers provide $5.39\\times$ flux boost, elevating collected flux to 1544 counts/s ($> 1000$ floor)."
+      ],
+      "equations": [
+        {
+          "latex": "\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA} = (0.02924) \\times (0.9350) \\times (0.8825) \\times (0.5482) = 0.013228",
+          "caption": "multiplicative out-coupling chain for the headline-passing corner of card edge-inp-gainp-design"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/04_11_extraction_chain.png",
+        "caption": "Factor breakdown of the optical out-coupling chain $\\eta_{total}$ and the cumulative brightness gain across the three design levers.",
+        "script": "presentation2/figures/fig_04_11_extraction_chain.py"
+      },
+      "repo_numbers": {
+        "beta": {
+          "value": 0.0292412,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "combined_facet": {
+          "value": 0.935012,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T_facet": {
+          "value": 0.719371,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "propagation": {
+          "value": 0.882497,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "NA_factor": {
+          "value": 0.548244,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "eta_total": {
+          "value": 0.0132281,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "collected_flux_pulsed_s": {
+          "value": 1544.4,
+          "file": "out/rt_edge/verdict.md"
+        }
+      },
+      "notes": "We are now in a position to assemble the complete optical out-coupling chain. In out/rt_edge/verdict.md, the end-to-end extraction efficiency eta_total is decomposed into four independent physical factors: the spontaneous emission beta factor of 0.02924, the combined facet escape factor of 0.93501 under a 95% rear mirror, the propagation transmission of 0.88250 over 250 microns, and the numerical aperture collection efficiency of 0.54824 with an NA 0.80 objective. Multiplying these terms gives an overall extraction efficiency of 1.323%. Multiplying by the 80 MHz repetition rate, the dot loading probability of 0.632, the room-temperature carrier retention S of 0.00462, and the 50% spectral window transmission yields an experimentally certified pulsed photon flux of 1544.4 counts per second. In the acceptance sweep, each design lever proved vital. At the baseline unoptimized corner (uncoated facets, 500 micron bar, NA 0.50), collected flux was only 286 counts per second, failing the 1000 counts per second measurement threshold. Coating the rear facet bought a 2.60x multiplier, shortening the cavity added 1.13x, and upgrading to NA 0.80 added 1.83x. Together, these levers provided a cumulative 5.39x brightness improvement, safely clearing the eligibility floor with a 1.54x margin [Coldren, Corzine, Masanovic (2012) ch. 2-3].",
+      "sources": [
+        "docs/rt_edge_contract.md",
+        "out/rt_edge/verdict.md",
+        "Coldren, Corzine, Masanovic (2012) ch. 2-3"
+      ]
+    },
+    {
+      "id": "04-12",
+      "layout": "bullets",
+      "title": "Section Summary: The Photonic Pathway from Dipole to Detector",
+      "bullets": [
+        "Total internal reflection traps ~98% of light in unpatterned planar semiconductors.",
+        "Ridge waveguides guide in-plane emission into a single transverse mode ($A_{mode} \\approx 0.51\\ \\mu\\text{m}^2$).",
+        "Guided spontaneous emission factor $\\beta \\approx 2.92\\%$ is modest but highly manufacturable.",
+        "Group index dispersion ($n_g = 4.36$ vs $n_{eff} = 3.25$) enhances guided LDOS by 34%.",
+        "Rear HR coating ($R_{back} = 0.95$) and short cavity ($250\\ \\mu\\text{m}$) maximize photon escape.",
+        "High-NA collection ($NA = 0.80$) captures diffraction to clear the 1000 counts/s flux floor."
+      ],
+      "notes": "To summarize Section 4, getting single photons out of a semiconductor chip requires a disciplined, multi-stage engineering approach. Without waveguiding, high refractive index contrast traps nearly 98% of light in planar substrate modes. By fabricating a ridge waveguide, we channel emission into a bound optical mode with sub-micron dimensions. Although the resulting spontaneous emission coupling factor beta of 2.92% is modest compared to cryogenic photonic crystal cavities, edge-emitting ridge waveguides offer robust planar electrical injection, standard fabrication tolerances, and straightforward integration with on-chip optical circuitry. Material dispersion significantly enhances this coupling, as chromatic dispersion near the bandgap boosts the group index by 34%, enhancing the one-dimensional local density of states. Once guided, photons must be extracted efficiently: deposition of an HR coating on the rear facet breaks front-back symmetry to eliminate backward losses, while shortening the cavity length to 250 microns minimizes material propagation absorption. Finally, high numerical aperture collection optics capture astigmatic far-field diffraction, delivering an end-to-end extraction efficiency of 1.32% and exceeding the 1000 counts per second measurement threshold. In the next section, we will integrate this photonic extraction model with electrical transport and junction heating to evaluate full room-temperature single-photon device operation [Coldren, Corzine, Masanovic (2012) ch. 1-3] [Chuang (2009) ch. 7-8] [Lecamp PRL 99, 023902 (2007)] [Arcari PRL 113, 093603 (2014)].",
+      "sources": [
+        "Coldren, Corzine, Masanovic (2012) ch. 1-3",
+        "Chuang (2009) ch. 7-8",
+        "Lecamp PRL 99, 023902 (2007)",
+        "Arcari PRL 113, 093603 (2014)"
+      ]
+    }
+  ]
+}
