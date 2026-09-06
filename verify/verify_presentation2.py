@@ -58,10 +58,45 @@ def ck(ok: bool, name: str) -> None:
     print(("PASS" if ok else "FAIL"), name)
 
 
+def check_repo_numbers_how(sample: dict) -> None:
+    """repo_numbers form (b): validate_sections.py --section must accept the
+    sample's computed ('how') entries as-is, and must reject a copy where a
+    'how' entry's expected value has been tampered with."""
+    result_ok = subprocess.run(
+        [sys.executable, str(PRESENTATION2 / "validate_sections.py"),
+         "--section", str(SAMPLE_JSON)],
+        cwd=str(ROOT), capture_output=True, text=True,
+    )
+    ck(result_ok.returncode == 0,
+       "validate_sections.py --section 00_sample.json (correct 'how' values) exits 0")
+
+    mutated = json.loads(json.dumps(sample))  # deep copy
+    tampered = False
+    for slide in mutated["slides"]:
+        for entry in slide.get("repo_numbers", {}).values():
+            if "how" in entry:
+                entry["value"] = entry["value"] + 1000.0  # deliberately wrong
+                tampered = True
+    ck(tampered, "sample fixture has at least one 'how' entry to tamper with")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_path = Path(tmp) / SAMPLE_JSON.name
+        bad_path.write_text(json.dumps(mutated), encoding="utf-8")
+        result_bad = subprocess.run(
+            [sys.executable, str(PRESENTATION2 / "validate_sections.py"),
+             "--section", str(bad_path)],
+            cwd=str(ROOT), capture_output=True, text=True,
+        )
+    ck(result_bad.returncode != 0,
+       "validate_sections.py --section rejects a tampered 'how' expected value")
+
+
 def main() -> int:
     sample = json.loads(SAMPLE_JSON.read_text(encoding="utf-8"))
     slides_by_id = {s["id"]: s for s in sample["slides"]}
     expected_n_slides = len(sample["slides"])
+
+    check_repo_numbers_how(sample)
 
     with tempfile.TemporaryDirectory() as tmp:
         sections_dir = Path(tmp)

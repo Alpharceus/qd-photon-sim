@@ -115,9 +115,22 @@
         "The renderer prints it as a small provenance footnote",
         "The validator checks the value against the named file"
       ],
-      "notes": "Demonstrates repo_numbers: the value below is checked by validate_sections.py against out/rt_edge/verdict.md (it must appear in that file as a numeric token within 1e-6), and both renderers print a provenance footnote citing the source file.",
+      "notes": "Demonstrates repo_numbers, both forms from SCHEMA.md: (a) a literal value checked by validate_sections.py against out/rt_edge/verdict.md (it must appear in that file as a numeric token within 1e-6); (b) a computed value, checked by evaluating a 'how' python expression in a subprocess and comparing to 'value' within 'tolerance' (default 1e-6 relative). Both renderers print a provenance footnote citing the source.",
       "sources": ["Synthetic demo content -- schema-conformance fixture, not a literature citation."],
-      "repo_numbers": {"g2_min_demo": {"value": 0.3986, "file": "out/rt_edge/verdict.md"}}
+      "repo_numbers": {
+        "g2_min_demo": {"value": 0.3986, "file": "out/rt_edge/verdict.md"},
+        "g2_cw_zero_demo": {
+          "value": 1.831746031746032,
+          "file": "fsim_core/cw_g2.py",
+          "how": "__import__('fsim_core.cw_g2', fromlist=['x']).g2_cw_zero(r_ns=10, gamma_X_ns=1.0, gamma_XX_ns=1.4, eps=0.2)"
+        },
+        "g2_cw_zero_low_pump_tol_demo": {
+          "value": 0.2,
+          "tolerance": 1e-3,
+          "file": "fsim_core/cw_g2.py",
+          "how": "__import__('fsim_core.cw_g2', fromlist=['x']).g2_cw_zero_low_pump(gamma_X_ns=1.0, gamma_XX_ns=1.4, eps=0.2, k_X=2e-4)"
+        }
+      }
     }
   ]
 }

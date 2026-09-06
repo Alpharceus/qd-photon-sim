@@ -6,10 +6,23 @@ nine allowed values, at most 6 bullets each at most ~18 words, at most 3
 equations per slide (each with latex + caption), figure.path/figure.script
 exist on disk (the figure.path check can be skipped with check_figures=False
 for a fast pre-figure-generation pass -- see build.py), and every
-`repo_numbers` entry's value appears (within 1e-6) as a numeric token in the
-text of the file it names.
+`repo_numbers` entry's value against its source, in one of two forms:
+  (a) literal: {"value": ..., "file": ...} -- the value must appear (within
+      `tolerance`, default 1e-6, absolute) as a numeric token in the text of
+      the named file.
+  (b) computed: {"value": ..., "how": "<python expression>"} -- the
+      expression is evaluated in a subprocess (`python -c ...`) with the
+      repository root on sys.path and cwd, given a 30s timeout, and the
+      result is compared to `value` within `tolerance` (default 1e-6,
+      relative). A `"file"` alongside `how` is documentation only (not
+      checked). Mismatch, timeout, or an exception in the expression is
+      reported naming the slide, key, and expected/computed values.
 
 CLI: python presentation2/validate_sections.py [--include-sample]
+     python presentation2/validate_sections.py --section <path/to.json>
+`--section` validates exactly one section JSON file (ignoring
+--sections-dir/--include-sample), for spot-checking a single file while
+others are still in progress.
 Exit code 0 iff every section file is valid. Prints a per-section slide
 count + minutes line and a total.
 
@@ -21,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,6 +49,7 @@ MAX_BULLETS = 6
 MAX_BULLET_WORDS = 18
 MAX_EQUATIONS = 3
 REPO_NUMBER_TOL = 1e-6
+HOW_TIMEOUT_S = 30
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
@@ -63,27 +78,89 @@ class _Validator:
         self.errors.append(f"{where}: {msg}")
 
     def check_repo_number(self, where: str, key: str, entry) -> None:
-        if not isinstance(entry, dict) or "value" not in entry or "file" not in entry:
-            self.err(where, f"repo_numbers.{key} needs 'value' and 'file'")
+        if not isinstance(entry, dict) or "value" not in entry:
+            self.err(where, f"repo_numbers.{key} needs 'value'")
             return
         value = entry["value"]
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            self.err(where, f"repo_numbers.{key}.value must be numeric")
+            return
+        tolerance = entry.get("tolerance", REPO_NUMBER_TOL)
+        if not isinstance(tolerance, (int, float)) or isinstance(tolerance, bool):
+            self.err(where, f"repo_numbers.{key}.tolerance must be numeric")
+            return
+
+        if "how" in entry:
+            self.check_computed_repo_number(where, key, entry, float(value), float(tolerance))
+            return
+
+        if "file" not in entry:
+            self.err(where, f"repo_numbers.{key} needs 'file' (or 'how')")
+            return
         file_rel = entry["file"]
         target = ROOT / file_rel
         if not target.exists():
             self.err(where, f"repo_numbers.{key} names missing file '{file_rel}'")
             return
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
-            self.err(where, f"repo_numbers.{key}.value must be numeric")
-            return
         try:
             text = target.read_text(encoding="utf-8", errors="strict")
         except (UnicodeDecodeError, OSError):
             return  # not parseable text -- schema exempts this case
-        if not _number_in_text(text, float(value), REPO_NUMBER_TOL):
+        if not _number_in_text(text, float(value), float(tolerance)):
             self.err(
                 where,
                 f"repo_numbers.{key} value {value} not found in '{file_rel}' "
-                f"(tol {REPO_NUMBER_TOL})",
+                f"(tol {tolerance})",
+            )
+
+    def check_computed_repo_number(self, where: str, key: str, entry, expected: float,
+                                    tolerance: float) -> None:
+        how = entry["how"]
+        if not isinstance(how, str) or not how.strip():
+            self.err(where, f"repo_numbers.{key}.how must be a non-empty python expression")
+            return
+        code = f"import sys; sys.path.insert(0, '.'); print(repr(float({how})))"
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                timeout=HOW_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            self.err(
+                where,
+                f"repo_numbers.{key}.how timed out after {HOW_TIMEOUT_S}s (how={how!r})",
+            )
+            return
+
+        if result.returncode != 0:
+            stderr_lines = result.stderr.strip().splitlines()
+            last_line = stderr_lines[-1] if stderr_lines else "unknown error"
+            self.err(
+                where,
+                f"repo_numbers.{key}.how raised an exception evaluating {how!r}: {last_line}",
+            )
+            return
+
+        try:
+            computed = float(result.stdout.strip())
+        except ValueError as e:
+            self.err(
+                where,
+                f"repo_numbers.{key}.how produced unparseable output {result.stdout!r} "
+                f"(how={how!r}): {e}",
+            )
+            return
+
+        denom = abs(expected) if expected != 0 else 1.0
+        rel_err = abs(computed - expected) / denom
+        if rel_err > tolerance:
+            self.err(
+                where,
+                f"repo_numbers.{key}.how mismatch: expected {expected}, computed {computed} "
+                f"(rel err {rel_err:.3g} > tol {tolerance}, how={how!r})",
             )
 
     def validate_slide(self, slide: dict, section_id: str) -> None:
@@ -146,21 +223,28 @@ class _Validator:
                 self.check_repo_number(where, key, entry)
 
 
-def validate_all(section_dir=None, include_sample: bool = False, check_figures: bool = True):
+def validate_all(section_dir=None, include_sample: bool = False, check_figures: bool = True,
+                  only_file=None):
     """Validate every presentation2/sections/NN_*.json file. Returns
     (ok, sections): `sections` is the list of parsed section dicts that
     passed structural parsing (section "00" excluded unless include_sample).
+
+    If `only_file` is given, validate exactly that one file instead of
+    globbing `section_dir`, and never skip it for being a "00" section.
     """
-    section_dir = Path(section_dir) if section_dir else SECTIONS_DIR
     validator = _Validator(check_figures=check_figures)
 
-    paths = sorted(section_dir.glob("[0-9][0-9]_*.json"))
+    if only_file is not None:
+        paths = [Path(only_file)]
+    else:
+        section_dir = Path(section_dir) if section_dir else SECTIONS_DIR
+        paths = sorted(section_dir.glob("[0-9][0-9]_*.json"))
     sections = []
     total_minutes = 0
     total_slides = 0
 
     for path in paths:
-        if path.stem[:2] == "00" and not include_sample:
+        if only_file is None and path.stem[:2] == "00" and not include_sample:
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -207,9 +291,15 @@ def main() -> None:
                          help="skip the figure.path-exists check (use before figure scripts run)")
     parser.add_argument("--sections-dir", default=None,
                          help="directory of NN_*.json section files (default: presentation2/sections)")
+    parser.add_argument("--section", default=None,
+                         help="validate exactly one section JSON file "
+                              "(ignores --sections-dir/--include-sample)")
     args = parser.parse_args()
-    ok, _ = validate_all(section_dir=args.sections_dir, include_sample=args.include_sample,
-                          check_figures=not args.skip_figure_check)
+    if args.section:
+        ok, _ = validate_all(only_file=args.section, check_figures=not args.skip_figure_check)
+    else:
+        ok, _ = validate_all(section_dir=args.sections_dir, include_sample=args.include_sample,
+                              check_figures=not args.skip_figure_check)
     sys.exit(0 if ok else 1)
 
 
