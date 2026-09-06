@@ -1,0 +1,950 @@
+{
+  "section": "01",
+  "title": "Quantum Dot Foundations: Confinement, Strain, and Electronic Structure",
+  "minutes": 28,
+  "slides": [
+    {
+      "id": "01-01",
+      "layout": "section-divider",
+      "title": "Quantum Dot Foundations: Confinement, Strain, and Electronic Structure",
+      "subtitle": "Section 1 of 5 | 28 Minutes | Graduate Physics & EE Lecture Series",
+      "bullets": [
+        "Section 1: Quantum dot foundations (confinement, strain, electronic structure, materials)",
+        "Section 2: How a quantum dot emits (radiative decay, phonons, dephasing, spectral lines)",
+        "Section 3: Single-photon signature (quantum optics, g^(2)(tau), antibunching, Hanbury Brown-Twiss)",
+        "Section 4: Cavity QED and Purcell enhancement (micropillars, photonic crystals, waveguides)",
+        "Section 5: Electrical injection and simulator implementation (transport, diodes, RT emitter)"
+      ],
+      "notes": "Welcome to the lecture series on how semiconductor quantum dots emit single photons, bridging fundamental solid-state physics to full-stack device simulation. Today's two-hour lecture is divided into five modular 28-minute sections. Section 1 covers the essential foundations: how three-dimensional quantum confinement creates discrete atom-like energy levels, how epitaxial strain shifts band edges and lifts valence band degeneracies, and how heterostructure band alignments dictate carrier capture and thermal escape. In Section 2, we will explore the radiative transition itself, including spontaneous emission via Fermi's golden rule, carrier-phonon coupling via the independent boson model, and homogeneous dephasing. Section 3 investigates the non-classical nature of light, deriving the second-order intensity correlation function g^(2)(tau) and experimental photon antibunching. Section 4 examines cavity quantum electrodynamics, Purcell enhancement, and directional photon extraction into waveguides. Finally, Section 5 integrates all physical mechanisms into an electrically driven room-temperature single-photon emitter simulation, evaluating realistic device designs from epitaxy to optical output [Fox, Quantum Optics, ch. 8] [Bimberg et al., Quantum Dot Heterostructures, ch. 1] [Michler ed., Quantum Dots for Quantum Information Technologies (2017)]. Let us begin with the bulk semiconductor host materials.",
+      "sources": [
+        "Fox 2006 ch. 8",
+        "Bimberg 1999 ch. 1",
+        "Michler 2017 ch. 1"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-02",
+      "layout": "bullets",
+      "title": "Semiconductors in One Slide: Bands, Direct Gap, and Effective Mass",
+      "subtitle": "Direct optical transitions and band curvature in III-V materials",
+      "bullets": [
+        "Direct bandgap: conduction minimum and valence maximum align at k = 0 (Gamma point)",
+        "Optical dipole transitions conserve crystal momentum: photon momentum q_phot ~ 0",
+        "Effective mass approximation: band curvature yields m* = hbar^2 / (d^2 E / dk^2)",
+        "III-V binary semiconductors provide direct gaps: GaAs is 1.42 eV, InP is 1.34 eV at 300 K",
+        "Small electron effective mass in III-Vs produces large De Broglie wavelength and strong confinement"
+      ],
+      "equations": [
+        {
+          "latex": "E(k) = E_c + \\frac{\\hbar^2 k^2}{2 m_e^*}",
+          "caption": "parabolic conduction band dispersion near the Gamma point"
+        },
+        {
+          "latex": "\\frac{1}{m^*} = \\frac{1}{\\hbar^2} \\frac{\\partial^2 E}{\\partial k^2}",
+          "caption": "effective mass tensor inverse related to energy band curvature"
+        }
+      ],
+      "notes": "A semiconductor's optical personality is governed by its band structure at the center of the Brillouin zone. In direct-gap semiconductors such as the III-V binaries GaAs and InP, the conduction band minimum and the valence band maximum occur at the same crystal momentum, the Gamma point k = 0. Because the momentum of an optical photon q = 2 pi / lambda is negligible compared to the Brillouin zone width pi / a, photon absorption and emission occur as vertical transitions conserving crystal momentum [Yu & Cardona, Fundamentals of Semiconductors, ch. 6]. In indirect semiconductors like silicon, optical transitions require phonon assistance to conserve momentum, making radiative recombination orders of magnitude slower. Expanding the energy dispersion E(k) quadratically around the band extremum gives the effective mass approximation, where the periodic crystal lattice potential is absorbed into an effective mass m* given by the reciprocal of the second derivative of E with respect to k. For GaAs, the room-temperature direct bandgap is 1.424 eV with m_e* = 0.067 m0; for InP, the direct gap is 1.344 eV with m_e* = 0.0795 m0, as evaluated from the repository module fsim_core/materials.py using the Vurgaftman et al. (2001) parameterization. These small effective masses produce large carrier de Broglie wavelengths, making III-V heterostructures the ideal host for quantum confinement.",
+      "sources": [
+        "Yu & Cardona 2010 ch. 6",
+        "Vurgaftman et al. 2001 JAP 89 5815"
+      ],
+      "repo_numbers": {
+        "m_e_GaAs": {
+          "value": 0.067,
+          "file": "fsim_core/materials.py"
+        },
+        "m_e_InP": {
+          "value": 0.0795,
+          "file": "fsim_core/materials.py"
+        },
+        "Eg_GaAs_300K": {
+          "value": 1.424,
+          "file": "verify/verify_materials.py"
+        },
+        "Eg_InP_300K": {
+          "value": 1.344,
+          "file": "verify/verify_materials.py"
+        }
+      }
+    },
+    {
+      "id": "01-03",
+      "layout": "equation",
+      "title": "Excitons in Bulk: The Hydrogenic Model",
+      "subtitle": "Bound electron-hole pairs, effective Bohr radius, and binding energy",
+      "bullets": [
+        "Optically excited electron and hole attract via screened Coulomb: V(r) = -e^2 / (4 pi eps_0 eps_r r)",
+        "Hydrogenic Wannier-Mott exciton: reduced mass mu = (m_e* m_h*) / (m_e* + m_h*)",
+        "Dielectric screening (eps_r ~ 12-13) greatly expands orbit and shrinks binding energy",
+        "GaAs: a_B = 12.1 nm, E_B = 4.6 meV; InP: a_B = 9.6 nm, E_B = 6.0 meV",
+        "Room temperature thermal energy (kT = 25.9 meV) easily ionizes bulk excitons"
+      ],
+      "equations": [
+        {
+          "latex": "a_B = \\frac{4 \\pi \\varepsilon_0 \\varepsilon_r \\hbar^2}{\\mu e^2} = \\varepsilon_r \\frac{m_0}{\\mu} a_0",
+          "caption": "exciton effective Bohr radius, where a_0 = 0.0529 nm is the hydrogen Bohr radius"
+        },
+        {
+          "latex": "E_B = \\frac{\\mu e^4}{2 (4 \\pi \\varepsilon_0 \\varepsilon_r)^2 \\hbar^2} = \\frac{\\mu}{m_0 \\varepsilon_r^2} \\mathrm{Ry}",
+          "caption": "exciton Rydberg binding energy, where Ry = 13.606 eV"
+        }
+      ],
+      "notes": "When a photon creates an electron-hole pair, the oppositely charged carriers experience an attractive Coulomb interaction screened by the surrounding semiconductor lattice. In semiconductors with high dielectric constants and small effective masses, the electron-hole pair forms a weakly bound, delocalized quasiparticle known as a Wannier-Mott exciton [Fox, Quantum Optics, ch. 4]. By analogy with the hydrogen atom, the relative motion is solved by replacing the reduced mass with mu = m_e* m_h* / (m_e* + m_h*) and the vacuum permittivity with eps_0 eps_r. Because the static dielectric constant eps_r is large (~12.9 in GaAs and ~12.5 in InP) and the reduced mass mu is small (~0.056 m0 in GaAs and ~0.069 m0 in InP), the effective Bohr radius a_B scales as eps_r / (mu / m0), expanding the exciton radius to 12.1 nm in GaAs and 9.6 nm in InP. Conversely, the binding energy E_B scales as (mu / m0) / eps_r^2, collapsing to just 4.6 meV in GaAs and 6.0 meV in InP. Because these bulk binding energies are far smaller than the room-temperature thermal energy k_B T = 25.85 meV, bulk excitons thermally ionize almost instantaneously at 300 K. To maintain stable excitonic emission at elevated temperatures, external spatial confinement is mandatory [Bimberg et al., 1999].",
+      "sources": [
+        "Fox 2006 ch. 4",
+        "Yu & Cardona 2010 ch. 6",
+        "Vurgaftman et al. 2001 JAP 89 5815"
+      ],
+      "repo_numbers": {
+        "eps_r_GaAs": {
+          "value": 12.9,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "eps_r_InP": {
+          "value": 12.5,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "e2_4pieps0": {
+          "value": 1439.964,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-04",
+      "layout": "bullets",
+      "title": "Quantum Confinement: The Particle in a 1D Box",
+      "subtitle": "De Broglie quantization and why 5 nanometers is the critical lengthscale",
+      "bullets": [
+        "Confining a carrier to width L restricts wavevector to discrete values: k_n = n pi / L",
+        "Infinite well eigenenergies scale quadratically with quantum number: E_n = n^2 pi^2 hbar^2 / (2 m* L^2)",
+        "Energy spacing Delta E scales as 1 / (m* L^2): light carriers produce large level separation",
+        "InP electron (m* = 0.08 m0, L = 5 nm) ground energy E_1 = 188.0 meV",
+        "Confinement energy (188 meV) is 7.3 times room-temperature thermal energy k_B T (25.9 meV)",
+        "Nanometer dimensions are required to prevent thermal ionization and maintain discrete quantum states"
+      ],
+      "equations": [
+        {
+          "latex": "E_n = \\frac{n^2 \\pi^2 \\hbar^2}{2 m^* L^2}",
+          "caption": "quantized energy levels of a one-dimensional infinite potential well of width L"
+        }
+      ],
+      "notes": "When the physical dimensions of a semiconductor crystal approach the de Broglie wavelength of the charge carriers, spatial confinement forces the continuous energy bands into discrete eigenvalues. The simplest textbook model is the one-dimensional infinite potential well of width L. Boundary conditions require the carrier wavefunction to vanish at the barrier interfaces, establishing standing de Broglie waves with wavevectors k_n = n pi / L. Substituting this into the parabolic dispersion relation yields quantized energy levels E_n = n^2 pi^2 hbar^2 / (2 m* L^2) [Fox, Quantum Optics, ch. 4]. Notice that the energy scale depends inversely on the effective mass and on the square of the confinement length L. Consider an electron in InP, where m* = 0.08 m0: at L = 5 nm, the ground-state confinement energy E_1 evaluates to exactly 188.0 meV using the repository constant hbar^2 / (2 m0) = 38.0998 meV nm^2 from fsim_core/dot_levels.py. Compare this to the thermal energy at room temperature T = 300 K, which is k_B T = 25.85 meV. The ratio E_1 / (k_B T) is approximately 7.3. This quantitative result explains why 5 nanometers is the magic lengthscale for semiconductor quantum dots: only at dimensions of 5 nm or below does quantum confinement provide sufficient energy separation to overcome thermal excitation at room temperature.",
+      "sources": [
+        "Fox 2006 ch. 4",
+        "Bimberg 1999 ch. 3"
+      ],
+      "repo_numbers": {
+        "HB2_2M0": {
+          "value": 38.09982,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "KB_MEV": {
+          "value": 0.08617333262,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-05",
+      "layout": "bullets+figure",
+      "title": "Finite Quantum Well & BenDaniel-Duke Boundary Conditions",
+      "subtitle": "Wavefunction penetration, effective mass discontinuities, and bound state count",
+      "bullets": [
+        "Real heterostructures have finite barrier depth V: wavefunctions evanescently penetrate barrier",
+        "Discontinuous mass across interface requires BenDaniel-Duke condition: (1/m*) dpsi/dz is continuous",
+        "Hermitian probability current conservation across heterointerfaces",
+        "Even states satisfy k tan(k a) = r kappa; odd states satisfy -k cot(k a) = r kappa",
+        "Symmetric 1D well always binds at least one state for any V > 0"
+      ],
+      "equations": [
+        {
+          "latex": "k \\tan(k a) = \\frac{m_{in}^*}{m_{out}^*} \\kappa \\quad (\\text{even}), \\quad -k \\cot(k a) = \\frac{m_{in}^*}{m_{out}^*} \\kappa \\quad (\\text{odd})",
+          "caption": "secular transcendental equations where a = w/2, k = sqrt(2 m_in E)/hbar, kappa = sqrt(2 m_out (V-E))/hbar"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_05_finite_well.png",
+        "caption": "Transcendental root-finding and bound state wavefunctions from fsim_core.dot_levels.finite_well_1d",
+        "script": "presentation2/figures/fig_01_05_finite_well.py"
+      },
+      "notes": "In physical semiconductor heterostructures, potential barriers have finite heights V determined by conduction or valence band offsets. Consequently, carrier wavefunctions do not vanish abruptly at the heterointerface but decay exponentially into the barrier with decay constant kappa = sqrt(2 m_out* (V - E)) / hbar [Bimberg et al., 1999, ch. 3]. Furthermore, because the material composition changes abruptly across the heterointerface, the carrier effective mass jumps from m_in* inside the well to m_out* in the barrier. To ensure Hermiticity and continuity of the quantum probability current J = (hbar / 2 m* i) (psi* dpsi/dz - psi dpsi*/dz), the standard boundary condition is the BenDaniel-Duke matching rule: both the wavefunction psi(z) and the velocity-like quantity (1 / m*(z)) dpsi/dz must be continuous across the interface. Matching even and odd parity solutions yields the transcendental equations shown on the slide. A heavier barrier mass (m_out* > m_in*) pulls the wavefunction closer to the well and lowers the eigenenergy, whereas a lighter barrier mass raises it. Crucially, in a one-dimensional symmetric well, there is always at least one bound state for any positive potential V > 0. The figure demonstrates the numerical solution implemented in fsim_core/dot_levels.py via finite_well_1d, showing the roots and normalized wavefunctions for an electron well.",
+      "sources": [
+        "BenDaniel & Duke 1966 PR 152 683",
+        "Bimberg 1999 ch. 3"
+      ],
+      "repo_numbers": {
+        "HB2_2M0": {
+          "value": 38.09982,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "V_ref_meV": {
+          "value": 300.0,
+          "file": "verify/verify_dot_levels.py"
+        },
+        "w_ref_nm": {
+          "value": 10.0,
+          "file": "verify/verify_dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-06",
+      "layout": "bullets+figure",
+      "title": "Density of States: 3D to 0D and the 'Artificial Atom'",
+      "subtitle": "Freezing degrees of freedom concentrates optical oscillator strength",
+      "bullets": [
+        "3D Bulk: continuous parabolic dispersion yields smooth square-root DOS: g(E) ~ sqrt(E)",
+        "2D Quantum Well (1D confinement): in-plane continuum creates staircase DOS: sum Theta(E - E_n)",
+        "1D Quantum Wire (2D confinement): axial continuum produces inverse-root peaks: sum (E - E_n)^(-1/2)",
+        "0D Quantum Dot (3D confinement): completely discrete delta-function DOS: 2 sum delta(E - E_n)",
+        "Zero-dimensional density of states mimics isolated atomic orbitals: the 'artificial atom'"
+      ],
+      "equations": [
+        {
+          "latex": "g_{0D}(E) = 2 \\sum_{n} \\delta(E - E_n)",
+          "caption": "density of states of a 0D quantum dot, with factor of 2 accounting for spin degeneracy"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_06_dos.png",
+        "caption": "Evolution of the electronic density of states from 3D continuum to discrete 0D delta peaks",
+        "script": "presentation2/figures/fig_01_06_dos.py"
+      },
+      "notes": "The dimensionality of a semiconductor structure fundamentally dictates how available quantum states are distributed in energy. In three-dimensional bulk material, carriers are free to propagate in all three Cartesian directions, producing a smooth square-root energy dependence g_3D(E) = (1 / 2 pi^2) (2 m* / hbar^2)^(3/2) sqrt(E) [Coldren et al., Diode Lasers, ch. 4]. Confining carriers along one dimension (a 2D quantum well) breaks the spectrum into subbands; within each subband, in-plane motion yields a constant density of states, forming a cumulative staircase sum of Heaviside step functions. Confining carriers along two dimensions (a 1D quantum wire) leaves only a single propagation axis, producing van Hove singularities with an inverse square-root divergence (E - E_n)^(-1/2) at each subband edge. Finally, when spatial confinement is imposed along all three spatial dimensions in a quantum dot (0D), all translational degrees of freedom are eliminated. The density of states collapses entirely into a series of discrete, atom-like Dirac delta functions g_0D(E) = 2 sum delta(E - E_n). This discrete spectrum eliminates thermal carrier spreading over a continuum band, concentrating all optical oscillator strength into razor-sharp optical transitions. For this reason, semiconductor quantum dots are universally recognized as solid-state 'artificial atoms' [Bimberg et al., 1999] [Michler, 2017].",
+      "sources": [
+        "Coldren et al. 2012 ch. 4",
+        "Bimberg 1999 ch. 1",
+        "Michler 2017 ch. 1"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-07",
+      "layout": "two-column",
+      "title": "Confinement Regimes: Weak vs Strong Confinement",
+      "subtitle": "Comparing dot dimensions L to the bulk exciton Bohr radius a_B",
+      "columns": [
+        {
+          "heading": "Weak Confinement (L >> a_B)",
+          "bullets": [
+            "Dot size L is much larger than exciton Bohr radius a_B",
+            "Internal Coulomb attraction dominates over boundary confinement",
+            "Electron and hole orbit each other as an intact bulk exciton",
+            "Quantization acts only on exciton center-of-mass motion",
+            "Confinement energy shift scales as Delta E ~ hbar^2 pi^2 / (2 M_tot L^2)"
+          ]
+        },
+        {
+          "heading": "Strong Confinement (L << a_B)",
+          "bullets": [
+            "Dot dimensions L are comparable to or smaller than a_B",
+            "Kinetic confinement (~1/L^2) dwarfs Coulomb interaction (~1/L)",
+            "Electron and hole orbitals are determined independently by dot potential",
+            "Coulomb energy acts as a perturbative correction (E_bind ~ 15-25 meV)",
+            "InP and InAs self-assembled dots reside solidly in this strong regime"
+          ]
+        }
+      ],
+      "notes": "The physical behavior of an exciton inside a quantum dot depends decisively on the ratio between the dot spatial extent L and the bulk exciton Bohr radius a_B [Fox, Quantum Optics, ch. 5]. In the weak confinement regime, where dot dimensions exceed the Bohr radius (L >> a_B), the Coulomb attraction between electron and hole is strong enough to preserve the internal hydrogenic bound state. Here, the electron-hole relative coordinate is virtually unchanged from bulk, and spatial confinement acts merely to quantize the center-of-mass motion of the composite exciton with total mass M = m_e* + m_h*. In contrast, when the dot dimension is smaller than the Bohr radius (L <= a_B), the system enters the strong confinement regime [Bimberg et al., 1999, ch. 4]. In this regime, the single-particle kinetic confinement energy scales as 1/L^2, completely overwhelming the Coulomb potential which scales only as 1/L. Consequently, the electron and hole wavefunctions decouple into independent single-particle particle-in-a-box orbitals, psi_e(r) and psi_h(r), established by the dot geometry and potential offsets. The Coulomb interaction between them is reduced to a perturbative first-order energy correction. Self-assembled InAs dots (a_B ~ 30 nm, height ~3 nm, radius ~12 nm) and InP dots (a_B ~ 10 nm, height ~4 nm, radius ~10-12 nm) are both solidly in the strong confinement regime along the vertical z-axis and strong-to-intermediate regime in-plane.",
+      "sources": [
+        "Fox 2006 ch. 5",
+        "Bimberg 1999 ch. 4"
+      ],
+      "repo_numbers": {
+        "eps_r_InP": {
+          "value": 12.5,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "eps_r_GaAs": {
+          "value": 12.9,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-08",
+      "layout": "bullets+figure",
+      "title": "Separable 0D Model: Vertical Well x In-Plane Disk",
+      "subtitle": "Adiabatic decoupling, Bessel radial matching, and s/p shell structure",
+      "bullets": [
+        "Self-assembled lens dots mapped to a separable cylindrical disk: H = H_z + H_r,phi",
+        "Adiabatic approximation: vertical motion E_z is fast; in-plane motion E_r is slow",
+        "In-plane well depth is reduced by vertical confinement: V_r = V - E_z",
+        "Radial solutions inside: Bessel function J_l(k r); outside: modified Bessel K_l(kappa r)",
+        "s-shell (l=0) is non-degenerate; p-shell (l=1) has orbital momentum m_l = +-1 (degen=4)"
+      ],
+      "equations": [
+        {
+          "latex": "\\frac{k J_l'(k R)}{m_{in}^* J_l(k R)} = \\frac{\\kappa K_l'(\\kappa R)}{m_{out}^* K_l(\\kappa R)}",
+          "caption": "BenDaniel-Duke radial matching equation across disk boundary r = R"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_08_disk_radial.png",
+        "caption": "Radial eigenfunctions J_0/K_0 and J_1/K_1 and energy levels from fsim_core.dot_levels.finite_disk_2d",
+        "script": "presentation2/figures/fig_01_08_disk_radial.py"
+      },
+      "notes": "To model self-assembled quantum dots analytically while retaining rigorous physics, the repository module fsim_core/dot_levels.py employs an adiabatic separable disk approximation [Bimberg et al., 1999, ch. 4]. Because self-assembled dots are flat structures with large aspect ratios (height h ~ 3-5 nm compared to base radius R ~ 10-15 nm), the vertical confinement along z is much stronger than in-plane confinement. Under the adiabatic approximation, the 3D Schr\u00f6dinger equation separates into a vertical 1D finite well of width h yielding energy E_z, and an in-plane 2D circular well of radius R whose effective barrier depth is the remaining confinement V_r = V - E_z. This adiabatic depth reduction guarantees that the total energy E = E_z + E_r can never exceed the barrier height V, ensuring that escape barriers remain strictly non-negative. For circular in-plane symmetry, the angular solution is exp(i l phi), where l is the azimuthal orbital quantum number. The radial wavefunction inside the disk is given by regular Bessel functions J_l(k r), while the evanescent barrier tail is given by modified Bessel functions of the second kind K_l(kappa r). Boundary matching with BenDaniel-Duke mass continuity yields the secular equation shown on the slide. The ground state is the s-shell (l=0), which has two-fold spin degeneracy. The first excited state is the p-shell (l=1, m_l = +-1), which carries four-fold degeneracy (two orbital states times two spins), separated by an s-p shell splitting Delta E_sp ~ 20-35 meV.",
+      "sources": [
+        "Bimberg 1999 ch. 4",
+        "fsim_core/dot_levels.py"
+      ],
+      "repo_numbers": {
+        "HB2_2M0": {
+          "value": 38.09982,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "j01_bessel": {
+          "value": 2.4048,
+          "file": "verify/verify_dot_levels.py"
+        },
+        "E0_inf_disk_meV": {
+          "value": 32.9,
+          "file": "verify/verify_dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-09",
+      "layout": "bullets",
+      "title": "Effective-Mass Approximation & k.p Perturbation Theory",
+      "subtitle": "Multiband coupling, valence band mixing, and the limits of single-band models",
+      "bullets": [
+        "Single-band envelope function approximation assumes parabolic, uncoupled bands near Gamma",
+        "Breaks down for deep confinement, sharp monolayer interfaces, and degenerate valence bands",
+        "k.p perturbation theory treats interband momentum matrix elements P = <s|p_x|x> perturbatively",
+        "8-band Kane model couples Gamma_6 conduction band with Gamma_8 (HH/LH) and Gamma_7 (SO) valence bands",
+        "At non-zero in-plane momentum k_t != 0, off-diagonal terms mix heavy and light hole states strongly",
+        "HH-LH band mixing causes band non-parabolicity and mass inversion away from the zone center"
+      ],
+      "equations": [
+        {
+          "latex": "\\mathcal{H}_{kp} = \\frac{p^2}{2 m_0} + V_0(r) + \\frac{\\hbar}{m_0} k \\cdot p + \\frac{\\hbar}{4 m_0^2 c^2} (\\nabla V_0 \\times p) \\cdot \\sigma",
+          "caption": "k.p Hamiltonian including periodic lattice potential, k.p perturbation, and spin-orbit interaction"
+        }
+      ],
+      "notes": "The single-band effective-mass approximation treats the electron and hole as simple scalar particles moving in parabolic bands. While computationally efficient, this picture has distinct physical limitations [Yu & Cardona, Fundamentals of Semiconductors, ch. 2]. Near the valence band edge, zincblende III-V semiconductors possess fourfold degeneracy at k = 0 between the heavy-hole (J = 3/2, m_j = +-3/2) and light-hole (J = 3/2, m_j = +-1/2) bands, with the split-off band (J = 1/2, m_j = +-1/2) separated by spin-orbit energy delta_so. Under k.p perturbation theory, the total crystal wavefunction is expanded in terms of zone-center cell-periodic Bloch functions. Coupling between the Gamma_6 conduction band and the Gamma_8 valence bands is mediated by the Kane momentum matrix element P = -i (hbar / m0) <s|p_x|x> [Chuang, Physics of Photonic Devices, ch. 4]. Away from the zone center (k_t != 0), off-diagonal terms in the 4x4 Luttinger-Kohn or 8x8 Kane Hamiltonian couple heavy-hole and light-hole envelopes. This valence band mixing causes pronounced non-parabolicity, anticrossings, and strong state-dependent anisotropy. In self-assembled quantum dots, single-band models capture the overall confinement scale to within tens of meV, but multiband k.p or atomistic tight-binding models are required to resolve fine details of hole polarization and wavefunction symmetry [Bimberg et al., 1999, ch. 4].",
+      "sources": [
+        "Yu & Cardona 2010 ch. 2",
+        "Chuang 2009 ch. 4",
+        "Bimberg 1999 ch. 4"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-10",
+      "layout": "bullets+figure",
+      "title": "Heterostructure Strain: Hydrostatic Shifts and Shear Splitting",
+      "subtitle": "Biaxial strain tensor, Pikus-Bir deformation potentials, and the Van de Walle sign convention",
+      "bullets": [
+        "Lattice mismatch f = (a_sub - a_layer) / a_layer produces biaxial strain eps_xx = eps_yy = f",
+        "Poisson effect induces perpendicular strain: eps_zz = -2 (C12 / C11) eps_par",
+        "Hydrostatic strain tr(eps) shifts bandgap: dE_c = a_c tr(eps) and dE_av = a_v tr(eps)",
+        "Tetragonal shear strain Q = b (eps_zz - eps_par) breaks cubic symmetry and splits HH from LH",
+        "Compressive strain (f < 0) lifts heavy holes above light holes by Delta E_HH-LH = -2Q",
+        "InP on GaAs has f = -3.7%; on GaAs0.6P0.4 f = -5.1% (stronger compression and larger shift)"
+      ],
+      "equations": [
+        {
+          "latex": "\\varepsilon_{zz} = -2 \\frac{C_{12}}{C_{11}} \\varepsilon_\\parallel, \\quad \\mathrm{tr}(\\varepsilon) = 2 \\varepsilon_\\parallel + \\varepsilon_{zz}",
+          "caption": "elastic tensor relations for pseudomorphic (001) biaxial strain"
+        },
+        {
+          "latex": "\\Delta E_c = a_c \\mathrm{tr}(\\varepsilon), \\quad \\Delta E_{hh} = a_v \\mathrm{tr}(\\varepsilon) - Q, \\quad Q = b (\\varepsilon_{zz} - \\varepsilon_\\parallel)",
+          "caption": "hydrostatic and Pikus-Bir shear energy shifts of conduction and heavy-hole band edges"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_10_strain_shifts.png",
+        "caption": "Band edge energy shifts and HH-LH splitting vs strain from fsim_core.materials.strain_shifts",
+        "script": "presentation2/figures/fig_01_10_strain_shifts.py"
+      },
+      "notes": "Epitaxial growth of a lattice-mismatched semiconductor layer on a thick substrate forces the in-plane lattice constant of the layer to conform to the substrate, establishing pseudomorphic biaxial strain [Van de Walle, PRB 39, 1871 (1989)]. The in-plane misfit strain is f = (a_sub - a_layer) / a_layer, where negative f represents compressive strain. Due to the Poisson effect, in-plane compression forces a perpendicular expansion along the growth axis: eps_zz = -2 (C12 / C11) eps_par, where C11 and C12 are elastic stiffness constants. The resulting strain tensor decomposes into a hydrostatic component, given by the trace tr(eps) = 2 eps_par + eps_zz, and an axial shear component. The hydrostatic strain shifts the volume-averaged conduction and valence band edges through deformation potentials a_c and a_v. The shear component Q = b (eps_zz - eps_par), governed by the Pikus-Bir deformation potential b, lowers the cubic crystal symmetry to tetragonal D_2d. Under compressive strain (f < 0), eps_zz > 0 and eps_par < 0, making Q negative. Because the heavy-hole shift is dE_hh = a_v tr(eps) - Q, the shear term pushes the heavy-hole band upwards while driving the light-hole band downwards. For InP on GaAs, the mismatch is f = -3.69%, shifting the conduction band by +197 meV and splitting HH above LH by 66 meV. On GaAs0.60P0.40, the mismatch increases to -5.07%, shifting the CB by +271 meV and increasing the HH-LH splitting to 68 meV, as computed by fsim_core/materials.py.",
+      "sources": [
+        "Van de Walle 1989 PRB 39 1871",
+        "Vurgaftman et al. 2001 JAP 89 5815",
+        "fsim_core/materials.py"
+      ],
+      "repo_numbers": {
+        "a300_GaAs": {
+          "value": 5.65325,
+          "file": "fsim_core/materials.py"
+        },
+        "a300_InP": {
+          "value": 5.8697,
+          "file": "fsim_core/materials.py"
+        },
+        "b_shear_InP": {
+          "value": -2.0,
+          "file": "fsim_core/materials.py"
+        },
+        "a_c_InP": {
+          "value": -6.0,
+          "file": "fsim_core/materials.py"
+        }
+      }
+    },
+    {
+      "id": "01-11",
+      "layout": "bullets",
+      "title": "Critical Thickness & Stranski-Krastanov Island Growth",
+      "subtitle": "Matthews-Blakeslee dislocation equilibrium vs coherent 3D self-assembly",
+      "bullets": [
+        "Elastic strain energy stored in a pseudomorphic layer scales linearly with thickness: E_strain ~ 2 G f^2 h",
+        "Matthews-Blakeslee model: beyond critical thickness h_c, dislocation formation becomes favorable",
+        "Critical thickness h_c is ~1.3 nm for InP/GaAs and ~0.6 nm (~2 ML) for InP/GaAs0.6P0.4",
+        "Stranski-Krastanov (SK) growth mode: 2D layer-by-layer growth transitions spontaneously to 3D islands",
+        "3D islands relax strain elastically along their free top facets without creating plastic dislocations",
+        "Leaves behind a thin 1-2 ML wetting layer (WL) that acts as a 2D carrier capture reservoir"
+      ],
+      "equations": [
+        {
+          "latex": "h_c = \\frac{b (1 - \\nu \\cos^2 \\alpha)}{8 \\pi f (1 + \\nu) \\cos \\lambda} \\left[ \\ln\\left(\\frac{h_c}{b}\\right) + 1 \\right]",
+          "caption": "Matthews-Blakeslee equilibrium critical thickness for 60-degree misfit dislocations, where b is Burgers vector"
+        }
+      ],
+      "notes": "When an epitaxial film grows under lattice mismatch, elastic strain energy accumulates in proportion to the layer thickness h. In 1974, Matthews and Blakeslee derived the equilibrium mechanical force balance between the driving force of the misfit strain and the resisting line tension of a threading dislocation [Matthews & Blakeslee, J. Cryst. Growth 27, 118 (1974)]. Above a critical thickness h_c, generating plastic misfit dislocations becomes energetically favorable to relieve strain. For InP on GaAs (f = -3.69%), the single-layer Matthews-Blakeslee critical thickness evaluated by fsim_core/materials.py is h_c = 1.28 nm; for InP on GaAs0.60P0.40 (f = -5.07%), h_c drops to 0.59 nm, corresponding to just two atomic monolayers. However, under molecular beam epitaxy (MBE) or metalorganic vapour-phase epitaxy (MOVPE), highly strained heteroepitaxy often bypasses planar dislocation relaxation through the Stranski-Krastanov (SK) growth mode [Bimberg et al., 1999, ch. 2]. Growth proceeds initially layer-by-layer for 1 to 2 monolayers, forming a planar 'wetting layer'. As strain energy accumulates, the system minimizes total free energy by spontaneously nucleating coherent three-dimensional nano-islands. These islands relax lattice strain elastically through their free facet edges without forming dislocations. The remaining wetting layer acts as a shallow 2D quantum well that efficiently collects injected carriers before transferring them into the dot.",
+      "sources": [
+        "Matthews & Blakeslee 1974 JCG 27 118",
+        "Bimberg 1999 ch. 2"
+      ],
+      "repo_numbers": {
+        "a300_GaAs": {
+          "value": 5.65325,
+          "file": "fsim_core/materials.py"
+        },
+        "a300_InP": {
+          "value": 5.8697,
+          "file": "fsim_core/materials.py"
+        },
+        "wl_thickness_nm": {
+          "value": 0.5,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-12",
+      "layout": "bullets+figure",
+      "title": "Band Alignment: Model-Solid Theory and Type-I vs Type-II",
+      "subtitle": "Natural band offsets, absolute energy reference, and spatial carrier overlap",
+      "bullets": [
+        "Van de Walle model-solid theory establishes absolute valence band offsets (VBO) via atomic potentials",
+        "Conduction band offset (CBO) follows by adding the strained bandgap: Delta E_c = Delta E_g - Delta E_v",
+        "Type-I (straddling alignment): both electrons and holes are confined inside the dot; high optical overlap",
+        "Type-II (staggered alignment): one carrier is confined in dot, other in matrix; slow recombination",
+        "InP in GaAs0.60P0.40 is Type-I: Delta E_c = 200 meV, Delta E_v = 94 meV (to barrier LH)",
+        "InP in Ga0.51In0.49P on GaAs is Type-I: Delta E_c = 202 meV, Delta E_v = 303 meV (model-solid)"
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_12_band_offsets.png",
+        "caption": "Strained band alignment diagrams for InP in GaAs0.60P0.40 and InP in GaInP on GaAs substrate",
+        "script": "presentation2/figures/fig_01_12_band_offsets.py"
+      },
+      "notes": "Determining how conduction and valence band edges line up across a heterointerface is central to semiconductor device design. In 1989, Chris Van de Walle formulated the model-solid theory, which defines an absolute energy reference by aligning the electrostatic potential of neutral atomic spheres [Van de Walle, PRB 39, 1871 (1989)]. This provides the unstrained valence band offset Delta E_v0. Applying spin-orbit splitting delta_so and hydrostatic and shear strain shifts gives the absolute strained conduction and valence band edges. In a Type-I (straddling) heterostructure, the lower-gap material has both a lower conduction band and a higher valence band than the barrier. Both electrons and holes are trapped in the same spatial volume, providing strong spatial wavefunction overlap and rapid spontaneous emission (tau_rad ~ 1 ns) [Bimberg et al., 1999]. In a Type-II (staggered) alignment, one band edge forms a well while the other forms a barrier, separating electrons and holes spatially and reducing radiative rates by orders of magnitude. The repository module fsim_core/materials.py computes these alignments via materials.offsets. For an InP dot inside a GaAs0.60P0.40 matrix on a GaAs substrate, the alignment is Type-I with a conduction offset of Delta E_c = 200 meV and a valence offset of Delta E_v = 94 meV to the tensile barrier's top light-hole edge. For InP in Ga0.51In0.49P, the model-solid alignment is also Type-I with Delta E_c = 202 meV and Delta E_v = 303 meV.",
+      "sources": [
+        "Van de Walle 1989 PRB 39 1871",
+        "Vurgaftman et al. 2001 JAP 89 5815",
+        "fsim_core/materials.py"
+      ],
+      "repo_numbers": {
+        "vbo_GaAs": {
+          "value": -0.8,
+          "file": "fsim_core/materials.py"
+        },
+        "vbo_InP": {
+          "value": -0.94,
+          "file": "fsim_core/materials.py"
+        },
+        "V_e_gaasp_meV": {
+          "value": 200,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-13",
+      "layout": "two-column",
+      "title": "The Materials Question: Literal Cladding vs Workable Heterostructure",
+      "subtitle": "Why 'InP cladding / GaAsP active' is unphysical, and how (Al,Ga)InP resolves it",
+      "columns": [
+        {
+          "heading": "Literal InP Cladding / GaAsP Well (Fails)",
+          "bullets": [
+            "InP bulk bandgap is 1.353 eV at 300 K (cutoff wavelength lambda = 916 nm)",
+            "InP/GaAsP dot emits at 750-816 nm (photon energy 1.52 - 1.65 eV)",
+            "Photon energy exceeds InP bandgap: cladding is completely OPAQUE and absorbs emission!",
+            "InP lattice constant is 5.870 A vs GaAs substrate 5.653 A (-3.69% mismatch)",
+            "Thick (> 1 um) InP cladding relaxes with catastrophic misfit dislocation density"
+          ]
+        },
+        {
+          "heading": "Workable Heterostructure Stack (Succeeds)",
+          "bullets": [
+            "Active region: InP quantum dots in a thin, strain-balanced GaAs0.60P0.40 well",
+            "Cladding: (Al0.50Ga0.50)0.51In0.49P core and (Al0.70Ga0.30)0.51In0.49P outer cladding",
+            "Ga0.51In0.49P lattice matches GaAs substrate: a = 5.656 A vs 5.653 A (mismatch < 0.05%)",
+            "AlGaInP bandgaps are 2.17 - 2.35 eV: completely TRANSPARENT to 750-816 nm photons",
+            "Provides both optical waveguiding contrast and high electrical injection barriers"
+          ]
+        }
+      ],
+      "notes": "A fundamental engineering problem in this project, detailed in docs/rt_edge_tier.md, is the materials paradox of designing a room-temperature edge-emitting single-photon diode [docs/rt_edge_tier.md]. A naive reading of the device tier might suggest using literal bulk InP cladding layers surrounding a GaAsP active region. However, basic solid-state optics rules this out completely. From fsim_core/materials.py, the bulk bandgap of InP at 300 K is 1.353 eV, corresponding to an absorption edge at 916 nm. An InP/GaAsP quantum dot emits in the range of 750 nm to 816 nm (1.52 eV to 1.65 eV). Because the photon energy significantly exceeds the bandgap of InP, literal InP cladding would be completely opaque, absorbing 100% of the single photons before they could escape the waveguide. Moreover, InP has a lattice constant of 5.8697 A compared to 5.6533 A for the GaAs substrate, representing a large -3.69% lattice mismatch. Growing micron-thick InP optical claddings on GaAs would exceed critical thickness by orders of magnitude, riddling the device with non-radiative misfit dislocations. The workable solution implemented in the design cards (cards/edge-inp-gaasp-design.yaml) uses an InP quantum dot inside a thin GaAs0.60P0.40 well, clad with (Al_x Ga_{1-x})0.51 In0.49 P quaternary alloys. At x_III = 0.51, AlGaInP is lattice-matched to GaAs (a = 5.656 A) and has a wide direct bandgap (2.17 to 2.35 eV), guaranteeing optical transparency and defect-free epitaxy.",
+      "sources": [
+        "docs/rt_edge_tier.md",
+        "cards/edge-inp-gaasp-design.yaml",
+        "fsim_core/materials.py"
+      ],
+      "repo_numbers": {
+        "a_GaAs_A": {
+          "value": 5.65325,
+          "file": "fsim_core/materials.py"
+        },
+        "a_InP_A": {
+          "value": 5.8697,
+          "file": "fsim_core/materials.py"
+        },
+        "Eg_InP_300K_eV": {
+          "value": 1.344,
+          "file": "verify/verify_materials.py"
+        }
+      }
+    },
+    {
+      "id": "01-14",
+      "layout": "bullets",
+      "title": "Dot Sizes and Energies: HKUST Experiment vs the 816 nm Solver",
+      "subtitle": "Gu et al. (2025) 750 nm observation, solver limits, and the documented 160 meV deviation",
+      "bullets": [
+        "Gu et al. (Opt. Express 2025) report 4-7 nm InP dots emitting at 750-755 nm in GaAs0.65P0.35",
+        "Single-band solver: evaluates to 816 nm (design card) and 836 nm (Gu geometry)",
+        "Documented deviation: ~160 meV red-shift documented in verify/verify_dot_levels.py (deviation d-iv-a)",
+        "What the single-band model gets right: realistic confinement scales, size-shift derivatives, escape barriers",
+        "What the model misses: 3D elastic strain relaxation in tall islands, multiband k.p mixing, alloy ordering",
+        "Honest modeling: simulator uses the physical solver output rather than fitting an unmeasured parameter"
+      ],
+      "notes": "A rigorous engineering lecture must confront the discrepancies between theoretical models and real experimental devices. In a landmark 2025 paper, Gu and coworkers at HKUST reported the epitaxial growth of InP self-assembled quantum dots embedded in GaAs0.65P0.35 quantum wells on GaAs substrates [Gu et al., Opt. Express 33, 23732 (2025)]. Using cross-sectional transmission electron microscopy, they measured dot heights of 4 to 7 nm (midpoint 5.5 nm) and base diameters around 25 nm, observing ensemble photoluminescence and lasing around 750 to 755 nm (1.64 to 1.65 eV). When the repository's single-band separable disk solver (fsim_core/dot_levels.py) is run on Gu's exact composition and geometry at 300 K, it yields an emission wavelength of 836 nm (1.484 eV); for the design card variant at h = 4.0 nm in GaAs0.60P0.40, it gives 815.7 nm (1.520 eV). This ~160 meV discrepancy is explicitly tracked and documented as a known deviation in verify/verify_dot_levels.py (deviation d-iv-a) rather than hidden [docs/rt_edge_tier.md]. The physical origin of this difference is well understood: the single-band solver assumes full pseudomorphic biaxial strain throughout the dot. In reality, large-mismatch (5.1%) 3D islands partially relax their lattice strain elastically toward their apex, which increases the local bandgap and blue-shifts the emission [Grundmann et al., PRB 1999]. Additionally, Gu's laser emission is an ensemble measurement that averages over dot size distributions and potential Type-I/Type-II mixed states.",
+      "sources": [
+        "Gu et al. 2025 OE 33 23732",
+        "verify/verify_dot_levels.py",
+        "docs/rt_edge_tier.md"
+      ],
+      "repo_numbers": {
+        "lambda_gu_nm": {
+          "value": 750,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "lambda_card_nm": {
+          "value": 815.7,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "E_X_gu_model_eV": {
+          "value": 1.484,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "E_X_card_model_eV": {
+          "value": 1.52,
+          "file": "fsim_core/dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-15",
+      "layout": "bullets+figure",
+      "title": "Carrier Confinement Summary: Levels, Escape, and the Thermal Ceiling",
+      "subtitle": "Confinement energies E_e, E_h, escape barriers, and Arrhenius retention S(T)",
+      "bullets": [
+        "InP/GaAsP0.4 preset (300 K): electron state E_e = 97 meV, hole state E_h = 31 meV",
+        "Carrier escape barriers: electron escape dE_e = 103 meV, hole escape dE_h = 63 meV",
+        "InP/GaInP preset: deeper well V_e = 436 meV gives E_e = 184 meV and dE_e = 251 meV",
+        "Arrhenius thermal escape rate R_esc ~ nu_0 exp(-E_a / k_B T) competes directly with radiative decay",
+        "At 300 K (kT = 25.9 meV), thermal escape outpaces radiative decay unless E_a >= 150 meV",
+        "InP/GaAsP retention S(300 K) drops to ~0.0046, setting the room-temperature brightness ceiling"
+      ],
+      "equations": [
+        {
+          "latex": "S(T) = \\frac{1}{1 + a_{\\mathrm{esc}} e^{-E_a / k_B T} + b_p e^{-E_b / k_B T}}",
+          "caption": "two-channel Arrhenius thermal retention factor from fsim_core.integrator.retention"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_15_carrier_levels.png",
+        "caption": "Potential wells, bound states, and Arrhenius retention curves S(T) from fsim_core.dot_levels",
+        "script": "presentation2/figures/fig_01_15_carrier_levels.py"
+      },
+      "notes": "We now summarize the full electronic eigenstate solution computed by fsim_core/dot_levels.py for our two primary heterostructure systems. For an InP quantum dot in GaAs0.60P0.40 at 300 K (height 4.0 nm, radius 12.0 nm), the potential depths are V_e = 200 meV for electrons and V_h = 94 meV for holes. The single-particle confinement energies are E_e = 97 meV (83 meV from vertical confinement, 14 meV from lateral confinement) and E_h = 31 meV (23 meV vertical, 8 meV lateral). Consequently, the remaining escape barriers to the matrix continuum are dE_e = V_e - E_e = 103 meV and dE_h = V_h - E_h = 63 meV. For the InP/Ga0.51In0.49P preset, the conduction band well is significantly deeper (V_e = 436 meV with Pryor's VBO), yielding E_e = 184 meV and an electron escape barrier of 251 meV. Why do these escape energies matter? As temperature rises toward 300 K (where k_B T = 25.85 meV), carriers escape from the dot into the surrounding matrix via phonon-assisted thermal activation at rate R_esc ~ nu_0 exp(-E_a / k_B T) [Chatzarakis et al., Phys. Rev. Appl. 20, 034011 (2023)]. This escape process competes directly with the radiative lifetime tau_rad ~ 1 ns. In the InP/GaAsP system, the relatively shallow 63-103 meV barriers cause the thermal retention factor S(300 K) to collapse to ~0.0046, establishing the decisive physical ceiling on room-temperature brightness.",
+      "sources": [
+        "fsim_core/dot_levels.py",
+        "Chatzarakis 2023 PRA 20 034011",
+        "docs/rt_edge_tier.md"
+      ],
+      "repo_numbers": {
+        "V_e_gaasp_meV": {
+          "value": 200,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "dE_e_matrix_gu_meV": {
+          "value": 105,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "S_300K_gainp": {
+          "value": 0.00461745,
+          "file": "out/rt_edge/verdict.md"
+        }
+      }
+    },
+    {
+      "id": "01-16",
+      "layout": "bullets",
+      "title": "Exciton in a Quantum Dot: The Gaussian Binding Formula",
+      "subtitle": "Coulomb expectation value, relative coordinate integration, and transition energy",
+      "bullets": [
+        "In strong confinement, single-particle orbitals psi_e and psi_h are established by the potential well",
+        "Coulomb attraction enters as a first-order correction: E_bind = <psi_e psi_h | V_c | psi_e psi_h>",
+        "With Gaussian envelopes exp(-r^2 / l^2), relative coordinate rho has width L = sqrt(l_e^2 + l_h^2)",
+        "Integrating 2D density p(rho) = (2 rho / L^2) exp(-rho^2 / L^2) yields <1/rho> = sqrt(pi) / L",
+        "Closed-form binding formula: E_bind = (e^2 / (4 pi eps_0 eps_r)) * sqrt(pi) / sqrt(l_e^2 + l_h^2)",
+        "InP/GaAsP dot: l_e = 6.62 nm, l_h = 6.54 nm, eps_r = 12.5 yields E_bind = 21.8 meV"
+      ],
+      "equations": [
+        {
+          "latex": "E_{\\mathrm{bind}} = \\frac{e^2}{4 \\pi \\varepsilon_0 \\varepsilon_r} \\frac{\\sqrt{\\pi}}{\\sqrt{l_e^2 + l_h^2}}",
+          "caption": "Gaussian variational exciton binding formula used in fsim_core.dot_levels._gauss_binding"
+        },
+        {
+          "latex": "E_X = E_g^{\\mathrm{strained}} + E_e + E_h - E_{\\mathrm{bind}}",
+          "caption": "neutral exciton optical emission energy"
+        }
+      ],
+      "notes": "Once the single-particle confinement states are solved, we determine the optical transition energy by including the electron-hole Coulomb interaction. In the strong confinement regime, the single-particle orbitals are frozen, and the Coulomb energy is evaluated as an expectation value [Bimberg et al., 1999, ch. 4]. The repository module fsim_core/dot_levels.py uses an elegant analytical Gaussian variational formula derived in _gauss_binding. The in-plane electron and hole envelopes are characterized by effective Gaussian lateral radii l_e and l_h, where |psi|^2 ~ exp(-r^2 / l^2). The relative coordinate vector rho = r_e - r_h is itself Gaussian distributed with a combined variance L^2 = l_e^2 + l_h^2. Integrating the inverse Coulomb distance 1/rho against the two-dimensional radial probability density p(rho) = (2 rho / L^2) exp(-rho^2 / L^2) yields the closed-form result <1 / rho> = sqrt(pi) / L. Multiplying by the screened Coulomb prefactor gives E_bind = (e^2 / 4 pi eps_0 eps_r) * sqrt(pi) / sqrt(l_e^2 + l_h^2). For our primary InP/GaAsP dot, the rms lateral radii are l_e = 6.62 nm and l_h = 6.54 nm with eps_r = 12.5, which evaluates to E_bind = 21.8 meV. The net exciton emission energy is E_X = E_g(strained) + E_e + E_h - E_bind = 1.414 eV + 0.097 eV + 0.031 eV - 0.022 eV = 1.520 eV (lambda = 815.7 nm).",
+      "sources": [
+        "fsim_core/dot_levels.py",
+        "Bimberg 1999 ch. 4"
+      ],
+      "repo_numbers": {
+        "e2_4pieps0": {
+          "value": 1439.964,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "eps_r_InP": {
+          "value": 12.5,
+          "file": "fsim_core/dot_levels.py"
+        },
+        "height_design_nm": {
+          "value": 4.0,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "radius_design_nm": {
+          "value": 12.0,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        }
+      }
+    },
+    {
+      "id": "01-17",
+      "layout": "bullets+figure",
+      "title": "The Biexciton State: Binding Energy and Radiative Cascade",
+      "subtitle": "Two-exciton Coulomb correlation, Delta_XX spectral splitting, and single-photon filtering",
+      "bullets": [
+        "Biexciton state |XX>: two electrons and two holes occupying the ground s-shell in spin-singlet pairs",
+        "Total biexciton energy: E(XX) = 2 E_X - Delta_XX, where Delta_XX is the biexciton binding energy",
+        "Delta_XX incorporates attractive electron-hole Coulomb and repulsive carrier-carrier exchange terms",
+        "Typical class values: Delta_XX is 3 to 7 meV across InP and InAs platforms (5.9 meV in Reischle)",
+        "Radiative cascade: |XX> emits at h nu_XX = E_X - Delta_XX, then |X> decays to |0>",
+        "Spectral filtering: a narrow bandpass filter transmits E_X and rejects E_XX, enforcing single-photon emission"
+      ],
+      "equations": [
+        {
+          "latex": "E(XX) = 2 E_X - \\Delta_{XX}",
+          "caption": "total energy of the biexciton state relative to the empty dot ground state |0>"
+        },
+        {
+          "latex": "h \\nu_{XX} = E_X - \\Delta_{XX}, \\quad h \\nu_X = E_X",
+          "caption": "cascade photon energies for XX -> X and X -> 0 transitions"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_17_biexciton_cascade.png",
+        "caption": "Biexciton cascade ladder and spectral line separation Delta_XX used for single-photon filtering",
+        "script": "presentation2/figures/fig_01_17_biexciton_cascade.py"
+      },
+      "notes": "When two electron-hole pairs occupy the quantum dot simultaneously, they form a biexciton, denoted |XX> [Michler ed., 2017, ch. 2]. By the Pauli exclusion principle, two electrons can occupy the lowest s-shell provided their spins are antiparallel (total spin S = 0), and similarly two heavy holes form a pseudospin singlet (total angular momentum J = 0). The total energy of the biexciton is written as E(XX) = 2 E_X - Delta_XX, where Delta_XX is the biexciton binding energy or spectral splitting. Delta_XX arises from the delicate balance between electron-hole Coulomb attraction (four attractive terms), electron-electron repulsion (one term), hole-hole repulsion (one term), and quantum correlation/exchange energy. In most self-assembled dots, Delta_XX is positive (bound biexciton), ranging between 3 and 7 meV across InP/GaInP and InAs/GaAs dots [Reischle et al., Opt. Express 16, 12771 (2008)]. Relaxation occurs via a two-photon radiative cascade: first, |XX> transitions to |X>, emitting a photon at h nu_XX = E(XX) - E_X = E_X - Delta_XX. Next, the single exciton |X> decays to the empty ground state |0>, emitting at h nu_X = E_X. Because the two photons differ in energy by Delta_XX, placing a narrow spectral bandpass filter around the X line completely blocks the XX photon. This spectral discrimination prevents the simultaneous transmission of two photons, which is the foundational mechanism enabling single-photon emission.",
+      "sources": [
+        "Michler 2017 ch. 2",
+        "Reischle 2008 OE 16 12771",
+        "fsim_core/presets.py"
+      ],
+      "repo_numbers": {
+        "delta_xx_design_meV": {
+          "value": 5.0,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "delta_xx_gainp_meV": {
+          "value": 5.9,
+          "file": "fsim_core/presets.py"
+        }
+      }
+    },
+    {
+      "id": "01-18",
+      "layout": "bullets",
+      "title": "Charged Excitons (Trions): X+ and X- Dynamics",
+      "subtitle": "Coulomb shifts, spin-singlet pairing, and deterministic electrostatic charging control",
+      "bullets": [
+        "Residual background doping can inject an uncompensated carrier into the dot before optical excitation",
+        "Trion X- (2e + 1h): electrons form singlet (S=0); trion X+ (1e + 2h): holes form singlet",
+        "Trion emission lines are spectrally shifted from neutral X by 1 to 6 meV via Coulomb interactions",
+        "Absence of fine-structure splitting: singlet pairing cancels isotropic electron-hole exchange interaction",
+        "Trions emit unpolarized or circularly polarized single photons without polarization-dependent beatings",
+        "Gate bias in a p-i-n diode tunes Fermi level to deterministically select neutral X, X-, or X+"
+      ],
+      "equations": [
+        {
+          "latex": "E(X^-) = E_g^{\\mathrm{str}} + 2 E_e + E_h - 2 E_{eh} + E_{ee}",
+          "caption": "negative trion energy including two electron-hole attractions and one electron-electron repulsion"
+        }
+      ],
+      "notes": "If an extra charge carrier resides in the quantum dot prior to excitation, the resulting optical complex is a charged exciton, commonly known as a trion [Bimberg et al., 1999, ch. 4] [Michler, 2017, ch. 3]. An extra electron forms a negative trion X- (two electrons and one hole), while an extra hole forms a positive trion X+ (one electron and two holes). Because the two identical carriers occupy the same spatial s-shell, the Pauli exclusion principle forces their spins into an antiparallel singlet state (S = 0 for the two electrons in X-, or J = 0 for the two heavy holes in X+). Trion emission occurs when one electron-hole pair recombines, ejecting a photon and leaving behind the single spectator carrier. Because the trion contains an additional carrier, extra Coulomb attraction and repulsion terms shift the emission energy by 1 to 6 meV relative to the neutral exciton X. A profoundly useful consequence of trion physics is the complete absence of fine-structure splitting. Because the two paired carriers form a spin singlet, the net electron-hole exchange interaction vanishes identically. Consequently, trion recombination produces an unpolarized singlet emission line, avoiding the polarization-dependent beatings that can complicate neutral exciton emission. In electrically driven devices, applying a DC gate bias across a p-i-n junction allows deterministic tuning of the quantum dot charging state through Coulomb blockade.",
+      "sources": [
+        "Michler 2017 ch. 3",
+        "Bimberg 1999 ch. 4"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-19",
+      "layout": "bullets",
+      "title": "Fine-Structure Splitting: Electron-Hole Exchange and Symmetry",
+      "subtitle": "Anisotropic exchange interaction, C_2v symmetry breaking, and polarization eigenstates",
+      "bullets": [
+        "Electron spin s = 1/2 and heavy-hole pseudospin j_z = +-3/2 yield four exciton spin configurations",
+        "Dipole-active 'bright' states have total angular momentum projection J_z = +-1; 'dark' states have J_z = +-2",
+        "Ideal cylindrical symmetry (D_2d) leaves the bright states |+1> and |-1> degenerate (circular polarization)",
+        "Real self-assembled dots have structural elongation and C_2v interface anisotropy that break cylindrical symmetry",
+        "Anisotropic electron-hole exchange mixes |+1> and |-1> into orthogonal linear eigenstates: |X_x> and |X_y>",
+        "Delta_FSS = |E_x - E_y| is typically 5-50 ueV in InP dots and 10-100 ueV in InAs dots"
+      ],
+      "equations": [
+        {
+          "latex": "|X_x\\rangle = \\frac{|+1\\rangle + |-1\\rangle}{\\sqrt{2}}, \\quad |X_y\\rangle = \\frac{|+1\\rangle - |-1\\rangle}{i \\sqrt{2}}",
+          "caption": "linearly polarized bright exciton eigenstates along [110] and [1-10] crystal axes"
+        },
+        {
+          "latex": "\\Delta_{\\mathrm{FSS}} = |E_x - E_y|",
+          "caption": "fine-structure splitting between linearly polarized exciton components"
+        }
+      ],
+      "notes": "The internal spin structure of the neutral exciton gives rise to fine-structure splitting (FSS), a crucial consideration in quantum dot optics [Bimberg et al., 1999, ch. 4] [Michler, 2017, ch. 2]. An s-shell electron with spin s = 1/2 and a heavy hole with pseudospin j_z = +-3/2 combine to form four spin configurations. The states with total angular momentum projection J_z = +-2 are optically inactive ('dark' excitons) because single-photon transitions cannot carry two units of angular momentum. The states with J_z = +-1 are optically active ('bright' excitons) and couple to left- and right-circularly polarized photons. In an ideal quantum dot with cylindrical symmetry, the |+1> and |-1> states are strictly degenerate. However, real self-assembled quantum dots deviate from perfect circular symmetry due to in-plane elongation along crystallographic axes ([110] versus [1-10]), piezoelectric strain fields, and the atomistic C_2v symmetry of zincblende interfaces. This symmetry reduction activates the anisotropic electron-hole exchange interaction H_exch, which mixes |+1> and |-1> into two orthogonal linearly polarized eigenstates, |X_x> and |X_y>. The resulting energy splitting Delta_FSS is typically 5 to 50 ueV in InP dots and 10 to 100 ueV in InAs dots. For single-photon sources, FSS simply means the emission consists of two closely spaced orthogonal linearly polarized lines, which does not degrade second-order intensity antibunching.",
+      "sources": [
+        "Michler 2017 ch. 2",
+        "Bimberg 1999 ch. 4"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-20",
+      "layout": "bullets+figure",
+      "title": "Single-Dot Isolation: Density, Apertures, and Poisson Statistics",
+      "subtitle": "Restricting active area to achieve high single-quantum-dot fidelity (N = 0.377)",
+      "bullets": [
+        "Stranski-Krastanov growth nucleates a random spatial ensemble with areal density n = 10^8 - 10^10 cm^-2",
+        "A submicron aperture of diameter d restricts collection area to A = pi d^2 / 4",
+        "Number of dots k under the aperture follows a Poisson distribution: P(k) = N^k e^(-N) / k!",
+        "Design card: n = 3e8 cm^-2, diameter d = 0.4 um yields N = 0.377 dots",
+        "Probabilities: P(0) = 68.6% (empty), P(1) = 25.9% (single QD), P(>=2) = 5.5% (multi-dot cluster)",
+        "Conditional single-dot purity: P(1 | k >= 1) = 82.5% of light-emitting devices isolate exactly ONE dot!"
+      ],
+      "equations": [
+        {
+          "latex": "N = n_{\\mathrm{QD}} A_{\\mathrm{ap}} = n_{\\mathrm{QD}} \\frac{\\pi d^2}{4}",
+          "caption": "mean Poisson expectation of quantum dot count under an aperture of diameter d"
+        },
+        {
+          "latex": "P(k=1 \\mid k \\ge 1) = \\frac{P(1)}{1 - P(0)} = \\frac{N e^{-N}}{1 - e^{-N}}",
+          "caption": "conditional probability that an active light-emitting aperture contains strictly one dot"
+        }
+      ],
+      "figure": {
+        "path": "presentation2/figures/out/01_20_aperture_poisson.png",
+        "caption": "Poisson distribution at N = 0.377 and mean dot count vs aperture diameter from cards/edge-inp-gaasp-design.yaml",
+        "script": "presentation2/figures/fig_01_20_aperture_poisson.py"
+      },
+      "notes": "A practical quantum dot single-photon source must isolate a single quantum dot from an as-grown ensemble containing millions of dots across the wafer. Epitaxial Stranski-Krastanov growth produces a random spatial distribution with areal densities typically between 10^8 and 10^10 cm^-2 [Bimberg et al., 1999, ch. 2]. To isolate an individual emitter, a submicron aperture is fabricated in a top metal contact or mask layer. The number of dots k captured within the aperture area A follows a spatial Poisson distribution P(k) = N^k exp(-N) / k!, where the mean expectation is N = n_QD * A [cards/edge-inp-gaasp-design.yaml]. In our primary edge-emitter design card, low-density epitaxy targets n_QD = 3 x 10^8 cm^-2 and the aperture diameter is d = 0.4 um. This gives an aperture area of A = pi (0.2 um)^2 = 0.1257 um^2 = 1.257 x 10^-9 cm^2, resulting in a mean dot expectation of N = 0.377 dots. Under these statistics, 68.6% of apertures contain zero dots (P(0) = 0.686), 25.9% contain exactly one dot (P(1) = 0.259), and only 5.5% contain two or more dots. Crucially, when testing devices on a probe station, empty apertures do not emit light and are discarded. The conditional probability that an active, light-emitting aperture contains strictly one dot is P(1 | k >= 1) = P(1) / (1 - P(0)) = 0.259 / 0.314 = 82.5%! Combined with spectral filtering, this provides exceptional single-dot isolation.",
+      "sources": [
+        "cards/edge-inp-gaasp-design.yaml",
+        "docs/rt_edge_contract.md",
+        "Bimberg 1999 ch. 2"
+      ],
+      "repo_numbers": {
+        "density_cm2": {
+          "value": 300000000.0,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "diameter_um": {
+          "value": 0.4,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "aperture_um2": {
+          "value": 0.12566370614359174,
+          "file": "cards/edge-inp-gaasp-design.yaml"
+        },
+        "N_dots_expected": {
+          "value": 0.377,
+          "file": "verify/verify_transport.py"
+        }
+      }
+    },
+    {
+      "id": "01-21",
+      "layout": "bullets",
+      "title": "Deterministic Dot Engineering: Mesas, Masks, and Site Control",
+      "subtitle": "Nanofabrication techniques for addressing and integrating individual quantum dots",
+      "bullets": [
+        "Etched micro-mesas: dry etching (ICP-RIE) forms isolated semiconductor pillars of diameter 0.5-2.0 um",
+        "Opaque shadow masks: electron-beam lithography patterns submicron apertures in metal films (Al/Au)",
+        "In-situ optical lithography: micro-PL maps exact coordinates of pre-selected dots with < 20 nm accuracy",
+        "Deterministic cavity alignment: optical resonators etched precisely concentric with registered dots",
+        "Site-controlled nucleation: substrate nano-patterning (pyramidal recesses) triggers single-dot growth at fixed sites",
+        "Eliminates spatial Poisson randomness, enabling scalable arrays for quantum photonic integrated circuits"
+      ],
+      "notes": "While random spatial isolation via shadow masks is effective for individual research devices, scalable quantum photonic integration demands deterministic positioning of single quantum dots [Michler ed., 2017, ch. 10]. Several sophisticated nanofabrication strategies have been developed to overcome Poisson positioning randomness. The most common physical method is etching deep micro-mesas or nanopillars through the active quantum dot layer using inductively coupled plasma reactive-ion etching (ICP-RIE), isolating single dots in defined optical pillars. A second approach uses metallic shadow masks with nanoscale apertures defined by electron-beam lithography. To deterministically integrate quantum dots into photonic cavities or waveguides, researchers developed in-situ optical lithography: a low-temperature micro-photoluminescence scan maps the precise spatial coordinates of a bright, high-purity single dot relative to global alignment marks with sub-20-nanometer accuracy, followed by aligned electron-beam lithography to pattern a cavity exactly centered on the dot [Dousse et al., PRL 101, 267404 (2008)]. Finally, site-controlled epitaxy uses pre-patterned nano-holes or inverted pyramidal recesses etched into the substrate prior to growth. Surface diffusion guides adatoms into the bottom of each recess, nucleating exactly one quantum dot per site with predetermined spatial periodicity.",
+      "sources": [
+        "Michler 2017 ch. 10",
+        "Bimberg 1999 ch. 2"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-22",
+      "layout": "table",
+      "title": "Material Platform Comparison: InAs/GaAs vs InP/GaInP vs InP/GaAsP",
+      "subtitle": "Key physical parameters across the leading quantum dot single-photon platforms",
+      "table": {
+        "header": [
+          "Parameter",
+          "InAs / GaAs",
+          "InP / Ga0.51In0.49P",
+          "InP / GaAs0.60P0.40"
+        ],
+        "rows": [
+          [
+            "Emission wavelength",
+            "900 - 1300 nm (NIR)",
+            "650 - 750 nm (Red)",
+            "750 - 816 nm (Far-red)"
+          ],
+          [
+            "Lattice mismatch f",
+            "-7.16% (compressive)",
+            "-3.69% (compressive)",
+            "-5.07% (compressive)"
+          ],
+          [
+            "Conduction offset V_e",
+            "450 - 500 meV",
+            "250 - 436 meV",
+            "200 meV"
+          ],
+          [
+            "Electron escape dE_e",
+            "200 - 300 meV",
+            "235 - 251 meV",
+            "103 meV"
+          ],
+          [
+            "Hole escape dE_h",
+            "110 - 150 meV",
+            "49 - 63 meV",
+            "63 meV"
+          ],
+          [
+            "Wetting layer escape",
+            "110 - 240 meV",
+            "285 meV",
+            "168 meV"
+          ],
+          [
+            "LO phonon energy",
+            "36.6 meV (GaAs)",
+            "43.4 meV (InP)",
+            "38.5 meV (GaAsP)"
+          ],
+          [
+            "Operating limit",
+            "80 - 230 K (with SSL)",
+            "80 K (LED) / 150 K (PL)",
+            "300 K (target heatsink)"
+          ]
+        ]
+      },
+      "notes": "To provide broad context for this lecture series, this table compares the three leading semiconductor quantum dot platforms: the mature near-infrared InAs/GaAs system, the visible-red InP/GaInP system, and the far-red InP/GaAsP system evaluated in this project [verify/verify_dot_levels.py]. InAs on GaAs features a large 7.2% lattice mismatch and deep conduction band confinement (V_e ~ 500 meV), enabling high-temperature operation up to 230 K when embedded in short-period superlattices (SSL) [Chatzarakis et al., 2023]. However, its emission lies beyond the peak quantum efficiency of silicon single-photon avalanche diodes. InP dots in Ga0.51In0.49P emit in the red region (650-750 nm), perfectly matching silicon SPAD sensitivity, with Reischle et al. (2008) demonstrating pulsed electrical single-photon emission at 80 K. Our primary candidate, InP in GaAs0.60P0.40, bridges these regimes: it emits between 750 nm and 816 nm, maintaining moderate optical transparency and silicon detector compatibility. However, its conduction offset is shallower (V_e = 200 meV), resulting in an electron escape energy of 103 meV and a hole escape energy of 63 meV. The optical phonon energies also vary: InP has a high LO phonon energy of 43.4 meV compared to 36.6 meV in GaAs. These confinement and phonon scales govern thermal quenching and dephasing across platforms.",
+      "sources": [
+        "verify/verify_dot_levels.py",
+        "Chatzarakis 2023 PRA 20 034011",
+        "Reischle 2008 OE 16 12771"
+      ],
+      "repo_numbers": {
+        "WL_escape_gainp_meV": {
+          "value": 240,
+          "file": "verify/verify_dot_levels.py"
+        },
+        "escape_ref_Pryor_meV": {
+          "value": 250,
+          "file": "verify/verify_dot_levels.py"
+        },
+        "Bommer_Ea_meV": {
+          "value": 96,
+          "file": "verify/verify_dot_levels.py"
+        },
+        "Chatzarakis_WL_meV": {
+          "value": 110,
+          "file": "verify/verify_dot_levels.py"
+        }
+      }
+    },
+    {
+      "id": "01-23",
+      "layout": "bullets",
+      "title": "Section 1 Summary: The Physical Foundations",
+      "subtitle": "Synthesizing confinement, strain, band structure, and single-dot isolation",
+      "bullets": [
+        "3D quantum confinement creates discrete atom-like density of states, concentrating optical strength",
+        "Strong confinement regime decouples electron and hole; Coulomb acts as a ~22 meV binding correction",
+        "Compressive biaxial strain lifts HH-LH degeneracy by ~68 meV, ensuring a pure heavy-hole ground state",
+        "Model-solid theory confirms Type-I band alignment; (Al,Ga)InP claddings resolve the transparency paradox",
+        "Biexciton binding Delta_XX (3-7 meV) enables clean single-photon spectral filtering against multi-photon pulses",
+        "Submicron spatial apertures with low-density growth (N = 0.377) yield >82% single-dot device isolation"
+      ],
+      "notes": "In this opening section, we have established the complete physical foundation of quantum dot single-photon emitters [Bimberg et al., 1999] [Michler ed., 2017]. We saw how spatial confinement along all three dimensions collapses the continuous band spectrum into discrete Dirac delta-function states, creating an 'artificial atom'. Because self-assembled dots reside in the strong confinement regime, the single-particle kinetic energies dominate, while the electron-hole Coulomb attraction acts perturbatively with a Gaussian binding energy of ~22 meV. Biaxial compressive strain from lattice mismatch (f = -3.7% to -5.1%) shifts the conduction band upward and induces a tetragonal shear splitting that pushes the heavy-hole band ~68 meV above the light-hole band, ensuring that the optically active ground state involves pure heavy holes with high in-plane dipole strength. We resolved the materials question of the device tier: literal InP claddings are opaque and dislocated, whereas lattice-matched (Al,Ga)InP quaternary claddings provide wide bandgaps, high optical transparency, and excellent waveguiding contrast. Finally, biexciton Coulomb correlation provides a 3 to 7 meV spectral shift Delta_XX, allowing narrow optical filtering to isolate single photons, while spatial apertures with mean expectation N = 0.377 guarantee that over 82% of light-emitting devices contain strictly one isolated quantum dot.",
+      "sources": [
+        "Bimberg 1999 ch. 1",
+        "Michler 2017 ch. 1",
+        "docs/rt_edge_tier.md"
+      ],
+      "repo_numbers": {}
+    },
+    {
+      "id": "01-24",
+      "layout": "bullets",
+      "title": "Bridge to Section 2: How a Quantum Dot Emits",
+      "subtitle": "From stationary electronic eigenstates to dynamic light-matter interactions",
+      "bullets": [
+        "Section 1 established stationary eigenstates: energy levels E_e, E_h, and exciton energy E_X",
+        "Section 2 question: How do discrete electronic states couple to the quantized radiation field?",
+        "Spontaneous emission dynamics: dipole matrix elements |d_cv|^2 and radiative lifetime tau_rad ~ 1 ns",
+        "Carrier-phonon coupling: acoustic phonon sidebands via the independent boson model and the ZPL",
+        "Temperature-dependent dephasing: how acoustic and LO phonons broaden emission linewidth Gamma(T)",
+        "The fundamental filter tradeoff: rejecting the biexciton vs transmission loss at room temperature"
+      ],
+      "notes": "Having established the stationary electronic eigenstates, band alignments, strain fields, and exciton binding energies in Section 1, we are now fully prepared to examine the dynamic light-matter interaction in Section 2: 'How a quantum dot emits' [Fox, Quantum Optics, ch. 8] [Michler ed., 2017]. The central question changes from 'what are the energy levels?' to 'how quickly and with what spectral purity does the quantum dot radiate photons?' In Section 2, we will apply time-dependent perturbation theory and Fermi's golden rule to derive the spontaneous emission rate Gamma_rad and radiative lifetime tau_rad ~ 1 ns from the microscopic interband dipole matrix element d_cv. We will then examine how the localized carriers couple to the vibrating crystal lattice. Using the independent boson model, we will dissect the emission spectrum into a coherent zero-phonon line (ZPL) and broad acoustic phonon sidebands. We will explore how phonon scattering causes pure dephasing, broadening the homogeneous linewidth Gamma(T) from sub-microelectronvolts at cryogenic temperatures to tens of millielectronvolts at 300 K. Finally, we will analyze the critical filter tradeoff: narrow spectral filtering is essential to reject biexciton photons, but as the exciton linewidth broadens with temperature, filtering incurs severe transmission losses. Join us in Section 2 as we bridge quantum electronics to photon emission.",
+      "sources": [
+        "Fox 2006 ch. 8",
+        "Michler 2017 ch. 2"
+      ],
+      "repo_numbers": {}
+    }
+  ]
+}
