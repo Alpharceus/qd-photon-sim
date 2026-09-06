@@ -56,7 +56,7 @@ ax1.annotate(rf'$\Delta E_v = {V_h_meV:.0f}$ meV' + '\n(to tensile LH)',
 
 ax1.set_title(r'InP Dot in $\mathrm{GaAs}_{0.60}\mathrm{P}_{0.40}$ (Type I)', fontsize=15, fontweight='bold')
 ax1.set_xlabel('Growth position z (nm)', fontsize=14)
-ax1.set_ylabel('Absolute Energy (eV, rel. to GaAs VB)', fontsize=14)
+ax1.set_ylabel('Absolute Energy (eV, V01 scale: InSb VB = 0)', fontsize=14)
 ax1.set_xlim(-15, 15)
 ax1.set_ylim(-1.3, 1.1)
 ax1.grid(True, alpha=0.25)
@@ -95,7 +95,7 @@ ax2.annotate(rf'$\Delta E_{{v,hh}} = {dEv_2_meV:.0f}$ meV',
 
 ax2.set_title(r'InP Dot in $\mathrm{Ga}_{0.51}\mathrm{In}_{0.49}\mathrm{P}$ (Type I)', fontsize=15, fontweight='bold')
 ax2.set_xlabel('Growth position z (nm)', fontsize=14)
-ax2.set_ylabel('Absolute Energy (eV, rel. to GaAs VB)', fontsize=14)
+ax2.set_ylabel('Absolute Energy (eV, V01 scale: InSb VB = 0)', fontsize=14)
 ax2.set_xlim(-15, 15)
 ax2.set_ylim(-1.3, 1.1)
 ax2.grid(True, alpha=0.25)
