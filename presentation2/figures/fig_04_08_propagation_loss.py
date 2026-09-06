@@ -83,13 +83,13 @@ ax2.text(77.9 + 2, 0 - h/2, f"Baseline\n($\\eta={t_500:.1f}\\%$)", va="center", 
 
 ax2.set_yticks(y)
 ax2.set_yticklabels(metrics, fontsize=12)
-ax2.set_xlabel("Relative Score / Engineering Metric (%)")
-ax2.set_title(r"Engineering Trade-Offs: 250 vs 500 $\mu$m Bars", pad=12)
+ax2.set_xlabel("Illustrative / Qualitative Metric (%)")
+ax2.set_title(r"[A] Illustrative Trade-Offs: 250 vs 500 $\mu$m Bars", pad=12)
 ax2.set_xlim(0, 125)
 ax2.grid(True, axis="x", linestyle=":", alpha=0.5)
 ax2.legend(loc="lower right", framealpha=0.9)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

@@ -33,8 +33,8 @@ plt.rcParams.update({
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(1600/150, 900/150), dpi=150)
 fig.patch.set_facecolor("white")
 
-# Wavelength range for GaInP/AlGaInP system (680 to 820 nm)
-lambdas = np.linspace(680.0, 820.0, 35)
+# Wavelength range for GaInP/AlGaInP system (700 to 800 nm; stops at 800 nm to avoid table-edge kink)
+lambdas = np.linspace(700.0, 800.0, 41)
 
 cl_mat = "(Al0.50Ga0.50)0.51In0.49P"
 core_mat = "Ga0.51In0.49P"
@@ -76,10 +76,10 @@ ax1.plot(lambdas, n_cl_list, color="#3182CE", lw=2.5, label=f"Cladding Barrier (
 
 ax1.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax1.set_ylabel("Refractive Index $n$")
-ax1.set_title("Constituent Material Dispersion", pad=12)
+ax1.set_title("Constituent Material Dispersion ([E] Ratio-Scaled)", pad=12)
 ax1.grid(True, linestyle=":", alpha=0.5)
 ax1.legend(loc="upper right", framealpha=0.9)
-ax1.set_xlim(680, 820)
+ax1.set_xlim(700, 800)
 
 # Panel 2: Effective Index vs Group Index
 ax2.plot(lambdas, neff_arr, color="#2B6CB0", lw=2.8, label=r"Phase Index $n_{eff}(\lambda)$")
@@ -95,13 +95,16 @@ ax2.plot(lam_pt, neff_pt, "o", color="#2B6CB0", markersize=9)
 ax2.plot(lam_pt, ng_pt, "s", color="#9B2C2C", markersize=9)
 
 enhancement = (ng_pt / neff_pt - 1.0) * 100
+undercount = (1.0 - neff_pt / ng_pt) * 100
+ratio = neff_pt / ng_pt
 ax2.annotate(rf"$\lambda = 770$ nm:" + "\n" +
-             rf"$n_{{eff}} = {neff_pt:.3f}$" + "\n" +
-             rf"$n_g = {ng_pt:.3f}$" + "\n" +
-             rf"(+ {enhancement:.1f}% LDOS boost)",
-             xy=(lam_pt, ng_pt), xytext=(700, 4.35),
+             rf"$n_{{eff}} = {neff_pt:.3f}$, $n_g = {ng_pt:.3f}$" + "\n" +
+             rf"(+{enhancement:.1f}% $n_g$ boost)" + "\n" +
+             rf"Omitting $n_g$ undercounts" + "\n" +
+             rf"LDOS by {undercount:.0f}% ({ratio:.3f}$\times$)",
+             xy=(lam_pt, ng_pt), xytext=(708, 4.45),
              arrowprops=dict(arrowstyle="->", color="#9B2C2C", lw=2),
-             fontsize=12, fontweight="bold", color="#742A2A",
+             fontsize=11, fontweight="bold", color="#742A2A",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#E53E3E"))
 
 # Fill the dispersion difference
@@ -112,11 +115,11 @@ ax2.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax2.set_ylabel("Index")
 ax2.set_title(r"Ridge Waveguide Phase vs Group Index ($w = 2\ \mu\mathrm{m}$)", pad=12)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9)
-ax2.set_xlim(680, 820)
-ax2.set_ylim(3.15, 4.65)
+ax2.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax2.set_xlim(700, 800)
+ax2.set_ylim(3.15, 5.35)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

@@ -69,8 +69,8 @@ ax1.fill(cone_x, cone_y, color="#FBD38D", alpha=0.35, label=f"Escape Cone (±{th
 ax1.text(0, -2.3, "Total Internal Reflection: ~98% trapped", ha="center", va="center",
          fontsize=13, fontweight="bold", color="#742A2A",
          bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#FEB2B2"))
-ax1.text(0, 1.5, "Air Transmission\n$\\eta_{surf} \\approx 2.04\\%$", ha="center", va="center",
-         fontsize=13, fontweight="bold", color="#276749",
+ax1.text(0, 1.5, "Air Transmission\n$\\eta_{surf} = 2.08\\%$\n(paraxial $\\approx 2.04\\%$)", ha="center", va="center",
+         fontsize=12, fontweight="bold", color="#276749",
          bbox=dict(boxstyle="round,pad=0.3", facecolor="#C6F6D5", edgecolor="#9AE6B4"))
 
 ax1.set_xlim(-3.5, 3.5)

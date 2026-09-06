@@ -113,10 +113,12 @@ ax2.axhline(cutoff_index, color="#E53E3E", ls=":", lw=2, label=r"Cladding Index 
 
 # Mark HKUST nominal design (d_core = 296 nm)
 ax2.plot(296, m0.n_eff, "o", color="#D69E2E", markersize=10, zorder=5)
-ax2.annotate(rf"HKUST Design: $d_{{core}} = 296$ nm" + "\n" + rf"$n_{{eff}} = {m0.n_eff:.4f}$",
-             xy=(296, m0.n_eff), xytext=(320, 3.11),
+ax2.annotate(rf"HKUST: $d = 296$ nm, $n_{{eff}} = {m0.n_eff:.4f}$" + "\n" +
+             r"Symmetric 3.22/3.05: $n_{{eff}} = 3.154888$" + "\n" +
+             r"($k_z d - 2\arctan(\gamma/k_z) = 0$)",
+             xy=(296, m0.n_eff), xytext=(280, 3.10),
              arrowprops=dict(arrowstyle="->", color="#D69E2E", lw=2),
-             fontsize=13, fontweight="bold", color="#744210",
+             fontsize=11, fontweight="bold", color="#744210",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FEFCBF", edgecolor="#ECC94B"))
 
 ax2.set_xlabel(r"Total Core Thickness $d_{core}$ (nm)")
@@ -125,9 +127,9 @@ ax2.set_title(r"Slab Dispersion Relation $n_{eff}(d_{core})$ at $\lambda = 668$ 
 ax2.set_xlim(50, 600)
 ax2.set_ylim(3.03, 3.24)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="lower right", framealpha=0.9)
+ax2.legend(loc="lower right", framealpha=0.9, fontsize=11)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.92, wspace=0.32)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

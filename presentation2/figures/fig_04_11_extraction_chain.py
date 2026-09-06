@@ -30,20 +30,20 @@ fig.patch.set_facecolor("white")
 # beta = 0.0292412 (2.924%)
 # combined facet factor = 0.935012 (93.501%)
 # propagation = 0.882497 (88.250%)
-# NA collection = 0.548244 (54.824%)
-# Product eta_total = 0.0132281 (1.323%)
+# NA collection = 0.857853 (85.785%)
+# Product eta_total = 0.0206985 (2.070%)
 factors = [r"Waveguide $\beta$" + "\n(2.92%)",
            r"HR Mirror" + "\n" + r"$\eta_{facet}$" + "\n(93.5%)",
            r"Propagation" + "\n" + r"$\eta_{prop}$" + "\n(88.2%)",
-           r"Lens Collect" + "\n" + r"$\eta_{NA}$" + "\n(54.8%)",
-           r"Total Out-Coupling" + "\n" + r"$\eta_{total}$" + "\n(1.32%)"]
+           r"Lens Collect" + "\n" + r"$\eta_{NA}$" + "\n(85.8%)",
+           r"Total Out-Coupling" + "\n" + r"$\eta_{total}$" + "\n(2.07%)"]
 
 # Values for cumulative product
 vals = [0.0292412,
         0.0292412 * 0.935012,
         0.0292412 * 0.935012 * 0.882497,
-        0.0292412 * 0.935012 * 0.882497 * 0.548244,
-        0.0132281]
+        0.0292412 * 0.935012 * 0.882497 * 0.857853,
+        0.0206985]
 
 pcts = np.array(vals) * 100
 x = np.arange(len(factors))
@@ -61,18 +61,18 @@ ax1.set_title(r"Multiplicative Extraction Chain $\eta_{total}$ Decomposition", p
 ax1.set_ylim(0, 3.5)
 ax1.grid(True, axis="y", linestyle=":", alpha=0.5)
 
-# Panel 2: Sweep Levers and Collected Photon Flux Progression
-# Base: NA=0.5, R_back=0, L=500 -> 286.3 photons/s
-# + HR Mirror (R_back=0.95): 286.3 * (0.935012 / 0.359685) = 744.3 photons/s
-# + Short Cavity (L=250 um): 744.3 * (0.882497 / 0.778801) = 843.4 photons/s
-# + High NA (NA=0.80): 843.4 * (0.548244 / 0.299495) = 1544.4 photons/s
+# Panel 2: Sweep Levers and Collected Photon Flux Progression (at 300 K)
+# Base: NA=0.5, R_back=0, L=500 -> 552.6 photons/s (< 1000 floor)
+# + HR Mirror (R_back=0.95): 552.6 * 2.600 = 1436.5 photons/s
+# + Short Cavity (L=250 um): 1436.5 * 1.133 = 1627.8 photons/s
+# + High NA (NA=0.80): 1627.8 * (0.857853 / 0.577843) = 2416.6 photons/s
 steps = [
     "Baseline Uncoated\n($R_b=0, L=500\\mu\\mathrm{m}, \\mathrm{NA}=0.5$)",
     "+ HR Back Mirror\n($R_{back} = 0.95$, $2.60\\times$)",
-    "+ Shortened Cavity\n($L = 250\\mu\\mathrm{m}$, $1.13\\times$)",
-    "+ High-NA Objective\n($\\mathrm{NA} = 0.80$, $1.83\\times$)",
+    "+ Shortened Cavity\n($L = 250\\mu\\mathrm{m}$, $1.133\\times$)",
+    "+ High-NA Objective\n($\\mathrm{NA} = 0.80$, $1.485\\times$)",
 ]
-flux_vals = [286.3, 744.3, 843.4, 1544.4]
+flux_vals = [552.6, 1436.5, 1627.8, 2416.6]
 
 x2 = np.arange(len(steps))
 colors = ["#E53E3E", "#DD6B20", "#D69E2E", "#38A169"]
@@ -84,25 +84,25 @@ ax2.axhline(1000.0, color="#C53030", ls="--", lw=2.5, label="Eligibility Floor [
 
 for b, val in zip(bars2, flux_vals):
     lbl = f"{val:.0f} s$^{{-1}}$"
-    ax2.text(b.get_x() + b.get_width()/2, b.get_height() + 35,
+    ax2.text(b.get_x() + b.get_width()/2, b.get_height() + 45,
              lbl, ha="center", va="bottom", fontsize=12, fontweight="bold")
 
 # Annotate margin on the winning corner
-ax2.annotate("Passes Flux Floor!\n(Margin = 1.544x)",
-             xy=(3, 1544.4), xytext=(2.1, 1650),
+ax2.annotate("Passes Flux Floor!\n(Margin = 2.42x at 300 K;\n230 K reaches 6890 s$^{-1}$)",
+             xy=(3, 2416.6), xytext=(1.85, 2550),
              arrowprops=dict(arrowstyle="->", color="#22543D", lw=2),
-             fontsize=12, fontweight="bold", color="#22543D",
+             fontsize=11, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
 
 ax2.set_xticks(x2)
 ax2.set_xticklabels(steps, fontsize=10.5)
 ax2.set_ylabel("Collected Pulsed Flux (photons / s)")
-ax2.set_title("Acceptance Sweep: Photonic Levers vs Flux Floor", pad=12)
-ax2.set_ylim(0, 1950)
+ax2.set_title("Acceptance Sweep Levers at 300 K vs Flux Floor", pad=12)
+ax2.set_ylim(0, 3100)
 ax2.grid(True, axis="y", linestyle=":", alpha=0.5)
-ax2.legend(loc="upper left", framealpha=0.9, fontsize=12)
+ax2.legend(loc="upper left", framealpha=0.9, fontsize=11)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.14, left=0.08, right=0.95, wspace=0.28)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

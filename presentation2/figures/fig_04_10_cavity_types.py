@@ -73,15 +73,15 @@ ax2.axis("off")
 
 # Draw flowchart blocks
 boxes = [
-    (0.5, 0.82, "QD Emission Source\nPulsed / CW Electrical Drive\nExciton vs Biexciton Dynamics", "#EDF2F7", "#4A5568"),
-    (0.5, 0.58, "Intrinsic Multi-Photon Purity\n" + r"$g^{(2)}_{\mathrm{intrinsic}}(0) = \frac{\langle n(n-1)\rangle}{\langle n \rangle^2} < 0.5$" + "\nDetermined SOLELY by Quantum Dot Loading", "#FEB2B2", "#9B2C2C"),
-    (0.5, 0.32, "Linear Out-Coupling & Collection Chain\n" + r"$\eta_{\mathrm{total}} = \beta \times \eta_{\mathrm{facet}} \times \eta_{\mathrm{prop}} \times \eta_{\mathrm{NA}}$" + "\nRandom Bernoulli Partition (Lossy Beamsplitter)", "#EBF8FF", "#2B6CB0"),
-    (0.5, 0.08, "Lemma 1 (docs/rt_edge_contract.md):\n" + r"$g^{(2)}_{\mathrm{detected}}(0) = \frac{\eta^2 \langle n(n-1)\rangle}{\eta^2 \langle n \rangle^2} \equiv g^{(2)}_{\mathrm{intrinsic}}(0)$" + "\nCollection Levers Scale FLUX ONLY, Never Purity!", "#C6F6D5", "#22543D"),
+    (0.5, 0.83, "QD Emission Source\nPulsed / CW Electrical Drive\nExciton vs Biexciton Dynamics", "#EDF2F7", "#4A5568"),
+    (0.5, 0.58, "Intrinsic Multi-Photon Purity\n" + r"$g^{(2)}_{\mathrm{intrinsic}}(0) = 1 - \rho^2(1 - \varepsilon) < 0.5$" + "\nSet by Dot Loading, Overlap $\\varepsilon$, and Signal Fraction $\\rho$", "#FEB2B2", "#9B2C2C"),
+    (0.5, 0.33, "Linear Out-Coupling & Collection Chain\n" + r"$\eta_{\mathrm{total}} = \beta \times \eta_{\mathrm{facet}} \times \eta_{\mathrm{prop}} \times \eta_{\mathrm{NA}}$" + "\nRandom Bernoulli Partition (Lossy Beamsplitter)", "#EBF8FF", "#2B6CB0"),
+    (0.5, 0.08, "Lemma 1 (docs/rt_edge_contract.md):\n" + r"$g^{(2)}_{\mathrm{detected}}(0) = \frac{\eta^2 \langle n(n-1)\rangle}{\eta^2 \langle n \rangle^2} \equiv g^{(2)}_{\mathrm{intrinsic}}(0)$" + "\nLinear Levers Scale Flux, Not Purity\n(Except via Spectral Leakage $\\varepsilon$ Path)", "#C6F6D5", "#22543D"),
 ]
 
 for bx, by, text, bg, border in boxes:
-    ax2.text(bx, by, text, ha="center", va="center", fontsize=12,
-             bbox=dict(boxstyle="round,pad=0.5", facecolor=bg, edgecolor=border, lw=2))
+    ax2.text(bx, by, text, ha="center", va="center", fontsize=11,
+             bbox=dict(boxstyle="round,pad=0.4", facecolor=bg, edgecolor=border, lw=2))
 
 # Arrows
 ax2.annotate("", xy=(0.5, 0.69), xytext=(0.5, 0.75), arrowprops=dict(arrowstyle="->", lw=2, color="#4A5568"))
@@ -92,7 +92,7 @@ ax2.set_title("Lemma 1: Out-Coupling vs Quantum Correlation", pad=12)
 ax2.set_xlim(0, 1)
 ax2.set_ylim(0, 1)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

@@ -87,8 +87,8 @@ ax1.set_xlim(-2.0, 2.0)
 ax1.set_ylim(-0.6, 0.6)
 
 # Annotate effective indices
-ax1.text(0, -0.48, rf"Ridge Core: $n_{{ridge}} = {rm.n_ridge:.4f}$ | 2D $n_{{eff}} = {rm.n_eff:.4f}$",
-         color="white", ha="center", va="center", fontsize=12, fontweight="bold",
+ax1.text(0, -0.48, rf"Ridge: $n_{{ridge}} = {rm.n_ridge:.4f}$ | Etched: $n_{{outside}} = {rm.n_outside:.4f}$ [A] | 2D $n_{{eff}} = {rm.n_eff:.4f}$",
+         color="white", ha="center", va="center", fontsize=11, fontweight="bold",
          bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.6))
 
 # Panel 2: 1D Cross Sections along x and y
@@ -96,13 +96,16 @@ ax2.plot(x_um, Ix, color="#3182CE", lw=2.5, label=rf"Lateral $I(x)$ ($w_x = {rm.
 ax2.plot(y_um, Iy, color="#E53E3E", lw=2.5, label=rf"Vertical $I(y)$ ($w_y = {rm.wy_um:.3f}\ \mu\mathrm{{m}}$)")
 
 # 1/e^2 reference line
-ax2.axhline(1.0 / np.e**2, color="#718096", ls=":", lw=1.8, label=r"$1/e^2 \approx 0.135$ Level")
+ax2.axhline(1.0 / np.e**2, color="#718096", ls=":", lw=1.8, label=r"$1/e^2 \approx 0.135$ Level ($w_x, w_y$ waists)")
 
 ax2.axvline(-w_half, color="#3182CE", ls="--", alpha=0.5)
 ax2.axvline(w_half, color="#3182CE", ls="--", alpha=0.5)
-ax2.text(0, 0.5, rf"Ridge Width" + "\n" + rf"$w = {ridge_w_nm*1e-3:.1f}\ \mu\mathrm{{m}}$", ha="center", va="center",
-         fontsize=12, color="#2B6CB0",
+ax2.text(0, 0.55, rf"Ridge Width" + "\n" + rf"$w = {ridge_w_nm*1e-3:.1f}\ \mu\mathrm{{m}}$", ha="center", va="center",
+         fontsize=11, color="#2B6CB0",
          bbox=dict(boxstyle="round,pad=0.3", facecolor="#EBF8FF", edgecolor="#BEE3F8"))
+ax2.text(0, 0.28, rf"$A_{{mode}} = \pi w_x w_y = {rm.A_mode_um2:.4f}\ \mu\mathrm{{m}}^2$", ha="center", va="center",
+         fontsize=11, fontweight="bold", color="#1A365D",
+         bbox=dict(boxstyle="round,pad=0.2", facecolor="#EDF2F7", edgecolor="#CBD5E0"))
 
 ax2.set_xlabel(r"Transverse Coordinate ($\mu$m)")
 ax2.set_ylabel("Normalized Intensity")
@@ -110,9 +113,9 @@ ax2.set_title("Lateral vs Vertical Mode Profiles", pad=12)
 ax2.set_xlim(-2.0, 2.0)
 ax2.set_ylim(0, 1.05)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9)
+ax2.legend(loc="upper right", framealpha=0.9, fontsize=11)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

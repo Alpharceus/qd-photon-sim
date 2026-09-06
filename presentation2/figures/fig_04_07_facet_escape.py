@@ -64,30 +64,41 @@ ax1.legend(loc="center right", framealpha=0.9)
 
 # Panel 2: Escape-Rate Fraction vs Back-Facet Reflectivity R_back
 Rb_grid = np.linspace(0.001, 0.999, 300)
-# Coldren & Corzine escape fraction: T_f / (T_f + (1 - R_back))
+# Repo escape-rate fraction: T_f / (T_f + (1 - R_back)) [DR]
 eta_escape = T_nom / (T_nom + (1.0 - Rb_grid))
+
+# Coldren & Corzine front-facet fraction:
+# F1 = (1-R1) sqrt(R2) / [(1-R1) sqrt(R2) + (1-R2) sqrt(R1)]
+F1_grid = ((1.0 - R_nom) * np.sqrt(Rb_grid) /
+           ((1.0 - R_nom) * np.sqrt(Rb_grid) + (1.0 - Rb_grid) * np.sqrt(R_nom)))
 
 # Geometric alternative: 0.5 * T_f
 eta_geom = 0.5 * T_nom
 
 ax2.plot(Rb_grid, eta_escape * 100, color="#38A169", lw=2.8,
-         label=r"Escape-Rate Model: $\eta_{facet} = \frac{T_f}{T_f + (1 - R_b)}$")
-ax2.axhline(eta_geom * 100, color="#4A5568", lw=2.5, linestyle=":",
+         label=r"Repo Escape-Rate: $\eta_{facet} = \frac{T_f}{T_f + (1 - R_b)}$ [DR]")
+ax2.plot(Rb_grid, F1_grid * 100, color="#805AD5", lw=2.0, linestyle="--",
+         label=r"Coldren & Corzine $F_1$ (cavity photon split)")
+ax2.axhline(eta_geom * 100, color="#4A5568", lw=2.2, linestyle=":",
             label=rf"Geometric Uncoated Split: $0.5 \times T_f = {eta_geom*100:.2f}\%$")
 
 # Mark R_back = 0.95 nominal point
 Rb_card = 0.95
 eta_card = T_nom / (T_nom + (1.0 - Rb_card))
+F1_card = ((1.0 - R_nom) * np.sqrt(Rb_card) /
+           ((1.0 - R_nom) * np.sqrt(Rb_card) + (1.0 - Rb_card) * np.sqrt(R_nom)))
 
 ax2.plot(Rb_card, eta_card * 100, "o", color="#38A169", markersize=10, zorder=5)
+ax2.plot(Rb_card, F1_card * 100, "^", color="#805AD5", markersize=9, zorder=5)
 gain = eta_card / eta_geom
 
-ax2.annotate(rf"Card Baseline ($R_{{back}} = {Rb_card:.2f}$):" + "\n" +
-             rf"$\eta_{{facet}} = {eta_card*100:.2f}\%$" + "\n" +
-             rf"({gain:.2f}$\times$ Brightness Boost)",
-             xy=(Rb_card, eta_card * 100), xytext=(0.40, 80),
+ax2.annotate(rf"HR Mirror ($R_{{back}} = {Rb_card:.2f}$):" + "\n" +
+             rf"Repo escape-rate: $\eta_{{facet}} = {eta_card*100:.2f}\%$" + "\n" +
+             rf"Coldren $F_1 = {F1_card*100:.2f}\%$" + "\n" +
+             rf"({gain:.2f}$\times$ Boost over Uncoated)",
+             xy=(Rb_card, eta_card * 100), xytext=(0.28, 62),
              arrowprops=dict(arrowstyle="->", color="#38A169", lw=2),
-             fontsize=12, fontweight="bold", color="#22543D",
+             fontsize=11, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
 
 # Mark R_back = 0 uncoated baseline
@@ -95,7 +106,7 @@ ax2.plot(0.0, eta_geom * 100, "s", color="#E53E3E", markersize=9, zorder=5)
 ax2.annotate(rf"Uncoated ($R_b=0$)" + "\n" + rf"$\eta_{{facet}} = {eta_geom*100:.2f}\%$",
              xy=(0.0, eta_geom * 100), xytext=(0.08, 25),
              arrowprops=dict(arrowstyle="->", color="#E53E3E", lw=1.8),
-             fontsize=12, fontweight="bold", color="#742A2A",
+             fontsize=11, fontweight="bold", color="#742A2A",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#FEB2B2"))
 
 ax2.set_xlabel(r"Back Facet Reflectivity $R_{back}$")
@@ -104,9 +115,9 @@ ax2.set_title(r"Front Facet Out-Coupling vs Back Mirror Reflectivity", pad=12)
 ax2.set_xlim(-0.02, 1.02)
 ax2.set_ylim(20, 102)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="lower right", framealpha=0.9)
+ax2.legend(loc="lower right", framealpha=0.9, fontsize=11)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

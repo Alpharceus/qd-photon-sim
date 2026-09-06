@@ -33,17 +33,19 @@ plt.rcParams.update({
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(1600/150, 900/150), dpi=150)
 fig.patch.set_facecolor("white")
 
+from fsim_core.materials import refractive_index
+
 # Panel 1: Beta factor vs Mode Area for different group indices
 # F_wg = (3 / (4 * pi)) * (lambda / n_dot)^2 * (n_g / n_dot) / A_mode
 # beta = F_wg / (1 + F_wg)
 lambda_nm = 770.0
-n_dot = 3.50
+n_dot = float(refractive_index("InP", lambda_nm))  # 3.418
 A_grid = np.logspace(-2.5, 0.5, 300)  # um^2
 
 ng_cases = [
-    (4.36, r"Ridge Waveguide ($n_g \approx 4.4$)", "#2B6CB0", "-"),
+    (4.355, r"Ridge Waveguide ($n_g \approx 4.36$)", "#2B6CB0", "-"),
     (15.0, r"Slow-Light Ridge ($n_g = 15$)", "#DD6B20", "--"),
-    (40.0, r"PhC Waveguide ($n_g = 40$, Arcari 2014)", "#38A169", "-."),
+    (40.0, r"PhC Waveguide ($n_g = 40$)", "#38A169", "-."),
 ]
 
 for ng, label, col, ls in ng_cases:
@@ -60,12 +62,12 @@ ax1.annotate(rf"Fallback $2\ \mu$m Ridge" + "\n" + rf"$\beta = {b_ridge*100:.2f}
              fontsize=12, fontweight="bold", color="#1A365D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#EBF8FF", edgecolor="#3182CE"))
 
-# Mark Arcari et al. 2014 PhC Waveguide point
-A_phc = 0.045  # um^2
-F_phc, b_phc = beta_factor(A_phc, lambda_nm, n_dot, 40.0, 1.0)
-ax1.plot(A_phc, b_phc * 100, "s", color="#38A169", markersize=10, zorder=5)
-ax1.annotate(r"Arcari et al. (PRL 2014)" + "\n" + rf"$\beta \approx {b_phc*100:.1f}\%$ (PhC W1)" + "\n" + rf"($n_g \approx 40,\ A \approx 0.05\ \mu\mathrm{{m}}^2$)",
-             xy=(A_phc, b_phc * 100), xytext=(0.005, 60),
+# Mark Arcari et al. 2014 PhC Waveguide point (reported beta = 98.43%)
+A_phc = 0.040  # um^2
+beta_arcari = 98.43
+ax1.plot(A_phc, beta_arcari, "s", color="#38A169", markersize=10, zorder=5)
+ax1.annotate(r"Arcari et al. (PRL 2014)" + "\n" + rf"$\beta = {beta_arcari:.2f}\%$ (PhC W1)" + "\n" + r"($n_g \approx 30\mathrm{-}40,\ A \approx 0.04\ \mu\mathrm{m}^2$)",
+             xy=(A_phc, beta_arcari), xytext=(0.005, 68),
              arrowprops=dict(arrowstyle="->", color="#38A169", lw=2),
              fontsize=12, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
@@ -74,7 +76,7 @@ ax1.set_xscale("log")
 ax1.set_xlabel(r"Effective Mode Area $A_{mode}$ ($\mu\mathrm{m}^2$)")
 ax1.set_ylabel(r"Guided Spontaneous Emission $\beta$ (%)")
 ax1.set_title(r"$\beta$ Factor Scaling: Ridge vs Photonic Crystal (Lecamp 2007)", pad=12)
-ax1.set_ylim(0, 102)
+ax1.set_ylim(0, 105)
 ax1.set_xlim(0.003, 3.0)
 ax1.grid(True, which="both", linestyle=":", alpha=0.5)
 ax1.legend(loc="center right", framealpha=0.9)
@@ -122,7 +124,7 @@ lines = [p1, p2]
 labels = [l.get_label() for l in lines]
 ax2.legend(lines, labels, loc="lower center", framealpha=0.9)
 
-plt.tight_layout()
+fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.92, wspace=0.32)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)
