@@ -93,21 +93,24 @@ p-i-n transport, ridge waveguide, and CW correlation; new opt-in
 `device.py` blocks; two design cards; and a reproducible acceptance sweep
 (`scripts/run_rt_edge.py`) with its own verify suite.
 
-The honest outcome, from `out/rt_edge/verdict.md`:
+The honest conditional outcome, from `out/rt_edge/verdict.md`, is:
 
 ```
-VERDICT: FAIL g2_min=0.3648 g2_median=0.773 median_pass=false coverage=0 eligible=54/54 evidence=incomplete conditional=false
+VERDICT: FAIL g2_min=0.4305 g2_median=0.7076 diag_g2_min=0.4305 diag_g2_median=0.7409 flux_max=1111 flux_shortfall=0.9001 median_pass=false coverage=0.02083 eligible=16/192 flux_floor_excluded=176 evidence=incomplete conditional=true headline_coverage=4/192 cw_raw_coverage=0/192 gamma300_pass_max=6
 ```
 
-Neither design card reaches a favorable operating corner (0 favorable rows
-each, 54/54 eligible), and two literature anchors this tier's claims depend
-on (the 80 K electrical g²(0) result and the HKUST wavelength anchor) still
-lack a second independent verified source. See **`docs/rt_edge_tier.md`**
-for the full picture: the goal and outcome, why the code implements "InP
-dots in a GaAs<sub>0.6</sub>P<sub>0.4</sub> well with (Al,Ga)InP barriers on
-GaAs" rather than the literally-stated "InP cladding, GaAsP active region,"
-the module map, how to reproduce every number, the provenance-tag and
-known-deviations conventions, and the remaining limitations.
+The stop rule is not met as stated. The model's pulsed intrinsic `g2(0)` at
+300 K is controlled by an unmeasured InP-dot exciton linewidth: verified
+class anchors are 6.5 and 12 meV and the sweep spans 6--20 meV. At the
+low-linewidth end the fallback card has four eligible 300 K pulsed corners
+with `g2(0) < 0.5` and more than 1 kHz collected flux, but only with declared
+collection levers (HR back facet, NA 0.75, 250 um ridge). Evidence remains
+incomplete: no second verified source supports Reischle 2008's 80 K electrical
+`g2` anchor, and the HKUST 750 nm line is not reproduced by the single-band
+solver (about 816 nm for the GaAsP card). The CW dip is detector-limited, so
+pulsed drive is required. See **`docs/rt_edge_tier.md`** for current verify
+counts, the 80 K/230 K comparisons, assumptions, disclosures, and council
+review history.
 
 ## Status
 

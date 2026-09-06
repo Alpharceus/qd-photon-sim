@@ -73,6 +73,7 @@ def main() -> int:
     n_with_picture = 0
     n_with_notes = 0
     verdict_seen_pptx = False
+    linewidth_seen_results_pptx = False
 
     for i, slide in enumerate(slides, start=1):
         title_shape = slide.shapes.title
@@ -98,10 +99,13 @@ def main() -> int:
 
         if verdict_line in "\n".join(slide_text_parts):
             verdict_seen_pptx = True
+        if title_text.startswith("Results:") and "linewidth" in "\n".join(slide_text_parts).lower():
+            linewidth_seen_results_pptx = True
 
     ck(n_with_picture >= 8, f"at least 8 slides contain a picture (got {n_with_picture})")
     ck(n_with_notes >= 10, f"at least 10 slides have non-empty speaker notes (got {n_with_notes})")
     ck(verdict_seen_pptx, "the pptx's results slide states the verdict.md VERDICT line verbatim")
+    ck(linewidth_seen_results_pptx, "the pptx's results slide includes the phrase 'linewidth'")
 
     html = HTML_PATH.read_text(encoding="utf-8")
     n_sections = len(re.findall(r"<section", html))
@@ -114,6 +118,7 @@ def main() -> int:
     html_bytes = HTML_PATH.stat().st_size
     ck(html_bytes < MAX_HTML_BYTES, f"index.html is under 16 MB (got {html_bytes} bytes)")
     ck(verdict_line in html, "index.html states the verdict.md VERDICT line verbatim")
+    ck("linewidth" in html.lower(), "index.html includes the phrase 'linewidth'")
 
     print(f"{sum(checks)}/{len(checks)} presentation checks passed")
     return 0 if all(checks) else 1
