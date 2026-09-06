@@ -227,17 +227,26 @@ design:
           at the explicit tau_pulse_ns=0.1 ns, duty=0.008 (80 MHz),
           I_uA=0.011314080567212663, where V_j=1.5015285054 V,
           f_qfl=0.4899435282, mu=0.9999999998, rho_op=0.7022708986,
-          g2_op=0.8295595445, and collected_flux_pulsed_s=212.3869297.
+          g2_op=0.8295595445, and collected_flux_pulsed_s=291.5563464.
           Recomputed fresh against the final card (council review
           2026-09-06): V_j/f_qfl/mu are unchanged from the round-3 numbers
           (transport is independent of dot.gamma300 and the emission
           block, Lemma 1); g2_op moves with the new dot.gamma300=12.0 meV
           default (was 0.8690018619 at the superseded 16.0 meV value --
           see dot.gamma300's note for the full 6.5/12/16 meV sensitivity);
-          rho_op and collected_flux_pulsed_s move upward with the newly
-          explicit emission.NA=0.75/R_back=0.95/L_um=250 collection levers
-          (previously 0.6568195372 and 57.9294657 under undeclared
-          NA=0.5/R_back=None/L_um=500 device.py defaults). The collected
+          rho_op moves upward with the newly explicit
+          emission.NA=0.75/R_back=0.95/L_um=250 collection levers
+          (previously 0.6568195372 under undeclared NA=0.5/R_back=None/
+          L_um=500 device.py defaults; unaffected by the facet-model fix
+          below since rho_op is a transport-intrinsic signal fraction,
+          Lemma 1). collected_flux_pulsed_s was 212.3869297 under those
+          same newly-explicit collection levers before this round's facet
+          fix (fifth council review item 1: waveguide.edge_emission's
+          escape-rate facet fraction was double-counting the front-facet
+          transmission T_facet with R_back=0.95 set); it is now
+          291.5563464 with T_facet applied exactly once (57.9294657 was
+          the still-earlier value under undeclared NA=0.5/R_back=None/
+          L_um=500 device.py defaults). The collected
           flux is still below the 1 kHz floor; the flux floor is not
           attainable in the allowed mu range; this is the flux-maximising
           allowed current. The 0.5x point is now feasible (mu=0.1311, not
@@ -252,7 +261,7 @@ design:
         source: "Opt-in CW g2(tau)/IRF diagnostics (docs/rt_edge_contract.md block schema)."
       drive.b_res:
         value: 0.13636363636363635
-        tag: E
+        tag: A
         source: "[E] class value transferred from a different material and temperature: Reischle et al., Optics Express 16, 12771 (2008), InP/AlGaInP QD C at 80 K (raw g2 0.43 -> 0.03 after background correction, rho approximately 0.88 -> b_res = 1/0.88 - 1 = 0.136; ledger anchor reischle08-b-res-80k in verify/data/rt_edge_anchors.yaml states rho = 0.88 directly -- this card's b_res = 1/rho - 1 transformation, and its transfer to 300 K InP/GaAsP, are assumptions of this card, not of that anchor); T-independent residual assumed."
       drive.cw_irf_fwhm_ps:
         value: 50.0
@@ -528,6 +537,8 @@ design:
     assumptions:
       - dot.gamma300
       - drive.b_res
+      - ret.system.barrier.x_al
+      - emission.lambda_nm
 
     single_dot_selection:
       aperture_um2: 0.12566370614359174

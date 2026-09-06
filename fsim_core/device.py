@@ -1014,11 +1014,12 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         brightness *= op["S"]
 
     # emission.type="edge" (Lemma 1: brightness only -- eta_total already
-    # contains beta, the chosen front-facet fraction, AND the Fresnel facet
-    # transmission T_facet (council review 2026-09-05 item 3: T_facet was
-    # previously solved for and returned but never multiplied in, 1.37x
-    # optimistic) exactly once each; none of beta/front/T_facet/
-    # cavity.beta_sin are applied a second time here).
+    # contains beta, the propagation and NA factors, and ONE facet factor:
+    # geometric 0.5*T_facet with no back mirror, or the escape-rate fraction
+    # T_f/(T_f + (1 - R_back)) with an HR back facet (council review
+    # 2026-09-06 pass 5: the earlier form applied T_facet twice). None of
+    # beta/facet/cavity.beta_sin are applied a second time here; see
+    # waveguide.edge_emission notes for the model in use).
     edge, edge_lambda_nm, edge_err = None, float("nan"), None
     if d.emission.type == "edge" and np.isfinite(op["Tj"]):
         try:

@@ -52,6 +52,23 @@ expected_total = r.beta * 0.5 * r.T_facet * r.eta_prop * r.eta_NA
 ck(abs(expected_total - r.eta_total) < 1e-9, 'facet transmission included in eta_total')
 ck(r.T_facet < 1.0, 'facet transmission is not unity (so omitting it was not a no-op)')
 
+# council review 2026-09-06 item 1: two facet models, chosen by whether
+# R_back is given, and T_facet must appear exactly once in eta_total either
+# way (the previous bug applied it a second time on top of the escape-rate
+# fraction, ~4% flux under-report at the class R_back=0.95 point).
+r_back0 = edge_emission(s, 2000, 1200, 668, 500, .5, R_back=0.0)
+ck(abs(r_back0.eta_total - r.eta_total) < 1e-9,
+   'R_back=0.0 reproduces the uncoated (R_back=None) eta_total exactly')
+r_back95 = edge_emission(s, 2000, 1200, 668, 500, .5, R_back=0.95)
+expected_escape = r_back95.beta * (r_back95.T_facet / (r_back95.T_facet + (1 - 0.95))) \
+    * r_back95.eta_prop * r_back95.eta_NA
+ck(abs(expected_escape - r_back95.eta_total) < 1e-9,
+   'R_back=0.95 gives the escape-rate facet value exactly (no extra factor of T_facet)')
+r_backs = [edge_emission(s, 2000, 1200, 668, 500, .5, R_back=rb).eta_total
+           for rb in (0.0, 0.3, 0.6, 0.9, 0.95, 0.99)]
+ck(all(a <= b + 1e-12 for a, b in zip(r_backs, r_backs[1:])),
+   'eta_total is monotone non-decreasing in R_back (escape-rate model)')
+
 # item 4: position factor -- centred symmetric stack keeps beta near the
 # antinode value (pos > 0.95); a dot moved to the cladding edge (far from the
 # vertical antinode) must collapse pos well below 1.  Reuses the SAME hkust

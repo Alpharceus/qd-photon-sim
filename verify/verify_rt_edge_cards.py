@@ -190,7 +190,7 @@ def resolve_design_path(design: DeviceDesign, path: str):
 
 # --------------------------------------------------------------------- main
 
-def check_card(path: Path, anchors: dict) -> None:
+def check_card(path: Path, anchors: dict) -> set:
     tag = path.name
     raw_doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     raw_design = raw_doc["design"]
@@ -247,6 +247,13 @@ def check_card(path: Path, anchors: dict) -> None:
        "Express 16, 12771" in bres_source and "2008" in bres_source
        and "233113" not in bres_source
        and "InP/GaInP" not in bres_source)
+    # Council review 2026-09-06 (fifth round) item 2: the ledger anchor
+    # (reischle08-b-res-80k) states the 80 K -> 300 K, cross-material
+    # transfer of this ratio "is an [A] of the cards" -- b_res is
+    # accordingly tagged A here, not E.
+    ok(f"{tag}: drive.b_res is tagged A (80 K -> 300 K transfer is an "
+       "assumption of the cards, per the reischle08-b-res-80k anchor)",
+       bres_entry.get("tag") == "A")
 
     # Council review 2026-09-06 item 3: the collection levers (emission.NA,
     # emission.R_back, emission.L_um, emission.alpha_cm) must be explicit,
@@ -460,12 +467,22 @@ def check_card(path: Path, anchors: dict) -> None:
            f"({eval_seconds:.2f} s)",
            eval_seconds < CW_RUNTIME_BUDGET_S)
 
+    return assumptions
+
 
 def main() -> int:
     anchors_doc = yaml.safe_load(ANCHORS_PATH.read_text(encoding="utf-8"))
     anchors = {a["id"]: a for a in anchors_doc["anchors"]}
+    assumptions_by_card = {}
     for path in CARDS:
-        check_card(path, anchors)
+        assumptions_by_card[path.name] = check_card(path, anchors)
+    # Council review 2026-09-06 (fifth round) item 2: both cards must carry
+    # the same assumptions-list field set (ret.system.barrier.x_al and
+    # emission.lambda_nm previously missing from the gaasp card).
+    card_names = list(assumptions_by_card)
+    ok(f"{card_names[0]!r} and {card_names[1]!r} carry the same "
+       "provenance.assumptions field set",
+       assumptions_by_card[card_names[0]] == assumptions_by_card[card_names[1]])
     print(f"{sum(CHECKS)}/{len(CHECKS)} rt-edge card checks passed")
     return 0 if all(CHECKS) else 1
 
