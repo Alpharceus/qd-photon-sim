@@ -1,26 +1,30 @@
 # RT edge-emitter tier
 
-This tier evaluates a 300 K heatsink, electrically driven, edge-emitting InP-dot single-photon source with the contract grid in `docs/rt_edge_contract.md`. It is a model-and-evidence assessment, not a device demonstration. The current results below are read from the generated acceptance artifacts and the current verification scripts.
+This tier evaluates non-cryogenic heatsink operation (`T_hs >= 230 K`), electrically driven, edge-emitting InP-dot single-photon operation with the contract grid in `docs/rt_edge_contract.md`. It is a model-and-evidence assessment, not a device demonstration. The current results below are read from the generated acceptance artifacts and the current verification scripts.
 
 ## Outcome
 
-The stop rule is **not met as stated**. The pulsed intrinsic result at 300 K is decided by the exciton linewidth of the InP dot, which has not been measured for this material. The new sampled threshold is bracketed at `gamma300_threshold=8-10` meV. The explicit 6.5 meV per-card evaluation fails for the primary InP/GaAsP card (`g2_pulsed=0.6523`, flux 291.6 photons/s) and passes for the fallback InP/(Al)GaInP card (`g2_pulsed=0.4563`, flux 1441 photons/s). The primary card never clears the flux floor; the conditional result rests on the fallback card alone. This is conditional model evidence, not a PASS.
+Under the relaxed stop rule (`T_hs >= 230 K`), the sweep passes its headline g2 and flux gates at 230, 250, and 273 K for the primary InP/GaAsP card, and at 230, 250, 273, and 300 K for the fallback InP/(Al)GaInP card. These headline rows occur at the sampled `gamma300=6.0 meV` endpoint; the primary has no headline pass at 300 K, while the fallback retains 12/192 headline rows there. The pooled linewidth threshold is bracketed at `T_pass_min=230` and `gamma300_threshold=10-12` meV. The 300 K line remains the room-temperature result: it is conditional on the fallback card and on an unmeasured InP-dot linewidth, and evidence is still incomplete, so the verdict remains conditional rather than a PASS.
 
 The current `out/rt_edge/verdict.md` line is quoted verbatim:
 
 ```
-VERDICT: FAIL g2_min=0.3986 g2_median_eligible=0.7019 diag_g2_min=0.3986 diag_g2_median_diagnostic=0.7352 flux_max=1544 flux_margin=1.544 flux_shortfall_deprecated=0.6475 median_pass=false coverage_over_eligible=0.25 eligible_fraction=0.1667 eligible=32/192 flux_floor_excluded=160 evidence=incomplete conditional=true headline_coverage=8/192 cw_raw_coverage=0/192 gamma300_pass_max=8 gamma300_threshold=8-10
+VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192
 ```
 
-The fallback card supplies the best eligible corner at `delta_xx=7 meV`, `gamma300=6 meV`, and 50 ps IRF: pulsed `g2(0)=0.3986`, collected flux 1544 photons/s, and 8 headline-passing rows of 192. The primary card has no eligible row (0/96); the fallback has 32/96 eligible rows, of which eight meet the pulsed headline. The CW raw gate remains zero. The primary InP/GaAsP card never clears the flux floor, so the conditional result rests on the fallback InP/(Al)GaInP card alone.
+The fallback card supplies the best eligible corner at `delta_xx=8 meV`, `gamma300=6 meV`, and 50 ps IRF: pulsed `g2(0)=0.3214`, collected flux 6890 photons/s, and 130 headline-passing rows of 768. Per temperature, headline rows are 60/192, 34/192, 24/192, and 12/192 at 230, 250, 273, and 300 K respectively. The CW raw gate remains zero. The primary card contributes passes below 300 K, but the 300 K conditional result rests on the fallback card.
 
 Evidence is still incomplete for two central claims: there is no second verified source for Reischle 2008's 80 K electrical `g2`, and the HKUST 750 nm line is not reproduced by the single-band solver (the GaAsP card computes about 816 nm). The evidence ledger also records the transferred 80 K residual-background claim as single-sourced. These gaps independently block PASS.
 
 ## Comparison points and interpretation
 
-The model's relevant comparison values must be interpreted as predictions, not new measurements. Like-for-like against Reischle et al. (2008), the IRF-deconvolved, background-included anchor is `g2(0)=0.25 +/- 0.05`, versus the model's best intrinsic corner `g2_min=0.3986`; the raw and fully corrected values are not the matching convention. Against Chatzarakis et al. (2023), the 230 K comparison is `g2(0)=0.36`; the model's 230 K comparison prediction is 0.36. These numbers and the anchor provenance are checked by `verify/verify_rt_edge_papers.py` and `verify/data/rt_edge_anchors.yaml`.
+The model's relevant comparison values must be interpreted as predictions, not new measurements. Like-for-like against Reischle et al. (2008), the IRF-deconvolved, background-included anchor is `g2(0)=0.25 +/- 0.05`, versus the model's best intrinsic corner `g2_min=0.3214`; the raw and fully corrected values are not the matching convention. Against Chatzarakis et al. (2023), the 230 K comparison is `g2(0)=0.36`; the model's 230 K comparison prediction is 0.36. These numbers and the anchor provenance are checked by `verify/verify_rt_edge_papers.py` and `verify/data/rt_edge_anchors.yaml`.
 
-The key practical result is therefore narrow: the continuous threshold is bracketed between 8 and 10 meV by the sampled grid, while the 6.5 meV anchor passes only on the fallback card; a second independent source for the 80 K electrical anchor is also needed before the evidence gate can pass.
+The key practical result is therefore narrow: non-cryogenic operation first passes at 230 K (`T_pass_min=230`), with the pooled continuous linewidth threshold bracketed between 10 and 12 meV by the sampled grid. The 6.5 meV per-card anchor still passes only on the fallback card; a second independent source for the 80 K electrical anchor is also needed before the evidence gate can pass.
+
+## NA-collection correction
+
+The waveguide review found that the old collection estimate used the wrong separable formula inside a circular NA cone. The corrected model integrates the circular cone and uses the per-axis Gaussian factor `erf(sqrt(2) theta_max/theta_div)`, with `theta_div=lambda/(pi w0)`; the review also standardizes the 1/e² width convention. At the favourable diagnostic corner, the old result was NA collection `0.548244` and 1544.4 photons/s; after the correction these are `0.857853` and 6890.03 photons/s (about 4.46x higher). The updated flux decomposition still identifies confinement retention `S` as the limiting factor. This is a model correction, not an experimental brightness measurement.
 
 ## Assumptions carried by the cards
 
@@ -55,12 +59,12 @@ Run the acceptance sweep with `python scripts/run_rt_edge.py`; it regenerates `o
 | `verify/verify_materials.py` | 76/76 materials checks passed |
 | `verify/verify_cw_g2.py` | 17/17 CW checks passed |
 | `verify/verify_dot_levels.py` | 14/14 checks passed; 8 known deviations documented |
-| `verify/verify_waveguide.py` | 24/24 waveguide checks passed |
+| `verify/verify_waveguide.py` | 31/31 waveguide checks passed |
 | `verify/verify_transport.py` | 34/34 transport checks passed |
-| `verify/verify_rt_edge_cards.py` | 203/203 rt-edge card checks passed |
-| `verify/verify_rt_edge_contract.py` | 91/93 contract checks passed (two evidence gaps) |
+| `verify/verify_rt_edge_cards.py` | 215/215 rt-edge card checks passed |
+| `verify/verify_rt_edge_contract.py` | 95/97 contract checks passed (two evidence gaps) |
 | `verify/verify_rt_edge_papers.py` | 14/17 rt-edge paper checks passed (three single-source evidence gaps) |
-| `verify/verify_rt_edge_sweep.py` | 43/43 rt-edge sweep checks passed |
+| `verify/verify_rt_edge_sweep.py` | 94/94 rt-edge sweep checks passed |
 | `verify/verify_device_rt.py` | 206/206 device RT checks passed |
 | `verify/verify_designer_rt.py` | 6/6 designer RT checks passed |
 | `verify/verify_spec_rt.py` | 11/11 spec RT checks passed |
@@ -76,6 +80,7 @@ The review record is in `../_goal/PROGRESS.md`; the associated `.workers/specs/r
 - A codex-sol cross-review found that the human-facing documents still described an earlier sweep; this final documentation round refreshes the verdict, counts, disclosures, and conditional conclusion.
 - Council review pass 5 refreshed the gamma300 threshold bracket, flux margin, 6.5 meV per-card anchor, like-for-like Reischle comparison, and fused facet-model note.
 - Council review pass 6 (Opus, 2026-09-06) confirmed the physics reproduces to float precision (facet factor applied once, 1544 photons/s factor chain, 8-10 meV threshold bracket) and found reporting-attribution errors; fix round 6 made the residual-background citation ledger-driven (Opt. Express 16, 12771), prints `none(flux)` / `none(g2)` instead of a misleading threshold when nothing passes, names the smallest factor of the whole brightness chain (retention S) as the limiter, unifies the coverage/median names with the VERDICT line, adds the IRF-deconvolved Reischle 0.25 +/- 0.05 anchor with [V] tags, and rewrites the cards' signal-fraction sentences (Lemma 1: rho is independent of the collection levers).
+- Council review pass 8: lecture-deck physics reviews found the NA-collection bug; the circular NA-cone correction refreshed the flux values and temperature-axis conclusion.
 
 ## Limits
 

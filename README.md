@@ -86,7 +86,7 @@ gate and review finding is encoded as a permanent check.
 
 ## RT edge-emitter tier (branch rt-edge-emitter)
 
-Branch `rt-edge-emitter` adds a room-temperature (300 K heatsink),
+Branch `rt-edge-emitter` adds a non-cryogenic (230--300 K heatsink),
 electrically driven, edge-emitting InP-dot tier on top of the F-series core:
 new `fsim_core` modules for materials, 300 K linewidth, confinement levels,
 p-i-n transport, ridge waveguide, and CW correlation; new opt-in
@@ -96,23 +96,19 @@ p-i-n transport, ridge waveguide, and CW correlation; new opt-in
 The honest conditional outcome, from `out/rt_edge/verdict.md`, is:
 
 ```
-VERDICT: FAIL g2_min=0.3986 g2_median_eligible=0.7019 diag_g2_min=0.3986 diag_g2_median_diagnostic=0.7352 flux_max=1544 flux_margin=1.544 flux_shortfall_deprecated=0.6475 median_pass=false coverage_over_eligible=0.25 eligible_fraction=0.1667 eligible=32/192 flux_floor_excluded=160 evidence=incomplete conditional=true headline_coverage=8/192 cw_raw_coverage=0/192 gamma300_pass_max=8 gamma300_threshold=8-10
+VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192
 ```
 
-The stop rule is not met as stated. The model's pulsed intrinsic `g2(0)` at
-300 K is controlled by an unmeasured InP-dot exciton linewidth; the sampled
-threshold is bracketed at 8--10 meV. The explicit 6.5 meV per-card result
-fails for the primary InP/GaAsP card and passes for the fallback InP/(Al)GaInP
-card. At 6.5 meV, the primary returns `g2_pulsed=0.6523` and 291.6 photons/s,
-while the fallback returns `g2_pulsed=0.4563` and 1441 photons/s. The primary card never clears the flux floor, so the conditional result
-rests on the fallback card alone. Evidence remains
-incomplete: no second verified source supports Reischle 2008's 80 K electrical
-`g2` anchor, and the HKUST 750 nm line is not reproduced by the single-band
-solver (about 816 nm for the GaAsP card). The CW dip is detector-limited, so
-pulsed drive is required. Like-for-like, Reischle's deconvolved 0.25 +/- 0.05
-is compared with the model's best intrinsic corner. See **`docs/rt_edge_tier.md`** for current verify
-counts, the 80 K/230 K comparisons, assumptions, disclosures, and council
-review history.
+Under the relaxed stop rule (`T_hs >= 230 K`), the primary card passes at 230,
+250, and 273 K, while the fallback card passes at 230, 250, 273, and 300 K;
+all headline passes are at sampled `gamma300=6.0 meV`. The 300 K line remains
+the room-temperature result and is conditional on the fallback card and an
+unmeasured linewidth. The pooled threshold is 10--12 meV and
+`T_pass_min=230`; evidence remains incomplete, so this is not a PASS. The
+corrected circular-NA collection model raises the favourable-corner flux from
+1544.4 to 6890.03 photons/s (NA 0.548244 to 0.857853). See
+**`docs/rt_edge_tier.md`** for current counts, assumptions, disclosures, and
+council review history.
 
 ## Status
 
