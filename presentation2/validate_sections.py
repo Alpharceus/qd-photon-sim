@@ -2,11 +2,13 @@
 presentation2/sections/*.json against the schema in presentation2/SCHEMA.md.
 
 Checks: required keys (section-level and per-slide), layout is one of the
-nine allowed values, at most 6 bullets each at most ~18 words, at most 3
-equations per slide (each with latex + caption), figure.path/figure.script
-exist on disk (the figure.path check can be skipped with check_figures=False
-for a fast pre-figure-generation pass -- see build.py), and every
-`repo_numbers` entry's value against its source, in one of two forms:
+eleven allowed values, at most 6 bullets each at most ~18 words, at most 3
+equations per slide (each with latex + caption), speaker notes word count
+(100-280 words, hard bounds), figure.path/figure.script exist on disk and
+figure.path is exactly 1600x900 or 1200x1200 px, read straight from the PNG
+header (both checks skip with check_figures=False for a fast
+pre-figure-generation pass -- see build.py), and every `repo_numbers` entry's
+value against its source, in one of two forms:
   (a) literal: {"value": ..., "file": ...} -- the value must appear (within
       `tolerance`, default 1e-6, absolute) as a numeric token in the text of
       the named file.
@@ -34,6 +36,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -43,15 +46,20 @@ SECTIONS_DIR = Path(__file__).resolve().parent / "sections"
 
 VALID_LAYOUTS = {
     "title", "bullets", "bullets+figure", "figure", "equation",
-    "two-column", "table", "section-divider", "quote",
+    "equation+figure", "two-column", "table", "bullets+table",
+    "section-divider", "quote",
 }
 MAX_BULLETS = 6
 MAX_BULLET_WORDS = 18
 MAX_EQUATIONS = 3
+MIN_NOTES_WORDS = 100
+MAX_NOTES_WORDS = 280
+ALLOWED_FIGURE_SIZES = {(1600, 900), (1200, 1200)}
 REPO_NUMBER_TOL = 1e-6
 HOW_TIMEOUT_S = 30
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 def _word_count(s: str) -> int:
@@ -67,6 +75,21 @@ def _number_in_text(text: str, value: float, tol: float) -> bool:
         if abs(num - value) <= tol:
             return True
     return False
+
+
+def _png_dimensions(path: Path):
+    """Read (width, height) straight from a PNG's IHDR chunk (bytes 16:24 of
+    the file), no image library needed. Returns None if `path` is not a
+    well-formed PNG."""
+    try:
+        with path.open("rb") as f:
+            header = f.read(24)
+    except OSError:
+        return None
+    if len(header) < 24 or header[:8] != _PNG_SIGNATURE:
+        return None
+    width, height = struct.unpack(">II", header[16:24])
+    return width, height
 
 
 class _Validator:
@@ -171,6 +194,15 @@ class _Validator:
             if req not in slide:
                 self.err(where, f"missing required key '{req}'")
 
+        notes = slide.get("notes")
+        if isinstance(notes, str):
+            wc = _word_count(notes)
+            if wc < MIN_NOTES_WORDS or wc > MAX_NOTES_WORDS:
+                self.err(
+                    where,
+                    f"notes has {wc} words, must be {MIN_NOTES_WORDS}-{MAX_NOTES_WORDS}",
+                )
+
         layout = slide.get("layout")
         if layout is not None and layout not in VALID_LAYOUTS:
             self.err(where, f"invalid layout '{layout}' (allowed: {sorted(VALID_LAYOUTS)})")
@@ -203,8 +235,19 @@ class _Validator:
                     self.err(where, f"figure missing '{req}'")
             if "script" in figure and not (ROOT / figure["script"]).exists():
                 self.err(where, f"figure script does not exist: {figure['script']}")
-            if self.check_figures and "path" in figure and not (ROOT / figure["path"]).exists():
-                self.err(where, f"figure path does not exist: {figure['path']} (run its script first)")
+            if self.check_figures and "path" in figure:
+                target = ROOT / figure["path"]
+                if not target.exists():
+                    self.err(where, f"figure path does not exist: {figure['path']} (run its script first)")
+                else:
+                    dims = _png_dimensions(target)
+                    if dims not in ALLOWED_FIGURE_SIZES:
+                        got = f"{dims[0]}x{dims[1]}" if dims else "unreadable/not a PNG"
+                        self.err(
+                            where,
+                            f"figure {figure['path']} is {got} px, must be exactly "
+                            f"1600x900 or 1200x1200",
+                        )
 
         columns = slide.get("columns")
         if columns is not None:

@@ -131,6 +131,19 @@ def render_sources(sources) -> str:
     return f'<ul class="sources">{items}</ul>'
 
 
+def render_equations(equations) -> str:
+    return "".join(render_equation_block(eq) for eq in equations)
+
+
+def render_equations_extra(equations) -> str:
+    """The generic "equations render on every layout" block appended below
+    a layout's own content when that layout does not already make the
+    equations array its primary content (equation, equation+figure)."""
+    if not equations:
+        return ""
+    return f'<div class="equations equations-extra">{render_equations(equations)}</div>'
+
+
 def render_slide(slide, section, accent) -> str:
     layout = slide["layout"]
     title = esc(slide.get("title", ""))
@@ -158,9 +171,12 @@ def render_slide(slide, section, accent) -> str:
         if slide.get("figure"):
             body += render_figure(slide["figure"])
     elif layout == "equation":
-        body = f'<h2>{title}</h2><div class="equations">'
-        for eq in slide.get("equations", []):
-            body += render_equation_block(eq)
+        body = f'<h2>{title}</h2><div class="equations">{render_equations(slide.get("equations", []))}</div>'
+    elif layout == "equation+figure":
+        body = f'<h2>{title}</h2><div class="split">'
+        body += f'<div class="split-text equations">{render_equations(slide.get("equations", []))}</div>'
+        if slide.get("figure"):
+            body += f'<div class="split-fig">{render_figure(slide["figure"])}</div>'
         body += "</div>"
     elif layout == "two-column":
         body = f'<h2>{title}</h2><div class="columns">'
@@ -174,8 +190,19 @@ def render_slide(slide, section, accent) -> str:
         body += "</div>"
     elif layout == "table":
         body = f'<h2>{title}</h2>{render_table(slide.get("table", {}))}'
+    elif layout == "bullets+table":
+        body = f"<h2>{title}</h2>{subtitle}"
+        if slide.get("bullets"):
+            body += render_bullets(slide["bullets"])
+        body += render_table(slide.get("table", {}))
     else:
         body = f"<h2>{title}</h2>"
+
+    # Equations are rendered on EVERY layout that carries an equations
+    # array (SCHEMA.md), not only "equation" and "equation+figure", which
+    # already made the array their primary content above.
+    if layout not in ("equation", "equation+figure"):
+        body += render_equations_extra(slide.get("equations"))
 
     dark = layout == "section-divider"
     slide_style = f'style="--accent:#{accent};"' + (' data-dark="1"' if dark else "")
@@ -253,6 +280,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
 .fig img, .eq img { max-width: 100%; height: auto; }
 .fig figcaption, .eq figcaption { font-size: 0.85rem; font-style: italic; color: var(--muted); margin-top: 0.3rem; }
 .equations { display: flex; flex-direction: column; gap: 1rem; }
+.equations-extra { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .columns { display: flex; gap: 1.5rem; }
 .column { flex: 1 1 0; min-width: 0; }
 .table-wrap { overflow-x: auto; }

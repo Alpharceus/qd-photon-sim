@@ -14,10 +14,15 @@ What this confirms:
   * the produced pptx opens with python-pptx, its slide count equals the
     sample section's slide count, every slide's rendered text contains its
     JSON `title`, every slide's notes slide matches its JSON `notes`
-    verbatim, and every `equation`-layout slide contains at least as many
-    picture shapes as it has `equations`;
+    verbatim, and every slide carrying an `equations` array -- on any
+    layout, not only `equation` -- contains at least as many picture shapes
+    as it has `equations` (exercises the new `equation+figure` and
+    `bullets+table` layouts, and a `bullets+figure` slide with an equation);
   * out/presentation2/index.html has the same number of `<section` elements
-    as slides, embeds no external `<script src=`, and stays under 16 MB.
+    as slides, embeds no external `<script src=`, and stays under 16 MB;
+  * validate_sections.py rejects speaker notes shorter than the 100-280 word
+    hard bound and a figure PNG whose pixel size is not exactly 1600x900 or
+    1200x1200 (negative tests using temp copies).
 
 Sandbox note: this creates a tempfile.TemporaryDirectory(); inside a
 read-only or workspace-write sandbox that can raise PermissionError. If that
@@ -91,12 +96,73 @@ def check_repo_numbers_how(sample: dict) -> None:
        "validate_sections.py --section rejects a tampered 'how' expected value")
 
 
+def check_notes_length_validation(sample: dict) -> None:
+    """validate_sections.py must reject a slide whose speaker notes are far
+    shorter than the schema's 100-280 word hard bound."""
+    mutated = json.loads(json.dumps(sample))
+    mutated["slides"][0]["notes"] = "Too short to pass the word-count check."
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_path = Path(tmp) / SAMPLE_JSON.name
+        bad_path.write_text(json.dumps(mutated), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(PRESENTATION2 / "validate_sections.py"),
+             "--section", str(bad_path)],
+            cwd=str(ROOT), capture_output=True, text=True,
+        )
+    ck(result.returncode != 0,
+       "validate_sections.py --section rejects notes shorter than 100 words")
+
+
+_FAKE_PNG_PATH = PRESENTATION2 / "figures" / "out" / "_verify_tmp_badsize.png"
+
+
+def _write_fake_png(width: int, height: int, path: Path) -> None:
+    """A PNG whose first 24 bytes (signature + IHDR width/height) are well
+    formed -- all validate_sections.py's `_png_dimensions` reads -- but whose
+    body is otherwise not a real, decodable image; good enough for a check
+    that never asks a real image library to open the file."""
+    sig = b"\x89PNG\r\n\x1a\n"
+    ihdr_len = (13).to_bytes(4, "big")
+    ihdr_body = (
+        width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(sig + ihdr_len + b"IHDR" + ihdr_body + b"\x00\x00\x00\x00")
+
+
+def check_figure_size_validation(sample: dict) -> None:
+    """validate_sections.py must reject a figure PNG whose pixel size is not
+    exactly 1600x900 or 1200x1200."""
+    mutated = json.loads(json.dumps(sample))
+    mutated_slide = next(s for s in mutated["slides"] if s.get("figure"))
+    mutated_slide["figure"]["path"] = "presentation2/figures/out/_verify_tmp_badsize.png"
+
+    _write_fake_png(800, 600, _FAKE_PNG_PATH)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            bad_path = Path(tmp) / SAMPLE_JSON.name
+            bad_path.write_text(json.dumps(mutated), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(PRESENTATION2 / "validate_sections.py"),
+                 "--section", str(bad_path)],
+                cwd=str(ROOT), capture_output=True, text=True,
+            )
+    finally:
+        if _FAKE_PNG_PATH.exists():
+            _FAKE_PNG_PATH.unlink()
+    ck(result.returncode != 0,
+       "validate_sections.py --section rejects a figure that is not 1600x900 or 1200x1200 px")
+
+
 def main() -> int:
     sample = json.loads(SAMPLE_JSON.read_text(encoding="utf-8"))
     slides_by_id = {s["id"]: s for s in sample["slides"]}
     expected_n_slides = len(sample["slides"])
 
     check_repo_numbers_how(sample)
+    check_notes_length_validation(sample)
+    check_figure_size_validation(sample)
 
     with tempfile.TemporaryDirectory() as tmp:
         sections_dir = Path(tmp)
@@ -133,13 +199,16 @@ def main() -> int:
         notes_ok = bool(json_slide) and notes_text == json_slide["notes"]
         ck(notes_ok, f"slide {label}: notes slide matches its JSON notes verbatim")
 
-        if json_slide and json_slide["layout"] == "equation":
+        if json_slide and json_slide.get("equations"):
+            # Every layout that carries an `equations` array must render
+            # them as pictures, not only the `equation` layout (SCHEMA.md).
             n_pictures = sum(
                 1 for shape in pptx_slide.shapes if shape.shape_type == MSO_SHAPE_TYPE.PICTURE
             )
-            n_equations = len(json_slide.get("equations", []))
+            n_equations = len(json_slide["equations"])
             ck(n_pictures >= n_equations,
-               f"slide {label}: {n_pictures} pictures >= {n_equations} equations")
+               f"slide {label} ({json_slide['layout']}): "
+               f"{n_pictures} pictures >= {n_equations} equations")
 
     html_text = HTML_PATH.read_text(encoding="utf-8")
     n_sections = len(re.findall(r"<section", html_text))

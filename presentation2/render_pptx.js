@@ -235,6 +235,7 @@ function layoutTitle(pres, slide, sectionTitle, pageNum, accent) {
       align: "center", valign: "top", margin: 0,
     });
   }
+  addLowerEquationsIfAny(s, slide, 5.1);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -253,6 +254,7 @@ function layoutSectionDivider(pres, slide, sectionTitle, pageNum, accent) {
       align: "center", valign: "top", margin: 0,
     });
   }
+  addLowerEquationsIfAny(s, slide, 5.2);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: true, notes: slide.notes });
 }
 
@@ -271,6 +273,7 @@ function layoutQuote(pres, slide, sectionTitle, pageNum, accent) {
       align: "center", valign: "top", margin: 0,
     });
   }
+  addLowerEquationsIfAny(s, slide, 5.4);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -281,9 +284,13 @@ function layoutBullets(pres, slide, sectionTitle, pageNum, accent) {
   if (slide.subtitle) {
     s.addText(slide.subtitle, { x: CONTENT_X, y: TITLE_Y + TITLE_H, w: CONTENT_W, h: 0.35, fontSize: 16, italic: true, color: MUTED, fontFace: BODY_FONT, margin: 0 });
   }
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
   if (slide.bullets && slide.bullets.length) {
-    renderBulletsColumn(s, slide.bullets, { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H });
+    renderBulletsColumn(s, slide.bullets, main);
   }
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -310,15 +317,19 @@ function layoutBulletsFigure(pres, slide, sectionTitle, pageNum, accent) {
   const s = pres.addSlide();
   s.background = { color: WHITE };
   addTitleText(s, slide.title, { color: accent });
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
   const gap = 0.4;
   const leftW = CONTENT_W * 0.45;
   const rightW = CONTENT_W - leftW - gap;
   if (slide.bullets && slide.bullets.length) {
-    renderBulletsColumn(s, slide.bullets, { x: CONTENT_X, y: BODY_Y, w: leftW, h: BODY_H });
+    renderBulletsColumn(s, slide.bullets, { x: CONTENT_X, y: main.y, w: leftW, h: main.h });
   }
   if (slide.figure) {
-    addFigureWithCaption(s, slide.figure, { x: CONTENT_X + leftW + gap, y: BODY_Y, w: rightW, h: BODY_H });
+    addFigureWithCaption(s, slide.figure, { x: CONTENT_X + leftW + gap, y: main.y, w: rightW, h: main.h });
   }
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -326,9 +337,13 @@ function layoutFigure(pres, slide, sectionTitle, pageNum, accent) {
   const s = pres.addSlide();
   s.background = { color: WHITE };
   addTitleText(s, slide.title, { color: accent });
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
   if (slide.figure) {
-    addFigureWithCaption(s, slide.figure, { x: CONTENT_X + 1.0, y: BODY_Y, w: CONTENT_W - 2.0, h: BODY_H });
+    addFigureWithCaption(s, slide.figure, { x: main.x + 1.0, y: main.y, w: main.w - 2.0, h: main.h });
   }
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -360,34 +375,83 @@ function layoutEquation(pres, slide, sectionTitle, pageNum, accent) {
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
-function layoutTwoColumn(pres, slide, sectionTitle, pageNum, accent) {
+// ---- equations-on-every-layout support ------------------------------------
+//
+// SCHEMA.md: "Equations are rendered on EVERY layout that carries an
+// equations array (below the bullets or beside the figure), not only on
+// equation slides." layoutEquation above (and layoutEquationFigure below)
+// already make an equations array their primary content; every other layout
+// calls splitBodyForEquations() to carve a bottom strip out of its body box
+// for a compact equations block, rendered by renderEquationsStrip().
+
+const EQ_STRIP_ROW_H = 1.0;
+
+function renderEquationsStrip(s, equations, box) {
+  const eqs = equations || [];
+  const n = Math.max(eqs.length, 1);
+  const rowH = box.h / n;
+  eqs.forEach((eq, i) => {
+    const y = box.y + i * rowH;
+    const capH = eq.caption ? Math.min(0.3, rowH * 0.3) : 0;
+    const imgPath = equationImagePath(eq.latex);
+    if (fs.existsSync(imgPath)) {
+      s.addImage({
+        path: imgPath,
+        x: box.x, y, w: box.w, h: rowH - capH,
+        sizing: { type: "contain", w: box.w, h: rowH - capH },
+      });
+    }
+    if (eq.caption) {
+      s.addText(eq.caption, {
+        x: box.x, y: y + rowH - capH, w: box.w, h: capH,
+        fontSize: 11, italic: true, color: MUTED, fontFace: BODY_FONT,
+        align: "center", valign: "top", margin: 0,
+      });
+    }
+  });
+}
+
+// Splits `box` into { main, eq } when `equations` is non-empty (eq is null
+// otherwise, and main === box), reserving a bottom strip sized to the
+// equation count without ever taking more than about half the box.
+function splitBodyForEquations(box, equations) {
+  if (!equations || !equations.length) return { main: box, eq: null };
+  const gap = 0.15;
+  const eqH = Math.min(equations.length * EQ_STRIP_ROW_H, box.h * 0.45);
+  const mainH = Math.max(box.h - eqH - gap, box.h * 0.4);
+  return {
+    main: { x: box.x, y: box.y, w: box.w, h: mainH },
+    eq: { x: box.x, y: box.y + mainH + gap, w: box.w, h: box.h - mainH - gap },
+  };
+}
+
+// For layouts with no natural "body box" (title, quote, section-divider):
+// a fixed lower strip between their fixed content and the footer.
+function addLowerEquationsIfAny(s, slide, y) {
+  if (!slide.equations || !slide.equations.length) return;
+  renderEquationsStrip(s, slide.equations, { x: CONTENT_X, y, w: CONTENT_W, h: BODY_BOTTOM - y });
+}
+
+function layoutEquationFigure(pres, slide, sectionTitle, pageNum, accent) {
   const s = pres.addSlide();
   s.background = { color: WHITE };
   addTitleText(s, slide.title, { color: accent });
-  const cols = slide.columns || [];
-  const gap = 0.5;
-  const colW = (CONTENT_W - gap * (cols.length - 1)) / Math.max(cols.length, 1);
-  cols.forEach((col, i) => {
-    const x = CONTENT_X + i * (colW + gap);
-    s.addText(col.heading, {
-      x, y: BODY_Y, w: colW, h: 0.5,
-      fontSize: 20, bold: true, color: accent, fontFace: TITLE_FONT, margin: 0,
-    });
-    renderBulletsColumn(s, col.bullets || [], { x, y: BODY_Y + 0.55, w: colW, h: BODY_H - 0.55 });
-  });
+  const gap = 0.4;
+  const leftW = CONTENT_W * 0.45;
+  const rightW = CONTENT_W - leftW - gap;
+  renderEquationsStrip(s, slide.equations || [], { x: CONTENT_X, y: BODY_Y, w: leftW, h: BODY_H });
+  if (slide.figure) {
+    addFigureWithCaption(s, slide.figure, { x: CONTENT_X + leftW + gap, y: BODY_Y, w: rightW, h: BODY_H });
+  }
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
-function layoutTable(pres, slide, sectionTitle, pageNum, accent) {
-  const s = pres.addSlide();
-  s.background = { color: WHITE };
-  addTitleText(s, slide.title, { color: accent });
-  const table = slide.table || { header: [], rows: [] };
-  const headerRow = table.header.map((h) => ({
+function tableRows(table, accent) {
+  const headerRow = (table.header || []).map((h) => ({
     text: h,
     options: { bold: true, color: WHITE, fill: { color: accent }, fontFace: BODY_FONT, fontSize: 14 },
   }));
-  const bodyRows = table.rows.map((row, ri) =>
+  const bodyRows = (table.rows || []).map((row, ri) =>
     row.map((cell) => ({
       text: String(cell),
       options: {
@@ -396,11 +460,68 @@ function layoutTable(pres, slide, sectionTitle, pageNum, accent) {
       },
     }))
   );
-  s.addTable([headerRow, ...bodyRows], {
-    x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H,
+  return [headerRow, ...bodyRows];
+}
+
+function layoutBulletsTable(pres, slide, sectionTitle, pageNum, accent) {
+  const s = pres.addSlide();
+  s.background = { color: WHITE };
+  addTitleText(s, slide.title, { color: accent });
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
+  const bullets = slide.bullets || [];
+  const bulletH = bullets.length ? main.h * 0.35 : 0;
+  const gap = bullets.length ? 0.2 : 0;
+  if (bullets.length) {
+    renderBulletsColumn(s, bullets, { x: CONTENT_X, y: main.y, w: CONTENT_W, h: bulletH });
+  }
+  const table = slide.table || { header: [], rows: [] };
+  s.addTable(tableRows(table, accent), {
+    x: CONTENT_X, y: main.y + bulletH + gap, w: CONTENT_W, h: main.h - bulletH - gap,
+    fontSize: 13, border: { type: "solid", color: "DDDDDD", pt: 0.75 },
+    autoPage: false, valign: "middle",
+  });
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
+  finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
+}
+
+function layoutTwoColumn(pres, slide, sectionTitle, pageNum, accent) {
+  const s = pres.addSlide();
+  s.background = { color: WHITE };
+  addTitleText(s, slide.title, { color: accent });
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
+  const cols = slide.columns || [];
+  const gap = 0.5;
+  const colW = (CONTENT_W - gap * (cols.length - 1)) / Math.max(cols.length, 1);
+  cols.forEach((col, i) => {
+    const x = CONTENT_X + i * (colW + gap);
+    s.addText(col.heading, {
+      x, y: main.y, w: colW, h: 0.5,
+      fontSize: 20, bold: true, color: accent, fontFace: TITLE_FONT, margin: 0,
+    });
+    renderBulletsColumn(s, col.bullets || [], { x, y: main.y + 0.55, w: colW, h: main.h - 0.55 });
+  });
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
+  finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
+}
+
+function layoutTable(pres, slide, sectionTitle, pageNum, accent) {
+  const s = pres.addSlide();
+  s.background = { color: WHITE };
+  addTitleText(s, slide.title, { color: accent });
+  const { main, eq } = splitBodyForEquations(
+    { x: CONTENT_X, y: BODY_Y, w: CONTENT_W, h: BODY_H }, slide.equations
+  );
+  const table = slide.table || { header: [], rows: [] };
+  s.addTable(tableRows(table, accent), {
+    x: main.x, y: main.y, w: main.w, h: main.h,
     fontSize: 14, border: { type: "solid", color: "DDDDDD", pt: 0.75 },
     autoPage: false, valign: "middle",
   });
+  if (eq) renderEquationsStrip(s, slide.equations, eq);
   finishSlide(s, { sectionTitle, pageNum, repoNumbers: slide.repo_numbers, dark: false, notes: slide.notes });
 }
 
@@ -412,8 +533,10 @@ const LAYOUTS = {
   "bullets+figure": layoutBulletsFigure,
   figure: layoutFigure,
   equation: layoutEquation,
+  "equation+figure": layoutEquationFigure,
   "two-column": layoutTwoColumn,
   table: layoutTable,
+  "bullets+table": layoutBulletsTable,
 };
 
 // ---- main ---------------------------------------------------------------
