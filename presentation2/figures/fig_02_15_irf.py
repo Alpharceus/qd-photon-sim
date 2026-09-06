@@ -6,7 +6,7 @@ from fsim_core.cw_g2 import convolve_irf
 
 out = os.path.join(os.path.dirname(__file__), 'out', '02_15_irf.png')
 os.makedirs(os.path.dirname(out), exist_ok=True)
-t = np.linspace(-.08, .08, 1601); raw = 1 - .95*np.exp(-np.abs(t)/.005)
+t = np.linspace(-.3, .3, 6001); raw = 1 - .95*np.exp(-np.abs(t)/.005)
 fig, ax = plt.subplots(figsize=(1600/150, 900/150), dpi=150)
 for w, c in [(0, '#1769aa'), (20, '#e08e0b'), (100, '#c43d3d')]:
     if w == 0: y = raw

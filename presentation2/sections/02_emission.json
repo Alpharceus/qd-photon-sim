@@ -11,7 +11,7 @@
       "bullets": [
         "Section 2 · 30 minutes"
       ],
-      "notes": "We follow emission from confined carriers to detector statistics, keeping the quantum device, quantum dot, and quantum light claims separate. [Fox 2006] [Project's own treatment slides]  In lecture, use this slide to connect how a quantum dot emits to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "This section builds emission from a confined semiconductor level up to the number a photon-correlation detector reports, and it insists on keeping three claims separate: a quantum device (3D confinement and Coulomb blockade, carrier quantum mechanics), a quantum treatment of the dot (exciton-phonon coupling, exciton-biexciton-trion structure), and a quantum treatment of the light (field quantization, g^(2)(tau), regression theorem) [Project's own treatment slides, slide 3]. The repository's own model sits at Level 2 of that hierarchy: a semiclassical rate-equation cascade with photon statistics attached through cascade identities, not a Lindblad master equation with quantized field modes [Fox, Quantum Optics (2006), ch. 8]. We follow the chain in order -- dipole coupling, Fermi's golden rule, the exciton-biexciton-trion ladder, the cap-2 rate equations fsim_core/cw_g2.py solves, Hanbury Brown-Twiss statistics, background dilution, finite loading, detector response, phonon sidebands, thermal linewidth broadening, and thermal carrier escape -- ending with the room-temperature landscape and what remains unmeasured. Every number carries either a citation to a published measurement, a repository module that computed it, or an explicit assumption tag; the goal is that nobody mistakes a design-sensitivity sweep for a completed device certification.",
       "sources": [
         "Fox, Quantum Optics (2006)",
         "Project's own treatment slides"
@@ -37,7 +37,7 @@
           ]
         }
       ],
-      "notes": "The owner's slides define a quantum device through carrier confinement and Coulomb blockade, not automatically through a quantum optical output. Field quantisation, Fock states, and normally ordered correlations are a separate claim. [Project's own treatment slides] [Loudon]  In lecture, use this slide to connect what does ‘quantum’ mean here? to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The word 'quantum' does triple duty in this literature, and conflating the meanings is a common error in claims about single-photon sources [Project's own treatment slides, slide 3]. A 'quantum device' means only that carrier motion is quantum mechanical: three-dimensional confinement gives discrete electron and hole levels, and Coulomb blockade fixes how many charges can occupy the dot at once. Neither property says anything about the emitted field. A 'quantum treatment of the light' is the separate, stronger claim that the electromagnetic field itself is quantized -- Fock states, ladder operators [a, a-dagger] = 1 -- so photon correlation functions such as the normally ordered g^(2)(tau) become well-defined observables rather than heuristics [Loudon, The Quantum Theory of Light]. A device can be a genuine quantum device (confined, blockaded) while its light is described entirely classically; conversely, establishing g^(2)(0) < 1 requires the field-quantized description regardless of how classical or semiclassical the emitter model underneath it is. This section keeps the two axes visually and verbally distinct throughout, since the repository itself only ever implements the first axis together with a cascade shortcut for the second.",
       "sources": [
         "Project's own treatment slides",
         "Loudon, The Quantum Theory of Light"
@@ -76,7 +76,7 @@
           ]
         ]
       },
-      "notes": "A quantum treatment of the dot follows internal states and phonons. A quantum treatment of light follows field modes and output correlations. The repository is Level 2: rate and cascade identities, not a field-quantised density matrix. [Project's own treatment slides] [Gardiner 1985]  In lecture, use this slide to connect quantum treatment of the dot versus the light to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The table separates four analysis layers often blurred into one 'quantum dot' claim. The device layer is carrier confinement and Coulomb blockade -- levels and charge occupancy, no photon physics yet. The dot layer follows internal exciton/biexciton/trion states through either a rate equation or a master equation, giving populations and, at the master-equation level, coherences. The light layer quantizes the field itself: Fock modes, input-output theory [Gardiner and Collett, Phys. Rev. A 31, 3761 (1985)], and the quantum regression theorem, which actually produces g^(2)(tau) and Hong-Ou-Mandel visibility from a Lindbladian. The repository occupies the dot row's rate-equation branch: a semiclassical cascade (Level 2 in the owner's four-level hierarchy of rate equations, semiclassical, fully quantum, and output-state treatments) that reports purity and brightness through cascade identities rather than deriving them from field-quantized operators. That placement is not a defect to hide; it is why every g^(2) number in this deck should be read as a rate-equation regression result, correct on its own terms, but not a substitute for the Level-3/4 calculation the owner's brief names as the unclosed joint with electrical driving and 300 K phonon dephasing.",
       "sources": [
         "Project's own treatment slides",
         "Gardiner and Collett, PRA 31, 3761 (1985)"
@@ -89,38 +89,38 @@
       "table": {
         "header": [
           "condition",
-          "measurable",
-          "failure"
+          "spec",
+          "status"
         ],
         "rows": [
           [
-            "purity",
-            "g²(0) < 0.5",
-            "multiphoton"
+            "electrical injection",
+            "p-i-n mesa drive; pump statistics enter photon statistics",
+            "core model input"
           ],
           [
-            "brightness",
-            "detected photons/s",
-            "too dim"
+            "epitaxial III-V dot",
+            "InP dot in a GaAsP well; exciton near 1.88 eV (visible)",
+            "class proxy pending Measurement 1"
           ],
           [
-            "indistinguishability",
-            "HOM visibility",
-            "different wavepackets"
+            "purity g²(0) < 0.5",
+            "staged target 0.1 or 0.5: open program decision",
+            "acceptance gate"
           ],
           [
-            "on-demand",
-            "trigger histogram",
-            "random timing"
+            "in-plane SiN waveguide coupling",
+            "collection efficiency is an EM-simulation item, outside this model",
+            "out of scope here"
           ],
           [
-            "platform",
-            "electrical InP/GaAsP edge source",
-            "wrong claim"
+            "room temperature",
+            "ambition; staged deliverable anchored at 77-120 K",
+            "300 K not yet closed"
           ]
         ]
       },
-      "notes": "The program conditions are electrical injection, an InP/GaAsP epitaxial dot, integrated SiN collection, and a 300 K ambition staged through 77–120 K. Purity, brightness, indistinguishability, and timing are independent acceptance gates. [Project's own treatment slides] [Reischle 2008]  In lecture, use this slide to connect what a single-photon source must meet to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The program specifies five independent conditions, and each demands something different of the model [Project's own treatment slides, slide 2]. (1) Electrical injection: a p-i-n mesa drive, so pump statistics -- not just pump rate -- must propagate into photon statistics. (2) An epitaxial III-V dot: InP dots embedded in a GaAsP well, a visible-wavelength platform with the exciton transition near 1.88 eV. (3) Purity g^(2)(0) < 0.5, with the staged target itself still an open program decision between 0.1 and 0.5. (4) In-plane SiN waveguide coupling: an integrated-photonics collection geometry whose efficiency is an electromagnetic-simulation problem, explicitly outside this semiclassical model. (5) Room temperature as the ambition, with the anchored, currently defensible deliverable staged at 77-120 K. None of these gates is optional and none substitutes for another: a device can be bright and still impure, or pure and still too dim, or pure and bright at the wrong wavelength for the waveguide. Reischle's electrically pumped visible-range device up to 80 K is the closest published analogue to conditions 1, 2, and 5 together, though not yet at 300 K [Reischle et al., Optics Express 16, 12771 (2008)].",
       "sources": [
         "Project's own treatment slides",
         "Reischle et al., Optics Express 16, 12771 (2008)"
@@ -142,7 +142,7 @@
           "caption": "d is dipole, E field, and uc, uv periodic Bloch functions."
         }
       ],
-      "notes": "The dipole Hamiltonian connects the confined interband transition to the optical field. Envelope overlap, the Kane matrix element, strain, and HH/LH mixing determine strength and polarisation. [Chuang] [Yu and Cardona]  In lecture, use this slide to connect light–matter coupling to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The interaction Hamiltonian H_int = -d.E treats the confined interband transition in the electric-dipole approximation: d is the transition dipole operator and E the (here classical, later quantized) field. Its matrix element d_cv = <u_c|e r|u_v> factors into an envelope-function overlap set by confinement and a periodic Bloch-function part inherited from the bulk band structure. In III-V zinc-blende semiconductors that Bloch part is packaged by the Kane energy E_P, which sets the interband momentum matrix element magnitude common to conduction-to-heavy-hole and conduction-to-light-hole transitions [Chuang, Physics of Photonic Devices]. Confinement and strain lift the heavy-hole/light-hole degeneracy and mix the valence states, so which combination of u_c and u_v actually couples -- and with what polarization -- follows selection rules set by that mixing rather than by the bulk band edge alone [Yu and Cardona, Fundamentals of Semiconductors]. This dipole matrix element is the single quantity that, once squared and summed over vacuum modes in the next slide's golden-rule sum, sets the radiative rate Gamma_rad that everything downstream -- lifetime, brightness, the pulsed g^(2) cascade timing -- is built on.",
       "sources": [
         "Chuang, Physics of Photonic Devices",
         "Yu and Cardona, Fundamentals of Semiconductors"
@@ -166,7 +166,7 @@
           "caption": "f is oscillator strength; m0 and e are free-electron mass and charge."
         }
       ],
-      "notes": "Fermi's golden rule sums dipole-coupled vacuum modes and gives the cubic-frequency spontaneous rate. Oscillator strength is a dimensionless reporting form. The repository takes radiative rates as model inputs. [Fox 2006] [Michler 2017]  In lecture, use this slide to connect from golden rule to spontaneous emission to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Fermi's golden rule sums the dipole-photon coupling over the continuum of vacuum electromagnetic modes and, after integrating the mode density, gives the familiar cubic-frequency spontaneous emission rate Gamma_rad = n omega^3 |d|^2 / (3 pi epsilon_0 hbar c^3), with n the refractive index of the host medium raising the local mode density relative to vacuum [Fox, Quantum Optics (2006), ch. 8]. The oscillator strength f = 2 m_0 omega |d|^2 / (hbar e^2) repackages the same dipole matrix element into a dimensionless number that is easier to compare across material systems; it is the same physics as Gamma_rad, not an independent measurement. Self-assembled III-V dots typically show radiative lifetimes in the 1 ns class once envelope confinement and the host index are folded in [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)]. The repository does not derive Gamma_rad from a microscopic dipole calculation; it takes radiative rates (gamma_X, gamma_XX) as model inputs, either class-proxy values or, where available, anchored fits to a specific dot's measured decay. The golden-rule derivation here is the textbook justification for treating gamma as a rate constant at all in the cascade equations that follow.",
       "sources": [
         "Fox, Quantum Optics (2006)",
         "Michler ed. (2017)"
@@ -193,7 +193,7 @@
           ]
         }
       ],
-      "notes": "The two-level approximation isolates one dipole, while a dot adds XX, charge, spin, and phonon structure. The Jaynes–Cummings model distinguishes irreversible Purcell enhancement from strong-coupling exchange. [Purcell 1946] [Michler 2017]  In lecture, use this slide to connect two-level atom versus quantum dot to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The Jaynes-Cummings model -- one two-level emitter coupled to one quantized cavity mode with coherent exchange rate g -- is the simplest fully quantum-optical Hamiltonian and the natural point of comparison for a quantum dot [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)]. Two regimes follow from the ratio of g to the emitter and cavity loss rates. In weak coupling, spontaneous emission stays irreversible but its rate is modified: the Purcell factor F_P = (3/(4 pi^2)) (lambda/n)^3 Q/V quantifies how a high-Q, small-mode-volume cavity accelerates or, off resonance, suppresses radiative decay, which is the lever the repository's cavity block uses. In strong coupling, g exceeds the loss rates and the system instead forms dressed light-matter eigenstates with a vacuum Rabi splitting -- coherent, reversible exchange rather than a modified rate [Purcell, Physical Review 69, 681 (1946)]. A quantum dot is not, however, an ideal two-level atom even before coupling to a cavity: exciton, biexciton, charge, spin, and phonon degrees of freedom all sit on top of the single dipole transition the Jaynes-Cummings picture idealizes, and it is exactly those extra levels -- the subject of the next several slides -- that create the multiphoton and dephasing effects a bare two-level treatment misses.",
       "sources": [
         "Purcell, Physical Review 69, 681 (1946)",
         "Michler ed. (2017)"
@@ -211,10 +211,10 @@
       "equations": [
         {
           "latex": "E_{XX}^{ph}=E_X-E_{bind,XX},\\quad E(XX)=2E_X-E_{bind,XX},\\quad XX\\to X\\to0",
-          "caption": "E_{XX}^{ph} denotes the XX photon energy, E_X is the X photon energy, E(XX) is the two-exciton complex energy, and Ebind,XX is the binding energy."
+          "caption": "E_XX^ph denotes the XX photon energy, E_X is the X photon energy, E(XX) is the two-exciton complex energy, and Ebind,XX is the binding energy. Delta_XX = E_X - E_XX^ph = Ebind,XX is the X-XX spectral splitting used throughout."
         }
       ],
-      "notes": "The biexciton binding shift separates XX and X lines. That same cascade enables pair protocols and creates a multiphoton impurity when XX leaks through an X filter. [Bimberg 1999] [Michler 2017]  In lecture, use this slide to connect exciton, biexciton, and trion ladder to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The exciton (X, one electron-hole pair) and biexciton (XX, two pairs bound by Coulomb and exchange interactions) sit on a ladder: 0 -> X -> 0 emits a single X photon, while XX -> X -> 0 is a two-photon cascade. The biexciton binding energy shifts the XX transition below twice the exciton energy: E_XX^ph = E_X - E_bind,XX is the photon actually emitted on the XX -> X step, and E(XX) = 2E_X - E_bind,XX is the two-exciton complex's total energy [Bimberg, Grundmann and Ledentsov, Quantum Dot Heterostructures (1999)]. The quantity used throughout this deck as Delta_XX is exactly this spectral splitting, Delta_XX = E_X - E_XX^ph = E_bind,XX -- the energy separation between the X and XX emission lines, typically a few meV in InP-class dots. That separation is the only thing standing between a clean single-photon X line and biexciton leakage: an X-centered spectral filter narrower than Delta_XX rejects the XX photon, but as the homogeneous linewidth Gamma grows with temperature the two lines increasingly overlap and XX leaks through, which is precisely the epsilon = t_XX/t_X leakage fraction quantified two slides ahead [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)].",
       "sources": [
         "Bimberg, Grundmann and Ledentsov (1999)",
         "Michler ed. (2017)"
@@ -231,7 +231,7 @@
         "Pair fidelity and single-photon purity differ.",
         "Here XX is mainly leakage."
       ],
-      "notes": "Fine-structure splitting controls the phase between biexciton decay paths. Small splitting supports polarisation entanglement; this is distinct from the HBT purity objective. [Michler 2017] [Akopian et al. 2006]  In lecture, use this slide to connect fine structure and entangled photon pairs to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Electron-hole exchange interaction splits the two bright neutral-exciton spin states into a doublet separated by the fine-structure splitting (FSS), typically tens of micro-eV in strained self-assembled dots. FSS acts as a birefringence for the biexciton-exciton cascade: it rotates the relative phase between the two orthogonally polarized decay paths (XX -> X_H -> 0 and XX -> X_V -> 0) as a function of the delay between the two emitted photons. When FSS is small compared to the radiative linewidth, the which-path information carried by polarization is washed out and the two cascade photons can be entangled in polarization [Akopian et al., Phys. Rev. Lett. 96, 130501 (2006)]. This is a genuinely different objective from the single-photon purity this deck otherwise tracks: entangled-pair fidelity asks how well the two photons' joint state matches a Bell state, while g^(2)(0) asks whether more than one photon pair is emitted per trigger [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)]. In the repository's cascade model, XX is treated purely as a leakage channel degrading single-photon purity through the X filter; the fine-structure/entanglement physics on this slide is not implemented and is not needed for the program's g^(2)(0) < 0.5 target.",
       "sources": [
         "Michler ed. (2017)",
         "Akopian et al., PRL 96, 130501 (2006)"
@@ -252,15 +252,11 @@
           "caption": "NXX is biexciton population; r pump; γXX radiative rate; kXX escape."
         },
         {
-          "latex": "\\dot N_X=rN_0+\\gamma_{XX}N_{XX}-(r+\\gamma_X+k_X)N_X",
-          "caption": "NX and N0 are exciton and empty populations."
-        },
-        {
           "latex": "\\dot N_X=rN_0+(\\gamma_{XX}+k_{XX})N_{XX}-(r+\\gamma_X+k_X)N_X",
-          "caption": "Both radiative and non-radiative XX exits return population to X."
+          "caption": "NX and N0 are exciton and empty populations; gammaX radiative rate; kX escape. Both radiative and non-radiative XX exits return population to X."
         }
       ],
-      "notes": "fsim_core/cw_g2.py uses the ordered states 0, X, XX. generator builds the three-state Markov matrix and steady_state returns its stationary populations. It is a population model with no optical coherences, appropriate for incoherent electrical pumping. [fsim_core/cw_g2.py]  In lecture, use this slide to connect cascade rate equations to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "fsim_core/cw_g2.py models the exciton-biexciton cascade as a three-state, incoherent Markov chain on the ordered basis |0>, |X>, |XX> -- no optical coherences, appropriate when dephasing dominates Rabi coupling, as it does under incoherent electrical or above-band pumping. Population flows: pump rate r drives 0 -> X and, at rate r times pump_ratio, X -> XX; each level empties both radiatively (gamma_X, gamma_XX, emitting a photon) and non-radiatively (k_X, k_XX, thermal escape with no photon). generator() assembles the corresponding 3x3 rate matrix and steady_state() returns its normalized null vector, the stationary occupations (P_0, P_X, P_XX). Because the chain is a birth-death process, detailed balance gives a closed form, P_X = a P_0 and P_XX = a b P_0 with a = r/(gamma_X+k_X) and b = pump_ratio*r/(gamma_XX+k_XX), which steady_state() implements directly rather than diagonalizing M. The dot's exit from XX must include both its radiative and non-radiative channels, (gamma_XX + k_XX) N_XX, to conserve population; an incomplete term that dropped k_XX would systematically overstate how much population returns to X to be re-emitted as an X photon [fsim_core/cw_g2.py].",
       "sources": [
         "fsim_core/cw_g2.py: generator and steady_state",
         "Kantner et al. 2017"
@@ -268,11 +264,13 @@
       "repo_numbers": {
         "generator_state_dimension": {
           "file": "fsim_core/cw_g2.py",
-          "value": 3
+          "value": 3,
+          "how": "__import__('fsim_core.cw_g2',fromlist=['x']).generator(0.05,1.0,2.0).shape[0]"
         },
         "steady_state_population_sum": {
           "file": "fsim_core/cw_g2.py",
-          "value": 1
+          "value": 1.0,
+          "how": "float(__import__('fsim_core.cw_g2',fromlist=['x']).steady_state(0.05,1.0,2.0,0.0,0.0,1.0).sum())"
         }
       }
     },
@@ -291,7 +289,7 @@
         "caption": "Antibunching and Poisson reference.",
         "script": "presentation2/figures/fig_02_11_hbt.py"
       },
-      "notes": "The HBT correlation compares conditional and unconditional detection rates. The classical Cauchy–Schwarz bound is one at zero delay; a single emitter dips below one because it cannot immediately re-emit after a jump. Background and detector response reshape the observed dip. [Fox 2006] [Loudon]  In lecture, use this slide to connect photon statistics: what hbt measures to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The Hanbury Brown-Twiss (HBT) experiment splits the collected light on a beamsplitter and cross-correlates the two detector click streams as a function of delay tau, estimating the normally ordered second-order correlation g^(2)(tau) = <a-dagger(t) a-dagger(t+tau) a(t+tau) a(t)> / <a-dagger a>^2. For any classical field -- coherent, thermal, or any statistical mixture of coherent states -- the Cauchy-Schwarz inequality forces g^(2)(0) >= 1; values below one have no classical-field explanation and certify a genuinely quantum state of light [Fox, Quantum Optics (2006)]. A single quantum emitter shows perfect antibunching, g^(2)(0) = 0, because after it emits at t=0 it has been projected into the ground state and cannot emit a second photon until it re-excites and radiatively decays again -- the dip's width and shape trace that re-excitation and decay dynamics [Loudon, The Quantum Theory of Light]. The figure plots this single-emitter antibunching dip against the Poisson (g^(2)=1) reference. In a real device, background light and finite detector timing resolution both lift the observed dip toward one, which is exactly what the next two slides quantify.",
       "sources": [
         "Fox, Quantum Optics (2006)",
         "Loudon, The Quantum Theory of Light"
@@ -312,7 +310,7 @@
           "caption": "s and b are signal and background means; ρ is signal fraction."
         }
       ],
-      "notes": "Expanding the second moment of signal plus independent Poisson background gives the exact mixture law. Even a perfect signal dip is lifted toward one as background increases. [Reischle 2008] [fsim_core/integrator.py g2_from] [fsim_core/device.py] [fsim_core/cw_g2.py]  In lecture, use this slide to connect background turns a perfect dip upward to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Real detection always mixes the dot's intrinsic signal with an independent background: stray pump light, other emitters within the collection aperture, or dark counts. If the total detected stream is signal (mean rate s) plus statistically independent Poissonian background (mean rate b), expanding the second factorial moment of the sum gives an exact mixture law for the measured correlation: g^(2)_meas(0) = 1 - rho^2 [1 - g^(2)_s(0)], where rho = s/(s+b) is the signal fraction [Reischle et al., Optics Express 16, 12771 (2008), Eq. (1)]. Even a perfectly antibunched source, g^(2)_s(0) = 0, is measured as g^(2)_meas(0) = 1 - rho^2 once background is present -- at rho = 0.9 a perfect single-photon source already reads 0.19, not 0. This is why every purity number in this deck must be reported alongside its rho, since a headline g^(2) can be made to look better simply by narrowing the collection window and discarding signal along with background. fsim_core/integrator.py's g2_from implements this law exactly, and both cw_g2.py (CW) and device.py (pulsed) apply it downstream of their respective intrinsic g^(2) calculations.",
       "sources": [
         "Reischle et al. 2008",
         "fsim_core/device.py"
@@ -333,7 +331,7 @@
           "caption": "μ is mean loading; ε=tXX/tX is leakage."
         }
       ],
-      "notes": "For Poisson loading capped at two excitons, the repository derives the pulsed peak-area ratio from P0, P1, P2 and filter leakage epsilon. Weak loading recovers the F1 identity; stronger loading adds a finite-pulse multiphoton penalty. [fsim_core/loading.py] [Hanschke 2018]  In lecture, use this slide to connect cap-2 poisson loading to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Pulsed excitation loads the dot with a Poisson-distributed number of excitons per pulse, mean mu; the repository caps the ladder at two excitons (0, 1, or 2, i.e. up to a biexciton), so P_0 = e^-mu, P_1 = mu e^-mu, and the remaining probability P_2 = 1 - P_0 - P_1 collapses onto the cap-2 state after fast intra-dot relaxation. Detecting a photon in the central (tau=0) peak of a pulsed g^(2) histogram requires two consecutive pulses to each contribute at least one photon; because the biexciton state leaks an XX photon through the X filter at fraction epsilon = t_XX/t_X, loading.f1b_g2 derives the closed-form pulsed peak-area ratio f_1b g^(2)(mu, epsilon) = 2 P_2 epsilon / [P_1 + P_2(1+epsilon)]^2 directly from these three occupation probabilities and epsilon [fsim_core/loading.py]. In the weak-pumping limit mu -> 0, P_2/P_1 -> mu/2 and the formula recovers the simpler F1 identity g^(2)(0) = epsilon; at finite mu it adds a genuine multiphoton penalty from double-pair loading on top of the spectral leakage penalty, the same physical effect Hanschke identified as making multiphoton probability grow with pulse area [Hanschke et al., npj Quantum Information 4, 43 (2018)].",
       "sources": [
         "fsim_core/loading.py: f1b_g2",
         "Hanschke et al., npj Quantum Information 4, 43 (2018)"
@@ -358,24 +356,24 @@
       ],
       "figure": {
         "path": "presentation2/figures/out/02_14_cw.png",
-        "caption": "Fresh gainp-card rate-equation curves at resolved 80 K and 300 K parameters.",
+        "caption": "Fresh gainp-card rate-equation g2_meas(tau) at resolved 80 K (g2~0.23) and 300 K (g2~0.72).",
         "script": "presentation2/figures/fig_02_14_cw.py"
       },
-      "notes": "The gainp card is loaded fresh at 80 K and 300 K, resolving pump, retention, escape, filter, and background parameters; cw_g2.py applies the regression idea to the classical three-state generator: after X detection the dot is empty, after XX detection it is in X. The low-pump limit is epsilon times pump ratio times retention ratio. This is a rate-equation regression, not a fully quantised field calculation. [Gardiner 1985] [fsim_core/cw_g2.py]  In lecture, use this slide to connect cw g² and quantum regression to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Continuous electrical or optical pumping produces a steady-state photon stream rather than discrete pulses, and its g^(2)(tau) is obtained by a different route: the quantum regression theorem, which for the classical three-state Markov chain of the previous slides reduces to 'propagate the post-jump state forward under the same generator M'. After detecting an X photon the dot is reset to |0>; after detecting an XX photon it is reset to |X>; cw_g2.py's cw_report() builds both post-jump propagators, weights them by their steady-state photon rates and the filter transmissions t_X, t_XX, and returns the intrinsic curve g2_dot, the background-mixed curve g2_meas, and the IRF-convolved curve g2_raw together [Gardiner and Collett, Phys. Rev. A 31, 3761 (1985)]. In the low-pump limit this reduces to g^(2)_dot(0) -> epsilon * pump_ratio * (S_XX/S_X), the CW analogue of the pulsed F1 identity. The figure loads the fresh gainp design card (cards/edge-inp-gainp-design.yaml) at its own resolved 80 K and 300 K operating points -- pump rate, retention, escape, filter window, and background all recomputed from the card, giving g2_meas(0) about 0.23 at 80 K and 0.72 at 300 K -- and this is a rate-equation regression on a classical generator, not a field-quantized calculation; CW and pulsed g^(2) remain genuinely different observables of the same device.",
       "sources": [
         "fsim_core/cw_g2.py: cw_report",
         "Gardiner and Collett 1985"
       ],
       "repo_numbers": {
-        "cw_report_g2_dot0": {
-          "file": "fsim_core/cw_g2.py",
-          "value": 0.4041714725105729,
-          "how": "__import__('fsim_core.cw_g2',fromlist=['x']).cw_report(0.05,1,2,0,0,0.5,0.2,0.9,0,tau_max_ns=8,n_tau=1001)['g2_dot0']"
+        "cw_gainp_g2_meas0_80K": {
+          "file": "presentation2/figures/fig_02_14_cw.py",
+          "value": 0.2273157246955827,
+          "how": "(design := __import__('fsim_core.device',fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'), setattr(design.thermal,'T_hs',80.0), (dev := __import__('fsim_core.device',fromlist=['x'])), (cwm := __import__('fsim_core.cw_g2',fromlist=['x'])), (sc := dev.evaluate(design, T_grid=[80.0])['scalars']), (params := dev._confinement_params(design.ret, 80.0)), (gamma := float(sc['cw_gamma_X_ns'])), (kx_kxx := cwm.escape_rates_from_retention(gamma, params['a_esc'], params['E_a'], params['b_p'], params['E_b'], 80.0, gamma_XX_ns=2.0*gamma)), cwm.cw_report(float(sc['cw_r_ns']), gamma, 2.0*gamma, kx_kxx[0], kx_kxx[1], 1.0, float(sc['eps_op']), float(sc['cw_rho_op']), irf_fwhm_ps=0, tau_max_ns=8, n_tau=1001)['g2_meas0'])[-1]"
         },
-        "cw_report_g2_meas0": {
-          "file": "fsim_core/cw_g2.py",
-          "value": 0.5173788927335641,
-          "how": "__import__('fsim_core.cw_g2',fromlist=['x']).cw_report(0.05,1,2,0,0,0.5,0.2,0.9,0,tau_max_ns=8,n_tau=1001)['g2_meas0']"
+        "cw_gainp_g2_meas0_300K": {
+          "file": "presentation2/figures/fig_02_14_cw.py",
+          "value": 0.7236904976348915,
+          "how": "(design := __import__('fsim_core.device',fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'), setattr(design.thermal,'T_hs',300.0), (dev := __import__('fsim_core.device',fromlist=['x'])), (cwm := __import__('fsim_core.cw_g2',fromlist=['x'])), (sc := dev.evaluate(design, T_grid=[300.0])['scalars']), (params := dev._confinement_params(design.ret, 300.0)), (gamma := float(sc['cw_gamma_X_ns'])), (kx_kxx := cwm.escape_rates_from_retention(gamma, params['a_esc'], params['E_a'], params['b_p'], params['E_b'], 300.0, gamma_XX_ns=2.0*gamma)), cwm.cw_report(float(sc['cw_r_ns']), gamma, 2.0*gamma, kx_kxx[0], kx_kxx[1], 1.0, float(sc['eps_op']), float(sc['cw_rho_op']), irf_fwhm_ps=0, tau_max_ns=8, n_tau=1001)['g2_meas0'])[-1]"
         }
       }
     },
@@ -397,10 +395,10 @@
       ],
       "figure": {
         "path": "presentation2/figures/out/02_15_irf.png",
-        "caption": "IRF broadening through dip_convolved.",
+        "caption": "IRF broadening via convolve_irf, +/-300 ps window showing full recovery.",
         "script": "presentation2/figures/fig_02_15_irf.py"
       },
-      "notes": "The detector response convolves the intrinsic correlation. cw_g2.py provides Gaussian and exponential IRF forms and a stable erfcx expression. When the response is much slower than the recovery dip, the raw zero-delay value approaches one. [fsim_core/cw_g2.py] [Reischle 2008]  In lecture, use this slide to connect detector response is part of the measurement to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "A photon-counting detector's finite timing resolution, its instrument response function (IRF), convolves the intrinsic correlation before it reaches the histogram. cw_g2.py provides both Gaussian and two-sided-exponential IRF kernels; convolve_irf() performs the numerical convolution on a uniform tau grid for the general case, while dip_convolved() gives a closed form for a single-exponential dip g^(2)(tau) = 1 - A exp(-|tau|/tau_d) convolved with a Gaussian IRF of standard deviation sigma: g^(2)_raw(0) = 1 - A exp(sigma^2/(2 tau_d^2)) erfc(sigma/(sqrt2 tau_d)), rewritten with the scaled complementary error function erfcx to stay numerically stable when sigma >> tau_d [fsim_core/cw_g2.py]. The figure widens the plotted delay window to +/- 300 ps specifically so the convolve_irf traces are shown recovering fully back toward g^(2)=1 at large |tau| rather than being truncated mid-recovery; at that scale a 5 ps intrinsic recovery time next to a 100 ps FWHM IRF is visibly all but erased, while a 20 ps IRF only partially dilutes it. Reischle's electrical HBT measurement used a roughly 500 ps exponential IRF and deconvolved it to recover 0.15/0.25 background-included dip depths from raw dips of 0.41/0.43 [Reischle et al., Optics Express 16, 12771 (2008)]; deconvolution is model-dependent and only as good as the assumed dip shape.",
       "sources": [
         "fsim_core/cw_g2.py: dip_convolved",
         "Reischle et al. 2008"
@@ -434,7 +432,7 @@
         "caption": "IBM spectra from qd_gf.py.",
         "script": "presentation2/figures/fig_02_16_phonons.py"
       },
-      "notes": "qd_gf.py implements the acoustic deformation-potential independent-boson lineshape, including ZPL and sideband transmission. It does not yet include piezoelectric or microscopic LO coupling, nor driven polaron renormalisation. [Krummheuer 2002] [fsim_core/qd_gf.py]  In lecture, use this slide to connect phonons i: sidebands and the independent-boson model to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Acoustic phonons couple to the exciton through the deformation potential, which is diagonal in the exciton number (it shifts the exciton energy rather than flipping it), so the exciton-phonon Hamiltonian is exactly solvable: the independent boson model (IBM) resums the coupling to all orders and gives the dipole coherence C(t) = exp[phi(t) - phi(0)] in closed form, where phi(t) is a phonon correlation integral over the bath spectral density J(omega) [Krummheuer, Axt and Kuhn, Phys. Rev. B 65, 195313 (2002)]. Fourier transforming C(t) gives an emission spectrum with two pieces: a delta-function zero-phonon line (ZPL) of weight Z = exp(-S), where S is the Huang-Rhys factor, sitting on a broad phonon sideband carrying the remaining weight 1-Z. As temperature rises, more of the total spectral weight moves from the ZPL into the sideband -- the physical origin of the temperature-dependent linewidth broadening on the next slide. fsim_core/qd_gf.py implements this acoustic deformation-potential IBM lineshape, including ZPL weight and sideband transmission through a filter, but it does not yet include piezoelectric coupling (relevant for the (211)B InAs dots Chatzarakis studied), microscopic LO-phonon scattering, or the polaron-frame renormalization a coherently driven dot would need.",
       "sources": [
         "Krummheuer et al., PRB 65, 195313 (2002)",
         "fsim_core/qd_gf.py"
@@ -468,7 +466,7 @@
         "caption": "linewidth.gamma_envelope class envelope.",
         "script": "presentation2/figures/fig_02_17_linewidth.py"
       },
-      "notes": "The phenomenological linewidth model separates acoustic and activated optical-phonon contributions. At 300 K the repository envelope ranges from 6 to 20 meV, a design class rather than a target-dot measurement. [Matsuda 2001, PRB 63, 121304(R)] [Chatzarakis 2023] [fsim_core/linewidth.py]  In lecture, use this slide to connect phonons ii: linewidth grows with temperature to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The phenomenological model Gamma(T) = Gamma_0 + aT + b/[exp(E_LO/k_B T) - 1] separates two physically distinct broadening mechanisms on top of a residual (T=0) width Gamma_0: a linear acoustic-phonon term aT from the same deformation-potential coupling as the previous slide's sideband, and an activated term describing scattering that requires a real LO phonon to be thermally populated, with E_LO the LO phonon energy (43 meV for InP) and b its coupling strength. The activated term is negligible until k_B T approaches a sizeable fraction of E_LO, then grows rapidly -- why linewidth broadening accelerates rather than growing linearly toward 300 K. Matsuda's InAs-dot measurement anchors Gamma(300 K) around 12 meV [Matsuda et al., Phys. Rev. B 63, 121304(R) (2001)], and Chatzarakis's near-room-temperature InAs data independently constrains warm-dot behavior up to 260 K [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)]. fsim_core/linewidth.py's gamma_envelope() encodes this as a class range rather than a single curve: the coded 300 K envelope spans 6-20 meV, reflecting genuine dot-to-dot and material-class variation, not a measurement of the specific InP/GaAsP target dot -- that measurement (Measurement 1 in the owner's brief) has not yet been run.",
       "sources": [
         "Matsuda et al., PRB 63, 121304(R) (2001)",
         "Chatzarakis et al. 2023",
@@ -497,7 +495,7 @@
           "caption": "E0 is zero-temperature gap; α and β are Varshni parameters."
         }
       ],
-      "notes": "Temperature shifts the dot transition relative to barriers and filters. Material-dependent Varshni coefficients make filter tracking a device requirement, because tX and tXX change together. [Vurgaftman 2001] [Yu and Cardona]  In lecture, use this slide to connect band-gap and line shift with temperature to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The Varshni relation E_g(T) = E_0 - alpha T^2/(T+beta) captures the empirical, largely phonon-driven redshift of a semiconductor band gap with temperature; E_0 is the T=0 gap and alpha, beta are material-specific fit parameters tabulated for essentially every III-V binary and common alloy [Vurgaftman, Meyer and Ram-Mohan, J. Appl. Phys. 89, 5815 (2001)]. Because InP (the dot) and the surrounding GaAsP/GaInP matrix do not share identical Varshni coefficients, the exciton and biexciton transition energies drift at a different rate than the barrier and matrix band edges as the device heats from a cryostat baseline toward 300 K -- confinement depth itself is temperature dependent, not just the absolute transition energy [Yu and Cardona, Fundamentals of Semiconductors]. This matters operationally because any spectral filter or cavity resonance fixed at a room-temperature design wavelength will walk off the actual X/XX lines as the device self-heats under drive, and because t_X and t_XX (the filter transmissions that set epsilon = t_XX/t_X) both depend on where the lines sit relative to the fixed filter window -- a filter that is not re-tracked with temperature silently changes brightness and purity together, not independently.",
       "sources": [
         "Vurgaftman, Meyer and Ram-Mohan, JAP 89, 5815 (2001)",
         "Yu and Cardona"
@@ -518,7 +516,7 @@
         "caption": "epsilon versus Gamma for DeltaXX=4, 6, 8 meV; the sweep sets filter window w=Gamma.",
         "script": "presentation2/figures/fig_02_19_spectral.py"
       },
-      "notes": "spectral.epsilon computes the ratio of XX and X transmissions through the same acceptance function; in the figure sweep the window is tied to linewidth, w=Gamma, rather than held fixed. At the worked point DeltaXX=6 meV, GammaX=GammaXX=12 meV, and window 12 meV, the repository returns epsilon 0.7048327647. [fsim_core/spectral.py] [Chatzarakis 2023]  In lecture, use this slide to connect spectral overlap sets biexciton leakage to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "spectral.epsilon() computes the leakage fraction epsilon = t_XX/t_X: the transmission of two Lorentzian lines, centered Delta_XX apart with linewidths Gamma_X and Gamma_XX, through the same acceptance window. In the swept figure the window width is tied to the linewidth itself, w = Gamma, rather than held fixed, which is why epsilon rises with Gamma along each Delta_XX curve -- a wider intrinsic line both broadens into the window from outside and needs a wider window to pass its own weight, so both lines increasingly overlap. Larger Delta_XX pushes the two lines further apart and helps suppress leakage at fixed linewidth; larger Gamma hurts, since the two Lorentzian tails increasingly overlap regardless of their separation -- the same competition between confinement-set Delta_XX and phonon-set Gamma that reappears in the 300 K landscape slide. At the worked point Delta_XX=6 meV, Gamma_X=Gamma_XX=12 meV, window 12 meV, the repository returns epsilon = 0.7048 [fsim_core/spectral.py: epsilon], a leakage fraction far above the 0.1-0.5 purity target and a concrete illustration of why 300 K electrical operation is hard for this dot class [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)].",
       "sources": [
         "fsim_core/spectral.py: epsilon",
         "Chatzarakis et al. 2023"
@@ -552,7 +550,7 @@
         "caption": "Two retention presets from dot_levels.py.",
         "script": "presentation2/figures/fig_02_20_retention.py"
       },
-      "notes": "dot_levels.retention_params derives two Arrhenius escape channels from the confinement model. The coded InP/GaAsP preset returns Ea=83.7949596801 meV under its pair-half convention; this is an assumption-class proxy, not Measurement 1. Exponential thermal loss can dominate brightness. [Chatzarakis 2023] [Bommer 2011] [fsim_core/dot_levels.py]  In lecture, use this slide to connect thermal escape and retention to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Carriers confined in the dot can also escape thermally before they recombine, competing with the radiative channel; the retention fraction S(T) = 1/[1 + a exp(-E_a/k_B T) + b exp(-E_b/k_B T)] models this as two independent Arrhenius escape channels (activation energies E_a, E_b with prefactors a, b) on top of the radiative rate, following the two-channel thermal-activation picture used across the confinement literature [Bommer et al., Nano Letters 11, 2484 (2011)]. dot_levels.retention_params() derives E_a, E_b, a, and b directly from the confinement model's computed level structure rather than fitting them independently, so the escape channels are tied to the same band offsets and geometry used elsewhere in the device evaluation. For the coded InP/GaAsP class preset this returns E_a = 83.79 meV under the module's pair-half convention -- an assumption-class proxy from generic confinement parameters, not a measurement of the actual InP/GaAsP target dot (Measurement 1 remains open) [fsim_core/dot_levels.py: retention_params]. Because S(T) enters brightness multiplicatively and falls off steeply once k_B T approaches a sizeable fraction of E_a, thermal escape alone can cost three or more orders of magnitude of brightness between cryogenic and room temperature, independent of and in addition to any purity penalty from linewidth broadening [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)].",
       "sources": [
         "Chatzarakis et al. 2023",
         "Bommer et al., Nano Letters 11, 2484 (2011)",
@@ -577,7 +575,7 @@
         "Low g² does not guarantee HOM visibility.",
         "300 K indistinguishability remains open."
       ],
-      "notes": "Indistinguishability depends on optical coherence, not only population statistics. The repository does not compute the photon density matrix or HOM visibility; this is an explicit Level-3 gap from the owner's slides. [Iles-Smith 2017] [Project's own treatment slides]  In lecture, use this slide to connect indistinguishability: the other quantum metric to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Purity (g^(2)(0) < 0.5) and indistinguishability are independent quantum metrics, and a source can satisfy one while failing the other. Indistinguishability requires two emitted photon wavepackets to overlap coherently, which depends on the emitter's optical coherence time T2, not on its population statistics: 1/T2 = 1/(2 T1) + gamma*, where T1 is the population (radiative) lifetime and gamma* is the pure-dephasing rate from phonon scattering, charge noise, and spectral diffusion. Hong-Ou-Mandel (HOM) interference measures this overlap directly -- two photons entering a beamsplitter from indistinguishable sources bunch into the same output port -- and its visibility falls whenever pure dephasing broadens the line beyond its transform-limited, radiatively broadened width [Iles-Smith, McCutcheon, Mork and Nazir, Nature Photonics 11, 521 (2017)]. Low g^(2)(0) says only that the source rarely emits two photons per trigger; it says nothing about whether those single photons are spectrally and temporally identical to each other. The repository does not compute the photon density matrix, T2, or HOM visibility anywhere -- an explicit, acknowledged Level-3 gap relative to the owner's four-level hierarchy -- and at 300 K, where phonon dephasing is strongest, indistinguishability is expected to be the harder of the two quantum metrics to close [Project's own treatment slides, slide 4].",
       "sources": [
         "Iles-Smith et al., Nature Photonics 11, 521 (2017)",
         "Project's own treatment slides"
@@ -599,16 +597,18 @@
         "caption": "Repository sweep from out/rt_edge/sweep.csv.",
         "script": "presentation2/figures/fig_02_22_landscape.py"
       },
-      "notes": "The landscape is a design sensitivity map, not evidence. It shows how linewidth and biexciton separation jointly control leakage. The owner's brief gates every 300 K number on Measurement 1 of Gamma(T) and DeltaXX for the actual InP/GaAsP dot. The reviewed optical Laferriere result reaches 0.57 at 300 K; Deshpande reports electrical 300 K InGaN/GaN g²=0.29, and Reischle reports electrical 80 K deconvolved 0.15/0.25. The combined electrical, 300 K, arsenide/phosphide edge-emitter target remains open. [Chatzarakis 2023] [Laferriere 2023]  In lecture, use this slide to connect putting the model together: the 300 k landscape to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The landscape sweeps two independent physical axes -- the homogeneous linewidth Gamma(300 K) and the exciton-biexciton splitting Delta_XX -- through spectral.epsilon() and propagates the resulting leakage fraction into the pulsed g^(2) identity from earlier in this section; it is a design-sensitivity map showing how these two knobs jointly bound purity, not a measurement or a certification of any built device. Reading it against real evidence: Laferriere's optically pumped InAsP/InP nanowire dot reaches g^(2)(0)=0.57 at 300 K, above the 0.5 purity gate [Laferriere et al., Nano Letters 23, 962 (2023)]; Deshpande's electrically driven InGaN/GaN dot reaches g^(2)(0)=0.29 at 300 K, the best published room-temperature electrical single-photon result, but on a nitride platform outside this program's arsenide/phosphide target [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]; and Reischle's electrical device reports IRF-deconvolved, background-included g^(2)(0)=0.15+/-0.05 for QD B at 4 K and 0.25+/-0.05 for QD C at 80 K -- an InP/GaInP result, but at cryogenic and mid temperatures, not 300 K [Reischle et al., Optics Express 16, 12771 (2008); cards/reischle.yaml]. No published row combines electrical drive, 300 K, an arsenide or phosphide epitaxial dot, and g^(2)(0)<0.5 -- the same absence documented against the fuller evidence table, including Zhao's electrically driven QD laser and Kitamura's resonant-tunneling architecture, on the following slide.",
       "sources": [
         "out/rt_edge/sweep.csv",
         "Chatzarakis et al. 2023",
-        "Laferriere et al., Nano Letters 23, 962 (2023)"
+        "Laferriere et al., Nano Letters 23, 962 (2023)",
+        "Zhao et al., Phys. Rev. Research 6, L032021 (2024)",
+        "Kitamura et al., CLEO 2025, JPS200_148"
       ],
       "repo_numbers": {
         "sweep_row_count": {
           "file": "out/rt_edge/sweep.csv",
-          "value": 192,
+          "value": 768,
           "how": "sum(1 for _ in open('out/rt_edge/sweep.csv'))-1",
           "tolerance": 0.001
         }
@@ -616,19 +616,67 @@
     },
     {
       "id": "02-23",
-      "layout": "quote",
+      "layout": "bullets+table",
       "title": "Experimental status at the conditions",
       "subtitle": "Restated from the project's own treatment slides",
       "bullets": [
         "Electrical cryogenic SPS, optical warm SPS, and room-temperature edge-emitting QD lasers are distinct evidence classes.",
         "No reviewed row combines electrical, 300 K, InP/GaAsP, edge collection, and g²<0.5."
       ],
-      "notes": "Deshpande supplies a room-temperature electrical nitride anchor; Laferriere supplies an optical warm InAsP/InP anchor; Chatzarakis supplies warm-dot X/XX context. None is the complete target platform. [Project's own treatment slides]  In lecture, use this slide to connect experimental status at the conditions to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "This table restates the owner's own experimental-status slide: five results, each verified against its primary abstract or full text, are the closest published anchors to the program's five conditions, and none of them is the complete target platform simultaneously [Project's own treatment slides, slide 7]. Deshpande supplies the only published room-temperature electrical single-photon result, but on InGaN/GaN, not an arsenide or phosphide dot [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]. Laferriere supplies an optically pumped InAsP/InP nanowire dot whose multiphoton probability rises from 0.11 at 77 K to 0.57 at 300 K, ruling out that specific geometry for room-temperature purity even under optical excitation [Laferriere et al., Nano Letters 23, 962 (2023)]. Chatzarakis supplies warm-dot exciton/biexciton context to 260 K on a piezoelectric InAs platform, optically pumped [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)]. Zhao demonstrates electrically driven, room-temperature quantum-optical pump-noise regulation reaching the field -- 3.1 dB amplitude squeezing -- but from a QD laser ensemble, not a single-photon source [Zhao et al., Phys. Rev. Research 6, L032021 (2024)]. Kitamura reports an electrically driven, resonant-tunneling-injection architecture result with no extractable photon-statistics number behind its paywall [Kitamura et al., CLEO 2025, JPS200_148]. No reviewed row combines electrical drive, 300 K, an arsenide/phosphide epitaxial dot, and g^(2)(0)<0.5.",
       "sources": [
         "Project's own treatment slides",
         "Deshpande et al., APL 105, 141109 (2014)",
-        "Laferriere et al. 2023"
-      ]
+        "Laferriere et al. 2023",
+        "Zhao et al., Phys. Rev. Research 6, L032021 (2024)",
+        "Kitamura et al., CLEO 2025, JPS200_148"
+      ],
+      "table": {
+        "header": [
+          "reference",
+          "drive",
+          "T",
+          "platform",
+          "result"
+        ],
+        "rows": [
+          [
+            "Deshpande 2014, APL 105, 141109",
+            "electrical",
+            "300 K",
+            "InGaN/GaN single QD",
+            "g²(0)=0.29"
+          ],
+          [
+            "Laferriere 2023, Nano Lett. 23, 962",
+            "optical",
+            "77/220/300 K",
+            "InAsP/InP nanowire QD",
+            "g²(0)=0.11/0.34/0.57"
+          ],
+          [
+            "Chatzarakis 2023, PR Applied 20, 034011",
+            "optical",
+            "230 K",
+            "(211)B InAs/GaAs piezoelectric",
+            "X/XX resolved to 260 K"
+          ],
+          [
+            "Zhao 2024, PR Research 6, L032021",
+            "electrical",
+            "300 K",
+            "QD laser (ensemble)",
+            "3.1 dB squeezing, no single photons"
+          ],
+          [
+            "Kitamura 2025, CLEO JPS200_148",
+            "electrical",
+            "not extracted",
+            "intracavity RTI microcavity",
+            "architecture only"
+          ]
+        ]
+      }
     },
     {
       "id": "02-24",
@@ -648,11 +696,12 @@
           "bullets": [
             "device.py: injection and brightness.",
             "spectral.py/loading.py: ε, μ, pulsed g².",
-            "cw_g2.py: CW correlation and IRF."
+            "cw_g2.py: CW correlation and IRF.",
+            "sde.py: Zhao pump-noise SDE, kept as an acknowledged failure (F_p proxy)."
           ]
         }
       ],
-      "notes": "The repository maps materials and confinement into thermal optical response, then maps transmission, loading, background, and rate propagation into observables. It is a validated Level-2 semiclassical stack; quantised field modes and HOM are not implemented. [Project's own treatment slides] [fsim_core modules]  In lecture, use this slide to connect how our model integrates this to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "The repository's chain runs materials and confinement parameters (materials.py, dot_levels.py) into a thermal optical response (linewidth.py's phenomenological Gamma(T), qd_gf.py's independent-boson lineshape), then propagates that response through spectral transmission, finite-pump loading, background dilution, and rate-equation propagation (spectral.py, loading.py, cw_g2.py) into device.py's reported brightness, purity, and injection observables -- a validated, internally consistent Level-2 semiclassical stack, with every closed form checked against published numbers in its own verify/verify_<module>.py suite. One failure is kept deliberately rather than hidden: Zhao's stochastic pump-noise SDE (fsim_core/sde.py) reproduces the correct ordering of Zhao's twelve measured operating points but does not reach the published squeezing magnitude under any literature-bounded parameter set, so device.py bypasses the physical SDE and substitutes an empirical Fano-factor parameter F_p, priced from Zhao's own measured values rather than derived from the SDE [fsim_core/sde.py; fsim_core/device.py]. This is the local instance of the joint the owner's brief calls unpublished at the field level: a relay-hop rate model cannot, on its own, carry electrical pump regulation all the way into field statistics. Quantized field modes, the photon density matrix, and Hong-Ou-Mandel visibility are not implemented anywhere in this stack; that gap is the subject of the next slide.",
       "sources": [
         "Project's own treatment slides",
         "fsim_core/device.py",
@@ -670,7 +719,7 @@
         "Add HOM visibility and electrical-pulsing data.",
         "Treat the sweep as design guidance, not evidence."
       ],
-      "notes": "The remaining work is Measurement 1, transport-to-emitter coupling, driven phonon dynamics, field-quantised regression, and an experimental acceptance chain including HOM. The project brief records these as open rather than silently extrapolating. [Kantner 2017] [Project's own treatment slides]  In lecture, use this slide to connect what is left to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "Four items remain open, in the owner's own priority order. First and most gating: Measurement 1, an actual Gamma(T) and Delta_XX distribution to 300 K on the InP/GaAsP target dot -- every room-temperature number in this deck is a class-proxy estimate until that measurement exists, not a property of a specific characterized device. Second, closing the electrical arm properly means Kantner-style transport-to-Lindblad coupling: a dynamical, bidirectional link between the drift-diffusion carrier equations and the quantum master equation, rather than device.py's current one-way macroscopic injection parameters feeding a rate-equation cascade [Kantner, Mittnenzweig and Koprucki, Phys. Rev. B 96, 205301 (2017)]. Third, driven phonon dynamics: polaron-frame renormalization of the Rabi frequency under drive and phonon-assisted transitions during excitation, which the current stationary independent-boson lineshape does not include. Fourth, a field-quantized regression calculation -- a genuine Lindblad master equation with quantized modes -- to obtain Hong-Ou-Mandel visibility alongside g^(2)(tau) from the same generator, closing the Level-3/4 gap on the earlier hierarchy slide. The staged 120 K, g^(2)<=0.1 target already closes on paper with a large-lens dot, a quiet high-impedance rail, and a 10-12 pair DBR; the 77 K target closes with a slit filter and no cavity on the Poisson rail [out/rt_edge/verdict.md].",
       "sources": [
         "Project's own treatment slides",
         "Kantner et al., PRB 96, 205301 (2017)",
@@ -688,7 +737,7 @@
         "Temperature couples linewidth, escape, and filter alignment.",
         "Next: electrical injection and edge-emitting device physics."
       ],
-      "notes": "We connected the dipole and golden rule to the exciton ladder, rate equations, HBT statistics, finite loading, background, detector response, phonons, linewidth, spectral overlap, and retention. The central distinction from the owner's slides remains: a quantum device, quantum dot treatment, and quantum light treatment are different claims. [Fox 2006] [Project's own treatment slides]  In lecture, use this slide to connect section summary to the source-design chain. State what is directly computed, what is a literature anchor, and what remains a model assumption. Invite the audience to distinguish an internal population or spectral calculation from a measured detector observable. The practical message is that confinement, radiative decay, filtering, loading, background, phonons, temperature, and detector response are coupled in the final experiment, but they are not interchangeable claims. Keep the provenance attached to each number and explain the limitation before moving on. This makes the result reproducible and prevents a conditional simulation value from being presented as certification of a completed device.",
+      "notes": "We built the chain in order: the dipole Hamiltonian and Fermi's golden rule set the radiative rate; the exciton-biexciton-trion ladder and its cap-2 rate equations set the population dynamics; Hanbury Brown-Twiss statistics, background dilution, finite-pump loading, and detector-response convolution together set what a real measurement reports versus what the intrinsic dot produces; phonon sidebands, thermal linewidth broadening, Varshni line shift, and thermal carrier escape set how all of the above degrade as temperature rises toward the 300 K target. The distinction carried through every slide is the owner's own: a quantum device (confinement, blockade), a quantum treatment of the dot (exciton-phonon coupling, cascade structure), and a quantum treatment of the light (field quantization, g^(2), HOM) are three different claims, and satisfying one does not imply the others [Project's own treatment slides, slide 3]. The repository's validated stack sits at Level 2 -- a semiclassical cascade with photon statistics attached through exact mixture and cascade identities -- and every number in it traces to a repository module, a cited measurement, or an explicit assumption tag [Fox, Quantum Optics (2006)]. The next section moves into electrical injection and edge-emitting device physics, where the pump itself becomes a quantum-statistical input rather than a rate constant.",
       "sources": [
         "Fox, Quantum Optics (2006)",
         "Project's own treatment slides"
