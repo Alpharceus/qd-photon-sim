@@ -57,8 +57,8 @@ def main() -> None:
 
     ax.set_xlabel("heat-sink temperature $T_{hs}$ (K)", fontsize=16)
     ax.set_ylabel(r"$g_2(0)$, CW drive", fontsize=16)
-    ax.set_title("CW dip is IRF-limited: the raw curve crosses 0.5\n"
-                 "well before the intrinsic curve does (gainp card)", fontsize=15)
+    ax.set_title("CW dip is IRF-limited: the raw curve stays above 0.5\n"
+                 "at every temperature in range (gainp card)", fontsize=15)
     ax.set_ylim(0.0, 1.05)
     ax.tick_params(labelsize=14)
     ax.grid(True, alpha=0.25)
