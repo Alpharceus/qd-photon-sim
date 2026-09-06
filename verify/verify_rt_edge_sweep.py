@@ -424,26 +424,95 @@ _check_nan = rte._brightness_factor_check(_nan_row)
 ok("factor self-check oracle: non-finite inputs yield ok=False without raising",
    not _check_nan["ok"] and math.isnan(_check_nan["rel_diff"]))
 
-# -- front-facet-split oracle: beta * front * T_facet * eta_prop * eta_NA
-# must reproduce edge_eta_total EXACTLY (front is back-solved as the one
-# missing factor) -- this is council review round 4 item 3's exact
-# complaint (the 0.5 front-facet split was hidden inside eta_total with no
-# component list reproducing it); confirms beta is NOT the front-facet
-# split (a plain relabeling bug would make this fail).
+# -- combined front-facet-and-transmission factor oracle (council review
+# round 5, item 6, updated for fsim_core/waveguide.py's OWN concurrent
+# 2026-09-06 item-1 facet-model change -- the standalone `front` local is
+# gone; T_facet is now fused into a single `facet_factor` for R_back>0):
+# beta * <combined factor> * eta_prop * eta_NA must reproduce edge_eta_total
+# EXACTLY (the combined factor is back-solved as the one missing factor --
+# deliberately WITHOUT dividing by edge_T_facet separately, which would
+# assume the now-superseded old 5-term shape and be wrong for R_back>0
+# rows under the new model); confirms beta is NOT the combined factor (a
+# plain relabeling bug would make this fail).
 _edge_row = {"edge_beta": 0.03, "edge_T_facet": 0.72, "edge_eta_prop": 0.78,
-            "edge_eta_NA": 0.30, "edge_eta_total": 0.03 * 0.42 * 0.72 * 0.78 * 0.30}
-_front = rte._front_facet_split(_edge_row)
-ok("front-facet-split oracle: back-solved front reproduces the constructed value (0.42)",
-   abs(_front - 0.42) < 1e-9)
-ok("front-facet-split oracle: beta * front * facet * propagation * NA reproduces "
-   "edge_eta_total exactly",
-   abs(_edge_row["edge_beta"] * _front * _edge_row["edge_T_facet"]
+            "edge_eta_NA": 0.30, "edge_eta_total": 0.03 * 0.5432 * 0.78 * 0.30}
+_combined = rte._front_facet_split(_edge_row)
+ok("combined-facet-factor oracle: back-solved factor reproduces the constructed value (0.5432)",
+   abs(_combined - 0.5432) < 1e-9)
+ok("combined-facet-factor oracle: beta * combined * propagation * NA reproduces "
+   "edge_eta_total exactly (never divides by edge_T_facet separately)",
+   abs(_edge_row["edge_beta"] * _combined
        * _edge_row["edge_eta_prop"] * _edge_row["edge_eta_NA"]
        - _edge_row["edge_eta_total"]) < 1e-12)
-ok("front-facet-split oracle: non-finite/zero component inputs yield nan without raising",
+ok("combined-facet-factor oracle: non-finite/zero component inputs yield nan without raising",
    math.isnan(rte._front_facet_split({"edge_beta": 0.0, "edge_T_facet": 0.72,
                                       "edge_eta_prop": 0.78, "edge_eta_NA": 0.30,
                                       "edge_eta_total": 0.001})))
+
+# -- facet-factor forward check (council review round 5, item 6): a
+# genuinely independent forward recomputation, introspected LIVE from
+# fsim_core/waveguide.py's installed source (never hardcoded). First
+# against FAKE candidate lists (both conventions a concurrently-edited
+# facet model might use), by temporarily swapping
+# _facet_factor_formula_candidates; then against the REAL installed source
+# and a real evaluator row.
+_row_fused = {"edge_T_facet": 0.8, "emission_R_back": 0.95,
+             "edge_beta": 0.03, "edge_eta_prop": 0.78, "edge_eta_NA": 0.30}
+_combined_fused = 0.8 / (0.8 + (1 - 0.95))
+_row_fused["edge_eta_total"] = 0.03 * _combined_fused * 0.78 * 0.30
+_orig_candidates_fn = rte._facet_factor_formula_candidates
+try:
+    rte._facet_factor_formula_candidates = (
+        lambda: [("facet_factor", "0.5 * T if R_back is None else T / (T + (1 - R_back))")])
+    _check_fused = rte._facet_factor_forward_check(_row_fused)
+finally:
+    rte._facet_factor_formula_candidates = _orig_candidates_fn
+ok("facet-factor forward check: fused/current-model convention (candidate already IS the "
+   "full combined factor, T_facet included) matches directly",
+   _check_fused["ok"] and abs(_check_fused["forward"] - _combined_fused) < 1e-9
+   and "fused" in _check_fused["convention"])
+
+_front_legacy = 0.8 / (0.8 + (1 - 0.95))
+_row_legacy = dict(_row_fused)
+_row_legacy["edge_eta_total"] = 0.03 * _front_legacy * 0.8 * 0.78 * 0.30  # front * T_facet
+try:
+    rte._facet_factor_formula_candidates = (
+        lambda: [("front", "0.5 if R_back is None else T / (T + (1 - R_back))")])
+    _check_legacy = rte._facet_factor_forward_check(_row_legacy)
+finally:
+    rte._facet_factor_formula_candidates = _orig_candidates_fn
+ok("facet-factor forward check: legacy/split convention (candidate is only the front "
+   "split, T_facet applied as a separate step) matches after multiplying by T_facet",
+   _check_legacy["ok"] and abs(_check_legacy["forward"] - _front_legacy * 0.8) < 1e-9
+   and "legacy" in _check_legacy["convention"])
+
+try:
+    rte._facet_factor_formula_candidates = lambda: [("front", "0.1")]
+    _check_wrong = rte._facet_factor_forward_check(_row_fused)
+finally:
+    rte._facet_factor_formula_candidates = _orig_candidates_fn
+ok("facet-factor forward check: a candidate that matches NEITHER convention is reported "
+   "as ok=False, not silently accepted",
+   not _check_wrong["ok"])
+
+_real_candidates = rte._facet_factor_formula_candidates()
+ok("facet-factor forward check: the REAL fsim_core/waveguide.py source is introspectable "
+   "and yields at least one candidate formula (this file never hardcodes the formula)",
+   len(_real_candidates) >= 1)
+_gainp_design_for_facet = rte.resolve_device_card(
+    next(c["path"] for c in rte.CARDS if c["id"] == FALLBACK_ID), {"dot.delta_xx": 7.0})
+_sc_gainp_facet = rte.evaluate(
+    _gainp_design_for_facet, T_grid=[_gainp_design_for_facet.thermal.T_hs])["scalars"]
+_real_row = {"edge_beta": _sc_gainp_facet["edge_beta"],
+            "edge_T_facet": _sc_gainp_facet["edge_T_facet"],
+            "edge_eta_prop": _sc_gainp_facet["edge_eta_prop"],
+            "edge_eta_NA": _sc_gainp_facet["edge_eta_NA"],
+            "edge_eta_total": _sc_gainp_facet["edge_eta_total"],
+            "emission_R_back": _gainp_design_for_facet.emission.R_back}
+_real_check = rte._facet_factor_forward_check(_real_row)
+ok("facet-factor forward check: against a REAL evaluator row, the forward recomputation "
+   "(introspected live from the installed waveguide.py) matches the back-solved value",
+   _real_check["ok"])
 
 
 # ============================================= 1e. self-test field rename (round 4, item 5)
@@ -459,6 +528,128 @@ ok("_self_test_passed: works with ONLY the renamed all_checks_passed key "
    and rte._self_test_passed({"all_checks_passed": False}) is False)
 ok("_self_test_passed: missing key defaults to False rather than raising",
    rte._self_test_passed({}) is False)
+
+
+# ==================================== 1f. card_line conditional phrase (round 5, item 1)
+
+_stats_zero_eligible = {"card_class": "primary", "n_rows": 96, "n_eligible": 0,
+                        "g2_pulsed_min": float("nan"), "g2_pulsed_median": float("nan"),
+                        "diag_g2_pulsed_min": 0.50, "diag_g2_pulsed_median": 0.78,
+                        "diag_g2_cw0_min": 0.37, "diag_g2_cw0_median": 0.80,
+                        "diag_g2_cw0_raw_min": 0.98, "diag_g2_cw0_raw_median": 1.0,
+                        "g2_cw0_raw_min": float("nan"), "g2_cw0_raw_median": float("nan"),
+                        "n_flux_floor_excluded": 96, "n_favorable": 0}
+_line_zero_eligible = rte.card_line(PRIMARY_ID, _stats_zero_eligible)
+ok("card_line: a card with ZERO eligible rows prints the "
+   "'diagnostic (below flux floor, not measurable)' phrase",
+   "diagnostic (below flux floor, not measurable)" in _line_zero_eligible
+   and "eligible rows:" not in _line_zero_eligible)
+
+_stats_some_eligible = {**_stats_zero_eligible, "n_eligible": 16,
+                        "g2_pulsed_min": 0.40, "g2_pulsed_median": 0.70}
+_line_some_eligible = rte.card_line(FALLBACK_ID, _stats_some_eligible)
+ok("card_line: a card with a NONZERO eligible count (council review round 5 item 1's "
+   "gainp example, eligible=16/96) prints 'eligible rows: <n>/<N>' and NEVER the "
+   "'not measurable' phrase, even though its flux_floor_excluded count is also nonzero",
+   "eligible rows: 16/96" in _line_some_eligible
+   and "not measurable" not in _line_some_eligible
+   and "g2_pulsed_min=0.4" in _line_some_eligible)
+
+
+# ============================== 1g. gamma300_threshold bracket (round 5, item 2)
+
+_gmax_by_card = rte._card_gamma300_pass_max(gamma_rows)
+_bracket_by_card = rte._gamma300_threshold_bracket(gamma_rows, _gmax_by_card)
+ok("gamma300_threshold_bracket oracle: PRIMARY_ID passes at 13.0 and fails at the next "
+   "sampled value (20.0) -- bracket is (13.0, 20.0)",
+   _bracket_by_card[PRIMARY_ID]["lo"] == 13.0 and _bracket_by_card[PRIMARY_ID]["hi"] == 20.0)
+ok("gamma300_threshold_bracket oracle: a card with NO headline-passing sample has lo=None "
+   "and hi=the smallest sampled value",
+   _bracket_by_card[FALLBACK_ID]["lo"] is None and _bracket_by_card[FALLBACK_ID]["hi"] == 6.0)
+_pooled_bracket = rte._pooled_gamma300_threshold(_gmax_by_card, _bracket_by_card)
+ok("pooled gamma300_threshold: picks the bracket of whichever card attains the pooled max "
+   "(PRIMARY_ID, 13.0), not FALLBACK_ID's",
+   _pooled_bracket == _bracket_by_card[PRIMARY_ID])
+ok("_format_threshold: both bounds known renders 'lo-hi'",
+   rte._format_threshold({"lo": 13.0, "hi": 20.0}) == "13-20")
+ok("_format_threshold: hi=None (nothing sampled above pass_max fails) renders '>=lo'",
+   rte._format_threshold({"lo": 13.0, "hi": None}) == ">=13")
+ok("_format_threshold: lo=None (nothing passes) renders '<hi'",
+   rte._format_threshold({"lo": None, "hi": 6.0}) == "<6")
+ok("_format_threshold: no data at all renders 'n/a'",
+   rte._format_threshold({"lo": None, "hi": None}) == "n/a")
+
+# All-pass fixture: every sample passes -> hi is None (threshold >= largest sample).
+_all_pass_rows = [{"card_id": "x", "headline_pass": True, "gamma300_meV": g, "g2_pulsed": 0.2,
+                  "delta_xx_meV": 4.0, "irf_ps": 50.0, "emission_NA": 0.75,
+                  "emission_R_back": 0.95, "emission_L_um": 250.0, "assumptions": ""}
+                 for g in (6.0, 13.0, 20.0)]
+_all_pass_gmax = rte._card_gamma300_pass_max(_all_pass_rows)
+_all_pass_bracket = rte._gamma300_threshold_bracket(_all_pass_rows, _all_pass_gmax)
+ok("gamma300_threshold_bracket oracle: every sampled value passes -> hi is None "
+   "(threshold >= the largest sample)",
+   _all_pass_bracket["x"]["lo"] == 20.0 and _all_pass_bracket["x"]["hi"] is None)
+
+
+# ================================ 1h. RANGE_BOUNDS cross-check (round 5, item 3)
+
+_bounds_ok = {"dot.delta_xx": (4.0, 8.0, "meV")}
+_agreeing_designs = [
+    ("card-a", _FakeDesign({"ranges": {"dot.delta_xx": {"lo": 4.0, "hi": 8.0, "unit": "meV"}}})),
+    ("card-b", _FakeDesign({"ranges": {"dot.delta_xx": {"lo": 4.0, "hi": 8.0, "unit": "meV"}}})),
+]
+ok("_range_bounds_mismatches: two cards declaring the SAME (lo, hi) -> no mismatches",
+   rte._range_bounds_mismatches(_bounds_ok, _agreeing_designs) == [])
+
+_disagreeing_designs = [
+    ("card-a", _FakeDesign({"ranges": {"dot.delta_xx": {"lo": 4.0, "hi": 8.0, "unit": "meV"}}})),
+    ("card-b", _FakeDesign({"ranges": {"dot.delta_xx": {"lo": 4.0, "hi": 7.0, "unit": "meV"}}})),
+]
+_mismatches = rte._range_bounds_mismatches(_bounds_ok, _disagreeing_designs)
+ok("_range_bounds_mismatches: card-b declares a DIFFERENT (lo, hi) than the resolved "
+   "bound (this is exactly the round-5-item-3 bug: RANGE_BOUNDS = (4.0, 7.0) vs the "
+   "cards' own declared (4.0, 8.0)) -- one mismatch is reported, naming the offending card",
+   len(_mismatches) == 1 and "card-b" in _mismatches[0] and "dot.delta_xx" in _mismatches[0])
+
+_no_declaration_designs = [("card-c", _FakeDesign({"ranges": {}}))]
+ok("_range_bounds_mismatches: a card that does not declare the path at all is not a "
+   "mismatch (nothing to cross-check)",
+   rte._range_bounds_mismatches(_bounds_ok, _no_declaration_designs) == [])
+
+ok("range cross-check: resolve_range_bounds() on the real CARDS reproduces the "
+   "module-level RANGE_BOUNDS resolved at import (both real cards agree)",
+   rte.resolve_range_bounds() == rte.RANGE_BOUNDS)
+ok("range cross-check: the real cards' own provenance.ranges['dot.delta_xx'] is "
+   "(4.0, 8.0), matching verify_rt_edge_cards.py's REQUIRED_RANGES -- NOT the "
+   "round-5-item-3 stale (4.0, 7.0)",
+   rte.RANGE_BOUNDS["dot.delta_xx"][:2] == (4.0, 8.0))
+
+
+# ==================================== 1i. naming/semantics (round 5, item 4)
+
+# coverage (VERDICT) = headline / ELIGIBLE (not headline / total); eligible_fraction =
+# eligible / total; flux_margin = flux_max / floor (>1 clears the floor); flux_shortfall
+# (deprecated) is its old floor / flux_max inverse -- kept for one release.
+_naming_rows = [make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True),   # headline pass, eligible
+                make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True),  # headline fail, eligible
+                make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, False)]  # ineligible
+for _r in _naming_rows:
+    _r["collected_flux_pulsed_s"] = 2000.0
+_naming_stats = rte.compute_stats(_naming_rows)
+_naming_verdict = rte.compute_verdict(_naming_rows, _naming_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+ok("naming: `coverage` is headline/ELIGIBLE (1/2 = 0.5), not headline/total (1/3)",
+   abs(_naming_verdict["coverage"] - 0.5) < 1e-12)
+ok("naming: `eligible_fraction` (NEW) is eligible/total (2/3)",
+   abs(_naming_verdict["eligible_fraction"] - (2.0 / 3.0)) < 1e-12)
+ok("naming: headline_coverage_n/headline_coverage_total is unaffected (still headline/total)",
+   _naming_verdict["headline_coverage_n"] == 1 and _naming_verdict["headline_coverage_total"] == 3)
+ok("naming: `flux_margin` = flux_max/floor (>1 means the floor is cleared) and "
+   "`flux_shortfall` (deprecated) is its exact inverse",
+   abs(_naming_verdict["flux_margin"] - _naming_verdict["flux_max"] / rte.FLUX_FLOOR_PULSED_S) < 1e-9
+   and abs(_naming_verdict["flux_margin"] * _naming_verdict["flux_shortfall"] - 1.0) < 1e-9)
+ok("naming: VERDICT line carries flux_margin= and gamma300_threshold=",
+   "flux_margin=" in rte.verdict_line(_naming_verdict)
+   and "gamma300_threshold=" in rte.verdict_line(_naming_verdict))
 
 
 # ============================================= 2. --quick real-evaluator smoke
@@ -481,8 +672,11 @@ with tempfile.TemporaryDirectory() as td:
     deltas = {float(r["delta_xx_meV"]) for r in quick_rows}
     gammas = {float(r["gamma300_meV"]) for r in quick_rows}
     irfs = {float(r["irf_ps"]) for r in quick_rows}
-    ok("--quick: declared endpoints are sampled on every axis",
-       deltas == {4.0, 7.0} and gammas == {6.0, 20.0} and irfs == {50.0, 200.0})
+    ok("--quick: declared endpoints are sampled on every axis (dot.delta_xx is now "
+       "(4.0, 8.0) -- council review round 5, item 3 -- matching both cards' own "
+       "provenance.ranges and verify_rt_edge_cards.py's REQUIRED_RANGES, not the stale "
+       "(4.0, 7.0))",
+       deltas == {4.0, 8.0} and gammas == {6.0, 20.0} and irfs == {50.0, 200.0})
     ok("--quick: CSV header matches csv_fieldnames() exactly",
        list(quick_rows[0].keys()) == rte.csv_fieldnames())
     ok("--quick: eligibility/invalid-reason columns are present and well-formed",
@@ -626,6 +820,72 @@ with tempfile.TemporaryDirectory() as td:
     if manifest_full["stats"]["n_headline"] > 0:
         ok("full run: gamma300_pass_max is finite whenever at least one row headline-passes",
            math.isfinite(manifest_full["verdict"]["gamma300_pass_max"]))
+
+    # ---- Council review round 5 acceptance criteria ----
+
+    # Item 1: whichever card has n_eligible == 0 must print the "not measurable"
+    # phrase; whichever card has n_eligible > 0 must print "eligible rows:" and
+    # must NEVER print "not measurable" (this is the exact gainp mislabelling bug).
+    for card_id, cs in manifest_full["per_card_stats"].items():
+        line = next((ln for ln in stdout_full.splitlines() if ln.startswith(f"CARD: {card_id} ")),
+                   None)
+        ok(f"full run: CARD line for {card_id} exists in stdout", line is not None)
+        if line is None:
+            continue
+        if cs["n_eligible"] == 0:
+            ok(f"full run: {card_id} has 0 eligible rows -> CARD line says 'not measurable'",
+               "not measurable" in line)
+        else:
+            ok(f"full run: {card_id} has {cs['n_eligible']} eligible rows -> CARD line says "
+               f"'eligible rows:' and NEVER 'not measurable' (council review round 5 item 1)",
+               f"eligible rows: {cs['n_eligible']}/{cs['n_rows']}" in line
+               and "not measurable" not in line)
+
+    # Item 2: gamma300_threshold in the VERDICT line/manifest; anchor_6_5mev_by_card
+    # for both cards, each entry a genuine fresh eval_pulsed_point result.
+    ok("full run: printed VERDICT line carries gamma300_threshold=",
+       "gamma300_threshold=" in stdout_full)
+    ok("full run: manifest verdict section carries gamma300_threshold_by_card and "
+       "anchor_6_5mev_by_card for both cards",
+       all(cid in manifest_full["verdict"]["gamma300_threshold_by_card"]
+           for cid in (PRIMARY_ID, FALLBACK_ID))
+       and all(cid in manifest_full["verdict"]["anchor_6_5mev_by_card"]
+               for cid in (PRIMARY_ID, FALLBACK_ID)))
+    for card_id in (PRIMARY_ID, FALLBACK_ID):
+        anchor = manifest_full["verdict"]["anchor_6_5mev_by_card"][card_id]
+        ok(f"full run: {card_id} anchor_6_5mev entry is a real 6.5 meV evaluation whose "
+           f"'passes' flag matches g2_pulsed < 0.5 and eligible",
+           anchor["gamma300_meV"] == rte.CHATZARAKIS_ANCHOR_GAMMA300_MEV
+           and anchor["passes"] == bool(anchor["eligible"] and anchor["g2_pulsed"] is not None
+                                        and anchor["g2_pulsed"] < rte.G2_THRESHOLD))
+    ok("full run: verdict.md states the 6.5 meV anchor result and quotes Reischle's "
+       "IRF-deconvolved 0.25 +/- 0.05 value",
+       full_artifacts["verdict.md"].read_text(encoding="utf-8").count("6.5") > 0)
+    md_text_full = full_artifacts["verdict.md"].read_text(encoding="utf-8")
+    ok("full run: verdict.md quotes Reischle's like-for-like deconvolved value (0.25) "
+       "alongside the raw dip (0.43)",
+       "0.25" in md_text_full and "0.43" in md_text_full)
+    ok("full run: verdict.md's front-facet section documents the independent forward "
+       "check (council review round 5, item 6), not just the back-solved tautology",
+       "Independent check on the combined front-facet factor" in md_text_full
+       and "BACK-SOLVED" in md_text_full)
+
+    # Item 4: flux_margin/eligible_fraction in the VERDICT line and manifest.
+    ok("full run: printed VERDICT line carries flux_margin= and eligible_fraction=",
+       "flux_margin=" in stdout_full and "eligible_fraction=" in stdout_full)
+    ok("full run: manifest verdict section carries flux_margin and eligible_fraction, "
+       "and flux_margin is the exact reciprocal of the deprecated flux_shortfall",
+       "flux_margin" in manifest_full["verdict"] and "eligible_fraction" in manifest_full["verdict"]
+       and (not math.isfinite(manifest_full["verdict"]["flux_margin"])
+           or abs(manifest_full["verdict"]["flux_margin"]
+                  * manifest_full["verdict"]["flux_shortfall"] - 1.0) < 1e-6))
+
+    # Item 3: sweep.csv's actual delta_xx values match the cards' own declared
+    # (4.0, 8.0) range, not the stale (4.0, 7.0).
+    full_deltas = {float(r["delta_xx_meV"]) for r in full_rows}
+    ok("full run: sweep.csv delta_xx values are the cards' own declared (4.0, 8.0) "
+       "endpoints (council review round 5, item 3)",
+       full_deltas == {4.0, 8.0})
 
 
 # ============================================== 4. artifacts, hashes, determinism

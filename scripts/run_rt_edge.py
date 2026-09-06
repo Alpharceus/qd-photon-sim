@@ -55,6 +55,29 @@ recorded in manifest.json's "grid"/"lever_info" sections, per the review's
 explicit "reduce interior samples on the other axes if needed and say so in
 the manifest" instruction.
 
+Fifth council review (2026-09-06) fixes: (1) card_line() no longer prints the
+"diagnostic (below flux floor, not measurable)" phrase next to g2_pulsed_min/
+median unless a card has zero eligible rows (those two numbers are ALREADY
+the eligible-row statistics). (2) gamma300_pass_max/gamma300_threshold are
+now derived from a finer, headline-only GAMMA300_REFINE_MEV sample set (8
+points, including the verified Chatzarakis 2023 6.5 meV anchor) rather than
+just the 2-point sweep.csv grid endpoints; a bracketed gamma300_threshold
+states where the true (unsampled) threshold lies, and a per-card
+anchor_check() states explicitly whether the verified anchor passes. (3)
+RANGE_BOUNDS is now resolve_range_bounds()-derived from the cards' own
+provenance.ranges (cross-checked for agreement across cards) instead of a
+hardcoded dict that had drifted from them. (4) `coverage` now means
+headline-pass fraction over ELIGIBLE rows (a new `eligible_fraction` key is
+eligible/total); `flux_margin` (flux_max/floor, >1 clears the floor)
+replaces `flux_shortfall` as the preferred key (kept one release,
+deprecated). (5) the literature-ceiling paragraph adds Reischle et al.
+2008's like-for-like IRF-deconvolved, background-included g2(0) = 0.25 +/-
+0.05 anchor alongside the (still IRF-broadened) 0.43 raw dip. (6) the
+front-facet-split "self-check" (which only ever reproduced its own
+back-solved inputs, a tautology) is replaced with a genuinely independent
+forward recomputation read from fsim_core/waveguide.py's OWN source at run
+time (never hardcoded, since that file's facet model may change).
+
 CLI: python scripts/run_rt_edge.py [--quick] [--out-dir PATH]
 --quick uses a 2-point (endpoints-only) grid, explicitly marked incomplete;
 an incomplete grid can never grant VERDICT: PASS (see compute_verdict).
@@ -64,14 +87,18 @@ scientific VERDICT: FAIL -- the machine-readable verdict, not the process
 exit code, is authoritative for acceptance); nonzero only for a runtime or
 artifact-writing error.
 
-Standalone, side-effect-free on import (all work happens under
-`if __name__ == "__main__"`); verify/verify_rt_edge_sweep.py imports the
-functions below directly (grid, resolve_lever_grid, build_lever_combos,
-resolve_device_card, eval_pulsed_point, eval_cw_point, compute_stats,
-compute_verdict, _card_gamma300_pass_max, _loading_term,
-_brightness_factor_check, _front_facet_split, _self_test_passed, write_csv,
-write_png, write_markdown, write_manifest) rather than parsing this
-script's stdout.
+Standalone on import (all evaluation happens under
+`if __name__ == "__main__"`) except for resolve_range_bounds()'s own two
+small provenance.ranges reads off the cards' YAML files at module load
+(computing the module-level RANGE_BOUNDS constant -- no evaluate() calls,
+no writes); verify/verify_rt_edge_sweep.py imports the functions below
+directly (grid, resolve_lever_grid, build_lever_combos, resolve_device_card,
+eval_pulsed_point, eval_cw_point, compute_stats, compute_verdict,
+_card_gamma300_pass_max, _gamma300_threshold_bracket, resolve_range_bounds,
+_range_bounds_mismatches, refine_gamma300, anchor_check, _loading_term,
+_brightness_factor_check, _front_facet_split, _facet_factor_formula_candidates,
+_facet_factor_forward_check, _self_test_passed, write_csv, write_png,
+write_markdown, write_manifest) rather than parsing this script's stdout.
 """
 from __future__ import annotations
 
@@ -79,9 +106,11 @@ import argparse
 import copy
 import csv
 import hashlib
+import inspect
 import itertools
 import json
 import platform
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -95,6 +124,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+from fsim_core import waveguide  # noqa: E402
 import verify.verify_rt_edge_papers as rt_papers  # noqa: E402
 
 CARDS = [
@@ -106,14 +136,77 @@ CARDS = [
 
 # Contract ranges (docs/rt_edge_contract.md; exact endpoints checked
 # mechanically against every card's own provenance.ranges by
-# verify/verify_rt_edge_cards.py REQUIRED_RANGES -- reproduced here, not
-# re-derived, so a range typo in either place would disagree and be caught
-# by that file, not silently drift).
-RANGE_BOUNDS = {
-    "dot.delta_xx": (4.0, 7.0, "meV"),
+# verify/verify_rt_edge_cards.py REQUIRED_RANGES). Fifth council review
+# (2026-09-06) item 3: this used to be a bare hardcoded dict --
+# ("dot.delta_xx": (4.0, 7.0)) had drifted from both cards' own declared
+# provenance.ranges["dot.delta_xx"] = (4.0, 8.0) and from
+# verify_rt_edge_cards.py's own REQUIRED_RANGES (4.0, 8.0), so the sweep was
+# silently sampling a narrower delta_xx window than the cards/contract
+# actually declare. RANGE_BOUNDS is now RESOLVED from the cards' own
+# provenance.ranges at run time (see resolve_range_bounds() below); the
+# tuples here are only the FALLBACK used for a path a card does not declare
+# (currently unused in practice -- both real cards declare all three).
+_RANGE_BOUNDS_FALLBACK = {
+    "dot.delta_xx": (4.0, 8.0, "meV"),
     "dot.gamma300": (6.0, 20.0, "meV"),
     "irf_ps": (50.0, 200.0, "ps"),
 }
+
+
+def _range_bounds_mismatches(bounds: dict, designs: list) -> list:
+    """Pure check, no I/O: for each RANGE_BOUNDS path, verify every design's
+    own provenance.ranges[path] (lo, hi) agrees with the already-resolved
+    `bounds`. `designs` is a list of (card_id, design) pairs -- `design`
+    needs only a `.provenance` dict, so a synthetic fixture (no real card
+    file) can drive this in verify/verify_rt_edge_sweep.py. Returns a list
+    of human-readable mismatch strings (empty when everything agrees)."""
+    mismatches = []
+    for card_id, design in designs:
+        ranges = (getattr(design, "provenance", None) or {}).get("ranges", {})
+        for path_key, (lo, hi, _unit) in bounds.items():
+            entry = ranges.get(path_key)
+            if entry is None or entry.get("lo") is None or entry.get("hi") is None:
+                continue  # this design doesn't declare the axis -- nothing to cross-check
+            declared = (float(entry["lo"]), float(entry["hi"]))
+            if declared != (float(lo), float(hi)):
+                mismatches.append(
+                    f"{path_key}: card {card_id!r} declares provenance.ranges = "
+                    f"{declared} but the resolved RANGE_BOUNDS is ({lo}, {hi})")
+    return mismatches
+
+
+def resolve_range_bounds(cards: list | None = None) -> dict:
+    """Council review round 5, item 3: read {lo, hi, unit} for each shared
+    RANGE_BOUNDS path from the FIRST card that declares it (in `cards`
+    order) instead of a hardcoded constant; fall back to
+    _RANGE_BOUNDS_FALLBACK only for a path no card declares. Then
+    cross-check with _range_bounds_mismatches that every OTHER card agrees
+    with the resolved bound exactly -- RANGE_BOUNDS is a SHARED axis across
+    both cards (unlike the per-card LEVER_PATHS ranges below), so a card
+    that declares a different (lo, hi) for the same path is a real
+    inconsistency, not a value to silently prefer. Raises ValueError on any
+    mismatch rather than resolving to one card's number silently."""
+    cards = CARDS if cards is None else cards
+    designs = [(c["id"], DeviceDesign.load(c["path"])) for c in cards]
+    bounds = {}
+    for path_key, (lo_fb, hi_fb, unit_fb) in _RANGE_BOUNDS_FALLBACK.items():
+        resolved = None
+        for _card_id, design in designs:
+            ranges = (design.provenance or {}).get("ranges", {})
+            entry = ranges.get(path_key)
+            if entry is None or entry.get("lo") is None or entry.get("hi") is None:
+                continue
+            resolved = (float(entry["lo"]), float(entry["hi"]), entry.get("unit", unit_fb))
+            break
+        bounds[path_key] = resolved if resolved is not None else (lo_fb, hi_fb, unit_fb)
+    mismatches = _range_bounds_mismatches(bounds, designs)
+    if mismatches:
+        raise ValueError("RANGE_BOUNDS disagree with a card's declared "
+                         "provenance.ranges: " + "; ".join(mismatches))
+    return bounds
+
+
+RANGE_BOUNDS = resolve_range_bounds()
 
 # Collection-lever axes (council review round 4, item 1): unlike RANGE_BOUNDS
 # above, these are declared per-card in each card's own provenance.ranges
@@ -158,6 +251,45 @@ _ENDPOINT_N = 2
 # is the documented "reduce interior samples on the other axes" trade-off
 # the review explicitly allows, recorded in manifest.json's grid section.
 _FULL_N = 2
+
+# Council review round 5, item 2: the main grid's dot.gamma300 axis is only
+# the two RANGE_BOUNDS endpoints ({6, 20} meV) -- gamma300_pass_max derived
+# from it can only ever equal whichever endpoint happens to pass, which is
+# NOT the same thing as "the largest linewidth at which the card passes"
+# (there could be passing/failing samples in between). This finer,
+# headline-only sample set (used ONLY for the gamma300_pass_max /
+# gamma300_threshold determination below -- never written to sweep.csv, so
+# it does not change the CSV/PNG grid-completeness contract) includes the
+# verified Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023) 6.5 meV
+# lower-anchor value. irf_ps is intentionally NOT swept here: g2_op (the
+# headline metric) is irf_ps-independent (eval_pulsed_point's own pulsed
+# sub-result is cached without it), so no CW/irf evaluation is performed by
+# refine_gamma300() at all -- this is the "reduce irf_ps to the two
+# endpoints if runtime needs it" trade-off the review allows, taken to its
+# natural conclusion (irf_ps contributes nothing to this determination).
+GAMMA300_REFINE_MEV = [6.0, 6.5, 7.0, 8.0, 10.0, 12.0, 16.0, 20.0]
+
+# Council review round 5, item 2: the verified Chatzarakis 2023 300 K
+# linewidth lower-anchor value (chatzarakis23-gamma300-class; also the
+# lo endpoint of RANGE_BOUNDS["dot.gamma300"]) -- report explicitly, per
+# card, whether it passes the headline gate at the card's OWN default
+# delta_xx (never the sweep's endpoint grid), since both real cards'
+# provenance.ranges["dot.gamma300"].note already document a fresh
+# evaluation at exactly this value.
+CHATZARAKIS_ANCHOR_GAMMA300_MEV = 6.5
+
+# Council review round 5, item 5: Reischle et al., Optics Express 16, 12771
+# (2008) reports g2(0) on THREE different conventions (QD C, 80 K); the
+# ceiling paragraph below used to compare this sweep's IRF-free intrinsic
+# g2_min against Reischle's RAW dip (0.43, still IRF-broadened) -- not a
+# like-for-like comparison. The IRF-DECONVOLVED-but-background-included
+# value is the correct like-for-like anchor against this sweep's g2_op
+# (also background-included via drive.b_res/rho, also never IRF-convolved
+# for the pulsed metric): g2_b(0) = 0.25 +/- 0.05 (QD C, 80 K)
+# (../_goal/paper_digests.md line ~36).
+REISCHLE_RAW_G2 = 0.43
+REISCHLE_DECONV_G2 = 0.25
+REISCHLE_DECONV_G2_ERR = 0.05
 
 
 # --------------------------------------------------------------------- grid
@@ -368,6 +500,70 @@ def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple
                     rows.append(_build_row(card, ranges, card_assumptions, i_ua,
                                            delta_xx, gamma300, irf_ps, lever, pulsed, cw))
     return rows, lever_grid, len(combos)
+
+
+def refine_gamma300(card: dict, delta_xx_grid: list, lever_combos: list,
+                    pulsed_cache: dict) -> list:
+    """Council review round 5, item 2: headline_pass at every (delta_xx,
+    lever-combo) x GAMMA300_REFINE_MEV sample -- "keep the lever axes"
+    (every lever combo is still searched, since eligibility, via the
+    collected-flux floor, DOES depend on the lever even though g2_op does
+    not) while never evaluating a CW/irf_ps sub-point at all (headline_pass
+    depends only on the pulsed sub-result, which eval_pulsed_point already
+    caches independently of irf_ps -- so this is strictly cheaper than
+    adding gamma300 samples to the main grid, which would also multiply the
+    CW/irf axis). Reuses `pulsed_cache` with the SAME (card, delta_xx,
+    gamma300, lever) key scheme as the main sweep, so gamma300 values
+    already in RANGE_BOUNDS's endpoints (computed by sweep_card for the
+    same delta_xx/lever) are cache hits, not recomputed. Returns a list of
+    row-like dicts (never written to sweep.csv) with just the fields
+    _card_gamma300_pass_max / _gamma300_threshold_bracket need."""
+    card_path = card["path"]
+    design0 = DeviceDesign.load(card_path)
+    provenance = design0.provenance or {}
+    assumptions = "; ".join(sorted(set(provenance.get("assumptions", []))
+                                   | set(SWEEP_ASSUMPTION_KEYS)))
+    rows = []
+    for lever in lever_combos:
+        for delta_xx in delta_xx_grid:
+            for gamma300 in GAMMA300_REFINE_MEV:
+                pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache)
+                g2_p = _f_or_none(pulsed["scalars"].get("g2_op"))
+                headline_pass = bool(pulsed["eligible"] and g2_p is not None
+                                     and g2_p < G2_THRESHOLD)
+                rows.append({
+                    "card_id": card["id"], "headline_pass": headline_pass,
+                    "gamma300_meV": gamma300, "g2_pulsed": g2_p,
+                    "delta_xx_meV": delta_xx, "irf_ps": None,
+                    "emission_NA": lever["emission.NA"],
+                    "emission_R_back": lever["emission.R_back"],
+                    "emission_L_um": lever["emission.L_um"],
+                    "assumptions": assumptions,
+                })
+    return rows
+
+
+def anchor_check(card: dict, pulsed_cache: dict) -> dict:
+    """Council review round 5, item 2: a fresh, single eval_pulsed_point
+    call at the verified Chatzarakis 2023 CHATZARAKIS_ANCHOR_GAMMA300_MEV
+    (6.5 meV) anchor, using the CARD'S OWN default delta_xx and
+    emission.NA/R_back/L_um (no sweep-grid overrides at all beyond
+    dot.gamma300) -- both cards' own provenance.ranges["dot.gamma300"].note
+    already document this exact fresh evaluation by hand; this reproduces
+    it programmatically instead of quoting the card comment's numbers."""
+    card_path = card["path"]
+    design0 = DeviceDesign.load(card_path)
+    lever = {"emission.NA": design0.emission.NA, "emission.R_back": design0.emission.R_back,
+            "emission.L_um": design0.emission.L_um}
+    delta_xx = design0.dot.delta_xx
+    pulsed = eval_pulsed_point(card_path, delta_xx, CHATZARAKIS_ANCHOR_GAMMA300_MEV,
+                              lever, pulsed_cache)
+    g2 = _f_or_none(pulsed["scalars"].get("g2_op"))
+    passes = bool(pulsed["eligible"] and g2 is not None and g2 < G2_THRESHOLD)
+    return {"card_id": card["id"], "delta_xx_meV": float(delta_xx),
+           "gamma300_meV": CHATZARAKIS_ANCHOR_GAMMA300_MEV, "g2_pulsed": g2,
+           "flux_s": _f_or_none(pulsed["flux_s"]), "eligible": pulsed["eligible"],
+           "passes": passes}
 
 
 def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
@@ -616,6 +812,18 @@ def _f_or_none(value):
         return None
 
 
+def _fmt_or_na(value, spec: str = ".4g") -> str:
+    """Markdown-table-cell formatter: "n/a" for None/unparseable, "nan" for
+    a genuine non-finite float, else `spec`-formatted."""
+    if value is None:
+        return "n/a"
+    try:
+        fval = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    return "nan" if not np.isfinite(fval) else format(fval, spec)
+
+
 def _card_gamma300_pass_max(rows: list) -> dict:
     """Per-card ceiling on the (currently unmeasured, [E]-class) 300 K
     linewidth gamma300 (council review round 4, item 2): the largest
@@ -647,6 +855,61 @@ def _card_gamma300_pass_max(rows: list) -> dict:
             "assumptions": str(best.get("assumptions", "")),
         }
     return result
+
+
+def _gamma300_threshold_bracket(rows: list, gamma300_pass_max_by_card: dict) -> dict:
+    """Council review round 5, item 2: gamma300_pass_max alone only says the
+    true (continuous, unsampled) threshold is AT LEAST this value -- it says
+    nothing about how much further it might extend before failing. This
+    finds, per card, the SMALLEST sampled gamma300 (from the same `rows`
+    _card_gamma300_pass_max was given) strictly above gamma300_pass_max,
+    i.e. the first sample already known to fail; the true threshold lies in
+    (gamma300_pass_max, that value]. Returns {card_id: {"lo": ..., "hi":
+    ...}}: hi is None when every sampled value >= gamma300_pass_max passes
+    (the threshold is >= the largest sample); lo is None when no sampled
+    value passes at all (the threshold is < the smallest sample)."""
+    by_card_gammas: dict = {}
+    for r in rows:
+        by_card_gammas.setdefault(r["card_id"], set()).add(float(r["gamma300_meV"]))
+    result = {}
+    for card_id, gammas in by_card_gammas.items():
+        gmax = gamma300_pass_max_by_card.get(card_id, {}).get("gamma300_pass_max_meV", float("nan"))
+        sorted_g = sorted(gammas)
+        if not np.isfinite(gmax):
+            result[card_id] = {"lo": None, "hi": (sorted_g[0] if sorted_g else None)}
+            continue
+        higher = sorted(g for g in sorted_g if g > gmax)
+        result[card_id] = {"lo": gmax, "hi": (higher[0] if higher else None)}
+    return result
+
+
+def _pooled_gamma300_threshold(gamma300_pass_max_by_card: dict, threshold_by_card: dict) -> dict:
+    """VERDICT-line pooled bracket (council review round 5, item 2): the
+    bracket of whichever card attains the pooled gamma300_pass_max (the max
+    over all cards); ties broken by CARDS order. {"lo": None, "hi": None}
+    when no card has any headline-passing sample."""
+    finite = [(cid, info["gamma300_pass_max_meV"])
+             for cid, info in gamma300_pass_max_by_card.items()
+             if np.isfinite(info.get("gamma300_pass_max_meV", float("nan")))]
+    if not finite:
+        return {"lo": None, "hi": None}
+    best_cid = max(finite, key=lambda kv: kv[1])[0]
+    return threshold_by_card.get(best_cid, {"lo": None, "hi": None})
+
+
+def _format_threshold(bracket: dict) -> str:
+    """Human-readable `gamma300_threshold` text for the VERDICT line/
+    verdict.md: "<lo>-<hi>" when both bounds are known, ">=<lo>" when every
+    sampled value at/above gamma300_pass_max passes, "<<hi>" when nothing
+    passes, "n/a" when there is no card data at all."""
+    lo, hi = (bracket or {}).get("lo"), (bracket or {}).get("hi")
+    if lo is None and hi is None:
+        return "n/a"
+    if lo is None:
+        return f"<{hi:g}"
+    if hi is None:
+        return f">={lo:g}"
+    return f"{lo:g}-{hi:g}"
 
 
 def _loading_term(mu) -> float:
@@ -707,31 +970,127 @@ def _brightness_factor_check(row: dict) -> dict:
 
 
 def _front_facet_split(row: dict) -> float:
-    """The front/back facet emission split (waveguide.edge_emission's own
-    `front` local -- 0.5 with no R_back, else T_facet/(T_facet+(1-R_back)))
-    is folded into edge_eta_total exactly once but never separately exposed
-    as its own device.py/EdgeResult scalar -- council review round 4 item
-    3's exact complaint ("hides the 0.5 front-facet split inside
-    eta_total"). It is NOT the same quantity as `beta` (the waveguide
-    spontaneous-emission coupling factor). Back-solved here as a pure
-    division of four already-computed evaluator scalars (no new physics):
-    eta_total = beta * front * T_facet * eta_prop * eta_NA."""
+    """Council review round 5, item 6 (updated for fsim_core/waveguide.py's
+    OWN concurrent 2026-09-06 item-1 facet-model change, observed live in
+    that file's edge_emission(): the standalone `front` local is GONE --
+    the front/back-facet split and the facet's Fresnel transmission T_facet
+    are now fused into one `facet_factor` that already includes T_facet, so
+    T_facet is no longer a separate multiplicative step beyond it for
+    R_back > 0). What is stable across BOTH the old and the new shape is
+    the STRUCTURAL equation eta_total = beta * <the combined front/back-
+    facet-and-transmission factor> * eta_prop * eta_NA -- beta, eta_prop,
+    eta_NA and eta_total are unchanged EdgeResult/device.py scalars in
+    either version. This backs out THAT combined factor, deliberately never
+    dividing by edge_T_facet separately (dividing by it would silently
+    assume the now-superseded old 5-term shape and be wrong for R_back>0
+    rows under the new model)."""
     try:
         beta = float(row.get("edge_beta"))
-        t_facet = float(row.get("edge_T_facet"))
         eta_prop = float(row.get("edge_eta_prop"))
         eta_na = float(row.get("edge_eta_NA"))
         eta_total = float(row.get("edge_eta_total"))
     except (TypeError, ValueError):
         return float("nan")
-    denom = beta * t_facet * eta_prop * eta_na
+    denom = beta * eta_prop * eta_na
     if not (np.isfinite(denom) and denom != 0 and np.isfinite(eta_total)):
         return float("nan")
     return eta_total / denom
 
 
+# Names this repository's edge_emission() has used, across versions, for the
+# combined front/back-facet-and-transmission factor -- council review round
+# 5, item 6: fsim_core/waveguide.py is being edited concurrently (the facet
+# model may change again), so the independent check below never hardcodes
+# ONE of these names/formulas as ground truth; it tries every RHS
+# expression assigned to any of them in the INSTALLED source.
+_FACET_FACTOR_CANDIDATE_NAMES = ("front", "facet_factor", "eta_facet")
+
+
+def _facet_factor_formula_candidates() -> list:
+    """Best-effort introspection (council review round 5, item 6): every RHS
+    expression assigned to any of _FACET_FACTOR_CANDIDATE_NAMES inside the
+    INSTALLED waveguide.edge_emission source right now -- there may be more
+    than one (the live source, as of this round's fsim_core/waveguide.py
+    item-1 fix, branches on R_back: a geometric `0.5 * T` case and an
+    escape-rate `T / (T + (1 - R_back))` case). Returns a list of (name,
+    expr) pairs, in source order; empty if introspection fails or none of
+    the candidate names appear."""
+    try:
+        src = inspect.getsource(waveguide.edge_emission)
+    except (OSError, TypeError):
+        return []
+    names = "|".join(_FACET_FACTOR_CANDIDATE_NAMES)
+    return [(m.group(1), m.group(2).rstrip(","))
+           for m in re.finditer(rf"^\s*({names})\s*=\s*(.+?)\s*$", src, re.MULTILINE)]
+
+
+def _facet_factor_forward_check(row: dict) -> dict:
+    """Council review round 5, item 6: the OLD 'self-check' table entry only
+    ever reproduced `_front_facet_split`'s own back-solved value by
+    construction (eta_total was built FROM that factor in the first place)
+    -- a tautology, not evidence. This recomputes the combined factor
+    FORWARD from the row's own edge_T_facet/emission_R_back and compares it
+    against the back-solved value -- a genuinely independent check, since
+    forward and back-solved come from disjoint inputs (T_facet/R_back vs
+    beta/eta_prop/eta_NA/eta_total).
+
+    Tries every candidate RHS expression from
+    _facet_factor_formula_candidates() (falling back to the two-branch
+    formula this file most recently observed live in
+    fsim_core/waveguide.py, if introspection finds nothing), each two ways:
+    directly (current-model convention -- the candidate already IS the full
+    combined factor, T_facet included) and multiplied by T_facet
+    (legacy-model convention -- the candidate is only the front/back split,
+    with T_facet applied as a separate step) -- since a concurrently-edited
+    facet model may use either grouping, and this file must not assume
+    which. Returns {"back_solved", "forward", "convention", "ok"}; "ok" is
+    False (with the first evaluable candidate reported, unmatched) when no
+    candidate reproduces the back-solved value."""
+    back_solved = _front_facet_split(row)
+    try:
+        T = float(row.get("edge_T_facet"))
+        r_back_raw = row.get("emission_R_back")
+        R_back = None if r_back_raw in (None, "", "None") else float(r_back_raw)
+    except (TypeError, ValueError):
+        return {"back_solved": back_solved, "forward": float("nan"),
+               "convention": None, "ok": False}
+    candidates = _facet_factor_formula_candidates()
+    if not candidates:
+        candidates = [("facet_factor (fsim_core/waveguide.py source could not be "
+                      "introspected; last-known formula used)",
+                      "0.5 * T if (R_back is None or R_back == 0) "
+                      "else T / (T + (1 - R_back))")]
+    first_evaluable = None
+    for name, expr in candidates:
+        try:
+            value = float(eval(expr, {"__builtins__": {}}, {"T": T, "R_back": R_back}))
+        except Exception:
+            continue
+        if first_evaluable is None:
+            first_evaluable = (name, expr, value)
+        if not np.isfinite(back_solved):
+            continue
+        if abs(value - back_solved) < 1e-6:
+            return {"back_solved": back_solved, "forward": value,
+                   "convention": f"`{name} = {expr}` (fused/current-model convention: "
+                                f"already includes T_facet)", "ok": True}
+        if np.isfinite(T) and abs(value * T - back_solved) < 1e-6:
+            return {"back_solved": back_solved, "forward": value * T,
+                   "convention": f"`{name} = {expr}`, times T_facet (legacy/split "
+                                f"convention: T_facet applied as a separate step)",
+                   "ok": True}
+    if first_evaluable is not None:
+        name, expr, value = first_evaluable
+        return {"back_solved": back_solved, "forward": value,
+               "convention": f"`{name} = {expr}`", "ok": False}
+    return {"back_solved": back_solved, "forward": float("nan"), "convention": None,
+           "ok": False}
+
+
 def compute_verdict(rows: list, stats: dict, grid_complete: bool,
-                    evidence_report: dict, hallucination_report: dict) -> dict:
+                    evidence_report: dict, hallucination_report: dict,
+                    gamma300_refine_rows: list | None = None,
+                    anchor_report: dict | None = None) -> dict:
     """Pure policy function over already-computed rows/stats plus the two
     freshly-run paper-check reports -- no card loading, no evaluate() calls,
     so verify_rt_edge_sweep.py can drive it with synthetic fixtures.
@@ -778,9 +1137,19 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     # completion, not on the science itself.
     conditional = bool(headline_rows) and not evidence_complete
 
-    gamma300_pass_max_by_card = _card_gamma300_pass_max(rows)
+    # Council review round 5, item 2: prefer the finer gamma300_refine_rows
+    # (GAMMA300_REFINE_MEV, 8 samples) when the caller supplies it; fall
+    # back to the main `rows` (RANGE_BOUNDS's 2 endpoints only) so this
+    # function stays usable exactly as before when no refinement was run
+    # (e.g. --quick, or the existing section-1 synthetic-fixture tests).
+    gamma_source_rows = gamma300_refine_rows if gamma300_refine_rows else rows
+    gamma300_pass_max_by_card = _card_gamma300_pass_max(gamma_source_rows)
     gamma300_pass_max = _max_finite(
         [v["gamma300_pass_max_meV"] for v in gamma300_pass_max_by_card.values()])
+    gamma300_threshold_by_card = _gamma300_threshold_bracket(
+        gamma_source_rows, gamma300_pass_max_by_card)
+    gamma300_threshold = _pooled_gamma300_threshold(
+        gamma300_pass_max_by_card, gamma300_threshold_by_card)
 
     fallback_only = bool(passed and headline_by_card
                          and all(r["card_class"] != "primary"
@@ -795,10 +1164,27 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     elif passed and not median_pass:
         note = "the best corner passes but the pooled pulsed median does not"
 
+    # Council review round 5, item 4 (naming/semantics -- one word per
+    # quantity): `coverage` now means headline-pass fraction OVER ELIGIBLE
+    # ROWS ONLY (it used to duplicate headline_coverage_n/total's all-rows
+    # fraction under a different-looking float, which is what made it
+    # ambiguous); `eligible_fraction` (NEW) is eligible/total. `flux_margin`
+    # (NEW, preferred) is flux_max/floor (>1 means the floor is CLEARED);
+    # `flux_shortfall` (its old floor/flux_max inverse framing) is kept one
+    # release, deprecated.
+    eligible_fraction = (stats["n_eligible"] / stats["n_total"]) if stats["n_total"] else 0.0
+    coverage_over_eligible = ((stats["n_headline"] / stats["n_eligible"])
+                              if stats["n_eligible"] else float("nan"))
+    flux_shortfall = (FLUX_FLOOR_PULSED_S / stats["flux_max"]
+                      if np.isfinite(stats["flux_max"]) and stats["flux_max"] > 0
+                      else float("nan"))
+    flux_margin = (stats["flux_max"] / FLUX_FLOOR_PULSED_S
+                  if np.isfinite(stats["flux_max"]) else float("nan"))
+
     return {
         "pass": passed, "fail_reasons": fail_reasons,
         "g2_min": g2_min, "g2_median": g2_median, "median_pass": median_pass,
-        "coverage": stats["headline_coverage"],
+        "coverage": coverage_over_eligible, "eligible_fraction": eligible_fraction,
         "headline_coverage_n": stats["n_headline"], "headline_coverage_total": stats["n_total"],
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_total"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_total"],
@@ -807,41 +1193,61 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "diag_g2_min": stats["diag_g2_pulsed_min"],
         "diag_g2_median": stats["diag_g2_pulsed_median"],
         "flux_max": stats["flux_max"],
-        "flux_shortfall": (FLUX_FLOOR_PULSED_S / stats["flux_max"]
-                           if np.isfinite(stats["flux_max"]) and stats["flux_max"] > 0
-                           else float("nan")),
+        "flux_margin": flux_margin,
+        "flux_shortfall": flux_shortfall,  # DEPRECATED: use flux_margin (1/flux_shortfall)
         "evidence_complete": evidence_complete, "hallucination_ok": hallucination_ok,
         "conditional": conditional, "assumptions_used": assumptions_used,
         "headline_rows": headline_rows, "headline_by_card": headline_by_card,
         "fallback_only": fallback_only, "note": note,
         "gamma300_pass_max": gamma300_pass_max,
         "gamma300_pass_max_by_card": gamma300_pass_max_by_card,
+        "gamma300_threshold_by_card": gamma300_threshold_by_card,
+        "gamma300_threshold": gamma300_threshold,
+        "anchor_6_5mev_by_card": anchor_report or {},
     }
 
 
 def verdict_line(verdict: dict) -> str:
     return (f"VERDICT: {'PASS' if verdict['pass'] else 'FAIL'} "
-            f"g2_min={verdict['g2_min']:.4g} g2_median={verdict['g2_median']:.4g} "
+            f"g2_min={verdict['g2_min']:.4g} g2_median_eligible={verdict['g2_median']:.4g} "
             f"diag_g2_min={verdict['diag_g2_min']:.4g} "
-            f"diag_g2_median={verdict['diag_g2_median']:.4g} "
+            f"diag_g2_median_diagnostic={verdict['diag_g2_median']:.4g} "
             f"flux_max={verdict['flux_max']:.4g} "
-            f"flux_shortfall={verdict['flux_shortfall']:.4g} "
+            f"flux_margin={verdict['flux_margin']:.4g} "
+            f"flux_shortfall_deprecated={verdict['flux_shortfall']:.4g} "
             f"median_pass={'true' if verdict['median_pass'] else 'false'} "
-            f"coverage={verdict['coverage']:.4g} "
+            f"coverage_over_eligible={verdict['coverage']:.4g} "
+            f"eligible_fraction={verdict['eligible_fraction']:.4g} "
             f"eligible={verdict['eligible_n']}/{verdict['eligible_total']} "
             f"flux_floor_excluded={verdict['flux_floor_excluded']} "
             f"evidence={'complete' if verdict['evidence_complete'] else 'incomplete'} "
             f"conditional={'true' if verdict['conditional'] else 'false'} "
             f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
             f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']} "
-            f"gamma300_pass_max={verdict['gamma300_pass_max']:.4g}")
+            f"gamma300_pass_max={verdict['gamma300_pass_max']:.4g} "
+            f"gamma300_threshold={_format_threshold(verdict['gamma300_threshold'])}")
 
 
 def card_line(card_id: str, card_stats: dict) -> str:
-    return (f"CARD: {card_id} role={card_stats['card_class']} "
+    """Council review round 5, item 1: the fixed 'diagnostic (below flux
+    floor, not measurable)' phrase used to print unconditionally right
+    after g2_pulsed_min/median -- which are ALREADY the eligible-row
+    statistics (compute_stats' eligible_pulsed_vals) -- wrongly implying
+    those numbers themselves were unmeasurable diagnostics whenever a card
+    had ANY eligible rows at all (e.g. the gainp card, eligible=16/96,
+    flux >= floor). Print that phrase ONLY when the card has zero eligible
+    rows (so g2_pulsed_min/median are genuinely nan and only the diag_*
+    figures below carry information); otherwise print the eligible count
+    with its own min/median."""
+    if card_stats["n_eligible"] == 0:
+        eligibility_phrase = "diagnostic (below flux floor, not measurable)"
+    else:
+        eligibility_phrase = (
+            f"eligible rows: {card_stats['n_eligible']}/{card_stats['n_rows']} "
             f"g2_pulsed_min={card_stats['g2_pulsed_min']:.4g} "
-            f"g2_pulsed_median={card_stats['g2_pulsed_median']:.4g} "
-            f"diagnostic (below flux floor, not measurable) "
+            f"g2_pulsed_median={card_stats['g2_pulsed_median']:.4g}")
+    return (f"CARD: {card_id} role={card_stats['card_class']} "
+            f"{eligibility_phrase} "
             f"diag_g2_min={card_stats['diag_g2_pulsed_min']:.4g} "
             f"diag_g2_median={card_stats['diag_g2_pulsed_median']:.4g} "
             f"diag_g2_cw0_min={card_stats['diag_g2_cw0_min']:.4g} "
@@ -954,40 +1360,117 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "In the reviewed literature set of this repository (six papers, "
         "../_goal/paper_digests.md) and the anchors ledger, no electrically "
         "driven III-V single-dot g2(0) at 300 K is reported; the best "
-        "electrical result in that set is Reischle et al. 2008 at 80 K: "
-        "g2(0) = 0.43 raw, 0.03 after "
-        "background correction. The best reported 300 K single-dot values "
+        "electrical result in that set is Reischle et al., Optics Express 16, "
+        "12771 (2008) at 80 K (QD C): g2(0) = "
+        f"{REISCHLE_RAW_G2:.2f} raw (still IRF-broadened), 0.03 after "
+        "background correction with the ~500 ps detector IRF also deconvolved. "
+        "The best reported 300 K single-dot values "
         "are optically pumped: g2(0) ~ 0.5-0.57 (Laferriere et al. 2023, "
         "InAsP/InP nanowire dot, g2(0) = 0.57 at 300 K). This sweep's pooled "
         f"pulsed g2_min={verdict['g2_min']:.4g}, "
-        f"g2_median={verdict['g2_median']:.4g} is reported against that "
-        "electrical-vs-optical literature picture, not as a claim of an "
+        f"g2_median(eligible)={verdict['g2_median']:.4g} is reported against "
+        "that electrical-vs-optical literature picture, not as a claim of an "
         "existing electrical 300 K result to exceed.")
     lines.append("")
+    lines.append(
+        "**Like-for-like comparison (council review round 5, item 5).** The "
+        "paragraph above juxtaposed this sweep's IRF-FREE intrinsic g2_min "
+        f"against Reischle's RAW dip ({REISCHLE_RAW_G2:.2f}, still IRF-"
+        "broadened) -- not a like-for-like convention match. The correct "
+        "like-for-like anchor is Reischle's IRF-DECONVOLVED-but-background-"
+        f"included value, g2_b(0) = {REISCHLE_DECONV_G2:.2f} +/- "
+        f"{REISCHLE_DECONV_G2_ERR:.2f} (QD C, 80 K; ../_goal/paper_digests.md "
+        "line ~36), since this sweep's g2_op is likewise background-included "
+        "(via drive.b_res/rho) and never IRF-convolved for the pulsed metric.")
+    g2_min = verdict.get("g2_min", float("nan"))
+    if np.isfinite(g2_min) and g2_min > 0:
+        ratio = g2_min / REISCHLE_DECONV_G2
+        if ratio > 1.0:
+            lines.append(
+                f"On matching conventions, the 80 K Reischle device is about "
+                f"{ratio:.2g}x better (lower g2(0)) than this sweep's best "
+                f"300 K corner (g2_min={g2_min:.4g} vs "
+                f"{REISCHLE_DECONV_G2:.2f} +/- {REISCHLE_DECONV_G2_ERR:.2f}).")
+        else:
+            lines.append(
+                f"On matching conventions, this sweep's best 300 K corner "
+                f"(g2_min={g2_min:.4g}) is already at or below the 80 K "
+                f"Reischle deconvolved value ({REISCHLE_DECONV_G2:.2f} +/- "
+                f"{REISCHLE_DECONV_G2_ERR:.2f}).")
+    else:
+        lines.append(
+            "No finite pooled g2_min is available in this run to compare "
+            "against Reischle's deconvolved value.")
+    lines.append("")
     lines.append("## Conditional on the 300 K linewidth")
+    gamma300_samples_text = ", ".join(f"{g:g}" for g in GAMMA300_REFINE_MEV)
     lines.append(
         "The 300 K single-dot linewidth gamma300 is not a platform ceiling -- it is an "
         "unmeasured [E]-class quantity (see Assumptions below) whose actual value decides "
-        "whether the headline gate passes. The table below reports, per card, the LARGEST "
-        "gamma300 in this sweep's grid at which any eligible row (any lever/delta_xx/irf "
-        "combination) still clears pulsed intrinsic g2(0) < 0.5; a smaller real-world "
-        "gamma300 than this value keeps the corresponding card passing, a larger one does not.")
+        "whether the headline gate passes. `gamma300_pass_max` (council review round 5, "
+        f"item 2) is the HIGHEST SAMPLED linewidth, among this determination's own "
+        f"{len(GAMMA300_REFINE_MEV)}-point grid ({gamma300_samples_text} meV -- finer than "
+        "the sweep.csv grid's own 2-point dot.gamma300 endpoints, and never itself written "
+        "to sweep.csv), at which any eligible row (any lever/delta_xx combination) still "
+        "clears pulsed intrinsic g2(0) < 0.5; `gamma300_threshold` brackets the true "
+        "(continuous, unsampled) threshold between that value and the next sampled value "
+        "above it that already fails -- the true threshold lies somewhere inside the "
+        "bracket, at the delta_xx shown for that card's gamma300_pass_max row.")
     lines.append("")
-    lines.append(f"`gamma300_pass_max` (pooled, both cards): {verdict['gamma300_pass_max']:.4g} meV")
+    lines.append(f"`gamma300_pass_max` (pooled, both cards): {verdict['gamma300_pass_max']:.4g} meV; "
+                 f"`gamma300_threshold` (pooled): "
+                 f"{_format_threshold(verdict['gamma300_threshold'])} meV")
     lines.append("")
-    lines.append("| card | gamma300_pass_max (meV) | delta_xx | irf | lever values | assumptions |")
+    lines.append("| card | gamma300_pass_max (meV) | gamma300_threshold bracket (meV) | "
+                 "delta_xx | lever values | assumptions |")
     lines.append("|---|---:|---:|---:|---|---|")
     for card_id, info in verdict["gamma300_pass_max_by_card"].items():
         gmax = info.get("gamma300_pass_max_meV", float("nan"))
+        bracket = verdict["gamma300_threshold_by_card"].get(card_id, {})
         if not np.isfinite(gmax):
-            lines.append(f"| {card_id} | n/a (no headline-passing row in this grid) | | | | |")
+            lines.append(f"| {card_id} | n/a (no headline-passing sample in this grid) | "
+                         f"{_format_threshold(bracket)} | | | |")
             continue
         def _g(key):
             v = info.get(key)
             return f"{v:g}" if v is not None else "n/a"
         lever_text = f"NA={_g('emission_NA')}, R_back={_g('emission_R_back')}, L_um={_g('emission_L_um')}"
-        lines.append(f"| {card_id} | {gmax:.4g} | {_g('delta_xx_meV')} meV | {_g('irf_ps')} ps | "
-                     f"{lever_text} | {info.get('assumptions', '')} |")
+        lines.append(f"| {card_id} | {gmax:.4g} | {_format_threshold(bracket)} | "
+                     f"{_g('delta_xx_meV')} meV | {lever_text} | {info.get('assumptions', '')} |")
+    lines.append("")
+    lines.append(
+        "Restated (council review round 5, item 2): for each card, `gamma300_pass_max` is "
+        "the highest SAMPLED linewidth at which the card passes; the true threshold lies "
+        "between the bracket's two values (at the delta_xx shown above for that row).")
+    lines.append("")
+    lines.append(f"### Verified {CHATZARAKIS_ANCHOR_GAMMA300_MEV:g} meV anchor "
+                 "(Chatzarakis et al., Phys. Rev. Applied 20, 034011, 2023)")
+    lines.append(
+        "Fresh evaluation, per card, at the card's OWN default delta_xx (never the sweep's "
+        "endpoint grid) -- both cards' own provenance.ranges[\"dot.gamma300\"].note already "
+        "document this by hand; the numbers below are computed programmatically.")
+    lines.append("")
+    lines.append("| card | delta_xx (meV, card default) | g2_pulsed | collected flux (photons/s) | "
+                 "eligible | passes (<0.5) |")
+    lines.append("|---|---:|---:|---:|---|---|")
+    anchor_by_card = verdict.get("anchor_6_5mev_by_card", {}) or {}
+    for card_id, info in anchor_by_card.items():
+        lines.append(
+            f"| {card_id} | {_fmt_or_na(info.get('delta_xx_meV'))} | "
+            f"{_fmt_or_na(info.get('g2_pulsed'))} | {_fmt_or_na(info.get('flux_s'))} | "
+            f"{info.get('eligible')} | {'yes' if info.get('passes') else 'no'} |")
+    if anchor_by_card:
+        anchor_sentences = []
+        for card_id, info in anchor_by_card.items():
+            verdict_word = "PASSES" if info.get("passes") else "does not pass"
+            anchor_sentences.append(
+                f"at gamma300 = {CHATZARAKIS_ANCHOR_GAMMA300_MEV:g} meV (this card's own "
+                f"delta_xx = {_fmt_or_na(info.get('delta_xx_meV'))} meV), card `{card_id}` "
+                f"{verdict_word} the headline gate (g2_pulsed = "
+                f"{_fmt_or_na(info.get('g2_pulsed'))}, collected flux = "
+                f"{_fmt_or_na(info.get('flux_s'))} photons/s)")
+        lines.append("")
+        lines.append("; ".join(anchor_sentences) + ".")
     lines.append("")
     lines.append("## Grid")
     lines.append(f"Grid complete: {grid_complete}"
@@ -1005,8 +1488,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             lines.append(f"- `{card_id}` lever combinations evaluated: {info.get('n_combos')}")
     lines.append("")
     lines.append("## Coverage")
-    lines.append(f"- eligible coverage: {stats['n_eligible']}/{stats['n_total']} "
-                 f"= {stats['eligible_coverage']:.3f}")
+    lines.append(f"- **eligible fraction** (eligible/total; council review round 5, item 4 -- "
+                 f"one word per quantity): {stats['n_eligible']}/{stats['n_total']} "
+                 f"= {verdict['eligible_fraction']:.3f}")
     lines.append(f"- pulsed collected-flux eligibility floor [A]: "
                  f"{FLUX_FLOOR_PULSED_S:.0f} photons/s; rows excluded by this floor: "
                  f"{stats['n_flux_floor_excluded']}")
@@ -1015,10 +1499,25 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"g2_cw0 {stats['diag_g2_cw0_min']:.4g} / {stats['diag_g2_cw0_median']:.4g}; "
                  f"g2_cw0_raw {stats['diag_g2_cw0_raw_min']:.4g} / {stats['diag_g2_cw0_raw_median']:.4g}")
     lines.append(f"- maximum collected pulsed flux: {stats['flux_max']:.4g} photons/s; "
-                 f"shortfall factor (floor/flux_max): {verdict['flux_shortfall']:.4g}")
-    lines.append(f"- **headline coverage** (pulsed intrinsic g2(0) < 0.5, eligible rows -- "
-                 f"the contract's PASS metric): "
-                 f"{stats['n_headline']}/{stats['n_total']} = {stats['headline_coverage']:.3f}")
+                 f"**flux_margin** (flux_max/floor; >1 means the floor is CLEARED): "
+                 f"{verdict['flux_margin']:.4g} (flux_shortfall, DEPRECATED, its old "
+                 f"floor/flux_max inverse framing: {verdict['flux_shortfall']:.4g})")
+    lines.append(f"- **headline coverage over ALL SCHEDULED rows** (pulsed intrinsic g2(0) < "
+                 f"0.5; invalid/ineligible rows count as nonpassing -- the contract's PASS "
+                 f"metric): {stats['n_headline']}/{stats['n_total']} = "
+                 f"{stats['headline_coverage']:.3f}")
+    if stats["n_eligible"]:
+        lines.append(f"- **headline coverage over ELIGIBLE rows only** (same numerator, "
+                     f"denominator restricted to eligible rows -- this is `coverage` in the "
+                     f"VERDICT line, council review round 5 item 4): "
+                     f"{stats['n_headline']}/{stats['n_eligible']} = {verdict['coverage']:.3f}")
+    else:
+        lines.append("- **headline coverage over ELIGIBLE rows only**: n/a (0 eligible rows)")
+    lines.append(f"- pooled pulsed g2 median OVER ELIGIBLE ROWS ONLY (`g2_median` in the "
+                 f"VERDICT line, the contract's median gate): {stats['g2_pulsed_median']:.4g}")
+    lines.append(f"- pooled pulsed g2 median over ALL VALID/DIAGNOSTIC rows (eligible rows "
+                 f"plus rows excluded ONLY by the flux floor; `diag_g2_median` in the VERDICT "
+                 f"line): {stats['diag_g2_pulsed_median']:.4g}")
     lines.append(f"- secondary coverage, CW intrinsic g2_cw0 < 0.5 (eligible rows, diagnostic "
                  f"only, does not gate PASS): {stats['n_cw0_pass']}/{stats['n_total']} "
                  f"= {stats['cw0_coverage']:.3f}")
@@ -1065,13 +1564,19 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  "split x facet transmission x propagation x NA, all in one factor)",
                  check.get("eta_total")),
                 ("rep rate (Hz)", check.get("rep_rate"))]
-        front_split = _front_facet_split(best)
+        facet_check = _facet_factor_forward_check(best)
+        front_split = facet_check["back_solved"]
         component_factors = [("beta (waveguide coupling / spontaneous-emission factor)",
                               best.get("edge_beta")),
-                             ("front (front/back facet split: 0.5 with no R_back, else "
-                              "T_facet/(T_facet+(1-R_back)); back-solved -- device.py folds "
-                              "it into eta_total but never exposes it on its own)", front_split),
-                             ("facet (Fresnel transmission)", best.get("edge_T_facet")),
+                             ("combined front/back-facet-and-transmission factor; "
+                              "BACK-SOLVED as the one factor missing from "
+                              "eta_total/(beta*eta_prop*eta_NA) -- device.py folds it into "
+                              "eta_total but never exposes it on its own; see the independent "
+                              "check below", front_split),
+                             ("T_facet (raw Fresnel transmission, diagnostic only -- NOT "
+                              "necessarily an independent multiplicative step beyond the "
+                              "combined factor above; see the independent check below)",
+                              best.get("edge_T_facet")),
                              ("propagation", best.get("edge_eta_prop")),
                              ("NA (numerical aperture)", best.get("edge_eta_NA"))]
         finite_components = [(n, float(v)) for n, v in component_factors
@@ -1099,16 +1604,38 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             if np.isfinite(check.get("rel_diff", float("nan")))
             else "| self-check: relative difference | nan (non-finite inputs) |")
         lines.append("")
-        lines.append(f"`beta`/`front`/`facet`/`propagation`/`NA` are shown below for diagnosis "
-                     f"only -- they are already folded into `eta_total` above exactly once each "
-                     f"(their product reproduces eta_total) and must NOT also be multiplied "
-                     f"into the flux self-check:")
+        lines.append(f"`beta`/the combined front-facet factor/`T_facet`/`propagation`/`NA` are "
+                     f"shown below for diagnosis only -- `beta`, the combined factor, "
+                     f"`propagation` and `NA` are already folded into `eta_total` above "
+                     f"exactly once each (their product reproduces eta_total, by "
+                     f"construction of the combined factor -- NOT independent evidence, see "
+                     f"below) and must NOT also be multiplied into the flux self-check:")
         lines.append("")
         lines.append("| component (already inside eta_total) | value |")
         lines.append("|---|---:|")
         for name, value in component_factors:
             lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
                          else f"| {name} | nan |")
+        lines.append("")
+        lines.append(
+            "**Independent check on the combined front-facet factor** (council review round "
+            "5, item 6, fixing a tautology): the value above is BACK-SOLVED -- the one factor "
+            "missing once eta_total, beta, propagation and NA are all already known "
+            "(eta_total = beta * <combined factor> * eta_prop * eta_NA) -- so a self-check "
+            "comparing it against that same back-solving would only ever reproduce its own "
+            "inputs. The genuinely independent check instead recomputes the combined factor "
+            "FORWARD from this row's own facet transmission (T_facet) and back-facet "
+            "reflectivity (R_back), trying every candidate formula introspected LIVE from "
+            "fsim_core/waveguide.py's installed `edge_emission` source right now (never "
+            "hardcoded, since that file's facet model is being edited concurrently and may "
+            "change again) -- both as a fused current-model factor and as a legacy front-"
+            "split-times-T_facet factor, since either grouping may be in effect: "
+            + (f"forward = {facet_check['forward']:.6g} via {facet_check['convention']}, "
+               if facet_check.get("convention") else "no candidate formula could be evaluated, ")
+            + f"back-solved = {front_split:.6g} -- "
+            f"{'MATCH' if facet_check['ok'] else 'MISMATCH'} (agreement confirms the "
+            "back-solved value really is the geometric front/back-facet-and-transmission "
+            "factor waveguide.py computes, not some other quantity folded into eta_total).")
         lines.append("")
         lines.append("## Diagnostic g2 landscape")
         lines.append("| corner | pulsed g2 min | pooled diagnostic median | lever values | assumptions |")
@@ -1279,7 +1806,23 @@ def run_sweep(quick: bool) -> tuple:
         rows.extend(card_rows)
         lever_info[card["id"]] = {"grid": lever_grid, "n_combos": n_combos}
     stats = compute_stats(rows)
-    return rows, stats, grid, lever_info
+    # Council review round 5, item 2: the finer gamma300_pass_max/threshold
+    # determination (GAMMA300_REFINE_MEV) is skipped for --quick (kept fast,
+    # matching --quick's existing "smaller, explicitly incomplete"
+    # convention for every other axis -- an incomplete grid can never PASS
+    # regardless, so the extra resolution buys nothing there). The verified
+    # 6.5 meV anchor check is two eval_pulsed_point calls total (negligible
+    # cost) and is always computed.
+    gamma300_refine_rows = []
+    if not quick:
+        for card in CARDS:
+            design0 = DeviceDesign.load(card["path"])
+            lever_grid = resolve_lever_grid(design0, quick)
+            combos = build_lever_combos(lever_grid)
+            gamma300_refine_rows.extend(
+                refine_gamma300(card, grid["dot.delta_xx"], combos, pulsed_cache))
+    anchor_report = {card["id"]: anchor_check(card, pulsed_cache) for card in CARDS}
+    return rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report
 
 
 def main(argv=None) -> int:
@@ -1291,7 +1834,7 @@ def main(argv=None) -> int:
     out_dir = Path(args.out_dir)
 
     t0 = time.time()
-    rows, stats, grid, lever_info = run_sweep(args.quick)
+    rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report = run_sweep(args.quick)
 
     # Fresh paper-check invocation (spec: "Invoke paper-check run_checks()
     # freshly"); this file never writes evidence.json (out of scope --
@@ -1300,7 +1843,9 @@ def main(argv=None) -> int:
     hallucination_report = rt_papers.run_checks(self_test=True)
 
     grid_complete = not args.quick
-    verdict = compute_verdict(rows, stats, grid_complete, evidence_report, hallucination_report)
+    verdict = compute_verdict(rows, stats, grid_complete, evidence_report, hallucination_report,
+                              gamma300_refine_rows=(gamma300_refine_rows or None),
+                              anchor_report=anchor_report)
     runtime_s = time.time() - t0
 
     try:
