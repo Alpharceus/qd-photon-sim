@@ -1,13 +1,15 @@
 """Independent numerical checks for fsim_core.waveguide (published-class values)."""
+import inspect
 import sys
 from pathlib import Path
 from math import pi, tan, exp
 import numpy as np
 from scipy.optimize import brentq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import fsim_core.waveguide as wgmod
 from fsim_core.waveguide import (Layer, slab_modes, effective_index_ridge, beta_factor,
                                  facet_transmission, na_collection, hkust_ridge_stack,
-                                 edge_emission, na_collection_numeric)
+                                 edge_emission, na_collection_numeric, facet_escape_fraction)
 
 checks = []
 def ck(ok, name):
@@ -81,22 +83,31 @@ ck(abs(r_na_gaussian.eta_NA - r_na_numeric.eta_NA) < 0.03 * r_na_numeric.eta_NA,
 ck(any('NA collection method: numeric' in note for note in r_na_numeric.notes),
    'numeric NA method is recorded in edge notes')
 
-# council review 2026-09-05 item 3, updated for peer-review finding 3
-# (2026-09-07, .workers/review/peer-review-triage.md): T_facet and the
+# council review 2026-09-05 item 3, updated for peer-review pkg2 facet fix
+# (2026-09-07, .workers/specs/pr-pkg2-facet-fix.md item 1): T_facet and the
 # propagation loss are now folded into eta_total exactly once each, via the
-# single continuous ray-probability series (0.5 * T * prop_half *
-# (1 + R_back * prop_rt) / (1 - R_back * R_front * prop_rt)); reproduce that
-# by hand for r=edge_emission(..., alpha_cm=5.0 default, L_um=500 default,
-# R_back=None) -- R_back=None resolves to R_back_eff=R_front=1-T_facet.
+# single continuous ray-probability series at the dot_position=0.5 default
+# (0.5 * T * exp(-a*L/2) * (1 + R_back * exp(-a*L)) / (1 - R_back*R_front*
+# exp(-2*a*L)), a = alpha_cm*1e-4); reproduce that by hand -- NOT via
+# exp(-a*L) == sqrt(prop_rt), the pkg2-checkpoint bug used the FULL
+# round-trip prop_rt for the returning term instead -- for
+# r=edge_emission(..., alpha_cm=5.0 default, L_um=500 default, R_back=None)
+# -- R_back=None resolves to R_back_eff=R_front=1-T_facet (no coating
+# override on this stack, so the uncoated-Fresnel resolution of item 4 is
+# numerically identical to R_front here).
 _alpha_r, _L_r = 5.0, 500.0
-_prop_half_r = exp(-_alpha_r * (_L_r / 2.0) * 1e-4)
-_prop_rt_r = exp(-2.0 * _alpha_r * _L_r * 1e-4)
+_a_r = _alpha_r * 1e-4
+_prop_half_r = exp(-_a_r * (_L_r / 2.0))
+_return_r = exp(-_a_r * _L_r)  # single pass back facet -> front facet at x=0.5
+_prop_rt_r = exp(-2.0 * _a_r * _L_r)
 _R_front_r = 1.0 - r.T_facet
-_eta_facet_r = (0.5 * r.T_facet * _prop_half_r * (1.0 + _R_front_r * _prop_rt_r)
+_eta_facet_r = (0.5 * r.T_facet * _prop_half_r * (1.0 + _R_front_r * _return_r)
                / (1.0 - _R_front_r * _R_front_r * _prop_rt_r))
 expected_total = r.beta * _eta_facet_r * r.eta_NA
 ck(abs(expected_total - r.eta_total) < 1e-9,
-   'facet transmission (once) and propagation (folded via prop_half/prop_rt) reproduce eta_total by hand')
+   'facet transmission (once) and propagation (folded via the ray-series at dot_position=0.5) reproduce eta_total by hand')
+ck(abs(_eta_facet_r - facet_escape_fraction(r.T_facet, _R_front_r, _alpha_r, _L_r)) < 1e-12,
+   'hand-derived eta_facet matches facet_escape_fraction (single source of truth) at the default dot_position')
 ck(r.T_facet < 1.0, 'facet transmission is not unity (so omitting it was not a no-op)')
 
 # Peer-review finding 3 (2026-09-07): the old two-branch facet model
@@ -184,6 +195,69 @@ ck(3.6 <= r.n_g <= 4.4, 'HKUST group index n_g in the published-class range at 6
 r_numeric = edge_emission([Layer('lo', 3.4, 1000), Layer('core', 3.5, 300, True),
                           Layer('hi', 3.4, 1000)], 2000, 1000, 670, 500, .5)
 ck(r_numeric.n_g == r_numeric.n_eff, 'numeric-only (non-dispersive) layers keep the n_g=n_eff fallback')
+
+# Peer-review pkg2 facet fix (2026-09-07, .workers/specs/pr-pkg2-facet-fix.md
+# item 4): a `coating` override on the FRONT transmission must not leak into
+# what R_back=None resolves to -- the back facet is a separate, uncoated
+# semiconductor/air interface with its own Fresnel reflectivity, computed by
+# hand from n_eff the same way facet_transmission computes the uncoated T
+# (NOT `1 - T_coated`, the checkpoint's bug).
+mode_coat = effective_index_ridge(s, 668, 2000, 1200)
+R_uncoated_hand = ((mode_coat.n_eff - 1.0) / (mode_coat.n_eff + 1.0)) ** 2
+alpha_coat, L_coat = 5.0, 250.0
+r_coated_none = edge_emission(s, 2000, 1200, 668, L_coat, .5, alpha_cm=alpha_coat,
+                              coating={'T_facet': 0.95})
+eta_facet_coated_none = r_coated_none.eta_total / (r_coated_none.beta * r_coated_none.eta_NA)
+eta_facet_hand_uncoated = facet_escape_fraction(0.95, R_uncoated_hand, alpha_coat, L_coat)
+ck(abs(eta_facet_coated_none - eta_facet_hand_uncoated) < 1e-9,
+   'coating override on T_facet: R_back=None resolves to the uncoated Fresnel '
+   'reflectivity of the bare back facet (hand-computed from n_eff), not 1-T_coated')
+eta_facet_wrong_1mT = facet_escape_fraction(0.95, 1.0 - 0.95, alpha_coat, L_coat)
+ck(abs(eta_facet_coated_none - eta_facet_wrong_1mT) > 1e-6,
+   'sanity: the uncoated-Fresnel resolution actually differs from the old (wrong) '
+   '1-T_coated resolution for this coating (not a vacuously-passing check)')
+
+# item 5: loss-sensitive independent check -- an explicit finite sum of the
+# first 200 round trips, with path lengths accumulated term by term (a
+# separate derivation from the closed-form geometric series under test,
+# not a restatement of it), at R_back=1 (worst-case, no truncation slack),
+# alpha=20/cm, L=300um, T=0.6, dot_position=0.5 default. Forward-emitted
+# escape after n round trips travels x*L + 2*n*L; backward-first escape
+# (extra R_back factor) travels (2-x)*L + 2*n*L (dot -> back facet
+# (1-x)*L, then a FULL pass L back to the front facet, per the
+# facet_escape_fraction docstring's L/2+L worked example at x=0.5).
+T_fs, Rb_fs, alpha_fs, L_fs, x_fs = 0.6, 1.0, 20.0, 300.0, 0.5
+a_fs = alpha_fs * 1e-4
+Rf_fs = 1.0 - T_fs
+finite_sum = 0.0
+for n in range(200):
+    path_fwd = x_fs * L_fs + 2.0 * n * L_fs
+    weight_fwd = 0.5 * T_fs * (Rf_fs * Rb_fs) ** n
+    finite_sum += weight_fwd * exp(-a_fs * path_fwd)
+    path_bwd = (2.0 - x_fs) * L_fs + 2.0 * n * L_fs
+    weight_bwd = 0.5 * T_fs * Rb_fs * (Rf_fs * Rb_fs) ** n
+    finite_sum += weight_bwd * exp(-a_fs * path_bwd)
+ck(abs(finite_sum - facet_escape_fraction(T_fs, Rb_fs, alpha_fs, L_fs)) < 1e-10,
+   'facet_escape_fraction matches an explicit 200-round-trip path-length sum '
+   '(R_back=1, alpha=20/cm, L=300um, T=0.6)')
+
+# item 5: the degenerate denominator (R_back*R_front*prop_rt == 1) must raise
+# a clear ValueError rather than silently dividing by zero. alpha_cm=0 makes
+# prop_rt=1, so T=0 (R_front=1) with R_back=1 forces the denominator to 0.
+try:
+    facet_escape_fraction(0.0, 1.0, 0.0, 100.0)
+    ck(False, 'degenerate facet cavity (R_back*R_front*prop_rt==1) raises ValueError')
+except ValueError:
+    ck(True, 'degenerate facet cavity (R_back*R_front*prop_rt==1) raises ValueError')
+
+# item 5: citation and textbook cross-check note are present in the module.
+_wg_source = inspect.getsource(wgmod)
+ck(_wg_source.count('Coldren, Corzine & Masanovic') >= 2
+  and '2nd ed. (2012), ch. 2' in _wg_source
+  and 'Coldren & Corzine' not in _wg_source,
+   'module cites the three-author textbook edition consistently (old two-author form gone)')
+ck('0.9563' in _wg_source and '0.9636' in _wg_source,
+   'module keeps the textbook cross-check note (series 0.9563 vs F1 0.9636)')
 
 print(f'{sum(checks)}/{len(checks)} waveguide checks passed')
 sys.exit(0 if all(checks) else 1)

@@ -822,6 +822,110 @@ ok("fixture verdict.md: heading renamed to 'Convention-matched comparison' "
    "Convention-matched comparison" in dedup_md_text)
 
 
+# ---- 1j-ii. mismatch fixture (pkg5 fix, item 1): one irf_ps row of a group
+# fails headline_pass while its sibling passes -- exactly the case a
+# first-row-wins dedup (the pre-fix implementation) silently resolved by
+# keeping whichever row happened to be seen first. The all()-reduction must
+# instead count the group as failing overall and flag the disagreement.
+_mismatch_rows = [
+    make_row(PRIMARY_ID, "primary", 0.2, 0.2, 0.2, True,
+            delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
+    make_row(PRIMARY_ID, "primary", 0.9, 0.2, 0.2, True,
+            delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=200.0),
+]
+for _r in _mismatch_rows:
+    _r["T_hs_K"] = 230.0
+mismatch_stats = rte.compute_stats(_mismatch_rows)
+ok("mismatch fixture: a group whose irf_ps rows disagree on headline_pass is counted "
+   "ONCE, as failing (all(), not first-row-wins), and flagged as a mismatch group "
+   "(pkg5 fix, item 1)",
+   mismatch_stats["n_scheduled_dedup"] == 1 and mismatch_stats["n_headline_dedup"] == 0
+   and mismatch_stats["headline_dedup_mismatch_groups"] == 1)
+mismatch_verdict = rte.compute_verdict(_mismatch_rows, mismatch_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown(_mismatch_rows, mismatch_stats, mismatch_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
+mismatch_md_text = dedup_md_path.read_text(encoding="utf-8")
+ok("mismatch fixture verdict.md: a WARNING line is present and names the mismatch count "
+   "(pkg5 fix, item 1)",
+   "WARNING" in mismatch_md_text and "headline_dedup_mismatch_groups=1" in mismatch_md_text)
+
+
+# ---- 1j-iii. live-like fixture (pkg5 fix, item 5): the fixture above never
+# exercised the both-ratios paragraph (its g2_min 0.2 < REISCHLE_DECONV_G2
+# took the ratio <= 1 "already at or below" branch, and carried only one
+# heat-sink temperature, so the "On the 300 K line specifically" paragraph
+# never fired and checks (iii)/(v) below ran on text that could not have
+# said otherwise). This fixture uses live-sweep-like numbers (this run's
+# own 230 K/300 K pulsed g2_min, peer review finding 9) so the ratio is
+# genuinely > 1.0 and both temperatures are present.
+_live_rows = [
+    make_row(PRIMARY_ID, "primary", 0.3214, 0.3214, 0.3214, True,
+            delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
+    make_row(PRIMARY_ID, "primary", 0.3214, 0.3214, 0.3214, True,
+            delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=200.0),
+    make_row(PRIMARY_ID, "primary", 0.3986, 0.3986, 0.3986, True,
+            delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=50.0),
+    make_row(PRIMARY_ID, "primary", 0.3986, 0.3986, 0.3986, True,
+            delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=200.0),
+]
+for _r in _live_rows[:2]:
+    _r["T_hs_K"] = 230.0
+for _r in _live_rows[2:]:
+    _r["T_hs_K"] = 300.0
+live_stats = rte.compute_stats(_live_rows)
+ok("live-like fixture: both corners eligible and headline-passing, no dedup mismatch, "
+   "dedup denominator is half the raw row count (2 groups from 4 rows)",
+   live_stats["n_scheduled_dedup"] == len(_live_rows) // 2
+   and live_stats["n_headline_dedup"] == 2
+   and live_stats["headline_dedup_mismatch_groups"] == 0)
+live_verdict = rte.compute_verdict(_live_rows, live_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+
+# Regenerate the canonical fixture verdict THROUGH THE WRITER FUNCTION one
+# more time (never by running the full sweep), now with this richer
+# row set, so out/rt_edge/_verify_fixture_verdict.md's saved text is the
+# live-like fixture (pkg5 fix, item 7).
+rte.write_markdown(_live_rows, live_stats, live_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
+live_md_text = dedup_md_path.read_text(encoding="utf-8")
+
+_expected_ratio_230 = f"{0.3214 / rte.REISCHLE_DECONV_G2:.2f}"
+_expected_ratio_300 = f"{0.3986 / rte.REISCHLE_DECONV_G2:.2f}"
+ok("live-like fixture verdict.md: both-ratios paragraph is exercised (ratio > 1.0, both "
+   "230 K and 300 K present) and renders 'at 230 K' / 'On the 300 K line', never "
+   "'300 K corner' (peer review finding 9, item 1; this fixture's argmin is 230 K)",
+   "at 230 K" in live_md_text and "On the 300 K line" in live_md_text
+   and "300 K corner" not in live_md_text)
+ok(f"live-like fixture verdict.md: ratios render to 2 decimal places "
+   f"({_expected_ratio_230}x / {_expected_ratio_300}x), not 2 significant digits "
+   f"(pkg5 fix, item 6)",
+   f"{_expected_ratio_230}x" in live_md_text and f"{_expected_ratio_300}x" in live_md_text)
+ok("live-like fixture verdict.md: headline_coverage_pulsed denominator equals half the "
+   "raw row count",
+   (f"headline_coverage_pulsed={live_stats['n_headline_dedup']}/"
+    f"{live_stats['n_scheduled_dedup']}") in live_md_text
+   and live_stats["n_scheduled_dedup"] * 2 == len(_live_rows))
+
+# (iii)/(v), re-run here so they are non-vacuous: this fixture actually
+# takes the ratio > 1.0 branch and carries both a 230 K and a 300 K row,
+# unlike the perfectly-symmetric single-temperature dedup fixture above.
+_live_argmin_T = None
+for _T, _info in live_stats.get("per_T", {}).items():
+    _val = _info.get("g2_min")
+    if (_val is not None and math.isfinite(_val) and math.isfinite(live_verdict["g2_min"])
+            and abs(_val - live_verdict["g2_min"]) < 1e-9):
+        _live_argmin_T = _T
+        break
+ok("live-like fixture verdict.md: '300 K corner' is not used adjacent to g2_min unless "
+   "the argmin temperature is 300 (non-vacuous: this fixture has a real competing 300 K "
+   "row, and the argmin is correctly resolved to 230 K)",
+   "300 K corner" not in live_md_text or _live_argmin_T == "300")
+_live_cw_start = live_md_text.find("**3. Why pulsed drive")
+_live_cw_end = live_md_text.find("\n\n", _live_cw_start) if _live_cw_start != -1 else -1
+_live_cw_paragraph = live_md_text[_live_cw_start:_live_cw_end] if _live_cw_start != -1 else ""
+ok("live-like fixture verdict.md: the CW paragraph no longer says 'could never'/'never'",
+   _live_cw_start != -1 and "never" not in _live_cw_paragraph.lower())
+
+
 # ================================== 2. saved full-run artifact verification
 
 if not RUN_FULL:

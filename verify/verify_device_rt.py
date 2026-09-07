@@ -365,17 +365,36 @@ ok("device.py edge scalars match a fresh _resolve_edge call bit-for-bit",
 T_recomputed = waveguide.facet_transmission(sc_edge["edge_n_eff"])
 ok("T_facet matches an independent facet_transmission(n_eff) recomputation",
    abs(T_recomputed - sc_edge["edge_T_facet"]) < 1e-9)
-# Facet convention: R_back=None -> front=0.5 exactly (waveguide.edge_emission
-# docstring); eta_total = beta * front * T_facet * eta_prop * eta_NA (council
-# review 2026-09-05 item 3: T_facet is now included in eta_total exactly
-# once -- it was previously solved for and returned but never multiplied in,
-# 1.37x optimistic collected flux at the class edge_T_facet~0.73 point).
-ok("edge_T_facet is not unity (so the item-3 check below is not vacuous)",
+# Facet convention (peer-review pkg2 facet fix, 2026-09-07,
+# .workers/specs/pr-pkg2-facet-fix.md item 2): the old structural identity
+# eta_total == beta * 0.5 * T_facet * eta_prop * eta_NA is obsolete --
+# propagation is now folded entirely into the facet ray-series (eta_facet),
+# never applied again as a separate eta_prop factor. The new decomposition
+# is eta_total == beta * eta_facet(...) * eta_NA, with eta_facet recomputed
+# HERE by hand from the row's own T_facet, R_back, alpha_cm, L_um (never by
+# calling facet_escape_fraction or edge_emission a second time -- see
+# fsim_core/waveguide.py's facet_escape_fraction docstring for the same
+# closed form). d_edge.emission carries no coating override, so
+# R_back=None resolves (item 4) to the uncoated Fresnel value, which here
+# equals 1-T_facet exactly (same as the pre-item-4 R_front resolution).
+ok("edge_T_facet is not unity (so the item-2 check below is not vacuous)",
    sc_edge["edge_T_facet"] < 1.0)
-eta_recomputed = (sc_edge["edge_beta"] * 0.5 * sc_edge["edge_T_facet"]
-                  * sc_edge["edge_eta_prop"] * sc_edge["edge_eta_NA"])
-ok("eta_total = beta * front(=0.5) * T_facet * eta_prop * eta_NA, each exactly once",
-   abs(eta_recomputed - sc_edge["edge_eta_total"]) < 1e-9 * sc_edge["edge_eta_total"])
+_T_dr = sc_edge["edge_T_facet"]
+_alpha_dr = d_edge.emission.alpha_cm
+_L_dr = d_edge.emission.L_um
+_Rback_dr = d_edge.emission.R_back
+if _Rback_dr is None:
+    _Rback_dr = 1.0 - _T_dr  # no coating override on this stack (item 4)
+_a_dr = _alpha_dr * 1e-4
+_x_dr = 0.5  # facet_escape_fraction's dot_position default
+_Rfront_dr = 1.0 - _T_dr
+_prop_rt_dr = np.exp(-2.0 * _a_dr * _L_dr)
+_eta_facet_dr = (0.5 * _T_dr * np.exp(-_a_dr * _x_dr * _L_dr)
+                * (1.0 + _Rback_dr * np.exp(-2.0 * _a_dr * (1.0 - _x_dr) * _L_dr))
+                / (1.0 - _Rback_dr * _Rfront_dr * _prop_rt_dr))
+eta_recomputed = sc_edge["edge_beta"] * _eta_facet_dr * sc_edge["edge_eta_NA"]
+ok("eta_total = beta * eta_facet(T_facet, R_back, alpha_cm, L_um) * eta_NA, each exactly once",
+   abs(eta_recomputed - sc_edge["edge_eta_total"]) < 1e-9)
 
 # Lemma 1: emission.type "none" -> "edge" changes brightness only, never the
 # intrinsic multiphoton probability (g2_op/eps_op/rho_op untouched).

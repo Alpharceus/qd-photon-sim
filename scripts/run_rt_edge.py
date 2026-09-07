@@ -759,35 +759,49 @@ def compute_stats(rows: list) -> dict:
                      and np.isfinite(r["g2_cw0"]) and r["g2_cw0"] < G2_THRESHOLD)
     n_cw_raw_pass = sum(1 for r in rows if r["eligible_row"]
                         and np.isfinite(r["g2_cw0_raw"]) and r["g2_cw0_raw"] < G2_THRESHOLD)
-    # Peer review finding 6: eval_pulsed_point's own docstring establishes
-    # that the pulsed sub-result (g2_pulsed, and therefore headline_pass,
-    # which is a function of g2_pulsed and eligible_row) is irf_ps-
-    # independent, yet the main grid repeats every (card, delta_xx,
+    # Peer review finding 6 / pkg5 fix, item 1: eval_pulsed_point's own
+    # docstring establishes that the pulsed sub-result (g2_pulsed) is
+    # irf_ps-independent, yet the main grid repeats every (card, delta_xx,
     # gamma300, lever, T_hs) combination once per irf_ps sample -- so
     # headline_coverage (n_headline/n_total, kept below unchanged for
     # backward compatibility) double-counts an axis that cannot change the
-    # headline metric. headline_coverage_pulsed instead counts each such
+    # pulsed sub-result. headline_coverage_pulsed instead counts each such
     # combination once, via the key that excludes irf_ps.
     #
     # eligible_row = eligible_pulsed AND eligible_cw, and cw eligibility's
     # g2_cw0_raw finiteness check IS IRF-convolved, so eligible_row (and
-    # therefore headline_pass) is not irf-independent BY CONSTRUCTION --
-    # `eligible` does not depend on flux alone. Empirically, across this
-    # sweep's sampled irf axis (50/200 ps) it never actually differs within
-    # a dedup key (checked against out/rt_edge/sweep.csv: 0/384 mismatches
-    # in both eligible_row and headline_pass), so the dedup below is exact
-    # for this run's data; it is not given the same treatment as a
-    # guaranteed identity because the code does not guarantee it for other
-    # irf samples.
-    dedup_seen: dict = {}
+    # therefore headline_pass, which requires eligible_row) is NOT
+    # guaranteed irf-independent -- a group's rows can legitimately
+    # disagree. The dedup below is therefore a group reduction, not a
+    # first-row pick: a corner counts as passing only if EVERY sampled irf
+    # value agrees it passes (`all()`), and every group where the irf axis
+    # disagrees is counted and surfaced (headline_dedup_mismatch_groups,
+    # eligible_dedup_mismatch_groups) rather than silently resolved by
+    # picking whichever row happened to be seen first.
+    dedup_groups: dict = {}
     for r in rows:
         key = (r.get("card_id"), r.get("delta_xx_meV"), r.get("gamma300_meV"),
               r.get("emission_NA"), r.get("emission_R_back"), r.get("emission_L_um"),
               r.get("T_hs_K"))
-        dedup_seen.setdefault(key, r)
-    n_scheduled_dedup = len(dedup_seen)
-    n_headline_dedup = sum(1 for r in dedup_seen.values() if r["headline_pass"])
+        dedup_groups.setdefault(key, []).append(r)
+    n_scheduled_dedup = len(dedup_groups)
+    n_headline_dedup = 0
+    n_headline_mismatch_groups = 0
+    n_eligible_dedup = 0
+    n_eligible_mismatch_groups = 0
+    for grp in dedup_groups.values():
+        headline_flags = [bool(r["headline_pass"]) for r in grp]
+        if all(headline_flags):
+            n_headline_dedup += 1
+        if len(set(headline_flags)) > 1:
+            n_headline_mismatch_groups += 1
+        eligible_flags = [bool(r["eligible_row"]) for r in grp]
+        if all(eligible_flags):
+            n_eligible_dedup += 1
+        if len(set(eligible_flags)) > 1:
+            n_eligible_mismatch_groups += 1
     per_T = {}
+    per_T_pulsed = {}
     for T_hs in (230.0, 250.0, 273.0, 300.0):
         t_rows = [r for r in rows if float(r.get("T_hs_K", float("nan"))) == T_hs]
         t_eligible = [r for r in t_rows if r.get("eligible_row")]
@@ -798,6 +812,15 @@ def compute_stats(rows: list) -> dict:
             "g2_min": _finite_stats([r.get("g2_pulsed") for r in t_eligible])[0],
             "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in t_rows]),
         }
+        t_groups = [grp for key, grp in dedup_groups.items()
+                   if key[-1] is not None and float(key[-1]) == T_hs]
+        t_n_scheduled_dedup = len(t_groups)
+        t_n_headline_dedup = sum(1 for grp in t_groups
+                                 if all(bool(r["headline_pass"]) for r in grp))
+        per_T_pulsed[str(int(T_hs))] = {
+            "n_scheduled_dedup": t_n_scheduled_dedup,
+            "n_headline_dedup": t_n_headline_dedup,
+        }
     return {
         "per_card": per_card, "n_total": n_total, "n_eligible": n_eligible,
         "eligible_coverage": (n_eligible / n_total) if n_total else 0.0,
@@ -806,6 +829,12 @@ def compute_stats(rows: list) -> dict:
         "n_headline_dedup": n_headline_dedup, "n_scheduled_dedup": n_scheduled_dedup,
         "headline_coverage_pulsed": ((n_headline_dedup / n_scheduled_dedup)
                                      if n_scheduled_dedup else 0.0),
+        "headline_dedup_mismatch_groups": n_headline_mismatch_groups,
+        "n_eligible_dedup": n_eligible_dedup,
+        "eligible_pulsed": ((n_eligible_dedup / n_scheduled_dedup)
+                            if n_scheduled_dedup else 0.0),
+        "eligible_dedup_mismatch_groups": n_eligible_mismatch_groups,
+        "per_T_pulsed": per_T_pulsed,
         "n_cw0_pass": n_cw0_pass,
         "cw0_coverage": (n_cw0_pass / n_eligible) if n_eligible else 0.0,
         "n_cw_raw_pass": n_cw_raw_pass,
@@ -1070,51 +1099,52 @@ def _brightness_factor_check(row: dict) -> dict:
 
 
 def _front_facet_split(row: dict) -> float:
-    """Council review round 5, item 6 (updated for fsim_core/waveguide.py's
-    OWN concurrent 2026-09-06 item-1 facet-model change, observed live in
-    that file's edge_emission(): the standalone `front` local is GONE --
-    the front/back-facet split and the facet's Fresnel transmission T_facet
-    are now fused into one `facet_factor` that already includes T_facet, so
-    T_facet is no longer a separate multiplicative step beyond it for
-    R_back > 0). What is stable across BOTH the old and the new shape is
-    the STRUCTURAL equation eta_total = beta * <the combined front/back-
-    facet-and-transmission factor> * eta_prop * eta_NA -- beta, eta_prop,
-    eta_NA and eta_total are unchanged EdgeResult/device.py scalars in
-    either version. This backs out THAT combined factor, deliberately never
-    dividing by edge_T_facet separately (dividing by it would silently
-    assume the now-superseded old 5-term shape and be wrong for R_back>0
-    rows under the new model)."""
+    """Peer-review pkg2 facet fix (2026-09-07,
+    .workers/specs/pr-pkg2-facet-fix.md item 3), updated again from council
+    review round 5, item 6: fsim_core/waveguide.py's edge_emission() now
+    folds single-pass propagation entirely into the facet ray-series
+    (facet_escape_fraction), so `eta_prop` is no longer a factor in
+    eta_total at all -- dividing by it here would silently reintroduce a
+    propagation term that was never applied on this path. The STRUCTURAL
+    equation is now eta_total = beta * eta_facet * eta_NA (no eta_prop);
+    this backs out eta_facet as the one factor missing, deliberately never
+    dividing by edge_T_facet or edge_eta_prop separately."""
     try:
         beta = float(row.get("edge_beta"))
-        eta_prop = float(row.get("edge_eta_prop"))
         eta_na = float(row.get("edge_eta_NA"))
         eta_total = float(row.get("edge_eta_total"))
     except (TypeError, ValueError):
         return float("nan")
-    denom = beta * eta_prop * eta_na
+    denom = beta * eta_na
     if not (np.isfinite(denom) and denom != 0 and np.isfinite(eta_total)):
         return float("nan")
     return eta_total / denom
 
 
-# Names this repository's edge_emission() has used, across versions, for the
-# combined front/back-facet-and-transmission factor -- council review round
-# 5, item 6: fsim_core/waveguide.py is being edited concurrently (the facet
-# model may change again), so the independent check below never hardcodes
-# ONE of these names/formulas as ground truth; it tries every RHS
-# expression assigned to any of them in the INSTALLED source.
+# Kept for verify/verify_rt_edge_sweep.py's own introspection tests (out of
+# scope for this package to edit); no longer consulted by
+# _facet_factor_forward_check below, which now calls the pure function
+# directly (peer-review pkg2 facet fix, 2026-09-07, item 3) instead of
+# scraping and eval()-ing a formula string out of the installed
+# edge_emission() source -- after that fix edge_emission() assigns
+# `facet_factor = facet_escape_fraction(T, R_back_eff, alpha_cm, L_um,
+# dot_position)`, whose RHS references names (R_back_eff, alpha_cm, L_um,
+# dot_position) this module's old {"T": T, "R_back": R_back}-only eval()
+# namespace could never resolve -- exactly the ok=False-for-every-row
+# failure this package fixes.
 _FACET_FACTOR_CANDIDATE_NAMES = ("front", "facet_factor", "eta_facet")
 
 
 def _facet_factor_formula_candidates() -> list:
-    """Best-effort introspection (council review round 5, item 6): every RHS
-    expression assigned to any of _FACET_FACTOR_CANDIDATE_NAMES inside the
-    INSTALLED waveguide.edge_emission source right now -- there may be more
-    than one (the live source, as of this round's fsim_core/waveguide.py
-    item-1 fix, branches on R_back: a geometric `0.5 * T` case and an
-    escape-rate `T / (T + (1 - R_back))` case). Returns a list of (name,
+    """Best-effort introspection, retained for verify_rt_edge_sweep.py's own
+    tests of this function (out of scope here): every RHS expression
+    assigned to any of _FACET_FACTOR_CANDIDATE_NAMES inside the INSTALLED
+    waveguide.edge_emission source right now. Returns a list of (name,
     expr) pairs, in source order; empty if introspection fails or none of
-    the candidate names appear."""
+    the candidate names appear. Not used by _facet_factor_forward_check
+    any more (see its docstring) -- that now calls
+    waveguide.facet_escape_fraction directly, the single source of truth
+    edge_emission() itself calls."""
     try:
         src = inspect.getsource(waveguide.edge_emission)
     except (OSError, TypeError):
@@ -1125,66 +1155,51 @@ def _facet_factor_formula_candidates() -> list:
 
 
 def _facet_factor_forward_check(row: dict) -> dict:
-    """Council review round 5, item 6: the OLD 'self-check' table entry only
-    ever reproduced `_front_facet_split`'s own back-solved value by
-    construction (eta_total was built FROM that factor in the first place)
-    -- a tautology, not evidence. This recomputes the combined factor
-    FORWARD from the row's own edge_T_facet/emission_R_back and compares it
-    against the back-solved value -- a genuinely independent check, since
-    forward and back-solved come from disjoint inputs (T_facet/R_back vs
-    beta/eta_prop/eta_NA/eta_total).
-
-    Tries every candidate RHS expression from
-    _facet_factor_formula_candidates() (falling back to the two-branch
-    formula this file most recently observed live in
-    fsim_core/waveguide.py, if introspection finds nothing), each two ways:
-    directly (current-model convention -- the candidate already IS the full
-    combined factor, T_facet included) and multiplied by T_facet
-    (legacy-model convention -- the candidate is only the front/back split,
-    with T_facet applied as a separate step) -- since a concurrently-edited
-    facet model may use either grouping, and this file must not assume
-    which. Returns {"back_solved", "forward", "convention", "ok"}; "ok" is
-    False (with the first evaluable candidate reported, unmatched) when no
-    candidate reproduces the back-solved value."""
+    """Peer-review pkg2 facet fix (2026-09-07,
+    .workers/specs/pr-pkg2-facet-fix.md item 3): the OLD version of this
+    check scraped a facet-factor formula string out of the live
+    fsim_core/waveguide.py source and eval()-ed it in a bare {T, R_back}
+    namespace -- after the pkg2 checkpoint, edge_emission() assigns
+    `facet_factor = facet_escape_fraction(T, R_back_eff, alpha_cm, L_um,
+    dot_position)`, a name reference the eval() namespace could never
+    resolve, so every row's forward value silently failed to evaluate and
+    `ok` was False everywhere.  This calls
+    `waveguide.facet_escape_fraction(T, R_back, alpha_cm, L_um)` directly
+    instead -- the SAME pure function edge_emission() itself now calls
+    (single source of truth), so this is a wiring/regression check, not a
+    duplicated physics derivation. `alpha_cm` is not a swept lever in this
+    file (grep confirms no `alpha_cm` key anywhere in this module), so the
+    fixed `fsim_core.device.EmissionBlock.alpha_cm` default is used;
+    `emission_R_back=None` resolves the same way edge_emission() resolves
+    it for an uncoated stack, `R_back = 1 - T` (item 4's uncoated-Fresnel
+    resolution reduces to this whenever no coating override is in play,
+    which this sweep never sets). Compares the forward value against the
+    back-solved `eta_total/(beta*eta_NA)` from `_front_facet_split`.
+    Returns {"back_solved", "forward", "convention", "ok"}; `convention` is
+    the fixed string `"ray-series-midpoint"` (facet_escape_fraction's
+    dot_position default), not a detected fused/legacy grouping -- there is
+    only one convention now."""
     back_solved = _front_facet_split(row)
     try:
         T = float(row.get("edge_T_facet"))
+        L_um = float(row.get("emission_L_um"))
         r_back_raw = row.get("emission_R_back")
         R_back = None if r_back_raw in (None, "", "None") else float(r_back_raw)
     except (TypeError, ValueError):
         return {"back_solved": back_solved, "forward": float("nan"),
                "convention": None, "ok": False}
-    candidates = _facet_factor_formula_candidates()
-    if not candidates:
-        candidates = [("facet_factor (fsim_core/waveguide.py source could not be "
-                      "introspected; last-known formula used)",
-                      "0.5 * T if (R_back is None or R_back == 0) "
-                      "else T / (T + (1 - R_back))")]
-    first_evaluable = None
-    for name, expr in candidates:
-        try:
-            value = float(eval(expr, {"__builtins__": {}}, {"T": T, "R_back": R_back}))
-        except Exception:
-            continue
-        if first_evaluable is None:
-            first_evaluable = (name, expr, value)
-        if not np.isfinite(back_solved):
-            continue
-        if abs(value - back_solved) < 1e-6:
-            return {"back_solved": back_solved, "forward": value,
-                   "convention": f"`{name} = {expr}` (fused/current-model convention: "
-                                f"already includes T_facet)", "ok": True}
-        if np.isfinite(T) and abs(value * T - back_solved) < 1e-6:
-            return {"back_solved": back_solved, "forward": value * T,
-                   "convention": f"`{name} = {expr}`, times T_facet (legacy/split "
-                                f"convention: T_facet applied as a separate step)",
-                   "ok": True}
-    if first_evaluable is not None:
-        name, expr, value = first_evaluable
-        return {"back_solved": back_solved, "forward": value,
-               "convention": f"`{name} = {expr}`", "ok": False}
-    return {"back_solved": back_solved, "forward": float("nan"), "convention": None,
-           "ok": False}
+    if R_back is None:
+        R_back = 1.0 - T  # uncoated Fresnel resolution reduces to this here (item 4)
+    alpha_cm = 5.0  # fsim_core.device.EmissionBlock.alpha_cm default; not a swept lever
+    try:
+        forward = float(waveguide.facet_escape_fraction(T, R_back, alpha_cm, L_um))
+    except Exception:
+        return {"back_solved": back_solved, "forward": float("nan"),
+               "convention": "ray-series-midpoint", "ok": False}
+    ok = bool(np.isfinite(back_solved) and np.isfinite(forward)
+             and abs(forward - back_solved) < 1e-6)
+    return {"back_solved": back_solved, "forward": forward,
+           "convention": "ray-series-midpoint", "ok": ok}
 
 
 def compute_verdict(rows: list, stats: dict, grid_complete: bool,
@@ -1298,6 +1313,11 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "headline_coverage_n": stats["n_headline"], "headline_coverage_total": stats["n_total"],
         "headline_coverage_pulsed_n": stats["n_headline_dedup"],
         "headline_coverage_pulsed_total": stats["n_scheduled_dedup"],
+        "headline_dedup_mismatch_groups": stats.get("headline_dedup_mismatch_groups", 0),
+        "eligible_pulsed_n": stats.get("n_eligible_dedup", 0),
+        "eligible_pulsed_total": stats["n_scheduled_dedup"],
+        "eligible_pulsed": stats.get("eligible_pulsed", 0.0),
+        "eligible_dedup_mismatch_groups": stats.get("eligible_dedup_mismatch_groups", 0),
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_eligible"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_eligible"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
@@ -1318,6 +1338,7 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "anchor_6_5mev_by_card": anchor_report or {},
         "T_pass_min": T_pass_min,
         "headline_by_T": stats.get("per_T", {}),
+        "headline_by_T_pulsed": stats.get("per_T_pulsed", {}),
         "gamma300_threshold_by_T": gamma300_threshold_by_T,
     }
 
@@ -1330,11 +1351,20 @@ def verdict_line(verdict: dict) -> str:
     # do not carry the new keys; omit this segment entirely for those so
     # the reconstructed line still equals the stale saved text exactly.
     pulsed_segment = ""
-    if "headline_coverage_pulsed_n" in verdict:
+    by_T_pulsed_segment = ""
+    has_pulsed_dedup = "headline_coverage_pulsed_n" in verdict
+    if has_pulsed_dedup:
         pulsed_segment = (
             f"headline_coverage_pulsed={verdict['headline_coverage_pulsed_n']}/"
             f"{verdict['headline_coverage_pulsed_total']} "
+            f"headline_dedup_mismatch_groups={verdict.get('headline_dedup_mismatch_groups', 0)} "
+            f"eligible_pulsed={verdict.get('eligible_pulsed_n', 0)}/"
+            f"{verdict.get('eligible_pulsed_total', 0)} "
+            f"eligible_dedup_mismatch_groups={verdict.get('eligible_dedup_mismatch_groups', 0)} "
             f"rows_scheduled={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} ")
+        by_T_pulsed_segment = " headline_by_T_pulsed=" + ",".join(
+            f"{T}:{info.get('n_headline_dedup', 0)}/{info.get('n_scheduled_dedup', 0)}"
+            for T, info in verdict.get('headline_by_T_pulsed', {}).items())
     return (f"VERDICT: {'PASS' if verdict['pass'] else 'FAIL'} "
             f"g2_min={verdict['g2_min']:.4g} g2_median_eligible={verdict['g2_median']:.4g} "
             f"diag_g2_min={verdict['diag_g2_min']:.4g} "
@@ -1357,7 +1387,8 @@ def verdict_line(verdict: dict) -> str:
             f"T_pass_min={verdict.get('T_pass_min') if verdict.get('T_pass_min') is not None else 'none'} "
             f"headline_by_T=" + ",".join(
                 f"{T}:{info.get('n_headline', 0)}/{info.get('n_total', 0)}"
-                for T, info in verdict.get('headline_by_T', {}).items()))
+                for T, info in verdict.get('headline_by_T', {}).items())
+            + by_T_pulsed_segment)
 
 
 def card_line(card_id: str, card_stats: dict) -> str:
@@ -1486,6 +1517,22 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append(f"```\n{verdict_line(verdict)}\n```")
     for card_id, cs in stats["per_card"].items():
         lines.append(f"```\n{card_line(card_id, cs)}\n```")
+    # pkg5 fix, item 1: the irf_ps axis is deduplicated with a group all()
+    # reduction (a corner passes only if it passes at every sampled irf_ps),
+    # not a first-row pick -- surface any group where the irf_ps axis
+    # actually disagrees, rather than resolving it silently.
+    n_headline_mismatch = stats.get("headline_dedup_mismatch_groups", 0)
+    n_eligible_mismatch = stats.get("eligible_dedup_mismatch_groups", 0)
+    if n_headline_mismatch or n_eligible_mismatch:
+        warning = (f"**WARNING:** the irf_ps axis disagrees within "
+                   f"{n_headline_mismatch} dedup group(s) on headline_pass "
+                   f"(headline_dedup_mismatch_groups={n_headline_mismatch}) and "
+                   f"{n_eligible_mismatch} dedup group(s) on eligible_row "
+                   f"(eligible_dedup_mismatch_groups={n_eligible_mismatch}); a group "
+                   f"counts as passing only if every sampled irf_ps value agrees.")
+        lines.append("")
+        lines.append(warning)
+        print(warning.replace("**", ""), file=sys.stderr)
     lines.append("")
     lines.append("## Literature ceiling")
     lines.append(
@@ -1535,13 +1582,17 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         if argmin_T == "300":
             corner_label = "best 300 K corner"
         elif argmin_T is not None:
-            corner_label = f"best corner (at {argmin_T} K)"
+            # pkg5 fix, item 6: no inner parens around "at N K" -- callers
+            # below already wrap the whole label in "(g2_min=... )", so a
+            # second, nested pair here rendered as the double parenthesis
+            # "best corner (at 230 K) (g2_min=...)".
+            corner_label = f"best corner at {argmin_T} K"
         else:
             corner_label = "best corner (heatsink temperature not resolved in this row set)"
         if ratio > 1.0:
             lines.append(
                 f"On matching conventions, the 80 K Reischle device is about "
-                f"{ratio:.2g}x better (lower g2(0)) than this sweep's "
+                f"{ratio:.2f}x better (lower g2(0)) than this sweep's "
                 f"{corner_label} (g2_min={g2_min:.4g} vs "
                 f"{REISCHLE_DECONV_G2:.2f} +/- {REISCHLE_DECONV_G2_ERR:.2f}).")
         else:
@@ -1554,10 +1605,15 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         if (g2_min_300 is not None and np.isfinite(g2_min_300) and g2_min_300 > 0
                 and argmin_T != "300"):
             ratio_300 = g2_min_300 / REISCHLE_DECONV_G2
+            # pkg5 fix, item 6: when argmin_T is unresolved, "an unresolved
+            # temperature" already says there is no number to give a unit
+            # to -- appending " K" after it produced "an unresolved
+            # temperature K".
+            argmin_T_text = f"{argmin_T} K" if argmin_T is not None else "an unresolved temperature"
             lines.append(
                 f"On the 300 K line specifically (not this sweep's pooled "
-                f"best, which is at {argmin_T if argmin_T is not None else 'an unresolved temperature'} "
-                f"K): pulsed g2_min={g2_min_300:.4g}, about {ratio_300:.2g}x "
+                f"best, which is at {argmin_T_text}"
+                f"): pulsed g2_min={g2_min_300:.4g}, about {ratio_300:.2f}x "
                 f"{'worse than' if ratio_300 > 1.0 else 'at or below'} the "
                 f"80 K Reischle deconvolved value.")
     else:
@@ -1666,11 +1722,17 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             lines.append(f"- `{card_id}` lever combinations evaluated: {info.get('n_combos')}")
     lines.append("")
     lines.append("## Per-temperature acceptance")
-    lines.append("| T_hs (K) | eligible | headline passes | pulsed g2 min | flux max (photons/s) | gamma300 threshold |")
-    lines.append("|---:|---:|---:|---:|---:|---|")
+    lines.append("| T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | "
+                 "pulsed g2 min | flux max (photons/s) | gamma300 threshold |")
+    lines.append("|---:|---:|---:|---:|---:|---:|---|")
+    headline_by_T_pulsed = verdict.get("headline_by_T_pulsed", {})
     for T, info in verdict.get("headline_by_T", {}).items():
         threshold = verdict.get("gamma300_threshold_by_T", {}).get(T, {"lo": None, "hi": None})
+        dedup_info = headline_by_T_pulsed.get(T, {})
+        dedup_cell = (f"{dedup_info['n_headline_dedup']}/{dedup_info['n_scheduled_dedup']}"
+                     if dedup_info else "n/a")
         lines.append(f"| {T} | {info['n_eligible']}/{info['n_total']} | {info['n_headline']}/{info['n_total']} | "
+                     f"{dedup_cell} | "
                      f"{_fmt_or_na(info['g2_min'])} | {_fmt_or_na(info['flux_max'])} | {_format_threshold(threshold)} |")
     lines.append("")
     lines.append("## What cooling buys")
@@ -1702,11 +1764,14 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"separately -- `headline_coverage` in the VERDICT line, kept for backward "
                  f"compatibility): {stats['n_headline']}/{stats['n_total']} = "
                  f"{stats['headline_coverage']:.3f}")
-    lines.append(f"- **headline_coverage_pulsed** (peer review finding 6: same numerator "
-                 f"rule as rows_scheduled, but the irf_ps axis is deduplicated first -- "
-                 f"the pulsed sub-result, and therefore headline_pass, does not depend on "
-                 f"irf_ps, so one row per (card, delta_xx, gamma300, lever, T_hs) "
-                 f"combination is counted once, not once per irf_ps sample): "
+    lines.append(f"- **headline_coverage_pulsed** (peer review finding 6, pkg5 fix item 2: "
+                 f"same numerator rule as rows_scheduled, but the irf_ps axis is "
+                 f"deduplicated first. The pulsed g2 sub-result is IRF-independent; "
+                 f"`headline_pass` also requires CW eligibility, which is IRF-convolved, "
+                 f"so the deduplicated count is computed with `all()` over the IRF axis "
+                 f"and any disagreement is reported as `headline_dedup_mismatch_groups` "
+                 f"(currently {stats.get('headline_dedup_mismatch_groups', 0)}) rather than "
+                 f"resolved by picking whichever irf_ps row happened to be seen first): "
                  f"{stats['n_headline_dedup']}/{stats['n_scheduled_dedup']} = "
                  f"{stats['headline_coverage_pulsed']:.3f}. Coverage is the fraction of a "
                  f"chosen endpoint grid that passes, not a fabrication-yield probability or "
@@ -1775,16 +1840,16 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         front_split = facet_check["back_solved"]
         component_factors = [("beta (waveguide coupling / spontaneous-emission factor)",
                               best.get("edge_beta")),
-                             ("combined front/back-facet-and-transmission factor; "
+                             ("eta_facet (front/back-facet split, transmission, and "
+                              "single-pass propagation all fused into one ray-series factor; "
                               "BACK-SOLVED as the one factor missing from "
-                              "eta_total/(beta*eta_prop*eta_NA) -- device.py folds it into "
-                              "eta_total but never exposes it on its own; see the independent "
-                              "check below", front_split),
+                              "eta_total/(beta*eta_NA) -- device.py folds it into eta_total "
+                              "but never exposes it on its own; see the independent check "
+                              "below", front_split),
                              ("T_facet (raw Fresnel transmission, diagnostic only -- NOT "
-                              "necessarily an independent multiplicative step beyond the "
-                              "combined factor above; see the independent check below)",
+                              "an independent multiplicative step beyond eta_facet above; "
+                              "see the independent check below)",
                               best.get("edge_T_facet")),
-                             ("propagation", best.get("edge_eta_prop")),
                              ("NA (numerical aperture)", best.get("edge_eta_NA"))]
         # Council review round 6, item 3: the dominant-limiter comparison
         # used to run over eta_total's sub-factors only (component_factors:
@@ -1824,12 +1889,14 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             if np.isfinite(check.get("rel_diff", float("nan")))
             else "| self-check: relative difference | nan (non-finite inputs) |")
         lines.append("")
-        lines.append(f"`beta`/the combined front-facet factor/`T_facet`/`propagation`/`NA` are "
-                     f"shown below for diagnosis only -- `beta`, the combined factor, "
-                     f"`propagation` and `NA` are already folded into `eta_total` above "
-                     f"exactly once each (their product reproduces eta_total, by "
-                     f"construction of the combined factor -- NOT independent evidence, see "
-                     f"below) and must NOT also be multiplied into the flux self-check:")
+        lines.append(f"`beta`/`eta_facet`/`T_facet`/`NA` are shown below for diagnosis only -- "
+                     f"`beta`, `eta_facet` and `NA` are already folded into `eta_total` above "
+                     f"exactly once each (their product reproduces eta_total, by construction "
+                     f"of eta_facet -- NOT independent evidence, see below) and must NOT also "
+                     f"be multiplied into the flux self-check. Single-pass propagation is NOT "
+                     f"listed here as a separate multiplicative row (peer-review pkg2 facet "
+                     f"fix, 2026-09-07): it is reported below as an informational line only, "
+                     f"already folded inside `eta_facet`'s ray series.")
         lines.append("")
         lines.append("| component (already inside eta_total) | value |")
         lines.append("|---|---:|")
@@ -1837,25 +1904,31 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
                          else f"| {name} | nan |")
         lines.append("")
+        edge_eta_prop = best.get("edge_eta_prop")
         lines.append(
-            "**Independent check on the combined front-facet factor** (council review round "
-            "5, item 6, fixing a tautology): the value above is BACK-SOLVED -- the one factor "
-            "missing once eta_total, beta, propagation and NA are all already known "
-            "(eta_total = beta * <combined factor> * eta_prop * eta_NA) -- so a self-check "
+            f"single-pass propagation (already inside the facet factor): "
+            f"{edge_eta_prop:.6g}" if edge_eta_prop is not None and np.isfinite(edge_eta_prop)
+            else "single-pass propagation (already inside the facet factor): nan")
+        lines.append("")
+        lines.append(
+            "**Independent check on eta_facet** (council review round 5, item 6, fixing a "
+            "tautology; peer-review pkg2 facet fix, 2026-09-07): the value above is "
+            "BACK-SOLVED -- the one factor missing once eta_total, beta and NA are all "
+            "already known (eta_total = beta * eta_facet * eta_NA) -- so a self-check "
             "comparing it against that same back-solving would only ever reproduce its own "
-            "inputs. The genuinely independent check instead recomputes the combined factor "
-            "FORWARD from this row's own facet transmission (T_facet) and back-facet "
-            "reflectivity (R_back), trying every candidate formula introspected LIVE from "
-            "fsim_core/waveguide.py's installed `edge_emission` source right now (never "
-            "hardcoded, since that file's facet model is being edited concurrently and may "
-            "change again) -- both as a fused current-model factor and as a legacy front-"
-            "split-times-T_facet factor, since either grouping may be in effect: "
+            "inputs. The genuinely independent check instead recomputes eta_facet FORWARD "
+            "from this row's own facet transmission (T_facet), back-facet reflectivity "
+            "(R_back), and ridge loss (alpha_cm), by a direct call to "
+            "fsim_core.waveguide.facet_escape_fraction -- the SAME pure function "
+            "edge_emission() itself calls (single source of truth, never a duplicated or "
+            "scraped formula), so this is a wiring/regression check, not a physics "
+            "re-derivation: "
             + (f"forward = {facet_check['forward']:.6g} via {facet_check['convention']}, "
-               if facet_check.get("convention") else "no candidate formula could be evaluated, ")
+               if facet_check.get("convention") else "eta_facet could not be evaluated, ")
             + f"back-solved = {front_split:.6g} -- "
             f"{'MATCH' if facet_check['ok'] else 'MISMATCH'} (agreement confirms the "
-            "back-solved value really is the geometric front/back-facet-and-transmission "
-            "factor waveguide.py computes, not some other quantity folded into eta_total).")
+            "back-solved value really is the eta_facet factor waveguide.py computes, not "
+            "some other quantity folded into eta_total).")
         lines.append("")
         lines.append("## Diagnostic g2 landscape")
         lines.append("| corner | pulsed g2 min | pooled diagnostic median | lever values | assumptions |")
@@ -1942,9 +2015,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             "available in this run to quote a concrete pair of numbers, but the "
             "underlying reason pulsed drive is used is the same in every corner: the "
             "antibunching dip this device produces under continuous drive is narrower in "
-            "time than a real single-photon detector's instrument response, so a CW "
-            "measurement alone cannot demonstrate single-photon emission on this "
-            "platform.")
+            "time than a real single-photon detector's instrument response, so "
+            "single-photon emission cannot be demonstrated by a CW measurement alone on "
+            "this platform at the IRF values sampled here (50-200 ps); a faster detector, "
+            "a different gate or different physical rates could change this.")
     lines.append("")
     lines.append("## Evidence gate")
     lines.append(f"- evidence_complete: {evidence_report.get('evidence_complete')}")
@@ -1958,8 +2032,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("## Fail reasons" if not verdict["pass"] else "## Pass basis")
     if verdict["pass"]:
         lines.append(f"At least one eligible corner has pulsed intrinsic g2(0) < 0.5 -- "
-                     f"the contract's headline metric ({stats['n_headline']} such row(s) "
-                     f"across both cards), grid complete, evidence complete, hallucination "
+                     f"the contract's headline metric "
+                     f"({stats['n_headline_dedup']} such corner(s), deduplicated over the "
+                     f"IRF axis; {stats['n_headline']} raw grid row(s), across both cards), "
+                     f"grid complete, evidence complete, hallucination "
                      f"self-test passed. g2_cw0 and g2_cw0_raw are reported above as "
                      f"secondary diagnostics (see Coverage) and do not gate this PASS.")
     else:
