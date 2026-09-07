@@ -162,11 +162,11 @@
           "caption": "n, ω, d, ε0, ħ, c are index, frequency, dipole, vacuum permittivity, reduced Planck constant, and light speed."
         },
         {
-          "latex": "f=\\frac{2m_0\\omega|d|^2}{\\hbar e^2}",
+          "latex": "f=\\frac{2m_0\\omega|d|^2}{3\\hbar e^2}",
           "caption": "f is oscillator strength; m0 and e are free-electron mass and charge."
         }
       ],
-      "notes": "Fermi's golden rule sums the dipole-photon coupling over the continuum of vacuum electromagnetic modes and, after integrating the mode density, gives the familiar cubic-frequency spontaneous emission rate Gamma_rad = n omega^3 |d|^2 / (3 pi epsilon_0 hbar c^3), with n the refractive index of the host medium raising the local mode density relative to vacuum [Fox, Quantum Optics (2006), ch. 8]. The oscillator strength f = 2 m_0 omega |d|^2 / (hbar e^2) repackages the same dipole matrix element into a dimensionless number that is easier to compare across material systems; it is the same physics as Gamma_rad, not an independent measurement. Self-assembled III-V dots typically show radiative lifetimes in the 1 ns class once envelope confinement and the host index are folded in [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)]. The repository does not derive Gamma_rad from a microscopic dipole calculation; it takes radiative rates (gamma_X, gamma_XX) as model inputs, either class-proxy values or, where available, anchored fits to a specific dot's measured decay. The golden-rule derivation here is the textbook justification for treating gamma as a rate constant at all in the cascade equations that follow.",
+      "notes": "Fermi's golden rule sums the dipole-photon coupling over the continuum of vacuum electromagnetic modes and, after integrating the mode density, gives the familiar cubic-frequency spontaneous-emission rate Gamma_rad = n omega^3 |d|^2 / (3 pi epsilon_0 hbar c^3), with n the host refractive index [Fox, Quantum Optics (2006), ch. 8]. For the isotropic dipole magnitude |d| used in that rate, oscillator strength is f = 2 m_0 omega |d|^2 / (3 hbar e^2): it repackages the same dipole matrix element into a dimensionless number, not an independent measurement. The commonly encountered single-component convention omits the factor 3 because it assigns |d| to one Cartesian dipole component rather than to the isotropic magnitude. Self-assembled III-V dots typically show radiative lifetimes in the 1 ns class once envelope confinement and host index are folded in [Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)]. The repository does not derive Gamma_rad from a microscopic dipole calculation; it takes radiative rates (gamma_X, gamma_XX) as model inputs, either class-proxy values or, where available, anchored fits to a specific dot's measured decay. This golden-rule derivation justifies treating gamma as a rate constant in the cascade equations that follow.",
       "sources": [
         "Fox, Quantum Optics (2006)",
         "Michler ed. (2017)"
@@ -248,15 +248,15 @@
       ],
       "equations": [
         {
-          "latex": "\\dot N_{XX}=rN_X-(\\gamma_{XX}+k_{XX})N_{XX}",
+          "latex": "\\dot N_{XX}=pump\\_ratio\\,rN_X-(\\gamma_{XX}+k_{XX})N_{XX}",
           "caption": "NXX is biexciton population; r pump; γXX radiative rate; kXX escape."
         },
         {
-          "latex": "\\dot N_X=rN_0+(\\gamma_{XX}+k_{XX})N_{XX}-(r+\\gamma_X+k_X)N_X",
+          "latex": "\\dot N_X=rN_0+(\\gamma_{XX}+k_{XX})N_{XX}-(pump\\_ratio\\,r+\\gamma_X+k_X)N_X",
           "caption": "NX and N0 are exciton and empty populations; gammaX radiative rate; kX escape. Both radiative and non-radiative XX exits return population to X."
         }
       ],
-      "notes": "fsim_core/cw_g2.py models the exciton-biexciton cascade as a three-state, incoherent Markov chain on the ordered basis |0>, |X>, |XX> -- no optical coherences, appropriate when dephasing dominates Rabi coupling, as it does under incoherent electrical or above-band pumping. Population flows: pump rate r drives 0 -> X and, at rate r times pump_ratio, X -> XX; each level empties both radiatively (gamma_X, gamma_XX, emitting a photon) and non-radiatively (k_X, k_XX, thermal escape with no photon). generator() assembles the corresponding 3x3 rate matrix and steady_state() returns its normalized null vector, the stationary occupations (P_0, P_X, P_XX). Because the chain is a birth-death process, detailed balance gives a closed form, P_X = a P_0 and P_XX = a b P_0 with a = r/(gamma_X+k_X) and b = pump_ratio*r/(gamma_XX+k_XX), which steady_state() implements directly rather than diagonalizing M. The dot's exit from XX must include both its radiative and non-radiative channels, (gamma_XX + k_XX) N_XX, to conserve population; an incomplete term that dropped k_XX would systematically overstate how much population returns to X to be re-emitted as an X photon [fsim_core/cw_g2.py].",
+      "notes": "fsim_core/cw_g2.py models the exciton-biexciton cascade as a three-state, incoherent Markov chain on the ordered basis |0>, |X>, |XX> -- no optical coherences, appropriate when dephasing dominates Rabi coupling under incoherent electrical or above-band pumping. Pump rate r drives 0 -> X and pump_ratio times r drives X -> XX; each level empties radiatively (gamma_X, gamma_XX, emitting a photon) and non-radiatively (k_X, k_XX, thermal escape). generator() assembles the 3x3 rate matrix and steady_state() returns normalized occupations (P_0, P_X, P_XX). Detailed balance gives P_X = a P_0 and P_XX = a b P_0, with a = r/(gamma_X+k_X) and b = pump_ratio*r/(gamma_XX+k_XX). Both gamma_XX and k_XX route XX into X, so the X return flux is set by pump_ratio*r*P_X. Dropping k_XX instead raises P_XX and hence the XX leakage-photon rate I_XX; it does not increase the X return flux. The displayed equations therefore retain pump_ratio explicitly and conserve population [fsim_core/cw_g2.py].",
       "sources": [
         "fsim_core/cw_g2.py: generator and steady_state",
         "Kantner et al. 2017"
@@ -313,7 +313,7 @@
       "notes": "Real detection always mixes the dot's intrinsic signal with an independent background: stray pump light, other emitters within the collection aperture, or dark counts. If the total detected stream is signal (mean rate s) plus statistically independent Poissonian background (mean rate b), expanding the second factorial moment of the sum gives an exact mixture law for the measured correlation: g^(2)_meas(0) = 1 - rho^2 [1 - g^(2)_s(0)], where rho = s/(s+b) is the signal fraction [Reischle et al., Optics Express 16, 12771 (2008), Eq. (1)]. Even a perfectly antibunched source, g^(2)_s(0) = 0, is measured as g^(2)_meas(0) = 1 - rho^2 once background is present -- at rho = 0.9 a perfect single-photon source already reads 0.19, not 0. This is why every purity number in this deck must be reported alongside its rho, since a headline g^(2) can be made to look better simply by narrowing the collection window and discarding signal along with background. fsim_core/integrator.py's g2_from implements this law exactly, and both cw_g2.py (CW) and device.py (pulsed) apply it downstream of their respective intrinsic g^(2) calculations.",
       "sources": [
         "Reischle et al. 2008",
-        "fsim_core/device.py"
+        "fsim_core/integrator.py: g2_from"
       ]
     },
     {
@@ -356,7 +356,7 @@
       ],
       "figure": {
         "path": "presentation2/figures/out/02_14_cw.png",
-        "caption": "Fresh gainp-card rate-equation g2_meas(tau) at resolved 80 K (g2~0.23) and 300 K (g2~0.72).",
+        "caption": "Fresh gainp-card rate-equation g2_meas(tau), plotted from -8 to +8 ns with 4 ps sampling.",
         "script": "presentation2/figures/fig_02_14_cw.py"
       },
       "notes": "Continuous electrical or optical pumping produces a steady-state photon stream rather than discrete pulses, and its g^(2)(tau) is obtained by a different route: the quantum regression theorem, which for the classical three-state Markov chain of the previous slides reduces to 'propagate the post-jump state forward under the same generator M'. After detecting an X photon the dot is reset to |0>; after detecting an XX photon it is reset to |X>; cw_g2.py's cw_report() builds both post-jump propagators, weights them by their steady-state photon rates and the filter transmissions t_X, t_XX, and returns the intrinsic curve g2_dot, the background-mixed curve g2_meas, and the IRF-convolved curve g2_raw together [Gardiner and Collett, Phys. Rev. A 31, 3761 (1985)]. In the low-pump limit this reduces to g^(2)_dot(0) -> epsilon * pump_ratio * (S_XX/S_X), the CW analogue of the pulsed F1 identity. The figure loads the fresh gainp design card (cards/edge-inp-gainp-design.yaml) at its own resolved 80 K and 300 K operating points -- pump rate, retention, escape, filter window, and background all recomputed from the card, giving g2_meas(0) about 0.23 at 80 K and 0.72 at 300 K -- and this is a rate-equation regression on a classical generator, not a field-quantized calculation; CW and pulsed g^(2) remain genuinely different observables of the same device.",
@@ -466,7 +466,7 @@
         "caption": "linewidth.gamma_envelope class envelope.",
         "script": "presentation2/figures/fig_02_17_linewidth.py"
       },
-      "notes": "The phenomenological model Gamma(T) = Gamma_0 + aT + b/[exp(E_LO/k_B T) - 1] separates two physically distinct broadening mechanisms on top of a residual (T=0) width Gamma_0: a linear acoustic-phonon term aT from the same deformation-potential coupling as the previous slide's sideband, and an activated term describing scattering that requires a real LO phonon to be thermally populated, with E_LO the LO phonon energy (43 meV for InP) and b its coupling strength. The activated term is negligible until k_B T approaches a sizeable fraction of E_LO, then grows rapidly -- why linewidth broadening accelerates rather than growing linearly toward 300 K. Matsuda's InAs-dot measurement anchors Gamma(300 K) around 12 meV [Matsuda et al., Phys. Rev. B 63, 121304(R) (2001)], and Chatzarakis's near-room-temperature InAs data independently constrains warm-dot behavior up to 260 K [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)]. fsim_core/linewidth.py's gamma_envelope() encodes this as a class range rather than a single curve: the coded 300 K envelope spans 6-20 meV, reflecting genuine dot-to-dot and material-class variation, not a measurement of the specific InP/GaAsP target dot -- that measurement (Measurement 1 in the owner's brief) has not yet been run.",
+      "notes": "The phenomenological model Gamma(T) = Gamma_0 + aT + b/[exp(E_LO/k_B T) - 1] separates a residual width Gamma_0, a linear acoustic-phonon term aT, and activated scattering requiring a thermally populated LO phonon. With E_LO = 43 meV for InP, the activated term is negligible at low temperature but rises rapidly toward 300 K. Matsuda's In0.5Ga0.5As/GaAs single-dot measurement anchors Gamma(300 K) around 12 meV [Matsuda et al., Phys. Rev. B 63, 121304(R) (2001)], while Chatzarakis's InAs data constrains warm-dot behavior to 260 K [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)]. fsim_core/linewidth.py's gamma_envelope() deliberately encodes a class range rather than a single curve: its coded 300 K envelope spans 6-20 meV, reflecting dot-to-dot and material-class variation, not a measurement of the specific InP/GaAsP target dot. Measurement 1, a temperature-dependent linewidth on that target, has not yet been run.",
       "sources": [
         "Matsuda et al., PRB 63, 121304(R) (2001)",
         "Chatzarakis et al. 2023",
@@ -475,7 +475,8 @@
       "repo_numbers": {
         "gamma_envelope_300K_low": {
           "file": "fsim_core/linewidth.py",
-          "value": 6
+          "value": 6,
+          "how": "__import__('fsim_core.linewidth',fromlist=['x']).GAMMA300_CLASS_RANGE[0]"
         }
       }
     },
@@ -550,10 +551,10 @@
         "caption": "Two retention presets from dot_levels.py.",
         "script": "presentation2/figures/fig_02_20_retention.py"
       },
-      "notes": "Carriers confined in the dot can also escape thermally before they recombine, competing with the radiative channel; the retention fraction S(T) = 1/[1 + a exp(-E_a/k_B T) + b exp(-E_b/k_B T)] models this as two independent Arrhenius escape channels (activation energies E_a, E_b with prefactors a, b) on top of the radiative rate, following the two-channel thermal-activation picture used across the confinement literature [Bommer et al., Nano Letters 11, 2484 (2011)]. dot_levels.retention_params() derives E_a, E_b, a, and b directly from the confinement model's computed level structure rather than fitting them independently, so the escape channels are tied to the same band offsets and geometry used elsewhere in the device evaluation. For the coded InP/GaAsP class preset this returns E_a = 83.79 meV under the module's pair-half convention -- an assumption-class proxy from generic confinement parameters, not a measurement of the actual InP/GaAsP target dot (Measurement 1 remains open) [fsim_core/dot_levels.py: retention_params]. Because S(T) enters brightness multiplicatively and falls off steeply once k_B T approaches a sizeable fraction of E_a, thermal escape alone can cost three or more orders of magnitude of brightness between cryogenic and room temperature, independent of and in addition to any purity penalty from linewidth broadening [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)].",
+      "notes": "Carriers confined in the dot can escape thermally before recombination. The retention fraction S(T) = 1/[1 + a exp(-E_a/k_B T) + b exp(-E_b/k_B T)] is the two-channel Arrhenius intensity-retention form reported by Chatzarakis et al. [Phys. Rev. Applied 20, 034011 (2023)]. Bommer et al. measured single-dot activation energies in InP/(Al,Ga)InP, providing an activation-energy anchor but not this two-channel retention form [J. Appl. Phys. 110, 063108 (2011)]. dot_levels.retention_params() derives E_a, E_b, a, and b from computed confinement levels rather than fitting them independently, tying escape to the same offsets and geometry used elsewhere. For the coded InP/GaAsP class preset it returns E_a = 83.79 meV under the module's pair-half convention: an assumption-class proxy, not a measurement of the target dot. Because S(T) multiplies brightness and falls steeply as k_B T approaches E_a, escape can cost orders of magnitude between cryogenic and room temperature, independently of linewidth-driven purity loss.",
       "sources": [
         "Chatzarakis et al. 2023",
-        "Bommer et al., Nano Letters 11, 2484 (2011)",
+        "Bommer et al., J. Appl. Phys. 110, 063108 (2011)",
         "fsim_core/dot_levels.py: retention_params"
       ],
       "repo_numbers": {
@@ -586,22 +587,22 @@
       "layout": "bullets+figure",
       "title": "Putting the model together: the 300 K landscape",
       "bullets": [
-        "Sweep axes are Γ(300 K) and ΔXX.",
-        "ε propagates into pulsed g².",
-        "Purity and brightness gates coexist.",
+        "The sweep samples a 2x2 parameter grid.",
+        "Each cell aggregates 192 rows of pulsed g².",
+        "Boxes show within-cell variation, not a landscape.",
         "Laferriere reports optical 300 K g²=0.57.",
-        "No reviewed row combines electrical drive, 300 K, arsenide/phosphide dot, edge collection, and g² < 0.5."
+        "No row combines electrical drive, 300 K, g²(0) < 0.5 and an arsenide or phosphide epitaxial dot."
       ],
       "figure": {
         "path": "presentation2/figures/out/02_22_landscape.png",
-        "caption": "Repository sweep from out/rt_edge/sweep.csv.",
+        "caption": "2x2 sampled grid; each box aggregates 192 sweep rows (min/median/max shown by the distribution).",
         "script": "presentation2/figures/fig_02_22_landscape.py"
       },
-      "notes": "The landscape sweeps two independent physical axes -- the homogeneous linewidth Gamma(300 K) and the exciton-biexciton splitting Delta_XX -- through spectral.epsilon() and propagates the resulting leakage fraction into the pulsed g^(2) identity from earlier in this section; it is a design-sensitivity map showing how these two knobs jointly bound purity, not a measurement or a certification of any built device. Reading it against real evidence: Laferriere's optically pumped InAsP/InP nanowire dot reaches g^(2)(0)=0.57 at 300 K, above the 0.5 purity gate [Laferriere et al., Nano Letters 23, 962 (2023)]; Deshpande's electrically driven InGaN/GaN dot reaches g^(2)(0)=0.29 at 300 K, the best published room-temperature electrical single-photon result, but on a nitride platform outside this program's arsenide/phosphide target [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]; and Reischle's electrical device reports IRF-deconvolved, background-included g^(2)(0)=0.15+/-0.05 for QD B at 4 K and 0.25+/-0.05 for QD C at 80 K -- an InP/GaInP result, but at cryogenic and mid temperatures, not 300 K [Reischle et al., Optics Express 16, 12771 (2008); cards/reischle.yaml]. No published row combines electrical drive, 300 K, an arsenide or phosphide epitaxial dot, and g^(2)(0)<0.5 -- the same absence documented against the fuller evidence table, including Zhao's electrically driven QD laser and Kitamura's resonant-tunneling architecture, on the following slide.",
+      "notes": "This is not a continuous landscape. out/rt_edge/sweep.csv samples only a 2x2 grid: Gamma(300 K) = 6 or 20 meV and Delta_XX = 4 or 8 meV. Each cell contains 192 rows varying card, T_hs, IRF, NA, R_back, and L; the plot honestly summarizes their pulsed g^(2) distributions. Its cell minima are 0.437, 0.321, 0.763, and 0.653 respectively for (6,4), (6,8), (20,4), and (20,8) meV. The sensitivity remains design guidance, not a device measurement. Laferriere's optically pumped InAsP/InP nanowire dot reaches g^(2)(0)=0.57 at 300 K [Laferriere et al., Nano Lett. 23, 962 (2023)], while Deshpande's electrical 300 K result is g^(2)(0)=0.29 on nitride InGaN/GaN [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]. No row combines electrical drive, 300 K, g^(2)(0) < 0.5 and an arsenide or phosphide epitaxial dot.",
       "sources": [
         "out/rt_edge/sweep.csv",
         "Chatzarakis et al. 2023",
-        "Laferriere et al., Nano Letters 23, 962 (2023)",
+        "Laferriere et al., Nano Lett. 23, 962 (2023)",
         "Zhao et al., Phys. Rev. Research 6, L032021 (2024)",
         "Kitamura et al., CLEO 2025, JPS200_148"
       ],
@@ -610,6 +611,36 @@
           "file": "out/rt_edge/sweep.csv",
           "value": 768,
           "how": "sum(1 for _ in open('out/rt_edge/sweep.csv'))-1",
+          "tolerance": 0.001
+        },
+        "sweep_cell_count": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 192,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').groupby(['gamma300_meV','delta_xx_meV']).size().iloc[0]",
+          "tolerance": 0.001
+        },
+        "sweep_cell_min_6_8": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 0.321359,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 6 and delta_xx_meV == 8').g2_pulsed.min()",
+          "tolerance": 0.001
+        },
+        "sweep_cell_min_6_4": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 0.436875,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 6 and delta_xx_meV == 4').g2_pulsed.min()",
+          "tolerance": 0.001
+        },
+        "sweep_cell_min_20_4": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 0.763185,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 20 and delta_xx_meV == 4').g2_pulsed.min()",
+          "tolerance": 0.001
+        },
+        "sweep_cell_min_20_8": {
+          "file": "out/rt_edge/sweep.csv",
+          "value": 0.653321,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 20 and delta_xx_meV == 8').g2_pulsed.min()",
           "tolerance": 0.001
         }
       }
@@ -621,9 +652,9 @@
       "subtitle": "Restated from the project's own treatment slides",
       "bullets": [
         "Electrical cryogenic SPS, optical warm SPS, and room-temperature edge-emitting QD lasers are distinct evidence classes.",
-        "No reviewed row combines electrical, 300 K, InP/GaAsP, edge collection, and g²<0.5."
+        "No row combines electrical drive, 300 K, g²(0) < 0.5 and an arsenide or phosphide epitaxial dot."
       ],
-      "notes": "This table restates the owner's own experimental-status slide: five results, each verified against its primary abstract or full text, are the closest published anchors to the program's five conditions, and none of them is the complete target platform simultaneously [Project's own treatment slides, slide 7]. Deshpande supplies the only published room-temperature electrical single-photon result, but on InGaN/GaN, not an arsenide or phosphide dot [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]. Laferriere supplies an optically pumped InAsP/InP nanowire dot whose multiphoton probability rises from 0.11 at 77 K to 0.57 at 300 K, ruling out that specific geometry for room-temperature purity even under optical excitation [Laferriere et al., Nano Letters 23, 962 (2023)]. Chatzarakis supplies warm-dot exciton/biexciton context to 260 K on a piezoelectric InAs platform, optically pumped [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)]. Zhao demonstrates electrically driven, room-temperature quantum-optical pump-noise regulation reaching the field -- 3.1 dB amplitude squeezing -- but from a QD laser ensemble, not a single-photon source [Zhao et al., Phys. Rev. Research 6, L032021 (2024)]. Kitamura reports an electrically driven, resonant-tunneling-injection architecture result with no extractable photon-statistics number behind its paywall [Kitamura et al., CLEO 2025, JPS200_148]. No reviewed row combines electrical drive, 300 K, an arsenide/phosphide epitaxial dot, and g^(2)(0)<0.5.",
+      "notes": "This table restates the owner's experimental-status slide: five results are the closest anchors to the program's conditions, but none simultaneously supplies the complete target platform [Project's own treatment slides, slide 7]. Deshpande supplies a 300 K electrical single-photon result on InGaN/GaN, not an arsenide or phosphide dot. Laferriere's optical InAsP/InP nanowire result rises from g^(2)(0)=0.11 at 77 K to 0.57 at 300 K. Chatzarakis supplies optical warm-dot X/XX context to 260 K. Zhao is an electrically driven 300 K QD-laser ensemble, not a single-photon source. The card reports 3.1 dB pump-current amplitude squeezing [cards/zhao.yaml], whereas the paper digest records 0.9 +/- 0.1 dB directly measured squeezing (6.7%) [paper_digests.md]; these are reported as different quantities, but the repository does not yet reconcile their discrepancy. Kitamura reports a resonant-tunneling-injection architecture without an extractable photon-statistics number. No row combines electrical drive, 300 K, g^(2)(0) < 0.5 and an arsenide or phosphide epitaxial dot.",
       "sources": [
         "Project's own treatment slides",
         "Deshpande et al., APL 105, 141109 (2014)",
@@ -701,7 +732,7 @@
           ]
         }
       ],
-      "notes": "The repository's chain runs materials and confinement parameters (materials.py, dot_levels.py) into a thermal optical response (linewidth.py's phenomenological Gamma(T), qd_gf.py's independent-boson lineshape), then propagates that response through spectral transmission, finite-pump loading, background dilution, and rate-equation propagation (spectral.py, loading.py, cw_g2.py) into device.py's reported brightness, purity, and injection observables -- a validated, internally consistent Level-2 semiclassical stack, with every closed form checked against published numbers in its own verify/verify_<module>.py suite. One failure is kept deliberately rather than hidden: Zhao's stochastic pump-noise SDE (fsim_core/sde.py) reproduces the correct ordering of Zhao's twelve measured operating points but does not reach the published squeezing magnitude under any literature-bounded parameter set, so device.py bypasses the physical SDE and substitutes an empirical Fano-factor parameter F_p, priced from Zhao's own measured values rather than derived from the SDE [fsim_core/sde.py; fsim_core/device.py]. This is the local instance of the joint the owner's brief calls unpublished at the field level: a relay-hop rate model cannot, on its own, carry electrical pump regulation all the way into field statistics. Quantized field modes, the photon density matrix, and Hong-Ou-Mandel visibility are not implemented anywhere in this stack; that gap is the subject of the next slide.",
+      "notes": "The repository's chain runs materials and confinement parameters (materials.py, dot_levels.py) into thermal optical response (linewidth.py's phenomenological Gamma(T), qd_gf.py's independent-boson lineshape), then spectral transmission, finite-pump loading, background dilution, and rate-equation propagation into device.py's reported brightness, purity, and injection observables. It is a Level-2 semiclassical stack with closed forms checked in verify/verify_<module>.py. One failure is kept visible: Zhao's stochastic pump-noise SDE reproduces the ordering of the two published g^(2)(0) points, normal and quiet, both at I = 4 I_th [cards/zhao.yaml], but does not reach the published squeezing magnitude under literature-bounded parameters. The separate number 12 refers to tuning experiments in scripts/run_zhao_fit.py, not measured operating points. device.py therefore bypasses the physical SDE and uses an empirical Fano-factor parameter F_p priced from Zhao's measured values [fsim_core/sde.py; fsim_core/device.py]. This exposes the unclosed field-level joint: a relay-hop rate model cannot carry electrical pump regulation into field statistics. Quantized modes, a photon density matrix, and Hong-Ou-Mandel visibility are absent; the next slide addresses that gap.",
       "sources": [
         "Project's own treatment slides",
         "fsim_core/device.py",
@@ -719,12 +750,20 @@
         "Add HOM visibility and electrical-pulsing data.",
         "Treat the sweep as design guidance, not evidence."
       ],
-      "notes": "Four items remain open, in the owner's own priority order. First and most gating: Measurement 1, an actual Gamma(T) and Delta_XX distribution to 300 K on the InP/GaAsP target dot -- every room-temperature number in this deck is a class-proxy estimate until that measurement exists, not a property of a specific characterized device. Second, closing the electrical arm properly means Kantner-style transport-to-Lindblad coupling: a dynamical, bidirectional link between the drift-diffusion carrier equations and the quantum master equation, rather than device.py's current one-way macroscopic injection parameters feeding a rate-equation cascade [Kantner, Mittnenzweig and Koprucki, Phys. Rev. B 96, 205301 (2017)]. Third, driven phonon dynamics: polaron-frame renormalization of the Rabi frequency under drive and phonon-assisted transitions during excitation, which the current stationary independent-boson lineshape does not include. Fourth, a field-quantized regression calculation -- a genuine Lindblad master equation with quantized modes -- to obtain Hong-Ou-Mandel visibility alongside g^(2)(tau) from the same generator, closing the Level-3/4 gap on the earlier hierarchy slide. The staged 120 K, g^(2)<=0.1 target already closes on paper with a large-lens dot, a quiet high-impedance rail, and a 10-12 pair DBR; the 77 K target closes with a slit filter and no cavity on the Poisson rail [out/rt_edge/verdict.md].",
+      "notes": "Five items remain open, matching the slide bullets. First and most gating is Measurement 1: an actual Gamma(T) and Delta_XX distribution to 300 K on the electrical InP/GaAsP target dot. Second is demonstrating confinement and edge collection together. Third is calibrating background, IRF, filter, and pulsing. Fourth is adding HOM visibility and electrical-pulsing data. Fifth is retaining the sweep as design guidance rather than evidence. For the electrical arm, Kantner-style transport-to-Lindblad coupling would replace device.py's one-way injection parameters with a dynamical, bidirectional link [Kantner, Mittnenzweig and Koprucki, Phys. Rev. B 96, 205301 (2017)]. The staged 120 K, g^(2)<=0.1 target with a large-lens dot, quiet high-impedance rail, and 10-12 pair DBR, and the 77 K slit-filter/no-cavity target, are from the owner's slide 9 [digest-qd-quantum-treatment.md]. The actual current repository verdict is FAIL with evidence=incomplete and conditional=true [out/rt_edge/verdict.md], so those staged targets are not a simulator verdict.",
       "sources": [
         "Project's own treatment slides",
         "Kantner et al., PRB 96, 205301 (2017)",
+        ".workers/briefs/digest-qd-quantum-treatment.md: slide 9",
         "out/rt_edge/verdict.md"
-      ]
+      ],
+      "repo_numbers": {
+        "verdict_conditional": {
+          "file": "out/rt_edge/verdict.md",
+          "value": 1,
+          "how": "int('conditional=true' in open('out/rt_edge/verdict.md', encoding='utf-8').read())"
+        }
+      }
     },
     {
       "id": "02-26",
