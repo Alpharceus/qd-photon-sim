@@ -22,17 +22,17 @@
       "bullets": [
         "Materials, confinement, linewidth, and transport supply physical inputs.",
         "Spectral, loading, phonon, and CW engines calculate observables.",
-        "Waveguide and device assemble brightness without changing intrinsic g\u00b2.",
-        "Cards declare assumptions; run_rt_edge executes the acceptance sweep.",
-        "Every scalar carries [V], [DR], [E], or [A] provenance.",
-        "Verification uses numbers the code did not produce."
+        "Waveguide and device assemble brightness without changing intrinsic g².",
+        "Card definitions preserve design constants and verified anchors.",
+        "The runner sweeps axes, audits evidence, and writes the verdict.",
+        "Every module is independently testable before integration."
       ],
       "figure": {
         "path": "presentation2/figures/out/05_02_architecture.png",
         "caption": "Repository module flow from material inputs to the sweep verdict.",
         "script": "presentation2/figures/fig_05_02_architecture.py"
       },
-      "notes": "The map is intentionally a flow of claims rather than a black box. materials supplies parameterized III-V properties; dot_levels converts those and geometry into separable confinement and retention parameters; linewidth supplies anchored broadening; and transport accounts for the electrical route. qd_gf supplies the stationary independent-boson lineshape, spectral and loading turn filtering and occupancy into pulsed statistics, cw_g2 supplies a rate-equation regression calculation, and waveguide supplies collection. device is the integration point; cards make a design inspectable; run_rt_edge performs the grid and writes the verdict. Tags mean verified literature value [V], derived quantity [DR], class estimate [E], or declared assumption [A]. Crucially, a verifier must compare against a published number the code did not generate; otherwise agreement can be tautological. That discipline is enforced across the repository\u2019s verify scripts and evidence ledger [docs/rt_edge_contract.md] [fsim_core/device.py].",
+      "notes": "The map is intentionally a flow of claims rather than a black box. Inputs begin with bulk material parameters, quantum-dot confinement levels, and exciton-phonon dephasing, then pass through diode transport to determine carrier densities and junction heating. Those feed the spectral and photon-statistics engines, where cascade leakage, pulse loading, and continuous-wave correlations are evaluated. Waveguide collection and the device integration loop assemble the observed flux without altering intrinsic photon statistics. Finally, design cards supply fixed geometries and materials, the acceptance runner executes the multidimensional parameter sweep, and an evidence ledger audits citations before emitting the final verdict. This structure ensures that a test failure can be localized to a single physical mechanism rather than an ambiguous aggregate simulator output [docs/rt_edge_contract.md] [cards/edge-inp-gaasp-design.yaml] [cards/edge-inp-gainp-design.yaml].",
       "sources": [
         "docs/rt_edge_contract.md",
         "fsim_core/device.py",
@@ -43,13 +43,13 @@
     {
       "id": "05-03",
       "layout": "two-column",
-      "title": "Three meanings of \u201cquantum\u201d\u2014and this model\u2019s location",
+      "title": "Three meanings of “quantum”—and this model’s location",
       "columns": [
         {
           "heading": "Device and dot",
           "bullets": [
             "Device: confined carriers and Coulomb physics.",
-            "Dot: states and exciton\u2013bath interactions.",
+            "Dot: states and exciton–bath interactions.",
             "Simulator: separable levels plus semiclassical cascade."
           ]
         },
@@ -62,7 +62,7 @@
           ]
         }
       ],
-      "notes": "The owner\u2019s slides distinguish a quantum device, a quantum treatment of the dot, and a quantum treatment of light. This simulator spans the first two only partially: confinement is quantum mechanical, and qd_gf contains a stationary exciton\u2013phonon treatment. Its primary pulsed statistic is nonetheless a level-two semiclassical cascade identity: filter leakage sets the biexciton-to-exciton ratio. For CW operation, cw_g2 solves a Markovian ladder and applies the regression construction to its rate generator. That is useful for an antibunching diagnostic, but it is not a driven Lindblad theory of quantized electromagnetic modes. In particular, it does not compute coherence-sensitive indistinguishability or a field-mode master equation. Slides three, eight, and nine of the owner\u2019s treatment explicitly require those distinctions, so the deck labels them as absences rather than silently implying them [digest-qd-quantum-treatment.md, slides 3, 8, 9] [fsim_core/cw_g2.py].",
+      "notes": "The owner’s slides distinguish a quantum device, a quantum model, and a quantum treatment, and that distinction is essential to interpreting what follows. A quantum device uses quantum effects—here discrete dot states—to produce a non-classical output. A quantum model calculates those states quantum-mechanically, as done here with effective-mass confinement and exciton-phonon Green’s functions. A quantum treatment, by contrast, solves the coupled light-matter density matrix with quantized optical modes. This simulator is a quantum model of a quantum device, but it is not yet a full quantum treatment. Its photon statistics rely on semiclassical rate equations and correlation identities rather than a Lindblad master equation for the optical field. Knowing that boundary prevents over-claiming what the numbers represent while still providing actionable engineering guidance for platform selection and cavity design [.workers/briefs/digest-qd-quantum-treatment.md, slides 3, 9].",
       "sources": [
         ".workers/briefs/digest-qd-quantum-treatment.md",
         "fsim_core/cw_g2.py",
@@ -109,12 +109,12 @@
           [
             "InAs/GaAs",
             "wetting-layer separation",
-            "known deviation: 202 meV versus 110 +/- 10 meV (+92 meV)"
+            "known deviation: 202 meV versus 110 ± 10 meV (+92 meV)"
           ],
           [
             "InP/GaInP",
             "single-dot transition",
-            "known deviation: 1.686 eV versus 1.815-1.836 eV (129-150 meV low)"
+            "known deviation: 1.686 eV versus 1.815–1.836 eV (129–150 meV low)"
           ],
           [
             "piezoelectric dots",
@@ -123,44 +123,84 @@
           ]
         ]
       },
-      "notes": "dot_levels is a separable finite-disk effective-mass solver, so its value is traceability and fast sensitivity analysis, not a claim to replace multiband k\u00b7p. The cited rows are known deviations, not agreement tests: the InAs/GaAs wetting-layer separation is 202 meV versus Chatzarakis's 110 +/- 10 meV, a +92 meV miss; the InP/GaInP transition is 1.686 eV versus Reischle's 1.815-1.836 eV range, a 129-150 meV low miss. The same (211)B piezoelectric dot also has a known level-placement deviation. The reported 14/14 passes instead test solver limits, independent finite-difference consistency, monotonicity, structural directions, and broad physical ranges; they do not establish literature agreement for these rows. Flat-band cylindrical confinement omits piezoelectric fields, true three-dimensional strain relaxation, and band mixing. Retention is therefore a model-derived bridge, and each design card retains its [E] or [A] label rather than presenting it as a direct measurement [verify/verify_dot_levels.py] [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)] [Reischle et al., Opt. Express 16, 12771 (2008)].",
+      "notes": "dot_levels is a separable finite-disk effective-mass solver, so its value is traceability and fast sensitivity analysis, not a claim to replace multiband k·p. The cited rows are known deviations, not agreement tests: the InAs/GaAs wetting-layer separation is 202 meV versus Chatzarakis's 110 ± 10 meV, a +92 meV miss; the InP/GaInP transition is 1.686 eV versus Reischle's 1.815–1.836 eV range, a 129–150 meV low miss. The same (211)B piezoelectric dot also has a known level-placement deviation. The reported 14/14 passes instead test solver limits, independent finite-difference consistency, monotonicity, structural directions, and broad physical ranges; they do not establish literature agreement for these rows. Flat-band cylindrical confinement omits piezoelectric fields, true three-dimensional strain relaxation, and band mixing. Retention is therefore a model-derived bridge, and each design card retains its [E] or [A] label rather than presenting it as a direct measurement [verify/verify_dot_levels.py] [Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)] [Reischle et al., Opt. Express 16, 12771 (2008)].",
       "sources": [
         "verify/verify_dot_levels.py",
         "Chatzarakis 2023 PRA 20 034011",
         "Reischle 2008 OE 16 12771"
       ],
-      "repo_numbers": {}
+      "repo_numbers": {
+        "dE_pair_WL_model": {
+          "value": 202.0,
+          "file": "fsim_core/dot_levels.py",
+          "how": "round(float(__import__('fsim_core.dot_levels', fromlist=['levels']).levels(__import__('fsim_core.dot_levels', fromlist=['class_presets']).class_presets()['InGaAs0.5/GaAs/GaAs on GaAs']()).dE_pair_WL))"
+        },
+        "miss_dE_pair_WL": {
+          "value": 92.0,
+          "file": "fsim_core/dot_levels.py",
+          "how": "round(float(__import__('fsim_core.dot_levels', fromlist=['levels']).levels(__import__('fsim_core.dot_levels', fromlist=['class_presets']).class_presets()['InGaAs0.5/GaAs/GaAs on GaAs']()).dE_pair_WL)) - 110"
+        },
+        "E_X_inp_gainp_model": {
+          "value": 1.686,
+          "file": "fsim_core/dot_levels.py",
+          "how": "round(float(__import__('fsim_core.dot_levels', fromlist=['levels']).levels(__import__('fsim_core.dot_levels', fromlist=['class_presets']).class_presets()['InP/GaInP/AlGaInP0.55 on GaAs']()).E_X_eV), 3)",
+          "tolerance": 0.001
+        },
+        "miss_E_X_meV": {
+          "value": 129.0,
+          "file": "fsim_core/dot_levels.py",
+          "how": "round((1.815 - float(__import__('fsim_core.dot_levels', fromlist=['levels']).levels(__import__('fsim_core.dot_levels', fromlist=['class_presets']).class_presets()['InP/GaInP/AlGaInP0.55 on GaAs']()).E_X_eV)) * 1000)"
+        }
+      }
     },
     {
       "id": "05-06",
       "layout": "bullets",
       "title": "Linewidth: anchored where measured, conditional where not",
       "bullets": [
-        "Verified anchors are 6.5 and 12 meV; sweep endpoints are 6-20 meV.",
+        "Verified anchors are 6.5 and 12 meV; sweep endpoints are 6–20 meV.",
         "The InP-dot room-temperature width remains unmeasured.",
         "Sweep linewidth is therefore an [E] sensitivity axis.",
-        "Measurement 1 must resolve \u0393(T) on InP/GaAsP."
+        "Measurement 1 must resolve Γ(T) on InP/GaAsP."
       ],
-      "notes": "The linewidth model makes a disciplined distinction between anchor data and the target platform. Its parameterization is anchored by a narrow class proxy from Chatzarakis and a broader class proxy from Matsuda, then evaluated as a temperature trend. Neither is a direct linewidth measurement of a single InP/GaAsP dot at room temperature. The contract therefore labels gamma300 as an estimate and sweeps it instead of treating it as settled. This has immediate consequence: the headline gate can clear at a sufficiently narrow sampled linewidth, but that is not evidence that a fabricated InP/GaAsP device will have that linewidth. The owner\u2019s first measurement is precisely the missing distribution of biexciton splitting and \u0393(T) on this platform. Until that experiment exists, the correct conclusion is conditional. The anchors are still valuable as bounded class information, provided their material mismatch is never hidden [fsim_core/linewidth.py] [Chatzarakis 2023 PRA 20 034011] [Matsuda et al., PRB 63, 121304(R) (2001)].",
+      "notes": "The linewidth model makes a disciplined distinction between anchor data and the target platform. Its parameterization is anchored by a narrow class proxy from Chatzarakis (6.5 meV) and a broader class proxy from Matsuda (12 meV), while the swept class-range endpoints are 6 and 20 meV per the linewidth module. Neither is a direct linewidth measurement of a single InP/GaAsP dot at room temperature. The contract therefore labels gamma300 as an estimate and sweeps it instead of treating it as settled. This has immediate consequence: the headline gate can clear at a sufficiently narrow sampled linewidth, but that is not evidence that a fabricated InP/GaAsP device will have that linewidth. The owner’s first measurement is precisely the missing distribution of biexciton splitting and Γ(T) on this platform. Until that experiment exists, the correct conclusion is conditional. The anchors are still valuable as bounded class information, provided their material mismatch is never hidden [fsim_core/linewidth.py] [verify/data/rt_edge_anchors.yaml] [Chatzarakis 2023 PRA 20 034011] [Matsuda 2001 PRB 63 121304].",
       "sources": [
         "fsim_core/linewidth.py",
+        "verify/data/rt_edge_anchors.yaml",
         "Chatzarakis 2023 PRA 20 034011",
         "Matsuda 2001 PRB 63 121304"
       ],
-      "repo_numbers": {}
+      "repo_numbers": {
+        "gamma_anchor_chatzarakis": {
+          "value": 6.5,
+          "file": "verify/data/rt_edge_anchors.yaml"
+        },
+        "gamma_anchor_matsuda": {
+          "value": 12,
+          "file": "verify/data/rt_edge_anchors.yaml"
+        },
+        "gamma_sweep_min": {
+          "value": 6,
+          "file": "fsim_core/linewidth.py"
+        },
+        "gamma_sweep_max": {
+          "value": 20,
+          "file": "fsim_core/linewidth.py"
+        }
+      }
     },
     {
       "id": "05-07",
       "layout": "bullets",
       "title": "Electrical model: the Section 3 stack in one slide",
       "bullets": [
-        "Three-channel I\u2013V uses aperture-area current density.",
+        "Three-channel I–V uses aperture-area current density.",
         "Injection efficiency and quasi-Fermi suppression shape capture.",
         "Carrier budget assigns a per-dot share and cap-two loading.",
         "Urbach tail plus residual background sets spectral impurity.",
         "Junction temperature is solved self-consistently."
       ],
-      "notes": "This slide is a bridge back to the electrical detail of Section 3. transport evaluates a two-diode current-voltage law at the actual aperture area, rather than confusing total current with current density. Injection and capture efficiency then feed a carrier budget, including a statistically meaningful per-dot share and a cap-two occupancy construction. The model distinguishes suppression at the dot energy from suppression at background energies through quasi-Fermi factors. An Urbach tail and a residual background supply the spectral impurity that mixes with the desired line. Finally, heating is not merely appended afterward: junction temperature is part of the evaluation loop, so every thermal quantity sees the operating condition. This remains a macroscopic transport model, however; it does not dynamically couple drift-diffusion carrier fields to a quantum density matrix. That missing Kantner-style closure returns on the final roadmap slide [fsim_core/transport.py] [fsim_core/device.py] [Sze & Ng, Physics of Semiconductor Devices, 3rd ed.].",
+      "notes": "This slide is a bridge back to the electrical detail of Section 3. transport evaluates a three-channel current-voltage law summing SRH (ideality n=2), radiative (n=1), and Shockley diffusion (n=1) at the actual aperture area, rather than confusing total current with current density. Injection and capture efficiency then feed a carrier budget, including a statistically meaningful per-dot share and a cap-two occupancy construction. The model distinguishes suppression at the dot energy from suppression at background energies through quasi-Fermi factors. An Urbach tail and a residual background supply the spectral impurity that mixes with the desired line. Finally, heating is not merely appended afterward: junction temperature is part of the evaluation loop, so every thermal quantity sees the operating condition. This remains a macroscopic transport model, however; it does not dynamically couple drift-diffusion carrier fields to a quantum density matrix. That missing Kantner-style closure returns on the final roadmap slide [fsim_core/transport.py] [fsim_core/device.py] [Sze & Ng, Physics of Semiconductor Devices, 3rd ed.].",
       "sources": [
         "fsim_core/transport.py",
         "fsim_core/device.py",
@@ -186,7 +226,7 @@
           "caption": "definition of crossing temperature T_c"
         }
       ],
-      "notes": "The F-series identities make the model\u2019s pulsed statistic inspectable. First, a background mixture transforms dot statistics by the squared signal fraction rho. Second, in the weak-pump filtered cascade, the residual central peak is the ratio of biexciton and exciton transmission. loading adds a Fano-parameterized occupancy correction with cap-two logic. The owner\u2019s slide eight places the lower leakage bound, loading Fano factor, and crossing-temperature definition together; the repository distributes them across spectral.epsilon2, loading.f1b_g2 and f8_g2_load, and device.evaluate. This distribution is not a conceptual gap, but it is a reason to cite the functions rather than describe an anonymous \u201cengine.\u201d These formulas are powerful because every term is diagnosable. They are also limited: their pulsed result is not an optical-field Lindblad simulation. The lecture therefore treats them as semiclassical identities with stated conditions [fsim_core/spectral.py] [fsim_core/loading.py] [fsim_core/device.py] [Reischle et al., Opt. Express 16, 12771 (2008), Eq. 1].",
+      "notes": "The F-series identities make the model’s pulsed statistic inspectable. First, a background mixture transforms dot statistics by the squared signal fraction rho. Second, in the weak-pump filtered cascade, the residual central peak is the ratio of biexciton and exciton transmission. loading adds a Fano-parameterized occupancy correction with cap-two logic. The owner’s slide eight places the lower leakage bound, loading Fano factor, and crossing-temperature definition together; the repository distributes them across spectral.epsilon2, loading.f1b_g2 and f8_g2_load, and device.evaluate. This distribution is not a conceptual gap, but it is a reason to cite the functions rather than describe an anonymous “engine.” These formulas are powerful because every term is diagnosable. They are also limited: their pulsed result is not an optical-field Lindblad simulation. The lecture therefore treats them as semiclassical identities with stated conditions [fsim_core/spectral.py] [fsim_core/loading.py] [fsim_core/device.py] [Reischle et al., Opt. Express 16, 12771 (2008), Eq. 1].",
       "sources": [
         "fsim_core/spectral.py",
         "fsim_core/loading.py",
@@ -209,7 +249,7 @@
           "caption": "IRF-broadened dip amplitude A_IRF"
         }
       ],
-      "notes": "The CW module treats the empty, exciton, and biexciton populations as a Markovian rate ladder. It obtains the conditional intensity through the rate-equation regression construction, reports the low-pump closed-form limit, and then mixes signal and background pointwise. Detector response is a separate convolution step, including the Gaussian-IRF erfcx closed form used for the sweep; the separate two-sided-exponential form is erfcx-free. This separation is pedagogically useful: an intrinsic dip, a background-included dip, and a raw IRF-broadened dip are different reported quantities, and comparing unlike conventions is a category error. The acceptance sweep uses CW values as diagnostics, while the headline pulsed gate remains intrinsic and background-included by its defined convention. The module\u2019s regression language should not be overread as a quantized-light solution: it operates on a rate generator without optical coherences [fsim_core/cw_g2.py] [Reischle et al., Optics Express 16, 12771 (2008)].",
+      "notes": "The CW module treats the empty, exciton, and biexciton populations as a Markovian rate ladder. It obtains the conditional intensity through the rate-equation regression construction, reports the low-pump closed-form limit, and then mixes signal and background pointwise. Detector response is a separate convolution step, including the Gaussian-IRF erfcx closed form used for the sweep; the separate two-sided-exponential form is erfcx-free. This separation is pedagogically useful: an intrinsic dip, a background-included dip, and a raw IRF-broadened dip are different reported quantities, and comparing unlike conventions is a category error. The acceptance sweep uses CW values as diagnostics, while the headline pulsed gate remains intrinsic and background-included by its defined convention. The module’s regression language should not be overread as a quantized-light solution: it operates on a rate generator without optical coherences [fsim_core/cw_g2.py] [Reischle et al., Optics Express 16, 12771 (2008)].",
       "sources": [
         "fsim_core/cw_g2.py",
         "Reischle 2008 OE 16 12771",
@@ -227,7 +267,7 @@
         "Piezoelectric and LO couplings remain absent.",
         "Driven polaron renormalisation remains future work."
       ],
-      "notes": "qd_gf implements the independent-boson model for a stationary two-level exciton coupled diagonally to bulk longitudinal-acoustic phonons through deformation potential. It constructs a spectral density, Huang\u2013Rhys weight, zero-phonon line, phonon sideband, and sideband-aware filter transmission. That is a meaningful improvement over a bare Lorentzian, but its scope is deliberately narrow. It does not include piezoelectric coupling, optical LO coupling, or a polaron-frame driven Hamiltonian whose Rabi frequency is renormalized during excitation. Nor does it provide phonon-assisted transitions in the electrical pulse dynamics. These omissions matter especially near the intended high-temperature regime; they are not small implementation details to hide beneath an \u201cIBM\u201d label. The owner\u2019s gap list names exactly these extensions. Keeping the stationary result and the driven open-system problem separate makes the present predictions more, not less, useful [fsim_core/qd_gf.py] [Krummheuer et al., PRB 65, 195313 (2002)] [Nazir & McCutcheon, JPCM 28, 103002 (2016)].",
+      "notes": "qd_gf implements the independent-boson model for a stationary two-level exciton coupled diagonally to bulk longitudinal-acoustic phonons through deformation potential. It constructs a spectral density, Huang–Rhys weight, zero-phonon line, phonon sideband, and sideband-aware filter transmission. That is a meaningful improvement over a bare Lorentzian, but its scope is deliberately narrow. It does not include piezoelectric coupling, optical LO coupling, or a polaron-frame driven Hamiltonian whose Rabi frequency is renormalized during excitation. Nor does it provide phonon-assisted transitions in the electrical pulse dynamics. These omissions matter especially near the intended high-temperature regime; they are not small implementation details to hide beneath an “IBM” label. The owner’s gap list names exactly these extensions. Keeping the stationary result and the driven open-system problem separate makes the present predictions more, not less, useful [fsim_core/qd_gf.py] [Krummheuer et al., PRB 65, 195313 (2002)] [Nazir & McCutcheon, JPCM 28, 103002 (2016)].",
       "sources": [
         "fsim_core/qd_gf.py",
         "Krummheuer 2002 PRB 65 195313",
@@ -238,7 +278,7 @@
     {
       "id": "05-11",
       "layout": "equation",
-      "title": "Waveguide collection: brightness lever, never a g\u00b2 lever",
+      "title": "Waveguide collection: brightness lever, never a g² lever",
       "equations": [
         {
           "latex": "g_{det}^{(2)}(0)=\\frac{\\eta^2\\langle n(n-1)\\rangle}{\\eta^2\\langle n\\rangle^2}=g_{int}^{(2)}(0)",
@@ -247,10 +287,10 @@
       ],
       "bullets": [
         "beta, facets, propagation, and NA determine collected flux.",
-        "Lemma 1 forbids collection from improving intrinsic g\u00b2.",
+        "Lemma 1 forbids collection from improving intrinsic g².",
         "Device, F-series, spectral, and card verifiers test this invariance."
       ],
-      "notes": "The edge-waveguide model supplies beta coupling, propagation, facet behavior, and numerical-aperture collection. All of these can be decisive for whether a photon rate is measurable, but none can repair the intrinsic multiphoton probability. Lemma 1 is just linear-loss invariance: a passive collection channel thins singles and coincidences by the same appropriate powers, which cancel in normalized g2. The contract elevates this simple fact into a testable rule because it prevents a common reporting mistake: claiming an optical collection upgrade improved source purity. It can improve observed count rate, signal-to-background conditions if background has a different optical path, or experimental feasibility; it cannot change the dot\u2019s intrinsic correlation through ordinary linear loss. Device, F-series, spectral, and card verifiers exercise this separation, so a code change that leaks collection into the wrong g2 term is caught [verify/verify_device_rt.py] [verify/verify_fsim.py] [verify/verify_spec_rt.py] [verify/verify_rt_edge_cards.py].",
+      "notes": "The edge-waveguide model supplies beta coupling, propagation, facet behavior, and numerical-aperture collection. All of these can be decisive for whether a photon rate is measurable, but none can repair the intrinsic multiphoton probability. Lemma 1 is just linear-loss invariance: a passive collection channel thins singles and coincidences by the same appropriate powers, which cancel in normalized g2. The contract elevates this simple fact into a testable rule because it prevents a common reporting mistake: claiming an optical collection upgrade improved source purity. It can improve observed count rate, signal-to-background conditions if background has a different optical path, or experimental feasibility; it cannot change the dot’s intrinsic correlation through ordinary linear loss. Device, F-series, spectral, and card verifiers exercise this separation, so a code change that leaks collection into the wrong g2 term is caught [verify/verify_device_rt.py] [verify/verify_fsim.py] [verify/verify_spec_rt.py] [verify/verify_rt_edge_cards.py].",
       "sources": [
         "docs/rt_edge_contract.md",
         "verify/verify_device_rt.py",
@@ -311,7 +351,7 @@
           ]
         }
       ],
-      "notes": "Design cards are not just parameter files. They are the place where every scalar must name its provenance, range, and whether it is verified, derived, estimated, or assumed. The primary card represents the intended InP/GaAsP platform, while the fallback card represents an InP/(Al)GaInP route closer to the Reischle material class. Each includes dot, drive, optical collection, and thermal operating information. The sweep does not erase the distinction: it records per-card eligibility and diagnostics, and the contract explains why a good fallback corner cannot validate the unmeasured primary platform. This card discipline makes it possible to ask a constructive question after any adverse result: which exact scalar is the next measurement, and which is merely a knob? It also prevents copied \u201ctypical\u201d numbers from becoming silent facts. The cards should be read as structured hypotheses with citations, not fabrication-ready specifications [cards/edge-inp-gaasp-design.yaml] [cards/edge-inp-gainp-design.yaml] [docs/rt_edge_contract.md].",
+      "notes": "Design cards are not just parameter files. They are the place where every scalar must name its provenance, range, and whether it is verified, derived, estimated, or assumed. The primary card represents the intended InP/GaAsP platform, while the fallback card represents an InP/(Al)GaInP route closer to the Reischle material class. Each includes dot, drive, optical collection, and thermal operating information. The sweep does not erase the distinction: it records per-card eligibility and diagnostics, and the contract explains why a good fallback corner cannot validate the unmeasured primary platform. This card discipline makes it possible to ask a constructive question after any adverse result: which exact scalar is the next measurement, and which is merely a knob? It also prevents copied “typical” numbers from becoming silent facts. The cards should be read as structured hypotheses with citations, not fabrication-ready specifications [cards/edge-inp-gaasp-design.yaml] [cards/edge-inp-gainp-design.yaml] [docs/rt_edge_contract.md].",
       "sources": [
         "cards/edge-inp-gaasp-design.yaml",
         "cards/edge-inp-gainp-design.yaml",
@@ -324,12 +364,12 @@
       "layout": "bullets",
       "title": "Acceptance sweep: gates, axes, and verdict",
       "bullets": [
-        "Axes: \u0394XX, \u0393300, IRF, NA, Rback, length, and heat-sink temperature.",
-        "Eligibility requires the collected-flux floor.",
-        "Headline gate: pulsed intrinsic g\u00b2 below one half.",
-        "CW values are diagnostics; evidence is an independent gate."
+        "Axes: ΔXX, Γ300, IRF, NA, Rback, length, and heat-sink temperature.",
+        "Eligible rows must clear the collected-flux floor.",
+        "Headline gate: pulsed intrinsic g² below one half.",
+        "CW metrics are diagnostic; the evidence gate is separate."
       ],
-      "notes": "The acceptance sweep is designed to make tradeoffs visible. It spans biexciton splitting, room-temperature linewidth, detector response, collection levers, and heat-sink temperature. A row must first satisfy the collected-flux floor to be eligible. The headline gate is pulsed intrinsic g2 below one half. CW correlations remain diagnostics. The verdict is FAIL solely because its Fail reasons section reads verbatim: Fail reasons\n- `evidence_incomplete`. median_pass=false is reported but does not block PASS. Closing the three single-source evidence gaps would flip this exact completed sweep to PASS. Individual favourable rows already pass the pulsed statistic, so this remains conditional design guidance rather than a room-temperature electrical demonstration [out/rt_edge/verdict.md] [docs/rt_edge_contract.md]. Exact sweep line: VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192",
+      "notes": "The acceptance sweep is designed to make tradeoffs visible. It spans biexciton splitting, room-temperature linewidth, detector response, collection levers, and heat-sink temperature. A row must first satisfy the collected-flux floor to be eligible. The headline gate is pulsed intrinsic g² below one half. CW correlations remain diagnostics. The verdict is FAIL solely because its Fail reasons section reads verbatim: Fail reasons\n- `evidence_incomplete`. The median_pass=false outcome is reported but does not block PASS. Closing the three single-source evidence gaps would flip this completed sweep to PASS. Individual favourable rows already pass the pulsed statistic, so this remains conditional design guidance rather than an electrical demonstration [out/rt_edge/verdict.md] [docs/rt_edge_contract.md]. Exact sweep line: VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md"
@@ -339,12 +379,92 @@
           "value": 0.3214,
           "file": "out/rt_edge/verdict.md"
         },
+        "g2_median_eligible": {
+          "value": 0.6373,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "diag_g2_min": {
+          "value": 0.3214,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "diag_g2_median_diagnostic": {
+          "value": 0.6706,
+          "file": "out/rt_edge/verdict.md"
+        },
         "flux_max": {
           "value": 6890,
           "file": "out/rt_edge/verdict.md"
         },
+        "flux_margin": {
+          "value": 6.89,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "flux_shortfall_deprecated": {
+          "value": 0.1451,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "coverage_over_eligible": {
+          "value": 0.3066,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "eligible_fraction": {
+          "value": 0.5521,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "eligible_count": {
+          "value": 424,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "grid_total": {
+          "value": 768,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "flux_floor_excluded": {
+          "value": 344,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "headline_coverage_count": {
+          "value": 130,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "gamma300_pass_max": {
+          "value": 10,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "gamma300_threshold_min": {
+          "value": 10,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "gamma300_threshold_max": {
+          "value": 12,
+          "file": "out/rt_edge/verdict.md"
+        },
         "T_pass_min": {
           "value": 230,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "headline_T230": {
+          "value": 60,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "headline_T250": {
+          "value": 34,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "headline_T273": {
+          "value": 24,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "headline_T300": {
+          "value": 12,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "slice_total": {
+          "value": 192,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "evidence_gaps": {
+          "value": 3,
           "file": "out/rt_edge/verdict.md"
         }
       }
@@ -355,13 +475,13 @@
       "title": "Results by heat-sink temperature",
       "bullets": [
         "Favourable corners exist from the non-cryogenic minimum upward.",
-        "Minimum g\u00b2 rises across the temperature slices.",
+        "Minimum g² rises across the temperature slices.",
         "The sampled linewidth threshold narrows at the warm end.",
         "Temperature changes eligibility as strongly as purity."
       ],
       "figure": {
         "path": "presentation2/figures/out/05_15_temperature.png",
-        "caption": "Minimum pulsed g\u00b2 across temperature slices from the live acceptance verdict.",
+        "caption": "Minimum pulsed g² across temperature slices from the live acceptance verdict.",
         "script": "presentation2/figures/fig_05_15_temperature.py"
       },
       "table": {
@@ -369,9 +489,9 @@
           "T_hs",
           "eligible",
           "passes",
-          "g\u00b2 min",
+          "g² min",
           "flux max",
-          "\u0393 threshold"
+          "Γ threshold"
         ],
         "rows": [
           [
@@ -380,7 +500,7 @@
             "60/192",
             "0.3214",
             "6890",
-            "10\u201312"
+            "10–12"
           ],
           [
             "250 K",
@@ -404,22 +524,98 @@
             "12/192",
             "0.3986",
             "2417",
-            "7\u20138"
+            "7–8"
           ]
         ]
       },
-      "notes": "The temperature table is the most direct answer to \u201cwhat does cooling buy?\u201d At the lowest non-cryogenic heat-sink slice, more rows are flux eligible and more clear the pulsed headline gate. As the heat sink warms, flux eligibility falls and the favourable minimum rises, although individual sampled corners remain below the headline threshold even at the warmest slice. The linewidth threshold information must be read as a sampled bracket, not a continuous fit: it identifies where the grid changes classification. The reported minimum passing heat-sink temperature is the lowest scheduled non-cryogenic slice with a passing corner, not a universal operating temperature for either platform. This plot uses the live verdict values and visualizes only the favourable boundary; it does not substitute for the full multidimensional sweep. The full CSV remains the source for lever-by-lever interpretation [out/rt_edge/verdict.md] [out/rt_edge/sweep.csv].",
+      "notes": "The temperature table is the most direct answer to “what does cooling buy?” At the lowest non-cryogenic heat-sink slice, more rows are flux eligible and more clear the pulsed headline gate. As the heat sink warms, flux eligibility falls and the favourable minimum rises, although individual sampled corners remain below the headline threshold even at the warmest slice. The linewidth threshold information must be read as a sampled bracket, not a continuous fit: it identifies where the grid changes classification. The reported minimum passing heat-sink temperature is the lowest scheduled non-cryogenic slice with a passing corner, not a universal operating temperature for either platform. This plot uses the live verdict values and visualizes only the favourable boundary; it does not substitute for the full multidimensional sweep. The full CSV remains the source for lever-by-lever interpretation [out/rt_edge/verdict.md] [out/rt_edge/sweep.csv].",
       "sources": [
         "out/rt_edge/verdict.md",
         "out/rt_edge/sweep.csv"
       ],
       "repo_numbers": {
+        "T230_eligible": {
+          "value": 144,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T230_passes": {
+          "value": 60,
+          "file": "out/rt_edge/verdict.md"
+        },
         "T230_g2": {
           "value": 0.3214,
           "file": "out/rt_edge/verdict.md"
         },
+        "T230_flux": {
+          "value": 6890,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T230_gamma_min": {
+          "value": 10,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T230_gamma_max": {
+          "value": 12,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T250_eligible": {
+          "value": 136,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T250_passes": {
+          "value": 34,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T250_g2": {
+          "value": 0.376,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T250_flux": {
+          "value": 5168,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T273_eligible": {
+          "value": 96,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T273_passes": {
+          "value": 24,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T273_g2": {
+          "value": 0.3775,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T273_flux": {
+          "value": 3639,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T300_eligible": {
+          "value": 48,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T300_passes": {
+          "value": 12,
+          "file": "out/rt_edge/verdict.md"
+        },
         "T300_g2": {
           "value": 0.3986,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T300_flux": {
+          "value": 2417,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T300_gamma_min": {
+          "value": 7,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "T300_gamma_max": {
+          "value": 8,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "slice_denom": {
+          "value": 192,
           "file": "out/rt_edge/verdict.md"
         }
       }
@@ -432,7 +628,7 @@
         "header": [
           "heat-sink T",
           "retention S",
-          "\u0393(T)",
+          "Γ(T)",
           "window background"
         ],
         "rows": [
@@ -462,7 +658,7 @@
           ]
         ]
       },
-      "notes": "Cooling changes more than one scalar, so a single intuitive explanation is insufficient. At the favourable corner, the retained carrier fraction drops as temperature rises, the linewidth broadens, and the in-window background changes with the operating model. The table places these quantities together precisely to avoid attributing the whole trend to linewidth alone. Retention is especially consequential because it enters the brightness chain multiplicatively and becomes the smallest factor at the warm end. The non-monotonic background values also warn against telling a simple \u201chotter means more background\u201d story without specifying the spectral window, injection state, and thermal solution. These are evaluated sweep outputs, not independent measurements. The experimental implication is clear: cooling can buy both usable flux and spectral separation, but the room-temperature platform decision still requires direct \u0393(T) and splitting measurements. The verdict\u2019s temperature table and cooling section are the authoritative numerical record [out/rt_edge/verdict.md] [fsim_core/device.py].",
+      "notes": "Cooling changes more than one scalar, so a single intuitive explanation is insufficient. At the favourable corner, the retained carrier fraction drops as temperature rises, the linewidth broadens, and the in-window background changes with the operating model. The table places these quantities together precisely to avoid attributing the whole trend to linewidth alone. Retention is especially consequential because it enters the brightness chain multiplicatively and becomes the smallest factor at the warm end. The non-monotonic background values also warn against telling a simple “hotter means more background” story without specifying the spectral window, injection state, and thermal solution. These are evaluated sweep outputs, not independent measurements. The experimental implication is clear: cooling can buy both usable flux and spectral separation, but the room-temperature platform decision still requires direct Γ(T) and splitting measurements. The verdict’s temperature table and cooling section are the authoritative numerical record [out/rt_edge/verdict.md] [fsim_core/device.py].",
       "sources": [
         "out/rt_edge/verdict.md",
         "fsim_core/device.py"
@@ -472,12 +668,48 @@
           "value": 0.01311,
           "file": "out/rt_edge/verdict.md"
         },
+        "gamma230": {
+          "value": 3.55,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "b_e230": {
+          "value": 0.01479,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "S250": {
+          "value": 0.009837,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "gamma250": {
+          "value": 4.213,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "b_e250": {
+          "value": 0.03107,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "S273": {
+          "value": 0.006935,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "gamma273": {
+          "value": 5.015,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "b_e273": {
+          "value": 0.01963,
+          "file": "out/rt_edge/verdict.md"
+        },
         "S300": {
           "value": 0.004617,
           "file": "out/rt_edge/verdict.md"
         },
         "gamma300": {
           "value": 6,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "b_e300": {
+          "value": 0.01247,
           "file": "out/rt_edge/verdict.md"
         }
       }
@@ -490,15 +722,20 @@
         "Loading, retention, filtering, and extraction multiply.",
         "Waveguide levers can clear flux eligibility.",
         "At the favourable cold corner, retention is the smallest factor.",
-        "Collection improves rate; Lemma 1 protects g\u00b2 accounting."
+        "Collection improves rate; Lemma 1 protects g² accounting."
       ],
-      "notes": "Brightness is not a monolithic output. The verdict decomposes it into the repetition and loading route, thermal retention, spectral transmission, and optical extraction chain. That factor table is more actionable than a final count rate because it identifies whether the next engineering intervention should be electrical, material, spectral, or optical. In the reviewed favourable corner, the dominant limiter is retention S, not the numerical aperture or facet once the collection levers are applied. This is consistent with the temperature sweep: a better lens cannot restore carriers that escape before radiative emission. Conversely, collection changes can still be essential because the acceptance protocol has a minimum measurable-flux requirement. The correct optimization order therefore uses the factor table: remove the smallest physical multiplier first, while keeping purity and collection accounting distinct. The council review specifically required the whole-chain smallest factor to be named, preventing a visually prominent optical lever from being mistaken for the fundamental bottleneck [out/rt_edge/verdict.md] [docs/rt_edge_tier.md] [fsim_core/waveguide.py].",
+      "notes": "Brightness is not a monolithic output. The verdict decomposes it into the repetition and loading route, thermal retention, spectral transmission, and optical extraction chain. That factor table is more actionable than a final count rate because it identifies whether the next engineering intervention should be electrical, material, spectral, or optical. In the reviewed favourable cold corner (T_hs = 230 K), the dominant limiter across the whole chain is retention S (0.01311), not the numerical aperture or facet once the collection levers are applied. This is consistent with the temperature sweep: a better lens cannot restore carriers that escape before radiative emission. Conversely, collection changes can still be essential because the acceptance protocol has a minimum measurable-flux requirement. The correct optimization order therefore uses the factor table: remove the smallest physical multiplier first, while keeping purity and collection accounting distinct. The council review specifically required the whole-chain smallest factor to be named, preventing a visually prominent optical lever from being mistaken for the fundamental bottleneck [out/rt_edge/verdict.md] [docs/rt_edge_tier.md] [fsim_core/waveguide.py].",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_tier.md",
         "fsim_core/waveguide.py"
       ],
-      "repo_numbers": {}
+      "repo_numbers": {
+        "S_cold": {
+          "value": 0.0131112,
+          "file": "out/rt_edge/verdict.md"
+        }
+      }
     },
     {
       "id": "05-18",
@@ -506,14 +743,15 @@
       "title": "Validation against papers: compare conventions before numbers",
       "bullets": [
         "Reischle: deconvolved, background-included comparison at 80 K.",
-        "Chatzarakis: temperature-trend comparison near 230 K.",
+        "Chatzarakis: temperature-trend point of 0.36 near 230 K.",
         "Fresh card evaluation prevents stale fixture values.",
         "Predictions are not retrospective measurements."
       ],
-      "notes": "Paper validation is useful only when the reported conventions match. For Reischle, the appropriate comparison is the IRF-deconvolved but background-included value, not the raw detector-broadened dip and not the fully background-corrected value. The tier document records the 0.25 plus or minus 0.05 anchor and calls the model comparison a prediction; the roughly four-kilocounts-per-second component comes from the paper digest. For Chatzarakis, the comparison is a temperature-trend point near 230 K rather than a claim of shared material or electrical drive. The verification route loads the current card and calls device.evaluate, avoiding a stale hard-coded result. This is the right use of literature: test units, trends, and reporting conventions while retaining material and excitation differences. A match at a proxy point does not convert an estimated InP/GaAsP room-temperature linewidth into a measurement [docs/rt_edge_tier.md] [../_goal/paper_digests.md] [verify/verify_rt_edge_papers.py].",
+      "notes": "Paper validation is useful only when the reported conventions match. For Reischle, the appropriate comparison is the IRF-deconvolved but background-included value, not the raw detector-broadened dip and not the fully background-corrected value. The tier document records the 0.25 plus or minus 0.05 anchor and calls the model comparison a prediction; the roughly four-kilocounts-per-second component comes from the paper digest. For Chatzarakis, the comparison is a temperature-trend point of 0.36 near 230 K rather than a claim of shared material or electrical drive. The verification route loads the current card and calls device.evaluate, avoiding a stale hard-coded result. This is the right use of literature: test units, trends, and reporting conventions while retaining material and excitation differences. A match at a proxy point does not convert an estimated InP/GaAsP room-temperature linewidth into a measurement [docs/rt_edge_tier.md] [../_goal/paper_digests.md] [verify/verify_rt_edge_papers.py].",
       "sources": [
         "docs/rt_edge_tier.md",
         "verify/verify_rt_edge_papers.py",
+        "../_goal/paper_digests.md",
         "Reischle 2008 OE 16 12771",
         "Chatzarakis 2023 PRA 20 034011"
       ],
@@ -538,7 +776,7 @@
         "They separated flux failure from physics failure.",
         "Trust comes from reproducible criticism, not confidence language."
       ],
-      "notes": "The tier history records repeated adversarial review rather than a one-pass implementation. Seven Opus passes, a codex-sol cross-review, and six fix rounds found issues in facet accounting, reporting conventions, linewidth brackets, background attribution, and the distinction between flux eligibility and a genuine physics failure. Several of those changes are deceptively small in code but decisive in interpretation: applying a facet factor twice would inflate brightness; a numeric threshold when no sampled row passes would imply unsupported physics; comparing raw and intrinsic correlations would exaggerate agreement. The review process matters because a simulator\u2019s most dangerous errors are often not crashes. They are plausible-looking values with the wrong denominator, convention, or evidence status. By writing such objections into regression checks and the verdict text, the project makes future changes answer to the same criticism. That is the practical meaning of evidence discipline [docs/rt_edge_tier.md] [verify/verify_rt_edge_sweep.py] [verify/verify_rt_edge_papers.py].",
+      "notes": "The tier history records repeated adversarial review rather than a one-pass implementation. Seven Opus passes, a codex-sol cross-review, and six fix rounds found issues in facet accounting, reporting conventions, linewidth brackets, background attribution, and the distinction between flux eligibility and a genuine physics failure. Several of those changes are deceptively small in code but decisive in interpretation: applying a facet factor twice would inflate brightness; a numeric threshold when no sampled row passes would imply unsupported physics; comparing raw and intrinsic correlations would exaggerate agreement. The review process matters because a simulator’s most dangerous errors are often not crashes. They are plausible-looking values with the wrong denominator, convention, or evidence status. By writing such objections into regression checks and the verdict text, the project makes future changes answer to the same criticism. That is the practical meaning of evidence discipline [docs/rt_edge_tier.md] [verify/verify_rt_edge_sweep.py] [verify/verify_rt_edge_papers.py].",
       "sources": [
         "docs/rt_edge_tier.md",
         "verify/verify_rt_edge_sweep.py",
@@ -551,11 +789,11 @@
       "layout": "bullets",
       "title": "Honest conclusion: conditional non-cryogenic passes, no unconditional PASS",
       "bullets": [
-        "Stop rule is non-cryogenic: heat-sink temperature at least 230 K.",
-        "Individual favourable corners meet the pulsed g\u00b2 gate.",
-        "Aggregate verdict remains FAIL: evidence is incomplete.",
-        "Measurement 1: \u0394XX distribution and \u0393(T) on InP/GaAsP.",
-        "A second electrical 80 K anchor is also required."
+        "Individual favourable corners meet the pulsed g² gate.",
+        "Closing three evidence gaps would flip the sweep to PASS.",
+        "Measurement 1: ΔXX distribution and Γ(T) on InP/GaAsP.",
+        "Measurement 2: second independent source for 80 K anchor.",
+        "Platform down-selection awaits platform-specific measurements."
       ],
       "notes": "The stop rule is intentionally weaker than an unqualified room-temperature claim: it asks whether a favourable design point exists at a non-cryogenic heat-sink temperature, defined here as at least 230 K. The sweep finds such corners, so the physics sensitivity exercise has a useful result. But the final verdict remains FAIL solely because the evidence ledger is incomplete; median_pass=false is reported but is not a PASS gate. The Fail reasons section reads verbatim: Fail reasons\n- `evidence_incomplete`. Closing the three single-source evidence gaps would therefore flip this exact sweep to PASS. Measurement 1 remains a distribution of biexciton splittings and linewidth versus temperature on the primary platform, and a second independent source is needed for the electrical 80 K anchor. The distinction tells an experimental team exactly which evidence changes the conclusion while keeping a conditional model corner distinct from a demonstration claim [out/rt_edge/verdict.md] [docs/rt_edge_contract.md] [docs/rt_edge_tier.md].",
       "sources": [
@@ -567,6 +805,10 @@
         "T_stop": {
           "value": 230,
           "file": "out/rt_edge/verdict.md"
+        },
+        "evidence_gaps": {
+          "value": 3,
+          "file": "out/rt_edge/verdict.md"
         }
       }
     },
@@ -576,24 +818,23 @@
       "title": "Still to do: close the quantum and transport gaps",
       "columns": [
         {
-          "heading": "Quantum dynamics",
+          "heading": "Quantum dynamics closures",
           "bullets": [
-            "Lindblad field modes: cw_g2/device.",
-            "HOM indistinguishability: new observables.",
-            "Polaron driving: qd_gf/drive_mech.",
-            "Piezoelectric and LO phonons: qd_gf."
+            "Lindblad with quantized field modes: optical master equation.",
+            "Polaron-frame driven dynamics: Green's functions to drive.",
+            "Piezoelectric and LO phonon bath: structured Hamiltonian."
           ]
         },
         {
-          "heading": "Electrical and dot physics",
+          "heading": "Transport and dot bridges",
           "bullets": [
-            "Kantner transport\u2013Lindblad coupling: transport/device.",
-            "Zhao closure: sde/loading.",
-            "Piezoelectric confinement: dot_levels."
+            "Kantner transport–Lindblad coupling: transport/device.",
+            "Zhao stochastic master-equation closure: loading/Fano.",
+            "Piezoelectric dot levels: dot_levels confinement."
           ]
         }
       ],
-      "notes": "The roadmap is module-specific so that \u201cfuture work\u201d does not become a vague promise. A Lindblad treatment with quantized field modes and an indistinguishability observable would reach beyond cw_g2\u2019s population-rate calculation and into device integration. Polaron-frame driven dynamics would couple qd_gf to the excitation model; piezoelectric and LO phonons would extend its Hamiltonian rather than merely alter a phenomenological linewidth. Kantner-style transport-to-Lindblad coupling would make carrier capture and escape dynamically bidirectional between transport and the dot density matrix. The Zhao stochastic closure would revisit the empirical Fano factor used by loading. Finally, piezoelectric fields in dot_levels would address the known flat-band confinement failure for the Chatzarakis-like structures. Each item changes a different model boundary, which is why none should be implied by the present simulations. The owner\u2019s slide nine and gap list specify these as still to do [digest-qd-quantum-treatment.md, slide 9] [Kantner et al., PRB 96, 205301 (2017)] [Zhao et al., PRR 6, L032021 (2024)].",
+      "notes": "The roadmap is module-specific so that “future work” does not become a vague promise. A Lindblad treatment with quantized field modes and an indistinguishability observable would reach beyond cw_g2’s population-rate calculation and into device integration. Polaron-frame driven dynamics would couple qd_gf to the excitation model; piezoelectric and LO phonons would extend its Hamiltonian rather than merely alter a phenomenological linewidth. Kantner-style transport-to-Lindblad coupling would make carrier capture and escape dynamically bidirectional between transport and the dot density matrix. The Zhao stochastic closure would revisit the empirical Fano factor used by loading. Finally, piezoelectric fields in dot_levels would address the known flat-band confinement failure for the Chatzarakis-like structures. Each item changes a different model boundary, which is why none should be implied by the present simulations. The owner’s slide nine and gap list specify these as still to do [digest-qd-quantum-treatment.md, slide 9] [Kantner et al., PRB 96, 205301 (2017)] [Zhao et al., PRR 6, L032021 (2024)].",
       "sources": [
         ".workers/briefs/digest-qd-quantum-treatment.md",
         "Kantner 2017 PRB 96 205301",
@@ -609,9 +850,9 @@
         "Confinement, emission, driving, and photonics form one chain.",
         "Simulator predictions are useful only with stated scope and evidence.",
         "Favourable non-cryogenic corners guide measurements, not claims.",
-        "References include Michler, Chuang, Yu and Cardona, Loudon, Purcell, Gardiner-Collett, Matsuda, and Bommer."
+        "References include Michler, Chuang, Yu-Cardona, Loudon, Purcell, Gardiner-Collett, Matsuda, Bommer."
       ],
-      "notes": "Across the lecture, we have followed a single photon from confined carrier states through spontaneous emission and phonon coupling, photon statistics, electrical injection, and photonic extraction. The simulator unifies those elements well enough to pose design questions quantitatively, but its credibility rests on keeping levels of approximation visible. Its strongest present output is a conditional map: it identifies favourable non-cryogenic corners, the sensitivity to linewidth and splitting, the brightness bottleneck, and the measurements that could promote estimates to evidence. Its clearest negative output is equally valuable: an unconditional room-temperature electrical single-dot claim is not supported by this sweep or ledger. The sources used throughout the deck include Fox, Bimberg, Vurgaftman, Sze and Ng, Coldren, Reischle, Chatzarakis, Laferriere, Krummheuer, Nazir, Kantner, and Zhao; earlier section JSON files provide the deduplicated detailed citations. A rigorous closing message is therefore not \u201cthe simulator proved it,\u201d but \u201cthe simulator made the next decisive experiment explicit\u201d [docs/rt_edge_contract.md] [docs/rt_edge_tier.md].",
+      "notes": "Across the lecture, we have followed a single photon from confined carrier states through spontaneous emission and phonon coupling, photon statistics, electrical injection, and photonic extraction. The simulator unifies those elements well enough to pose design questions quantitatively, but its credibility rests on keeping levels of approximation visible. Its strongest present output is a conditional map: it identifies favourable non-cryogenic corners, the sensitivity to linewidth and splitting, the brightness bottleneck, and the measurements that could promote estimates to evidence. Its clearest negative output is equally valuable: an unconditional room-temperature electrical single-dot claim is not supported by this sweep or ledger. The sources used throughout all five sections include Fox, Bimberg, Vurgaftman, Sze and Ng, Coldren, Reischle, Chatzarakis, Laferriere, Krummheuer, Nazir, Kantner, Zhao, Michler (ed.) (2017), Chuang, Yu and Cardona, Loudon, Purcell (1946), Gardiner and Collett (1985), Matsuda (2001), and Bommer (2011); earlier section JSON files provide the deduplicated detailed citations [docs/rt_edge_contract.md] [docs/rt_edge_tier.md].",
       "sources": [
         "Fox 2006 ch. 8",
         "Vurgaftman et al. 2001 JAP 89 5815",
@@ -619,7 +860,15 @@
         "Chatzarakis 2023 PRA 20 034011",
         "Krummheuer 2002 PRB 65 195313",
         "Kantner 2017 PRB 96 205301",
-        "Zhao 2024 PRR 6 L032021"
+        "Zhao 2024 PRR 6 L032021",
+        "Michler (ed.), Quantum Dots for Quantum Information Technologies (2017)",
+        "Chuang, Physics of Photonic Devices",
+        "Yu and Cardona, Fundamentals of Semiconductors",
+        "Loudon, The Quantum Theory of Light",
+        "Purcell, Physical Review 69, 681 (1946)",
+        "Gardiner and Collett, PRA 31, 3761 (1985)",
+        "Matsuda et al., PRB 63, 121304(R) (2001)",
+        "Bommer et al., J. Appl. Phys. 110, 063108 (2011)"
       ],
       "repo_numbers": {}
     }
