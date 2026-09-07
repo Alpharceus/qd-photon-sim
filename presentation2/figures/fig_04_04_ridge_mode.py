@@ -1,8 +1,8 @@
 """Figure 04-04: Ridge Waveguide 2D Mode Profile from Effective-Index Method.
 
 Uses fsim_core.waveguide.effective_index_ridge.
-Textbook reference: Chuang, Physics of Photonic Devices, ch. 8;
-Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 2.
+Textbook reference: Chuang, Physics of Photonic Devices, ch. 7;
+Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 7.
 """
 from pathlib import Path
 import sys
@@ -78,25 +78,33 @@ ax1.plot([w_half, 2.5], [0.15, 0.15], color="cyan", lw=2, ls="--")
 
 # Colorbar
 cbar = fig.colorbar(im, ax=ax1, fraction=0.046, pad=0.04)
-cbar.set_label(r"Normalized Optical Intensity $|E(x,y)|^2$")
+cbar.set_label(r"Normalized Intensity $|E(x,y)|^2$", fontsize=12)
+cbar.ax.tick_params(labelsize=11)
 
 ax1.set_xlabel(r"Lateral Coordinate $x$ ($\mu$m)")
 ax1.set_ylabel(r"Vertical Coordinate $y$ ($\mu$m)")
-ax1.set_title(rf"2D Mode Intensity Profile ($A_{{mode}} = {rm.A_mode_um2:.4f}\ \mu\mathrm{{m}}^2$)", pad=12)
+ax1.set_title(rf"2D Mode Intensity Profile" + "\n" + rf"($A_{{mode}} = {rm.A_mode_um2:.4f}\ \mu\mathrm{{m}}^2$)", pad=10)
 ax1.set_xlim(-2.0, 2.0)
 ax1.set_ylim(-0.6, 0.6)
 
-# Annotate effective indices
-ax1.text(0, -0.48, rf"Ridge: $n_{{ridge}} = {rm.n_ridge:.4f}$ | Etched: $n_{{outside}} = {rm.n_outside:.4f}$ [A] | 2D $n_{{eff}} = {rm.n_eff:.4f}$",
-         color="white", ha="center", va="center", fontsize=11, fontweight="bold",
-         bbox=dict(boxstyle="round,pad=0.2", facecolor="black", alpha=0.6))
+# Annotate effective indices (two lines: the full sentence is wider than the
+# panel and, since text is not clipped to its axes, one long line bled into
+# the colorbar to the right)
+ax1.text(0, -0.42, rf"Ridge: $n_{{ridge}} = {rm.n_ridge:.4f}$ | Etched: $n_{{outside}} = {rm.n_outside:.4f}$ [A]" + "\n" +
+         rf"2D $n_{{eff}} = {rm.n_eff:.4f}$",
+         color="white", ha="center", va="center", fontsize=10, fontweight="bold",
+         bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.65))
 
 # Panel 2: 1D Cross Sections along x and y
 ax2.plot(x_um, Ix, color="#3182CE", lw=2.5, label=rf"Lateral $I(x)$ ($w_x = {rm.wx_um:.3f}\ \mu\mathrm{{m}}$)")
 ax2.plot(y_um, Iy, color="#E53E3E", lw=2.5, label=rf"Vertical $I(y)$ ($w_y = {rm.wy_um:.3f}\ \mu\mathrm{{m}}$)")
 
-# 1/e^2 reference line
-ax2.axhline(1.0 / np.e**2, color="#718096", ls=":", lw=1.8, label=r"$1/e^2 \approx 0.135$ Level ($w_x, w_y$ waists)")
+# 1/e^2 reference line. The plotted curves are the true (non-Gaussian) slab
+# intensity profiles, not Gaussians, so they do NOT cross this level exactly
+# at the Gaussian-equivalent waists w_x/w_y quoted in the legend above (those
+# come from the separable effective-area definition A_mode = pi wx wy, not
+# from where this raw profile crosses 1/e^2) -- label it as a reference only.
+ax2.axhline(1.0 / np.e**2, color="#718096", ls=":", lw=1.8, label=r"$1/e^2 \approx 0.135$ reference level")
 
 ax2.axvline(-w_half, color="#3182CE", ls="--", alpha=0.5)
 ax2.axvline(w_half, color="#3182CE", ls="--", alpha=0.5)
@@ -113,9 +121,9 @@ ax2.set_title("Lateral vs Vertical Mode Profiles", pad=12)
 ax2.set_xlim(-2.0, 2.0)
 ax2.set_ylim(0, 1.05)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax2.legend(loc="upper right", framealpha=0.9, fontsize=10)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
+fig.subplots_adjust(top=0.86, bottom=0.13, left=0.095, right=0.95, wspace=0.42)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

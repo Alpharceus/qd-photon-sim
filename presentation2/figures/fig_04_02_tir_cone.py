@@ -69,17 +69,17 @@ ax1.fill(cone_x, cone_y, color="#FBD38D", alpha=0.35, label=f"Escape Cone (±{th
 ax1.text(0, -2.3, "Total Internal Reflection: ~98% trapped", ha="center", va="center",
          fontsize=13, fontweight="bold", color="#742A2A",
          bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#FEB2B2"))
-ax1.text(0, 1.5, "Air Transmission\n$\\eta_{surf} = 2.08\\%$\n(paraxial $\\approx 2.04\\%$)", ha="center", va="center",
-         fontsize=12, fontweight="bold", color="#276749",
+ax1.text(-2.55, 1.0, "Air Transmission\n$\\eta_{surf} = 2.08\\%$\n(paraxial $\\approx 2.04\\%$)", ha="center", va="center",
+         fontsize=11, fontweight="bold", color="#276749",
          bbox=dict(boxstyle="round,pad=0.3", facecolor="#C6F6D5", edgecolor="#9AE6B4"))
 
 ax1.set_xlim(-3.5, 3.5)
 ax1.set_ylim(-3, 3)
-ax1.set_title("Surface Escape Cone at Semiconductor Interface", pad=12)
+ax1.set_title("Surface Escape Cone at\nSemiconductor Interface", pad=10)
 ax1.set_xlabel(r"Lateral Coordinate $x$ ($\mu$m)")
 ax1.set_ylabel(r"Vertical Coordinate $z$ ($\mu$m)")
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="lower right", framealpha=0.9, fontsize=11)
+ax1.legend(loc="upper right", framealpha=0.9, fontsize=11)
 
 # Panel 2: Extraction efficiency vs refractive index
 n_vals = np.linspace(1.0, 4.0, 300)
@@ -105,7 +105,7 @@ for label, n_m, col in materials:
                  arrowprops=dict(arrowstyle="->", color=col, lw=1.5),
                  fontsize=12, fontweight="bold", color=col)
 
-ax2.set_title(r"Extraction Efficiency $\eta_{surf}$ vs Index $n$", pad=12)
+ax2.set_title(r"Extraction Efficiency $\eta_{surf}$" + "\nvs Index $n$", pad=10)
 ax2.set_xlabel("Substrate Refractive Index $n$")
 ax2.set_ylabel("Extraction Fraction into Half-Space (%)")
 ax2.set_ylim(0, 52)

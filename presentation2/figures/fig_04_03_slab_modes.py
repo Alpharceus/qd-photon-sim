@@ -2,7 +2,7 @@
 
 Uses fsim_core.waveguide.slab_modes and hkust_ridge_stack.
 Textbook reference: Chuang, Physics of Photonic Devices, ch. 7;
-Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 2.
+Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 7.
 """
 from pathlib import Path
 import sys
@@ -71,14 +71,15 @@ ax1_twin.fill_between(z_um, 0, intensity, color="#FBD38D", alpha=0.3)
 
 ax1.set_xlabel(r"Vertical Coordinate $z$ ($\mu$m, relative to core center)")
 ax1.set_ylabel("Refractive Index $n$", color="#2B6CB0")
-ax1_twin.set_ylabel(r"Normalized Intensity $|E(z)|^2$", color="#DD6B20")
+ax1_twin.set_ylabel(r"Normalized Intensity $|E(z)|^2$", color="#DD6B20", fontsize=13, labelpad=10)
 ax1.set_ylim(2.95, 3.65)
 ax1_twin.set_ylim(0, 1.05)
 ax1.set_xlim(-0.8, 0.8)
 ax1.grid(True, linestyle=":", alpha=0.5)
 
 dot_gamma = m0.gamma_layer("dot")
-ax1.set_title(rf"HKUST Slab Mode: $n_{{eff}} = {m0.n_eff:.4f}$, $\Gamma_{{dot}} = {dot_gamma*100:.2f}\%$", pad=12)
+ax1.set_title(rf"HKUST Slab Mode: $n_{{eff}} = {m0.n_eff:.4f}$" + "\n" +
+              rf"$\Gamma_{{dot}} = {dot_gamma*100:.2f}\%$", pad=10)
 
 lines = [p1, ax1.get_lines()[1], p2]
 labels = [l.get_label() for l in lines]
@@ -113,23 +114,23 @@ ax2.axhline(cutoff_index, color="#E53E3E", ls=":", lw=2, label=r"Cladding Index 
 
 # Mark HKUST nominal design (d_core = 296 nm)
 ax2.plot(296, m0.n_eff, "o", color="#D69E2E", markersize=10, zorder=5)
-ax2.annotate(rf"HKUST: $d = 296$ nm, $n_{{eff}} = {m0.n_eff:.4f}$" + "\n" +
-             r"Symmetric 3.22/3.05: $n_{{eff}} = 3.154888$" + "\n" +
+ax2.annotate(rf"HKUST: $d=296$ nm, $n_{{eff}}={m0.n_eff:.4f}$" + "\n" +
+             r"Symmetric 3.22/3.05: $n_{eff}=3.154888$" + "\n" +
              r"($k_z d - 2\arctan(\gamma/k_z) = 0$)",
-             xy=(296, m0.n_eff), xytext=(280, 3.10),
+             xy=(296, m0.n_eff), xytext=(200, 3.095),
              arrowprops=dict(arrowstyle="->", color="#D69E2E", lw=2),
-             fontsize=11, fontweight="bold", color="#744210",
+             fontsize=10, fontweight="bold", color="#744210",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FEFCBF", edgecolor="#ECC94B"))
 
 ax2.set_xlabel(r"Total Core Thickness $d_{core}$ (nm)")
-ax2.set_ylabel(r"Effective Index $n_{eff}$")
-ax2.set_title(r"Slab Dispersion Relation $n_{eff}(d_{core})$ at $\lambda = 668$ nm", pad=12)
+ax2.set_ylabel(r"Effective Index $n_{eff}$", fontsize=13, labelpad=10)
+ax2.set_title(r"Slab Dispersion Relation $n_{eff}(d_{core})$" + "\n" + r"at $\lambda = 668$ nm", pad=10)
 ax2.set_xlim(50, 600)
 ax2.set_ylim(3.03, 3.24)
 ax2.grid(True, linestyle=":", alpha=0.5)
 ax2.legend(loc="lower right", framealpha=0.9, fontsize=11)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.92, wspace=0.32)
+fig.subplots_adjust(top=0.86, bottom=0.16, left=0.10, right=0.93, wspace=0.55)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

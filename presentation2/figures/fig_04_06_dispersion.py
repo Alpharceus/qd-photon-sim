@@ -1,8 +1,8 @@
 """Figure 04-06: Group Index and Waveguide Dispersion.
 
 Uses fsim_core.waveguide and materials.refractive_index.
-Textbook reference: Chuang, Physics of Photonic Devices, ch. 8;
-Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 2.
+Textbook reference: Chuang, Physics of Photonic Devices, ch. 7;
+Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits, ch. 7.
 """
 from pathlib import Path
 import sys
@@ -76,10 +76,17 @@ ax1.plot(lambdas, n_cl_list, color="#3182CE", lw=2.5, label=f"Cladding Barrier (
 
 ax1.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax1.set_ylabel("Refractive Index $n$")
-ax1.set_title("Constituent Material Dispersion ([E] Ratio-Scaled)", pad=12)
+ax1.set_title("Constituent Material Dispersion" + "\n" + "([E] Ratio-Scaled)", pad=10)
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="upper right", framealpha=0.9)
+ax1.legend(loc="upper right", framealpha=0.9, fontsize=11)
 ax1.set_xlim(700, 800)
+# The [E] ratio-scaled tables in materials.py are tabulated only at 700/750/
+# 800/850 nm and linearly interpolated between them, so n(lambda) is
+# piecewise-linear with a visible slope change (knot) at 750 nm -- flagged
+# here so the kink reads as a tabulation artefact, not a physical feature.
+ax1.axvline(750.0, color="#718096", ls=":", lw=1.3, alpha=0.7)
+ax1.text(751.5, ax1.get_ylim()[0] + 0.03 * (ax1.get_ylim()[1] - ax1.get_ylim()[0]),
+         "750 nm table knot\n([E] piecewise-linear)", fontsize=9, color="#4A5568", ha="left", va="bottom")
 
 # Panel 2: Effective Index vs Group Index
 ax2.plot(lambdas, neff_arr, color="#2B6CB0", lw=2.8, label=r"Phase Index $n_{eff}(\lambda)$")
@@ -102,9 +109,9 @@ ax2.annotate(rf"$\lambda = 770$ nm:" + "\n" +
              rf"(+{enhancement:.1f}% $n_g$ boost)" + "\n" +
              rf"Omitting $n_g$ undercounts" + "\n" +
              rf"LDOS by {undercount:.0f}% ({ratio:.3f}$\times$)",
-             xy=(lam_pt, ng_pt), xytext=(708, 4.45),
+             xy=(lam_pt, ng_pt), xytext=(760, 3.55),
              arrowprops=dict(arrowstyle="->", color="#9B2C2C", lw=2),
-             fontsize=11, fontweight="bold", color="#742A2A",
+             fontsize=10, fontweight="bold", color="#742A2A",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#E53E3E"))
 
 # Fill the dispersion difference
@@ -113,13 +120,13 @@ ax2.fill_between(lambdas, neff_arr, ng_arr, color="#FEB2B2", alpha=0.3,
 
 ax2.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax2.set_ylabel("Index")
-ax2.set_title(r"Ridge Waveguide Phase vs Group Index ($w = 2\ \mu\mathrm{m}$)", pad=12)
+ax2.set_title(r"Ridge Waveguide Phase vs Group Index" + "\n" + r"($w = 2\ \mu\mathrm{m}$)", pad=10)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax2.legend(loc="upper left", framealpha=0.9, fontsize=10)
 ax2.set_xlim(700, 800)
 ax2.set_ylim(3.15, 5.35)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
+fig.subplots_adjust(top=0.84, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

@@ -49,18 +49,18 @@ ax1.plot(neff_nom, R_nom * 100, "o", color="#E53E3E", markersize=9)
 
 ax1.annotate(rf"Semiconductor Facet ($n_{{eff}} = {neff_nom:.3f}$):" + "\n" +
              rf"$T_f = {T_nom*100:.2f}\%$, $R_f = {R_nom*100:.2f}\%$",
-             xy=(neff_nom, T_nom * 100), xytext=(1.6, 50),
+             xy=(neff_nom, T_nom * 100), xytext=(2.5, 82),
              arrowprops=dict(arrowstyle="->", color="#2B6CB0", lw=2),
-             fontsize=12, fontweight="bold", color="#1A365D",
+             fontsize=11, fontweight="bold", color="#1A365D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#EBF8FF", edgecolor="#3182CE"))
 
 ax1.set_xlabel(r"Effective Index $n_{eff}$")
 ax1.set_ylabel("Power Fraction (%)")
-ax1.set_title("Cleaved Semiconductor Facet Transmission", pad=12)
+ax1.set_title("Cleaved Semiconductor\nFacet Transmission", pad=10)
 ax1.set_xlim(1.0, 4.2)
 ax1.set_ylim(0, 102)
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="center right", framealpha=0.9)
+ax1.legend(loc="lower left", framealpha=0.9, fontsize=11)
 
 # Panel 2: Escape-Rate Fraction vs Back-Facet Reflectivity R_back
 Rb_grid = np.linspace(0.001, 0.999, 300)
@@ -111,13 +111,13 @@ ax2.annotate(rf"Uncoated ($R_b=0$)" + "\n" + rf"$\eta_{{facet}} = {eta_geom*100:
 
 ax2.set_xlabel(r"Back Facet Reflectivity $R_{back}$")
 ax2.set_ylabel(r"Front Escape Efficiency $\eta_{facet}$ (%)")
-ax2.set_title(r"Front Facet Out-Coupling vs Back Mirror Reflectivity", pad=12)
+ax2.set_title("Front Facet Out-Coupling vs\nBack Mirror Reflectivity", pad=10)
 ax2.set_xlim(-0.02, 1.02)
 ax2.set_ylim(20, 102)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="lower right", framealpha=0.9, fontsize=11)
+ax2.legend(loc="upper left", framealpha=0.9, fontsize=10)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
+fig.subplots_adjust(top=0.84, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

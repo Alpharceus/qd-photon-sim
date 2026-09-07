@@ -1,8 +1,8 @@
 """Figure 04-09: Gaussian Far-Field Emission and Objective NA Collection.
 
 Uses fsim_core.waveguide.na_collection.
-Textbook reference: Chuang, Physics of Photonic Devices, ch. 8;
-Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits (2nd ed.), ch. 2.
+Textbook reference: Saleh & Teich, Fundamentals of Photonics, Gaussian beam optics;
+Coldren, Corzine, Masanovic, Diode Lasers and Photonic Integrated Circuits (2nd ed.), ch. 7.
 """
 from pathlib import Path
 import sys
@@ -48,12 +48,16 @@ ty_deg = np.degrees(min(ty_rad, np.pi/2))
 theta_deg = np.linspace(-85, 85, 300)
 theta_rad = np.radians(theta_deg)
 
-# Gaussian far-field intensity: I(theta) ~ exp(-2 * (sin(theta)/sin(tx))^2)
-Ix = np.exp(-2.0 * (np.sin(theta_rad) / np.sin(min(tx_rad, np.pi/2)))**2)
-Iy = np.exp(-2.0 * (np.sin(theta_rad) / np.sin(min(ty_rad, np.pi/2)))**2)
+# Paraxial Gaussian far-field intensity I(theta) ~ exp(-2 theta^2/theta_div^2)
+# -- the SAME small-angle model as na_collection() and the slide equation
+# (panel 2 and the eta_circ formula below), not the exp(-2 sin^2/sin^2) form:
+# using a different model in the two panels of the same slide gave visibly
+# different numbers (0.27 vs 0.38 at 50 deg) for what claims to be one figure.
+Ix = np.exp(-2.0 * (theta_rad / tx_rad)**2)
+Iy = np.exp(-2.0 * (theta_rad / ty_rad)**2)
 
 ax1.plot(theta_deg, Ix, color="#3182CE", lw=2.8, label=rf"Lateral $\theta_x$ ($\theta_{{div}} \approx {tx_deg:.1f}^\circ$)")
-ax1.plot(theta_deg, Iy, color="#E53E3E", lw=2.8, linestyle="--", label=rf"Vertical $\theta_y$ ($\theta_{{div}} \approx {np.degrees(ty_rad):.1f}^\circ$)")
+ax1.plot(theta_deg, Iy, color="#E53E3E", lw=2.8, linestyle="--", label=rf"Vertical $\theta_y$ ($\theta_{{div}} \approx {ty_deg:.1f}^\circ$)")
 
 # Mark acceptance angles for NA = 0.5, 0.75, 0.80
 # theta_max = arcsin(NA)

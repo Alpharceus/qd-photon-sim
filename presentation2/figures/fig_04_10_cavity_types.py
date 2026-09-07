@@ -39,31 +39,40 @@ cs = ax1.contour(VV, QQ, FP, levels=levels, colors="#CBD5E0", linestyles="--", l
 ax1.clabel(cs, inline=True, fmt=r"$F_P = %d$", fontsize=11)
 
 # Architecture regions
-# 1. Planar DBR Cavity
-ax1.fill([10, 80, 80, 10], [200, 200, 1500, 1500], color="#BEE3F8", alpha=0.5)
-ax1.text(30, 500, "Planar DBR\n" + r"($F_P \sim 1\mathrm{-}3$)", ha="center", va="center", fontsize=12, fontweight="bold", color="#2B6CB0")
+# 1. Planar DBR Cavity -- box corners chosen so F_P = (3/4pi^2)(Q/V) actually
+# spans 1-3 at the box's own corners (the round-2 review found the sibling
+# Micropillar box below spanned 7.6-570 against its 5-25 label; this box had
+# the same defect, spanning ~0.2-11 against its 1-3 label).
+ax1.fill([20, 40, 40, 20], [530, 530, 790, 790], color="#BEE3F8", alpha=0.5)
+ax1.text(28, 640, "Planar DBR\n" + r"($F_P \sim 1\mathrm{-}3$)", ha="center", va="center", fontsize=11, fontweight="bold", color="#2B6CB0")
 
-# 2. Etched Micropillars
-ax1.fill([2, 10, 10, 2], [1000, 1000, 15000, 15000], color="#C6F6D5", alpha=0.5)
-ax1.text(4.5, 3500, "Micropillars\n" + r"($F_P \sim 5\mathrm{-}25$)", ha="center", va="center", fontsize=12, fontweight="bold", color="#22543D")
+# 2. Etched Micropillars -- corners chosen so F_P spans 5-25 at the box's own
+# corners (round-2 review: CONFIRMED the previous [2,10]x[1000,15000] box
+# spanned F_P = 7.6-570 on this figure's own contours, contradicting its
+# F_P~5-25 label).
+ax1.fill([3, 6, 6, 3], [400, 400, 1000, 1000], color="#C6F6D5", alpha=0.5)
+ax1.text(4.2, 630, "Micropillars\n" + r"($F_P \sim 5\mathrm{-}25$)", ha="center", va="center", fontsize=11, fontweight="bold", color="#22543D")
 
 # 3. Photonic Crystal Defect Cavities (L3/H1)
 ax1.fill([0.3, 1.5, 1.5, 0.3], [5000, 5000, 500000, 500000], color="#FED7D7", alpha=0.5)
 ax1.text(0.65, 50000, "PhC Cavity\n" + r"($F_P > 100$)", ha="center", va="center", fontsize=12, fontweight="bold", color="#742A2A")
 
-# 4. Ridge Waveguide (Continuum, unconfined along propagation)
+# 4. Ridge Waveguide (Continuum, unconfined along propagation). The
+# annotation box previously sat wide enough (3 lines of text at fontsize 12)
+# to visually cover its own diamond marker at (30, 50); shortened to 2 lines
+# and moved clear to the right of the marker.
 ax1.scatter([30], [50], color="#D69E2E", s=180, zorder=6, marker="D")
-ax1.annotate("Ridge Waveguide\n(1D Continuum,\n" + r"$\beta \approx 2.9\%$, Cavity OFF)",
-             xy=(30, 50), xytext=(3, 40),
+ax1.annotate("Ridge Waveguide (1D Continuum)\n" + r"$\beta \approx 2.9\%$, cavity OFF",
+             xy=(30, 50), xytext=(0.9, 90),
              arrowprops=dict(arrowstyle="->", color="#D69E2E", lw=2),
-             fontsize=12, fontweight="bold", color="#744210",
+             fontsize=10, fontweight="bold", color="#744210",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FEFCBF", edgecolor="#D69E2E"))
 
 ax1.set_xscale("log")
 ax1.set_yscale("log")
 ax1.set_xlabel(r"Normalized Mode Volume $V / (\lambda/n)^3$")
 ax1.set_ylabel(r"Quality Factor $Q$")
-ax1.set_title(r"Cavity Purcell Landscape: $F_P = \frac{3}{4\pi^2} \frac{Q}{V}$", pad=12)
+ax1.set_title(r"Cavity Purcell Landscape:" + "\n" + r"$F_P = \frac{3}{4\pi^2} \frac{Q}{V}$", pad=10)
 ax1.set_xlim(0.15, 200)
 ax1.set_ylim(30, 1e6)
 ax1.grid(True, which="both", linestyle=":", alpha=0.4)
@@ -88,11 +97,11 @@ ax2.annotate("", xy=(0.5, 0.69), xytext=(0.5, 0.75), arrowprops=dict(arrowstyle=
 ax2.annotate("", xy=(0.5, 0.44), xytext=(0.5, 0.50), arrowprops=dict(arrowstyle="->", lw=2, color="#9B2C2C"))
 ax2.annotate("", xy=(0.5, 0.19), xytext=(0.5, 0.25), arrowprops=dict(arrowstyle="->", lw=2, color="#2B6CB0"))
 
-ax2.set_title("Lemma 1: Out-Coupling vs Quantum Correlation", pad=12)
+ax2.set_title("Lemma 1: Out-Coupling vs\nQuantum Correlation", pad=10)
 ax2.set_xlim(0, 1)
 ax2.set_ylim(0, 1)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.95, wspace=0.28)
+fig.subplots_adjust(top=0.86, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)

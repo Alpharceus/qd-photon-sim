@@ -151,7 +151,7 @@
           "tolerance": 0.0001
         }
       },
-      "notes": "Planar slab waveguides confine light vertically, but allowing photons to spread laterally would dilute intensity and ruin single-mode fiber coupling. To achieve two-dimensional confinement, a ridge waveguide is fabricated by lithographically defining a stripe, typically 2 microns wide, and etching away the cladding outside the stripe. Solving the full vector 2D Helmholtz equation analytically is intractable, so we employ the effective-index method [Coldren, Corzine, Masanovic (2012) ch. 7]. We first solve the vertical 1D slab eigenproblem in the unetched central region to obtain the ridge effective index n_ridge of 3.1606. In the etched exterior, a 1200 nm etch removes the upper cladding and upper core; because the remaining thin layer cannot support a bound mode, waveguide.py uses an engineering fallback [A] to the cladding index n_outside of 3.0500. Next, we solve a lateral 1D slab with core index n_ridge and cladding n_outside, yielding the 2D effective index n_eff of 3.1571. Under separability, the mode area A_mode is the product of lateral and vertical intensity effective widths, which rigorously equals pi times w_x times w_y for Gaussian-equivalent 1/e^2 intensity radii. For this HKUST ridge at 668 nm, this produces A_mode of 0.5874 square microns, with w_x of 0.851 microns and w_y of 0.220 microns. For comparison, our fallback GaInP design at 770 nm yields A_mode of 0.5124 square microns with w_x of 0.830 microns and w_y of 0.197 microns [Chuang (2009) ch. 7].",
+      "notes": "Planar slab waveguides confine light vertically, but allowing photons to spread laterally would dilute intensity and ruin single-mode fiber coupling. To achieve two-dimensional confinement, a ridge waveguide is fabricated by lithographically defining a stripe, typically 2 microns wide, and etching away the cladding outside the stripe. Solving the full vector 2D Helmholtz equation analytically is intractable, so we employ the effective-index method [Coldren, Corzine, Masanovic (2012) ch. 7]. We first solve the vertical 1D slab eigenproblem in the unetched central region to obtain the ridge effective index n_ridge of 3.1606. In the etched exterior, a 1200 nm etch removes the upper cladding, the upper core, and the well/dot sheet, plus 48 nm of the lower core; because the remaining stack cannot support a bound mode, waveguide.py uses an engineering fallback [A] to the cladding index n_outside of 3.0500. Next, we solve a lateral 1D slab with core index n_ridge and cladding n_outside, yielding the 2D effective index n_eff of 3.1571. Under separability, the mode area A_mode is the product of lateral and vertical intensity effective widths, which rigorously equals pi times w_x times w_y for Gaussian-equivalent 1/e^2 intensity radii. For this HKUST ridge at 668 nm, this produces A_mode of 0.5874 square microns, with w_x of 0.851 microns and w_y of 0.220 microns. For comparison, our fallback GaInP design at 770 nm yields A_mode of 0.5124 square microns with w_x of 0.830 microns and w_y of 0.197 microns [Chuang (2009) ch. 7].",
       "sources": [
         "Coldren, Corzine, Masanovic (2012) ch. 7",
         "Chuang (2009) ch. 7"
@@ -165,7 +165,7 @@
         "Guided mode continuum enhances spontaneous emission via 1D local density of states (LDOS).",
         "Waveguide Purcell factor: $F_{wg} = \\frac{3}{4\\pi}\\left(\\frac{\\lambda}{n_{dot}}\\right)^2 \\frac{n_g/n_{dot}}{A_{mode}} \\xi_{pos}$.",
         "Spontaneous emission coupling factor $\\beta = F_{wg} / (1 + F_{wg})$ governs guided fraction.",
-        "Photonic crystal waveguides achieve $\\beta = 98.43\\%$ via slow-light compression ($n_g > 30$, Arcari 2014).",
+        "Photonic-crystal waveguides report $\\beta$ above 98% (Arcari 2014); a different guiding mechanism.",
         "Fallback 2 um ridge waveguide provides $\\beta = 0.0292$ (2.92%) with $F_{wg} = 0.0301$ at 770 nm.",
         "Position factor $\\xi_{pos} = |E(z_{dot})|^2 / \\max|E|^2 > 0.95$ when dots sit at the vertical antinode."
       ],
@@ -183,7 +183,7 @@
       "repo_numbers": {
         "F_wg_gainp": {
           "value": 0.030122,
-          "how": "__import__('fsim_core.waveguide', fromlist=['x']).beta_factor(0.512398538, 770.0, __import__('fsim_core.materials', fromlist=['x']).refractive_index('InP', 770.0), 4.35519794, 1.0)[0]",
+          "how": "__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0].F_wg",
           "tolerance": 0.0001
         },
         "beta_gainp": {
@@ -191,12 +191,11 @@
           "file": "out/rt_edge/verdict.md"
         },
         "n_InP_770": {
-          "value": 3.418043,
-          "how": "__import__('fsim_core.materials', fromlist=['x']).refractive_index('InP', 770.0)",
-          "tolerance": 0.0001
+          "value": 3.418244,
+          "how": "__import__('fsim_core.materials', fromlist=['x']).refractive_index('InP', 770.0)"
         }
       },
-      "notes": "When a quantum dot dipole radiates inside a structured dielectric waveguide, its spontaneous emission rate is modified according to Fermi's golden rule. Following the derivation by Lecamp, Lalanne, and Hugonin [PRL 99, 023902 (2007)], the spontaneous emission rate into the guided mode continuum is proportional to the one-dimensional local density of optical states. Normalizing this rate to the bulk spontaneous emission rate yields the waveguide Purcell factor F_wg. In this formula, the mode area A_mode appears in the denominator, while the group index n_g appears in the numerator. The spontaneous emission beta factor is the ratio of emission into the guided mode pair to total emission, F_wg divided by one plus F_wg. In photonic crystal waveguides, such as those demonstrated by Arcari et al. [PRL 113, 093603 (2014)], the optical mode is compressed below the diffraction limit and slow-light propagation boosts n_g above 30, resulting in beta values of 98.43%. In contrast, a standard 2-micron wide dielectric ridge waveguide has a larger mode area of 0.5124 square microns and a moderate group index of 4.355. With the InP dot refractive index of 3.418 at 770 nm from materials.refractive_index, this yields F_wg equal to 0.0301 and a beta factor of 2.92%. Furthermore, the position factor xi_pos accounts for dipole placement relative to the optical antinode, exceeding 0.95 at the core center [Coldren, Corzine, Masanovic (2012) ch. 7].",
+      "notes": "When a quantum dot dipole radiates inside a structured dielectric waveguide, its spontaneous emission rate is modified according to Fermi's golden rule. Following the derivation by Lecamp, Lalanne, and Hugonin [PRL 99, 023902 (2007)], the spontaneous emission rate into the guided mode continuum is proportional to the one-dimensional local density of optical states. Normalizing this rate to the bulk spontaneous emission rate yields the waveguide Purcell factor F_wg. In this formula, the mode area A_mode appears in the denominator, while the group index n_g appears in the numerator. The spontaneous emission beta factor is the ratio of emission into the guided mode pair to total emission, F_wg divided by one plus F_wg. Photonic crystal waveguides are a different guiding mechanism: Arcari et al. [PRL 113, 093603 (2014)] report a photonic-crystal waveguide with beta above 98 percent, achieved without the ridge-waveguide geometry modeled here. In contrast, a standard 2-micron wide dielectric ridge waveguide has a larger mode area of 0.5124 square microns and a moderate group index of 4.355. With the InP dot refractive index of 3.418 at 770 nm from materials.refractive_index, this yields F_wg equal to 0.0301 and a beta factor of 2.92%. Furthermore, the position factor xi_pos accounts for dipole placement relative to the optical antinode, exceeding 0.95 at the core center [Coldren, Corzine, Masanovic (2012) ch. 7].",
       "sources": [
         "Lecamp PRL 99, 023902 (2007)",
         "Arcari PRL 113, 093603 (2014)",
@@ -282,7 +281,7 @@
         },
         "F1_coldren_corzine": {
           "value": 0.963599,
-          "how": "(1.0 - ((3.25300895 - 1)/(3.25300895 + 1))**2) * (0.95**0.5) / ((1.0 - ((3.25300895 - 1)/(3.25300895 + 1))**2) * (0.95**0.5) + (1.0 - 0.95) * (((3.25300895 - 1)/(3.25300895 + 1))**2)**0.5)",
+          "how": "(lambda n_eff, R_back: (1.0 - ((n_eff - 1)/(n_eff + 1))**2) * (R_back**0.5) / ((1.0 - ((n_eff - 1)/(n_eff + 1))**2) * (R_back**0.5) + (1.0 - R_back) * (((n_eff - 1)/(n_eff + 1))**2)**0.5))(__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0].n_eff, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission.R_back)",
           "tolerance": 0.0001
         },
         "R_back_gainp": {
@@ -290,9 +289,9 @@
           "file": "cards/edge-inp-gainp-design.yaml"
         }
       },
-      "notes": "Once a photon couples into the guided mode, it travels toward the cleaved facets terminating the waveguide. At normal incidence, the step between effective index n_eff of 3.253 and air produces a Fresnel power reflectivity of 28.06% and transmission T_f of 71.94%. In an uncoated, symmetric waveguide bar, photons emitted spontaneously into the guided mode propagate with equal probability toward both facets. The front escape factor is therefore the product of the 50% directional split and T_f, yielding an out-coupling efficiency of only 35.97%, with half the photons lost out the back. To eliminate this penalty, we deposit a dielectric high-reflectivity mirror coating with R_back of 0.95 on the rear facet. To model this out-coupling, our simulator implements an escape-rate formula, eta_facet equals T_f divided by the sum of T_f and one minus R_back, tagged [DR] in fsim_core.waveguide. For R_back of 0.95, this escape-rate fraction evaluates to 93.50%. We must note that this exact expression is not printed in Coldren & Corzine; their textbook treatment of Fabry-Perot cavity mirror loss derives the front-facet power fraction F_1 as (1 - R_1) sqrt(R_2) divided by [(1 - R_1) sqrt(R_2) + (1 - R_2) sqrt(R_1)], which evaluates to 96.36%. Both models agree that the HR coating breaks front-back symmetry, providing an immediate 2.60x brightness boost over uncoated bars [Coldren, Corzine, Masanovic (2012) ch. 7].",
+      "notes": "Once a photon couples into the guided mode, it travels toward the cleaved facets terminating the waveguide. At normal incidence, the step between effective index n_eff of 3.253 and air produces a Fresnel power reflectivity of 28.06% and transmission T_f of 71.94%. In an uncoated, symmetric waveguide bar, photons emitted spontaneously into the guided mode propagate with equal probability toward both facets. The front escape factor is therefore the product of the 50% directional split and T_f, yielding an out-coupling efficiency of only 35.97%, with half the photons lost out the back. To eliminate this penalty, we deposit a dielectric high-reflectivity mirror coating with R_back of 0.95 on the rear facet. To model this out-coupling, our simulator implements an escape-rate formula, eta_facet equals T_f divided by the sum of T_f and one minus R_back, tagged [DR] in fsim_core.waveguide. For R_back of 0.95, this escape-rate fraction evaluates to 93.50%. We must note that this exact expression is not printed in Coldren & Corzine; their textbook treatment of Fabry-Perot cavity mirror loss derives the front-facet power fraction F_1 as (1 - R_1) sqrt(R_2) divided by [(1 - R_1) sqrt(R_2) + (1 - R_2) sqrt(R_1)], which evaluates to 96.36%. Both models agree that the HR coating breaks front-back symmetry, providing an immediate 2.60x brightness boost over uncoated bars [Coldren, Corzine, Masanovic (2012) ch. 2-3, mirror loss and facet reflectivity].",
       "sources": [
-        "Coldren, Corzine, Masanovic (2012) ch. 7"
+        "Coldren, Corzine, Masanovic (2012) ch. 2-3, mirror loss and facet reflectivity"
       ]
     },
     {
@@ -347,7 +346,7 @@
         "Symmetric circular cone collection $\\eta_{circ} = 1 - \\exp(-2\\theta_{\\max}^2/\\theta_{div}^2)$ with $\\theta_{\\max} = \\arcsin(\\mathrm{NA})$.",
         "Elliptical mode is integrated numerically in `waveguide.na_collection` (erf-product is square approximation).",
         "New repository collection: $\\mathrm{NA}=0.50$ captures $57.78\\%$; $\\mathrm{NA}=0.75$ captures $81.94\\%$ (card default).",
-        "High $\\mathrm{NA}=0.80$ captures $\\eta_{NA} = 85.79\\%$, providing a vital $1.485\\times$ collection boost over 0.50."
+        "High $\\mathrm{NA}=0.80$ captures $\\eta_{NA} = 85.79\\%$ [DR], a vital $1.485\\times$ boost over NA 0.50."
       ],
       "equations": [
         {
@@ -363,12 +362,12 @@
       "repo_numbers": {
         "eta_NA_05": {
           "value": 0.577843,
-          "how": "__import__('fsim_core.waveguide', fromlist=['x']).na_collection(0.82957155, 0.19660935, 770.0, 0.50)",
+          "how": "__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('dataclasses').replace(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, NA=0.50), 300.0)[0].eta_NA",
           "tolerance": 0.0001
         },
         "eta_NA_075": {
           "value": 0.819356,
-          "how": "__import__('fsim_core.waveguide', fromlist=['x']).na_collection(0.82957155, 0.19660935, 770.0, 0.75)",
+          "how": "__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0].eta_NA",
           "tolerance": 0.0001
         },
         "eta_NA_08": {
@@ -378,12 +377,32 @@
         "NA_gainp": {
           "value": 0.75,
           "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "wx_gainp": {
+          "value": 0.829572,
+          "how": "(lambda dc, wg, mats, design: (lambda system, emission: (lambda lam: (lambda g: wg.effective_index_ridge([wg.Layer('barrier_lower', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label), wg.Layer('matrix_lower', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('dot', mats.refractive_index(system.dot.label, lam), max(g.height_nm, 0.1), True, material=system.dot.label), wg.Layer('matrix_upper', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('barrier_upper', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label)], lam, emission.ridge_width_nm, emission.etch_depth_nm).wx_um)(system.geometry))(emission.lambda_nm))(dc._retention_system(design.ret), design.emission))(__import__('fsim_core.device', fromlist=['x']), __import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.materials', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "wy_gainp": {
+          "value": 0.196609,
+          "how": "(lambda dc, wg, mats, design: (lambda system, emission: (lambda lam: (lambda g: wg.effective_index_ridge([wg.Layer('barrier_lower', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label), wg.Layer('matrix_lower', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('dot', mats.refractive_index(system.dot.label, lam), max(g.height_nm, 0.1), True, material=system.dot.label), wg.Layer('matrix_upper', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('barrier_upper', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label)], lam, emission.ridge_width_nm, emission.etch_depth_nm).wy_um)(system.geometry))(emission.lambda_nm))(dc._retention_system(design.ret), design.emission))(__import__('fsim_core.device', fromlist=['x']), __import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.materials', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "theta_x_deg_gainp": {
+          "value": 16.928155,
+          "how": "(lambda dc, wg, mats, np, design: (lambda system, emission: (lambda lam: (lambda g: np.degrees(lam*1e-3/(np.pi*wg.effective_index_ridge([wg.Layer('barrier_lower', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label), wg.Layer('matrix_lower', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('dot', mats.refractive_index(system.dot.label, lam), max(g.height_nm, 0.1), True, material=system.dot.label), wg.Layer('matrix_upper', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('barrier_upper', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label)], lam, emission.ridge_width_nm, emission.etch_depth_nm).wx_um)))(system.geometry))(emission.lambda_nm))(dc._retention_system(design.ret), design.emission))(__import__('fsim_core.device', fromlist=['x']), __import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.materials', fromlist=['x']), __import__('numpy'), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "theta_y_deg_gainp": {
+          "value": 71.426493,
+          "how": "(lambda dc, wg, mats, np, design: (lambda system, emission: (lambda lam: (lambda g: np.degrees(lam*1e-3/(np.pi*wg.effective_index_ridge([wg.Layer('barrier_lower', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label), wg.Layer('matrix_lower', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('dot', mats.refractive_index(system.dot.label, lam), max(g.height_nm, 0.1), True, material=system.dot.label), wg.Layer('matrix_upper', mats.refractive_index(system.matrix.label, lam), emission.core_half_nm, material=system.matrix.label), wg.Layer('barrier_upper', mats.refractive_index(system.barrier.label, lam), emission.cladding_nm, material=system.barrier.label)], lam, emission.ridge_width_nm, emission.etch_depth_nm).wy_um)))(system.geometry))(emission.lambda_nm))(dc._retention_system(design.ret), design.emission))(__import__('fsim_core.device', fromlist=['x']), __import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.materials', fromlist=['x']), __import__('numpy'), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
         }
       },
-      "notes": "Photons exiting the cleaved front facet diffract into free space as an astigmatic Gaussian beam. Because the waveguide mode has asymmetric dimensions, with Gaussian-equivalent 1/e^2 intensity radii w_x of 0.830 microns and w_y of 0.197 microns, diffraction angles differ between the two axes. Using the consistent paraxial divergence half-angle definition theta_div equals lambda over pi w_0, the lateral divergence half-angle theta_x is 16.9 degrees (0.296 radians), while tight vertical sub-micron confinement produces rapid diffraction with theta_y of 71.4 degrees (1.247 radians). An external microscope objective captures light within an acceptance cone theta_max equal to arcsin(NA). For a circular numerical aperture, a symmetric beam yields an analytical collection fraction of one minus exponential of minus two theta_max squared over theta_div squared. For our elliptical mode, fsim_core.waveguide.na_collection evaluates the circular cone integral numerically using Gauss-Legendre quadrature. The legacy formula, an erf product, represented a square-aperture approximation that underestimated collection. With the corrected circular physics, a standard objective with NA of 0.50 captures 57.78% of emitted light. Our design card's default NA of 0.75 captures 81.94%, while an NA of 0.80 collects 85.79%. Upgrading from NA 0.50 to 0.80 provides a vital 1.485x flux boost [Coldren, Corzine, Masanovic (2012) ch. 7] [Chuang (2009) ch. 8].",
+      "notes": "Photons exiting the cleaved front facet diffract into free space as an astigmatic Gaussian beam. Because the waveguide mode has asymmetric dimensions, with Gaussian-equivalent 1/e^2 intensity radii w_x of 0.830 microns and w_y of 0.197 microns, diffraction angles differ between the two axes. Using the consistent paraxial divergence half-angle definition theta_div equals lambda over pi w_0, the lateral divergence half-angle theta_x is 16.9 degrees (0.296 radians), while tight vertical sub-micron confinement produces rapid diffraction with theta_y of 71.4 degrees (1.247 radians). An external microscope objective captures light within an acceptance cone theta_max equal to arcsin(NA). For a circular numerical aperture, a symmetric beam yields an analytical collection fraction of one minus exponential of minus two theta_max squared over theta_div squared. For our elliptical mode, fsim_core.waveguide.na_collection evaluates the circular cone integral numerically using Gauss-Legendre quadrature. The legacy formula, an erf product, represented a square-aperture approximation that underestimated collection. With the corrected circular physics, a standard objective with NA of 0.50 captures 57.78% of emitted light. Our design card's default NA of 0.75 captures 81.94%, while an NA of 0.80 collects 85.79%. Upgrading from NA 0.50 to 0.80 provides a vital 1.485x flux boost [Coldren, Corzine, Masanovic (2012) ch. 7] [Saleh & Teich, Fundamentals of Photonics, Gaussian beam optics].",
       "sources": [
         "Coldren, Corzine, Masanovic (2012) ch. 7",
-        "Chuang (2009) ch. 8"
+        "Saleh & Teich, Fundamentals of Photonics, Gaussian beam optics"
       ]
     },
     {
@@ -409,10 +428,9 @@
         "caption": "Comparison of optical architectures and Lemma 1 invariance of quantum correlation $g^{(2)}(0)$ under linear collection loss.",
         "script": "presentation2/figures/fig_04_10_cavity_types.py"
       },
-      "notes": "It is instructive to place ridge waveguides in the broader context of optical microcavities. In cavity quantum electrodynamics, the Purcell factor F_P scales with the cavity quality factor Q divided by effective mode volume V_mode. Resonant microcavities, such as planar DBRs, etched micropillars, and photonic crystal defects, enhance the spontaneous emission rate and funnel emission into a single spatial mode [Fox (2006) ch. 8]. In our simulation architecture, the cavity block models vertical DBR microcavity filtering and Purcell enhancement G. However, for edge-emitting designs, cavity.enabled is explicitly disabled. There are two decisive physical reasons for this. First, our platform contract formalizes Lemma 1 (docs/rt_edge_contract.md): linear out-coupling and collection efficiency scale detected photon brightness, but they never alter intrinsic multiphoton purity g2(0), except through the existing spectral-leakage epsilon path. A lossy linear channel acts as a random Bernoulli beamsplitter: because coincidence counts and single-photon counts scale with the exact same power of collection efficiency, normalized g2(0) is strictly invariant under linear loss. The multiphoton purity is determined by dot loading, spectral overlap epsilon, and background fraction rho via g2 equals one minus rho squared into one minus epsilon. Second, combining edge waveguiding with a vertical resonant cavity introduces parasitic cavity leakage paths that lack closed experimental validation [Michler (2017)].",
+      "notes": "It is instructive to place ridge waveguides in the broader context of optical microcavities. In cavity quantum electrodynamics, the Purcell factor F_P scales with the cavity quality factor Q divided by effective mode volume V_mode. Resonant microcavities, such as planar DBRs, etched micropillars, and photonic crystal defects, enhance the spontaneous emission rate and funnel emission into a single spatial mode [Fox (2006) ch. 8]. In our simulation architecture, the cavity block models vertical DBR microcavity filtering and Purcell enhancement G. However, for edge-emitting designs, cavity.enabled is explicitly disabled. There are two decisive physical reasons for this. First, our platform contract formalizes Lemma 1 (docs/rt_edge_contract.md): linear out-coupling and collection efficiency scale detected photon brightness, but they never alter intrinsic multiphoton purity g2(0), except through the existing spectral-leakage epsilon path. A lossy linear channel acts as a random Bernoulli beamsplitter: because coincidence counts and single-photon counts scale with the exact same power of collection efficiency, normalized g2(0) is strictly invariant under linear loss. The multiphoton purity is determined by dot loading, spectral overlap epsilon, and background fraction rho via g2 equals one minus rho squared into one minus epsilon. Second, device.evaluate() itself raises on this combination: emission.type='edge' with cavity.enabled has no supported cavity-leakage accounting in this tier, a compatibility guard [A] in fsim_core.device, not a published result [docs/rt_edge_contract.md].",
       "sources": [
         "Fox 2006 ch. 8",
-        "Michler (ed.) 2017",
         "docs/rt_edge_contract.md"
       ]
     },
@@ -422,11 +440,11 @@
       "title": "The Complete Extraction Chain: Sub-Factor Decomposition",
       "bullets": [
         "Total edge out-coupling decomposes multiplicatively: $\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA}$.",
-        "Fallback card: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.3\\%$, $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 2.07\\%$.",
+        "Favorable NA=0.80: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.3\\%$, $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 2.07\\%$.",
         "HR mirror lever ($R_{back} = 0.95$ vs $0$): provides a decisive $2.60\\times$ flux multiplier.",
         "Cavity length lever ($L = 250$ vs $500\\ \\mu\\text{m}$): saves propagation loss, delivering $1.133\\times$ gain.",
         "Objective collection lever ($\\mathrm{NA} = 0.80$ vs $0.50$): captures circular cone diffraction, adding $1.485\\times$ gain.",
-        "Combined levers provide $4.37\times$ boost, lifting 300 K flux to 2417 counts/s (230 K reaches 6890)."
+        "Combined levers provide $4.37\\times$ boost, lifting 300 K flux to 2417 counts/s (230 K reaches 6890)."
       ],
       "equations": [
         {
@@ -467,9 +485,41 @@
         "collected_flux_pulsed_s": {
           "value": 6890.03,
           "file": "out/rt_edge/verdict.md"
+        },
+        "collected_flux_300K_NA080": {
+          "value": 2416.5742068088216,
+          "file": "out/rt_edge/sweep.csv"
+        },
+        "collected_flux_300K_NA075": {
+          "value": 2308.127959449218,
+          "file": "out/rt_edge/sweep.csv"
+        },
+        "collected_flux_300K_baseline": {
+          "value": 552.606707622748,
+          "file": "out/rt_edge/sweep.csv"
+        },
+        "loading_probability": {
+          "value": 0.634719,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "S_retention_230K": {
+          "value": 0.0131112,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "rep_rate_hz": {
+          "value": 80000000.0,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "t_X_window": {
+          "value": 0.5,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "flux_margin": {
+          "value": 6.89,
+          "file": "out/rt_edge/verdict.md"
         }
       },
-      "notes": "We are now in a position to assemble the complete optical out-coupling chain. In out/rt_edge/verdict.md, the end-to-end extraction efficiency eta_total is decomposed into four independent physical factors: the spontaneous emission beta factor of 0.02924, the combined front-facet factor of 0.93501 under a 95% rear mirror, the propagation transmission of 0.88250 over 250 microns, and the circular numerical aperture collection efficiency of 0.85785 with an NA 0.80 objective. Multiplying these terms gives an overall extraction efficiency of 2.070%. Multiplying by the 80 MHz repetition rate, the dot loading probability of 0.635, the carrier retention S of 0.01311 at 230 K, and the 50% spectral window transmission yields a maximum collected pulsed photon flux of 6890.03 counts per second, clearing the 1000 counts per second measurement floor with a 6.89x margin. Even at 300 K room temperature, the optimized corner produces 2416.6 counts per second (and 2308 counts per second at the card default NA of 0.75). In the acceptance sweep, each design lever proved vital. At the unoptimized baseline (uncoated facets, 500 micron bar, NA 0.50), collected flux at 300 K was only 553 counts per second, failing the 1000 counts per second threshold. Coating the rear facet bought a 2.60x multiplier, shortening the cavity added 1.13x, and upgrading to NA 0.80 added 1.48x. Together, these levers provided a cumulative 4.37x brightness improvement [Coldren, Corzine, Masanovic (2012) ch. 1, 7].",
+      "notes": "We are now in a position to assemble the complete optical out-coupling chain. In out/rt_edge/verdict.md, the end-to-end extraction efficiency eta_total is decomposed into four independent physical factors: the spontaneous emission beta factor of 0.02924, the combined front-facet factor of 0.93501 under a 95% rear mirror, the propagation transmission of 0.88250 over 250 microns, and the circular numerical aperture collection efficiency of 0.85785 with an NA 0.80 objective. Multiplying these terms gives an overall extraction efficiency of 2.070%. Multiplying by the 80 MHz repetition rate, the dot loading probability of 0.635, the carrier retention S of 0.01311 at 230 K, and the 50% spectral window transmission yields a maximum collected pulsed photon flux of 6890.03 counts per second, clearing the 1000 counts per second measurement floor with a 6.89x margin -- this floor is only an eligibility filter, not the sweep's pass/fail gate, whose own verdict is FAIL (evidence incomplete) with headline pulsed-g2 coverage of 130/768 rows. Even at 300 K room temperature, the optimized corner produces 2416.6 counts per second (and 2308 counts per second at the card default NA of 0.75). At the unoptimized baseline (uncoated facets, 500 micron bar, NA 0.50), collected flux at 300 K was only 553 counts per second, failing the 1000 counts per second threshold. Coating the rear facet bought a 2.60x multiplier, shortening the cavity added 1.13x, and upgrading to NA 0.80 added 1.48x. Together, these levers provided a cumulative 4.37x brightness improvement [Coldren, Corzine, Masanovic (2012) ch. 1, 7].",
       "sources": [
         "docs/rt_edge_contract.md",
         "out/rt_edge/verdict.md",
@@ -488,10 +538,57 @@
         "Rear HR coating ($R_{back} = 0.95$) and short cavity ($250\\ \\mu\\text{m}$) maximize photon escape.",
         "High-NA circular collection ($\\mathrm{NA} = 0.80$, $\\eta_{NA} = 85.8\\%$) enables flux to clear the 1000 counts/s floor."
       ],
-      "notes": "To summarize Section 4, getting single photons out of a semiconductor chip requires a disciplined, multi-stage engineering approach. Without waveguiding, high refractive index contrast traps nearly 98% of light in planar substrate modes. By fabricating a ridge waveguide, we channel emission into a bound optical mode with sub-micron dimensions. Although the resulting spontaneous emission coupling factor beta of 2.92% is modest compared to cryogenic photonic crystal cavities, edge-emitting ridge waveguides offer robust planar electrical injection, standard fabrication tolerances, and straightforward integration with on-chip optical circuitry. Material dispersion significantly enhances this coupling, as chromatic dispersion near the bandgap boosts the group index by 34%, enhancing the one-dimensional local density of states; omitting it undercounts coupling by 25%. Once guided, photons must be extracted efficiently: deposition of an HR coating on the rear facet breaks front-back symmetry to eliminate backward losses, while shortening cavity length to 250 microns minimizes material propagation absorption. Finally, high numerical aperture collection optics capture astigmatic far-field diffraction, delivering an end-to-end extraction efficiency of 2.07% and clearing the 1000 counts per second measurement threshold. In the next section, we will integrate this photonic extraction model with electrical transport and junction heating to evaluate full room-temperature single-photon device operation [Coldren, Corzine, Masanovic (2012) ch. 1, 7] [Chuang (2009) ch. 7-8] [Lecamp PRL 99, 023902 (2007)] [Arcari PRL 113, 093603 (2014)].",
+      "repo_numbers": {
+        "A_mode_gainp_summary": {
+          "value": 0.512399,
+          "how": "__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0].A_mode_um2",
+          "tolerance": 0.0001
+        },
+        "beta_gainp_summary": {
+          "value": 0.0292412,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "n_g_gainp_summary": {
+          "value": 4.355198,
+          "how": "__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0].n_g",
+          "tolerance": 0.0001
+        },
+        "ng_boost_pct": {
+          "value": 33.882138,
+          "how": "(lambda edge: (edge.n_g/edge.n_eff - 1.0)*100.0)(__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0])",
+          "tolerance": 0.001
+        },
+        "purcell_undercount_pct": {
+          "value": 25.307437,
+          "how": "(lambda edge: (1.0 - edge.n_eff/edge.n_g)*100.0)(__import__('fsim_core.device', fromlist=['x'])._resolve_edge(__import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').ret, __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml').emission, 300.0)[0])",
+          "tolerance": 0.001
+        },
+        "R_back_gainp_summary": {
+          "value": 0.95,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "L_um_gainp_summary": {
+          "value": 250.0,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "NA_favorable_summary": {
+          "value": 0.8,
+          "file": "cards/edge-inp-gainp-design.yaml"
+        },
+        "eta_NA_08_summary": {
+          "value": 0.857853,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "flux_floor_counts_s": {
+          "value": 1000,
+          "file": "out/rt_edge/verdict.md"
+        }
+      },
+      "notes": "To summarize Section 4, getting single photons out of a semiconductor chip requires a disciplined, multi-stage engineering approach. Without waveguiding, high refractive index contrast traps nearly 98% of light in planar substrate modes. By fabricating a ridge waveguide, we channel emission into a bound optical mode with sub-micron dimensions. Although the resulting spontaneous emission coupling factor beta of 2.92% is modest compared to cryogenic photonic crystal cavities, edge-emitting ridge waveguides offer robust planar electrical injection, standard fabrication tolerances, and straightforward integration with on-chip optical circuitry. Material dispersion significantly enhances this coupling, as chromatic dispersion near the bandgap boosts the group index by 34%, enhancing the one-dimensional local density of states; omitting it undercounts coupling by 25%. Once guided, photons must be extracted efficiently: deposition of an HR coating on the rear facet breaks front-back symmetry to eliminate backward losses, while shortening cavity length to 250 microns minimizes material propagation absorption. Finally, high numerical aperture collection optics capture astigmatic far-field diffraction, delivering an end-to-end extraction efficiency of 2.07% and clearing the 1000 counts per second measurement threshold, an eligibility filter only: the acceptance sweep's own verdict is FAIL (evidence incomplete), with headline pulsed-g2(0) coverage of just 130/768 rows. In the next section, we will integrate this photonic extraction model with electrical transport and junction heating to evaluate full room-temperature single-photon device operation [Coldren, Corzine, Masanovic (2012) ch. 1, 7] [Chuang (2009) ch. 7] [Saleh & Teich, Fundamentals of Photonics, Gaussian beam optics] [Lecamp PRL 99, 023902 (2007)] [Arcari PRL 113, 093603 (2014)].",
       "sources": [
         "Coldren, Corzine, Masanovic (2012) ch. 1, 7",
-        "Chuang (2009) ch. 7-8",
+        "Chuang (2009) ch. 7",
+        "Saleh & Teich, Fundamentals of Photonics, Gaussian beam optics",
         "Lecamp PRL 99, 023902 (2007)",
         "Arcari PRL 113, 093603 (2014)"
       ]

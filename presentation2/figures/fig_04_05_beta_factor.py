@@ -62,24 +62,24 @@ ax1.annotate(rf"Fallback $2\ \mu$m Ridge" + "\n" + rf"$\beta = {b_ridge*100:.2f}
              fontsize=12, fontweight="bold", color="#1A365D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#EBF8FF", edgecolor="#3182CE"))
 
-# Mark Arcari et al. 2014 PhC Waveguide point (reported beta = 98.43%)
-A_phc = 0.040  # um^2
-beta_arcari = 98.43
-ax1.plot(A_phc, beta_arcari, "s", color="#38A169", markersize=10, zorder=5)
-ax1.annotate(r"Arcari et al. (PRL 2014)" + "\n" + rf"$\beta = {beta_arcari:.2f}\%$ (PhC W1)" + "\n" + r"($n_g \approx 30\mathrm{-}40,\ A \approx 0.04\ \mu\mathrm{m}^2$)",
-             xy=(A_phc, beta_arcari), xytext=(0.005, 68),
-             arrowprops=dict(arrowstyle="->", color="#38A169", lw=2),
-             fontsize=12, fontweight="bold", color="#22543D",
-             bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
+# Arcari et al. 2014 (PRL 113, 093603) is a photonic-crystal waveguide with
+# beta above 98%; the paper does not report the mode area or group index of
+# that specific device (and its headline result is a BROADBAND near-unity
+# beta, not a narrowband slow-light resonance), so no (A_mode, n_g) point is
+# plotted for it -- a marker would fabricate a location neither this chart's
+# axis nor the paper supports. A reference line carries the one number this
+# repository's [V] tag actually covers.
+ax1.axhline(98.0, color="#38A169", ls="-.", lw=2.0,
+            label="Arcari 2014: PhC waveguide, $\\beta > 98\\%$ (different mechanism)")
 
 ax1.set_xscale("log")
 ax1.set_xlabel(r"Effective Mode Area $A_{mode}$ ($\mu\mathrm{m}^2$)")
 ax1.set_ylabel(r"Guided Spontaneous Emission $\beta$ (%)")
-ax1.set_title(r"$\beta$ Factor Scaling: Ridge vs Photonic Crystal (Lecamp 2007)", pad=12)
+ax1.set_title(r"$\beta$ Factor Scaling:" + "\n" + r"Ridge vs Photonic Crystal (Lecamp 2007)", pad=10)
 ax1.set_ylim(0, 105)
 ax1.set_xlim(0.003, 3.0)
 ax1.grid(True, which="both", linestyle=":", alpha=0.5)
-ax1.legend(loc="center right", framealpha=0.9)
+ax1.legend(loc="upper right", framealpha=0.95, fontsize=9)
 
 # Panel 2: Position Factor |E(z_dot)|^2 / max|E|^2 and beta vs QD Vertical Position
 # Vertical profile approximated by cosine inside core (-148 to +148 nm) and exp decay in cladding
@@ -118,13 +118,13 @@ ax2_twin.set_ylim(0, 3.2)
 ax2.set_xlim(-300, 300)
 ax2.grid(True, linestyle=":", alpha=0.5)
 
-ax2.set_title(r"Dipole Position Overlap $\xi_{pos}$ in Ridge Heterostructure", pad=12)
+ax2.set_title(r"Dipole Position Overlap $\xi_{pos}$" + "\n" + "in Ridge Heterostructure", pad=10)
 
 lines = [p1, p2]
 labels = [l.get_label() for l in lines]
-ax2.legend(lines, labels, loc="lower center", framealpha=0.9)
+ax2.legend(lines, labels, loc="lower center", framealpha=0.9, fontsize=11)
 
-fig.subplots_adjust(top=0.91, bottom=0.13, left=0.08, right=0.92, wspace=0.32)
+fig.subplots_adjust(top=0.86, bottom=0.13, left=0.08, right=0.90, wspace=0.42)
 fig.savefig(out_path, dpi=150, facecolor="white")
 plt.close(fig)
 print("Saved", out_path)
