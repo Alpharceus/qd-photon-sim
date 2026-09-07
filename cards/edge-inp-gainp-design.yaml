@@ -76,7 +76,10 @@ design:
     cw_tau_max_ns: 0.24
     loading_model: auto  # [A] peer-review-triage.md finding 2 -- legacy switch, bit-identical
     finite_pulse: false  # [A] peer-review-triage.md finding 1 -- static per-pulse loading (legacy)
-    gate_ns: null        # [A] peer-review-triage.md finding 4 -- legacy background-fraction formula
+    gate_ns: null        # [A] peer-review-triage.md finding 4 -- not requested (only
+                         # meaningful together with finite_pulse=true, which this card
+                         # leaves false); null resolves to the whole pulse period if
+                         # finite_pulse is ever switched on (pr-pkg4-fix item 1)
   thermal:
     T_hs: 300.0
     layers:
@@ -340,10 +343,13 @@ design:
         value: null
         tag: A
         source: >
-          peer-review-triage.md finding 4 -- null (default, legacy): keeps
-          the existing per-collected-X/CW-time-model background-fraction
-          formula. Not requested on this card (only meaningful together with
-          drive.finite_pulse=true); recommended default when opted in is
+          peer-review-triage.md finding 4 -- null (default): only meaningful
+          together with drive.finite_pulse=true (this card leaves
+          finite_pulse false, so gate_ns is not requested either); null
+          resolves to the whole pulse period as the counting gate
+          (pr-pkg4-fix item 1 -- gate-consistent counting, not the
+          pre-fix per-collected-X/CW-time-model background-fraction mix).
+          Recommended default when finite_pulse is opted in is
           tau_pulse_ns + 5*ret.tau_rad_ns.
       thermal.T_hs:
         value: 300.0

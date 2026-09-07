@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import glob
 import math
 import os
 import re
@@ -695,6 +696,21 @@ def main() -> int:
     ok(f"{card_names[0]!r} and {card_names[1]!r} carry the same "
        "provenance.assumptions field set",
        assumptions_by_card[card_names[0]] == assumptions_by_card[card_names[1]])
+
+    # pr-pkg4-fix item 2: the two per-card provenance-string guards above
+    # (drive.b_res's source text) only ever see the wrong Reischle citation
+    # if a CARD reintroduces it; extend the same guard to the source
+    # modules themselves -- Appl. Phys. Lett. 92, 233113 (2008) is not a
+    # Reischle et al. paper (that is Optics Express 16, 12771 (2008), DOI
+    # 10.1364/OE.16.012771) and must never appear in fsim_core/*.py.
+    bad_citation_files = sorted(
+        f for f in glob.glob(str(ROOT / "fsim_core" / "*.py"))
+        if ("233113" in Path(f).read_text(encoding="utf-8")
+            or "Appl. Phys. Lett. 92" in Path(f).read_text(encoding="utf-8")))
+    ok("fsim_core/*.py never cites the drifted 'Appl. Phys. Lett. 92, 233113' "
+       "Reischle source (got: " + repr(bad_citation_files) + ")",
+       not bad_citation_files)
+
     print(f"{sum(CHECKS)}/{len(CHECKS)} rt-edge card checks passed")
     return 0 if all(CHECKS) else 1
 

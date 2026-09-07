@@ -34,6 +34,7 @@ from scipy.optimize import brentq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fsim_core import cw_g2
+from fsim_core.drive_mech import reexc_g2
 from fsim_core.loading import f1b_g2
 from fsim_core.pulse_counting import _augmented, _periodic_steady_state, pulse_g2
 
@@ -161,6 +162,48 @@ def _():
         assert abs(g2_scaled - g2_ref) < 1e-12, (factor, g2_scaled, g2_ref)
 
 
+# ------------------------------------------- (e) cross-check against drive_mech.reexc_g2
+
+# pulse_counting.pulse_g2 and drive_mech.reexc_g2 solve the SAME closed
+# counting-moment hierarchy (module docstrings cross-reference each other),
+# but reexc_g2 has no escape channels (k_X=k_XX=0 always), counts the X
+# line only (t_XX=0 here disables XX counting to match), and has no gate
+# (a single pulse from mu0=0, decayed out over a generous tail, rather than
+# a periodic steady state read out through a gate). To make pulse_g2's
+# periodic construction reproduce that single-shot picture, tau_dark_ns is
+# set to the SAME generous multiple of the X lifetime as reexc_g2's own
+# t_end_factor tail (_REEXC_TAIL_FACTOR lifetimes -- residual leak into the
+# next period is exp(-40) ~ 4e-18, far below the 1e-6 tolerance), so the
+# periodic steady state is (to float precision) the ground state reexc_g2
+# starts from, and pulse_g2's whole-period (gate_ns=None) counting window
+# matches reexc_g2's full decay-tail integration window.
+_REEXC_CASES = [
+    dict(r_ns=0.5, tau_on_ns=0.3, gamma_X_ns=1.0),
+    dict(r_ns=3.0, tau_on_ns=1.0, gamma_X_ns=1.0),
+    dict(r_ns=1.0, tau_on_ns=2.0, gamma_X_ns=0.5),
+]
+_REEXC_TAIL_FACTOR = 40.0
+
+
+@check("(e) cross-check against drive_mech.reexc_g2 (independent counting-moment "
+      "hierarchy, no escape/XX channel/gate) at three parameter sets, k=0/t_XX=0, "
+      "tolerance 1e-6")
+def _():
+    rows = []
+    for c in _REEXC_CASES:
+        gamma_X_ns = c["gamma_X_ns"]
+        gamma_XX_ns = 2.0 * gamma_X_ns
+        tau_x_ps = 1.0 / gamma_X_ns
+        tail_ns = _REEXC_TAIL_FACTOR / gamma_X_ns
+        pc = pulse_g2(c["r_ns"], gamma_X_ns, gamma_XX_ns, k_X=0.0, k_XX=0.0,
+                      t_X=1.0, t_XX=0.0, tau_on_ns=c["tau_on_ns"], tau_dark_ns=tail_ns)
+        rg = reexc_g2(c["r_ns"], c["tau_on_ns"], tau_x_ps, t_end_factor=_REEXC_TAIL_FACTOR)
+        rows.append((c, pc["g2"], rg["g2"]))
+        assert pc["converged"]
+        assert abs(pc["g2"] - rg["g2"]) < 1e-6, (c, pc["g2"], rg["g2"])
+    RESULTS["e"] = rows
+
+
 def main():
     failed = 0
     for name, fn in CHECKS:
@@ -182,6 +225,11 @@ def main():
     if "c" in RESULTS:
         g2_ivp, g2_expm = RESULTS["c"]
         print(f"(c) solve_ivp g2 = {g2_ivp:.12f}  expm g2 = {g2_expm:.12f}")
+    if "e" in RESULTS:
+        for c, g2_pc, g2_rg in RESULTS["e"]:
+            print(f"(e) r_ns={c['r_ns']:g} tau_on_ns={c['tau_on_ns']:g} "
+                  f"gamma_X_ns={c['gamma_X_ns']:g}: pulse_g2 = {g2_pc:.10f}  "
+                  f"reexc_g2 = {g2_rg:.10f}")
     return 1 if failed else 0
 
 

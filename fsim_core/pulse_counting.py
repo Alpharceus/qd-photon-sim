@@ -18,11 +18,23 @@ statistics directly, retaining nonradiative (escape) transitions in the
 generator without counting them as photons. [DR] moment hierarchy built on
 the existing cw_g2 three-state generator; [A] rectangular pump waveform (the
 diode's actual current pulse shape is not modeled here). Cite Hanschke et
-al., "Origin of antibunching in resonance fluorescence", npj Quantum Inf. 4,
-43 (2018) for re-excitation during a finite pulse, and Reischle et al., Appl.
-Phys. Lett. 92, 233113 (2008) / 97, 143513 (2010) for the cascade rate
-conventions (gamma_XX = 2 gamma_X, cap-2 ladder) this module shares with
-cw_g2.py and loading.py.
+al., npj Quantum Inf. 4, 43 (2018) for re-excitation during a finite pulse,
+and Reischle et al., Optics Express 16, 12771 (2008) (DOI
+10.1364/OE.16.012771) / Appl. Phys. Lett. 97, 143513 (2010) for the cascade
+rate conventions (gamma_XX = 2 gamma_X, cap-2 ladder) this module shares
+with cw_g2.py and loading.py. (Hanschke et al., "Origin of antibunching in
+resonance fluorescence", is a different paper, PRL 125, 170402 (2020) -- do
+not conflate the two.)
+
+See also fsim_core.drive_mech.reexc_g2 for an independent re-excitation
+model built on the same counting-moment idea (a closed linear ODE hierarchy
+for the state-resolved photon-counting moments, no truncation) but NOT
+interchangeable with this module: reexc_g2 has no escape channels (k_X =
+k_XX = 0 always), counts the X line only (no XX cascade/filter split), and
+has no gate (it integrates to a fixed t_end well past both lifetimes rather
+than reading out a periodic steady state at a chosen window). The two are
+cross-checked against each other at k=0/t_XX=0 in
+verify/verify_pulse_counting.py.
 
 Model. For probability vector p (basis |0>, |X>, |XX>, cw_g2.generator's
 ordered basis) and state-resolved first/second factorial count moments m1,
@@ -57,6 +69,20 @@ g2 = sum(m2)/sum(m1)**2 and mean_counts = sum(m1) are therefore per-PULSE-
 PERIOD quantities (the peak-area convention loading.f1b_g2 also uses, but
 now including re-excitation instead of assuming an isolated instantaneous
 load).
+
+Counting gate (pr-pkg4-fix, gate-consistent counting). pulse_g2's optional
+gate_ns restricts WHEN a jump counts, not the period being propagated: after
+the periodic steady state p is found, the same one-period propagation runs
+with the counting operator J active only for 0 <= t < gate_ns, t measured
+from the PUMP ONSET (t=0 at the start of the on-window) -- outside the gate
+the augmented block uses J=0 (a zero counting operator), so p keeps
+evolving normally under M but m1/m2 stop accumulating. gate_ns=None (the
+default) counts the whole period (gate_ns = tau_on_ns + tau_dark_ns) and is
+bit-identical to the pre-gate propagation. A gate_ns at or beyond the period
+also counts the whole period (a gate cannot outlast the one period this
+call tracks). [A] recommended gate for a real detector: gate_ns =
+tau_pulse_ns + 5*tau_rad_ns (catches >99% of a single-exponential decay
+tail after the pump turns off).
 
 Lemma 1 (collection-efficiency invariance): g2 is invariant under scaling
 t_X and t_XX by a common factor, because J (and hence m1) scales linearly in
@@ -103,24 +129,52 @@ def _augmented(M, J):
                      [Z, 2.0 * J, M]])
 
 
-def _propagate_period(M_on, M_off, J, p0, tau_on_ns, tau_dark_ns):
+def _propagate_period(M_on, M_off, J, p0, tau_on_ns, tau_dark_ns, gate_ns=None):
     """One period's (p, m1, m2) starting from p=p0, m1=m2=0, pump on for
-    tau_on_ns then off for tau_dark_ns. Returns (p_period, m1, m2)."""
+    tau_on_ns then off for tau_dark_ns, with the counting operator J active
+    only for 0 <= t < gate_ns (t from the pump onset, i.e. the start of the
+    on-window) -- outside the gate the augmented block runs with J replaced
+    by the zero matrix, so p keeps evolving under M while m1/m2 freeze.
+    gate_ns=None (default) counts the whole period and is bit-identical to
+    the original ungated propagation (two expm calls, on then off, both at
+    full window length -- no zero-length windows are introduced). A gate_ns
+    at or beyond the period is clamped to the period. Returns
+    (p_period, m1, m2)."""
+    period = tau_on_ns + tau_dark_ns
+    gate = period if gate_ns is None else min(gate_ns, period)
+    Z = np.zeros((3, 3))
     v = np.zeros(9)
     v[0:3] = p0
-    v = expm(_augmented(M_on, J) * tau_on_ns) @ v
-    v = expm(_augmented(M_off, J) * tau_dark_ns) @ v
+    on_count = min(gate, tau_on_ns)
+    on_rest = tau_on_ns - on_count
+    if on_count > 0:
+        v = expm(_augmented(M_on, J) * on_count) @ v
+    if on_rest > 0:
+        v = expm(_augmented(M_on, Z) * on_rest) @ v
+    dark_count = min(max(gate - tau_on_ns, 0.0), tau_dark_ns)
+    dark_rest = tau_dark_ns - dark_count
+    if dark_count > 0:
+        v = expm(_augmented(M_off, J) * dark_count) @ v
+    if dark_rest > 0:
+        v = expm(_augmented(M_off, Z) * dark_rest) @ v
     return v[0:3], v[3:6], v[6:9]
 
 
 def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
-            tau_on_ns, tau_dark_ns, pump_ratio=1.0, split=False) -> dict:
+            tau_on_ns, tau_dark_ns, pump_ratio=1.0, split=False,
+            gate_ns=None) -> dict:
     """Per-pulse-period g2 and mean detected counts of the filtered X/XX
     cascade under a rectangular pump of duration tau_on_ns at rate r_ns,
     followed by a dark window of duration tau_dark_ns (see module
-    docstring). split=True additionally decomposes the mean counts into the
-    X-line-only and XX-line-only shares (finding 4's gated rho needs the
-    X-line count alone, undiluted by the XX contribution)."""
+    docstring). gate_ns restricts counting to 0 <= t < gate_ns from the
+    pump onset (module docstring "Counting gate"); gate_ns=None (default)
+    counts the whole period and reproduces the pre-gate numbers bit-
+    identically. split=True additionally decomposes the mean counts into
+    the X-line-only and XX-line-only shares (finding 4's gated rho needs
+    the X-line count alone, undiluted by the XX contribution) -- the
+    XX-only share is recovered as mean_counts - mean_counts_x by linearity
+    of the m1 ODE in J (p's own trajectory does not depend on J), so only
+    one extra gated propagation is needed, not two."""
     M_on = cw_g2.generator(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     M_off = cw_g2.generator(0.0, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     p_ss, converged = _periodic_steady_state(M_on, M_off, tau_on_ns, tau_dark_ns)
@@ -128,7 +182,7 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
     J = np.zeros((3, 3))
     J[0, 1] = t_X * gamma_X_ns
     J[1, 2] = t_XX * gamma_XX_ns
-    p_period, m1, m2 = _propagate_period(M_on, M_off, J, p_ss, tau_on_ns, tau_dark_ns)
+    p_period, m1, m2 = _propagate_period(M_on, M_off, J, p_ss, tau_on_ns, tau_dark_ns, gate_ns)
 
     mean_counts = float(np.sum(m1))
     if mean_counts < 1e-300:
@@ -140,10 +194,8 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
 
     if split:
         J_X = np.zeros((3, 3)); J_X[0, 1] = J[0, 1]
-        J_XX = np.zeros((3, 3)); J_XX[1, 2] = J[1, 2]
-        _, m1_x, _ = _propagate_period(M_on, M_off, J_X, p_ss, tau_on_ns, tau_dark_ns)
-        _, m1_xx, _ = _propagate_period(M_on, M_off, J_XX, p_ss, tau_on_ns, tau_dark_ns)
+        _, m1_x, _ = _propagate_period(M_on, M_off, J_X, p_ss, tau_on_ns, tau_dark_ns, gate_ns)
         result["mean_counts_x"] = float(np.sum(m1_x))
-        result["mean_counts_xx"] = float(np.sum(m1_xx))
+        result["mean_counts_xx"] = mean_counts - result["mean_counts_x"]
 
     return result

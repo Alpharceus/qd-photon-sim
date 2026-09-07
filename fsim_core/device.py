@@ -163,7 +163,20 @@ class DriveBlock:
     cw_irf_fwhm_ps: float = 500.0  # detector IRF FWHM, ps; Reischle 2008
                                   # class 0.5 ns [E]
     cw_irf_shape: str = "gaussian"  # cw_g2.IRF_SHAPES
-    cw_pump_ratio: float = 1.0    # X->XX secondary CW pump ratio [A]
+    cw_pump_ratio: float = 1.0    # X->XX secondary pump ratio [A]. Despite
+                                  # the "cw_" prefix this field is shared by
+                                  # BOTH pump-rate dynamics this module
+                                  # drives with cw_g2.generator: drive.cw's
+                                  # CW steady state AND drive.finite_pulse's
+                                  # per-period moment hierarchy (pulse_
+                                  # counting.pulse_g2's own pump_ratio
+                                  # argument) -- one X->XX secondary-pump
+                                  # assumption for both, not a separate
+                                  # pulsed knob (pr-pkg4-fix item 10; kept
+                                  # as one field rather than adding
+                                  # drive.pulsed_pump_ratio to avoid a
+                                  # second [A] the two opt-in diagnostics
+                                  # could silently disagree on).
     cw_tau_max_ns: float = 10.0   # CW g2(tau) window half-width, ns [A]
     rep_rate_hz: float = 0.0      # council review 2026-09-05 item 1 -- pulse
                                   # repetition rate, Hz. 0 (default): derive
@@ -206,9 +219,8 @@ class DriveBlock:
                                   # the ~100 ps pump are fast relative to the
                                   # radiative lifetime, so a dot can be
                                   # re-excited and re-emit repeatedly within
-                                  # one pulse (Hanschke et al., "Origin of
-                                  # antibunching in resonance fluorescence",
-                                  # npj Quantum Inf. 4, 43 (2018)). Requires
+                                  # one pulse (Hanschke et al., npj Quantum
+                                  # Inf. 4, 43 (2018)). Requires
                                   # EL-transport (injection is not None) for
                                   # the physical pump rate
                                   # injection.loading.r_dot; a legacy PL/
@@ -216,22 +228,52 @@ class DriveBlock:
                                   # [A] rectangular pump waveform; [DR]
                                   # moment hierarchy on the existing cw_g2
                                   # generator (see pulse_counting.py).
-    gate_ns: float | None = None  # peer-review-triage.md finding 4 -- None
-                                  # (default, legacy): the pulsed background
-                                  # fraction keeps its existing per-collected-
-                                  # X/CW-time-model mix (device.py:825-831).
-                                  # A finite value, together with
-                                  # finite_pulse=True, opts into one explicit
-                                  # counting gate of width gate_ns (ns):
-                                  # n_X+n_XX from pulse_counting's mean_counts
-                                  # (already includes escape and the XX line),
-                                  # n_bg = the SAME injection background rate
-                                  # the CW path uses, integrated over gate_ns,
-                                  # rho = (n_X+n_XX)/(n_X+n_XX+n_bg+b_res*n_X)
-                                  # [DR] counts, [A] gate width -- recommended
-                                  # default gate_ns = tau_pulse_ns +
+                                  # pr-pkg4-fix item 1 (gate-consistent
+                                  # counting, Opus review): whenever this is
+                                  # True (and evaluable), rho is ALSO always
+                                  # recomputed from pulse_counting's own
+                                  # gate-restricted counts (see gate_ns
+                                  # below) -- the legacy static-loading rho
+                                  # (G*S/(G*S+B) above) is never mixed with
+                                  # the dynamic g2_dot; a prior round did
+                                  # exactly that mixing and measured a 28.8%
+                                  # internal inconsistency at the 230 K
+                                  # corner. An unconverged periodic steady
+                                  # state (pulse_counting's own `converged`
+                                  # flag) sets g2_dot and rho to nan and
+                                  # marks the row invalid rather than
+                                  # reporting a number from a bad fixed
+                                  # point (exposed as finite_pulse_converged
+                                  # on the evaluation dict).
+    gate_ns: float | None = None  # peer-review-triage.md finding 4 -- the
+                                  # width (ns) of the one explicit counting
+                                  # gate finite_pulse's rho is built from,
+                                  # measured from the PUMP ONSET (module
+                                  # pulse_counting.py's own convention).
+                                  # None (default): the gate is the WHOLE
+                                  # pulse period (tau_pulse_ns + the dark
+                                  # window) -- bit-identical to gate_ns
+                                  # equal to that period, never the legacy
+                                  # per-collected-X/CW-time-model mix (that
+                                  # mixing was pr-pkg4-fix item 1's bug: see
+                                  # finite_pulse above). n_X+n_XX comes from
+                                  # pulse_counting's own gate-restricted
+                                  # mean_counts (already includes escape and
+                                  # the XX line); n_bg = the SAME injection
+                                  # background rate the CW path uses,
+                                  # integrated over the SAME gate; signal =
+                                  # G*(n_X+n_XX); B = b0 + beta*(1-S) + n_bg
+                                  # + b_res*n_X; rho = signal/(signal+B) --
+                                  # the legacy pulsed rho's own G and b0/beta
+                                  # placement, with counts substituted for
+                                  # the static-loading probabilities. [DR]
+                                  # counts, [A] gate width -- recommended
+                                  # gate_ns = tau_pulse_ns +
                                   # 5*d.ret.tau_rad_ns (catches >99% of a
-                                  # single-exponential decay tail). Ignored
+                                  # single-exponential decay tail). Exposed
+                                  # as finite_pulse_gate_ns_used on the
+                                  # evaluation dict (the resolved value,
+                                  # whichever of the two applied). Ignored
                                   # unless finite_pulse is also True.
     b_res: float = 0.0            # council review 2026-09-05 item 8 -- residual
                                   # background channel, T-independent:
@@ -242,9 +284,10 @@ class DriveBlock:
                                   # channel. Models whatever the injection
                                   # background model does not capture (e.g.
                                   # the 80 K electrical anchor, Reischle et
-                                  # al., Appl. Phys. Lett. 92, 233113 (2008),
-                                  # measured rho ~ 0.88 -> b_res = 1/0.88-1 =
-                                  # 0.136); a card setting this NON-zero must
+                                  # al., Optics Express 16, 12771 (2008)
+                                  # (DOI 10.1364/OE.16.012771), measured
+                                  # rho ~ 0.88 -> b_res = 1/0.88-1 = 0.136);
+                                  # a card setting this NON-zero must
                                   # carry its own provenance note for the
                                   # anchor [E/A] -- device.py does not invent
                                   # a value here, only the mechanism.
@@ -444,6 +487,15 @@ class DeviceDesign:
         if aperture_kw.get("density_cm2") is not None and aperture_kw["density_cm2"] <= 0:
             raise ValueError("aperture.density_cm2 must be > 0 if set "
                              f"(got {aperture_kw['density_cm2']!r})")
+        # pr-pkg4-fix item 9: drive.loading_model and drive.gate_ns are both
+        # validated again in evaluate() (below), but a card that misspells
+        # either should fail at load(), the same as every other malformed
+        # card field above, not only once evaluate() is actually called.
+        loading_model = drive_kw.get("loading_model", DriveBlock.loading_model)
+        if loading_model not in ("auto", "capped_poisson", "moment_matched"):
+            raise ValueError(f"unknown drive.loading_model {loading_model!r}")
+        if drive_kw.get("gate_ns") is not None and drive_kw["gate_ns"] <= 0:
+            raise ValueError(f"drive.gate_ns must be > 0 if set (got {drive_kw['gate_ns']!r})")
         return DeviceDesign(
             name=d.get("name", "my-device"),
             dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
@@ -722,6 +774,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     if d.drive.mode == "EL-transport" and d.drive.mechanism:
         raise ValueError("drive.mode='EL-transport' cannot be combined with "
                          "drive.mechanism (conflicting loading resolutions)")
+    # pr-pkg4-fix item 6: drive.mechanism resolves its own (mu, F_p, eta),
+    # overriding transport's own -- finite_pulse's rates below (r_ns_fp from
+    # injection.loading.r_dot, k_X/k_XX from the confinement retention
+    # params) are wired straight to the injection/confinement chain and
+    # never consult a mechanism's DriveInterface at all, so combining the
+    # two would silently ignore the mechanism rather than resolve it into
+    # the finite-pulse pump rate.
+    if d.drive.finite_pulse and d.drive.mechanism:
+        raise ValueError("finite_pulse does not support drive.mechanism overrides")
     if d.dot.linewidth not in ("class", "anchored"):
         raise ValueError(f"unknown dot.linewidth {d.dot.linewidth!r}")
     if d.ret.mode not in ("proxy", "confinement"):
@@ -758,15 +819,25 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     tau_pulse_explicit = "tau_pulse_ns" in (d.drive.diode or {})
     duty_explicit = d.drive.duty != DriveBlock.duty
     rep_explicit = d.drive.rep_rate_hz > 0.0
-    if d.drive.mode == "EL-transport" and not d.drive.cw:
+    # pr-pkg4-fix item 5: drive.finite_pulse needs this SAME explicit pulse
+    # period even when drive.cw=True -- the finite-pulse block below reads
+    # tau_pulse_ns_val/duty_eff/rep_rate_hz exactly like the legacy pulsed
+    # path, so a CW card that opts into finite_pulse without ALSO stating an
+    # explicit tau_pulse_ns and duty/rep_rate_hz would otherwise fabricate
+    # the same silent 1 GHz/100%-duty DC drive this guard exists to prevent
+    # (previously only the drive.cw=False branch below was covered).
+    if d.drive.mode == "EL-transport" and (not d.drive.cw or d.drive.finite_pulse):
         if not (tau_pulse_explicit and (duty_explicit or rep_explicit)):
             missing = []
             if not tau_pulse_explicit:
                 missing.append("drive.diode['tau_pulse_ns']")
             if not (duty_explicit or rep_explicit):
                 missing.append("drive.duty or drive.rep_rate_hz")
+            reason = ("pulsed operation (drive.cw=False)" if not d.drive.cw
+                     else "drive.finite_pulse=True (needs a real pulse period even "
+                          "under drive.cw=True)")
             raise ValueError(
-                "drive.mode='EL-transport' pulsed operation (drive.cw=False) requires "
+                f"drive.mode='EL-transport' {reason} requires "
                 "explicit " + " and ".join(missing) + " -- unset defaults (duty=1.0, "
                 "tau_pulse_ns=1.0) silently report a 1 GHz/100%-duty DC drive "
                 "(council review 2026-09-05 item 1)")
@@ -830,6 +901,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             n_dot_cm2_used=np.nan,
                             finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                             finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                            finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
                             rho_pulsed=np.nan,
                             invalid_reason="EL-transport requires positive current")
             converged = False
@@ -853,6 +925,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             n_dot_cm2_used=np.nan,
                             finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                             finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                            finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
                             rho_pulsed=np.nan,
                             invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
@@ -864,6 +937,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                         n_dot_cm2_used=np.nan,
                         finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                         finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                        finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
                         rho_pulsed=np.nan,
                         invalid_reason="thermal runaway")
         gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
@@ -1120,21 +1194,41 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 g2_dot = float(f1b_g2(mu_use, spec.eps))
         else:
             g2_dot = spec.eps
-        # finding 1 (peer-review-triage.md): drive.finite_pulse replaces the
-        # static per-pulse g2_dot above with pulse_counting.pulse_g2's exact
+        # finding 1 (peer-review-triage.md), gate-consistent counting fix
+        # (pr-pkg4-fix, Opus review): drive.finite_pulse replaces the static
+        # per-pulse g2_dot above with pulse_counting.pulse_g2's exact
         # state-resolved moment-hierarchy result, propagated through the
         # pump ("on") and dark ("off") windows of one pulse period -- see
         # DriveBlock.finite_pulse and pulse_counting.py. Requires EL-
         # transport (injection is not None) for the physical pump rate
         # injection.loading.r_dot; False (default) or no injection leaves
-        # g2_dot untouched (legacy, bit-identical). gamma_X_ns/k_X/k_XX use
-        # the EXACT same expressions as the CW branch below (rm-enhanced
-        # radiative rate, cw_g2.escape_rates_from_retention at this Tj) so
-        # the two opt-in diagnostics stay consistent with each other.
+        # g2_dot AND rho untouched (legacy, bit-identical). gamma_X_ns/k_X/
+        # k_XX use the EXACT same expressions as the CW branch below
+        # (rm-enhanced radiative rate, cw_g2.escape_rates_from_retention at
+        # this Tj) so the two opt-in diagnostics stay consistent with each
+        # other.
+        #
+        # Whenever finite_pulse IS evaluable here, rho is ALSO always
+        # rebuilt from the SAME gate-restricted counts pulse_g2 just
+        # produced -- gate_fp defaults to the whole period when
+        # drive.gate_ns is not set (DriveBlock.gate_ns), so signal and
+        # background never again live on different windows (a prior round
+        # divided a full-period signal by a gate-WIDTH background integral,
+        # a 28.8% internal inconsistency at the 230 K corner). The legacy
+        # static-loading rho (G*S/(G*S+B) above) is mirrored exactly, with
+        # pulse_g2's counts substituted for the cap-2 probabilities: signal
+        # = G*(n_X+n_XX), B = b0 + beta*(1-S) + n_bg + b_res*n_X, n_bg = the
+        # SAME injection background rate the CW branch uses, integrated
+        # over gate_fp -- G and the b0/beta terms sit exactly where the
+        # legacy pulsed rho above has them.
         finite_pulse_g2_dot = float("nan")
         finite_pulse_mean_counts = float("nan")
         finite_pulse_mean_counts_x = float("nan")
         finite_pulse_rates = _nan_fp_rates()
+        finite_pulse_gate_ns_used = float("nan")
+        finite_pulse_converged = False
+        rho_pulsed = float("nan")
+        invalid_reason = None
         if d.drive.finite_pulse and injection is not None and mu_use > 0:
             gamma_X_ns_fp = rm / d.ret.tau_rad_ns
             k_X_fp, k_XX_fp = cw_g2.escape_rates_from_retention(
@@ -1152,35 +1246,43 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                              if np.isfinite(rep_rate_hz_fp) and rep_rate_hz_fp > 0 else float("nan"))
             if (gamma_X_ns_fp > 0 and spec.t_x > 0 and r_ns_fp > 0
                     and np.isfinite(tau_dark_ns_fp) and tau_dark_ns_fp >= 0):
+                period_fp = tau_pulse_ns_val + tau_dark_ns_fp
+                gate_fp = d.drive.gate_ns if d.drive.gate_ns is not None else period_fp
                 pc = pulse_counting.pulse_g2(
                     r_ns=r_ns_fp, gamma_X_ns=gamma_X_ns_fp, gamma_XX_ns=2.0 * gamma_X_ns_fp,
                     k_X=k_X_fp, k_XX=k_XX_fp, t_X=spec.t_x, t_XX=spec.eps * spec.t_x,
                     tau_on_ns=tau_pulse_ns_val, tau_dark_ns=tau_dark_ns_fp,
-                    pump_ratio=d.drive.cw_pump_ratio, split=True)
-                finite_pulse_g2_dot = pc["g2"]
+                    pump_ratio=d.drive.cw_pump_ratio, split=True, gate_ns=gate_fp)
                 finite_pulse_mean_counts = pc["mean_counts"]
                 finite_pulse_mean_counts_x = pc.get("mean_counts_x", float("nan"))
                 finite_pulse_rates = dict(r_ns=r_ns_fp, gamma_X_ns=gamma_X_ns_fp,
                                           gamma_XX_ns=2.0 * gamma_X_ns_fp, k_X=k_X_fp, k_XX=k_XX_fp,
                                           tau_on_ns=tau_pulse_ns_val, tau_dark_ns=tau_dark_ns_fp)
-                g2_dot = finite_pulse_g2_dot
-        # finding 4 (peer-review-triage.md): drive.gate_ns, together with
-        # finite_pulse, replaces the legacy per-collected-X/CW-time-model mix
-        # (bg_per_collected/B/rho above) with one explicit counting gate: the
-        # SAME injection background rate the CW branch uses (abs_bg_in_window_
-        # ns below), integrated over gate_ns, against the moment-hierarchy's
-        # own X+XX counts (already escape- and filter-weighted -- do NOT
-        # multiply by S or t_x again). None (default) leaves `rho` above
-        # untouched (legacy). Recommended default gate_ns = tau_pulse_ns +
-        # 5*d.ret.tau_rad_ns.
-        rho_pulsed = float("nan")
-        if (d.drive.finite_pulse and d.drive.gate_ns is not None
-                and injection is not None and np.isfinite(finite_pulse_mean_counts)):
-            n_bg = injection.background.rate_bg_window * win_scale * d.drive.gate_ns * 1e-9
-            denom = (finite_pulse_mean_counts + n_bg
-                    + d.drive.b_res * finite_pulse_mean_counts_x)
-            rho_pulsed = finite_pulse_mean_counts / denom if denom > 0 else float("nan")
-            rho = rho_pulsed
+                finite_pulse_gate_ns_used = gate_fp
+                finite_pulse_converged = bool(pc["converged"])
+                # finding 7 (Opus review): an unconverged periodic steady
+                # state (or the mean_counts underflow pulse_g2 also reports
+                # as converged=False) makes the moment-hierarchy result
+                # meaningless -- nan g2_dot/rho and mark the row invalid the
+                # same way the early-return operating points above do,
+                # rather than reporting a number from a bad fixed point.
+                if finite_pulse_converged and np.isfinite(finite_pulse_mean_counts):
+                    finite_pulse_g2_dot = pc["g2"]
+                    g2_dot = finite_pulse_g2_dot
+                    n_bg = injection.background.rate_bg_window * win_scale * gate_fp * 1e-9
+                    signal_fp = G * finite_pulse_mean_counts
+                    B_fp = (params["b0"] + params["beta"] * (1.0 - S) + n_bg
+                           + d.drive.b_res * finite_pulse_mean_counts_x)
+                    rho_pulsed = signal_fp / (signal_fp + B_fp) if (signal_fp + B_fp) > 0 else float("nan")
+                    rho = rho_pulsed
+                else:
+                    finite_pulse_g2_dot = float("nan")
+                    g2_dot = float("nan")
+                    rho_pulsed = float("nan")
+                    rho = float("nan")
+                    invalid_reason = ("finite-pulse moment-hierarchy result invalid: "
+                                      "pulse_counting.pulse_g2's periodic steady state did "
+                                      "not converge (or mean_counts underflowed to 0)")
         # Continuous aperture composition [A] (docs/rt_edge_contract.md
         # "Aperture assumptions"): composed AFTER loading/capture/filter are
         # already folded into g2_dot (spec.eps upstream, mu/F_p above), and
@@ -1281,7 +1383,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     finite_pulse_mean_counts=finite_pulse_mean_counts,
                     finite_pulse_mean_counts_x=finite_pulse_mean_counts_x,
                     finite_pulse_rates=finite_pulse_rates,
-                    rho_pulsed=rho_pulsed)
+                    finite_pulse_gate_ns_used=finite_pulse_gate_ns_used,
+                    finite_pulse_converged=finite_pulse_converged,
+                    rho_pulsed=rho_pulsed,
+                    **({"invalid_reason": invalid_reason} if invalid_reason else {}))
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     rows = [one(T) for T in Ts]
@@ -1545,6 +1650,12 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "finite_pulse_k_XX": op["finite_pulse_rates"]["k_XX"],
         "finite_pulse_tau_on_ns": op["finite_pulse_rates"]["tau_on_ns"],
         "finite_pulse_tau_dark_ns": op["finite_pulse_rates"]["tau_dark_ns"],
+        # pr-pkg4-fix items 1/7: the gate width actually used (None resolves
+        # to the whole period -- see DriveBlock.gate_ns) and whether
+        # pulse_counting.pulse_g2's periodic steady state converged (False
+        # nans g2_dot/rho and marks the row invalid; see "finding 7" above).
+        "finite_pulse_gate_ns_used": op["finite_pulse_gate_ns_used"],
+        "finite_pulse_converged": op["finite_pulse_converged"],
         "rho_pulsed": op["rho_pulsed"],
         "invalid_reasons": ([] if np.isfinite(op["g2"])
                             else [op.get("invalid_reason", "invalid operating point")])
@@ -1596,16 +1707,24 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                        else "legacy hard-coded GaAs Varshni"))},
             "cw": {"tag": "A", "note": ("cw_g2 rate-equation model, transport-derived pump rate"
                                         if d.drive.cw else "not requested")},
-            # finding 1/4 (peer-review-triage.md): finite_pulse's moment
-            # hierarchy is [DR] on the existing cw_g2 generator; the
-            # rectangular pump waveform and the gate_ns counting window are
-            # [A]. Not requested (legacy static loading) unless opted in.
-            "finite_pulse": {"tag": "DR" if d.drive.finite_pulse else "A",
-                             "note": ("pulse_counting factorial-moment hierarchy "
-                                      "(Hanschke et al., npj Quantum Inf. 4, 43 (2018))"
-                                      + (f", gated rho at gate_ns={d.drive.gate_ns:g}"
-                                         if d.drive.gate_ns is not None else "")
-                                      if d.drive.finite_pulse else "not requested (legacy static loading)")},
+            # finding 1/4 (peer-review-triage.md), item 11 (pr-pkg4-fix):
+            # finite_pulse's moment hierarchy is [DR] on the existing cw_g2
+            # generator; the rectangular pump waveform and the gate_ns
+            # counting window are separate [A] assumptions -- two entries,
+            # not one tag flipped to DR for both. Not requested (legacy
+            # static loading) unless opted in.
+            "finite_pulse_hierarchy": {
+                "tag": "DR" if d.drive.finite_pulse else "A",
+                "note": ("pulse_counting factorial-moment hierarchy, exact on the "
+                         "existing cw_g2 generator (Hanschke et al., npj Quantum "
+                         "Inf. 4, 43 (2018))"
+                         if d.drive.finite_pulse else "not requested (legacy static loading)")},
+            "finite_pulse_waveform": {
+                "tag": "A",
+                "note": (f"rectangular pump waveform; gate-restricted counting/rho at "
+                         f"gate_ns={op['finite_pulse_gate_ns_used']:g}"
+                         if d.drive.finite_pulse and np.isfinite(op["finite_pulse_gate_ns_used"])
+                         else "not requested (legacy static loading)")},
             # item 8: b_res is a residual background channel that this module
             # never invents a value for -- 0.0 (legacy) carries no anchor; a
             # non-zero value's own provenance (e.g. the 80 K Reischle 2008

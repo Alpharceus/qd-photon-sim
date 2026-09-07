@@ -285,6 +285,16 @@ def roster():
 #
 # g2_reexc = sum(S) / sum(F)^2 at t_end. No truncation anywhere -- this is
 # exact for the model. Gillespie MC in verify_drive.py is the second method.
+#
+# See also fsim_core.pulse_counting.pulse_g2 (pr-pkg4-fix item 8), which
+# solves the SAME closed counting-moment hierarchy idea but is NOT
+# interchangeable with reexc_g2: pulse_g2 adds nonradiative escape channels
+# (k_X, k_XX), an XX-line filter split (t_X, t_XX -- reexc_g2 counts the X
+# line only), and reads out a GATED periodic steady state over repeated
+# pump/dark periods rather than integrating one isolated pulse to a fixed
+# t_end tail. The two are cross-checked against each other at k=0/t_XX=0
+# (pulse_g2's escape/XX-split features turned off) in
+# verify/verify_pulse_counting.py.
 
 def reexc_g2(p_per_ps, tau_on_ps, tau_x_ps, tau_xx_ps=None, mu0=0.0,
              t_end_factor=12.0, rtol=1e-10, atol=1e-14):

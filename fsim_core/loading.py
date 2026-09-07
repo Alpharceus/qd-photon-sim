@@ -13,15 +13,15 @@ convention g2(0) = area(tau=0)/area(adjacent),
 
 Limits: mu->0 recovers F1 (g2 = eps); mu->inf saturates at 2 eps/(1+eps)^2.
 The drive factor f = g2(mu)/eps runs from 1 at mu->0 (small-mu expansion
-f = 1 + mu(1/3 - eps) + O(mu^2)) to 2/(1+eps)^2 at mu->inf, and it EXCEEDS 1
-only for eps < 1/3; for eps >= sqrt(2)-1 = 0.41421356 it is < 1 for every
-mu > 0; for 1/3 < eps < sqrt(2)-1 it dips below 1 at small mu and rises back
-above 1 at large mu -- finite loading does not always penalise g2 [DR: for
-fixed mu, f is strictly decreasing in eps, and the crossing eps*(mu) where
-f(mu, eps*)=1 increases monotonically from 1/3 (mu->0) to sqrt(2)-1
-(mu->inf)]. Neither "f in [1, 2)" nor a cap of 2 eps/(1+eps)^2 is a valid
-general bound (see cw_g2.cw_vs_pulsed_note for the eps=0.5, mu->0 counter-
-example).
+f = 1 + mu(1/3 - eps) + O(mu^2)) to 2/(1+eps)^2 at mu->inf. f > 1 at every
+mu > 0 only when eps < 1/3; for 1/3 < eps < sqrt(2)-1 it dips below 1 at
+small mu and rises above 1 at large mu; for eps >= sqrt(2)-1 it is below 1
+at every mu (for fixed mu, f is strictly decreasing in eps and the crossing
+eps*(mu) rises monotonically from 1/3 to sqrt(2)-1) -- finite loading does
+not always penalise g2 (e.g. drive_factor(50, 0.35) = 1.097, inside the
+1/3 < eps < sqrt(2)-1 band). Neither "f in [1, 2)" nor a cap of
+2 eps/(1+eps)^2 is a valid general bound (see cw_g2.cw_vs_pulsed_note for
+the eps=0.5, mu->0 counter-example).
 
 Background law exactness: for ANY dot statistics plus an independent Poissonian
 background of per-pulse mean b, with rho = s/(s+b) (s = mean signal photons),
@@ -72,9 +72,12 @@ def f1b_g2(mu, eps):
 
 def drive_factor(mu, eps):
     """g2(mu)/eps: the finite-mu penalty on the F1 identity. Runs from 1 at
-    mu->0 to 2/(1+eps)^2 at mu->inf; exceeds 1 only for eps < 1/3, dips below
-    1 then rises back above for 1/3 < eps < sqrt(2)-1, and stays below 1 for
-    every mu > 0 when eps >= sqrt(2)-1 [DR] -- see the module docstring."""
+    mu->0 to 2/(1+eps)^2 at mu->inf. f > 1 at every mu > 0 only when
+    eps < 1/3; for 1/3 < eps < sqrt(2)-1 it dips below 1 at small mu and
+    rises above 1 at large mu; for eps >= sqrt(2)-1 it is below 1 at every
+    mu (for fixed mu, f is strictly decreasing in eps and the crossing
+    eps*(mu) rises monotonically from 1/3 to sqrt(2)-1) [DR] -- see the
+    module docstring."""
     return f1b_g2(mu, eps) / eps if eps > 0 else 1.0
 
 

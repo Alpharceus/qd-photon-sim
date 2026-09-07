@@ -17,6 +17,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -31,7 +32,7 @@ from fsim_core.loading import loading_probs
 from fsim_core.thermal import t_junction
 from fsim_core.cavity import tracking_detuning
 from fsim_core.spectral import epsilon
-from fsim_core import dot_levels, transport, waveguide, cw_g2, materials
+from fsim_core import dot_levels, transport, waveguide, cw_g2, materials, pulse_counting
 
 # transport's fermi_levels() warns at some (preset, T) combinations that this
 # file exercises deliberately (e.g. hkust at 77 K); the warning documents an
@@ -849,6 +850,34 @@ ok("YAML preserves emission/aperture.compose/track_material/drive.cw fields", lo
 ok("legacy card YAML (no 'emission' key) loads with the default EmissionBlock",
    DeviceDesign.load(ROOT / "cards" / "staged-device-design.yaml").emission == EmissionBlock())
 
+# pr-pkg4-fix item 9: drive.loading_model and drive.gate_ns are now
+# validated at DeviceDesign.load() itself, not only once evaluate() runs.
+d_load_base = DeviceDesign(); d_load_base.drive.mode = "EL-transport"
+d_load_base.drive.diode = {"preset": "hkust"}
+with tempfile.NamedTemporaryFile(dir=ROOT, suffix=".yaml", delete=False) as tmp_lm:
+    path_lm = Path(tmp_lm.name)
+try:
+    d_load_base.save(path_lm)
+    raw_lm = yaml.safe_load(path_lm.read_text(encoding="utf-8"))
+    raw_lm["design"]["drive"]["loading_model"] = "bogus"
+    path_lm.write_text(yaml.safe_dump(raw_lm, sort_keys=False), encoding="utf-8")
+    raises("item 9: DeviceDesign.load() rejects an unknown drive.loading_model "
+          "(not only evaluate())", lambda: DeviceDesign.load(path_lm))
+finally:
+    os.unlink(path_lm)
+
+with tempfile.NamedTemporaryFile(dir=ROOT, suffix=".yaml", delete=False) as tmp_gn:
+    path_gn = Path(tmp_gn.name)
+try:
+    d_load_base.save(path_gn)
+    raw_gn = yaml.safe_load(path_gn.read_text(encoding="utf-8"))
+    raw_gn["design"]["drive"]["gate_ns"] = -1.0
+    path_gn.write_text(yaml.safe_dump(raw_gn, sort_keys=False), encoding="utf-8")
+    raises("item 9: DeviceDesign.load() rejects drive.gate_ns <= 0 (not only evaluate())",
+          lambda: DeviceDesign.load(path_gn))
+finally:
+    os.unlink(path_gn)
+
 env_new = evaluate_envelope(d_edge, {"emission.ridge_width_nm": (1500.0, 2500.0)}, T_grid=[300.])
 ok("evaluate_envelope sweeps a new-block field without error and preserves Lemma 1",
    env_new["n_samples"] == 2
@@ -970,6 +999,43 @@ try:
     ok("item 1: drive.cw=True is exempt from the explicit tau_pulse/rep-rate requirement", True)
 except ValueError:
     ok("item 1: drive.cw=True is exempt from the explicit tau_pulse/rep-rate requirement", False)
+
+# pr-pkg4-fix item 5: drive.cw=True is exempt from the explicit tau_pulse/
+# rep-rate requirement above ONLY while finite_pulse stays False (the CW
+# path itself has no pulse period to fabricate) -- a CW card that ALSO
+# opts into drive.finite_pulse needs a real pulse period exactly like the
+# non-CW pulsed path, and must raise rather than silently reading the
+# untouched duty=1.0/tau_pulse_ns=1.0 defaults as a fabricated 1 GHz drive.
+d_cw_fp_default = DeviceDesign(); d_cw_fp_default.drive.mode = "EL-transport"
+d_cw_fp_default.drive.diode = {"preset": "hkust"}
+d_cw_fp_default.drive.cw = True; d_cw_fp_default.drive.finite_pulse = True
+raises("item 5: drive.cw=True with drive.finite_pulse=True and default "
+      "duty/tau_pulse/rep_rate_hz raises (no fabricated 1 GHz drive)",
+      lambda: evaluate(d_cw_fp_default, [d_cw_fp_default.thermal.T_hs]))
+
+d_cw_fp_ok = DeviceDesign(); d_cw_fp_ok.drive.mode = "EL-transport"
+d_cw_fp_ok.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}
+d_cw_fp_ok.drive.rep_rate_hz = 8.0e7; d_cw_fp_ok.drive.n_dot_cm2 = 1e10
+d_cw_fp_ok.drive.cw = True; d_cw_fp_ok.drive.finite_pulse = True
+try:
+    evaluate(d_cw_fp_ok, [d_cw_fp_ok.thermal.T_hs])
+    ok("item 5: drive.cw=True with drive.finite_pulse=True and an explicit "
+      "tau_pulse_ns/rep_rate_hz does not raise", True)
+except ValueError:
+    ok("item 5: drive.cw=True with drive.finite_pulse=True and an explicit "
+      "tau_pulse_ns/rep_rate_hz does not raise", False)
+
+# pr-pkg4-fix item 6: drive.mechanism resolves its own (mu, F_p, eta), which
+# the finite-pulse rates below never consult -- combining the two would
+# silently ignore the mechanism, so it must raise instead. Left at
+# drive.mode's "EL" default (not "EL-transport") so this exercises ONLY the
+# new finite_pulse+mechanism guard, not the pre-existing EL-transport+
+# mechanism guard above.
+d_fp_mech = DeviceDesign()
+d_fp_mech.drive.finite_pulse = True
+d_fp_mech.drive.mechanism = "poisson-rail"
+raises("item 6: drive.finite_pulse=True combined with drive.mechanism raises",
+      lambda: evaluate(d_fp_mech, [d_fp_mech.thermal.T_hs]))
 
 d_rep_ok = DeviceDesign(); d_rep_ok.drive.mode = "EL-transport"
 d_rep_ok.drive.diode = {"preset": "hkust", "tau_pulse_ns": 0.1}
@@ -1217,47 +1283,114 @@ ok("item 9: auto_w_scale=1.0 (default) reproduces the legacy w exactly",
 ok("item 9: the resolved provenance documents the auto_w operating convention",
    "auto_w" in r_w1["scalars"]["provenance"]["filter_window"]["note"])
 
-# slow: peer-review-triage.md finding 4 -- drive.gate_ns's one explicit
-# counting gate. Two evaluate()-only checks (a handful of self-heating
-# fixed-point solves each), a few seconds total against this file's ~10 min
-# runtime.
-#
-# Check A: a test-only, degenerate 100%-duty construction of the gainp card
-# (drive.duty=1.0, drive.diode['tau_pulse_ns'] = the card's own 12.5 ns
-# period, so tau_dark_ns resolves to exactly 0.0) with drive.gate_ns
-# covering that whole period. With tau_dark_ns=0 the periodic map Phi
-# reduces to expm(M_on*T) alone, so the periodic steady state IS the
-# ordinary CW steady state and pulse_counting's per-period m1 (mean_counts)
-# is exactly sig*T (sig = the CW branch's own t_X*I_X+t_XX*I_XX, since at
-# steady state dp/dt=0 makes the moment integral trivial) -- an exact
-# identity, independent of escape, that proves the new gated-count rho
-# reduces to the existing CW rho in the CW limit rather than merely
-# resembling it. Escape is ALSO forced to zero (monkeypatching
-# cw_g2.escape_rates_from_retention, matching the spec's own construction)
-# to keep the check independent of whichever retention prefactor a future
-# package lands on.
-d_cwlimit = copy.deepcopy(d_cw_gainp)
-d_cwlimit.drive.finite_pulse = True
-d_cwlimit.drive.gate_ns = 12.5
-d_cwlimit.drive.duty = 1.0
-d_cwlimit.drive.diode = dict(d_cwlimit.drive.diode)
-d_cwlimit.drive.diode["tau_pulse_ns"] = 12.5
-_orig_escape = cw_g2.escape_rates_from_retention
+# slow: peer-review-triage.md finding 4 / pr-pkg4-fix item 1 -- gate-
+# consistent counting. The pr-pkg4-fix (17f2c2f) round's Check A used a
+# degenerate duty=1.0/tau_pulse_ns=12.5 construction (tau_dark_ns forced to
+# exactly 0.0) that only ever exercised the CW-limit identity; it is
+# replaced below by checks at the gainp card's own real 100 ps pulse.
+
+# Check A (item 4a): pulse_counting.pulse_g2's gate-restricted X-line count
+# (mean_counts_x, split=True) reduces to the legacy static per-pulse
+# X-photon count loading.brightness_per_pulse == (P1+P2)*t_x -- an ordinary
+# two-step Poisson-arrival argument (cw_g2.generator's 0->X->XX chain at
+# rate r is memoryless, so with escape off and decay negligible over a
+# vanishing on-window, P(0 events)=P0, P(1 event)=P1, P(>=2 events)=P2
+# exactly, matching loading.loading_probs' own cap-2 Poisson convention) --
+# ONLY in the short-pulse limit (mu = r_ns*tau_on held fixed at the card's
+# own value while tau_on -> 0). The comparison is against mean_counts_x,
+# not the TOTAL mean_counts finite_pulse_mean_counts/rho actually use:
+# (P1+P2)*t_x is itself X-photon-only by construction (loading.
+# brightness_per_pulse's docstring), so it omits the cascade's XX-line
+# photon (mean_counts_xx) entirely -- that XX share is real detected signal
+# (rho's own "signal = G*(n_X+n_XX)" counts it), not a finite-pulse
+# artefact of the counting window, so the TOTAL mean_counts never converges
+# to (P1+P2)*t_x even as tau_on -> 0 whenever eps > 0 (verified: at this
+# card's eps_op ~0.65 the gap stays ~16% in that limit too). Escape is
+# forced to zero (monkeypatching cw_g2.escape_rates_from_retention) so the
+# comparison isolates the finite-pulse re-excitation effect from escape.
+d_a = copy.deepcopy(d_gainp)
+d_a.drive.finite_pulse = True
+period_a = d_a.drive.diode["tau_pulse_ns"] / d_a.drive.duty
+d_a.drive.gate_ns = period_a
+_orig_escape_a = cw_g2.escape_rates_from_retention
 cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
 try:
-    sc_cwlimit = evaluate(d_cwlimit)["scalars"]
+    sc_a = evaluate(d_a)["scalars"]
 finally:
-    cw_g2.escape_rates_from_retention = _orig_escape
-ok("finding 4: gate_ns covering the whole (100%-duty, zero-escape) period "
-   "makes rho_pulsed exactly reproduce the CW branch's own rho (rtol 1e-3)",
-   sc_cwlimit["finite_pulse_tau_dark_ns"] == 0.0
-   and np.isfinite(sc_cwlimit["rho_pulsed"]) and np.isfinite(sc_cwlimit["cw_rho_op"])
-   and abs(sc_cwlimit["rho_pulsed"] - sc_cwlimit["cw_rho_op"]) < 1e-3 * sc_cwlimit["cw_rho_op"])
+    cw_g2.escape_rates_from_retention = _orig_escape_a
+mu_a, t_X_a, eps_a = sc_a["mu_resolved"], sc_a["t_x_op"], sc_a["eps_op"]
+gamma_X_a = sc_a["finite_pulse_gamma_X_ns"]; gamma_XX_a = sc_a["finite_pulse_gamma_XX_ns"]
+tau_dark_a = sc_a["finite_pulse_tau_dark_ns"]
+_, P1_a, P2_a = loading_probs(mu_a)
+static_signal_a = (P1_a + P2_a) * t_X_a
 
-# Check B: at the gainp card's own (real duty, real escape) operating point,
-# n_X+n_XX (mean_counts) does not depend on gate_ns -- only the background
-# term n_bg = rate_bg_window*win_scale*gate_ns does -- so rho must be
-# strictly monotone decreasing as the gate widens.
+tau_on_tiny = 1e-4
+pc_tiny = pulse_counting.pulse_g2(mu_a / tau_on_tiny, gamma_X_a, gamma_XX_a, k_X=0.0, k_XX=0.0,
+                                  t_X=t_X_a, t_XX=eps_a * t_X_a, tau_on_ns=tau_on_tiny,
+                                  tau_dark_ns=tau_dark_a, split=True,
+                                  gate_ns=tau_on_tiny + tau_dark_a)
+ok("item 1/finding 4 check A: pulse_g2's gate-restricted X-line count "
+   "(mean_counts_x) reproduces the legacy static (P1+P2)*t_x to rtol 1e-3 "
+   f"in the short-pulse limit (tau_on={tau_on_tiny:g} ns, mu held at the "
+   f"card's own {mu_a:.6f}, escape forced to 0)",
+   abs(pc_tiny["mean_counts_x"] - static_signal_a) < 1e-3 * static_signal_a)
+
+# At the card's REAL 100 ps pulse this no longer holds exactly (re-excitation
+# is a real, computable correction) -- frozen 2026-09-07 against a number
+# derived with pulse_g2 at the card's own parameters (escape forced to 0,
+# gate_ns=period), not asserted as an identity.
+FP_MEAN_COUNTS_X_100PS_20260907 = 0.21043095348245136
+dev_a = abs(sc_a["finite_pulse_mean_counts_x"] - static_signal_a) / static_signal_a
+ok("item 1/finding 4 check A: at the card's real 100 ps pulse, "
+   "finite_pulse_mean_counts_x reproduces the frozen 2026-09-07 value to "
+   f"rtol 1e-9 (deviation from the short-pulse static value is {dev_a:.4%})",
+   abs(sc_a["finite_pulse_mean_counts_x"] - FP_MEAN_COUNTS_X_100PS_20260907)
+   < 1e-9 * FP_MEAN_COUNTS_X_100PS_20260907)
+
+# Check B (item 4b): gate_ns=period vs. gate_ns=1 ns give DIFFERENT
+# mean_counts (the pre-fix bug held mean_counts constant across gate_ns and
+# only varied the background) -- the ratio of the device path's own exposed
+# finite_pulse_mean_counts between the two gates must equal the ratio of an
+# INDEPENDENT pulse_g2 call's mean_counts at the same two gates (same
+# extracted rates), to 1e-9, proving finite_pulse_mean_counts really is
+# pulse_g2's gate-restricted count and not some other, gate-blind quantity.
+# Escape forced to zero: at this card's real (fast) escape rates essentially
+# all counting is already resolved well inside 1 ns, so gate=period and
+# gate=1 ns agree almost trivially (ratio 1.0) -- zero escape (slower,
+# purely radiative decay) makes the two gates meaningfully different.
+d_b = copy.deepcopy(d_gainp)
+d_b.drive.finite_pulse = True
+period_b = d_b.drive.diode["tau_pulse_ns"] / d_b.drive.duty
+_orig_escape_b = cw_g2.escape_rates_from_retention
+cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
+try:
+    d_b1 = copy.deepcopy(d_b); d_b1.drive.gate_ns = period_b
+    d_b2 = copy.deepcopy(d_b); d_b2.drive.gate_ns = 1.0
+    sc_b1 = evaluate(d_b1)["scalars"]
+    sc_b2 = evaluate(d_b2)["scalars"]
+finally:
+    cw_g2.escape_rates_from_retention = _orig_escape_b
+ratio_device = sc_b1["finite_pulse_mean_counts"] / sc_b2["finite_pulse_mean_counts"]
+pc_b1 = pulse_counting.pulse_g2(
+    sc_b1["finite_pulse_r_ns"], sc_b1["finite_pulse_gamma_X_ns"], sc_b1["finite_pulse_gamma_XX_ns"],
+    sc_b1["finite_pulse_k_X"], sc_b1["finite_pulse_k_XX"], sc_b1["t_x_op"], sc_b1["eps_op"] * sc_b1["t_x_op"],
+    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"], gate_ns=period_b)
+pc_b2 = pulse_counting.pulse_g2(
+    sc_b1["finite_pulse_r_ns"], sc_b1["finite_pulse_gamma_X_ns"], sc_b1["finite_pulse_gamma_XX_ns"],
+    sc_b1["finite_pulse_k_X"], sc_b1["finite_pulse_k_XX"], sc_b1["t_x_op"], sc_b1["eps_op"] * sc_b1["t_x_op"],
+    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"], gate_ns=1.0)
+ratio_direct = pc_b1["mean_counts"] / pc_b2["mean_counts"]
+ok(f"item 1/finding 4 check B: mean_counts(gate=period)/mean_counts(gate=1 ns) "
+   f"from the device path ({ratio_device!r}) matches an independent pulse_g2 "
+   f"call at the same rates ({ratio_direct!r}) to 1e-9, proving signal is "
+   "gate-restricted",
+   abs(ratio_device - ratio_direct) < 1e-9 * ratio_direct)
+
+# Check C (item 4c): rho must still be strictly monotone decreasing in
+# gate_ns at the card's own (real duty, real escape) operating point, now a
+# non-trivial property -- unlike the pre-fix bug, signal (mean_counts) also
+# grows with the gate, so it is the background's own growth that must keep
+# winning for rho to keep falling.
 d_gate = copy.deepcopy(d_gainp)
 d_gate.drive.finite_pulse = True
 gate_grid = (1.0, 3.0, 6.0, 12.5)
@@ -1266,10 +1399,52 @@ for g in gate_grid:
     dg = copy.deepcopy(d_gate)
     dg.drive.gate_ns = g
     rho_gate.append(evaluate(dg)["scalars"]["rho_pulsed"])
-ok(f"finding 4: rho_pulsed is monotone decreasing in gate_ns over {gate_grid} ns "
-   f"(got {rho_gate})",
+ok(f"item 1/finding 4 check C: rho_pulsed is monotone decreasing in gate_ns "
+   f"over {gate_grid} ns (got {rho_gate}), now non-trivial since signal "
+   "also grows with the gate",
    all(np.isfinite(r) for r in rho_gate)
    and all(rho_gate[i] > rho_gate[i + 1] for i in range(len(rho_gate) - 1)))
+
+# Check D (item 4d): with every background channel forced to exactly zero
+# (injection background via diode.eta_rad_matrix=0.0, and b_res=0.0 --
+# ret.b0/ret.beta are already 0.0, this card's own defaults), B_fp above is
+# identically 0 and rho = signal/(signal+0) = 1.0 to float round-off.
+d_d = copy.deepcopy(d_gainp)
+d_d.drive.finite_pulse = True
+d_d.drive.gate_ns = d_d.drive.diode["tau_pulse_ns"] / d_d.drive.duty
+d_d.drive.diode = dict(d_d.drive.diode); d_d.drive.diode["eta_rad_matrix"] = 0.0
+d_d.drive.b_res = 0.0
+sc_d = evaluate(d_d)["scalars"]
+ok("item 1/finding 4 check D: rho at gate=period with every background "
+   f"channel forced to zero equals 1.0 to 1e-12 (got {sc_d['rho_pulsed']!r})",
+   sc_d["finite_pulse_converged"] and np.isfinite(sc_d["finite_pulse_mean_counts"])
+   and sc_d["finite_pulse_mean_counts"] > 0
+   and abs(sc_d["rho_pulsed"] - 1.0) < 1e-12)
+
+# Item 7: an unconverged pulse_counting.pulse_g2 periodic steady state must
+# nan g2_dot/rho and mark the row invalid the way the other early-return
+# operating points do, rather than reporting a number from a bad fixed
+# point -- monkeypatch pulse_g2 to flip a real, otherwise-valid result's
+# own `converged` flag to False and confirm device.py actually reads it.
+d_unconv = copy.deepcopy(d_gainp)
+d_unconv.drive.finite_pulse = True
+_orig_pulse_g2 = devmod.pulse_counting.pulse_g2
+def _fake_unconverged(*a, **k):
+    r = _orig_pulse_g2(*a, **k)
+    r["converged"] = False
+    return r
+devmod.pulse_counting.pulse_g2 = _fake_unconverged
+try:
+    sc_unconv = evaluate(d_unconv)["scalars"]
+finally:
+    devmod.pulse_counting.pulse_g2 = _orig_pulse_g2
+ok("item 7: an unconverged pulse_counting.pulse_g2 result nans g2_dot/rho, "
+   "marks the row invalid, and exposes finite_pulse_converged=False",
+   sc_unconv["finite_pulse_converged"] is False
+   and np.isnan(sc_unconv["finite_pulse_g2_dot"])
+   and np.isnan(sc_unconv["rho_pulsed"])
+   and np.isnan(sc_unconv["g2_op"])
+   and any("did not converge" in r for r in sc_unconv["invalid_reasons"]))
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)
