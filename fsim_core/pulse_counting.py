@@ -84,6 +84,20 @@ call tracks). [A] recommended gate for a real detector: gate_ns =
 tau_pulse_ns + 5*tau_rad_ns (catches >99% of a single-exponential decay
 tail after the pump turns off).
 
+Caller-side background window (pr-pkg4-fix2, item 1). This module has no
+notion of an injection background channel -- that is a device.py-level
+addition, folded into rho AFTER pulse_g2 returns mean_counts/mean_counts_x.
+device.py integrates that background over min(gate_ns, tau_on_ns), the
+overlap of the counting gate with the PUMP window, not the full gate: the
+cascade's own photon-counting moments (m1, m2 above) correctly keep
+accumulating radiative afterglow after the pump turns off (M's own decay
+dynamics), but the transport background rate has no such tail modeled
+anywhere in this module or its caller -- background afterglow past the
+pulse is neglected [A]. This choice, not a wider or narrower window, is
+what makes device.py's rho_pulsed reduce exactly to its CW rho in the
+tau_dark_ns -> 0 limit: both quantities then integrate signal and
+background over the same (pump-only) window.
+
 Lemma 1 (collection-efficiency invariance): g2 is invariant under scaling
 t_X and t_XX by a common factor, because J (and hence m1) scales linearly in
 that factor while the 2*J*m1 forcing term in dm2/dt makes m2 scale

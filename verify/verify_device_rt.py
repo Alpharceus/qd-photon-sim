@@ -1327,7 +1327,11 @@ static_signal_a = (P1_a + P2_a) * t_X_a
 tau_on_tiny = 1e-4
 pc_tiny = pulse_counting.pulse_g2(mu_a / tau_on_tiny, gamma_X_a, gamma_XX_a, k_X=0.0, k_XX=0.0,
                                   t_X=t_X_a, t_XX=eps_a * t_X_a, tau_on_ns=tau_on_tiny,
-                                  tau_dark_ns=tau_dark_a, split=True,
+                                  tau_dark_ns=tau_dark_a,
+                                  # item 4 (pr-pkg4-fix2): explicit, not pulse_g2's own
+                                  # default -- this check must not depend on the card's
+                                  # cw_pump_ratio happening to equal pulse_g2's default.
+                                  pump_ratio=d_a.drive.cw_pump_ratio, split=True,
                                   gate_ns=tau_on_tiny + tau_dark_a)
 ok("item 1/finding 4 check A: pulse_g2's gate-restricted X-line count "
    "(mean_counts_x) reproduces the legacy static (P1+P2)*t_x to rtol 1e-3 "
@@ -1374,11 +1378,15 @@ ratio_device = sc_b1["finite_pulse_mean_counts"] / sc_b2["finite_pulse_mean_coun
 pc_b1 = pulse_counting.pulse_g2(
     sc_b1["finite_pulse_r_ns"], sc_b1["finite_pulse_gamma_X_ns"], sc_b1["finite_pulse_gamma_XX_ns"],
     sc_b1["finite_pulse_k_X"], sc_b1["finite_pulse_k_XX"], sc_b1["t_x_op"], sc_b1["eps_op"] * sc_b1["t_x_op"],
-    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"], gate_ns=period_b)
+    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"],
+    # item 4 (pr-pkg4-fix2): explicit, not pulse_g2's own default -- same
+    # reasoning as check A above.
+    pump_ratio=d_b.drive.cw_pump_ratio, gate_ns=period_b)
 pc_b2 = pulse_counting.pulse_g2(
     sc_b1["finite_pulse_r_ns"], sc_b1["finite_pulse_gamma_X_ns"], sc_b1["finite_pulse_gamma_XX_ns"],
     sc_b1["finite_pulse_k_X"], sc_b1["finite_pulse_k_XX"], sc_b1["t_x_op"], sc_b1["eps_op"] * sc_b1["t_x_op"],
-    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"], gate_ns=1.0)
+    sc_b1["finite_pulse_tau_on_ns"], sc_b1["finite_pulse_tau_dark_ns"],
+    pump_ratio=d_b.drive.cw_pump_ratio, gate_ns=1.0)
 ratio_direct = pc_b1["mean_counts"] / pc_b2["mean_counts"]
 ok(f"item 1/finding 4 check B: mean_counts(gate=period)/mean_counts(gate=1 ns) "
    f"from the device path ({ratio_device!r}) matches an independent pulse_g2 "
@@ -1386,24 +1394,54 @@ ok(f"item 1/finding 4 check B: mean_counts(gate=period)/mean_counts(gate=1 ns) "
    "gate-restricted",
    abs(ratio_device - ratio_direct) < 1e-9 * ratio_direct)
 
-# Check C (item 4c): rho must still be strictly monotone decreasing in
-# gate_ns at the card's own (real duty, real escape) operating point, now a
-# non-trivial property -- unlike the pre-fix bug, signal (mean_counts) also
-# grows with the gate, so it is the background's own growth that must keep
-# winning for rho to keep falling.
+# Check C (item 1/4c, rewritten -- pr-pkg4-fix2, orchestrator decision):
+# item 1's background-window fix caps n_bg at min(gate_ns, tau_pulse_ns),
+# so B_fp can only grow while the gate is still inside the pump window --
+# once gate_ns >= tau_pulse_ns, background stops growing entirely.
+# mean_counts (signal) keeps growing a little past tau_pulse_ns too, since
+# the cascade's own radiative/escape decay tail has not yet fully resolved
+# at gate_ns == tau_pulse_ns exactly -- so rho_pulsed briefly RISES while
+# background is already capped but signal is not. Once the cascade has
+# also fully resolved (a few tau_rad past the pulse -- well inside 1 ns at
+# this card's real, fast escape rates) both numerator and denominator are
+# constant and rho_pulsed is flat. rho_pulsed can therefore only rise then
+# plateau in gate_ns -- never fall -- which replaces the pre-item-1
+# "background keeps growing forever, so rho keeps falling forever"
+# property the original (pkg4, pre-pkg4-fix2) check C asserted.
 d_gate = copy.deepcopy(d_gainp)
 d_gate.drive.finite_pulse = True
-gate_grid = (1.0, 3.0, 6.0, 12.5)
+gate_grid = (0.02, 0.05, 0.1, 0.15, 1.0, 3.0, 6.0, 12.5)
 rho_gate = []
 for g in gate_grid:
     dg = copy.deepcopy(d_gate)
     dg.drive.gate_ns = g
     rho_gate.append(evaluate(dg)["scalars"]["rho_pulsed"])
-ok(f"item 1/finding 4 check C: rho_pulsed is monotone decreasing in gate_ns "
-   f"over {gate_grid} ns (got {rho_gate}), now non-trivial since signal "
-   "also grows with the gate",
+ok(f"item 1/finding 4 check C(a): rho_pulsed is non-decreasing in gate_ns "
+   f"over {gate_grid} ns (got {rho_gate})",
    all(np.isfinite(r) for r in rho_gate)
-   and all(rho_gate[i] > rho_gate[i + 1] for i in range(len(rho_gate) - 1)))
+   and all(rho_gate[i] <= rho_gate[i + 1] for i in range(len(rho_gate) - 1)))
+
+# gate_grid's own last point IS the card's real period (tau_pulse_ns/duty
+# = 0.1/0.008 = 12.5 ns) -- reuse rho_gate[-1] rather than re-evaluating.
+tau_pulse_c = d_gate.drive.diode["tau_pulse_ns"]
+period_c = tau_pulse_c / d_gate.drive.duty
+assert abs(period_c - gate_grid[-1]) < 1e-9, "gate_grid's last point must be the card's own period"
+rho_period_c = rho_gate[-1]
+gate_tail_c = tau_pulse_c + 5.0 * d_gate.ret.tau_rad_ns
+d_tail = copy.deepcopy(d_gate); d_tail.drive.gate_ns = gate_tail_c
+rho_tail_c = evaluate(d_tail)["scalars"]["rho_pulsed"]
+ok(f"item 1/finding 4 check C(b): rho_pulsed(gate=period={period_c:g} ns) "
+   f"({rho_period_c!r}) equals rho_pulsed(gate=tau_pulse+5*tau_rad="
+   f"{gate_tail_c:g} ns) ({rho_tail_c!r}) to 1e-12 -- both gates fully "
+   "cover the cascade's decay tail, so both sit on the same plateau",
+   np.isfinite(rho_period_c) and np.isfinite(rho_tail_c)
+   and abs(rho_period_c - rho_tail_c) < 1e-12)
+
+ok(f"item 1/finding 4 check C(c): rho_pulsed(gate=0.02 ns, still inside the "
+   f"pump window) ({rho_gate[0]!r}) is strictly less than rho_pulsed(gate="
+   f"period) ({rho_period_c!r}) -- the rise while the pump is still open",
+   np.isfinite(rho_gate[0]) and np.isfinite(rho_period_c)
+   and rho_gate[0] < rho_period_c)
 
 # Check D (item 4d): with every background channel forced to exactly zero
 # (injection background via diode.eta_rad_matrix=0.0, and b_res=0.0 --
@@ -1420,6 +1458,69 @@ ok("item 1/finding 4 check D: rho at gate=period with every background "
    sc_d["finite_pulse_converged"] and np.isfinite(sc_d["finite_pulse_mean_counts"])
    and sc_d["finite_pulse_mean_counts"] > 0
    and abs(sc_d["rho_pulsed"] - 1.0) < 1e-12)
+
+# Check E (item 2, pr-pkg4-fix2): the rho_pulsed == cw_rho_op anchor
+# (pr-pkg4-fix's original Check A, deleted when checks A-D above replaced
+# it with the gainp card's real 100 ps pulse) is restored here as its own
+# check: a test-only, degenerate 100%-duty construction (drive.duty=1.0,
+# drive.diode['tau_pulse_ns'] = the card's own 12.5 ns period, so
+# tau_dark_ns resolves to exactly 0.0) with drive.gate_ns covering that
+# whole period. With tau_dark_ns=0 the periodic map Phi reduces to
+# expm(M_on*T) alone, so the periodic steady state IS the ordinary CW
+# steady state and pulse_counting's per-period m1 (mean_counts) is exactly
+# sig*T -- an exact identity, independent of escape, that proves the
+# gated-count rho reduces to the existing CW rho in the CW limit rather
+# than merely resembling it. Escape is ALSO forced to zero (monkeypatching
+# cw_g2.escape_rates_from_retention) to keep the check independent of
+# whichever retention prefactor a future package lands on.
+#
+# pr-pkg4-fix's own item 5 guard (added after this check was first written
+# and before it was deleted) requires an EXPLICIT duty or rep_rate_hz away
+# from DriveBlock's own untouched defaults whenever finite_pulse needs a
+# real pulse period -- setting drive.duty = 1.0 is indistinguishable from
+# never having touched it (1.0 IS DriveBlock.duty's default), so the
+# 100%-duty construction is expressed via an explicit rep_rate_hz instead
+# (1e9/12.5 = 8e7 Hz at tau_pulse_ns=12.5 gives duty_eff = 1.0 and
+# tau_dark_ns = 0.0 exactly, the same construction as before).
+d_cwlimit = copy.deepcopy(d_cw_gainp)
+d_cwlimit.drive.finite_pulse = True
+d_cwlimit.drive.gate_ns = 12.5
+d_cwlimit.drive.diode = dict(d_cwlimit.drive.diode)
+d_cwlimit.drive.diode["tau_pulse_ns"] = 12.5
+d_cwlimit.drive.rep_rate_hz = 1e9 / 12.5
+_orig_escape_e = cw_g2.escape_rates_from_retention
+cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
+try:
+    sc_cwlimit = evaluate(d_cwlimit)["scalars"]
+finally:
+    cw_g2.escape_rates_from_retention = _orig_escape_e
+ok("item 2/finding 4 check E: gate_ns covering the whole (100%-duty, "
+   "zero-escape) period makes rho_pulsed exactly reproduce the CW branch's "
+   "own rho (rtol 1e-3)",
+   sc_cwlimit["finite_pulse_tau_dark_ns"] == 0.0
+   and np.isfinite(sc_cwlimit["rho_pulsed"]) and np.isfinite(sc_cwlimit["cw_rho_op"])
+   and abs(sc_cwlimit["rho_pulsed"] - sc_cwlimit["cw_rho_op"]) < 1e-3 * sc_cwlimit["cw_rho_op"])
+
+# Check F (item 2, pr-pkg4-fix2): item 1's actual consequence at the
+# card's REAL operating point -- 0.8% duty (tau_dark_ns >> tau_pulse_ns,
+# not check E's degenerate duty=1.0 limit) and the card's own (fast,
+# non-zero) escape rates, unforced. gate_ns=period, so signal
+# (finite_pulse_mean_counts, integrated over the whole period) and the
+# item-1-fixed background (integrated over only the min(gate, tau_pulse)
+# pump window) sit on the same footing the CW branch's own rate ratio
+# does -- the only check that anchors rho_pulsed against cw_rho_op OUTSIDE
+# check E's artificial construction, at the card's actual pulsed drive.
+d_f = copy.deepcopy(d_gainp)
+d_f.drive.finite_pulse = True
+d_f.drive.gate_ns = d_f.drive.diode["tau_pulse_ns"] / d_f.drive.duty
+sc_f = evaluate(d_f)["scalars"]
+ok("item 2/finding 4 check F: at the card's real 0.8% duty with escape "
+   "rates as they are, rho_pulsed equals cw_rho_op to rtol 1e-3 for "
+   f"gate=period (rho_pulsed={sc_f['rho_pulsed']!r}, "
+   f"cw_rho_op={sc_f['cw_rho_op']!r})",
+   sc_f["finite_pulse_converged"] and np.isfinite(sc_f["rho_pulsed"])
+   and np.isfinite(sc_f["cw_rho_op"])
+   and abs(sc_f["rho_pulsed"] - sc_f["cw_rho_op"]) < 1e-3 * sc_f["cw_rho_op"])
 
 # Item 7: an unconverged pulse_counting.pulse_g2 periodic steady state must
 # nan g2_dot/rho and mark the row invalid the way the other early-return

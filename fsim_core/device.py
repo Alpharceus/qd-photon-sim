@@ -1228,13 +1228,44 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # drive.gate_ns is not set (DriveBlock.gate_ns), so signal and
         # background never again live on different windows (a prior round
         # divided a full-period signal by a gate-WIDTH background integral,
-        # a 28.8% internal inconsistency at the 230 K corner). The legacy
-        # static-loading rho (G*S/(G*S+B) above) is mirrored exactly, with
-        # pulse_g2's counts substituted for the cap-2 probabilities: signal
-        # = G*(n_X+n_XX), B = b0 + beta*(1-S) + n_bg + b_res*n_X, n_bg = the
-        # SAME injection background rate the CW branch uses, integrated
-        # over gate_fp -- G and the b0/beta terms sit exactly where the
-        # legacy pulsed rho above has them.
+        # a 28.8% internal inconsistency at the 230 K corner). signal =
+        # G*(n_X+n_XX); B = b0 + beta*(1-S) + n_bg + b_res*n_X. The b0/beta
+        # terms sit exactly where the legacy static-loading rho (G*S/
+        # (G*S+B) above) has them, but n_bg and b_res*n_X do NOT carry that
+        # legacy formula's G*S factor (pr-pkg4-fix2, Opus review item 3: an
+        # earlier version of this comment claimed they did -- false. The
+        # legacy diode B multiplies (bg_per_collected + b_res) by G*S
+        # because bg_per_collected is a RATIO per generated X photon that
+        # needs converting to absolute count units via the collected
+        # signal G*S; b_res is folded in at the same conversion for
+        # convenience.) Here n_bg is already an absolute background photon
+        # count integrated directly from transport's background rate (see
+        # below), and b_res*n_X multiplies b_res (per-collected-X-photon,
+        # same normalization as the legacy path) by pulse_g2's own
+        # absolute mean_counts_x -- both are already on the same "absolute
+        # count" footing as signal_fp = G*mean_counts, so neither needs a
+        # further G or S factor. This instead mirrors the CW branch's own
+        # bg formula below (bg = abs_bg_in_window_ns*win_scale +
+        # b_res*t_X*I_X -- no G or S factor there either), which is what
+        # item 1 (pr-pkg4-fix2) requires: rho_pulsed must reduce to
+        # cw_rho_op as tau_dark_ns -> 0, which only happens if B_fp and the
+        # CW bg share the same structure. Cards leave the cavity disabled
+        # (G == 1.0 whenever d.cavity.enabled is False), so this
+        # correction does not move any card's numbers today regardless of
+        # which placement had been chosen.
+        #
+        # n_bg (item 1, pr-pkg4-fix2) is integrated over min(gate_fp,
+        # tau_pulse_ns_val), NOT the full gate: background photons are
+        # counted only while injection current actually flows, and any
+        # afterglow past the pulse end is neglected [A] (see also
+        # pulse_counting.py's module docstring). Before this fix the
+        # background integrated over the whole gate while signal came only
+        # from the ~0.1 ns pump window, giving rho_pulsed = 0.211 against
+        # cw_rho_op = 0.858 at the same (230 K, gainp) operating point;
+        # with the fix, rho_pulsed -> cw_rho_op exactly as tau_dark_ns ->
+        # 0, for any gate_fp that still covers the whole pump window
+        # (gate_fp == period or gate_fp == tau_pulse_ns + 5*tau_rad_ns
+        # both qualify).
         finite_pulse_g2_dot = float("nan")
         finite_pulse_mean_counts = float("nan")
         finite_pulse_mean_counts_x = float("nan")
@@ -1283,7 +1314,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 if finite_pulse_converged and np.isfinite(finite_pulse_mean_counts):
                     finite_pulse_g2_dot = pc["g2"]
                     g2_dot = finite_pulse_g2_dot
-                    n_bg = injection.background.rate_bg_window * win_scale * gate_fp * 1e-9
+                    n_bg = (injection.background.rate_bg_window * win_scale
+                           * min(gate_fp, tau_pulse_ns_val) * 1e-9)
                     signal_fp = G * finite_pulse_mean_counts
                     B_fp = (params["b0"] + params["beta"] * (1.0 - S) + n_bg
                            + d.drive.b_res * finite_pulse_mean_counts_x)
@@ -1736,12 +1768,21 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                          "existing cw_g2 generator (Hanschke et al., npj Quantum "
                          "Inf. 4, 43 (2018))"
                          if d.drive.finite_pulse else "not requested (legacy static loading)")},
+            # item 5 (pr-pkg4-fix2): "not requested" is only true when
+            # finite_pulse itself is off -- with finite_pulse on but the
+            # operating point invalid (finite_pulse_gate_ns_used stays NaN
+            # whenever the block above never reaches a converged result),
+            # the fallback must say so was requested, not silently claim
+            # legacy static loading was in effect.
             "finite_pulse_waveform": {
                 "tag": "A",
                 "note": (f"rectangular pump waveform; gate-restricted counting/rho at "
                          f"gate_ns={op['finite_pulse_gate_ns_used']:g}"
                          if d.drive.finite_pulse and np.isfinite(op["finite_pulse_gate_ns_used"])
-                         else "not requested (legacy static loading)")},
+                         else (f"requested; operating point invalid "
+                               f"({op.get('invalid_reason', 'finite-pulse block did not run')})"
+                               if d.drive.finite_pulse
+                               else "not requested (legacy static loading)"))},
             # item 8: b_res is a residual background channel that this module
             # never invents a value for -- 0.0 (legacy) carries no anchor; a
             # non-zero value's own provenance (e.g. the 80 K Reischle 2008

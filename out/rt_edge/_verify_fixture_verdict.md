@@ -1,6 +1,6 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-07T10:05:09.244114+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-07T21:58:43.537343+00:00; contract: docs/rt_edge_contract.md.
 
 ```
 VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
@@ -78,7 +78,7 @@ The dominant brightness limiter at the favourable diagnostic corner -- the small
 | loading = 1 - e^-mu (mu=nan) | nan |
 | t_X (spectral transmission) | nan |
 | S (confinement retention) | nan |
-| eta_total (edge out-coupling: waveguide coupling x front/back facet split x facet transmission x propagation x NA, all in one factor) | nan |
+| eta_total (edge out-coupling: waveguide coupling x facet escape (mid-ridge ray series, propagation included) x NA) | nan |
 | rep rate (Hz) | nan |
 | **product x rep rate** | nan |
 | reported collected_flux_pulsed_s | nan |

@@ -789,18 +789,42 @@ def main() -> int:
        "provenance.assumptions field set",
        assumptions_by_card[card_names[0]] == assumptions_by_card[card_names[1]])
 
-    # pr-pkg4-fix item 2: the two per-card provenance-string guards above
-    # (drive.b_res's source text) only ever see the wrong Reischle citation
-    # if a CARD reintroduces it; extend the same guard to the source
-    # modules themselves -- Appl. Phys. Lett. 92, 233113 (2008) is not a
-    # Reischle et al. paper (that is Optics Express 16, 12771 (2008), DOI
-    # 10.1364/OE.16.012771) and must never appear in fsim_core/*.py.
-    bad_citation_files = sorted(
-        f for f in glob.glob(str(ROOT / "fsim_core" / "*.py"))
-        if ("233113" in Path(f).read_text(encoding="utf-8")
-            or "Appl. Phys. Lett. 92" in Path(f).read_text(encoding="utf-8")))
-    ok("fsim_core/*.py never cites the drifted 'Appl. Phys. Lett. 92, 233113' "
-       "Reischle source (got: " + repr(bad_citation_files) + ")",
+    # pr-pkg4-fix item 2 (extended source-wide, pr-pkg4-fix2 item 6): the
+    # two per-card provenance-string guards above (drive.b_res's source
+    # text) only ever see the wrong Reischle citation if a CARD
+    # reintroduces it; extend the same guard to every source, verify,
+    # script, card, and doc file -- Appl. Phys. Lett. 92, 233113 (2008) is
+    # not a Reischle et al. paper (that is Optics Express 16, 12771 (2008),
+    # DOI 10.1364/OE.16.012771) and must never appear outside the files
+    # that document this guard's own history or existence.
+    #
+    # Whitelist (pr-pkg4-fix2 item 6): these files legitimately name the
+    # drifted citation string -- this file's own comment above and the
+    # bad-citation substrings it searches for, verify_rt_edge_sweep.py's
+    # check that verdict.md never cites it (a Python string literal that
+    # itself contains the drifted text), and run_rt_edge.py's comment on
+    # the now-generated (not hardcoded) citation -- none of these is an
+    # actual mis-citation, so path-whitelist them rather than weakening
+    # the substring match.
+    _citation_guard_whitelist = {
+        ROOT / "verify" / "verify_rt_edge_cards.py",
+        ROOT / "verify" / "verify_rt_edge_sweep.py",
+        ROOT / "scripts" / "run_rt_edge.py",
+    }
+    citation_guard_globs = ("fsim_core/*.py", "verify/*.py", "scripts/*.py",
+                            "cards/*.yaml", "docs/*.md")
+    bad_citation_files = []
+    for pattern in citation_guard_globs:
+        for f in sorted(glob.glob(str(ROOT / pattern))):
+            fp = Path(f)
+            if fp in _citation_guard_whitelist:
+                continue
+            text = fp.read_text(encoding="utf-8")  # read once, check both substrings
+            if "233113" in text or "Appl. Phys. Lett. 92" in text:
+                bad_citation_files.append(str(fp))
+    ok("fsim_core/*.py, verify/*.py, scripts/*.py, cards/*.yaml, docs/*.md never cite "
+       "the drifted 'Appl. Phys. Lett. 92, 233113' Reischle source outside this guard's "
+       "own whitelisted files (got: " + repr(bad_citation_files) + ")",
        not bad_citation_files)
 
     print(f"{sum(CHECKS)}/{len(CHECKS)} rt-edge card checks passed")
