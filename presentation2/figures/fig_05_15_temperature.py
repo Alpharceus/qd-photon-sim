@@ -1,10 +1,13 @@
 """Plot the favourable-corner temperature slices from the live acceptance verdict."""
 from pathlib import Path
+import re
 import matplotlib.pyplot as plt
 
 out = Path(__file__).parent / "out" / "05_15_temperature.png"
 out.parent.mkdir(exist_ok=True)
-T=[230,250,273,300]; g=[.3214,.376,.3775,.3986]
+verdict = (Path(__file__).parents[2] / "out" / "rt_edge" / "verdict.md").read_text(encoding="utf-8")
+rows = re.findall(r"\|\s*(230|250|273|300)\s*\|[^|]*\|[^|]*\|\s*([0-9.]+)\s*\|", verdict)
+T, g = zip(*[(int(t), float(value)) for t, value in rows])
 fig, ax=plt.subplots(figsize=(1600/150,900/150),dpi=150,facecolor="white")
 ax.plot(T,g,"o-",lw=3,color="#8b2c2c",label="minimum pulsed g²(0)")
 ax.axhline(.5,color="#555",ls="--",label="headline gate")

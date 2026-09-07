@@ -11,9 +11,12 @@ for i, name in enumerate(names):
     x, y = 0.04 + (i % 4)*.24, .76 - (i//4)*.29
     ax.text(x+.09, y+.09, name, ha="center", va="center", fontsize=16, weight="bold",
             bbox=dict(boxstyle="round,pad=.45", fc="#e8f1fb", ec="#286090"), transform=ax.transAxes)
-    if i < len(names)-1:
+    if i < len(names)-1 and i % 4 != 3:
         j=i+1; x2,y2=.04+(j%4)*.24+.09,.76-(j//4)*.29+.09
         ax.annotate("", (x2,y2), (x+.18,y+.09), xycoords=ax.transAxes,
+                    arrowprops=dict(arrowstyle="->", color="#607080", lw=1.4))
+    elif i < len(names)-1:
+        ax.annotate("", (.94, y-.09), (.94, y+.02), xycoords=ax.transAxes,
                     arrowprops=dict(arrowstyle="->", color="#607080", lw=1.4))
 ax.text(.5,.04,"Inputs and models flow to card evaluation, sweep, evidence ledger, and verdict", ha="center", fontsize=16, transform=ax.transAxes)
 fig.savefig(out, dpi=150, facecolor="white")
