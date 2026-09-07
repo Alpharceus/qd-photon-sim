@@ -10,7 +10,7 @@ $...$ text is shown as a monospace span, never rendered as math.
 Never special-cases section content -- every layout branch below works from
 the generic slide object the schema defines.
 
-CLI: python presentation2/render_html.py [--include-sample] [--sections-dir DIR]
+CLI: python presentation2/render_html.py [--include-sample] [--sections-dir DIR] [--out-dir DIR]
 """
 from __future__ import annotations
 
@@ -26,8 +26,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 EQ_DIR = HERE / "figures" / "out" / "eq"
-OUT_DIR = ROOT / "out" / "presentation2"
-OUT_HTML = OUT_DIR / "index.html"
+DEFAULT_OUT_DIR = ROOT / "out" / "presentation2"
 
 ACCENT_PALETTE = [
     "1E2761", "065A82", "2C5F2D", "6D2E46",
@@ -344,17 +343,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--include-sample", action="store_true")
     parser.add_argument("--sections-dir", default=None)
+    parser.add_argument("--out-dir", default=None)
     args = parser.parse_args()
 
     sections_dir = Path(args.sections_dir) if args.sections_dir else HERE / "sections"
     sections = load_sections(sections_dir, args.include_sample)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out_dir).resolve() if args.out_dir else DEFAULT_OUT_DIR
+    out_html = out_dir / "index.html"
+    out_dir.mkdir(parents=True, exist_ok=True)
     html_text = build_html(sections)
-    OUT_HTML.write_text(html_text, encoding="utf-8")
-    size_mb = OUT_HTML.stat().st_size / (1024 * 1024)
+    out_html.write_text(html_text, encoding="utf-8")
+    size_mb = out_html.stat().st_size / (1024 * 1024)
     n_slides = sum(len(s.get("slides", [])) for s in sections)
-    print(f"wrote {OUT_HTML} ({n_slides} slides, {size_mb:.2f} MB)")
+    print(f"wrote {out_html} ({n_slides} slides, {size_mb:.2f} MB)")
     if size_mb > 16:
         print("ERROR: index.html exceeds the 16 MB artifact limit", file=sys.stderr)
         sys.exit(1)

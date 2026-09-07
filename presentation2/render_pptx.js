@@ -3,7 +3,7 @@
  * presentation2/render_pptx.js -- pptxgenjs renderer per the contract in
  * presentation2/SCHEMA.md. Reads every presentation2/sections/NN_*.json
  * (section "00" skipped unless --include-sample), and writes
- * out/presentation2/qd_physics_2h.pptx.
+ * out/presentation2/qd_physics_2h.pptx (or --out-dir DIR).
  *
  * Never special-cases section content: every layout branch works from the
  * generic slide object the schema defines. Equation images must already be
@@ -11,7 +11,7 @@
  * before this runs -- this script only looks them up by the same content
  * hash mathimg.py uses, it never calls Python.
  *
- * CLI: node presentation2/render_pptx.js [--include-sample] [--sections-dir DIR]
+ * CLI: node presentation2/render_pptx.js [--include-sample] [--sections-dir DIR] [--out-dir DIR]
  */
 "use strict";
 
@@ -29,8 +29,7 @@ try {
 const HERE = __dirname;
 const ROOT = path.resolve(HERE, "..");
 const EQ_DIR = path.join(HERE, "figures", "out", "eq");
-const OUT_DIR = path.join(ROOT, "out", "presentation2");
-const OUT_PPTX = path.join(OUT_DIR, "qd_physics_2h.pptx");
+let OUT_DIR = path.join(ROOT, "out", "presentation2");
 
 // ---- CLI args -------------------------------------------------------------
 
@@ -41,6 +40,11 @@ const sdIdx = argv.indexOf("--sections-dir");
 if (sdIdx !== -1 && argv[sdIdx + 1]) {
   SECTIONS_DIR = path.resolve(argv[sdIdx + 1]);
 }
+const outIdx = argv.indexOf("--out-dir");
+if (outIdx !== -1 && argv[outIdx + 1]) {
+  OUT_DIR = path.resolve(argv[outIdx + 1]);
+}
+const OUT_PPTX = path.join(OUT_DIR, "qd_physics_2h.pptx");
 
 // ---- theme ------------------------------------------------------------
 

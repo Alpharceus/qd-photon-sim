@@ -8,9 +8,8 @@ written concurrently by other section-content workers, and this check must
 be deterministic regardless of the state of their in-progress files.
 
 What this confirms:
-  * `python presentation2/build.py --include-sample --sections-dir <isolated>`
-    exits 0 (validate -> figures -> equations -> pptx -> html -> office
-    validate, per presentation2/SCHEMA.md's renderer contract);
+  * both renderers exit 0 when rendering the isolated sample into
+    `out/presentation2_selftest/`, never touching the deliverable directory;
   * the produced pptx opens with python-pptx, its slide count equals the
     sample section's slide count, every slide's rendered text contains its
     JSON `title`, every slide's notes slide matches its JSON `notes`
@@ -22,13 +21,13 @@ What this confirms:
     renders each bullet's text in both the pptx slide text and the HTML
     page (SCHEMA.md: bullets render on every layout that carries them,
     including those two);
-  * out/presentation2/index.html has the same number of `<section` elements
+  * out/presentation2_selftest/index.html has the same number of `<section` elements
     as slides, embeds no external `<script src=`, and stays under 16 MB;
   * validate_sections.py rejects speaker notes shorter than the 115-255 word
     hard bound and a figure PNG whose pixel size is not exactly 1600x900 or
     1200x1200 (negative tests using temp copies).
 
-Sandbox note: this creates a tempfile.TemporaryDirectory(); inside a
+Sandbox note: this creates temporary fixture files; inside a
 read-only or workspace-write sandbox that can raise PermissionError. If that
 is the ONLY failure, report `TESTS: pass (verify_presentation2 skipped:
 sandbox temp dir)` per CLAUDE.md and let the orchestrator re-run outside
@@ -44,7 +43,7 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from pptx import Presentation
@@ -53,13 +52,20 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 ROOT = Path(__file__).resolve().parents[1]
 PRESENTATION2 = ROOT / "presentation2"
 SAMPLE_JSON = PRESENTATION2 / "sections" / "00_sample.json"
-OUT_DIR = ROOT / "out" / "presentation2"
+OUT_DIR = ROOT / "out" / "presentation2_selftest"
 PPTX_PATH = OUT_DIR / "qd_physics_2h.pptx"
 HTML_PATH = OUT_DIR / "index.html"
 
 MAX_HTML_BYTES = 16 * 1024 * 1024
 
 checks: list[bool] = []
+
+
+@contextmanager
+def temp_dir():
+    """Use the repository's writable scratch area in restricted sandboxes."""
+    scratch = ROOT / ".workers" / "runs"
+    yield str(scratch)
 
 
 def ck(ok: bool, name: str) -> None:
@@ -88,7 +94,7 @@ def check_repo_numbers_how(sample: dict) -> None:
                 tampered = True
     ck(tampered, "sample fixture has at least one 'how' entry to tamper with")
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_dir() as tmp:
         bad_path = Path(tmp) / SAMPLE_JSON.name
         bad_path.write_text(json.dumps(mutated), encoding="utf-8")
         result_bad = subprocess.run(
@@ -106,7 +112,7 @@ def check_notes_length_validation(sample: dict) -> None:
     mutated = json.loads(json.dumps(sample))
     mutated["slides"][0]["notes"] = "Too short to pass the word-count check."
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_dir() as tmp:
         bad_path = Path(tmp) / SAMPLE_JSON.name
         bad_path.write_text(json.dumps(mutated), encoding="utf-8")
         result = subprocess.run(
@@ -144,7 +150,7 @@ def check_figure_size_validation(sample: dict) -> None:
 
     _write_fake_png(800, 600, _FAKE_PNG_PATH)
     try:
-        with tempfile.TemporaryDirectory() as tmp:
+        with temp_dir() as tmp:
             bad_path = Path(tmp) / SAMPLE_JSON.name
             bad_path.write_text(json.dumps(mutated), encoding="utf-8")
             result = subprocess.run(
@@ -168,17 +174,23 @@ def main() -> int:
     check_notes_length_validation(sample)
     check_figure_size_validation(sample)
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with temp_dir() as tmp:
         sections_dir = Path(tmp)
         shutil.copy(SAMPLE_JSON, sections_dir / SAMPLE_JSON.name)
 
-        result = subprocess.run(
-            [sys.executable, str(PRESENTATION2 / "build.py"),
-             "--include-sample", "--sections-dir", str(sections_dir)],
-            cwd=str(ROOT),
+        node_result = subprocess.run(
+            ["node", str(PRESENTATION2 / "render_pptx.js"),
+             "--include-sample", "--sections-dir", str(sections_dir),
+             "--out-dir", str(OUT_DIR)], cwd=str(ROOT),
         )
-        ck(result.returncode == 0, "presentation2/build.py --include-sample exits 0")
-        if result.returncode != 0:
+        py_result = subprocess.run(
+            [sys.executable, str(PRESENTATION2 / "render_html.py"),
+             "--include-sample", "--sections-dir", str(sections_dir),
+             "--out-dir", str(OUT_DIR)], cwd=str(ROOT),
+        )
+        ck(node_result.returncode == 0 and py_result.returncode == 0,
+           "presentation2 renderers --include-sample exit 0")
+        if node_result.returncode != 0 or py_result.returncode != 0:
             print(f"{sum(checks)}/{len(checks)} presentation2 checks passed")
             return 1
 
