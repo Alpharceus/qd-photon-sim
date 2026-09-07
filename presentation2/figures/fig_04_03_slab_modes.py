@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 # Ensure root directory in sys.path
 root_dir = Path(__file__).resolve().parents[2]
@@ -119,7 +120,7 @@ ax2.annotate(rf"HKUST: $d=296$ nm, $n_{{eff}}={m0.n_eff:.4f}$" + "\n" +
              r"($k_z d - 2\arctan(\gamma/k_z) = 0$)",
              xy=(296, m0.n_eff), xytext=(200, 3.095),
              arrowprops=dict(arrowstyle="->", color="#D69E2E", lw=2),
-             fontsize=10, fontweight="bold", color="#744210",
+             fontsize=12, fontweight="bold", color="#744210",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FEFCBF", edgecolor="#ECC94B"))
 
 ax2.set_xlabel(r"Total Core Thickness $d_{core}$ (nm)")
@@ -128,7 +129,7 @@ ax2.set_title(r"Slab Dispersion Relation $n_{eff}(d_{core})$" + "\n" + r"at $\la
 ax2.set_xlim(50, 600)
 ax2.set_ylim(3.03, 3.24)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="lower right", framealpha=0.9, fontsize=11)
+ax2.legend(loc="lower right", framealpha=0.9, fontsize=12)
 
 fig.subplots_adjust(top=0.86, bottom=0.16, left=0.10, right=0.93, wspace=0.55)
 fig.savefig(out_path, dpi=150, facecolor="white")

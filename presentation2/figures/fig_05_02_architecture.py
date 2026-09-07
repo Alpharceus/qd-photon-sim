@@ -1,6 +1,7 @@
 """Section 5 architecture map; deterministic schematic, not a data claim."""
 from pathlib import Path
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 out = Path(__file__).parent / "out" / "05_02_architecture.png"
 out.parent.mkdir(exist_ok=True)

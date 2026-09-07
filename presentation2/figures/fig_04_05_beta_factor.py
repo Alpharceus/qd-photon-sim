@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
@@ -43,9 +44,9 @@ n_dot = float(refractive_index("InP", lambda_nm))  # 3.418
 A_grid = np.logspace(-2.5, 0.5, 300)  # um^2
 
 ng_cases = [
-    (4.355, r"Ridge Waveguide ($n_g \approx 4.36$)", "#2B6CB0", "-"),
-    (15.0, r"Slow-Light Ridge ($n_g = 15$)", "#DD6B20", "--"),
-    (40.0, r"PhC Waveguide ($n_g = 40$)", "#38A169", "-."),
+    (4.355, r"Ridge WG ($n_g \approx 4.4$)", "#2B6CB0", "-"),
+    (15.0, r"Slow-Light WG ($n_g = 15$)", "#DD6B20", "--"),
+    (40.0, r"PhC WG ($n_g = 40$)", "#38A169", "-."),
 ]
 
 for ng, label, col, ls in ng_cases:
@@ -70,7 +71,7 @@ ax1.annotate(rf"Fallback $2\ \mu$m Ridge" + "\n" + rf"$\beta = {b_ridge*100:.2f}
 # axis nor the paper supports. A reference line carries the one number this
 # repository's [V] tag actually covers.
 ax1.axhline(98.0, color="#38A169", ls="-.", lw=2.0,
-            label="Arcari 2014: PhC waveguide, $\\beta > 98\\%$ (different mechanism)")
+            label="Arcari 2014 PhC ($\\beta > 98\\%$)")
 
 ax1.set_xscale("log")
 ax1.set_xlabel(r"Effective Mode Area $A_{mode}$ ($\mu\mathrm{m}^2$)")
@@ -79,7 +80,7 @@ ax1.set_title(r"$\beta$ Factor Scaling:" + "\n" + r"Ridge vs Photonic Crystal (L
 ax1.set_ylim(0, 105)
 ax1.set_xlim(0.003, 3.0)
 ax1.grid(True, which="both", linestyle=":", alpha=0.5)
-ax1.legend(loc="upper right", framealpha=0.95, fontsize=9)
+ax1.legend(loc="upper right", bbox_to_anchor=(0.99, 0.75), framealpha=0.95, fontsize=12)
 
 # Panel 2: Position Factor |E(z_dot)|^2 / max|E|^2 and beta vs QD Vertical Position
 # Vertical profile approximated by cosine inside core (-148 to +148 nm) and exp decay in cladding
@@ -122,7 +123,7 @@ ax2.set_title(r"Dipole Position Overlap $\xi_{pos}$" + "\n" + "in Ridge Heterost
 
 lines = [p1, p2]
 labels = [l.get_label() for l in lines]
-ax2.legend(lines, labels, loc="lower center", framealpha=0.9, fontsize=11)
+ax2.legend(lines, labels, loc="lower center", framealpha=0.9, fontsize=12)
 
 fig.subplots_adjust(top=0.86, bottom=0.13, left=0.08, right=0.90, wspace=0.42)
 fig.savefig(out_path, dpi=150, facecolor="white")

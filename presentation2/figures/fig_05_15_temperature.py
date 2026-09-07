@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 out = Path(__file__).parent / "out" / "05_15_temperature.png"
 out.parent.mkdir(exist_ok=True)

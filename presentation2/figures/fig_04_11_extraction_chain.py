@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 out_dir = Path(__file__).resolve().parents[0] / "out"
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -55,7 +56,7 @@ for i, (b, val) in enumerate(zip(bars, pcts)):
              f"{val:.3f}%", ha="center", va="bottom", fontsize=12, fontweight="bold")
 
 ax1.set_xticks(x)
-ax1.set_xticklabels(factors, fontsize=10)
+ax1.set_xticklabels(factors, fontsize=12)
 ax1.set_ylabel(r"Cumulative Out-Coupling Efficiency (%)")
 ax1.set_title("Multiplicative Extraction Chain\n" + r"$\eta_{total}$ Decomposition", pad=10)
 ax1.set_ylim(0, 3.5)
@@ -97,16 +98,16 @@ for b, val in zip(bars2, flux_vals):
 ax2.annotate("Passes flux floor:\nmargin 2.42x at 300 K",
              xy=(3, 2416.6), xytext=(0.85, 2750),
              arrowprops=dict(arrowstyle="->", color="#22543D", lw=2),
-             fontsize=10, fontweight="bold", color="#22543D",
+             fontsize=12, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
 
 ax2.set_xticks(x2)
-ax2.set_xticklabels(steps, fontsize=9.5)
+ax2.set_xticklabels(steps, fontsize=12)
 ax2.set_ylabel("Collected Pulsed Flux (photons / s)")
 ax2.set_title("Acceptance Sweep Levers at\n300 K vs Flux Floor", pad=10)
 ax2.set_ylim(0, 3350)
 ax2.grid(True, axis="y", linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9, fontsize=10)
+ax2.legend(loc="upper right", framealpha=0.9, fontsize=12)
 
 fig.subplots_adjust(top=0.84, bottom=0.22, left=0.08, right=0.96, wspace=0.32)
 fig.savefig(out_path, dpi=150, facecolor="white")

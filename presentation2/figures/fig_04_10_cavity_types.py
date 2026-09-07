@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 out_dir = Path(__file__).resolve().parents[0] / "out"
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -36,7 +37,7 @@ FP = (3.0 / (4.0 * np.pi**2)) * (QQ / VV)
 # Contour levels for Purcell Factor
 levels = [1, 10, 100, 1000, 10000]
 cs = ax1.contour(VV, QQ, FP, levels=levels, colors="#CBD5E0", linestyles="--", linewidths=1.5)
-ax1.clabel(cs, inline=True, fmt=r"$F_P = %d$", fontsize=11)
+ax1.clabel(cs, inline=True, fmt=r"$F_P = %d$", fontsize=12)
 
 # Architecture regions
 # 1. Planar DBR Cavity -- box corners chosen so F_P = (3/4pi^2)(Q/V) actually
@@ -44,14 +45,14 @@ ax1.clabel(cs, inline=True, fmt=r"$F_P = %d$", fontsize=11)
 # Micropillar box below spanned 7.6-570 against its 5-25 label; this box had
 # the same defect, spanning ~0.2-11 against its 1-3 label).
 ax1.fill([20, 40, 40, 20], [530, 530, 790, 790], color="#BEE3F8", alpha=0.5)
-ax1.text(28, 640, "Planar DBR\n" + r"($F_P \sim 1\mathrm{-}3$)", ha="center", va="center", fontsize=11, fontweight="bold", color="#2B6CB0")
+ax1.text(28, 640, "Planar DBR\n" + r"($F_P \sim 1\mathrm{-}3$)", ha="center", va="center", fontsize=12, fontweight="bold", color="#2B6CB0")
 
 # 2. Etched Micropillars -- corners chosen so F_P spans 5-25 at the box's own
 # corners (round-2 review: CONFIRMED the previous [2,10]x[1000,15000] box
 # spanned F_P = 7.6-570 on this figure's own contours, contradicting its
 # F_P~5-25 label).
 ax1.fill([3, 6, 6, 3], [400, 400, 1000, 1000], color="#C6F6D5", alpha=0.5)
-ax1.text(4.2, 630, "Micropillars\n" + r"($F_P \sim 5\mathrm{-}25$)", ha="center", va="center", fontsize=11, fontweight="bold", color="#22543D")
+ax1.text(4.2, 630, "Micropillars\n" + r"($F_P \sim 5\mathrm{-}25$)", ha="center", va="center", fontsize=12, fontweight="bold", color="#22543D")
 
 # 3. Photonic Crystal Defect Cavities (L3/H1)
 ax1.fill([0.3, 1.5, 1.5, 0.3], [5000, 5000, 500000, 500000], color="#FED7D7", alpha=0.5)
@@ -65,7 +66,7 @@ ax1.scatter([30], [50], color="#D69E2E", s=180, zorder=6, marker="D")
 ax1.annotate("Ridge Waveguide (1D Continuum)\n" + r"$\beta \approx 2.9\%$, cavity OFF",
              xy=(30, 50), xytext=(0.9, 90),
              arrowprops=dict(arrowstyle="->", color="#D69E2E", lw=2),
-             fontsize=10, fontweight="bold", color="#744210",
+             fontsize=12, fontweight="bold", color="#744210",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FEFCBF", edgecolor="#D69E2E"))
 
 ax1.set_xscale("log")
@@ -89,7 +90,7 @@ boxes = [
 ]
 
 for bx, by, text, bg, border in boxes:
-    ax2.text(bx, by, text, ha="center", va="center", fontsize=11,
+    ax2.text(bx, by, text, ha="center", va="center", fontsize=12,
              bbox=dict(boxstyle="round,pad=0.4", facecolor=bg, edgecolor=border, lw=2))
 
 # Arrows

@@ -440,7 +440,7 @@
       "title": "The Complete Extraction Chain: Sub-Factor Decomposition",
       "bullets": [
         "Total edge out-coupling decomposes multiplicatively: $\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA}$.",
-        "Favorable NA=0.80: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.3\\%$, $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 2.07\\%$.",
+        "Favorable NA=0.80: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.2\\%$, $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 2.07\\%$.",
         "HR mirror lever ($R_{back} = 0.95$ vs $0$): provides a decisive $2.60\\times$ flux multiplier.",
         "Cavity length lever ($L = 250$ vs $500\\ \\mu\\text{m}$): saves propagation loss, delivering $1.133\\times$ gain.",
         "Objective collection lever ($\\mathrm{NA} = 0.80$ vs $0.50$): captures circular cone diffraction, adding $1.485\\times$ gain.",

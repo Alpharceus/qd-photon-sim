@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
@@ -74,7 +75,7 @@ ax1.set_title("Astigmatic Far-Field Angular Divergence", pad=12)
 ax1.set_xlim(-85, 85)
 ax1.set_ylim(0, 1.05)
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax1.legend(loc="upper right", framealpha=0.9, fontsize=12)
 
 # Panel 2: NA Collection efficiency vs NA
 na_grid = np.linspace(0.05, 0.95, 200)
@@ -102,14 +103,14 @@ gain_na = eta_80 / eta_05
 ax2.annotate(rf"$\mathrm{{NA}} = 0.50$: $\eta = {eta_05:.1f}\%$",
              xy=(0.50, eta_05), xytext=(0.20, 20),
              arrowprops=dict(arrowstyle="->", color="#4A5568", lw=1.8),
-             fontsize=11, fontweight="bold", color="#2D3748",
+             fontsize=12, fontweight="bold", color="#2D3748",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#EDF2F7", edgecolor="#CBD5E0"))
 
 msg_80 = f"$\\mathrm{{NA}} = 0.80$: $\\eta = {eta_80:.1f}\\%$\n({gain_na:.2f}$\\times$ Boost over NA 0.5)"
 ax2.annotate(msg_80,
              xy=(0.80, eta_80), xytext=(0.38, 62),
              arrowprops=dict(arrowstyle="->", color="#38A169", lw=2),
-             fontsize=11, fontweight="bold", color="#22543D",
+             fontsize=12, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
 
 ax2.set_xlabel(r"Objective Numerical Aperture ($\mathrm{NA}$)")

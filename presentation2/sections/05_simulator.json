@@ -204,7 +204,7 @@
       "sources": [
         "fsim_core/transport.py",
         "fsim_core/device.py",
-        "Sze & Ng 2007 ch. 3"
+        "Sze & Ng 2007 ch. 2 (p-n junctions)"
       ],
       "repo_numbers": {}
     },

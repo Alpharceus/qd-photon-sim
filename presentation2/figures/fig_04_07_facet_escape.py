@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
@@ -49,9 +50,11 @@ ax1.plot(neff_nom, R_nom * 100, "o", color="#E53E3E", markersize=9)
 
 ax1.annotate(rf"Semiconductor Facet ($n_{{eff}} = {neff_nom:.3f}$):" + "\n" +
              rf"$T_f = {T_nom*100:.2f}\%$, $R_f = {R_nom*100:.2f}\%$",
-             xy=(neff_nom, T_nom * 100), xytext=(2.5, 82),
+             xy=(neff_nom, T_nom * 100), xycoords="data",
+             xytext=(0.02, 0.98), textcoords="axes fraction",
              arrowprops=dict(arrowstyle="->", color="#2B6CB0", lw=2),
-             fontsize=11, fontweight="bold", color="#1A365D",
+             fontsize=12, fontweight="bold", color="#1A365D", ha="left", va="top",
+             wrap=True, annotation_clip=True,
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#EBF8FF", edgecolor="#3182CE"))
 
 ax1.set_xlabel(r"Effective Index $n_{eff}$")
@@ -60,7 +63,7 @@ ax1.set_title("Cleaved Semiconductor\nFacet Transmission", pad=10)
 ax1.set_xlim(1.0, 4.2)
 ax1.set_ylim(0, 102)
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="lower left", framealpha=0.9, fontsize=11)
+ax1.legend(loc="lower left", framealpha=0.9, fontsize=12)
 
 # Panel 2: Escape-Rate Fraction vs Back-Facet Reflectivity R_back
 Rb_grid = np.linspace(0.001, 0.999, 300)
@@ -98,7 +101,7 @@ ax2.annotate(rf"HR Mirror ($R_{{back}} = {Rb_card:.2f}$):" + "\n" +
              rf"({gain:.2f}$\times$ Boost over Uncoated)",
              xy=(Rb_card, eta_card * 100), xytext=(0.28, 62),
              arrowprops=dict(arrowstyle="->", color="#38A169", lw=2),
-             fontsize=11, fontweight="bold", color="#22543D",
+             fontsize=12, fontweight="bold", color="#22543D",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#F0FFF4", edgecolor="#38A169"))
 
 # Mark R_back = 0 uncoated baseline
@@ -106,7 +109,7 @@ ax2.plot(0.0, eta_geom * 100, "s", color="#E53E3E", markersize=9, zorder=5)
 ax2.annotate(rf"Uncoated ($R_b=0$)" + "\n" + rf"$\eta_{{facet}} = {eta_geom*100:.2f}\%$",
              xy=(0.0, eta_geom * 100), xytext=(0.08, 25),
              arrowprops=dict(arrowstyle="->", color="#E53E3E", lw=1.8),
-             fontsize=11, fontweight="bold", color="#742A2A",
+             fontsize=12, fontweight="bold", color="#742A2A",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#FEB2B2"))
 
 ax2.set_xlabel(r"Back Facet Reflectivity $R_{back}$")
@@ -115,7 +118,7 @@ ax2.set_title("Front Facet Out-Coupling vs\nBack Mirror Reflectivity", pad=10)
 ax2.set_xlim(-0.02, 1.02)
 ax2.set_ylim(20, 102)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper left", framealpha=0.9, fontsize=10)
+ax2.legend(loc="upper left", framealpha=0.9, fontsize=12)
 
 fig.subplots_adjust(top=0.84, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")

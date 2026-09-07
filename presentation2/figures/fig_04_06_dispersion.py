@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 root_dir = Path(__file__).resolve().parents[2]
 if str(root_dir) not in sys.path:
@@ -78,7 +79,7 @@ ax1.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax1.set_ylabel("Refractive Index $n$")
 ax1.set_title("Constituent Material Dispersion" + "\n" + "([E] Ratio-Scaled)", pad=10)
 ax1.grid(True, linestyle=":", alpha=0.5)
-ax1.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax1.legend(loc="upper right", framealpha=0.9, fontsize=12)
 ax1.set_xlim(700, 800)
 # The [E] ratio-scaled tables in materials.py are tabulated only at 700/750/
 # 800/850 nm and linearly interpolated between them, so n(lambda) is
@@ -86,7 +87,7 @@ ax1.set_xlim(700, 800)
 # here so the kink reads as a tabulation artefact, not a physical feature.
 ax1.axvline(750.0, color="#718096", ls=":", lw=1.3, alpha=0.7)
 ax1.text(751.5, ax1.get_ylim()[0] + 0.03 * (ax1.get_ylim()[1] - ax1.get_ylim()[0]),
-         "750 nm table knot\n([E] piecewise-linear)", fontsize=9, color="#4A5568", ha="left", va="bottom")
+         "750 nm table knot\n([E] piecewise-linear)", fontsize=12, color="#4A5568", ha="left", va="bottom")
 
 # Panel 2: Effective Index vs Group Index
 ax2.plot(lambdas, neff_arr, color="#2B6CB0", lw=2.8, label=r"Phase Index $n_{eff}(\lambda)$")
@@ -111,7 +112,7 @@ ax2.annotate(rf"$\lambda = 770$ nm:" + "\n" +
              rf"LDOS by {undercount:.0f}% ({ratio:.3f}$\times$)",
              xy=(lam_pt, ng_pt), xytext=(760, 3.55),
              arrowprops=dict(arrowstyle="->", color="#9B2C2C", lw=2),
-             fontsize=10, fontweight="bold", color="#742A2A",
+             fontsize=12, fontweight="bold", color="#742A2A",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="#FED7D7", edgecolor="#E53E3E"))
 
 # Fill the dispersion difference
@@ -122,7 +123,7 @@ ax2.set_xlabel(r"Wavelength $\lambda$ (nm)")
 ax2.set_ylabel("Index")
 ax2.set_title(r"Ridge Waveguide Phase vs Group Index" + "\n" + r"($w = 2\ \mu\mathrm{m}$)", pad=10)
 ax2.grid(True, linestyle=":", alpha=0.5)
-ax2.legend(loc="upper left", framealpha=0.9, fontsize=10)
+ax2.legend(loc="upper left", framealpha=0.9, fontsize=12)
 ax2.set_xlim(700, 800)
 ax2.set_ylim(3.15, 5.35)
 

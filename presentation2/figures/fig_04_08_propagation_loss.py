@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams['font.size'] = 14
 
 out_dir = Path(__file__).resolve().parents[0] / "out"
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -78,8 +79,8 @@ ax2.barh(y + h/2, vals_250, height=h, color="#3182CE", label=r"$L = 250\ \mu\mat
 ax2.barh(y - h/2, vals_500, height=h, color="#A0AEC0", label=r"$L = 500\ \mu\mathrm{m}$ (Standard bar)")
 
 # Annotate transmission gain
-ax2.text(88.2 + 2, 0 + h/2, f"+13.3% Flux\n($\\eta={t_250:.1f}\\%$)", va="center", fontsize=11, fontweight="bold", color="#2B6CB0")
-ax2.text(77.9 + 2, 0 - h/2, f"Baseline\n($\\eta={t_500:.1f}\\%$)", va="center", fontsize=11, color="#4A5568")
+ax2.text(88.2 + 2, 0 + h/2, f"+13.3% Flux\n($\\eta={t_250:.1f}\\%$)", va="center", fontsize=12, fontweight="bold", color="#2B6CB0")
+ax2.text(77.9 + 2, 0 - h/2, f"Baseline\n($\\eta={t_500:.1f}\\%$)", va="center", fontsize=12, color="#4A5568")
 
 ax2.set_yticks(y)
 ax2.set_yticklabels(metrics, fontsize=12)
@@ -87,7 +88,7 @@ ax2.set_xlabel("Illustrative / Qualitative Metric (%)")
 ax2.set_title(r"[A] Illustrative Trade-Offs:" + "\n" + r"250 vs 500 $\mu$m Bars", pad=10)
 ax2.set_xlim(0, 138)
 ax2.grid(True, axis="x", linestyle=":", alpha=0.5)
-ax2.legend(loc="upper right", framealpha=0.9, fontsize=11)
+ax2.legend(loc="upper right", framealpha=0.9, fontsize=12)
 
 fig.subplots_adjust(top=0.84, bottom=0.13, left=0.08, right=0.95, wspace=0.30)
 fig.savefig(out_path, dpi=150, facecolor="white")

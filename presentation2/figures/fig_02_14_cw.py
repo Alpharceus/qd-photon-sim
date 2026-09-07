@@ -23,7 +23,7 @@ for T, c in [(80, '#1769aa'), (300, '#c43d3d')]:
     q = cw_g2.cw_report(
         float(sc['cw_r_ns']), gamma, 2.0 * gamma, kx, kxx, 1.0,
         float(sc['eps_op']), float(sc['cw_rho_op']), irf_fwhm_ps=0,
-        tau_max_ns=8, n_tau=4001)
+        tau_max_ns=0.25, n_tau=4001)
     ax.plot(q['curves']['tau'], q['curves']['g2_meas'], lw=3, color=c, label=f'{T} K gainp card')
 ax.axhline(1, ls='--', color='.45'); ax.set(xlabel='delay $\\tau$ (ns)', ylabel='$g^{(2)}(\\tau)$', title='CW regression on the cap-2 rate-equation ladder')
 ax.legend(frameon=False, fontsize=16); ax.grid(alpha=.2); fig.tight_layout(); fig.savefig(out, facecolor='white'); plt.close(fig)
