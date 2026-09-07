@@ -270,6 +270,43 @@ v = rte.compute_verdict(rows, stats, True, GOOD_EVIDENCE, GOOD_HALLU)
 ok("temperature axis: no passing temperature -> T_pass_min is none",
    v["T_pass_min"] is None and "T_pass_min=none" in rte.verdict_line(v))
 
+# -- pkg5-fix3, item 2 (substitutes for the orchestrator test command's
+# middle leg: `_selftest_rows` does not exist in run_rt_edge.py). T_hs_K
+# missing, None, and NaN must never crash compute_stats (never
+# `float(None)` or `int(nan)`) and must all land in the SAME "T=?" bucket,
+# identically in both per_T and per_T_pulsed.
+_t_missing_row = make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True)  # no T_hs_K key at all
+_t_none_row = dict(make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True), T_hs_K=None)
+_t_nan_row = dict(make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True), T_hs_K=float("nan"))
+_t_edge_stats = rte.compute_stats([_t_missing_row, _t_none_row, _t_nan_row])
+ok("pkg5-fix3, item 2: T_hs_K missing/None/NaN never crashes compute_stats and all three "
+   "rows land in the single 'T=?' bucket of per_T",
+   set(_t_edge_stats["per_T"]) == {"T=?"}
+   and _t_edge_stats["per_T"]["T=?"]["n_total"] == 3)
+ok("pkg5-fix3, item 2: the same three rows land in the 'T=?' bucket of per_T_pulsed too",
+   set(_t_edge_stats["per_T_pulsed"]) == {"T=?"})
+print("stats tolerant OK")
+
+# A "T=?" bucket must also survive compute_verdict/write_markdown (both
+# consume per_T's keys downstream, e.g. T_pass_min and the per-temperature
+# table) without crashing, and a rankable numeric bucket alongside it must
+# still resolve T_pass_min correctly -- "T=?" is excluded from that ranking
+# since it is not an orderable temperature.
+_t_mixed_rows = [dict(make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True), T_hs_K=230.0),
+                 dict(make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True), T_hs_K=float("nan"))]
+_t_mixed_stats = rte.compute_stats(_t_mixed_rows)
+_t_mixed_verdict = rte.compute_verdict(_t_mixed_rows, _t_mixed_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+ok("pkg5-fix3, item 2: T_pass_min still resolves to the numeric passing bucket (230) when "
+   "a non-rankable 'T=?' bucket is also present and also headline-passing",
+   _t_mixed_verdict["T_pass_min"] == 230)
+_t_mixed_path = ROOT / "out" / "rt_edge" / "_verify_fixture_verdict.md"
+rte.write_markdown(_t_mixed_rows, _t_mixed_stats, _t_mixed_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, _t_mixed_path)
+_t_mixed_text = _t_mixed_path.read_text(encoding="utf-8")
+ok("pkg5-fix3, item 2: write_markdown does not crash with a 'T=?' bucket present, and the "
+   "bucket is rendered (not silently dropped)",
+   "| T=? |" in _t_mixed_text)
+
 # -- fallback-only pass: primary card never favorable, fallback card is
 rows = [make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True),
         make_row(FALLBACK_ID, "fallback", 0.3, 0.3, 0.3, True)]
@@ -831,8 +868,9 @@ ok("fixture verdict.md: the retired 'median gate' phrase does not appear "
    "(peer review finding 9, item 3)",
    "median gate" not in dedup_md_text)
 
-# (v) no "never" inside the CW paragraph ("3. Why pulsed drive...").
-_cw_para_start = dedup_md_text.find("**3. Why pulsed drive")
+# (v) no "never" inside the CW paragraph ("3. CW versus pulsed measurement...",
+# pkg5-fix3 item 1 heading).
+_cw_para_start = dedup_md_text.find("**3. CW versus pulsed")
 _cw_para_end = dedup_md_text.find("\n\n", _cw_para_start) if _cw_para_start != -1 else -1
 _cw_paragraph = dedup_md_text[_cw_para_start:_cw_para_end] if _cw_para_start != -1 else ""
 ok("fixture verdict.md: the CW paragraph no longer says 'could never'/'never' "
@@ -908,14 +946,22 @@ ok("mismatch fixture verdict.md: pass-basis sentence states PASS rests on raw ro
 # said otherwise). This fixture uses live-sweep-like numbers (this run's
 # own 230 K/300 K pulsed g2_min, peer review finding 9) so the ratio is
 # genuinely > 1.0 and both temperatures are present.
+#
+# pkg5-fix3, item 4: g2_cw0 (intrinsic) and g2_cw0_raw (IRF-convolved) are
+# now DISTINCT (0.10 / 0.32, g2_cw0_raw > g2_cw0 -- convolution raises
+# g2(0) toward 1), not the same value repeated three times (attempt 3's
+# bug: "the 'below' fixture had raw == intrinsic", which could never
+# exercise the CW paragraph's "the raw g2(0) rises" framing honestly).
+# g2_pulsed (the headline metric, unaffected by this fix) keeps its
+# original values so the ratio/argmin checks below stay unchanged.
 _live_rows = [
-    make_row(PRIMARY_ID, "primary", 0.3214, 0.3214, 0.3214, True,
+    make_row(PRIMARY_ID, "primary", 0.3214, 0.10, 0.32, True,
             delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
-    make_row(PRIMARY_ID, "primary", 0.3214, 0.3214, 0.3214, True,
+    make_row(PRIMARY_ID, "primary", 0.3214, 0.10, 0.32, True,
             delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=200.0),
-    make_row(PRIMARY_ID, "primary", 0.3986, 0.3986, 0.3986, True,
+    make_row(PRIMARY_ID, "primary", 0.3986, 0.10, 0.32, True,
             delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=50.0),
-    make_row(PRIMARY_ID, "primary", 0.3986, 0.3986, 0.3986, True,
+    make_row(PRIMARY_ID, "primary", 0.3986, 0.10, 0.32, True,
             delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=200.0),
 ]
 for _r in _live_rows[:2]:
@@ -977,19 +1023,52 @@ ok("live-like fixture verdict.md: the argmin temperature really is 230 K, not 30
    _live_argmin_T == "230")
 ok("live-like fixture verdict.md: '300 K corner' is not used adjacent to g2_min",
    "300 K corner" not in live_md_text)
-_live_cw_start = live_md_text.find("**3. Why pulsed drive")
+_live_cw_start = live_md_text.find("**3. CW versus pulsed")
 _live_cw_end = live_md_text.find("\n\n", _live_cw_start) if _live_cw_start != -1 else -1
 _live_cw_paragraph = live_md_text[_live_cw_start:_live_cw_end] if _live_cw_start != -1 else ""
 ok("live-like fixture verdict.md: the CW paragraph no longer says 'could never'/'never'",
    _live_cw_start != -1 and "never" not in _live_cw_paragraph.lower())
 
-# pkg5-fix2, item 5: "-- ABOVE the 0.5 threshold" was asserted
-# unconditionally, but this fixture's best-diagnostic corner's raw CW g2(0)
-# is 0.3214 (< 0.5) -- the paragraph must read "still below", never "ABOVE".
-ok("live-like fixture verdict.md: raw CW g2(0) = 0.3214 (< 0.5) renders 'still below the "
-   "0.5 threshold', not 'ABOVE the 0.5 threshold' (pkg5-fix2, item 5)",
+# pkg5-fix3, item 1/4: raw CW g2(0) = 0.32 (< 0.5) -- the paragraph must
+# read "still below" (never "ABOVE") and draw the "below" conclusion: a CW
+# measurement at the sampled IRF would already resolve the antibunching,
+# not that pulsed operation is forced by this CW result (attempt 3's bug:
+# the conclusion asserted "is required" regardless of the actual number).
+ok("live-like fixture verdict.md: raw CW g2(0) = 0.32 (< 0.5) renders 'still below the "
+   "0.5 threshold', not 'ABOVE the 0.5 threshold' (pkg5-fix3, item 1)",
    "still below the 0.5 threshold" in _live_cw_paragraph
    and "ABOVE" not in _live_cw_paragraph)
+ok("live-like fixture verdict.md: the 'below' branch conclusion follows the number -- a "
+   "CW measurement would already resolve the antibunching, not that pulsed is forced by "
+   "this CW result (pkg5-fix3, item 1)",
+   "would already resolve the antibunching" in _live_cw_paragraph
+   and "not forced by the CW result here" in _live_cw_paragraph)
+
+# ---- 1j-iii-b. CW-above-threshold variant (pkg5-fix3, item 4): a second
+# live-like variant whose raw CW g2(0) (0.62) DOES clear the 0.5 threshold,
+# so the "cannot demonstrate" branch (item 1's other half) is exercised
+# too, not just the "below" branch above.
+_cw_above_rows = [
+    make_row(PRIMARY_ID, "primary", 0.3214, 0.15, 0.62, True,
+            delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
+]
+for _r in _cw_above_rows:
+    _r["T_hs_K"] = 230.0
+cw_above_stats = rte.compute_stats(_cw_above_rows)
+cw_above_verdict = rte.compute_verdict(_cw_above_rows, cw_above_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown(_cw_above_rows, cw_above_stats, cw_above_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
+cw_above_text = dedup_md_path.read_text(encoding="utf-8")
+_cw_above_start = cw_above_text.find("**3. CW versus pulsed")
+_cw_above_end = cw_above_text.find("\n\n", _cw_above_start) if _cw_above_start != -1 else -1
+_cw_above_paragraph = cw_above_text[_cw_above_start:_cw_above_end] if _cw_above_start != -1 else ""
+ok("CW-above-threshold fixture verdict.md: raw CW g2(0) = 0.62 (>= 0.5) renders 'ABOVE "
+   "the 0.5 threshold' and the 'cannot demonstrate' branch, including 'pulsed, gated "
+   "operation is required at these IRF values' (pkg5-fix3, item 1/4)",
+   _cw_above_start != -1
+   and "ABOVE the 0.5 threshold" in _cw_above_paragraph
+   and "cannot demonstrate single-photon emission" in _cw_above_paragraph
+   and "pulsed, gated operation is required at these IRF values" in _cw_above_paragraph)
 
 
 # ---- 1j-iv. CW else-branch fixture (pkg5-fix2, item 4): no diagnostic row
@@ -1018,7 +1097,7 @@ cw_else_verdict = rte.compute_verdict(_cw_else_rows, cw_else_stats, True, GOOD_E
 rte.write_markdown(_cw_else_rows, cw_else_stats, cw_else_verdict, rte.build_grid(False), True,
                    GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
 cw_else_text = dedup_md_path.read_text(encoding="utf-8")
-_cw_else_start = cw_else_text.find("**3. Why pulsed drive")
+_cw_else_start = cw_else_text.find("**3. CW versus pulsed")
 _cw_else_end = cw_else_text.find("\n\n", _cw_else_start) if _cw_else_start != -1 else -1
 _cw_else_paragraph = cw_else_text[_cw_else_start:_cw_else_end] if _cw_else_start != -1 else ""
 ok("CW else-branch fixture verdict.md: renders the generic, IRF-scoped reason and never "

@@ -1,12 +1,12 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-07T09:37:50.285479+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-07T10:05:09.244114+00:00; contract: docs/rt_edge_contract.md.
 
 ```
-VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,250:0/0,273:0/0,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
+VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
 ```
 ```
-CARD: edge-inp-gaasp-design role=primary eligible rows: 4/4 g2_pulsed_min=0.3214 g2_pulsed_median=0.36 diag_g2_min=0.3214 diag_g2_median=0.36 diag_g2_cw0_min=0.3214 diag_g2_cw0_median=0.36 diag_g2_cw0_raw_min=0.3214 diag_g2_cw0_raw_median=0.36 g2_cw_raw_min=0.3214 g2_cw_raw_median=0.36 eligible=4/4 flux_floor_excluded=0 favorable_rows=4
+CARD: edge-inp-gaasp-design role=primary eligible rows: 4/4 g2_pulsed_min=0.3214 g2_pulsed_median=0.36 diag_g2_min=0.3214 diag_g2_median=0.36 diag_g2_cw0_min=0.1 diag_g2_cw0_median=0.1 diag_g2_cw0_raw_min=0.32 diag_g2_cw0_raw_median=0.32 g2_cw_raw_min=0.32 g2_cw_raw_median=0.32 eligible=4/4 flux_floor_excluded=0 favorable_rows=4
 ```
 
 ## Literature ceiling
@@ -46,8 +46,6 @@ Grid complete: True
 | T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | pulsed g2 min | flux max (photons/s) | gamma300 threshold |
 |---:|---:|---:|---:|---:|---:|---|
 | 230 | 2/2 | 2/2 | 1/1 | 0.3214 | nan | >=6 |
-| 250 | 0/0 | 0/0 | n/a | nan | nan | n/a |
-| 273 | 0/0 | 0/0 | n/a | nan | nan | n/a |
 | 300 | 2/2 | 2/2 | 1/1 | 0.3986 | nan | >=20 |
 
 ## What cooling buys
@@ -57,7 +55,7 @@ At T_hs=300 K, the favourable corner has retention S=n/a, linewidth Gamma(T)=n/a
 ## Coverage
 - **eligible fraction** (eligible/total; council review round 5, item 4 -- one word per quantity): 4/4 = 1.000
 - pulsed collected-flux eligibility floor [A]: 1000 photons/s; rows excluded by this floor: 0
-- diagnostic pooled g2 (below flux floor, not measurable): pulsed 0.3214 / 0.36; g2_cw0 0.3214 / 0.36; g2_cw0_raw 0.3214 / 0.36
+- diagnostic pooled g2 (below flux floor, not measurable): pulsed 0.3214 / 0.36; g2_cw0 0.1 / 0.1; g2_cw0_raw 0.32 / 0.32
 - maximum collected pulsed flux: nan photons/s; **flux_margin** (flux_max/floor; >1 means the floor is CLEARED): nan (flux_shortfall, DEPRECATED, its old floor/flux_max inverse framing: nan)
 - **rows_scheduled** (pulsed intrinsic g2(0) < 0.5; invalid/ineligible rows count as nonpassing; raw grid count, every irf_ps sample counted separately -- `headline_coverage` in the VERDICT line, kept for backward compatibility): 4/4 = 1.000
 - **headline_coverage_pulsed** (peer review finding 6, pkg5 fix item 2: same numerator rule as rows_scheduled, but the irf_ps axis is deduplicated first. The pulsed g2 sub-result is IRF-independent; `headline_pass` also requires CW eligibility, which is IRF-convolved, so the deduplicated count is computed with `all()` over the IRF axis and any disagreement is reported as `headline_dedup_mismatch_groups` (currently 0) rather than resolved by picking whichever irf_ps row happened to be seen first): 2/2 = 1.000. Coverage is the fraction of a chosen endpoint grid that passes, not a fabrication-yield probability or a confidence level.
@@ -70,7 +68,7 @@ At T_hs=300 K, the favourable corner has retention S=n/a, linewidth Gamma(T)=n/a
 ## Per-card statistics
 | card | role | diagnostic g2_pulsed min/median | diagnostic g2_cw0 min/median | diagnostic g2_cw0_raw min/median | eligible | flux-floor excluded | headline rows |
 |---|---|---|---|---|---|---|---|
-| edge-inp-gaasp-design | primary | 0.3214 / 0.36 | 0.3214 / 0.36 | 0.3214 / 0.36 | 4/4 | 0 | 4 |
+| edge-inp-gaasp-design | primary | 0.3214 / 0.36 | 0.1 / 0.1 | 0.32 / 0.32 | 4/4 | 0 | 4 |
 
 ## Best diagnostic-g2 row and brightness decomposition
 The dominant brightness limiter at the favourable diagnostic corner -- the smallest factor across the WHOLE chain (loading, t_X, S, and eta_total's own sub-factors; council review round 6, item 3) -- is the collection chain; the multiplicative chain that reproduces the reported collected pulsed flux is:
@@ -91,7 +89,7 @@ The dominant brightness limiter at the favourable diagnostic corner -- the small
 | component (already inside eta_total) | value |
 |---|---:|
 | beta (waveguide coupling / spontaneous-emission factor) | nan |
-| eta_facet (front/back-facet split, transmission, and single-pass propagation all fused into one ray-series factor; BACK-SOLVED as the one factor missing from eta_total/(beta*eta_NA) -- device.py folds it into eta_total but never exposes it on its own; see the independent check below | nan |
+| eta_facet (front/back-facet split, transmission, and single-pass propagation all fused into one ray-series factor; BACK-SOLVED as the one factor missing from eta_total/(beta*eta_NA) -- device.py folds it into eta_total but never exposes it on its own; see the independent check below) | nan |
 | T_facet (raw Fresnel transmission, diagnostic only -- NOT an independent multiplicative step beyond eta_facet above; see the independent check below) | nan |
 | NA (numerical aperture) | nan |
 
@@ -113,7 +111,7 @@ single-pass propagation (already inside the facet factor): nan
 
 **2. The background-light assumption is borrowed from a different, colder device.** Every row carries a constant background term (`drive.b_res`) that is not measured on this platform: it is transferred from Reischle et al., Optics Express 16, 12771 (2008) (DOI 10.1364/OE.16.012771 [V], ledger anchor `reischle08-b-res-80k`), whose 80 K electrically driven single-photon source had about 88% real signal and 12% background light (signal fraction rho ~ 0.88). This sweep assumes the same 12% background fraction still applies at 300 K, on a different material system (InP/GaAsP or InP/GaInP edge emitters) than the one actually measured. No 300 K electrical background measurement exists for either card's platform.
 
-**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the best diagnostic operating point in this sweep, the intrinsic CW g2(0) is 0.321 (that alone would already satisfy the g2 < 0.5 single-photon criterion), but once a realistic single-photon detector's finite timing resolution (instrument response function, IRF) is folded in, the measured raw CW g2(0) rises to 0.321 -- still below the 0.5 threshold. In plain terms: the antibunching dip this device produces under continuous drive is narrower in time than a real detector can resolve, so single-photon emission cannot be demonstrated by a CW measurement alone at the IRF values sampled here (50-200 ps); a faster detector, a different gate or different physical rates could change this. Pulsed (gated) operation sidesteps the detector's timing resolution and is therefore required at these IRF values.
+**3. CW versus pulsed measurement at the best diagnostic point.** At the best diagnostic operating point in this sweep, the intrinsic CW g2(0) is 0.1 (that alone would already satisfy the g2 < 0.5 single-photon criterion), but once a realistic single-photon detector's finite timing resolution (instrument response function, IRF) is folded in, the measured raw CW g2(0) rises to 0.32 -- still below the 0.5 threshold, so at this operating point a CW measurement at the sampled IRF would already resolve the antibunching; pulsed operation remains the contract's headline metric for the reasons above but is not forced by the CW result here.
 
 ## Evidence gate
 - evidence_complete: True

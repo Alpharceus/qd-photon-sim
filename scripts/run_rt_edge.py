@@ -684,6 +684,26 @@ def _finite_stats(values: list) -> tuple:
     return float(np.min(arr)), float(np.median(arr))
 
 
+def _t_hs_bucket_key(t_hs) -> str:
+    """Per-temperature bucket key for a row's T_hs_K (pkg5-fix3, item 2):
+    missing, None, and NaN all collapse to the same "T=?" bucket -- never
+    `float(None)` or `int(nan)` -- so a synthetic/incomplete row is kept
+    and reported, not dropped or a crash. A finite value formats with `g`
+    (not `int(...)`) so 273.0 and 273.15 stay distinct buckets."""
+    if t_hs is None:
+        return "T=?"
+    try:
+        t_val = float(t_hs)
+    except (TypeError, ValueError):
+        return "T=?"
+    return f"{t_val:g}" if np.isfinite(t_val) else "T=?"
+
+
+def _t_bucket_sort_key(bucket: str):
+    """Sort per-temperature bucket keys ascending by value, "T=?" last."""
+    return (bucket == "T=?", float(bucket) if bucket != "T=?" else 0.0)
+
+
 def _diagnostic_valid(pulsed: dict, cw: dict) -> bool:
     """A row usable for below-floor diagnostics: only the measurement-floor
     exclusion is tolerated; all evaluator/classification invalidity remains
@@ -806,31 +826,36 @@ def compute_stats(rows: list) -> dict:
             n_eligible_dedup += 1
         if len(set(eligible_flags)) > 1:
             n_eligible_mismatch_groups += 1
+    # pkg5-fix3, item 2: both per_T and per_T_pulsed are built from the
+    # T_hs_K bucket keys actually present in the rows/dedup groups (sorted,
+    # "T=?" last), rather than a hardcoded tuple of the four T_hs set
+    # points that would drop any other T_hs sampled by a future grid
+    # change -- and a row whose T_hs_K is missing, None, or NaN (a
+    # synthetic fixture row that never set it) is kept under the same
+    # "T=?" bucket in both dicts instead of crashing `float(None)`/
+    # `int(nan)` or being silently dropped.
     per_T = {}
-    for T_hs in (230.0, 250.0, 273.0, 300.0):
-        t_rows = [r for r in rows if float(r.get("T_hs_K", float("nan"))) == T_hs]
+    t_buckets = sorted({_t_hs_bucket_key(r.get("T_hs_K")) for r in rows},
+                       key=_t_bucket_sort_key)
+    for bucket in t_buckets:
+        t_rows = [r for r in rows if _t_hs_bucket_key(r.get("T_hs_K")) == bucket]
         t_eligible = [r for r in t_rows if r.get("eligible_row")]
         t_headline = [r for r in t_rows if r.get("headline_pass")]
-        per_T[str(int(T_hs))] = {
+        per_T[bucket] = {
             "n_total": len(t_rows), "n_eligible": len(t_eligible),
             "n_headline": len(t_headline),
             "g2_min": _finite_stats([r.get("g2_pulsed") for r in t_eligible])[0],
             "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in t_rows]),
         }
-    # pkg5-fix2, item 3: per_T_pulsed is built from the T_hs_K values
-    # actually present in the dedup groups (sorted; a group whose T_hs_K is
-    # None -- a synthetic fixture row that never set it -- is kept under a
-    # "T=?" bucket, not silently dropped), rather than a hardcoded tuple of
-    # the four T_hs set points that would drop any other T_hs sampled by a
-    # future grid change. The numerators/denominators are guarded to sum to
-    # the pooled headline_coverage_pulsed count so a partition bug fails
-    # loudly instead of silently under/over-counting.
+    # The numerators/denominators are guarded to sum to the pooled
+    # headline_coverage_pulsed count so a partition bug fails loudly
+    # instead of silently under/over-counting.
     per_T_pulsed = {}
-    t_hs_values_present = sorted(
-        {key[-1] for key in dedup_groups}, key=lambda v: (v is None, v))
-    for T_hs in t_hs_values_present:
-        bucket = "T=?" if T_hs is None else str(int(T_hs))
-        t_groups = [grp for key, grp in dedup_groups.items() if key[-1] == T_hs]
+    t_buckets_pulsed = sorted({_t_hs_bucket_key(key[-1]) for key in dedup_groups},
+                              key=_t_bucket_sort_key)
+    for bucket in t_buckets_pulsed:
+        t_groups = [grp for key, grp in dedup_groups.items()
+                   if _t_hs_bucket_key(key[-1]) == bucket]
         t_n_scheduled_dedup = len(t_groups)
         t_n_headline_dedup = sum(1 for grp in t_groups
                                  if all(bool(r["headline_pass"]) for r in grp))
@@ -1236,9 +1261,16 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
     evidence_complete = bool(evidence_report.get("evidence_complete", False))
     hallucination_ok = _self_test_passed(hallucination_report)
     headline_rows = [r for r in rows if r["headline_pass"]]
-    passing_temperatures = [int(T) for T, info in stats.get("per_T", {}).items()
-                            if info.get("n_headline", 0) > 0]
+    # pkg5-fix3, item 2 fallout: per_T can now carry a "T=?" bucket (T_hs_K
+    # missing/None/NaN), which is not a rankable temperature -- excluded
+    # here, not int()-ed. Numeric buckets are cast back to int when they
+    # are whole (the only values the grid actually samples today) so
+    # T_pass_min keeps its pre-existing int type/formatting.
+    passing_temperatures = [float(T) for T, info in stats.get("per_T", {}).items()
+                            if T != "T=?" and info.get("n_headline", 0) > 0]
     T_pass_min = min(passing_temperatures) if passing_temperatures else None
+    if T_pass_min is not None and T_pass_min == int(T_pass_min):
+        T_pass_min = int(T_pass_min)
     headline_by_card: dict = {}
     for r in headline_rows:
         headline_by_card.setdefault(r["card_id"], []).append(r)
@@ -1286,7 +1318,10 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         gamma300_pass_max_by_card, gamma300_threshold_by_card)
     gamma300_threshold_by_T = {}
     for T in stats.get("per_T", {}):
-        t_rows = [r for r in gamma_source_rows if str(int(round(float(r.get("T_hs_K", 300))))) == T]
+        # pkg5-fix3, item 2 fallout: per_T can now carry a "T=?" bucket
+        # (T_hs_K missing/None/NaN) -- match rows the same way per_T itself
+        # bucketed them (_t_hs_bucket_key), never `int(round(float(nan)))`.
+        t_rows = [r for r in gamma_source_rows if _t_hs_bucket_key(r.get("T_hs_K")) == T]
         if t_rows:
             t_max = _card_gamma300_pass_max(t_rows)
             gamma300_threshold_by_T[T] = _pooled_gamma300_threshold(
@@ -1330,9 +1365,12 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "headline_coverage_pulsed_n": stats["n_headline_dedup"],
         "headline_coverage_pulsed_total": stats["n_scheduled_dedup"],
         "headline_dedup_mismatch_groups": stats.get("headline_dedup_mismatch_groups", 0),
+        # pkg5-fix3, item 3: shaped exactly like headline_coverage_pulsed_n/
+        # _total -- two ints, rendered as eligible_dedup=n/total in
+        # verdict_line below. The float "eligible_dedup" key pkg5-fix2 put
+        # here alongside these is dropped: one shape per quantity.
         "eligible_dedup_n": stats.get("n_eligible_dedup", 0),
         "eligible_dedup_total": stats["n_scheduled_dedup"],
-        "eligible_dedup": stats.get("eligible_dedup", 0.0),
         "eligible_dedup_mismatch_groups": stats.get("eligible_dedup_mismatch_groups", 0),
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_eligible"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_eligible"],
@@ -1741,8 +1779,16 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("| T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | "
                  "pulsed g2 min | flux max (photons/s) | gamma300 threshold |")
     lines.append("|---:|---:|---:|---:|---:|---:|---|")
+    headline_by_T = verdict.get("headline_by_T", {})
     headline_by_T_pulsed = verdict.get("headline_by_T_pulsed", {})
-    for T, info in verdict.get("headline_by_T", {}).items():
+    # pkg5-fix3, item 5: iterate the UNION of the two dicts' bucket keys
+    # (sorted, "T=?" last) so a bucket present in only one of them -- e.g.
+    # a partial rerun, or a future divergence between the two partitions
+    # -- is still rendered instead of silently dropped from the table.
+    _default_T_info = {"n_eligible": 0, "n_total": 0, "n_headline": 0,
+                       "g2_min": None, "flux_max": None}
+    for T in sorted(set(headline_by_T) | set(headline_by_T_pulsed), key=_t_bucket_sort_key):
+        info = headline_by_T.get(T, _default_T_info)
         threshold = verdict.get("gamma300_threshold_by_T", {}).get(T, {"lo": None, "hi": None})
         dedup_info = headline_by_T_pulsed.get(T, {})
         dedup_cell = (f"{dedup_info['n_headline_dedup']}/{dedup_info['n_scheduled_dedup']}"
@@ -1752,8 +1798,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                      f"{_fmt_or_na(info['g2_min'])} | {_fmt_or_na(info['flux_max'])} | {_format_threshold(threshold)} |")
     lines.append("")
     lines.append("## What cooling buys")
-    for T, info in verdict.get("headline_by_T", {}).items():
-        candidates = [r for r in rows if int(round(float(r.get("T_hs_K", -1)))) == int(T)]
+    for T, info in headline_by_T.items():
+        candidates = [r for r in rows if _t_hs_bucket_key(r.get("T_hs_K")) == T]
         best = _best_diagnostic_row(candidates)
         if best:
             lines.append(f"At T_hs={T} K, the favourable corner has retention S={_fmt_or_na(best.get('S_retention_pulsed'))}, "
@@ -2010,31 +2056,41 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     _plain_best = stats.get("best_diagnostic_row")
     if _plain_best is not None and np.isfinite(_plain_best.get("g2_cw0", float("nan"))) \
             and np.isfinite(_plain_best.get("g2_cw0_raw", float("nan"))):
-        # pkg5-fix2, item 5: "ABOVE the 0.5 threshold" was asserted
-        # unconditionally, but this best-diagnostic corner's raw CW g2(0)
-        # is not guaranteed to actually clear 0.5 (e.g. the live-like
-        # fixture's 0.321 does not) -- render the threshold verdict from
-        # the value itself instead of hardcoding it.
+        # pkg5-fix3, item 1: the conclusion now follows from the raw
+        # (IRF-convolved) CW g2(0) itself -- the heading no longer asserts
+        # "is required" unconditionally, and the closing sentence branches
+        # on whether g2_cw0_raw actually clears 0.5 at these IRF values,
+        # rather than always claiming pulsed operation is forced by the CW
+        # result (e.g. the live-like fixture's raw g2(0), 0.32, is itself
+        # below 0.5 -- a CW measurement there would already resolve the
+        # antibunching, so pulsed is not FORCED by this particular result,
+        # even though it remains the contract's headline metric regardless).
         _cw_raw = _plain_best['g2_cw0_raw']
-        _cw_threshold_phrase = ("ABOVE the 0.5 threshold" if _cw_raw >= G2_THRESHOLD
-                                else "still below the 0.5 threshold")
+        if _cw_raw >= G2_THRESHOLD:
+            _cw_threshold_phrase = "ABOVE the 0.5 threshold"
+            _cw_conclusion = (
+                "so a CW measurement alone cannot demonstrate single-photon emission at "
+                "the IRF values sampled here (50-200 ps); pulsed, gated operation is "
+                "required at these IRF values; a faster detector, a different gate or "
+                "different physical rates could change this.")
+        else:
+            _cw_threshold_phrase = "still below the 0.5 threshold"
+            _cw_conclusion = (
+                "so at this operating point a CW measurement at the sampled IRF would "
+                "already resolve the antibunching; pulsed operation remains the "
+                "contract's headline metric for the reasons above but is not forced by "
+                "the CW result here.")
         lines.append(
-            "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the "
+            "**3. CW versus pulsed measurement at the best diagnostic point.** At the "
             f"best diagnostic operating point in this sweep, the intrinsic CW g2(0) is "
             f"{_plain_best['g2_cw0']:.3g} (that alone would already satisfy the g2 < 0.5 "
             f"single-photon criterion), but once a realistic single-photon detector's "
             f"finite timing resolution (instrument response function, IRF) is folded in, "
-            f"the measured raw CW g2(0) rises to {_cw_raw:.3g} -- {_cw_threshold_phrase}. "
-            f"In plain terms: the antibunching dip this device produces "
-            f"under continuous drive is narrower in time than a real detector can resolve, "
-            f"so single-photon emission cannot be demonstrated by a CW measurement alone "
-            f"at the IRF values sampled here (50-200 ps); a faster detector, a different "
-            f"gate or different physical rates could change this. Pulsed (gated) operation "
-            f"sidesteps the detector's timing resolution and is therefore required at "
-            f"these IRF values.")
+            f"the measured raw CW g2(0) rises to {_cw_raw:.3g} -- {_cw_threshold_phrase}, "
+            f"{_cw_conclusion}")
     else:
         lines.append(
-            "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** No "
+            "**3. CW versus pulsed measurement at the best diagnostic point.** No "
             "diagnostic row with both a finite intrinsic and IRF-convolved CW g2(0) is "
             "available in this run to quote a concrete pair of numbers, but the "
             "underlying reason pulsed drive is used is the same in every corner: the "
