@@ -38,6 +38,7 @@ Standalone, side-effect-free on import (all work happens under
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -46,6 +47,11 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 ANCHORS_PATH = ROOT / "verify" / "data" / "rt_edge_anchors.yaml"
 CONTRACT_DOC = ROOT / "docs" / "rt_edge_contract.md"
+README_DOC = ROOT / "README.md"
+
+# The four validation classes README.md's "Validation record" section must
+# sort every check into (finding 10, peer-review-triage.md).
+VALIDATION_CLASS_LETTERS = ("N", "T", "C", "P")
 
 REQUIRED_ANCHOR_KEYS = {
     "id", "claim", "value", "unit", "tolerance", "conditions",
@@ -85,6 +91,53 @@ def load_anchor_list(path: Path = ANCHORS_PATH) -> list:
 
 def _distinct_doi(anchor: dict) -> str:
     return (anchor.get("doi") or "").strip()
+
+
+def _readme_validation_record_section(text: str) -> str:
+    """The body of README.md's "## Validation record" section only, up to
+    (not including) the next "## " heading -- so class parsing below never
+    bleeds into unrelated sections (e.g. the "## Quickstart" verify_fsim.py
+    command line)."""
+    m = re.search(r"## Validation record\b", text)
+    if not m:
+        return ""
+    rest = text[m.end():]
+    nxt = re.search(r"\n## ", rest)
+    return rest[: nxt.start()] if nxt else rest
+
+
+def _readme_validation_class_sections(text: str) -> dict:
+    """Split the "Validation record" section body into per-class text
+    blocks keyed by class letter (N/T/C/P), using the "- **(X) ..." class
+    bullets as boundaries -- everything from one bullet up to the next
+    belongs to that class (multi-line bullets included)."""
+    body = _readme_validation_record_section(text)
+    marker = re.compile(r"- \*\*\(([NTCP])\)[^\n]*")
+    matches = list(marker.finditer(body))
+    sections: dict = {}
+    for i, m in enumerate(matches):
+        letter = m.group(1)
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        sections[letter] = body[start:end]
+    return sections
+
+
+def _readme_validation_record_ok() -> tuple:
+    """(N)/(T)/(C)/(P) all present as headers, and no verify_<name> script
+    is claimed by more than one class -- finding 10."""
+    text = README_DOC.read_text(encoding="utf-8") if README_DOC.exists() else ""
+    headers_present = all(f"({c})" in text for c in VALIDATION_CLASS_LETTERS)
+    sections = _readme_validation_class_sections(text)
+    all_classes_found = set(sections) == set(VALIDATION_CLASS_LETTERS)
+    seen: dict = {}
+    no_duplicate_script = True
+    for letter, block in sections.items():
+        for name in re.findall(r"verify_\w+", block):
+            if name in seen and seen[name] != letter:
+                no_duplicate_script = False
+            seen[name] = letter
+    return headers_present and all_classes_found and no_duplicate_script, seen
 
 
 def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
@@ -149,6 +202,11 @@ def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
     ok("docs/rt_edge_contract.md exists", CONTRACT_DOC.exists())
     for heading in REQUIRED_HEADINGS:
         ok(f"docs/rt_edge_contract.md has heading [{heading}]", heading in doc_text)
+
+    readme_record_ok, _ = _readme_validation_record_ok()
+    ok("README.md validation record has all four class headers "
+       "(N)/(T)/(C)/(P) and no verify-script name under more than one class",
+       readme_record_ok)
 
     passed, total = sum(1 for _, v in checks if v), len(checks)
     for name, value in checks:

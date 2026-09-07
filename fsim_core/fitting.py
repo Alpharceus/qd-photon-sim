@@ -1,4 +1,20 @@
-"""Phase-0/1 fit driver: joint fit of {eps(T), rho(T)} to the validation card.
+"""FOUR VALIDATION CLASSES (full definitions and the table sorting every
+check into one of them: README.md "Validation record"):
+  (N) numerical verification -- one method checked against another under
+      the same physical assumptions, with no external data involved.
+  (T) source transcription   -- a number, formula, or claim in the code
+      checked against the paper that states it.
+  (C) parameter calibration  -- free parameters fit to data and then
+      evaluated on that same data. Not held-out validation.
+  (P) held-out prediction    -- a fitted or class-range model checked
+      against data it did not see during fitting or class-range selection.
+      Currently empty across this repository.
+
+This module performs a (C) parameter calibration -- the V-a fit below
+(Chatzarakis joint fit) is evaluated on the same data it was fit to; it is
+not, and is not presented as, held-out validation.
+
+Phase-0/1 fit driver: joint fit of {eps(T), rho(T)} to the validation card.
 
 Residual blocks (each optional block activates when the card carries it):
   1. g2_vs_T      -- the published g2(0) series; rows carry {w, dx} filter

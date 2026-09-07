@@ -29,8 +29,11 @@ ANCHORS for the 300 K width of III-V dots (FWHM, homogeneous or
 single-dot):
   * In0.5Ga0.5As/GaAs single dot, NSOM: ~12 meV at 300 K -- Matsuda et al.,
     Phys. Rev. B 63, 121304(R) (2001) [V].
-  * InAsP/InP nanowire dot: 25 nm at 1398 nm = 16 meV at 300 K --
-    Laferriere et al., Nano Lett. 23, 962 (2023) [V].
+  * InAsP/InP nanowire dot: the 25 nm / ~16 meV figure at 1398 nm is the
+    DETECTION BANDPASS FILTER width at 300 K, not a measured emission
+    linewidth -- an instrument upper bound only [E] (Laferriere et al.,
+    Nano Lett. 23, 962 (2023), p. 965). Not used as an anchor; see
+    verify/data/rt_edge_anchors.yaml 'laferriere23-linewidth-class-proxy'.
   * InAs/InP single dot at 1.55 um: 17.5 meV homogeneous at 300 K (literature
     report cited in _goal/materials_research.md, section 6) [DR].
   * (211)B InAs/GaAs cavity dot: 6-7 meV at >= 250 K -- Chatzarakis et al.,
@@ -43,7 +46,7 @@ single-dot):
     homogeneous and spectrometer-FWHM values, and its 6 meV floor is based
     on one strongly confined (211)B dot.
 
-Hence the class range used for envelopes: Gamma(300 K) in [6, 20] meV,
+Hence the class range used for envelopes [A]: Gamma(300 K) in [6, 20] meV,
 default anchor 12 meV (Matsuda). The X-XX splittings of the same dot
 families are 3-7 meV (InP/GaInP 4-7, InAs/InP 3.5, (211)B InAs 4-13), so at
 300 K the lines overlap unless the dot sits at the low-width, high-splitting

@@ -2,8 +2,9 @@
 
 Physics (F-series):
   * X and XX emission lines are unit-area Lorentzians; the filter is centered on X.
-  * F1 (filtered-cascade identity):  g2_0 = eps = t_XX / t_X, where t_i is the
-    transmission of line i through the acceptance function.
+  * F1 (filtered-cascade identity, the mu->0 limit of the cap-2 filtered
+    cascade):  g2_0 = eps = t_XX / t_X, where t_i is the transmission of
+    line i through the acceptance function.
   * Acceptance functions: top-hat window of full width w, Lorentzian cavity of
     FWHM kappa (peak-normalized), or their product (numeric).
 

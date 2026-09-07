@@ -39,7 +39,7 @@ from fsim_core.cw_g2 import (
 # tau_dip are not what check (i) asserts on.
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="fsim_core.cw_g2")
 from fsim_core.integrator import g2_from, retention
-from fsim_core.loading import f1b_g2
+from fsim_core.loading import drive_factor, f1b_g2
 
 CHECKS = []
 RESULTS = {}   # numbers to print in the summary
@@ -319,6 +319,14 @@ def _():
     assert abs(rep["eps"] - 0.2) < 1e-15
     note = cw_vs_pulsed_note()
     assert "(1 + a + a b)" in note and "eps p S_XX/S_X" in note
+
+
+@check("finding 8: f1b_g2 small-mu drive-factor expansion and the eps=1 mu->inf limit")
+def _():
+    # small-mu: f1b_g2(mu, eps)/eps ~ 1 + mu*(1/3 - eps) + O(mu^2)  [docs: cw_g2.py:419, loading.py:15]
+    assert abs(f1b_g2(1e-4, 0.2) / 0.2 - (1 + 1e-4 * (1 / 3 - 0.2))) < 1e-9
+    # mu->inf: drive_factor(mu, eps) = f1b_g2(mu, eps)/eps -> 2/(1+eps)^2; at eps=1 that is 0.5
+    assert abs(drive_factor(50.0, 1.0) - 0.5) < 1e-9
 
 
 def main():

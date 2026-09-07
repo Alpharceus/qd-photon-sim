@@ -415,8 +415,11 @@ def cw_vs_pulsed_note():
 CW vs PULSED g2(0) of the filtered X line (cap-2 ladder, rate equations)
 
 Pulsed (loading.f1b_g2): g2 = 2 P2 eps / [P1 + P2 (1+eps)]^2 -- the peak-AREA
-ratio lumps every photon of a pulse period together, so the leak penalty is
-bounded: drive factor g2/eps in [1, 2/(1+eps)^2).
+ratio lumps every photon of a pulse period together: the drive factor
+f = g2(mu)/eps runs from 1 at mu->0 to 2/(1+eps)^2 at mu->inf; it EXCEEDS 1
+only for eps < 1/3 (small-mu expansion g2 = eps[1 + mu(1/3 - eps) + O(mu^2)])
+and is below 1 for eps > 1/3 -- finite loading does not always penalise g2
+[DR].
 
 CW: the only way to get two detected photons at the SAME instant is the
 cascade partner: an XX photon leaking through the filter (t_XX) followed by
@@ -451,7 +454,7 @@ Limits:
                the pulsed area ratio cannot exceed 2 eps/(1+eps)^2.
   finite r   : the CW drive factor D_CW = (1+a+ab)/(1+eps p r S_XX/gamma_X)^2
                is ~ 1 + (r/gamma_X)(1 - 2 eps) at small r versus the pulsed
-               ~ 1 + mu (1 - eps), and keeps growing ~ r^2 while the pulsed
+               ~ 1 + mu (1/3 - eps), and keeps growing ~ r^2 while the pulsed
                factor saturates; hence at r ~ gamma_X the CW raw g2(0) exceeds
                the pulsed peak-area value (verify_cw_g2 check e).
 

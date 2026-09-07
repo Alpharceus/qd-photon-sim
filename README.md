@@ -2,7 +2,8 @@
 
 Simulation and inverse-design stack for electrically driven epitaxial-QD
 single-photon devices, built on the F-series mathematics (filtered-cascade
-identity g²₀ = ε = t_XX/t_X, background law g² = 1−ρ²(1−ε), master ceiling
+identity, the mu→0 limit of the cap-2 filtered cascade, g²₀ = ε = t_XX/t_X,
+background law g² = 1−ρ²(1−ε), master ceiling
 ρ(T_c)²[1−ε(T_c)] = ½, electrical-separation theorem). NSF NQVL QCAP SLE.
 
 **Provenance discipline:** every parameter carries a tag — [V] measured,
@@ -13,17 +14,46 @@ not point predictions.
 
 ## Validation record
 
+Every check in this repository sorts into exactly one of four classes;
+conflating them (treating a calibration as if it were a prediction, or a
+transcription check as if it were an independent verification) is the
+mistake this section exists to prevent.
+
+- **(N) numerical verification** — one method checked against another under
+  the same physical assumptions, with no external data involved:
+  `verify/verify_fsim.py`, `verify/verify_dot_levels.py`,
+  `verify/verify_waveguide.py`, and the `mc_*` Monte-Carlo second methods
+  used throughout `verify/`.
+- **(T) source transcription** — a number, formula, or claim in the code
+  checked against the paper that states it: `verify/verify_rt_edge_papers.py`,
+  `verify/verify_rt_edge_contract.py`, and the anchors ledger
+  (`verify/data/rt_edge_anchors.yaml`).
+- **(C) parameter calibration** — free parameters fit to data and then
+  evaluated on that same data. Not held-out validation.
+- **(P) held-out prediction** — a fitted or class-range model checked
+  against data it did not see during fitting or class-range selection.
+  **Currently empty**: no result below has been checked against withheld
+  data.
+
 The model is validated against all three published datasets the program
 names (details and honesty ledgers in `notes/`):
 
-| Arm | Dataset | Result |
-|---|---|---|
-| V-a | Chatzarakis et al., PRApplied 20, 034011 (2023) + supplement | joint over-determined fit (g² + τ(T) + Γ(T)), max resid 0.028; T_c = 249 K |
-| V-b | Laferrière et al., Nano Lett. 23, 962 (2023) | ε→1 limit confirmed; 300 K point at the Theorem-0 edge |
-| V-c | Reischle et al., APL 97, 143513 (2010) + OE 16, 12771 (2008) | ρ-limited with ε small; the 2008 paper's Eq. (1) is the F2 law |
+| Arm | Class | Dataset | Result |
+|---|---|---|---|
+| V-a | (C) | Chatzarakis et al., PRApplied 20, 034011 (2023) + supplement | joint over-determined fit (g² + τ(T) + Γ(T)), max resid 0.028; T_c = 249 K — calibration, not held out |
+| V-b | (T) | Laferrière et al., Nano Lett. 23, 962 (2023) | ε→1 limit confirmed; 300 K point at the Theorem-0 edge |
+| V-c | (T) | Reischle et al., APL 97, 143513 (2010) + OE 16, 12771 (2008) | ρ-limited with ε small; the 2008 paper's Eq. (1) is the F2 law |
 
 Named open model residuals: Γ(T) high-T shape (Tier-3 independent-boson
 candidate); re-excitation/refilling channel (WP-M2′, three-paper convergence).
+
+The requirement that an anchor claim rest on two distinct verified sources
+(`docs/rt_edge_contract.md:29`) is a project policy adopted for this
+repository's evidence ledger, not a general scientific requirement: a single
+primary publication can be sufficient evidence for a claim, and two
+publications that are both off-platform (neither on the actual InP-dot
+device/material system) are not automatically sufficient just because there
+are two of them.
 
 ## Scope and data provenance
 

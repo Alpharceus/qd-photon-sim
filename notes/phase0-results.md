@@ -14,7 +14,7 @@ the published upper bound g² ≤ 0.02, one-sided). Γ(250 K) = 6.47 meV (anchor
 6.5±0.5). Extracted E_a = 240.4 meV vs the published **240±20 meV for this
 exact microcavity dot** (Fig. S5(b)) — note the planning doc's 265±30 meV is
 the ⟨Al⟩=65% *macro* sample; the criterion is satisfied under both.
-Solved master ceiling: **T_c = 261 K** — consistent with the paper's
+Solved master ceiling: **T_c = 261 K** (superseded by notes/phase2-results.md, joint g2+tau+Gamma refit: T_c = 249 K) — consistent with the paper's
 observation of resolved X/XX to 260 K and its claim that minor modifications
 reach room temperature.
 
