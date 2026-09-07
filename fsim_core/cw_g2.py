@@ -438,7 +438,10 @@ f = 1 + mu(1/3 - eps) + O(mu^2) and large-mu limit f -> 2/(1+eps)^2, which
 exceeds 1 iff eps < sqrt(2)-1 = 0.41421356. For eps < 1/3, f > 1 at every
 mu > 0; for 1/3 < eps < sqrt(2)-1, f dips below 1 at small mu and rises
 back above 1 at large mu (e.g. f(50, 0.35) = 1.097, f(50, 0.40) = 1.020);
-for eps > sqrt(2)-1, f stays below 1 at every mu > 0 tried numerically
+for eps > sqrt(2)-1, f stays below 1 at every mu > 0 (provable: for fixed mu,
+f is strictly decreasing in eps, and the crossing eps*(mu) where f=1
+increases monotonically from 1/3 at mu->0 to sqrt(2)-1 at mu->inf, so no mu
+can reach f=1 again once eps exceeds that limiting crossing)
 (e.g. f(50, 0.45) = 0.951). Neither "f in [1, 2)" nor "the pulsed area
 ratio is capped at 2 eps/(1+eps)^2" is a valid general bound: at eps = 0.5,
 mu -> 0, g2 -> eps = 0.5, which already exceeds 2 eps/(1+eps)^2 = 0.444

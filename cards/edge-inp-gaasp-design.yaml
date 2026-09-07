@@ -73,6 +73,9 @@ design:
     cw: true
     cw_irf_fwhm_ps: 50.0
     cw_tau_max_ns: 0.12
+    loading_model: auto  # [A] peer-review-triage.md finding 2 -- legacy switch, bit-identical
+    finite_pulse: false  # [A] peer-review-triage.md finding 1 -- static per-pulse loading (legacy)
+    gate_ns: null        # [A] peer-review-triage.md finding 4 -- legacy background-fraction formula
   thermal:
     T_hs: 300.0
     layers:
@@ -322,6 +325,31 @@ design:
           unmet; at cw_irf_fwhm_ps = 50 ps, evaluate() completes in
           ~2.8-3.0 s at this card's drive.I_uA, inside the <5 s/evaluation
           bound with margin; a numerical choice, not a literature value.
+      drive.loading_model:
+        value: auto
+        tag: A
+        source: >
+          peer-review-triage.md finding 2 -- "auto" (default) reproduces
+          today's F_p != 1.0 switch between loading.f1b_g2/f8_g2
+          bit-identically; not requested (this card leaves drive.F_p at its
+          1.0 default, so "auto" and "capped_poisson" agree here anyway).
+      drive.finite_pulse:
+        value: false
+        tag: A
+        source: >
+          peer-review-triage.md finding 1 -- false (default, legacy): keeps
+          the static per-pulse loading distribution (f1b_g2). Not requested
+          on this card; the acceptance sweep will decide whether to switch
+          it on.
+      drive.gate_ns:
+        value: null
+        tag: A
+        source: >
+          peer-review-triage.md finding 4 -- null (default, legacy): keeps
+          the existing per-collected-X/CW-time-model background-fraction
+          formula. Not requested on this card (only meaningful together with
+          drive.finite_pulse=true); recommended default when opted in is
+          tau_pulse_ns + 5*ret.tau_rad_ns.
       thermal.T_hs:
         value: 300.0
         tag: A

@@ -43,7 +43,7 @@ from .qd_gf import PhononParams, ibm_purcell_transmission, ibm_transmission
 from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
-from . import cw_g2, dot_levels, materials, transport, waveguide
+from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -174,6 +174,65 @@ class DriveBlock:
                                   # otherwise): DriveBlock's own defaults
                                   # (duty=1.0, tau_pulse_ns=1.0) silently read
                                   # as a 1 GHz/100%-duty DC drive [A].
+    loading_model: str = "auto"   # peer-review-triage.md finding 2 -- "auto"
+                                  # (default, bit-identical): keeps today's
+                                  # switch, f8_g2 (moment-matched) whenever
+                                  # F_p != 1.0 exactly, else f1b_g2 (capped
+                                  # Poisson) -- an infinitesimal Fano change
+                                  # at F_p=1 jumps g2 (0.2205 -> 0.4325 at the
+                                  # mu=0.8/eps=0.2 reference point) because
+                                  # the two are different, equally valid
+                                  # cap-2 conventions that are NOT identical
+                                  # at finite mu (loading.py module
+                                  # docstring) -- they agree only to O(mu^2).
+                                  # "capped_poisson" forces f1b_g2 always;
+                                  # "moment_matched" forces f8_g2 always
+                                  # (continuous across F_p=1 by construction).
+                                  # [A] which convention to use where neither
+                                  # is independently anchored; validated at
+                                  # evaluate() time, ValueError otherwise.
+    finite_pulse: bool = False    # peer-review-triage.md finding 1 -- False
+                                  # (default, bit-identical): g2_dot above
+                                  # comes from a STATIC per-pulse loading
+                                  # distribution (f1b_g2/f8_g2), exact only
+                                  # in the limit of an instantaneous pulse.
+                                  # True opts into fsim_core.pulse_counting.
+                                  # pulse_g2, which propagates the exact
+                                  # state-resolved factorial-moment hierarchy
+                                  # through the pump/dark windows of one
+                                  # pulse period -- at the RT edge-emitter
+                                  # operating point the escape rates k_X/k_XX
+                                  # (cw_g2.escape_rates_from_retention) and
+                                  # the ~100 ps pump are fast relative to the
+                                  # radiative lifetime, so a dot can be
+                                  # re-excited and re-emit repeatedly within
+                                  # one pulse (Hanschke et al., "Origin of
+                                  # antibunching in resonance fluorescence",
+                                  # npj Quantum Inf. 4, 43 (2018)). Requires
+                                  # EL-transport (injection is not None) for
+                                  # the physical pump rate
+                                  # injection.loading.r_dot; a legacy PL/
+                                  # EL-fixed-mu card never touches this path.
+                                  # [A] rectangular pump waveform; [DR]
+                                  # moment hierarchy on the existing cw_g2
+                                  # generator (see pulse_counting.py).
+    gate_ns: float | None = None  # peer-review-triage.md finding 4 -- None
+                                  # (default, legacy): the pulsed background
+                                  # fraction keeps its existing per-collected-
+                                  # X/CW-time-model mix (device.py:825-831).
+                                  # A finite value, together with
+                                  # finite_pulse=True, opts into one explicit
+                                  # counting gate of width gate_ns (ns):
+                                  # n_X+n_XX from pulse_counting's mean_counts
+                                  # (already includes escape and the XX line),
+                                  # n_bg = the SAME injection background rate
+                                  # the CW path uses, integrated over gate_ns,
+                                  # rho = (n_X+n_XX)/(n_X+n_XX+n_bg+b_res*n_X)
+                                  # [DR] counts, [A] gate width -- recommended
+                                  # default gate_ns = tau_pulse_ns +
+                                  # 5*d.ret.tau_rad_ns (catches >99% of a
+                                  # single-exponential decay tail). Ignored
+                                  # unless finite_pulse is also True.
     b_res: float = 0.0            # council review 2026-09-05 item 8 -- residual
                                   # background channel, T-independent:
                                   # background photons in the collection
@@ -360,6 +419,10 @@ class DeviceDesign:
         # fields explicitly at load (reproduced TypeError without this).
         ret_kw = _coerce_optional_floats(d["ret"], ("n_dot_cm2", "tau_cap_ps"))
         aperture_kw = _coerce_optional_floats(d["aperture"], ("density_cm2",))
+        # finding 4 (peer-review-triage.md): drive.gate_ns is the same
+        # None-defaulted float class as ret.n_dot_cm2/aperture.density_cm2
+        # above -- guard it against the same YAML 1.1 unsigned-exponent bug.
+        drive_kw = _coerce_optional_floats(d["drive"], ("gate_ns",))
         # pr-pkg1-fix3 item 9: ret.n_dot_cm2/tau_cap_ps are None-means-
         # "use the caller-supplied/class default" (_confinement_params'
         # is-None resolution chain, see RetentionBlock's own docstring) --
@@ -375,7 +438,7 @@ class DeviceDesign:
         return DeviceDesign(
             name=d.get("name", "my-device"),
             dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
-            drive=DriveBlock(**d["drive"]), thermal=ThermalBlock(**d["thermal"]),
+            drive=DriveBlock(**drive_kw), thermal=ThermalBlock(**d["thermal"]),
             cavity=CavityBlock(**d["cavity"]), filter=FilterBlock(**d["filter"]),
             aperture=ApertureBlock(**aperture_kw),
             emission=EmissionBlock(**d.get("emission", {})),
@@ -656,6 +719,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         raise ValueError(f"unknown ret.mode {d.ret.mode!r}")
     if d.drive.mode not in ("EL", "PL", "EL-transport"):
         raise ValueError(f"unknown drive.mode {d.drive.mode!r}")
+    if d.drive.loading_model not in ("auto", "capped_poisson", "moment_matched"):
+        raise ValueError(f"unknown drive.loading_model {d.drive.loading_model!r}")
+    if d.drive.gate_ns is not None and d.drive.gate_ns <= 0:
+        raise ValueError(f"drive.gate_ns must be > 0 if set (got {d.drive.gate_ns!r})")
     if d.emission.type not in ("none", "edge"):
         raise ValueError(f"unknown emission.type {d.emission.type!r}")
     if d.filter.track_material not in ("", "dot", "matrix"):
@@ -733,6 +800,13 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     cavity_tracks = d.cavity.enabled and not sin_mode
     track_material_effective = bool(d.filter.track_material) and (cavity_tracks or d.filter.hold_window)
 
+    def _nan_fp_rates():
+        # finding 1 -- rates pulse_counting.pulse_g2 was (or would have been)
+        # called with; all-nan whenever drive.finite_pulse is off or the
+        # operating point is invalid before reaching that call.
+        return dict(r_ns=np.nan, gamma_X_ns=np.nan, gamma_XX_ns=np.nan,
+                    k_X=np.nan, k_XX=np.nan, tau_on_ns=np.nan, tau_dark_ns=np.nan)
+
     def one(T_hs):
         # The legacy branch deliberately retains its one-shot P=IV calculation.
         # Transport uses the diode's junction power in a short fixed-point loop.
@@ -745,6 +819,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                             cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                             n_dot_cm2_used=np.nan,
+                            finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
+                            finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                            rho_pulsed=np.nan,
                             invalid_reason="EL-transport requires positive current")
             converged = False
             for _ in range(12):
@@ -765,6 +842,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                             cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                             n_dot_cm2_used=np.nan,
+                            finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
+                            finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                            rho_pulsed=np.nan,
                             invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
@@ -773,6 +853,9 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                         g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                         cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
                         n_dot_cm2_used=np.nan,
+                        finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
+                        finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
+                        rho_pulsed=np.nan,
                         invalid_reason="thermal runaway")
         gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
                     d.dot.E_LO, d.dot.gamma300))) if d.dot.linewidth == "anchored"
@@ -987,7 +1070,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                    mu=d.drive.mu, eta=d.drive.eta_capture)
             mu_use, Fp_use, eta_use = iface.mu, iface.F_p, iface.eta_capture
         if mu_use > 0:
-            if Fp_use != 1.0:
+            # finding 2 (peer-review-triage.md): drive.loading_model picks the
+            # cap-2 loading convention explicitly -- "auto" (default)
+            # reproduces today's switch (f8_g2 whenever F_p != 1.0 exactly)
+            # bit-identically; "moment_matched" always uses f8_g2 (continuous
+            # across F_p=1 by construction); "capped_poisson" always uses
+            # f1b_g2. [A]
+            use_f8 = (d.drive.loading_model == "moment_matched"
+                     or (d.drive.loading_model == "auto" and Fp_use != 1.0))
+            if use_f8:
                 # F8b thinning: effective pump Fano factor AT the dot, after
                 # dot-capture; F8: moment-matched (mu, Fano) cap-2 loading.
                 F_eff = f8b_thin_fano(eta_use, Fp_use)
@@ -1005,14 +1096,77 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     # their own gap handling and verify4 asserts the raise
                     g2_dot = float(f8_g2(mu_use, F_eff, spec.eps))
             else:
-                # F_p == 1.0 (default): keep the original f1b_g2 path EXACTLY
-                # -- f8_g2(mu, 1, eps) is not bit-identical to f1b_g2(mu, eps)
-                # at finite mu (different, equally valid cap-2 conventions;
-                # see loading.py module docstring), so every pre-v1.1 result
-                # stays reproducible unless F_p is explicitly set != 1.0.
+                # loading_model in ("auto" with F_p == 1.0, "capped_poisson"):
+                # keep the original f1b_g2 path EXACTLY -- f8_g2(mu, 1, eps)
+                # is not bit-identical to f1b_g2(mu, eps) at finite mu
+                # (different, equally valid cap-2 conventions; see loading.py
+                # module docstring), so every pre-v1.1 result stays
+                # reproducible unless loading_model or F_p is explicitly
+                # changed from its default.
                 g2_dot = float(f1b_g2(mu_use, spec.eps))
         else:
             g2_dot = spec.eps
+        # finding 1 (peer-review-triage.md): drive.finite_pulse replaces the
+        # static per-pulse g2_dot above with pulse_counting.pulse_g2's exact
+        # state-resolved moment-hierarchy result, propagated through the
+        # pump ("on") and dark ("off") windows of one pulse period -- see
+        # DriveBlock.finite_pulse and pulse_counting.py. Requires EL-
+        # transport (injection is not None) for the physical pump rate
+        # injection.loading.r_dot; False (default) or no injection leaves
+        # g2_dot untouched (legacy, bit-identical). gamma_X_ns/k_X/k_XX use
+        # the EXACT same expressions as the CW branch below (rm-enhanced
+        # radiative rate, cw_g2.escape_rates_from_retention at this Tj) so
+        # the two opt-in diagnostics stay consistent with each other.
+        finite_pulse_g2_dot = float("nan")
+        finite_pulse_mean_counts = float("nan")
+        finite_pulse_mean_counts_x = float("nan")
+        finite_pulse_rates = _nan_fp_rates()
+        if d.drive.finite_pulse and injection is not None and mu_use > 0:
+            gamma_X_ns_fp = rm / d.ret.tau_rad_ns
+            k_X_fp, k_XX_fp = cw_g2.escape_rates_from_retention(
+                gamma_X_ns_fp, params["a_esc"], params["E_a"], params["b_p"], params["E_b"], Tj)
+            r_ns_fp = injection.loading.r_dot / 1e9
+            # rep_rate_hz is resolved identically to the outer-scope pulsed-
+            # flux bookkeeping below (duty_eff/tau_pulse_ns_val whenever
+            # drive.rep_rate_hz was not itself the explicit choice); recomputed
+            # here (rather than threaded in) since `one` is a closure over the
+            # same tau_pulse_ns_val/rep_explicit/duty_eff already in scope.
+            rep_rate_hz_fp = (d.drive.rep_rate_hz if rep_explicit
+                             else (duty_eff / (tau_pulse_ns_val * 1e-9)
+                                   if tau_pulse_ns_val > 0 and duty_eff > 0 else float("nan")))
+            tau_dark_ns_fp = (1e9 / rep_rate_hz_fp - tau_pulse_ns_val
+                             if np.isfinite(rep_rate_hz_fp) and rep_rate_hz_fp > 0 else float("nan"))
+            if (gamma_X_ns_fp > 0 and spec.t_x > 0 and r_ns_fp > 0
+                    and np.isfinite(tau_dark_ns_fp) and tau_dark_ns_fp >= 0):
+                pc = pulse_counting.pulse_g2(
+                    r_ns=r_ns_fp, gamma_X_ns=gamma_X_ns_fp, gamma_XX_ns=2.0 * gamma_X_ns_fp,
+                    k_X=k_X_fp, k_XX=k_XX_fp, t_X=spec.t_x, t_XX=spec.eps * spec.t_x,
+                    tau_on_ns=tau_pulse_ns_val, tau_dark_ns=tau_dark_ns_fp,
+                    pump_ratio=d.drive.cw_pump_ratio, split=True)
+                finite_pulse_g2_dot = pc["g2"]
+                finite_pulse_mean_counts = pc["mean_counts"]
+                finite_pulse_mean_counts_x = pc.get("mean_counts_x", float("nan"))
+                finite_pulse_rates = dict(r_ns=r_ns_fp, gamma_X_ns=gamma_X_ns_fp,
+                                          gamma_XX_ns=2.0 * gamma_X_ns_fp, k_X=k_X_fp, k_XX=k_XX_fp,
+                                          tau_on_ns=tau_pulse_ns_val, tau_dark_ns=tau_dark_ns_fp)
+                g2_dot = finite_pulse_g2_dot
+        # finding 4 (peer-review-triage.md): drive.gate_ns, together with
+        # finite_pulse, replaces the legacy per-collected-X/CW-time-model mix
+        # (bg_per_collected/B/rho above) with one explicit counting gate: the
+        # SAME injection background rate the CW branch uses (abs_bg_in_window_
+        # ns below), integrated over gate_ns, against the moment-hierarchy's
+        # own X+XX counts (already escape- and filter-weighted -- do NOT
+        # multiply by S or t_x again). None (default) leaves `rho` above
+        # untouched (legacy). Recommended default gate_ns = tau_pulse_ns +
+        # 5*d.ret.tau_rad_ns.
+        rho_pulsed = float("nan")
+        if (d.drive.finite_pulse and d.drive.gate_ns is not None
+                and injection is not None and np.isfinite(finite_pulse_mean_counts)):
+            n_bg = injection.background.rate_bg_window * win_scale * d.drive.gate_ns * 1e-9
+            denom = (finite_pulse_mean_counts + n_bg
+                    + d.drive.b_res * finite_pulse_mean_counts_x)
+            rho_pulsed = finite_pulse_mean_counts / denom if denom > 0 else float("nan")
+            rho = rho_pulsed
         # Continuous aperture composition [A] (docs/rt_edge_contract.md
         # "Aperture assumptions"): composed AFTER loading/capture/filter are
         # already folded into g2_dot (spec.eps upstream, mu/F_p above), and
@@ -1108,7 +1262,12 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     injection=injection, S=S, g2_cw0=g2_cw0, g2_cw0_raw=g2_cw0_raw,
                     cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho,
                     w=(w if w is not None else float("nan")),
-                    n_dot_cm2_used=n_dot_cm2_used)
+                    n_dot_cm2_used=n_dot_cm2_used,
+                    finite_pulse_g2_dot=finite_pulse_g2_dot,
+                    finite_pulse_mean_counts=finite_pulse_mean_counts,
+                    finite_pulse_mean_counts_x=finite_pulse_mean_counts_x,
+                    finite_pulse_rates=finite_pulse_rates,
+                    rho_pulsed=rho_pulsed)
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     rows = [one(T) for T in Ts]
@@ -1173,12 +1332,23 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
 
     gain_factor = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
     beta_factor = d.cavity.beta_sin if sin_mode else 1.0
-    brightness = float((P1 + P2)) * (op["t_x"] if np.isfinite(op["t_x"]) else 0.0) \
-        * gain_factor * beta_factor
-    if diode is not None:
-        # `mu` is captured-dot loading already: multiply retention and the
-        # spectral window once, never eta_inj/eta_capture again.
-        brightness *= op["S"]
+    if d.drive.finite_pulse and diode is not None and np.isfinite(op["finite_pulse_mean_counts"]):
+        # finding 1: pulse_counting's m1 (mean_counts) is already the
+        # detected-photon count per pulse period -- escape (k_X/k_XX enter
+        # the generator M directly) and the filter transmission (J =
+        # t_X*gamma_X, t_XX*gamma_XX) are BOTH already folded in, so do NOT
+        # multiply by t_x or S again here (that would double-count
+        # retention/collection). This replaces the legacy static-loading
+        # peak-area brightness (P1+P2)*t_x[*S] below exactly when
+        # finite_pulse is opted in.
+        brightness = float(op["finite_pulse_mean_counts"]) * gain_factor * beta_factor
+    else:
+        brightness = float((P1 + P2)) * (op["t_x"] if np.isfinite(op["t_x"]) else 0.0) \
+            * gain_factor * beta_factor
+        if diode is not None:
+            # `mu` is captured-dot loading already: multiply retention and the
+            # spectral window once, never eta_inj/eta_capture again.
+            brightness *= op["S"]
 
     # emission.type="edge" (Lemma 1: brightness only -- eta_total already
     # contains beta, the propagation and NA factors, and ONE facet factor:
@@ -1349,6 +1519,19 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "g2_cw0": op["g2_cw0"], "g2_cw0_raw": op["g2_cw0_raw"],
         "cw_r_ns": op["cw_r_ns"], "cw_gamma_X_ns": op["cw_gamma_X_ns"],
         "cw_rho_op": op["cw_rho"],
+        # finding 1/4 (peer-review-triage.md): drive.finite_pulse diagnostics
+        # -- nan/nan rates whenever finite_pulse is off or not evaluable.
+        "finite_pulse_g2_dot": op["finite_pulse_g2_dot"],
+        "finite_pulse_mean_counts": op["finite_pulse_mean_counts"],
+        "finite_pulse_mean_counts_x": op["finite_pulse_mean_counts_x"],
+        "finite_pulse_r_ns": op["finite_pulse_rates"]["r_ns"],
+        "finite_pulse_gamma_X_ns": op["finite_pulse_rates"]["gamma_X_ns"],
+        "finite_pulse_gamma_XX_ns": op["finite_pulse_rates"]["gamma_XX_ns"],
+        "finite_pulse_k_X": op["finite_pulse_rates"]["k_X"],
+        "finite_pulse_k_XX": op["finite_pulse_rates"]["k_XX"],
+        "finite_pulse_tau_on_ns": op["finite_pulse_rates"]["tau_on_ns"],
+        "finite_pulse_tau_dark_ns": op["finite_pulse_rates"]["tau_dark_ns"],
+        "rho_pulsed": op["rho_pulsed"],
         "invalid_reasons": ([] if np.isfinite(op["g2"])
                             else [op.get("invalid_reason", "invalid operating point")])
         + ([edge_err] if edge_err else [])
@@ -1399,6 +1582,16 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                        else "legacy hard-coded GaAs Varshni"))},
             "cw": {"tag": "A", "note": ("cw_g2 rate-equation model, transport-derived pump rate"
                                         if d.drive.cw else "not requested")},
+            # finding 1/4 (peer-review-triage.md): finite_pulse's moment
+            # hierarchy is [DR] on the existing cw_g2 generator; the
+            # rectangular pump waveform and the gate_ns counting window are
+            # [A]. Not requested (legacy static loading) unless opted in.
+            "finite_pulse": {"tag": "DR" if d.drive.finite_pulse else "A",
+                             "note": ("pulse_counting factorial-moment hierarchy "
+                                      "(Hanschke et al., npj Quantum Inf. 4, 43 (2018))"
+                                      + (f", gated rho at gate_ns={d.drive.gate_ns:g}"
+                                         if d.drive.gate_ns is not None else "")
+                                      if d.drive.finite_pulse else "not requested (legacy static loading)")},
             # item 8: b_res is a residual background channel that this module
             # never invents a value for -- 0.0 (legacy) carries no anchor; a
             # non-zero value's own provenance (e.g. the 80 K Reischle 2008

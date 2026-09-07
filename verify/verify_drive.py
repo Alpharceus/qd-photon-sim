@@ -31,7 +31,7 @@ from fsim_core.drive_mech import (
     roster,
     set_feasibility,
 )
-from fsim_core.loading import c_dep_for_N, f8_g2_load, fano_pump, granularity_N
+from fsim_core.loading import c_dep_for_N, f8_g2, f8_g2_load, fano_pump, granularity_N
 
 CHECKS = []
 
@@ -290,6 +290,81 @@ def _():
     legacy = dev_eval(DeviceDesign())["curves"]
     hi = -5  # a hot grid point
     assert abs(h["g2"][hi] - legacy["g2"][hi]) < 1e-12
+
+
+# ================================================== finding 2: loading_model
+
+@check("finding 2: f8_g2 is continuous across F_p=1 at the review's reference "
+       "point (mu=0.8, eps=0.2) -- an infinitesimal Fano change either side "
+       "of F_p=1 must not jump the loading distribution")
+def _():
+    lo = f8_g2(0.8, 1.0 - 1e-9, 0.2)
+    hi = f8_g2(0.8, 1.0 + 1e-9, 0.2)
+    assert abs(hi - lo) < 1e-8, (lo, hi)
+
+
+@check("finding 2: device wiring -- drive.loading_model='moment_matched' "
+       "keeps device g2 continuous across F_p=1 at the gainp favourable "
+       "corner (gamma300=6, delta_xx=8, NA=0.8, T_hs=230 K), where the "
+       "legacy 'auto' switch (F_p != 1.0) would otherwise jump loading "
+       "models exactly at F_p=1")
+def _():
+    import warnings
+    from fsim_core.device import DeviceDesign
+    from fsim_core.device import evaluate as dev_eval
+    ROOT = Path(__file__).resolve().parents[1]
+    d = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
+    d.drive.cw = False
+    d.dot.gamma300 = 6.0
+    d.dot.delta_xx = 8.0
+    d.emission.NA = 0.8
+    d.thermal.T_hs = 230.0
+    d.drive.loading_model = "moment_matched"
+    vals = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for fp in (1.0 - 1e-6, 1.0, 1.0 + 1e-6):
+            d.drive.F_p = fp
+            vals.append(dev_eval(d, T_grid=[230.0])["scalars"]["g2_op"])
+    spread = max(vals) - min(vals)
+    assert spread < 1e-6, (vals, spread)
+
+
+@check("finding 2: device wiring -- drive.loading_model='auto' (default) "
+       "with F_p=1 reproduces today's g2_op at the gainp favourable corner "
+       "(frozen 2026-09-07, before this change; the code path is unchanged "
+       "at F_p=1 in 'auto' mode so this value is bit-identical pre- and "
+       "post-change)")
+def _():
+    import warnings
+    from fsim_core.device import DeviceDesign
+    from fsim_core.device import evaluate as dev_eval
+    ROOT = Path(__file__).resolve().parents[1]
+    d = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
+    d.drive.cw = False
+    d.dot.gamma300 = 6.0
+    d.dot.delta_xx = 8.0
+    d.emission.NA = 0.8
+    d.thermal.T_hs = 230.0
+    assert d.drive.loading_model == "auto" and d.drive.F_p == 1.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        g2_op = dev_eval(d, T_grid=[230.0])["scalars"]["g2_op"]
+    G2_OP_AUTO_2026_09_07 = 0.44392483496636415
+    assert abs(g2_op - G2_OP_AUTO_2026_09_07) < 1e-9, g2_op
+
+
+@check("finding 2: unknown drive.loading_model raises ValueError")
+def _():
+    from fsim_core.device import DeviceDesign
+    from fsim_core.device import evaluate as dev_eval
+    d = DeviceDesign()
+    d.drive.loading_model = "bogus"
+    try:
+        dev_eval(d)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
 
 
 @check("hygiene: fsim_core.drive_mech imports no GUI framework and no "

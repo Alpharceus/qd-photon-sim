@@ -324,17 +324,17 @@ def _():
 @check("finding 8a: f1b_g2 small-mu drive-factor slope f = 1 + mu(1/3-eps) + O(mu^2)")
 def _():
     # f(mu, eps) := f1b_g2(mu, eps)/eps  [docs: cw_g2.py:65-68, 418-429, 454-462]
-    # mu=1e-4 residual is 2.4e-10 against tol 1e-9 (margin ~4x, under the 10x
-    # threshold that would call for tightening to mu=1e-5 per spec). Tried
-    # that: it does NOT help. loading.loading_probs computes
-    # P2 = 1 - P0 - P1 by cancelling two near-1 float64 terms, so float
-    # noise in P2 (~1e-16 absolute) swamps the true O(mu^2) term once mu is
-    # this small. Observed residual at mu=1e-5 is 1.1e-7 -- WORSE, not
-    # better -- confirmed against mpmath at 50 dps, whose noise-free
-    # residual at mu=1e-5 is -3.3e-13 (i.e. the 1.1e-7 is float64
-    # cancellation noise in f1b_g2, not a sign the expansion is wrong).
-    # mu=1e-4 / tol=1e-9 is kept: it is the point where the float64
-    # implementation still resolves the true O(mu^2) term.
+    # At mu=1e-4 the float64 residual is +2.357e-10, but that is ALREADY
+    # cancellation noise, not the true O(mu^2) term: loading.loading_probs
+    # computes P2 = 1 - P0 - P1 by cancelling two near-1 float64 terms, and
+    # the mpmath-at-50-dps noise-free residual at mu=1e-4 is -3.33e-11 --
+    # opposite sign and ~7x smaller than the float64 value. So this check
+    # does not resolve the O(mu^2) term at all; it validates the leading
+    # slope 1/3 - eps to only ~1e-4 relative (tol 1e-9 absolute against an
+    # O(1e-4) x O(1) product is a loose bound, deliberately loose enough to
+    # tolerate the float64 cancellation noise above). Tightening mu (e.g. to
+    # 1e-5) does not help -- the noise only gets relatively larger as the
+    # true O(mu^2) signal shrinks.
     mu, eps = 1e-4, 0.2
     resid = f1b_g2(mu, eps) / eps - (1 + mu * (1 / 3 - eps))
     assert abs(resid) < 1e-9, resid

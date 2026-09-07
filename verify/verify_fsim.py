@@ -261,7 +261,7 @@ def _():
     assert np.all(np.diff(g) > -1e-14)
 
 
-@check("F1b: drive factor bounded in (1, 2)")
+@check("F1b: drive factor in (1, 2) at eps = 0.05 (not a general bound)")
 def _():
     from fsim_core.loading import drive_factor
     for mu in (0.1, 0.33, 1.0, 3.0, 20.0):

@@ -1199,5 +1199,59 @@ ok("item 9: auto_w_scale=1.0 (default) reproduces the legacy w exactly",
 ok("item 9: the resolved provenance documents the auto_w operating convention",
    "auto_w" in r_w1["scalars"]["provenance"]["filter_window"]["note"])
 
+# slow: peer-review-triage.md finding 4 -- drive.gate_ns's one explicit
+# counting gate. Two evaluate()-only checks (a handful of self-heating
+# fixed-point solves each), a few seconds total against this file's ~10 min
+# runtime.
+#
+# Check A: a test-only, degenerate 100%-duty construction of the gainp card
+# (drive.duty=1.0, drive.diode['tau_pulse_ns'] = the card's own 12.5 ns
+# period, so tau_dark_ns resolves to exactly 0.0) with drive.gate_ns
+# covering that whole period. With tau_dark_ns=0 the periodic map Phi
+# reduces to expm(M_on*T) alone, so the periodic steady state IS the
+# ordinary CW steady state and pulse_counting's per-period m1 (mean_counts)
+# is exactly sig*T (sig = the CW branch's own t_X*I_X+t_XX*I_XX, since at
+# steady state dp/dt=0 makes the moment integral trivial) -- an exact
+# identity, independent of escape, that proves the new gated-count rho
+# reduces to the existing CW rho in the CW limit rather than merely
+# resembling it. Escape is ALSO forced to zero (monkeypatching
+# cw_g2.escape_rates_from_retention, matching the spec's own construction)
+# to keep the check independent of whichever retention prefactor a future
+# package lands on.
+d_cwlimit = copy.deepcopy(d_cw_gainp)
+d_cwlimit.drive.finite_pulse = True
+d_cwlimit.drive.gate_ns = 12.5
+d_cwlimit.drive.duty = 1.0
+d_cwlimit.drive.diode = dict(d_cwlimit.drive.diode)
+d_cwlimit.drive.diode["tau_pulse_ns"] = 12.5
+_orig_escape = cw_g2.escape_rates_from_retention
+cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
+try:
+    sc_cwlimit = evaluate(d_cwlimit)["scalars"]
+finally:
+    cw_g2.escape_rates_from_retention = _orig_escape
+ok("finding 4: gate_ns covering the whole (100%-duty, zero-escape) period "
+   "makes rho_pulsed exactly reproduce the CW branch's own rho (rtol 1e-3)",
+   sc_cwlimit["finite_pulse_tau_dark_ns"] == 0.0
+   and np.isfinite(sc_cwlimit["rho_pulsed"]) and np.isfinite(sc_cwlimit["cw_rho_op"])
+   and abs(sc_cwlimit["rho_pulsed"] - sc_cwlimit["cw_rho_op"]) < 1e-3 * sc_cwlimit["cw_rho_op"])
+
+# Check B: at the gainp card's own (real duty, real escape) operating point,
+# n_X+n_XX (mean_counts) does not depend on gate_ns -- only the background
+# term n_bg = rate_bg_window*win_scale*gate_ns does -- so rho must be
+# strictly monotone decreasing as the gate widens.
+d_gate = copy.deepcopy(d_gainp)
+d_gate.drive.finite_pulse = True
+gate_grid = (1.0, 3.0, 6.0, 12.5)
+rho_gate = []
+for g in gate_grid:
+    dg = copy.deepcopy(d_gate)
+    dg.drive.gate_ns = g
+    rho_gate.append(evaluate(dg)["scalars"]["rho_pulsed"])
+ok(f"finding 4: rho_pulsed is monotone decreasing in gate_ns over {gate_grid} ns "
+   f"(got {rho_gate})",
+   all(np.isfinite(r) for r in rho_gate)
+   and all(rho_gate[i] > rho_gate[i + 1] for i in range(len(rho_gate) - 1)))
+
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)
