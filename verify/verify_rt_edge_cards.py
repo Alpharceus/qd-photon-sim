@@ -35,7 +35,7 @@ job). It checks that the cards are self-describing and honest:
      the gap is a documented, root-caused model limitation, not a design
      choice); evaluate()'s own sub_turn_on flag is absent (qV_j is not
      Boltzmann-suppressed at drive.I_uA); and evaluate() completes in
-     under 5 seconds (the drive.cw_tau_max_ns / cw_g2 grid-cap budget).
+     under CW_RUNTIME_BUDGET_S seconds.
   9. (council review 2026-09-06) dot.gamma300 is re-sourced to the verified
      Matsuda 2001 class value (12.0 meV) and its provenance names Matsuda
      2001 without naming the superseded Laferriere detection-filter-width
@@ -79,29 +79,25 @@ sys.path.insert(0, str(ROOT))
 
 from fsim_core import device as device_mod  # noqa: E402
 from fsim_core import dot_levels  # noqa: E402
+from fsim_core import transport as transport_mod  # noqa: E402
 from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
 
-# pr-pkg1-capture-escape (peer-review-triage.md finding 1b): fixing the
-# confinement escape prefactor's dot density (RetentionBlock.n_dot_cm2,
+# pr-pkg1-fix2 (peer-review-triage.md finding 1b + runtime item 2): fixing
+# the confinement escape prefactor's dot density (RetentionBlock.n_dot_cm2,
 # device.py._confinement_params) raises both cards' escape rate by ~30x at
 # their own aperture.density_cm2=3e8 cm^-2 (vs. dot_levels.retention_params'
-# previous 1e10 cm^-2 default). cw_g2.cw_report's tau grid spacing dt is
-# bound by min(0.05/max(rate), irf_width/20, tau_max_ns/500) (fsim_core/
-# cw_g2.py, out of this package's scope), so a much faster escape rate
-# drives dt far smaller than before -- and cw_g2.convolve_irf's IRF kernel
-# width (~8*irf_width/dt) is NOT independently capped the way the tau grid
-# itself is (only n_tau is capped at cw_g2._GRID_MAX_N), so np.convolve's
-# direct-method cost (~grid_len * kernel_len) grows enormously (measured:
-# edge-inp-gainp-design.yaml ~25-33 s, edge-inp-gaasp-design.yaml ~57 s at
-# their own re-solved drive.I_uA, both with drive.cw=true as shipped). This
-# is a real, reproducible cost of evaluating the corrected physics through
-# the existing cw_g2 grid-sizing logic, not a defect introduced by this
-# package's in-scope files -- fixing the grid-sizing algorithm itself
-# belongs to fsim_core/cw_g2.py, out of scope here. The budget below is
-# widened, with a generous CI/environment margin over the measured cost, so
-# the check still catches a genuine future regression without failing on
-# this known, documented, out-of-scope cost.
-CW_RUNTIME_BUDGET_S = 120.0
+# previous 1e10 cm^-2 default). That stiffer rate drove cw_g2.cw_report's tau
+# grid dt far smaller, and cw_g2.convolve_irf's IRF kernel (built at that
+# grid's own dt) grew with it -- the direct-method np.convolve cost
+# (~grid_len * kernel_len) blew up to 28-64 s at the cards' own re-solved
+# drive.I_uA (measured before the fix below). Root-caused and fixed in
+# fsim_core/cw_g2.py: convolve_irf now uses scipy.signal.fftconvolve
+# (O(N log N) instead of O(N * kernel), the identical linear convolution to
+# ~1e-10 relative floating-point round-off -- no physics change) plus a
+# device.py fix removing a literal duplicate evaluate()-internal `one()`
+# call. Both cards now evaluate in well under 1 s; the budget below is a
+# generous margin over that, not a relaxation to hide the regression.
+CW_RUNTIME_BUDGET_S = 6.0
 
 CARDS = [
     ROOT / "cards" / "edge-inp-gaasp-design.yaml",
@@ -149,6 +145,19 @@ CHECKS = []
 def ok(name: str, value: bool) -> None:
     CHECKS.append(bool(value))
     print(("ok  " if value else "FAIL") + " " + name)
+
+
+# item 9 (pr-pkg1-fix2): match ONLY the (AlxGa1-x)yIn1-yP family label shape
+# (thermal-layer names and materials.AlGaInP(x).label both use it, e.g.
+# "(Al0.55Ga0.45)0.51In0.49P cladding") -- deliberately stricter than a bare
+# "Al...Ga" search so an AlGaAs-family label (e.g. hkust_preset's
+# "Al0.40Ga0.60As" barrier, no "In"/no parens) is correctly NOT matched.
+_ALGAINP_X_RE = re.compile(r"\(Al(\d*\.?\d+)Ga[\d.]+\)[\d.]+In[\d.]+P")
+
+
+def _x_al_from_algainp_label(label: str):
+    m = _ALGAINP_X_RE.search(label)
+    return float(m.group(1)) if m else None
 
 
 def leaves(node, prefix: str = ""):
@@ -464,38 +473,87 @@ def check_card(path: Path, anchors: dict) -> set:
         ok(f"{tag}: resolved mu is in [0.05, 1.0]",
            mu_op is not None and math.isfinite(mu_op) and 0.05 <= mu_op <= 1.0)
 
-        # ---- pr-pkg1-capture-escape (peer-review-triage.md finding 5): ONE
-        # x_al across ret.system.barrier and the thermal layer that plays the
-        # confinement "barrier" role (thermal.layers[0], the innermost/core
-        # layer -- see each card's own KNOWN MODEL LIMITATION note for why
-        # gaasp's outer cladding, thermal.layers[1], is a separate, unfixed
-        # limitation, not this one).
+        # ---- pr-pkg1-fix2 item 9 (peer-review-triage.md finding 5): ONE
+        # x_al across ret.system.barrier, EVERY thermal.layers[*] entry that
+        # names an AlGaInP composition (not only layer 0, the previous,
+        # narrower check), and the diode preset's own resolved barrier
+        # material -- a preset's internal barrier composition is a Python
+        # literal (e.g. transport.red_diode_preset's hardcoded
+        # AlGaInP(0.55)), never read from the card, so it can silently drift
+        # from ret.system.barrier.x_al the same way finding 5 originally
+        # found thermal.layers[0] drifting.
         barrier_x_al = design.ret.system.get("barrier", {}).get("x_al")
-        layer0_name = (design.thermal.layers[0].get("name", "")
-                       if design.thermal.layers else "")
-        m = re.search(r"Al(\d*\.?\d+)Ga", layer0_name)
-        thermal_x_al = float(m.group(1)) if m else None
-        ok(f"{tag}: ret.system.barrier.x_al ({barrier_x_al!r}) equals the x_al named in "
-           f"thermal.layers[0] ({thermal_x_al!r}, from {layer0_name!r})",
-           barrier_x_al is not None and thermal_x_al is not None
-           and math.isclose(barrier_x_al, thermal_x_al, rel_tol=1e-9))
+        # gaasp's thermal.layers[1] ("outer cladding") is a legitimately
+        # different composition from thermal.layers[0] ("core", the layer
+        # that plays the confinement "barrier" role) and ret.system.barrier
+        # -- see the card's own KNOWN MODEL LIMITATION note -- so it is
+        # excluded here by name, not silently by index.
+        excluded_layers = {"edge-inp-gaasp-design.yaml": {"(Al0.70Ga0.30)0.51In0.49P outer cladding"}}
+        excluded = excluded_layers.get(path.name, set())
+        mismatches = []
+        checked = []
+        for i, layer in enumerate(design.thermal.layers):
+            name = layer.get("name", "")
+            if name in excluded:
+                continue
+            x_al = _x_al_from_algainp_label(name)
+            if x_al is None:
+                continue
+            checked.append(f"thermal.layers[{i}]={x_al!r}")
+            if barrier_x_al is None or not math.isclose(barrier_x_al, x_al, rel_tol=1e-9):
+                mismatches.append(f"thermal.layers[{i}] {name!r} (x_al={x_al!r})")
+        diode = device_mod._diode_from_drive(design.drive, design.aperture.diameter_um)
+        diode_x_al = _x_al_from_algainp_label(diode.barrier.label)
+        if diode_x_al is not None:
+            checked.append(f"diode.preset={design.drive.diode.get('preset')!r}={diode_x_al!r}")
+            if barrier_x_al is None or not math.isclose(barrier_x_al, diode_x_al, rel_tol=1e-9):
+                mismatches.append(f"drive.diode.preset={design.drive.diode.get('preset')!r} "
+                                  f"resolved barrier {diode.barrier.label!r} (x_al={diode_x_al!r})")
+        ok(f"{tag}: ret.system.barrier.x_al ({barrier_x_al!r}) equals the x_al of every "
+           f"AlGaInP thermal.layers[*] entry and the diode preset's resolved barrier "
+           f"(checked: {checked}; excluded: {sorted(excluded)}; mismatches: {mismatches})",
+           barrier_x_al is not None and bool(checked) and not mismatches)
 
-        # ---- pr-pkg1-capture-escape (peer-review-triage.md finding 1b):
-        # _confinement_params and transport.evaluate_injection must resolve
-        # the SAME n_dot_cm2 at the card's own operating point -- device.py
-        # exposes the value _confinement_params actually used under
-        # scalars["provenance"]["retention"]["n_dot_cm2_used"]; the transport
-        # call's own n_dot_cm2 is the same "d.drive.n_dot_cm2 or d.aperture.
-        # density_cm2" expression by construction (device.py:684/807/846), so
-        # comparing the exposed value against that expression, evaluated
-        # independently here from the loaded card, checks the two call sites
-        # were not given different densities.
-        n_dot_cm2_used = sc.get("provenance", {}).get("retention", {}).get("n_dot_cm2_used")
-        n_dot_cm2_expected = design.drive.n_dot_cm2 or design.aperture.density_cm2
-        ok(f"{tag}: _confinement_params and transport.evaluate_injection receive the same "
-           f"n_dot_cm2 ({n_dot_cm2_used!r} vs {n_dot_cm2_expected!r})",
-           n_dot_cm2_used is not None and math.isfinite(n_dot_cm2_used)
-           and math.isclose(n_dot_cm2_used, n_dot_cm2_expected, rel_tol=1e-9))
+        # ---- pr-pkg1-fix2 item 6 (peer-review-triage.md finding 1b): the
+        # previous version of this check recomputed "d.drive.n_dot_cm2 or
+        # d.aperture.density_cm2" here and compared it against device.py's
+        # own report of the SAME expression -- circular, since it could
+        # never catch the two call sites (dot_levels.retention_params via
+        # _confinement_params, and transport.evaluate_injection) actually
+        # being given different densities. Instead, monkeypatch both
+        # functions for the duration of ONE evaluate() call and record the
+        # n_dot_cm2 argument each genuinely receives, independent of
+        # whatever expression device.py used to compute it.
+        received = {}
+        orig_retention_params = dot_levels.retention_params
+        orig_evaluate_injection = transport_mod.evaluate_injection
+
+        def _spy_retention_params(*a, **kw):
+            received["confinement"] = kw.get("n_dot_cm2")
+            return orig_retention_params(*a, **kw)
+
+        def _spy_evaluate_injection(*a, **kw):
+            received.setdefault("transport", kw.get("n_dot_cm2"))
+            return orig_evaluate_injection(*a, **kw)
+
+        dot_levels.retention_params = _spy_retention_params
+        transport_mod.evaluate_injection = _spy_evaluate_injection
+        try:
+            evaluate(design, T_grid=[design.thermal.T_hs])
+        finally:
+            dot_levels.retention_params = orig_retention_params
+            transport_mod.evaluate_injection = orig_evaluate_injection
+        n_dot_cm2_confinement = received.get("confinement")
+        n_dot_cm2_transport = received.get("transport")
+        ok(f"{tag}: dot_levels.retention_params and transport.evaluate_injection actually "
+           f"received the same n_dot_cm2 during one evaluate() call "
+           f"({n_dot_cm2_confinement!r} vs {n_dot_cm2_transport!r}), equal to the card's own "
+           f"aperture.density_cm2 ({design.aperture.density_cm2!r})",
+           n_dot_cm2_confinement is not None and math.isfinite(n_dot_cm2_confinement)
+           and n_dot_cm2_transport is not None and math.isfinite(n_dot_cm2_transport)
+           and math.isclose(n_dot_cm2_confinement, n_dot_cm2_transport, rel_tol=1e-9)
+           and design.aperture.density_cm2 is not None
+           and math.isclose(n_dot_cm2_confinement, design.aperture.density_cm2, rel_tol=1e-9))
 
         ok(f"{tag}: provenance drive.I_uA contains the [DR] grid derivation",
            sources.get("drive.I_uA", {}).get("tag") == "DR"

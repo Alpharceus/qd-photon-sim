@@ -579,42 +579,20 @@ MATERIAL_EXTRA = {
                                            "book give the real (AlxGa1-x)0.5In0.5P dispersion but "
                                            "have no open-access/digitizable copy",
                                   "dn_dT": 2.0e-4},
-    # pr-pkg1-capture-escape (peer-review-triage.md finding 5): the class's
-    # NATIVE barrier composition (dot_levels.class_presets 'InP/GaInP/
-    # AlGaInP0.55 on GaAs' / Reischle et al., Optics Express 16, 12771
-    # (2008)) has no MATERIAL_EXTRA entry, so cards/edge-inp-gainp-design.
-    # yaml's ret.system.barrier previously substituted the tabulated x_al=
-    # 0.50 entry above -- a different physical stack from the one named in
-    # thermal.layers and drive.diode.preset='red'. n/alpha_k here are [E]
-    # LINEAR interpolation in x_al between that x_al=0.50 entry and the
-    # AlInP end member (x_al=1.0, "Al0.52In0.48P" below) at each tabulated
-    # wavelength -- t=(0.55-0.50)/(1.0-0.50)=0.1 -- following the same
-    # composition-aware interpolation already used at runtime by
-    # _interp_n_by_x/_ALGAINP_ANCHORS (this entry makes it a literal
-    # tabulated point instead of relying on that fallback). [DR] end-member
-    # sources (both anchors): Moser et al., APL 64, 235 (1994); Schubert et
-    # al., JAP 86, 2025 (1999) (668/650 nm); 700/750/800/850 nm on both
-    # anchors are themselves [E] ratio-scaled from Ga0.51In0.49P (Schubert
-    # et al., JAP 77, 3416 (1995), see the x_al=0.50 entry above) -- so this
-    # entry's own n(lambda) is [E] throughout, not [DR], even though the
-    # two endpoints it interpolates carry that [DR]-sourced 668/650 nm
-    # anchor. k300/alpha_k/dn_dT: same linear interpolation, [E] (alloy-
-    # scattering makes the two Al fractions indistinguishable at k300's own
-    # [E] class precision, as already noted on the x_al=0.50 entry).
-    "(Al0.55Ga0.45)0.51In0.49P": {"k300": 6.2, "alpha_k": 0.5, "tag_k": "E",
-                                  "src_k": "[E] linear interpolation in x_al (t=0.1) between "
-                                           "the (Al0.50Ga0.50)0.51In0.49P and Al0.52In0.48P "
-                                           "MATERIAL_EXTRA entries' own alloy-class k300 (Adachi "
-                                           "2007)",
-                                  "n": {668: 3.203, 650: 3.223, 700: 3.13327, 750: 3.03002,
-                                        800: 2.97342, 850: 2.93572}, "tag_n": "E",
-                                  "src_n": "[E] linear interpolation in x_al (t=(0.55-0.50)/"
-                                           "(1.0-0.50)=0.1) at each tabulated wavelength between "
-                                           "the (Al0.50Ga0.50)0.51In0.49P and Al0.52In0.48P "
-                                           "MATERIAL_EXTRA entries; [DR] end-member 668/650 nm "
-                                           "sources: Moser et al., APL 64, 235 (1994); Schubert "
-                                           "et al., JAP 86, 2025 (1999)",
-                                  "dn_dT": 1.98e-4},
+    # pr-pkg1-fix2 (peer-review-triage.md finding 8): a prior pass added a
+    # literal "(Al0.55Ga0.45)0.51In0.49P" MATERIAL_EXTRA entry here (the
+    # class's native barrier composition, dot_levels.class_presets 'InP/
+    # GaInP/AlGaInP0.55 on GaAs' / Reischle et al., Optics Express 16, 12771
+    # (2008)) so cards/edge-inp-gainp-design.yaml's ret.system.barrier would
+    # not silently substitute the tabulated x_al=0.50 entry above. That
+    # entry is numerically INERT: refractive_index() already falls back to
+    # _interp_n_by_x/_ALGAINP_ANCHORS for any x_al not directly tabulated
+    # (see refractive_index below), and that fallback reproduces this
+    # composition's n(lambda)/k300/alpha_k to ~5e-16 (float round-off) --
+    # the entry duplicated a computation the code already does, rather than
+    # adding a real literal source. Removed; ret.system.barrier.x_al=0.55
+    # resolves through the interpolation fallback instead (verify_materials
+    # section 9b checks this).
     # rt-fix-cards-wavelength 2026-09-05, orchestrator-approved option (c):
     # same ratio-scaling method and blocker as the entry above (Kato & Adachi
     # 1994 / Adachi's book not open-access/digitizable). ratio values as above.

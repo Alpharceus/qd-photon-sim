@@ -274,7 +274,19 @@ class FilterBlock:
 
 @dataclass
 class ApertureBlock:
-    density_cm2: float = 7.0e8
+    density_cm2: float | None = None  # cm^-2; None (default): every consumer
+                                 # resolves the legacy 7.0e8 [E] class value
+                                 # (pr-pkg1-fix2, item 1) -- EXCEPT
+                                 # _confinement_params' own n_dot_cm2, which
+                                 # instead falls through to its 1e10 default
+                                 # (peer-review-triage.md finding 1b): a
+                                 # truthy 7.0e8 default here silently fed
+                                 # confinement too, so no legacy design could
+                                 # ever reach retention_params' real 1e10
+                                 # default. A card that sets this explicitly
+                                 # (both edge-emitter cards: 3.0e8) forwards
+                                 # that SAME value to confinement and
+                                 # transport alike.
     diameter_um: float = 1.0
     sigma_inh: float = 40.0
     comp_brightness: float = 0.3
@@ -341,15 +353,35 @@ class DeviceDesign:
     @staticmethod
     def load(path) -> "DeviceDesign":
         d = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["design"]
+        # item 5 (pr-pkg1-fix2): PyYAML's YAML 1.1 float resolver does not
+        # recognize an unsigned exponent (e.g. "3.0e8", vs. "3.0e+8") as a
+        # float, so it reads back as a str -- a TypeError the first time
+        # arithmetic touches it. Coerce the None-defaulted density/time
+        # fields explicitly at load (reproduced TypeError without this).
+        ret_kw = _coerce_optional_floats(d["ret"], ("n_dot_cm2", "tau_cap_ps"))
+        aperture_kw = _coerce_optional_floats(d["aperture"], ("density_cm2",))
         return DeviceDesign(
             name=d.get("name", "my-device"),
-            dot=DotBlock(**d["dot"]), ret=RetentionBlock(**d["ret"]),
+            dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
             drive=DriveBlock(**d["drive"]), thermal=ThermalBlock(**d["thermal"]),
             cavity=CavityBlock(**d["cavity"]), filter=FilterBlock(**d["filter"]),
-            aperture=ApertureBlock(**d["aperture"]),
+            aperture=ApertureBlock(**aperture_kw),
             emission=EmissionBlock(**d.get("emission", {})),
             provenance=dict(d.get("provenance", {})),
         )
+
+
+def _coerce_optional_floats(mapping: dict, keys: tuple) -> dict:
+    """Shallow copy of `mapping` with each of `keys` coerced through float()
+    when present and not None (item 5, pr-pkg1-fix2): guards the None-
+    defaulted density/time card fields against PyYAML's YAML 1.1 float
+    resolver reading an unsigned-exponent literal like "3.0e8" back as a
+    str."""
+    out = dict(mapping)
+    for key in keys:
+        if out.get(key) is not None:
+            out[key] = float(out[key])
+    return out
 
 
 def _stack(th: ThermalBlock) -> Stack:
@@ -433,6 +465,18 @@ def _diode_from_drive(drive: DriveBlock, aperture_diameter_um: float):
     raise ValueError("drive.mode='EL-transport' requires diode.preset 'hkust' or 'red'")
 
 
+def _legacy_density_cm2(density_cm2: float | None) -> float:
+    """item 1 (pr-pkg1-fix2): ApertureBlock.density_cm2's pre-fix literal
+    7.0e8 [E] default, applied by every TRANSPORT-side consumer (evaluate_
+    injection, the aperture competitor-bath composition) when the card
+    leaves density_cm2 unset -- legacy designs must stay bit-identical.
+    Confinement's own n_dot_cm2 resolution is deliberately NOT routed
+    through this (see _confinement_params / ApertureBlock.density_cm2):
+    an unset density there falls to retention_params' real 1e10 default
+    instead (peer-review-triage.md finding 1b)."""
+    return density_cm2 if density_cm2 is not None else 7.0e8
+
+
 def _confinement_params(ret: RetentionBlock, Tj: float, n_dot_cm2: float | None = None,
                         tau_cap_ps: float | None = None) -> dict:
     """Resolve confinement at the temperature consumed by escape [DR].  Also
@@ -451,9 +495,20 @@ def _confinement_params(ret: RetentionBlock, Tj: float, n_dot_cm2: float | None 
     retention_params' own 1e10 cm^-2 / 10 ps [E] class defaults -- so a
     legacy card (neither set, no aperture.density_cm2 forwarded) is
     bit-identical to before this fix. [DR] coupling algebra (the a_esc
-    formula itself, unchanged, lives in dot_levels.retention_params)."""
-    n_eff = ret.n_dot_cm2 or n_dot_cm2 or 1e10
-    tau_cap = ret.tau_cap_ps or tau_cap_ps or 10.0  # [E] dot_levels.py capture-time class default
+    formula itself, unchanged, lives in dot_levels.retention_params).
+
+    item 4 (pr-pkg1-fix2): T_ref=Tj is now forwarded to retention_params so
+    the N2D/N_dot thermal state density is evaluated at the SAME junction
+    temperature as the level solve above, not retention_params' own 300 K
+    default -- a_esc at the 230 K corner was ~30% too large otherwise."""
+    # item 5 (pr-pkg1-fix2): explicit is-None tests, not truthy-or chains, so
+    # an explicit 0.0 would win (device.py's own convention, see
+    # RetentionBlock.overrides above) -- a truthy-or here would silently
+    # replace an explicit 0.0 with the next fallback.
+    n_eff = ret.n_dot_cm2 if ret.n_dot_cm2 is not None else (
+        n_dot_cm2 if n_dot_cm2 is not None else 1e10)
+    tau_cap = ret.tau_cap_ps if ret.tau_cap_ps is not None else (
+        tau_cap_ps if tau_cap_ps is not None else 10.0)  # [E] dot_levels.py capture-time class default
     if ret.tau_cap_scales_with_density:
         # [A] full-cancellation convention: nu_esc0 = (1/tau_cap) * N2D/N_dot
         # already makes a sparser n_eff raise a_esc through N2D/N_dot alone
@@ -469,7 +524,8 @@ def _confinement_params(ret: RetentionBlock, Tj: float, n_dot_cm2: float | None 
     system.T = float(Tj)
     lv = dot_levels.levels(system)
     params = dot_levels.retention_params(lv, ret.tau_rad_ns, ret.channel,
-                                         n_dot_cm2=n_eff, tau_cap_ps=tau_cap, verbose=False)
+                                         T_ref=Tj, n_dot_cm2=n_eff, tau_cap_ps=tau_cap,
+                                         verbose=False)
     params["E_X_eV"] = lv.E_X_eV
     params["n_dot_cm2_used"] = n_eff
     return params
@@ -682,7 +738,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             for _ in range(12):
                 trial = transport.evaluate_injection(
                     diode=diode, I_uA=d.drive.I_uA, T=Tj,
-                    n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
+                    n_dot_cm2=d.drive.n_dot_cm2 or _legacy_density_cm2(d.aperture.density_cm2),
                     aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
                     **_transport_options(d.drive, 1.0))
                 next_Tj = t_junction(duty_eff * trial.P_junction_W, a, st, T_hs)
@@ -807,9 +863,14 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         else:
             spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
         if d.ret.mode == "confinement":
-            # Finding 1b: the SAME dot density transport.evaluate_injection
-            # uses below (device.py's documented aperture/drive convention),
-            # so one density serves confinement and transport.
+            # Finding 1b: the SAME EXPLICIT dot density transport.
+            # evaluate_injection uses below (device.py's documented aperture/
+            # drive convention) is forwarded here -- unlike transport's own
+            # call site, an unset (None) aperture.density_cm2 is passed
+            # through as-is (not resolved to the 7.0e8 legacy default;
+            # item 1), so a legacy card with no explicit density falls to
+            # _confinement_params' real 1e10 default instead of silently
+            # inheriting transport's unrelated 7.0e8 class value.
             derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta
@@ -851,7 +912,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             opts = _transport_options(d.drive, w_f)
             injection = transport.evaluate_injection(
                 diode=diode, I_uA=d.drive.I_uA, T=Tj,
-                n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2,
+                n_dot_cm2=d.drive.n_dot_cm2 or _legacy_density_cm2(d.aperture.density_cm2),
                 aperture_um2=np.pi * (d.aperture.diameter_um / 2) ** 2,
                 S_dot=S, E_X_eV=E_X_eV, **opts)
             # item 5 (council review 2026-09-05): injection.b_e integrates the
@@ -937,7 +998,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         w_ap = gam * d.filter.auto_w_scale if (d.filter.auto_w or not d.filter.enabled) else d.filter.w
         if d.aperture.compose:
             _, lam_row = _aperture_lambda(
-                d.aperture.density_cm2, np.pi * (d.aperture.diameter_um / 2) ** 2,
+                _legacy_density_cm2(d.aperture.density_cm2), np.pi * (d.aperture.diameter_um / 2) ** 2,
                 w_ap, d.aperture.sigma_inh, d.aperture.comp_brightness)
             g2_dot = float(_compose_aperture_g2(g2_dot, lam_row))
         else:
@@ -1038,7 +1099,16 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         curves["g2_cw0"] = np.array([r["g2_cw0"] for r in rows])
         curves["g2_cw0_raw"] = np.array([r["g2_cw0_raw"] for r in rows])
 
-    op = one(d.thermal.T_hs)
+    # item 2 (pr-pkg1-fix2, runtime regression): T_grid frequently IS exactly
+    # [thermal.T_hs] (e.g. the card verifier's own evaluate() call), which
+    # previously recomputed the whole operating point here a second time --
+    # self-heating fixed point, confinement, transport, CW cw_report -- for a
+    # T already in `rows`. Reuse that row bit-identically (exact float match,
+    # since Ts literally carries d.thermal.T_hs unchanged in that case)
+    # instead of re-deriving it; a generic T_grid essentially never lands
+    # exactly on T_hs, so this falls through to the original call there.
+    _hs_hits = np.flatnonzero(Ts == d.thermal.T_hs)
+    op = rows[int(_hs_hits[0])] if _hs_hits.size else one(d.thermal.T_hs)
     # T_c: first heatsink temperature where g2 crosses 0.5 (above the g2 minimum)
     g2c = curves["g2"]
     Tc = np.nan
@@ -1054,7 +1124,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     w_ap = op["gam"] * d.filter.auto_w_scale if d.filter.auto_w or not d.filter.enabled else d.filter.w
     if np.isfinite(w_ap):
         Nw = float(n_window_competitors(
-            d.aperture.density_cm2, np.pi * (d.aperture.diameter_um / 2) ** 2,
+            _legacy_density_cm2(d.aperture.density_cm2), np.pi * (d.aperture.diameter_um / 2) ** 2,
             w_ap, d.aperture.sigma_inh))
         n_comp = max(int(round(Nw)), 0)
         ap_pen = float(aperture_g2([1.0] + [d.aperture.comp_brightness] * n_comp)) \

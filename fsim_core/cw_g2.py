@@ -77,6 +77,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.linalg import expm
 from scipy.optimize import curve_fit
+from scipy.signal import fftconvolve
 from scipy.special import erfc, erfcx
 
 from .integrator import g2_from
@@ -276,7 +277,17 @@ def convolve_irf(tau_ns, g2, fwhm_ps, shape="gaussian"):
     if h == 0:
         return g.copy()
     gp = np.concatenate([np.full(h, g[0]), g, np.full(h, g[-1])])
-    return np.convolve(gp, k, mode="valid")
+    # pr-pkg1-fix2 (peer-review-triage.md finding, runtime item 2): a stiff
+    # 300 K escape rate (finding 1b's density fix makes k_X/k_XX large) can
+    # push cw_report's tau grid to its _GRID_MAX_N cap while the IRF kernel
+    # (built at that grid's own dt, unbounded in point count) grows with it,
+    # so the O(N * kernel) direct method below took 28-64 s on the design
+    # cards' own operating point. fftconvolve computes the SAME linear
+    # convolution (mode="valid" is the identical mathematical operation,
+    # exact via the convolution theorem) in O(N log N) instead of O(N *
+    # kernel); measured agreement with np.convolve is ~1e-10 relative
+    # (floating-point round-off only, not a physics change).
+    return fftconvolve(gp, k, mode="valid")
 
 
 def raw_g2_0(tau_ns, g2, fwhm_ps, shape="gaussian"):

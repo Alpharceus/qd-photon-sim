@@ -649,9 +649,16 @@ d_cw.drive.diode = {"preset": "hkust"}; d_cw.drive.n_dot_cm2 = 1e10; d_cw.drive.
 d_cw.ret.mode = "confinement"; d_cw.ret.preset = "InP/GaAsP0.4/AlGaAs0.4 on GaAs"
 sc_cw = evaluate(d_cw, [200.])["scalars"]
 Tj_cw = sc_cw["T_j_op"]
+# pr-pkg1-fix2 item 4: device.py._confinement_params now forwards
+# T_ref=Tj (not retention_params' own 300 K default) and the card's
+# resolved n_dot_cm2 (not retention_params' own 1e10 default) -- this
+# independent reconstruction must match, or it is no longer reconstructing
+# what evaluate() actually computed.
 p_cw = dot_levels.retention_params(
     dot_levels.levels(dot_levels.class_presets()[d_cw.ret.preset](T=Tj_cw)),
-    d_cw.ret.tau_rad_ns, d_cw.ret.channel, verbose=False)
+    d_cw.ret.tau_rad_ns, d_cw.ret.channel, T_ref=Tj_cw,
+    n_dot_cm2=(d_cw.drive.n_dot_cm2 or d_cw.aperture.density_cm2 or 1e10),
+    verbose=False)
 gamma_X_ns = 1.0 / d_cw.ret.tau_rad_ns
 k_X, k_XX = cw_g2.escape_rates_from_retention(gamma_X_ns, p_cw["a_esc"], p_cw["E_a"],
                                               p_cw["b_p"], p_cw["E_b"], Tj_cw)
@@ -967,16 +974,30 @@ ok("item 2: the fixed pulsed rho_op matches the closed form "
    "1/(1+b_e_resolved/t_x_op+b_res)",
    abs(sc_gaasp["rho_op"] - rho_closed_gaasp) < 1e-9)
 
-# At mu=1, quantify the permitted card-point difference analytically.  Let
+# Quantify the card-point pulsed/CW relationship analytically, at whatever
+# mu this card's own (re-solved) drive.I_uA currently resolves to.  Let
 # f_cw be the CW collected X+XX signal divided by the low-pump collected-X
 # rate, and f_p=(1-exp(-mu))/mu the cap-2 pulsed loading factor.  Thus the
 # actual pulsed/CW signal-rate factor is f_p/f_cw.  For rho itself, the
 # residual channel follows the X-only CW fraction; after removing that shared
 # channel, the injection-background odds must transform by 1/f_cw.  This
 # checks the normalization without incorrectly demanding equality of the two
-# saturated observables.
+# observables in general -- pr-pkg1-fix2: this card's own I_uA re-solve
+# (pr-pkg1-capture-escape, finding 1b) now resolves mu=0.0999999987, not the
+# mu~1 cap-2-saturated point an earlier version of this comment/check
+# assumed (drive.I_uA's own provenance source records the current re-solve);
+# at this near-linear mu, f_p/f_cw ~ 1 and rho_op/cw_rho_op are close, so the
+# "must differ meaningfully" precondition below no longer holds and is not
+# asserted -- the loading-factor identity itself is the actual physics claim
+# and is checked regardless of regime.
 Tj_gaasp = sc_gaasp["T_j_op"]
-p_gaasp = _confinement_params(d_gaasp.ret, Tj_gaasp)
+# pr-pkg1-fix2 item 4: forward T_ref=Tj (via Tj_gaasp, already the second
+# positional arg) and this card's own resolved n_dot_cm2 (aperture.
+# density_cm2=3e8, not _confinement_params' internal 1e10 default) so this
+# reconstruction matches what evaluate() actually used for this card.
+p_gaasp = _confinement_params(
+    d_gaasp.ret, Tj_gaasp,
+    n_dot_cm2=(d_gaasp.drive.n_dot_cm2 or d_gaasp.aperture.density_cm2 or 1e10))
 gamma_gaasp = 1.0 / d_gaasp.ret.tau_rad_ns
 kx_gaasp, kxx_gaasp = cw_g2.escape_rates_from_retention(
     gamma_gaasp, p_gaasp["a_esc"], p_gaasp["E_a"], p_gaasp["b_p"], p_gaasp["E_b"], Tj_gaasp)
@@ -999,7 +1020,6 @@ bc_inj_gaasp = (1.0 / sc_gaasp["cw_rho_op"] - 1.0
 ok("item 2: gaasp card-point rho difference follows the analytic cap-2/CW "
    "loading factor (P(n>=1)/mu divided by CW saturation factor)",
    np.isfinite(loading_rate_factor_gaasp) and loading_rate_factor_gaasp < 1.0
-   and abs(sc_gaasp["rho_op"] - sc_gaasp["cw_rho_op"]) > 1e-2
    and np.isfinite(bc_inj_gaasp / bp_inj_gaasp)
    and abs((bc_inj_gaasp / bp_inj_gaasp) / (1.0 / f_cw_gaasp) - 1.0) < 1.0)
 
@@ -1016,11 +1036,19 @@ supply_pb = sc_pb["photon_budget.supply_active"]
 full_sum_pb = sum(sc_pb[k] for k in channels_pb)
 ok("item 6: the four exposed channels independently sum to supply_active (consistent with "
    "the reported photon_budget)", abs(full_sum_pb / supply_pb - sc_pb["photon_budget"]) < 1e-9)
+# pr-pkg1-fix2 items 1+4: the confinement escape-prefactor/T_ref fixes
+# collapse S (hence dot_radiative's share of supply_active) at the gainp
+# card's own operating point -- dot_radiative is now ~1.6e-4 of the budget
+# (was ~1e-2 order before those fixes), so the self-test's threshold is
+# lowered from 1e-3 to 1e-5 to stay well below every channel's real share
+# (dot_radiative ~1.6e-4, matrix_radiative ~1.4e-2, matrix_nonradiative
+# ~1.3e-1, dot_nonradiative ~0.86) while staying far above numerical noise
+# -- it still catches a channel silently contributing ~0 to the sum.
 for dropped in channels_pb:
     dropped_sum = sum(sc_pb[k] for k in channels_pb if k != dropped) / supply_pb
     ok(f"item 6 self-test: dropping {dropped} from the sum moves the ratio measurably off 1 "
        "(the diagnostic has teeth -- the OLD carrier_budget_closure could never fail like this)",
-       abs(dropped_sum - 1.0) > 1e-3)
+       abs(dropped_sum - 1.0) > 1e-5)
 
 # Item 7: track_material provenance must say "inert" when cavity is disabled
 # and hold_window is False (the setting changes nothing), and must claim

@@ -53,6 +53,10 @@ design:
     delta_xx: 5.0
     gamma300: 12.0
   ret:
+    # item 10 (pr-pkg1-fix2, low priority): ret.tau_cap_scales_with_density
+    # (unset here -> false, the shipped no-cancellation convention; see
+    # design.provenance.finding_1b_record) is currently NOT an axis of the
+    # acceptance sweep -- the sweep spec will decide whether to add it.
     mode: confinement
     system:
       dot: InP
@@ -181,10 +185,12 @@ design:
           (device.py's documented "shared inline stack" rule, also used by
           emission.type='edge'). Not a tabulation workaround: materials.
           refractive_index already resolves any AlGaInP x_al via
-          composition-aware interpolation (materials.py _interp_n_by_x),
-          and pr-pkg1-capture-escape additionally tabulated a literal
-          x_al=0.55 MATERIAL_EXTRA entry, so an untabulated composition no
-          longer raises a KeyError. The real outer cladding,
+          composition-aware interpolation (materials.py _interp_n_by_x/
+          _ALGAINP_ANCHORS), so an untabulated composition does not raise a
+          KeyError; a literal x_al=0.55 MATERIAL_EXTRA entry was tried
+          (pr-pkg1-capture-escape) and then removed (pr-pkg1-fix2 item 8):
+          it reproduced the interpolation fallback's own value to float
+          round-off, adding no independent source. The real outer cladding,
           (Al0.70Ga0.30)0.51In0.49P, is retained honestly in thermal.layers
           but deliberately does NOT enter ret.system.barrier (see the
           card-level KNOWN MODEL LIMITATION note: one barrier material for
@@ -571,8 +577,13 @@ design:
       - cavity.beta_sin
 
     finding_1b_record: >
-      pr-pkg1-capture-escape (peer-review-triage.md finding 1b): the
-      confinement escape prefactor now uses this card's own aperture.
+      pr-pkg1-fix2 (peer-review-triage.md finding 1b, refreshed after
+      item 4's T_ref=Tj fix to dot_levels.retention_params -- a_esc/S at
+      300 K are essentially unchanged since Tj there is already close to
+      the old hardcoded T_ref=300 default, but the 230 K numbers below
+      moved: a_esc is smaller / S is larger than the pre-item-4 record,
+      since T_ref=Tj=230 K no longer overstates the escape prefactor):
+      the confinement escape prefactor uses this card's own aperture.
       density_cm2=3e8 cm^-2 (device.py's _confinement_params, forwarded
       from the same n_dot_cm2 = d.drive.n_dot_cm2 or d.aperture.density_cm2
       expression transport.evaluate_injection already used) instead of
@@ -580,21 +591,29 @@ design:
       (DeviceDesign.load + evaluate with the card as shipped, this card's
       own inline ret.system stack, tau_rad_ns=1.0, channel=pair_half):
       default (no-cancellation, ret.tau_cap_scales_with_density unset/
-      false) a_esc(300 K) = 8.290957e5 (was 2.487287e4 at the 1e10 cm^-2
-      default), S(230 K) = 0.0001051909 (was 0.0029407336).
+      false) a_esc(300 K) = 8.290957e5, S(230 K) = 0.0001369575
+      (was 2.487287e4 / 0.0029407336 at the 1e10 cm^-2 default).
       Opt-in full-cancellation (ret.tau_cap_scales_with_density: true,
       tau_cap = 10 ps * (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2
-      default exactly: a_esc(300 K) = 2.487287e4, S(230 K) = 0.0029407336
+      default exactly: a_esc(300 K) = 2.487287e4, S(230 K) = 0.0036509472
       (bit-identical to the pre-fix legacy number, as designed -- the two
       effects cancel). At the favourable corner (T_hs=230 K,
       dot.gamma300=6, dot.delta_xx=8, emission.NA=0.8, emission.R_back=
-      0.95, emission.L_um=250, this card's own re-solved drive.I_uA -- see
-      drive.I_uA's own source): default (no-cancellation) g2_op=
-      0.5838809464, collected_flux_pulsed_s=66.63443851 s^-1 (fails both
-      the g2<0.5 and the 1 kHz floor gates); full-cancellation g2_op=
-      0.3081579156, collected_flux_pulsed_s=1862.843550 s^-1 (clears
-      g2<0.5 but not the 1 kHz floor). This card ships the default
-      (no-cancellation) convention -- the physically-motivated fix -- not
-      the full-cancellation opt-in, so its own operating point (drive.
-      I_uA's source) and the favourable corner above both fail the
-      acceptance gates under the density this card actually declares.
+      0.95, emission.L_um=250, this card's own (300 K-resolved) drive.I_uA,
+      unchanged -- see drive.I_uA's own source):
+      INFEASIBLE OPERATING POINT (mu out of range): mu_resolved=1.9755510
+      is outside the card's own [0.05, 1.0] loading range at this corner
+      (this card's I_uA was resolved to be near-optimal at its own 300 K
+      operating point, not re-solved for the 230 K corner; a genuine
+      re-solve would require repeating the constrained I_uA search this
+      card's drive.I_uA note describes, out of scope here). The g2/flux
+      values below are reported for completeness but do NOT represent a
+      valid pulsed-loading operating point (F1/f1b_g2 assumes mu in
+      [0.05, 1.0]): default (no-cancellation) g2_op=0.5350254374,
+      collected_flux_pulsed_s=91.66962666 s^-1; full-cancellation g2_op=
+      0.3052588690, collected_flux_pulsed_s=2443.685900 s^-1. This card
+      ships the default (no-cancellation) convention -- the
+      physically-motivated fix -- not the full-cancellation opt-in, so its
+      own operating point (drive.I_uA's source) fails the acceptance gates
+      under the density this card actually declares; the favourable corner
+      above is additionally infeasible as described.

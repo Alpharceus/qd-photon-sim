@@ -171,16 +171,19 @@ bool_check("composition interpolation reproduces the exact tabulated endpoints (
            and abs(M.refractive_index(M.AlGaInP(1.0).label, 668) - M.refractive_index("Al0.52In0.48P", 668)) < 1e-12,
            "x=0/0.5/1 must fall through to the real tabulated values, not the interpolation formula")
 
-print("== 9b. pr-pkg1-capture-escape (peer-review-triage.md finding 5): literal x_al=0.55 entry ==")
-bool_check("n(AlGaInP, x_al=0.55) MATERIAL_EXTRA entry exists",
-           "(Al0.55Ga0.45)0.51In0.49P" in M.MATERIAL_EXTRA,
-           "materials.py must tabulate the class's native barrier composition directly, "
-           "not only via the x-interpolation fallback")
+print("== 9b. pr-pkg1-fix2 (peer-review-triage.md finding 8): x_al=0.55 comes from interpolation ==")
+bool_check("n(AlGaInP, x_al=0.55) has NO literal MATERIAL_EXTRA entry (item 8: the prior literal "
+           "entry was numerically inert -- the interpolation fallback below already reproduces it "
+           "to float round-off -- and was removed)",
+           "(Al0.55Ga0.45)0.51In0.49P" not in M.MATERIAL_EXTRA,
+           "a literal entry here would silently stop testing the _interp_n_by_x fallback path "
+           "cards/edge-inp-gainp-design.yaml's ret.system.barrier.x_al=0.55 actually exercises")
 for lam in (700, 775, 850):
     n50 = M.refractive_index("(Al0.50Ga0.50)0.51In0.49P", lam)
-    n55 = M.refractive_index("(Al0.55Ga0.45)0.51In0.49P", lam)
+    n55 = M.refractive_index("(Al0.55Ga0.45)0.51In0.49P", lam)  # [E] _interp_n_by_x fallback
     n100 = M.refractive_index("Al0.52In0.48P", lam)
-    bool_check(f"n(AlGaInP, x_al=0.55, {lam}nm) lies strictly between the 0.50 and 1.0 values",
+    bool_check(f"n(AlGaInP, x_al=0.55, {lam}nm), [E] x-interpolated between the 0.50 and 1.0 "
+               "tabulated anchors, lies strictly between them",
                n100 < n55 < n50, f"n50={n50:.5g}, n55={n55:.5g}, n100={n100:.5g}")
 
 print("== 10. rt-fix-cards-wavelength: GaInP extended to 700-850nm (Schubert 1995) ==")
