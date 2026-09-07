@@ -39,7 +39,7 @@ from fsim_core.cw_g2 import (
 # tau_dip are not what check (i) asserts on.
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="fsim_core.cw_g2")
 from fsim_core.integrator import g2_from, retention
-from fsim_core.loading import drive_factor, f1b_g2
+from fsim_core.loading import f1b_g2
 
 CHECKS = []
 RESULTS = {}   # numbers to print in the summary
@@ -321,12 +321,44 @@ def _():
     assert "(1 + a + a b)" in note and "eps p S_XX/S_X" in note
 
 
-@check("finding 8: f1b_g2 small-mu drive-factor expansion and the eps=1 mu->inf limit")
+@check("finding 8a: f1b_g2 small-mu drive-factor slope f = 1 + mu(1/3-eps) + O(mu^2)")
 def _():
-    # small-mu: f1b_g2(mu, eps)/eps ~ 1 + mu*(1/3 - eps) + O(mu^2)  [docs: cw_g2.py:419, loading.py:15]
-    assert abs(f1b_g2(1e-4, 0.2) / 0.2 - (1 + 1e-4 * (1 / 3 - 0.2))) < 1e-9
-    # mu->inf: drive_factor(mu, eps) = f1b_g2(mu, eps)/eps -> 2/(1+eps)^2; at eps=1 that is 0.5
-    assert abs(drive_factor(50.0, 1.0) - 0.5) < 1e-9
+    # f(mu, eps) := f1b_g2(mu, eps)/eps  [docs: cw_g2.py:65-68, 418-429, 454-462]
+    # mu=1e-4 residual is 2.4e-10 against tol 1e-9 (margin ~4x, under the 10x
+    # threshold that would call for tightening to mu=1e-5 per spec). Tried
+    # that: it does NOT help. loading.loading_probs computes
+    # P2 = 1 - P0 - P1 by cancelling two near-1 float64 terms, so float
+    # noise in P2 (~1e-16 absolute) swamps the true O(mu^2) term once mu is
+    # this small. Observed residual at mu=1e-5 is 1.1e-7 -- WORSE, not
+    # better -- confirmed against mpmath at 50 dps, whose noise-free
+    # residual at mu=1e-5 is -3.3e-13 (i.e. the 1.1e-7 is float64
+    # cancellation noise in f1b_g2, not a sign the expansion is wrong).
+    # mu=1e-4 / tol=1e-9 is kept: it is the point where the float64
+    # implementation still resolves the true O(mu^2) term.
+    mu, eps = 1e-4, 0.2
+    resid = f1b_g2(mu, eps) / eps - (1 + mu * (1 / 3 - eps))
+    assert abs(resid) < 1e-9, resid
+
+
+@check("finding 8b: f1b_g2 large-mu limit at eps=1: f(50,1.0) -> 2/(1+eps)^2 = 0.5")
+def _():
+    assert abs(f1b_g2(50.0, 1.0) / 1.0 - 0.5) < 1e-9
+
+
+@check("finding 8c: the 1/3 < eps < sqrt(2)-1 dip -- f(50,0.35) > 1 but f(1e-3,0.35) < 1")
+def _():
+    assert f1b_g2(50.0, 0.35) / 0.35 > 1
+    assert f1b_g2(1e-3, 0.35) / 0.35 < 1
+
+
+@check("finding 8d: eps > sqrt(2)-1 = 0.41421356 -- f(50,0.45) < 1 (large-mu limit 2/1.45^2 = 0.951)")
+def _():
+    assert f1b_g2(50.0, 0.45) / 0.45 < 1
+
+
+@check("finding 8e: f1b_g2 large-mu limit at eps=0.2: f(1e4,0.2) -> 2/(1+eps)^2")
+def _():
+    assert abs(f1b_g2(1e4, 0.2) / 0.2 - 2 / 1.2 ** 2) < 1e-6
 
 
 def main():

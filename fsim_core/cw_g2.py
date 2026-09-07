@@ -63,8 +63,9 @@ THE CW/PULSED DIFFERENCE (exact, derived in cw_vs_pulsed_note):
              CW leak penalty is amplified by gamma_XX/r >> 1 at low pump does
              NOT hold -- both G(0) and I_det^2 scale as r^2 (see the note).
     r >> gamma : g2_dot(0) -> gamma_X/(eps gamma_XX)  (unbounded cascade
-             BUNCHING of the filtered stream; the pulsed drive factor is
-             bounded by 2/(1+eps)^2).
+             BUNCHING of the filtered stream; the pulsed drive factor
+             f = f1b_g2(mu, eps)/eps has large-mu limit 2/(1+eps)^2, which
+             is > 1 iff eps < sqrt(2)-1 = 0.41421356 [DR]).
     eps = 0 : g2_dot(0) = 0 exactly at every r (perfect filter or trion).
 
 Units: rates in 1/ns, times in ns, IRF widths in ps (argument names say so),
@@ -416,9 +417,15 @@ CW vs PULSED g2(0) of the filtered X line (cap-2 ladder, rate equations)
 
 Pulsed (loading.f1b_g2): g2 = 2 P2 eps / [P1 + P2 (1+eps)]^2 -- the peak-AREA
 ratio lumps every photon of a pulse period together: the drive factor
-f = g2(mu)/eps runs from 1 at mu->0 to 2/(1+eps)^2 at mu->inf; it EXCEEDS 1
-only for eps < 1/3 (small-mu expansion g2 = eps[1 + mu(1/3 - eps) + O(mu^2)])
-and is below 1 for eps > 1/3 -- finite loading does not always penalise g2
+f(mu, eps) = f1b_g2(mu, eps)/eps has small-mu expansion
+f = 1 + mu(1/3 - eps) + O(mu^2) and large-mu limit f -> 2/(1+eps)^2, which
+exceeds 1 iff eps < sqrt(2)-1 = 0.41421356. For eps < 1/3, f > 1 at every
+mu > 0; for 1/3 < eps < sqrt(2)-1, f dips below 1 at small mu and rises
+back above 1 at large mu (e.g. f(50, 0.35) = 1.097, f(50, 0.40) = 1.020);
+for eps > sqrt(2)-1, f stays below 1 at every mu > 0 tried numerically
+(e.g. f(50, 0.45) = 0.951). Neither "f in [1, 2)" nor "the pulsed area
+ratio is capped at 2 eps/(1+eps)^2" is a valid general bound: at eps = 0.5,
+mu -> 0, g2 -> eps = 0.5, which already exceeds 2 eps/(1+eps)^2 = 0.444
 [DR].
 
 CW: the only way to get two detected photons at the SAME instant is the
@@ -451,7 +458,8 @@ Limits:
                filtered stream. Physically, the cascade pairs (XX leak, X)
                arrive within ~1/(gamma_X+k_X+p r) of each other and form a
                bunching peak at |tau| < tau_X on top of the antibunching dip;
-               the pulsed area ratio cannot exceed 2 eps/(1+eps)^2.
+               the pulsed drive factor's own large-mu limit is 2/(1+eps)^2,
+               which is > 1 only for eps < sqrt(2)-1 = 0.41421356 [DR].
   finite r   : the CW drive factor D_CW = (1+a+ab)/(1+eps p r S_XX/gamma_X)^2
                is ~ 1 + (r/gamma_X)(1 - 2 eps) at small r versus the pulsed
                ~ 1 + mu (1/3 - eps), and keeps growing ~ r^2 while the pulsed

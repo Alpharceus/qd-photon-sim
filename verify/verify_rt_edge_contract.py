@@ -49,9 +49,9 @@ ANCHORS_PATH = ROOT / "verify" / "data" / "rt_edge_anchors.yaml"
 CONTRACT_DOC = ROOT / "docs" / "rt_edge_contract.md"
 README_DOC = ROOT / "README.md"
 
-# The four validation classes README.md's "Validation record" section must
+# The five validation classes README.md's "Validation record" section must
 # sort every check into (finding 10, peer-review-triage.md).
-VALIDATION_CLASS_LETTERS = ("N", "T", "C", "P")
+VALIDATION_CLASS_LETTERS = ("N", "T", "C", "M", "P")
 
 REQUIRED_ANCHOR_KEYS = {
     "id", "claim", "value", "unit", "tolerance", "conditions",
@@ -106,38 +106,69 @@ def _readme_validation_record_section(text: str) -> str:
     return rest[: nxt.start()] if nxt else rest
 
 
-def _readme_validation_class_sections(text: str) -> dict:
-    """Split the "Validation record" section body into per-class text
-    blocks keyed by class letter (N/T/C/P), using the "- **(X) ..." class
-    bullets as boundaries -- everything from one bullet up to the next
-    belongs to that class (multi-line bullets included)."""
+_CLASS_BULLET_RE = re.compile(r"- \*\*\(([NTCMP])\)[^\n]*")
+# Matches "<name>.py" wherever it appears in backticks/prose (verify_*.py,
+# gate_*.py, verify4.py, audit_physics.py -- not just the "verify_" prefix).
+_SCRIPT_NAME_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\.py\b")
+
+
+def _readme_validation_class_list_block(text: str) -> str:
+    """Just the five "- **(X) ..." class-definition bullets, stopping at the
+    first blank line after the last one -- so the Arm table and the prose
+    that follows it (which also use "(C)"/"(M)"/"(T)" as table-cell labels)
+    are never swept into the last class's block and misread as more
+    script-name assignments."""
     body = _readme_validation_record_section(text)
-    marker = re.compile(r"- \*\*\(([NTCP])\)[^\n]*")
-    matches = list(marker.finditer(body))
+    matches = list(_CLASS_BULLET_RE.finditer(body))
+    if not matches:
+        return ""
+    tail = body[matches[-1].start():]
+    blank = re.search(r"\n[ \t]*\n", tail)
+    end = matches[-1].start() + (blank.start() if blank else len(tail))
+    return body[matches[0].start():end]
+
+
+def _readme_validation_class_sections(text: str) -> dict:
+    """Split the class-list block into per-class text blocks keyed by class
+    letter (N/T/C/M/P), using the "- **(X) ..." class bullets as boundaries
+    -- everything from one bullet up to the next belongs to that class
+    (multi-line bullets included)."""
+    block = _readme_validation_class_list_block(text)
+    matches = list(_CLASS_BULLET_RE.finditer(block))
     sections: dict = {}
     for i, m in enumerate(matches):
         letter = m.group(1)
         start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
-        sections[letter] = body[start:end]
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(block)
+        sections[letter] = block[start:end]
     return sections
 
 
 def _readme_validation_record_ok() -> tuple:
-    """(N)/(T)/(C)/(P) all present as headers, and no verify_<name> script
-    is claimed by more than one class -- finding 10."""
+    """(N)/(T)/(C)/(M)/(P) all present as headers, no <name>.py script
+    claimed by more than one class, and every verify/*.py script (including
+    audit_physics.py) named exactly once in the class list -- finding 10."""
     text = README_DOC.read_text(encoding="utf-8") if README_DOC.exists() else ""
     headers_present = all(f"({c})" in text for c in VALIDATION_CLASS_LETTERS)
     sections = _readme_validation_class_sections(text)
     all_classes_found = set(sections) == set(VALIDATION_CLASS_LETTERS)
     seen: dict = {}
+    counts: dict = {}
     no_duplicate_script = True
     for letter, block in sections.items():
-        for name in re.findall(r"verify_\w+", block):
+        for name in _SCRIPT_NAME_RE.findall(block):
             if name in seen and seen[name] != letter:
                 no_duplicate_script = False
             seen[name] = letter
-    return headers_present and all_classes_found and no_duplicate_script, seen
+            counts[name] = counts.get(name, 0) + 1
+    verify_dir = ROOT / "verify"
+    all_scripts = {p.stem for p in verify_dir.glob("*.py")} if verify_dir.exists() else set()
+    missing = sorted(all_scripts - set(seen))
+    repeated = sorted(n for n in all_scripts & set(counts) if counts[n] != 1)
+    all_scripts_named_once = not missing and not repeated
+    ok = (headers_present and all_classes_found and no_duplicate_script
+          and all_scripts_named_once)
+    return ok, {"assignments": seen, "missing": missing, "repeated": repeated}
 
 
 def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
@@ -203,9 +234,14 @@ def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
     for heading in REQUIRED_HEADINGS:
         ok(f"docs/rt_edge_contract.md has heading [{heading}]", heading in doc_text)
 
-    readme_record_ok, _ = _readme_validation_record_ok()
-    ok("README.md validation record has all four class headers "
-       "(N)/(T)/(C)/(P) and no verify-script name under more than one class",
+    readme_record_ok, readme_detail = _readme_validation_record_ok()
+    detail = ""
+    if not readme_record_ok:
+        detail = (f" (missing: {readme_detail['missing']}, "
+                  f"repeated/duplicated: {readme_detail['repeated']})")
+    ok("README.md validation record has all five class headers "
+       "(N)/(T)/(C)/(M)/(P), no <name>.py script claimed by more than one "
+       f"class, and every verify/*.py script named exactly once{detail}",
        readme_record_ok)
 
     passed, total = sum(1 for _, v in checks if v), len(checks)
