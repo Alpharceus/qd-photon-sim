@@ -1,6 +1,6 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-06T22:22:43.951166+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-06T22:34:20.614924+00:00; contract: docs/rt_edge_contract.md.
 
 ```
 VERDICT: FAIL g2_min=0.3 g2_median_eligible=0.3 diag_g2_min=0.3 diag_g2_median_diagnostic=0.3 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=1/1 flux_floor_excluded=0 evidence=incomplete conditional=true headline_coverage=1/1 cw_raw_coverage=1/1 gamma300_pass_max=6 gamma300_threshold=>=6 T_pass_min=none headline_by_T=230:0/0,250:0/0,273:0/0,300:0/0

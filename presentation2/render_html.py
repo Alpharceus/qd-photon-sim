@@ -253,8 +253,9 @@ CSS = """
   --bg: #FFFFFF; --ink: #212121; --muted: #6B6B6B; --panel: #F2F2F2; --border: #DDDDDD;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #16181D; --ink: #EDEDED; --muted: #A0A4AE; --panel: #21242B; --border: #34384040; }
+  :root:not([data-theme="light"]) { --bg: #16181D; --ink: #EDEDED; --muted: #A0A4AE; --panel: #21242B; --border: #34384040; }
 }
+:root[data-theme="dark"] { --bg: #16181D; --ink: #EDEDED; --muted: #A0A4AE; --panel: #21242B; --border: #34384040; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
   font-family: Calibri, Arial, sans-serif; overflow-x: hidden; }
