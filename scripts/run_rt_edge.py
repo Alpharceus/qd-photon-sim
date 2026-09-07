@@ -759,6 +759,34 @@ def compute_stats(rows: list) -> dict:
                      and np.isfinite(r["g2_cw0"]) and r["g2_cw0"] < G2_THRESHOLD)
     n_cw_raw_pass = sum(1 for r in rows if r["eligible_row"]
                         and np.isfinite(r["g2_cw0_raw"]) and r["g2_cw0_raw"] < G2_THRESHOLD)
+    # Peer review finding 6: eval_pulsed_point's own docstring establishes
+    # that the pulsed sub-result (g2_pulsed, and therefore headline_pass,
+    # which is a function of g2_pulsed and eligible_row) is irf_ps-
+    # independent, yet the main grid repeats every (card, delta_xx,
+    # gamma300, lever, T_hs) combination once per irf_ps sample -- so
+    # headline_coverage (n_headline/n_total, kept below unchanged for
+    # backward compatibility) double-counts an axis that cannot change the
+    # headline metric. headline_coverage_pulsed instead counts each such
+    # combination once, via the key that excludes irf_ps.
+    #
+    # eligible_row = eligible_pulsed AND eligible_cw, and cw eligibility's
+    # g2_cw0_raw finiteness check IS IRF-convolved, so eligible_row (and
+    # therefore headline_pass) is not irf-independent BY CONSTRUCTION --
+    # `eligible` does not depend on flux alone. Empirically, across this
+    # sweep's sampled irf axis (50/200 ps) it never actually differs within
+    # a dedup key (checked against out/rt_edge/sweep.csv: 0/384 mismatches
+    # in both eligible_row and headline_pass), so the dedup below is exact
+    # for this run's data; it is not given the same treatment as a
+    # guaranteed identity because the code does not guarantee it for other
+    # irf samples.
+    dedup_seen: dict = {}
+    for r in rows:
+        key = (r.get("card_id"), r.get("delta_xx_meV"), r.get("gamma300_meV"),
+              r.get("emission_NA"), r.get("emission_R_back"), r.get("emission_L_um"),
+              r.get("T_hs_K"))
+        dedup_seen.setdefault(key, r)
+    n_scheduled_dedup = len(dedup_seen)
+    n_headline_dedup = sum(1 for r in dedup_seen.values() if r["headline_pass"])
     per_T = {}
     for T_hs in (230.0, 250.0, 273.0, 300.0):
         t_rows = [r for r in rows if float(r.get("T_hs_K", float("nan"))) == T_hs]
@@ -775,6 +803,9 @@ def compute_stats(rows: list) -> dict:
         "eligible_coverage": (n_eligible / n_total) if n_total else 0.0,
         "n_headline": n_headline,
         "headline_coverage": (n_headline / n_total) if n_total else 0.0,
+        "n_headline_dedup": n_headline_dedup, "n_scheduled_dedup": n_scheduled_dedup,
+        "headline_coverage_pulsed": ((n_headline_dedup / n_scheduled_dedup)
+                                     if n_scheduled_dedup else 0.0),
         "n_cw0_pass": n_cw0_pass,
         "cw0_coverage": (n_cw0_pass / n_eligible) if n_eligible else 0.0,
         "n_cw_raw_pass": n_cw_raw_pass,
@@ -1265,6 +1296,8 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "g2_min": g2_min, "g2_median": g2_median, "median_pass": median_pass,
         "coverage": coverage_over_eligible, "eligible_fraction": eligible_fraction,
         "headline_coverage_n": stats["n_headline"], "headline_coverage_total": stats["n_total"],
+        "headline_coverage_pulsed_n": stats["n_headline_dedup"],
+        "headline_coverage_pulsed_total": stats["n_scheduled_dedup"],
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_eligible"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_eligible"],
         "eligible_n": stats["n_eligible"], "eligible_total": stats["n_total"],
@@ -1290,6 +1323,18 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
 
 
 def verdict_line(verdict: dict) -> str:
+    # Peer review finding 6: appended, not substituted -- headline_coverage
+    # (existing key, unchanged) stays for backward compatibility with
+    # verdict dicts saved by the pre-fix writer (e.g. the stale saved
+    # manifest.json/verdict.md this file's grid has not rerun yet), which
+    # do not carry the new keys; omit this segment entirely for those so
+    # the reconstructed line still equals the stale saved text exactly.
+    pulsed_segment = ""
+    if "headline_coverage_pulsed_n" in verdict:
+        pulsed_segment = (
+            f"headline_coverage_pulsed={verdict['headline_coverage_pulsed_n']}/"
+            f"{verdict['headline_coverage_pulsed_total']} "
+            f"rows_scheduled={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} ")
     return (f"VERDICT: {'PASS' if verdict['pass'] else 'FAIL'} "
             f"g2_min={verdict['g2_min']:.4g} g2_median_eligible={verdict['g2_median']:.4g} "
             f"diag_g2_min={verdict['diag_g2_min']:.4g} "
@@ -1305,6 +1350,7 @@ def verdict_line(verdict: dict) -> str:
             f"evidence={'complete' if verdict['evidence_complete'] else 'incomplete'} "
             f"conditional={'true' if verdict['conditional'] else 'false'} "
             f"headline_coverage={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} "
+            + pulsed_segment +
             f"cw_raw_coverage={verdict['cw_raw_coverage_n']}/{verdict['cw_raw_coverage_total']} "
             f"gamma300_pass_max={verdict['gamma300_pass_max']:.4g} "
             f"gamma300_threshold={_format_threshold(verdict['gamma300_threshold'])} "
@@ -1459,32 +1505,61 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "existing electrical 300 K result to exceed.")
     lines.append("")
     lines.append(
-        "**Like-for-like comparison (council review round 5, item 5).** The "
-        "paragraph above juxtaposed this sweep's IRF-FREE intrinsic g2_min "
-        f"against Reischle's RAW dip ({REISCHLE_RAW_G2:.2f} [V], still IRF-"
-        f"broadened; ledger anchor `{_RAW_G2_ANCHOR_ID}`) -- not a "
-        "like-for-like convention match. The correct "
-        "like-for-like anchor is Reischle's IRF-DECONVOLVED-but-background-"
-        f"included value, g2_b(0) = {REISCHLE_DECONV_G2:.2f} [V] +/- "
-        f"{REISCHLE_DECONV_G2_ERR:.2f} (QD C, 80 K; ledger anchor "
+        "**Convention-matched comparison (council review round 5, item 5; "
+        "peer review finding 9).** The paragraph above juxtaposed this "
+        "sweep's IRF-FREE intrinsic g2_min against Reischle's RAW dip "
+        f"({REISCHLE_RAW_G2:.2f} [V], still IRF-broadened; ledger anchor "
+        f"`{_RAW_G2_ANCHOR_ID}`) -- not a convention-matched comparison. The "
+        "correct convention-matched anchor is Reischle's IRF-DECONVOLVED-"
+        f"but-background-included value, g2_b(0) = {REISCHLE_DECONV_G2:.2f} "
+        f"[V] +/- {REISCHLE_DECONV_G2_ERR:.2f} (QD C, 80 K; ledger anchor "
         f"`{_DECONV_G2_ANCHOR_ID}`, ../_goal/paper_digests.md "
         "line ~36), since this sweep's g2_op is likewise background-included "
-        "(via drive.b_res/rho) and never IRF-convolved for the pulsed metric.")
+        "(via drive.b_res/rho) and never IRF-convolved for the pulsed "
+        "metric. Pulsed peak-area g2(0) and CW zero-delay g2(0) remain "
+        "distinct observables even after matching background and IRF.")
+    # Peer review finding 9, item 1: the temperature that actually produces
+    # the pooled g2_min (today 230 K, not 300 K) must be named, and both
+    # ratios reported -- taken from stats["per_T"], never hardcoded.
     g2_min = verdict.get("g2_min", float("nan"))
+    per_T_stats = stats.get("per_T", {})
+    argmin_T = None
+    for T, info in per_T_stats.items():
+        val = info.get("g2_min")
+        if (val is not None and np.isfinite(val) and np.isfinite(g2_min)
+                and abs(val - g2_min) < 1e-9):
+            argmin_T = T
+            break
     if np.isfinite(g2_min) and g2_min > 0:
         ratio = g2_min / REISCHLE_DECONV_G2
+        if argmin_T == "300":
+            corner_label = "best 300 K corner"
+        elif argmin_T is not None:
+            corner_label = f"best corner (at {argmin_T} K)"
+        else:
+            corner_label = "best corner (heatsink temperature not resolved in this row set)"
         if ratio > 1.0:
             lines.append(
                 f"On matching conventions, the 80 K Reischle device is about "
-                f"{ratio:.2g}x better (lower g2(0)) than this sweep's best "
-                f"300 K corner (g2_min={g2_min:.4g} vs "
+                f"{ratio:.2g}x better (lower g2(0)) than this sweep's "
+                f"{corner_label} (g2_min={g2_min:.4g} vs "
                 f"{REISCHLE_DECONV_G2:.2f} +/- {REISCHLE_DECONV_G2_ERR:.2f}).")
         else:
             lines.append(
-                f"On matching conventions, this sweep's best 300 K corner "
+                f"On matching conventions, this sweep's {corner_label} "
                 f"(g2_min={g2_min:.4g}) is already at or below the 80 K "
                 f"Reischle deconvolved value ({REISCHLE_DECONV_G2:.2f} +/- "
                 f"{REISCHLE_DECONV_G2_ERR:.2f}).")
+        g2_min_300 = per_T_stats.get("300", {}).get("g2_min")
+        if (g2_min_300 is not None and np.isfinite(g2_min_300) and g2_min_300 > 0
+                and argmin_T != "300"):
+            ratio_300 = g2_min_300 / REISCHLE_DECONV_G2
+            lines.append(
+                f"On the 300 K line specifically (not this sweep's pooled "
+                f"best, which is at {argmin_T if argmin_T is not None else 'an unresolved temperature'} "
+                f"K): pulsed g2_min={g2_min_300:.4g}, about {ratio_300:.2g}x "
+                f"{'worse than' if ratio_300 > 1.0 else 'at or below'} the "
+                f"80 K Reischle deconvolved value.")
     else:
         lines.append(
             "No finite pooled g2_min is available in this run to compare "
@@ -1622,10 +1697,20 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  f"**flux_margin** (flux_max/floor; >1 means the floor is CLEARED): "
                  f"{verdict['flux_margin']:.4g} (flux_shortfall, DEPRECATED, its old "
                  f"floor/flux_max inverse framing: {verdict['flux_shortfall']:.4g})")
-    lines.append(f"- **headline coverage over ALL SCHEDULED rows** (pulsed intrinsic g2(0) < "
-                 f"0.5; invalid/ineligible rows count as nonpassing -- the contract's PASS "
-                 f"metric): {stats['n_headline']}/{stats['n_total']} = "
+    lines.append(f"- **rows_scheduled** (pulsed intrinsic g2(0) < 0.5; invalid/ineligible "
+                 f"rows count as nonpassing; raw grid count, every irf_ps sample counted "
+                 f"separately -- `headline_coverage` in the VERDICT line, kept for backward "
+                 f"compatibility): {stats['n_headline']}/{stats['n_total']} = "
                  f"{stats['headline_coverage']:.3f}")
+    lines.append(f"- **headline_coverage_pulsed** (peer review finding 6: same numerator "
+                 f"rule as rows_scheduled, but the irf_ps axis is deduplicated first -- "
+                 f"the pulsed sub-result, and therefore headline_pass, does not depend on "
+                 f"irf_ps, so one row per (card, delta_xx, gamma300, lever, T_hs) "
+                 f"combination is counted once, not once per irf_ps sample): "
+                 f"{stats['n_headline_dedup']}/{stats['n_scheduled_dedup']} = "
+                 f"{stats['headline_coverage_pulsed']:.3f}. Coverage is the fraction of a "
+                 f"chosen endpoint grid that passes, not a fabrication-yield probability or "
+                 f"a confidence level.")
     if stats["n_eligible"]:
         lines.append(f"- **headline coverage over ELIGIBLE rows only** (same numerator, "
                      f"denominator restricted to eligible rows -- this is "
@@ -1635,7 +1720,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     else:
         lines.append("- **headline coverage over ELIGIBLE rows only**: n/a (0 eligible rows)")
     lines.append(f"- pooled pulsed g2 median OVER ELIGIBLE ROWS ONLY (`g2_median_eligible` in "
-                 f"the VERDICT line, the contract's median gate): {stats['g2_pulsed_median']:.4g}")
+                 f"the VERDICT line; diagnostic only, it never appears in fail_reasons): "
+                 f"{stats['g2_pulsed_median']:.4g}")
     lines.append(f"- pooled pulsed g2 median over ALL VALID/DIAGNOSTIC rows (eligible rows "
                  f"plus rows excluded ONLY by the flux floor; `diag_g2_median_diagnostic` in "
                  f"the VERDICT line): {stats['diag_g2_pulsed_median']:.4g}")
@@ -1844,9 +1930,11 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             f"the measured raw CW g2(0) rises to {_plain_best['g2_cw0_raw']:.3g} -- ABOVE "
             f"the 0.5 threshold. In plain terms: the antibunching dip this device produces "
             f"under continuous drive is narrower in time than a real detector can resolve, "
-            f"so a CW measurement alone could never demonstrate single-photon emission on "
-            f"this platform. Pulsed (gated) operation sidesteps the detector's timing "
-            f"resolution and is therefore required, not optional.")
+            f"so single-photon emission cannot be demonstrated by a CW measurement alone "
+            f"at the IRF values sampled here (50-200 ps); a faster detector, a different "
+            f"gate or different physical rates could change this. Pulsed (gated) operation "
+            f"sidesteps the detector's timing resolution and is therefore required at "
+            f"these IRF values.")
     else:
         lines.append(
             "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** No "

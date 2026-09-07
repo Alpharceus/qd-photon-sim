@@ -731,6 +731,97 @@ ok("naming: VERDICT line carries flux_margin= and gamma300_threshold=",
    and "gamma300_threshold=" in rte.verdict_line(_naming_verdict))
 
 
+# ======== 1j. headline_coverage_pulsed dedup and reporting wording (peer review package 5,
+#              findings 6 and 9) ========
+
+# Two distinct (card, delta_xx, gamma300, lever, T_hs) corners, each scheduled
+# once per irf_ps sample (50/200 ps), matching the main sweep's grid
+# construction; headline_pass is held constant across the irf_ps axis for
+# each corner (eval_pulsed_point's own docstring: the pulsed sub-result does
+# not depend on irf_ps) -- this is worked out by hand as the ground truth,
+# not imported from run_rt_edge's own dedup logic.
+_dedup_rows = [
+    make_row(PRIMARY_ID, "primary", 0.2, 0.2, 0.2, True, delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
+    make_row(PRIMARY_ID, "primary", 0.2, 0.2, 0.2, True, delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=200.0),
+    make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True, delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=50.0),
+    make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True, delta_xx_meV=8.0, gamma300_meV=20.0, irf_ps=200.0),
+]
+for _r in _dedup_rows:
+    _r["T_hs_K"] = 230.0  # real sweep's own argmin(g2_min) temperature (peer review finding 9)
+dedup_stats = rte.compute_stats(_dedup_rows)
+ok("headline_coverage_pulsed: n_scheduled_dedup/n_headline_dedup are exactly half the raw "
+   "n_total/n_headline counts for a perfectly duplicated 2-point irf_ps axis (peer review "
+   "finding 6, item 1)",
+   dedup_stats["n_scheduled_dedup"] == 2 and dedup_stats["n_headline_dedup"] == 1
+   and dedup_stats["n_scheduled_dedup"] * 2 == dedup_stats["n_total"]
+   and dedup_stats["n_headline_dedup"] * 2 == dedup_stats["n_headline"])
+ok("headline_coverage_pulsed fraction equals the raw headline_coverage (rows_scheduled) "
+   "fraction once the irf_ps axis is deduplicated",
+   math.isclose(dedup_stats["headline_coverage_pulsed"], dedup_stats["headline_coverage"],
+               rel_tol=0, abs_tol=1e-12))
+
+dedup_verdict = rte.compute_verdict(_dedup_rows, dedup_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+dedup_line = rte.verdict_line(dedup_verdict)
+ok("VERDICT line carries headline_coverage_pulsed=1/2 and rows_scheduled=2/4, and keeps "
+   "the existing headline_coverage=2/4 key unchanged for backward compatibility",
+   "headline_coverage_pulsed=1/2" in dedup_line and "rows_scheduled=2/4" in dedup_line
+   and "headline_coverage=2/4" in dedup_line)
+
+# Regenerate the verifier's fixture verdict THROUGH THE WRITER FUNCTION
+# (never by running the full sweep) using this dedup-exercising row set, so
+# out/rt_edge/_verify_fixture_verdict.md's saved text is what the coverage/
+# wording checks below -- and the orchestrator's own test command -- inspect.
+dedup_md_path = ROOT / "out" / "rt_edge" / "_verify_fixture_verdict.md"
+rte.write_markdown(_dedup_rows, dedup_stats, dedup_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
+dedup_md_text = dedup_md_path.read_text(encoding="utf-8")
+
+ok("fixture verdict.md: headline_coverage_pulsed= and rows_scheduled= both appear",
+   "headline_coverage_pulsed=" in dedup_md_text and "rows_scheduled=" in dedup_md_text)
+
+# (ii) "probability"/"confidence" appear only inside the exact sentence added
+# by peer review finding 6 item 2 -- nowhere else near a coverage number.
+_coverage_sentence = ("Coverage is the fraction of a chosen endpoint grid that passes, "
+                      "not a fabrication-yield probability or a confidence level.")
+_text_minus_sentence = dedup_md_text.replace(_coverage_sentence, "", 1)
+ok("fixture verdict.md: 'probability'/'confidence' occur only in the item-2 coverage "
+   "sentence, not elsewhere near a coverage number",
+   dedup_md_text.count(_coverage_sentence) == 1
+   and "probability" not in _text_minus_sentence.lower()
+   and "confidence" not in _text_minus_sentence.lower())
+
+# (iii) "300 K corner" only appears adjacent to g2_min when the argmin
+# temperature (independently recomputed here from stats["per_T"], not by
+# calling run_rt_edge's own paragraph-writing code) really is 300 K.
+_argmin_T = None
+for _T, _info in dedup_stats.get("per_T", {}).items():
+    _val = _info.get("g2_min")
+    if (_val is not None and math.isfinite(_val) and math.isfinite(dedup_verdict["g2_min"])
+            and abs(_val - dedup_verdict["g2_min"]) < 1e-9):
+        _argmin_T = _T
+        break
+ok("fixture verdict.md: '300 K corner' is not used adjacent to g2_min unless the argmin "
+   "temperature is 300 (peer review finding 9, item 1; this fixture's argmin is 230 K)",
+   "300 K corner" not in dedup_md_text or _argmin_T == "300")
+
+# (iv) the retired "median gate" phrase is gone.
+ok("fixture verdict.md: the retired 'median gate' phrase does not appear "
+   "(peer review finding 9, item 3)",
+   "median gate" not in dedup_md_text)
+
+# (v) no "never" inside the CW paragraph ("3. Why pulsed drive...").
+_cw_para_start = dedup_md_text.find("**3. Why pulsed drive")
+_cw_para_end = dedup_md_text.find("\n\n", _cw_para_start) if _cw_para_start != -1 else -1
+_cw_paragraph = dedup_md_text[_cw_para_start:_cw_para_end] if _cw_para_start != -1 else ""
+ok("fixture verdict.md: the CW paragraph no longer says 'could never'/'never' "
+   "(peer review finding 9, item 5)",
+   _cw_para_start != -1 and "never" not in _cw_paragraph.lower())
+
+ok("fixture verdict.md: heading renamed to 'Convention-matched comparison' "
+   "(peer review finding 9, item 4)",
+   "Convention-matched comparison" in dedup_md_text)
+
+
 # ================================== 2. saved full-run artifact verification
 
 if not RUN_FULL:
