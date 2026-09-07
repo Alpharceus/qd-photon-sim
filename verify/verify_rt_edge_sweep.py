@@ -450,30 +450,47 @@ _check_nan = rte._brightness_factor_check(_nan_row)
 ok("factor self-check oracle: non-finite inputs yield ok=False without raising",
    not _check_nan["ok"] and math.isnan(_check_nan["rel_diff"]))
 
-# -- combined front-facet-and-transmission factor oracle (council review
-# round 5, item 6, updated for fsim_core/waveguide.py's OWN concurrent
-# 2026-09-06 item-1 facet-model change -- the standalone `front` local is
-# gone; T_facet is now fused into a single `facet_factor` for R_back>0):
-# beta * <combined factor> * eta_prop * eta_NA must reproduce edge_eta_total
-# EXACTLY (the combined factor is back-solved as the one missing factor --
-# deliberately WITHOUT dividing by edge_T_facet separately, which would
-# assume the now-superseded old 5-term shape and be wrong for R_back>0
-# rows under the new model); confirms beta is NOT the combined factor (a
-# plain relabeling bug would make this fail).
-_edge_row = {"edge_beta": 0.03, "edge_T_facet": 0.72, "edge_eta_prop": 0.78,
-            "edge_eta_NA": 0.30, "edge_eta_total": 0.03 * 0.5432 * 0.78 * 0.30}
+# -- ray-series facet oracle (peer-review pkg2 facet fix, 2026-09-07,
+# .workers/specs/pr-pkg2-facet-fix.md; updated again for pkg2-oracle,
+# .workers/specs/pr-pkg2-oracle.md): fsim_core/waveguide.py's
+# facet_escape_fraction folds single-pass propagation entirely into the
+# ray-series facet term, so the STRUCTURAL equation is now
+# edge_eta_total = beta * eta_facet * eta_NA -- no eta_prop factor and no
+# separate T_facet division. This fixture computes eta_facet with a
+# hand-written closed form (the ray-series formula at dot_position=0.5,
+# NOT a call to facet_escape_fraction itself, so this is an independent
+# oracle rather than the function checking itself), then confirms (a)
+# _front_facet_split back-solves eta_total/(beta*eta_NA) to that
+# hand-computed eta_facet, and (b) _facet_factor_forward_check's own
+# forward recomputation (which does call facet_escape_fraction directly,
+# the single source of truth edge_emission() also calls) matches it too --
+# a wiring/regression check that the two paths agree, not a duplicated
+# physics derivation.
+_T = 0.72
+_R_back = 0.35
+_alpha_cm = 5.0  # fsim_core.device.EmissionBlock.alpha_cm default (not swept)
+_L_um = 300.0
+_beta = 0.03
+_eta_NA = 0.30
+_a = _alpha_cm * 1e-4
+_prop_rt = math.exp(-2.0 * _a * _L_um)
+_eta_facet = (0.5 * _T * math.exp(-_a * 0.5 * _L_um)
+             * (1.0 + _R_back * math.exp(-2.0 * _a * 0.5 * _L_um))
+             / (1.0 - _R_back * (1.0 - _T) * _prop_rt))
+_edge_row = {"edge_beta": _beta, "edge_T_facet": _T, "edge_eta_NA": _eta_NA,
+            "edge_eta_total": _beta * _eta_facet * _eta_NA,
+            "emission_R_back": _R_back, "emission_L_um": _L_um}
 _combined = rte._front_facet_split(_edge_row)
-ok("combined-facet-factor oracle: back-solved factor reproduces the constructed value (0.5432)",
-   abs(_combined - 0.5432) < 1e-9)
-ok("combined-facet-factor oracle: beta * combined * propagation * NA reproduces "
-   "edge_eta_total exactly (never divides by edge_T_facet separately)",
-   abs(_edge_row["edge_beta"] * _combined
-       * _edge_row["edge_eta_prop"] * _edge_row["edge_eta_NA"]
-       - _edge_row["edge_eta_total"]) < 1e-12)
-ok("combined-facet-factor oracle: non-finite/zero component inputs yield nan without raising",
+ok("ray-series facet oracle: back-solved factor reproduces the constructed eta_facet",
+   abs(_combined - _eta_facet) < 1e-12)
+_ray_check = rte._facet_factor_forward_check(_edge_row)
+ok("ray-series facet oracle: forward recomputation (ray-series-midpoint convention, "
+   "never divides by edge_T_facet separately) matches the constructed eta_facet",
+   _ray_check["ok"] and _ray_check["convention"] == "ray-series-midpoint"
+   and abs(_ray_check["forward"] - _eta_facet) < 1e-12)
+ok("ray-series facet oracle: non-finite/zero component inputs yield nan without raising",
    math.isnan(rte._front_facet_split({"edge_beta": 0.0, "edge_T_facet": 0.72,
-                                      "edge_eta_prop": 0.78, "edge_eta_NA": 0.30,
-                                      "edge_eta_total": 0.001})))
+                                      "edge_eta_NA": 0.30, "edge_eta_total": 0.001})))
 
 # -- facet-factor forward check (council review round 5, item 6): a
 # genuinely independent forward recomputation, introspected LIVE from
