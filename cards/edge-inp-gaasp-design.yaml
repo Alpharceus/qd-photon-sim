@@ -585,19 +585,26 @@ design:
       since T_ref=Tj=230 K no longer overstates the escape prefactor):
       the confinement escape prefactor uses this card's own aperture.
       density_cm2=3e8 cm^-2 (device.py's _confinement_params, forwarded
-      from the same n_dot_cm2 = d.drive.n_dot_cm2 or d.aperture.density_cm2
-      expression transport.evaluate_injection already used) instead of
-      dot_levels.retention_params' 1e10 cm^-2 default. Numbers obtained
+      from n_dot_cm2 = d.aperture.density_cm2 -- pr-pkg1-fix3 item 2:
+      confinement now reads ONLY aperture.density_cm2, never
+      drive.n_dot_cm2 (which is transport-only and, for this card, is
+      unset/0.0 anyway, so the resolved density is unchanged here))
+      instead of dot_levels.retention_params' 1e10 cm^-2 default. Numbers obtained
       (DeviceDesign.load + evaluate with the card as shipped, this card's
       own inline ret.system stack, tau_rad_ns=1.0, channel=pair_half):
       default (no-cancellation, ret.tau_cap_scales_with_density unset/
       false) a_esc(300 K) = 8.290957e5, S(230 K) = 0.0001369575
-      (was 2.487287e4 / 0.0029407336 at the 1e10 cm^-2 default).
+      (was 2.487287e4 / 0.0036509492 at the 1e10 cm^-2 default --
+      pr-pkg1-fix3 item 4: the previously recorded 0.0029407336 was a
+      stale pre-T_ref=Tj value; 0.0036509492 is this tree's fresh 1e10
+      cm^-2 evaluation, cross-checked below).
       Opt-in full-cancellation (ret.tau_cap_scales_with_density: true,
       tau_cap = 10 ps * (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2
-      default exactly: a_esc(300 K) = 2.487287e4, S(230 K) = 0.0036509472
+      default exactly: a_esc(300 K) = 2.487287e4, S(230 K) = 0.0036509492
       (bit-identical to the pre-fix legacy number, as designed -- the two
-      effects cancel). At the favourable corner (T_hs=230 K,
+      effects cancel; matches the "was" figure above to 14 significant
+      figures, confirming both computations of the same 1e10 cm^-2 default
+      agree). At the favourable corner (T_hs=230 K,
       dot.gamma300=6, dot.delta_xx=8, emission.NA=0.8, emission.R_back=
       0.95, emission.L_um=250, this card's own (300 K-resolved) drive.I_uA,
       unchanged -- see drive.I_uA's own source):
@@ -609,11 +616,22 @@ design:
       card's drive.I_uA note describes, out of scope here). The g2/flux
       values below are reported for completeness but do NOT represent a
       valid pulsed-loading operating point (F1/f1b_g2 assumes mu in
-      [0.05, 1.0]): default (no-cancellation) g2_op=0.5350254374,
-      collected_flux_pulsed_s=91.66962666 s^-1; full-cancellation g2_op=
-      0.3052588690, collected_flux_pulsed_s=2443.685900 s^-1. This card
-      ships the default (no-cancellation) convention -- the
+      [0.05, 1.0]): default (no-cancellation) g2_op=0.5350254374 (misses
+      the g2<0.5 gate), collected_flux_pulsed_s=91.66962666 s^-1 (misses
+      the 1 kHz floor gate) -- fails both; full-cancellation g2_op=
+      0.3052588690, collected_flux_pulsed_s=2443.685900 s^-1 (numerically
+      clears both gates, but at the same infeasible mu as the
+      no-cancellation row above, so this is not a usable pass either).
+      This card ships the default (no-cancellation) convention -- the
       physically-motivated fix -- not the full-cancellation opt-in, so its
       own operating point (drive.I_uA's source) fails the acceptance gates
       under the density this card actually declares; the favourable corner
-      above is additionally infeasible as described.
+      above is additionally infeasible as described. Across both RT edge
+      cards: under the shipped no-cancellation convention, no
+      favourable-corner row clears both the g2<0.5 and 1 kHz floor gates
+      (this card's corner fails both outright, and is infeasible on mu
+      besides; edge-inp-gainp-design.yaml's corner clears g2 only),
+      whereas both cards' full-cancellation rows clear both gates
+      numerically. The g2/flux verdict therefore hinges on the tau_cap
+      convention (ret.tau_cap_scales_with_density), which the acceptance
+      sweep will report side by side.

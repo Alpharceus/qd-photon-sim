@@ -28,7 +28,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fsim_core import design_meta, presets  # noqa: E402
-from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope  # noqa: E402
+from fsim_core.device import (DeviceDesign, evaluate, evaluate_envelope,  # noqa: E402
+                              _legacy_density_cm2)
 from fsim_core.loading import f8_g2_load, f8b_thin_fano, granularity_N  # noqa: E402
 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
@@ -264,7 +265,20 @@ def collect_design() -> DeviceDesign:
     blocks the GUI has no editor for -- survives untouched; this is
     deliberately data-driven off WIDGET_TAG rather than a hand-written list
     of block/field names, so a field added later needs a WIDGET_TAG entry
-    (or none, to keep it preserved) and nothing else here."""
+    (or none, to keep it preserved) and nothing else here.
+
+    aperture.density_cm2 (pr-pkg1-fix3 item 1): the ONE WIDGET_TAG field
+    that is float | None (device.py's ApertureBlock.density_cm2 -- None
+    means "no explicit aperture density set", the legacy/unset state every
+    consumer resolves its own way; see _legacy_density_cm2). The widget can
+    only ever hold a float, so apply_design() displays the unset case as
+    log10(_legacy_density_cm2(None)) (the same 7.0e8 legacy transport
+    default other None-consumers fall back to). Mirror that here: if the
+    baseline density was None and the widget still reads that same
+    displayed default, write None back (preserving the unset state, and
+    with it a design's own confinement-density resolution -- see
+    device.py's _confinement_params call site); only an actual edit turns
+    it into an explicit float."""
     import math
     d = copy.deepcopy(_BASELINE_DESIGN)
     d.name = dpg.get_value("design.name")
@@ -273,7 +287,17 @@ def collect_design() -> DeviceDesign:
             continue
         value = dpg.get_value(tag)
         if path == "aperture.density_cm2":
-            value = 10.0 ** value
+            baseline_density = _BASELINE_DESIGN.aperture.density_cm2
+            unset_display = math.log10(_legacy_density_cm2(None))
+            # add_input_float stores float32 internally (~7 sig figs, the
+            # same round-trip tolerance verify_designer_rt.py's own
+            # WIDGET_FLOAT_PATHS uses) -- abs_tol=1e-9 would reject the
+            # widget's OWN unedited float32 read-back of this log-scale
+            # value (~8.845) as "edited".
+            if baseline_density is None and math.isclose(value, unset_display, rel_tol=1e-5):
+                value = None
+            else:
+                value = 10.0 ** value
         block_name, field_name = path.split(".", 1)
         setattr(getattr(d, block_name), field_name, value)
     d.thermal.layers = [dict(L) for L in LAYERS]
@@ -286,7 +310,17 @@ def apply_design(d: DeviceDesign):
     and record it verbatim as the new preservation baseline -- a deep copy,
     taken before anything below can mutate it, so a field with no widget
     (unknown to this GUI, today or in the future) still round-trips through
-    the next collect_design()."""
+    the next collect_design().
+
+    aperture.density_cm2 (pr-pkg1-fix3 item 1): the widget only holds a
+    float (add_input_float), so an unset (None) density -- the legacy
+    default every DeviceDesign() starts with -- is displayed at
+    log10(_legacy_density_cm2(None)) = log10(7.0e8), the same transport
+    legacy default collect_design() checks against to decide whether to
+    write None back. This used to be math.log10(value), which raised
+    TypeError on None (verify_designer_rt.py dropped to 4/6, gate_v11_gui.py
+    failed the --roundtrip-check subprocess -- a fresh DeviceDesign()'s
+    density_cm2 is None)."""
     global LAYERS, SUBSTRATE, _BASELINE_DESIGN
     import math
     _BASELINE_DESIGN = copy.deepcopy(d)
@@ -297,7 +331,7 @@ def apply_design(d: DeviceDesign):
         block_name, field_name = path.split(".", 1)
         value = getattr(getattr(d, block_name), field_name)
         if path == "aperture.density_cm2":
-            value = math.log10(value)
+            value = math.log10(_legacy_density_cm2(value))
         dpg.set_value(tag, value)
     if dpg.does_item_exist("lemma1_note"):
         dpg.configure_item("lemma1_note", show=(d.cavity.type == "sin_waveguide"))
@@ -1321,7 +1355,14 @@ def _run_roundtrip_check() -> bool:
     """v1.1 gate check (gate_v11_gui.py check c): apply_design() a design
     carrying the six new DriveBlock fields THROUGH THE REAL WIDGETS, then
     collect_design() and assert every field survives the round trip --
-    exercises the widget wiring itself, not a reimplementation of it."""
+    exercises the widget wiring itself, not a reimplementation of it.
+
+    pr-pkg1-fix3 item 1: `d` here is a bare DeviceDesign() -- its
+    aperture.density_cm2 is None (the legacy/unset default), the exact
+    case that used to crash apply_design()'s math.log10(None) before this
+    fix (verify_designer_rt.py dropped to 4/6, gate_v11_gui.py's check (c)
+    subprocess failed). Assert the untouched round trip preserves that
+    None, not just that it no longer crashes."""
     d = DeviceDesign()
     d.drive.mode = "PL"
     d.drive.dg_inj = 2.0
@@ -1337,11 +1378,12 @@ def _run_roundtrip_check() -> bool:
           and abs(d2.drive.p_inj - d.drive.p_inj) < tol
           and abs(d2.drive.F_p - d.drive.F_p) < tol
           and abs(d2.drive.eta_capture - d.drive.eta_capture) < tol
-          and abs(d2.drive.C_dep_pF - d.drive.C_dep_pF) < tol)
+          and abs(d2.drive.C_dep_pF - d.drive.C_dep_pF) < tol
+          and d2.aperture.density_cm2 is None)
     print(f"roundtrip-check: {'OK' if ok else 'FAIL'}  "
           f"mode={d2.drive.mode} dg_inj={d2.drive.dg_inj} p_inj={d2.drive.p_inj} "
           f"F_p={d2.drive.F_p} eta_capture={d2.drive.eta_capture} "
-          f"C_dep_pF={d2.drive.C_dep_pF}")
+          f"C_dep_pF={d2.drive.C_dep_pF} aperture.density_cm2={d2.aperture.density_cm2!r}")
     return ok
 
 

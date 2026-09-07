@@ -93,7 +93,10 @@ from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
 # drive.I_uA (measured before the fix below). Root-caused and fixed in
 # fsim_core/cw_g2.py: convolve_irf now uses scipy.signal.fftconvolve
 # (O(N log N) instead of O(N * kernel), the identical linear convolution to
-# ~1e-10 relative floating-point round-off -- no physics change) plus a
+# 1.111e-16 relative floating-point round-off on the gainp card's own CW
+# operating point (pr-pkg1-fix3 item 5, verify_device_rt.py's frozen CW-path
+# fixture; supersedes this comment's earlier "~1e-10" estimate) -- no
+# physics change) plus a
 # device.py fix removing a literal duplicate evaluate()-internal `one()`
 # call. Both cards now evaluate in well under 1 s; the budget below is a
 # generous margin over that, not a relaxation to hide the regression.
@@ -502,6 +505,15 @@ def check_card(path: Path, anchors: dict) -> set:
             checked.append(f"thermal.layers[{i}]={x_al!r}")
             if barrier_x_al is None or not math.isclose(barrier_x_al, x_al, rel_tol=1e-9):
                 mismatches.append(f"thermal.layers[{i}] {name!r} (x_al={x_al!r})")
+        # pr-pkg1-fix3 item 8: gaasp's own drive.diode.preset is "hkust"
+        # (transport.hkust_preset), whose barrier is Al0.40Ga0.60As -- a
+        # genuinely different III-V system (AlGaAs, not AlGaInP), not a
+        # drifted x_al of the SAME material. _x_al_from_algainp_label
+        # returns None for it (the label does not parse as AlGaInP), so it
+        # is silently excluded from the mismatch comparison below by
+        # material, the same generalisation thermal.layers[*] above already
+        # gets (a material string that doesn't parse as AlGaInP is not
+        # compared, full stop -- no per-card/per-preset name list needed).
         diode = device_mod._diode_from_drive(design.drive, design.aperture.diameter_um)
         diode_x_al = _x_al_from_algainp_label(diode.barrier.label)
         if diode_x_al is not None:
@@ -524,16 +536,35 @@ def check_card(path: Path, anchors: dict) -> set:
         # functions for the duration of ONE evaluate() call and record the
         # n_dot_cm2 argument each genuinely receives, independent of
         # whatever expression device.py used to compute it.
-        received = {}
+        #
+        # pr-pkg1-fix3 item 7: record EVERY call, not just one per function
+        # (device.py's transport self-heating fixed point calls
+        # evaluate_injection up to 12 times per evaluate(), all of which
+        # must agree -- the density does not move with Tj) -- and read
+        # n_dot_cm2 whether the call site passes it positionally or by
+        # keyword (both spied functions are called with n_dot_cm2= today,
+        # but a future call site changing that silently should not blind
+        # this spy).
+        received = {"confinement": [], "transport": []}
         orig_retention_params = dot_levels.retention_params
         orig_evaluate_injection = transport_mod.evaluate_injection
 
+        def _positional_or_kw(args, kwargs, name, pos_index):
+            if name in kwargs:
+                return kwargs[name]
+            if len(args) > pos_index:
+                return args[pos_index]
+            return None
+
         def _spy_retention_params(*a, **kw):
-            received["confinement"] = kw.get("n_dot_cm2")
+            # retention_params(lv, tau_rad_ns, channel="pair_half",
+            #                  T_ref=300.0, n_dot_cm2=1e10, ...)
+            received["confinement"].append(_positional_or_kw(a, kw, "n_dot_cm2", 4))
             return orig_retention_params(*a, **kw)
 
         def _spy_evaluate_injection(*a, **kw):
-            received.setdefault("transport", kw.get("n_dot_cm2"))
+            # evaluate_injection(diode, I_uA, T, n_dot_cm2, ...)
+            received["transport"].append(_positional_or_kw(a, kw, "n_dot_cm2", 3))
             return orig_evaluate_injection(*a, **kw)
 
         dot_levels.retention_params = _spy_retention_params
@@ -543,15 +574,17 @@ def check_card(path: Path, anchors: dict) -> set:
         finally:
             dot_levels.retention_params = orig_retention_params
             transport_mod.evaluate_injection = orig_evaluate_injection
-        n_dot_cm2_confinement = received.get("confinement")
-        n_dot_cm2_transport = received.get("transport")
+        all_received = received["confinement"] + received["transport"]
+        n_dot_cm2_confinement = received["confinement"][0] if received["confinement"] else None
+        n_dot_cm2_transport = received["transport"][0] if received["transport"] else None
         ok(f"{tag}: dot_levels.retention_params and transport.evaluate_injection actually "
-           f"received the same n_dot_cm2 during one evaluate() call "
-           f"({n_dot_cm2_confinement!r} vs {n_dot_cm2_transport!r}), equal to the card's own "
-           f"aperture.density_cm2 ({design.aperture.density_cm2!r})",
-           n_dot_cm2_confinement is not None and math.isfinite(n_dot_cm2_confinement)
-           and n_dot_cm2_transport is not None and math.isfinite(n_dot_cm2_transport)
-           and math.isclose(n_dot_cm2_confinement, n_dot_cm2_transport, rel_tol=1e-9)
+           f"received the same n_dot_cm2 on EVERY call during one evaluate() call "
+           f"(confinement calls: {received['confinement']!r}; transport calls: "
+           f"{received['transport']!r}), equal to the card's own aperture.density_cm2 "
+           f"({design.aperture.density_cm2!r})",
+           bool(received["confinement"]) and bool(received["transport"])
+           and all(v is not None and math.isfinite(v) for v in all_received)
+           and all(math.isclose(v, all_received[0], rel_tol=1e-9) for v in all_received)
            and design.aperture.density_cm2 is not None
            and math.isclose(n_dot_cm2_confinement, design.aperture.density_cm2, rel_tol=1e-9))
 

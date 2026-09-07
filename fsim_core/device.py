@@ -360,6 +360,18 @@ class DeviceDesign:
         # fields explicitly at load (reproduced TypeError without this).
         ret_kw = _coerce_optional_floats(d["ret"], ("n_dot_cm2", "tau_cap_ps"))
         aperture_kw = _coerce_optional_floats(d["aperture"], ("density_cm2",))
+        # pr-pkg1-fix3 item 9: ret.n_dot_cm2/tau_cap_ps are None-means-
+        # "use the caller-supplied/class default" (_confinement_params'
+        # is-None resolution chain, see RetentionBlock's own docstring) --
+        # an explicit 0.0 is a real value there, not a second "unset", and
+        # divides straight into dot_levels.retention_params' states_per_dot
+        # (N2D/n_dot_cm2) and its 1/tau_cap escape-attempt rate, so a card
+        # that sets either to exactly 0.0 would silently warn/produce
+        # inf/nan deep inside the confinement solve instead of failing at
+        # load, where the bad field is still named.
+        for key in ("n_dot_cm2", "tau_cap_ps"):
+            if ret_kw.get(key) is not None and ret_kw[key] <= 0:
+                raise ValueError(f"ret.{key} must be > 0 if set (got {ret_kw[key]!r})")
         return DeviceDesign(
             name=d.get("name", "my-device"),
             dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
@@ -871,7 +883,22 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # item 1), so a legacy card with no explicit density falls to
             # _confinement_params' real 1e10 default instead of silently
             # inheriting transport's unrelated 7.0e8 class value.
-            derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2)
+            #
+            # pr-pkg1-fix3 item 2: drive.n_dot_cm2 is TRANSPORT-only (the EL
+            # injection density, RetentionBlock's own docstring and
+            # _legacy_density_cm2's callers agree) -- it must never reach
+            # confinement. The previous `d.drive.n_dot_cm2 or
+            # d.aperture.density_cm2` forwarded it whenever a legacy design
+            # set drive.n_dot_cm2 but left aperture.density_cm2 unset,
+            # silently changing that design's confinement retention (S
+            # 9.637738e-4 -> 1.021141e-4 for the InP/GaAsP0.4/AlGaAs0.4
+            # confinement preset at drive.n_dot_cm2=1e9 -- see
+            # verify_device_rt.py's dedicated legacy-invariance check).
+            # aperture.density_cm2 is forwarded as-is (None passes through
+            # unresolved, per the comment above); _confinement_params
+            # itself is_not_None-tests it against ret.n_dot_cm2 first, so an
+            # explicit 0.0 here still wins over the 1e10 class default.
+            derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta
             # ret.overrides is an explicit dict (distinct from ret.system, which
@@ -1103,11 +1130,22 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     # [thermal.T_hs] (e.g. the card verifier's own evaluate() call), which
     # previously recomputed the whole operating point here a second time --
     # self-heating fixed point, confinement, transport, CW cw_report -- for a
-    # T already in `rows`. Reuse that row bit-identically (exact float match,
-    # since Ts literally carries d.thermal.T_hs unchanged in that case)
-    # instead of re-deriving it; a generic T_grid essentially never lands
-    # exactly on T_hs, so this falls through to the original call there.
-    _hs_hits = np.flatnonzero(Ts == d.thermal.T_hs)
+    # T already in `rows`. Reuse that row (instead of re-deriving it) for a
+    # T already in `rows`; a generic T_grid essentially never lands on T_hs,
+    # so this falls through to the original call there.
+    #
+    # pr-pkg1-fix3 item 10: match with abs(Ts - T_hs) < 1e-9 rather than
+    # exact (==) float equality -- a T_grid built by arithmetic (e.g.
+    # np.linspace's endpoint, or a caller's own T_hs +/- delta sweep) can
+    # land a few ULPs off T_hs even when it is "the same" temperature by
+    # construction, and would silently fall through to a second full
+    # evaluate() at that point instead of reusing `rows`' matching row --
+    # correct either way (both computations agree to float precision), but
+    # wasteful. Numerically this is the SAME row whenever it matches (a few
+    # ULPs cannot move the self-heating fixed point), so the "reuse
+    # bit-identically" property above still holds in the cases this was
+    # ever exercised (Ts literally carrying d.thermal.T_hs unchanged).
+    _hs_hits = np.flatnonzero(np.abs(Ts - d.thermal.T_hs) < 1e-9)
     op = rows[int(_hs_hits[0])] if _hs_hits.size else one(d.thermal.T_hs)
     # T_c: first heatsink temperature where g2 crosses 0.5 (above the g2 minimum)
     g2c = curves["g2"]

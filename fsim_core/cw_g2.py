@@ -285,8 +285,13 @@ def convolve_irf(tau_ns, g2, fwhm_ps, shape="gaussian"):
     # cards' own operating point. fftconvolve computes the SAME linear
     # convolution (mode="valid" is the identical mathematical operation,
     # exact via the convolution theorem) in O(N log N) instead of O(N *
-    # kernel); measured agreement with np.convolve is ~1e-10 relative
-    # (floating-point round-off only, not a physics change).
+    # kernel); pr-pkg1-fix3 item 5 measured the actual agreement on the
+    # edge-inp-gainp-design.yaml card's own CW operating point
+    # (verify_device_rt.py's CW-path regression fixture): g2_cw0_raw
+    # differs by 1.111e-16 relative between fftconvolve and np.convolve --
+    # float64 round-off (a handful of ULPs), not a physics change. (The
+    # previous docstring here said "~1e-10 relative", which this
+    # measurement supersedes.)
     return fftconvolve(gp, k, mode="valid")
 
 

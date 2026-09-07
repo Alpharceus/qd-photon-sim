@@ -184,6 +184,26 @@ ok("legacy confinement design (no explicit aperture density) reproduces "
    "not a silently substituted aperture density)",
    abs(r["scalars"]["S_resolved"] / 9.63774e-4 - 1.) < 1e-6)
 
+# pr-pkg1-fix3 item 2: drive.n_dot_cm2 is TRANSPORT-only and must never
+# reach confinement. The same legacy design above (no explicit aperture
+# density), but now with drive.n_dot_cm2=1e9 set (as a legacy card that
+# configures only the transport-side density would), must resolve the
+# EXACT SAME S(300K) = 9.637738e-4 as the drive.n_dot_cm2-unset case above
+# -- the pre-fix `d.drive.n_dot_cm2 or d.aperture.density_cm2` call site
+# forwarded drive.n_dot_cm2 into confinement instead, moving this design's
+# S to ~1.021141e-4 (dot_levels.retention_params' states_per_dot then used
+# 1e9 instead of falling to its own 1e10 default).
+d_drive_only = DeviceDesign(); d_drive_only.thermal.T_hs = 300.; d_drive_only.drive.V = 0.
+d_drive_only.ret.mode = "confinement"
+d_drive_only.ret.preset = "InP/GaAsP0.4/AlGaAs0.4 on GaAs"
+d_drive_only.drive.n_dot_cm2 = 1e9
+r_drive_only = evaluate(d_drive_only, [300.])
+ok("legacy design with only drive.n_dot_cm2=1e9 set (no aperture density) "
+   "still resolves confinement's S(300K) = 9.637738e-4 rel 1e-6 -- "
+   "drive.n_dot_cm2 is never forwarded to confinement",
+   d_drive_only.aperture.density_cm2 is None
+   and abs(r_drive_only["scalars"]["S_resolved"] / 9.637738e-4 - 1.) < 1e-6)
+
 # S(300 K) anchor for the Bommer et al., JAP 110, 063108 (2011) InP/AlGaInP
 # activation energy (96 +/- 7 meV, verify/data/rt_edge_anchors.yaml id
 # bommer11-retention-ea): energy alone is not a physical retention -- pair it
@@ -772,6 +792,38 @@ r_cw_zero = evaluate(d_cw_zero, [d_cw_zero.thermal.T_hs])
 ok("zero-current CW is ineligible (nan g2_cw0), not a crash",
    np.isnan(r_cw_zero["scalars"]["g2_cw0"]))
 
+# (d) pr-pkg1-fix3 item 5: frozen CW-path regression fixture. cw_g2.
+# convolve_irf switched from np.convolve to scipy.signal.fftconvolve
+# (pr-pkg1-fix2, runtime item 2) for O(N log N) instead of O(N * kernel)
+# on a stiff escape rate's tau grid; that is the ONLY path in this file
+# that exercises convolve_irf against a design card's own (as-shipped)
+# operating point rather than a synthetic fixture, so it is the one place
+# that would have caught a future convolve_irf regression on a real card.
+# Literals captured 2026-09-07 on this tree (edge-inp-gainp-design.yaml,
+# drive.cw=true as shipped, T_hs=300 K as shipped); measured fftconvolve
+# vs np.convolve agreement on this exact operating point is 1.111e-16
+# relative on g2_cw0_raw (see cw_g2.convolve_irf's docstring) -- float64
+# round-off, so 1e-9 relative is a tight but safe regression tolerance,
+# nowhere near loose enough to hide a real algorithm change.
+d_cw_gainp = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
+assert d_cw_gainp.drive.cw, "edge-inp-gainp-design.yaml must ship drive.cw=true for this fixture"
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    sc_cw_gainp = evaluate(d_cw_gainp)["scalars"]
+CW_GAINP_G2_CW0 = 0.7624234413164181
+CW_GAINP_G2_CW0_RAW = 0.9991637853703624
+CW_GAINP_CW_RHO_OP = 0.8527446400441377
+ok("CW-path regression fixture: edge-inp-gainp-design.yaml's own operating "
+   "point reproduces g2_cw0 (1e-9 relative)",
+   abs(sc_cw_gainp["g2_cw0"] / CW_GAINP_G2_CW0 - 1.0) < 1e-9)
+ok("CW-path regression fixture: edge-inp-gainp-design.yaml's own operating "
+   "point reproduces g2_cw0_raw (1e-9 relative -- the fftconvolve-carrying "
+   "quantity)",
+   abs(sc_cw_gainp["g2_cw0_raw"] / CW_GAINP_G2_CW0_RAW - 1.0) < 1e-9)
+ok("CW-path regression fixture: edge-inp-gainp-design.yaml's own operating "
+   "point reproduces cw_rho_op (1e-9 relative)",
+   abs(sc_cw_gainp["cw_rho_op"] / CW_GAINP_CW_RHO_OP - 1.0) < 1e-9)
+
 # ============================================================ 11. new-block round-trip
 d_rt2 = DeviceDesign()
 d_rt2.emission.type = "edge"; d_rt2.emission.lambda_nm = 668.0
@@ -980,16 +1032,34 @@ ok("item 2: the fixed pulsed rho_op matches the closed form "
 # rate, and f_p=(1-exp(-mu))/mu the cap-2 pulsed loading factor.  Thus the
 # actual pulsed/CW signal-rate factor is f_p/f_cw.  For rho itself, the
 # residual channel follows the X-only CW fraction; after removing that shared
-# channel, the injection-background odds must transform by 1/f_cw.  This
-# checks the normalization without incorrectly demanding equality of the two
-# observables in general -- pr-pkg1-fix2: this card's own I_uA re-solve
-# (pr-pkg1-capture-escape, finding 1b) now resolves mu=0.0999999987, not the
-# mu~1 cap-2-saturated point an earlier version of this comment/check
-# assumed (drive.I_uA's own provenance source records the current re-solve);
-# at this near-linear mu, f_p/f_cw ~ 1 and rho_op/cw_rho_op are close, so the
-# "must differ meaningfully" precondition below no longer holds and is not
-# asserted -- the loading-factor identity itself is the actual physics claim
-# and is checked regardless of regime.
+# channel, the injection-background odds must transform by 1/f_cw.
+#
+# pr-pkg1-fix3 item 6: the previous version of this check asserted
+# abs(ratio - 1) < 1.0 with no precondition -- vacuous (a ratio has to be
+# wildly wrong, or non-finite compared against 1.0's own scale, to fail
+# that). Restoring the ORIGINAL abs(rho_op - cw_rho_op) > 1e-2 precondition
+# +1e-2 tolerance pairing does not work on this tree: swept over
+# drive.I_uA at this card's own geometry (T_hs/dot/emission unchanged),
+# the precondition holds (rho_op and cw_rho_op differ by >1e-2) almost
+# everywhere EXCEPT within a couple of % of this card's own resolved
+# I_uA -- but the ratio itself is only within 1e-2 of 1 in that SAME
+# narrow near-linear neighborhood (e.g. mu=0.155961 at I_uA=0.006, +16%
+# off this card's own I_uA=0.005161206, already misses 1e-2: ratio=
+# 0.641187). The two conditions are not jointly satisfiable by any
+# meaningful margin -- pairing them the original way would either never
+# fire (mask a real regression) or fire and immediately fail (a false
+# positive on an already-passing tree). This is finding 1b's density fix
+# genuinely narrowing the identity's regime of validity, not a check that
+# lost a precondition by accident.
+#
+# Corrected analytic expectation (spec: "replace it with the corrected
+# analytic expectation"): AT this card's own resolved operating point
+# (mu=0.0999999987, where rho_op and cw_rho_op agree to ~1e-7 already),
+# the loading-factor identity holds to float-precision exactly (measured
+# abs(ratio - 1) = 2.220446e-16 on this tree) -- assert that tight bound
+# directly, scoped to the operating point it is actually true at, instead
+# of a "must differ meaningfully" precondition this tree's own I_uA no
+# longer satisfies.
 Tj_gaasp = sc_gaasp["T_j_op"]
 # pr-pkg1-fix2 item 4: forward T_ref=Tj (via Tj_gaasp, already the second
 # positional arg) and this card's own resolved n_dot_cm2 (aperture.
@@ -1017,11 +1087,13 @@ bp_inj_gaasp = (1.0 / sc_gaasp["rho_op"] - 1.0 - d_gaasp.drive.b_res)
 cw_x_fraction_gaasp = tx_gaasp * ix_gaasp / sig_gaasp
 bc_inj_gaasp = (1.0 / sc_gaasp["cw_rho_op"] - 1.0
                 - d_gaasp.drive.b_res * cw_x_fraction_gaasp)
-ok("item 2: gaasp card-point rho difference follows the analytic cap-2/CW "
-   "loading factor (P(n>=1)/mu divided by CW saturation factor)",
+ratio_gaasp = (bc_inj_gaasp / bp_inj_gaasp) / (1.0 / f_cw_gaasp)
+ok("item 6 (pr-pkg1-fix3): gaasp card-point rho difference follows the analytic cap-2/CW "
+   "loading factor (P(n>=1)/mu divided by CW saturation factor) to float precision AT "
+   "this card's own resolved operating point (tolerance 1e-6, not the previous vacuous "
+   "<1.0)",
    np.isfinite(loading_rate_factor_gaasp) and loading_rate_factor_gaasp < 1.0
-   and np.isfinite(bc_inj_gaasp / bp_inj_gaasp)
-   and abs((bc_inj_gaasp / bp_inj_gaasp) / (1.0 / f_cw_gaasp) - 1.0) < 1.0)
+   and np.isfinite(ratio_gaasp) and abs(ratio_gaasp - 1.0) < 1e-6)
 
 # Item 6: photon_budget replaces the tautological carrier_budget_closure --
 # it must equal 1 within 1e-6 at a real operating point, AND the self-test

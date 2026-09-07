@@ -572,30 +572,46 @@ design:
       since T_ref=Tj=230 K no longer overstates the escape prefactor):
       the confinement escape prefactor uses this card's own aperture.
       density_cm2=3e8 cm^-2 (device.py's _confinement_params, forwarded
-      from the same n_dot_cm2 = d.drive.n_dot_cm2 or d.aperture.density_cm2
-      expression transport.evaluate_injection already used) instead of
-      dot_levels.retention_params' 1e10 cm^-2 default. Numbers obtained
+      from n_dot_cm2 = d.aperture.density_cm2 -- pr-pkg1-fix3 item 2:
+      confinement now reads ONLY aperture.density_cm2, never
+      drive.n_dot_cm2 (which is transport-only and, for this card, is
+      unset/0.0 anyway, so the resolved density is unchanged here))
+      instead of dot_levels.retention_params' 1e10 cm^-2 default. Numbers obtained
       (DeviceDesign.load + evaluate with the card as shipped; dot_levels'
       "InP/GaInP/AlGaInP0.55 on GaAs" class preset, now IDENTICAL to this
       card's ret.system stack post finding-5 fix, tau_rad_ns=1.0,
       channel=pair_half): default (no-cancellation, ret.
       tau_cap_scales_with_density unset/false) a_esc(300 K) = 9.771319e5,
-      S(230 K) = 0.00134802 (was 2.931396e4 / 0.0131111765 at the 1e10
-      cm^-2 default). Opt-in full-cancellation
-      (ret.tau_cap_scales_with_density: true, tau_cap = 10 ps *
-      (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2 default exactly:
-      a_esc(300 K) = 2.931396e4, S(230 K) = 0.0142966402 (bit-identical to
-      the pre-fix legacy number, as designed -- the two effects cancel).
+      S(230 K) = 0.00134802 (was 2.931396e4 / 0.0142966409 at the 1e10
+      cm^-2 default -- pr-pkg1-fix3 item 4: the previously recorded
+      0.0131111765 was a stale pre-T_ref=Tj value; 0.0142966409 is this
+      tree's fresh 1e10 cm^-2 evaluation, cross-checked below). Opt-in
+      full-cancellation (ret.tau_cap_scales_with_density: true, tau_cap =
+      10 ps * (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2 default
+      exactly: a_esc(300 K) = 2.931396e4, S(230 K) = 0.0142966409
+      (bit-identical to the pre-fix legacy number, as designed -- the two
+      effects cancel; matches the "was" figure above to 14 significant
+      figures, confirming both computations of the same 1e10 cm^-2 default
+      agree).
       At the favourable corner (T_hs=230 K, dot.gamma300=6, dot.delta_xx=8,
       emission.NA=0.8, emission.R_back=0.95, emission.L_um=250, this
       card's own (300 K-resolved) drive.I_uA, unchanged -- see drive.I_uA's
       own source; mu_resolved=0.5445133895, inside [0.05, 1.0]):
-      default (no-cancellation) g2_op=0.4439248350,
-      collected_flux_pulsed_s=449.4415578 s^-1 (fails both the g2<0.5 and
-      the 1 kHz floor gates by design-relevant margins); full-cancellation
+      default (no-cancellation) g2_op=0.4439248350 (clears the g2<0.5
+      gate), collected_flux_pulsed_s=449.4415578 s^-1 (fails the 1 kHz
+      floor gate) -- one gate cleared, not both; full-cancellation
       g2_op=0.2995138344, collected_flux_pulsed_s=4766.624243 s^-1 (clears
       both gates). This card ships the default (no-cancellation)
       convention -- the physically-motivated fix -- not the
-      full-cancellation opt-in, so its own operating point (drive.I_uA's
-      source) and the favourable corner above both fail the acceptance
-      gates under the density this card actually declares.
+      full-cancellation opt-in, so under the density this card actually
+      declares its own operating point (drive.I_uA's source) fails both
+      acceptance gates, and the favourable corner above clears g2<0.5 but
+      still misses the flux floor -- neither is a clean pass. Across both
+      RT edge cards: under the shipped no-cancellation convention, no
+      favourable-corner row clears both the g2<0.5 and 1 kHz floor gates
+      (this card clears g2 only; edge-inp-gaasp-design.yaml's corner fails
+      both, and is additionally infeasible on mu -- see that card's own
+      finding_1b_record), whereas both cards' full-cancellation rows clear
+      both gates. The g2/flux verdict therefore hinges on the tau_cap
+      convention (ret.tau_cap_scales_with_density), which the acceptance
+      sweep will report side by side.
