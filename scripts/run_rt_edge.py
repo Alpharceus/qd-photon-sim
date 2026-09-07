@@ -96,7 +96,7 @@ directly (grid, resolve_lever_grid, build_lever_combos, resolve_device_card,
 eval_pulsed_point, eval_cw_point, compute_stats, compute_verdict,
 _card_gamma300_pass_max, _gamma300_threshold_bracket, resolve_range_bounds,
 _range_bounds_mismatches, refine_gamma300, anchor_check, _loading_term,
-_brightness_factor_check, _front_facet_split, _facet_factor_formula_candidates,
+_brightness_factor_check, _front_facet_split,
 _facet_factor_forward_check, _self_test_passed, write_csv, write_png,
 write_markdown, write_manifest) rather than parsing this script's stdout.
 """
@@ -106,11 +106,9 @@ import argparse
 import copy
 import csv
 import hashlib
-import inspect
 import itertools
 import json
 import platform
-import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -507,6 +505,7 @@ def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple
     ranges = provenance.get("ranges", {})
     card_assumptions = list(provenance.get("assumptions", []))
     i_ua = design0.drive.I_uA
+    alpha_cm = design0.emission.alpha_cm
     lever_grid = resolve_lever_grid(design0, quick)
     combos = build_lever_combos(lever_grid)
     rows = []
@@ -518,7 +517,8 @@ def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple
                     for irf_ps in grid["irf_ps"]:
                         cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever, T_hs)
                         rows.append(_build_row(card, ranges, card_assumptions, i_ua,
-                                               delta_xx, gamma300, irf_ps, T_hs, lever, pulsed, cw))
+                                               delta_xx, gamma300, irf_ps, T_hs, lever, pulsed, cw,
+                                               alpha_cm))
     return rows, lever_grid, len(combos)
 
 
@@ -592,7 +592,7 @@ def anchor_check(card: dict, pulsed_cache: dict) -> dict:
 
 
 def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps, T_hs,
-              lever, pulsed, cw) -> dict:
+              lever, pulsed, cw, alpha_cm) -> dict:
     scp, sccw = pulsed["scalars"], cw["scalars"]
     eligible_row = bool(pulsed["eligible"] and cw["eligible"])
     g2_p, g2_cw0, g2_cw0_raw = scp.get("g2_op"), sccw.get("g2_cw0"), sccw.get("g2_cw0_raw")
@@ -650,6 +650,11 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         # emission.NA/R_back/L_um values produced THIS row.
         "emission_NA": lever["emission.NA"], "emission_R_back": lever["emission.R_back"],
         "emission_L_um": lever["emission.L_um"],
+        # emission_alpha_cm (peer-review pkg2 fix3, 2026-09-07, item 3): not
+        # a swept lever, but recorded per-row from design.emission.alpha_cm
+        # so _facet_factor_forward_check's forward recomputation reads the
+        # ACTUAL card value instead of a hardcoded literal.
+        "emission_alpha_cm": alpha_cm,
     }
 
 
@@ -666,7 +671,8 @@ def csv_fieldnames() -> list:
             "invalid_reasons_cw", "assumptions", "pulse_width_ns", "rep_rate_hz",
             "duty_pulsed", "edge_T_facet", "edge_eta_prop", "edge_eta_NA",
             "diagnostic_valid", "diag_g2_pulsed", "diag_g2_cw0",
-            "diag_g2_cw0_raw", "emission_NA", "emission_R_back", "emission_L_um"]
+            "diag_g2_cw0_raw", "emission_NA", "emission_R_back", "emission_L_um",
+            "emission_alpha_cm"]
 
 
 # -------------------------------------------------------------- statistics
@@ -1082,9 +1088,12 @@ def _brightness_factor_check(row: dict) -> dict:
     """Reconstructs collected_flux_pulsed_s as the plain product of
     device.py's own already-computed scalars -- loading (1-e^-mu), t_X, S
     (confinement retention), edge_eta_total (edge out-coupling, which
-    itself already contains beta/T_facet/eta_prop/eta_NA exactly once
-    each), times rep_rate_hz -- with NO duty term (duty is already folded
-    into rep_rate_hz's own derivation, device.py's rep_rate_hz = duty_eff /
+    itself already contains beta/eta_facet/eta_NA exactly once each --
+    T_facet and single-pass propagation are folded into eta_facet's own
+    ray series, not separate factors of eta_total; peer-review pkg2 facet
+    fix, 2026-09-07, item 3), times rep_rate_hz -- with NO duty term (duty
+    is already folded into rep_rate_hz's own derivation, device.py's
+    rep_rate_hz = duty_eff /
     tau_pulse_ns) and no separate beta/facet/propagation/NA terms (already
     inside edge_eta_total): council review round 4 item 3's exact
     complaint was that the old table's `duty` row and standalone `beta` row
@@ -1143,39 +1152,6 @@ def _front_facet_split(row: dict) -> float:
     return eta_total / denom
 
 
-# Kept for verify/verify_rt_edge_sweep.py's own introspection tests (out of
-# scope for this package to edit); no longer consulted by
-# _facet_factor_forward_check below, which now calls the pure function
-# directly (peer-review pkg2 facet fix, 2026-09-07, item 3) instead of
-# scraping and eval()-ing a formula string out of the installed
-# edge_emission() source -- after that fix edge_emission() assigns
-# `facet_factor = facet_escape_fraction(T, R_back_eff, alpha_cm, L_um,
-# dot_position)`, whose RHS references names (R_back_eff, alpha_cm, L_um,
-# dot_position) this module's old {"T": T, "R_back": R_back}-only eval()
-# namespace could never resolve -- exactly the ok=False-for-every-row
-# failure this package fixes.
-_FACET_FACTOR_CANDIDATE_NAMES = ("front", "facet_factor", "eta_facet")
-
-
-def _facet_factor_formula_candidates() -> list:
-    """Best-effort introspection, retained for verify_rt_edge_sweep.py's own
-    tests of this function (out of scope here): every RHS expression
-    assigned to any of _FACET_FACTOR_CANDIDATE_NAMES inside the INSTALLED
-    waveguide.edge_emission source right now. Returns a list of (name,
-    expr) pairs, in source order; empty if introspection fails or none of
-    the candidate names appear. Not used by _facet_factor_forward_check
-    any more (see its docstring) -- that now calls
-    waveguide.facet_escape_fraction directly, the single source of truth
-    edge_emission() itself calls."""
-    try:
-        src = inspect.getsource(waveguide.edge_emission)
-    except (OSError, TypeError):
-        return []
-    names = "|".join(_FACET_FACTOR_CANDIDATE_NAMES)
-    return [(m.group(1), m.group(2).rstrip(","))
-           for m in re.finditer(rf"^\s*({names})\s*=\s*(.+?)\s*$", src, re.MULTILINE)]
-
-
 def _facet_factor_forward_check(row: dict) -> dict:
     """Peer-review pkg2 facet fix (2026-09-07,
     .workers/specs/pr-pkg2-facet-fix.md item 3): the OLD version of this
@@ -1189,18 +1165,24 @@ def _facet_factor_forward_check(row: dict) -> dict:
     `waveguide.facet_escape_fraction(T, R_back, alpha_cm, L_um)` directly
     instead -- the SAME pure function edge_emission() itself now calls
     (single source of truth), so this is a wiring/regression check, not a
-    duplicated physics derivation. `alpha_cm` is not a swept lever in this
-    file (grep confirms no `alpha_cm` key anywhere in this module), so the
-    fixed `fsim_core.device.EmissionBlock.alpha_cm` default is used;
-    `emission_R_back=None` resolves the same way edge_emission() resolves
-    it for an uncoated stack, `R_back = 1 - T` (item 4's uncoated-Fresnel
-    resolution reduces to this whenever no coating override is in play,
-    which this sweep never sets). Compares the forward value against the
-    back-solved `eta_total/(beta*eta_NA)` from `_front_facet_split`.
-    Returns {"back_solved", "forward", "convention", "ok"}; `convention` is
-    the fixed string `"ray-series-midpoint"` (facet_escape_fraction's
-    dot_position default), not a detected fused/legacy grouping -- there is
-    only one convention now."""
+    duplicated physics derivation. `emission_R_back=None` resolves the same
+    way edge_emission() resolves it for an uncoated stack, `R_back = 1 - T`
+    (item 4's uncoated-Fresnel resolution reduces to this whenever no
+    coating override is in play, which this sweep never sets). `alpha_cm`
+    is read from the row's own `emission_alpha_cm` column (peer-review pkg2
+    fix3, 2026-09-07, item 3 -- it is not a swept lever, but IS recorded
+    per-row from `design.emission.alpha_cm`); a stale CSV predating that
+    column falls back to the fixed `fsim_core.device.EmissionBlock.alpha_cm`
+    class default, noted in `convention` as `"ray-series-midpoint (alpha
+    from card)"` so the fallback is visible in the printed verdict rather
+    than silently indistinguishable from a genuinely per-row value. Compares
+    the forward value against the back-solved `eta_total/(beta*eta_NA)` from
+    `_front_facet_split`. Returns {"back_solved", "forward", "convention",
+    "ok"}; `convention` is `None` (not the string) whenever `forward`
+    could not be evaluated at all -- either a malformed row or a
+    facet_escape_fraction exception -- so the verdict text can print
+    "eta_facet could not be evaluated" instead of a nonsensical "forward =
+    nan via ray-series-midpoint"."""
     back_solved = _front_facet_split(row)
     try:
         T = float(row.get("edge_T_facet"))
@@ -1212,16 +1194,28 @@ def _facet_factor_forward_check(row: dict) -> dict:
                "convention": None, "ok": False}
     if R_back is None:
         R_back = 1.0 - T  # uncoated Fresnel resolution reduces to this here (item 4)
-    alpha_cm = 5.0  # fsim_core.device.EmissionBlock.alpha_cm default; not a swept lever
+    alpha_raw = row.get("emission_alpha_cm")
+    if alpha_raw in (None, "", "None"):
+        # stale CSV predating the emission_alpha_cm column: fall back to
+        # the fixed class default and say so in convention.
+        alpha_cm = 5.0  # fsim_core.device.EmissionBlock.alpha_cm default
+        convention = "ray-series-midpoint (alpha from card)"
+    else:
+        try:
+            alpha_cm = float(alpha_raw)
+        except (TypeError, ValueError):
+            return {"back_solved": back_solved, "forward": float("nan"),
+                   "convention": None, "ok": False}
+        convention = "ray-series-midpoint"
     try:
         forward = float(waveguide.facet_escape_fraction(T, R_back, alpha_cm, L_um))
     except Exception:
         return {"back_solved": back_solved, "forward": float("nan"),
-               "convention": "ray-series-midpoint", "ok": False}
+               "convention": None, "ok": False}
     ok = bool(np.isfinite(back_solved) and np.isfinite(forward)
              and abs(forward - back_solved) < 1e-6)
     return {"back_solved": back_solved, "forward": forward,
-           "convention": "ray-series-midpoint", "ok": ok}
+           "convention": convention, "ok": ok}
 
 
 def compute_verdict(rows: list, stats: dict, grid_complete: bool,
@@ -1867,7 +1861,7 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                               "BACK-SOLVED as the one factor missing from "
                               "eta_total/(beta*eta_NA) -- device.py folds it into eta_total "
                               "but never exposes it on its own; see the independent check "
-                              "below", front_split),
+                              "below)", front_split),
                              ("T_facet (raw Fresnel transmission, diagnostic only -- NOT "
                               "an independent multiplicative step beyond eta_facet above; "
                               "see the independent check below)",

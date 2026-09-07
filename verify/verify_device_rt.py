@@ -170,6 +170,20 @@ ok("InP confinement E_a published 96+/-25 meV band", 71. <= p["E_a"] <= 121.)
 ok("confinement retention Arrhenius value uses all four derived params",
    abs(r["scalars"]["S_resolved"] / S - 1.) < 1e-6)
 
+# pr-pkg1-fix2 item 1 (peer-review-triage.md finding 1b): legacy invariance.
+# A confinement design with no explicit aperture density set (the design
+# above: ApertureBlock.density_cm2 defaults to None) must still resolve
+# dot_levels.retention_params' own 1e10 cm^-2 default -- ApertureBlock.
+# density_cm2's OLD literal 7.0e8 default silently fed _confinement_params
+# too, so no legacy design could ever reach that 1e10 default; this is the
+# exact regression that made the check above fail before the fix.
+ok("ApertureBlock.density_cm2 defaults to None (no aperture density set)",
+   d.aperture.density_cm2 is None)
+ok("legacy confinement design (no explicit aperture density) reproduces "
+   "S(300K) = 9.63774e-4 (dot_levels.retention_params' 1e10 cm^-2 default, "
+   "not a silently substituted aperture density)",
+   abs(r["scalars"]["S_resolved"] / 9.63774e-4 - 1.) < 1e-6)
+
 # S(300 K) anchor for the Bommer et al., JAP 110, 063108 (2011) InP/AlGaInP
 # activation energy (96 +/- 7 meV, verify/data/rt_edge_anchors.yaml id
 # bommer11-retention-ea): energy alone is not a physical retention -- pair it
@@ -383,6 +397,9 @@ _T_dr = sc_edge["edge_T_facet"]
 _alpha_dr = d_edge.emission.alpha_cm
 _L_dr = d_edge.emission.L_um
 _Rback_dr = d_edge.emission.R_back
+ok(f"d_edge.emission carries no coating override (coating={d_edge.emission.coating!r}) "
+   "before applying the R_back=None -> 1-T_facet substitution below",
+   not d_edge.emission.coating)
 if _Rback_dr is None:
     _Rback_dr = 1.0 - _T_dr  # no coating override on this stack (item 4)
 _a_dr = _alpha_dr * 1e-4

@@ -241,14 +241,43 @@ ck(abs(finite_sum - facet_escape_fraction(T_fs, Rb_fs, alpha_fs, L_fs)) < 1e-10,
    'facet_escape_fraction matches an explicit 200-round-trip path-length sum '
    '(R_back=1, alpha=20/cm, L=300um, T=0.6)')
 
-# item 5: the degenerate denominator (R_back*R_front*prop_rt == 1) must raise
-# a clear ValueError rather than silently dividing by zero. alpha_cm=0 makes
-# prop_rt=1, so T=0 (R_front=1) with R_back=1 forces the denominator to 0.
+# item 5 (pr-pkg2-fix3): the OLD guard raised ValueError on this exact
+# input (T=0, R_back=1, alpha_cm=0 -> denom == 0 exactly); the NEW guard
+# instead returns the analytic lossless perfect-mirror limit -- with zero
+# ridge loss and a fully reflective back facet, the front facet is the
+# ONLY loss channel in the cavity, so by power conservation every photon
+# eventually escapes forward after enough round trips, for ANY T
+# (including T=0), not just as a fallback for an otherwise-undefined 0/0.
+ck(facet_escape_fraction(0.0, 1.0, 0.0, 100.0) == 1.0,
+   'lossless perfect-mirror limit (R_back=1, alpha_cm*L_um=0) returns the analytic limit 1.0')
+ck(abs(facet_escape_fraction(0.6, 1.0, 0.0, 250.0) - 1.0) < 1e-12,
+   'lossless perfect-mirror limit also holds for a non-degenerate T=0.6 (denom=T, no guard needed)')
+
+# item 5: the guard threshold (denom <= 1e-15) still raises ValueError for a
+# genuinely near-degenerate cavity that does NOT match the lossless
+# perfect-mirror special case above -- alpha_cm*L_um is tiny but nonzero
+# (not exactly 0), so R_back=1, T=0 still drives denom below 1e-15 without
+# taking the analytic-limit shortcut.
 try:
-    facet_escape_fraction(0.0, 1.0, 0.0, 100.0)
-    ck(False, 'degenerate facet cavity (R_back*R_front*prop_rt==1) raises ValueError')
+    facet_escape_fraction(0.0, 1.0, 1e-13, 1.0)
+    ck(False, 'near-degenerate facet cavity (not the lossless-mirror special case) raises ValueError')
 except ValueError:
-    ck(True, 'degenerate facet cavity (R_back*R_front*prop_rt==1) raises ValueError')
+    ck(True, 'near-degenerate facet cavity (not the lossless-mirror special case) raises ValueError')
+
+# item 5: general-x exponent check at dot_position=0.25, off the x=0.5
+# midpoint default, against a hand closed form -- this specifically
+# exercises exp(-2*a*(1-x)*L), which collapses to exp(-a*L) at x=0.5 (the
+# module docstring's own warning about the checkpoint's exact bug).
+T_x, Rb_x, alpha_x, L_x, x_x = 0.65, 0.40, 8.0, 350.0, 0.25
+a_x = alpha_x * 1e-4
+Rf_x = 1.0 - T_x
+prop_rt_x = exp(-2.0 * a_x * L_x)
+eta_facet_x_hand = (0.5 * T_x * exp(-a_x * x_x * L_x)
+                    * (1.0 + Rb_x * exp(-2.0 * a_x * (1.0 - x_x) * L_x))
+                    / (1.0 - Rb_x * Rf_x * prop_rt_x))
+ck(abs(eta_facet_x_hand - facet_escape_fraction(T_x, Rb_x, alpha_x, L_x, dot_position=x_x)) < 1e-12,
+   'facet_escape_fraction matches a hand closed form at dot_position=0.25 (off the x=0.5 '
+   'midpoint, exercising the general exp(-2*a*(1-x)*L) exponent)')
 
 # item 5: citation and textbook cross-check note are present in the module.
 _wg_source = inspect.getsource(wgmod)

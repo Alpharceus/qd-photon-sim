@@ -480,7 +480,8 @@ _eta_facet = (0.5 * _T * math.exp(-_a * 0.5 * _L_um)
              / (1.0 - _R_back * (1.0 - _T) * _prop_rt))
 _edge_row = {"edge_beta": _beta, "edge_T_facet": _T, "edge_eta_NA": _eta_NA,
             "edge_eta_total": _beta * _eta_facet * _eta_NA,
-            "emission_R_back": _R_back, "emission_L_um": _L_um}
+            "emission_R_back": _R_back, "emission_L_um": _L_um,
+            "emission_alpha_cm": _alpha_cm}
 _combined = rte._front_facet_split(_edge_row)
 ok("ray-series facet oracle: back-solved factor reproduces the constructed eta_facet",
    abs(_combined - _eta_facet) < 1e-12)
@@ -493,56 +494,54 @@ ok("ray-series facet oracle: non-finite/zero component inputs yield nan without 
    math.isnan(rte._front_facet_split({"edge_beta": 0.0, "edge_T_facet": 0.72,
                                       "edge_eta_NA": 0.30, "edge_eta_total": 0.001})))
 
-# -- facet-factor forward check (council review round 5, item 6): a
-# genuinely independent forward recomputation, introspected LIVE from
-# fsim_core/waveguide.py's installed source (never hardcoded). First
-# against FAKE candidate lists (both conventions a concurrently-edited
-# facet model might use), by temporarily swapping
-# _facet_factor_formula_candidates; then against the REAL installed source
-# and a real evaluator row.
-_row_fused = {"edge_T_facet": 0.8, "emission_R_back": 0.95,
-             "edge_beta": 0.03, "edge_eta_prop": 0.78, "edge_eta_NA": 0.30}
-_combined_fused = 0.8 / (0.8 + (1 - 0.95))
-_row_fused["edge_eta_total"] = 0.03 * _combined_fused * 0.78 * 0.30
-_orig_candidates_fn = rte._facet_factor_formula_candidates
-try:
-    rte._facet_factor_formula_candidates = (
-        lambda: [("facet_factor", "0.5 * T if R_back is None else T / (T + (1 - R_back))")])
-    _check_fused = rte._facet_factor_forward_check(_row_fused)
-finally:
-    rte._facet_factor_formula_candidates = _orig_candidates_fn
-ok("facet-factor forward check: fused/current-model convention (candidate already IS the "
-   "full combined factor, T_facet included) matches directly",
-   _check_fused["ok"] and abs(_check_fused["forward"] - _combined_fused) < 1e-9
-   and "fused" in _check_fused["convention"])
+# -- facet-factor forward check (council review round 5, item 6; replaced
+# again for peer-review pkg2 fix3, 2026-09-07, .workers/specs/
+# pr-pkg2-fix3.md item 2): the checks below used to fake candidate formula
+# lists via _facet_factor_formula_candidates and swap it onto the module,
+# exercising a source-introspection path that 48209dc deleted --
+# _facet_factor_forward_check now calls waveguide.facet_escape_fraction
+# directly (the single source of truth), so there is no introspectable
+# formula string left to fake or to detect a "fused"/"legacy" convention
+# from. Replaced with two checks against the CURRENT contract: (a) a
+# synthetic row carrying T_facet/R_back/alpha_cm/L_um with
+# eta_total = beta*eta_facet*eta_NA (eta_facet the hand closed form) ->
+# ok=True, convention="ray-series-midpoint"; (b) the same row with
+# eta_total perturbed by 5% -> ok=False with a finite forward value (a
+# negative control: the forward recomputation itself still succeeds, only
+# the comparison against the perturbed back-solved value fails).
+_T_ff, _Rback_ff, _alpha_ff, _L_ff = 0.68, 0.42, 6.5, 400.0
+_beta_ff, _etaNA_ff = 0.025, 0.35
+_a_ff = _alpha_ff * 1e-4
+_prop_rt_ff = math.exp(-2.0 * _a_ff * _L_ff)
+_eta_facet_ff = (0.5 * _T_ff * math.exp(-_a_ff * 0.5 * _L_ff)
+                * (1.0 + _Rback_ff * math.exp(-2.0 * _a_ff * 0.5 * _L_ff))
+                / (1.0 - _Rback_ff * (1.0 - _T_ff) * _prop_rt_ff))
+_row_current = {"edge_beta": _beta_ff, "edge_T_facet": _T_ff, "edge_eta_NA": _etaNA_ff,
+               "edge_eta_total": _beta_ff * _eta_facet_ff * _etaNA_ff,
+               "emission_R_back": _Rback_ff, "emission_L_um": _L_ff,
+               "emission_alpha_cm": _alpha_ff}
+_check_current = rte._facet_factor_forward_check(_row_current)
+ok("facet-factor forward check: current ray-series contract (T_facet, R_back, alpha_cm, "
+   "L_um; eta_total = beta*eta_facet*eta_NA) matches the hand closed form",
+   _check_current["ok"] and _check_current["convention"] == "ray-series-midpoint"
+   and abs(_check_current["forward"] - _eta_facet_ff) < 1e-9)
 
-_front_legacy = 0.8 / (0.8 + (1 - 0.95))
-_row_legacy = dict(_row_fused)
-_row_legacy["edge_eta_total"] = 0.03 * _front_legacy * 0.8 * 0.78 * 0.30  # front * T_facet
-try:
-    rte._facet_factor_formula_candidates = (
-        lambda: [("front", "0.5 if R_back is None else T / (T + (1 - R_back))")])
-    _check_legacy = rte._facet_factor_forward_check(_row_legacy)
-finally:
-    rte._facet_factor_formula_candidates = _orig_candidates_fn
-ok("facet-factor forward check: legacy/split convention (candidate is only the front "
-   "split, T_facet applied as a separate step) matches after multiplying by T_facet",
-   _check_legacy["ok"] and abs(_check_legacy["forward"] - _front_legacy * 0.8) < 1e-9
-   and "legacy" in _check_legacy["convention"])
+_row_perturbed = dict(_row_current)
+_row_perturbed["edge_eta_total"] = _row_current["edge_eta_total"] * 1.05
+_check_perturbed = rte._facet_factor_forward_check(_row_perturbed)
+ok("facet-factor forward check: a row whose eta_total is perturbed 5% off the ray-series "
+   "value is reported as ok=False with a finite forward value (negative control -- the "
+   "forward recomputation itself still succeeds, only the comparison against the "
+   "perturbed back-solved value fails)",
+   not _check_perturbed["ok"] and math.isfinite(_check_perturbed["forward"]))
 
-try:
-    rte._facet_factor_formula_candidates = lambda: [("front", "0.1")]
-    _check_wrong = rte._facet_factor_forward_check(_row_fused)
-finally:
-    rte._facet_factor_formula_candidates = _orig_candidates_fn
-ok("facet-factor forward check: a candidate that matches NEITHER convention is reported "
-   "as ok=False, not silently accepted",
-   not _check_wrong["ok"])
-
-_real_candidates = rte._facet_factor_formula_candidates()
-ok("facet-factor forward check: the REAL fsim_core/waveguide.py source is introspectable "
-   "and yields at least one candidate formula (this file never hardcodes the formula)",
-   len(_real_candidates) >= 1)
+# facet-factor forward check (pr-pkg2-fix3 item 1): the REAL-evaluator-row
+# check used to omit emission_L_um, so _facet_factor_forward_check raised
+# TypeError inside float(row.get("emission_L_um")) and silently returned
+# ok=False for every row -- NOT a stale-sweep effect, a genuine wiring bug
+# in this fixture. Now carries emission_L_um and emission_alpha_cm too
+# (item 3), so the forward recomputation reads the real card values
+# instead of the fixed 5.0 fallback.
 _gainp_design_for_facet = rte.resolve_device_card(
     next(c["path"] for c in rte.CARDS if c["id"] == FALLBACK_ID), {"dot.delta_xx": 7.0})
 _sc_gainp_facet = rte.evaluate(
@@ -552,11 +551,16 @@ _real_row = {"edge_beta": _sc_gainp_facet["edge_beta"],
             "edge_eta_prop": _sc_gainp_facet["edge_eta_prop"],
             "edge_eta_NA": _sc_gainp_facet["edge_eta_NA"],
             "edge_eta_total": _sc_gainp_facet["edge_eta_total"],
-            "emission_R_back": _gainp_design_for_facet.emission.R_back}
+            "emission_R_back": _gainp_design_for_facet.emission.R_back,
+            "emission_L_um": _gainp_design_for_facet.emission.L_um,
+            "emission_alpha_cm": _gainp_design_for_facet.emission.alpha_cm}
 _real_check = rte._facet_factor_forward_check(_real_row)
-ok("facet-factor forward check: against a REAL evaluator row, the forward recomputation "
-   "(introspected live from the installed waveguide.py) matches the back-solved value",
-   _real_check["ok"])
+ok("facet-factor forward check: against a REAL evaluator row (the gainp operating point), "
+   "the forward recomputation matches the back-solved value (ok=True, per the function's "
+   "own 1e-6 agreement tolerance) at eta_facet=0.7840154 (pr-pkg2-fix3 item 1)",
+   _real_check["ok"]
+   and abs(_real_check["forward"] - 0.7840154) < 1e-6
+   and abs(_real_check["back_solved"] - 0.7840154) < 1e-6)
 
 
 # ============================================= 1e. self-test field rename (round 4, item 5)

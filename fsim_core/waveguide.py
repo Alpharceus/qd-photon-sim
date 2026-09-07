@@ -388,6 +388,10 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
     front-facet output-coupling fraction); report both, do not conflate
     them.
     """
+    if not 0.0 <= T <= 1.0:
+        raise ValueError("T must be in [0, 1]")
+    if not 0.0 <= R_back <= 1.0:
+        raise ValueError("R_back must be in [0, 1]")
     if not 0.0 <= dot_position <= 1.0:
         raise ValueError("dot_position must be in [0, 1]")
     R_front = 1.0 - T
@@ -395,10 +399,19 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
     x = dot_position
     prop_rt = exp(-2.0 * a * L_um)
     denom = 1.0 - R_back * R_front * prop_rt
-    if denom == 0.0:
+    if denom <= 1e-15:
+        if R_back == 1.0 and alpha_cm * L_um == 0.0:
+            # Lossless perfect-mirror limit: with zero ridge loss and a
+            # fully reflective back facet, the front facet is the ONLY
+            # loss channel in the cavity, so by power conservation every
+            # photon eventually escapes forward after enough round trips,
+            # regardless of T -- this is the well-defined analytic limit
+            # of the ray series above (numerator and denominator both -> 0
+            # together, ratio -> 1), not a fallback for an undefined case.
+            return 1.0
         raise ValueError(
             "degenerate facet cavity: R_back * R_front * exp(-2*alpha_cm*1e-4*L_um) "
-            "== 1, the round-trip geometric series does not converge")
+            ">= 1, the round-trip geometric series does not converge")
     return (0.5 * T * exp(-a * x * L_um)
             * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
 
