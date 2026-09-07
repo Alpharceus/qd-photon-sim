@@ -435,6 +435,15 @@ class DeviceDesign:
         for key in ("n_dot_cm2", "tau_cap_ps"):
             if ret_kw.get(key) is not None and ret_kw[key] <= 0:
                 raise ValueError(f"ret.{key} must be > 0 if set (got {ret_kw[key]!r})")
+        # pr-pkg1-fix4 item 5: aperture.density_cm2 is the same None-means-
+        # "use the legacy/confinement default" class as ret.n_dot_cm2 above
+        # (see ApertureBlock.density_cm2's own docstring) -- an explicit
+        # 0.0 divides straight into transport's f_qd and confinement's
+        # states_per_dot (N2D/n_dot_cm2) the same way, so it must fail here
+        # too, not deep inside evaluate().
+        if aperture_kw.get("density_cm2") is not None and aperture_kw["density_cm2"] <= 0:
+            raise ValueError("aperture.density_cm2 must be > 0 if set "
+                             f"(got {aperture_kw['density_cm2']!r})")
         return DeviceDesign(
             name=d.get("name", "my-device"),
             dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
@@ -979,8 +988,13 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # verify_device_rt.py's dedicated legacy-invariance check).
             # aperture.density_cm2 is forwarded as-is (None passes through
             # unresolved, per the comment above); _confinement_params
-            # itself is_not_None-tests it against ret.n_dot_cm2 first, so an
-            # explicit 0.0 here still wins over the 1e10 class default.
+            # itself is_not_None-tests it against ret.n_dot_cm2 first, so
+            # this value wins over the 1e10 class default whenever
+            # ret.n_dot_cm2 itself is unset. pr-pkg1-fix4 item 5: an
+            # explicit 0.0 can no longer reach here at all -- both
+            # aperture.density_cm2 and ret.n_dot_cm2 are now validated > 0
+            # if set at DeviceDesign.load() (see load()'s own checks), so
+            # this call site only ever sees a positive float or None.
             derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta
@@ -1299,11 +1313,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     # land a few ULPs off T_hs even when it is "the same" temperature by
     # construction, and would silently fall through to a second full
     # evaluate() at that point instead of reusing `rows`' matching row --
-    # correct either way (both computations agree to float precision), but
-    # wasteful. Numerically this is the SAME row whenever it matches (a few
-    # ULPs cannot move the self-heating fixed point), so the "reuse
-    # bit-identically" property above still holds in the cases this was
-    # ever exercised (Ts literally carrying d.thermal.T_hs unchanged).
+    # correct either way (within 1e-9 K, numerically equivalent to
+    # ~1e-12 relative), but wasteful. pr-pkg1-fix4 item 5: dropped the
+    # stronger "bit-identical" claim above -- a few ULPs of T offset does
+    # move the self-heating fixed point by that same tiny amount, it just
+    # doesn't matter at any precision this module reports.
     _hs_hits = np.flatnonzero(np.abs(Ts - d.thermal.T_hs) < 1e-9)
     op = rows[int(_hs_hits[0])] if _hs_hits.size else one(d.thermal.T_hs)
     # T_c: first heatsink temperature where g2 crosses 0.5 (above the g2 minimum)

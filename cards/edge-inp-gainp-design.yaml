@@ -610,17 +610,22 @@ design:
       card's ret.system stack post finding-5 fix, tau_rad_ns=1.0,
       channel=pair_half): default (no-cancellation, ret.
       tau_cap_scales_with_density unset/false) a_esc(300 K) = 9.771319e5,
-      S(230 K) = 0.00134802 (was 2.931396e4 / 0.0142966409 at the 1e10
-      cm^-2 default -- pr-pkg1-fix3 item 4: the previously recorded
-      0.0131111765 was a stale pre-T_ref=Tj value; 0.0142966409 is this
-      tree's fresh 1e10 cm^-2 evaluation, cross-checked below). Opt-in
-      full-cancellation (ret.tau_cap_scales_with_density: true, tau_cap =
-      10 ps * (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2 default
-      exactly: a_esc(300 K) = 2.931396e4, S(230 K) = 0.0142966409
-      (bit-identical to the pre-fix legacy number, as designed -- the two
-      effects cancel; matches the "was" figure above to 14 significant
-      figures, confirming both computations of the same 1e10 cm^-2 default
-      agree).
+      S(230 K) = 0.00134802 (was 2.931396e4 / 0.01429664019 at the 1e10
+      cm^-2 default -- pr-pkg1-fix4: the previously recorded 0.0142966409
+      was wrong at the 9th significant digit (agreed with a fresh
+      evaluation to only 8 digits); 0.01429664019 is this tree's fresh
+      1e10 cm^-2 evaluation (DeviceDesign.load + evaluate, T_hs 230 K,
+      dot.gamma300 6, dot.delta_xx 8, emission.NA 0.8, emission.R_back
+      0.95, emission.L_um 250, ret.n_dot_cm2 = 1e10), cross-checked
+      below). Opt-in full-cancellation (ret.tau_cap_scales_with_density:
+      true, tau_cap = 10 ps * (1e10/3e8) = 333.33 ps) reproduces the 1e10
+      cm^-2 default exactly: a_esc(300 K) = 2.931396e4,
+      S(230 K) = 0.01429664019 (bit-identical to the pre-fix legacy
+      number, as designed -- the two effects cancel; pr-pkg1-fix4: the
+      full-cancellation value equals the 1e10-default value to 17
+      significant figures (bit-identical, hex-identical floats -- not the
+      previously claimed 14), confirming both computations of the same
+      1e10 cm^-2 default agree).
       At the favourable corner (T_hs=230 K, dot.gamma300=6, dot.delta_xx=8,
       emission.NA=0.8, emission.R_back=0.95, emission.L_um=250, this
       card's own (300 K-resolved) drive.I_uA, unchanged -- see drive.I_uA's

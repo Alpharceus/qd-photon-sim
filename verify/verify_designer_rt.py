@@ -261,6 +261,22 @@ def _():
     assert "roundtrip-check: OK" in r.stdout, r.stdout
 
 
+@check("pr-pkg1-fix4 item 3: a real edit of aperture.density_cm2 to 7.0e8 on a "
+       "None-density design is written back as 7.0e8 (not silently discarded to "
+       "None), and the untouched case still yields None")
+def _():
+    r = _run(["--roundtrip-check"])
+    assert r.returncode == 0, f"exit {r.returncode}\nSTDOUT:\n{r.stdout}\nSTDERR:\n{r.stderr}"
+    # untouched case (populated from a None-density design, never edited)
+    assert "aperture.density_cm2=None" in r.stdout, r.stdout
+    # edited case: the SAME widget, on the same run, edited to log10(7.0e8)
+    # via its own callback (a real edit, not a value-only comparison)
+    m = re.search(r"density_edit_to_7e8=([\d.eE+-]+)", r.stdout)
+    assert m, f"density_edit_to_7e8= not found in stdout:\n{r.stdout}"
+    edited = float(m.group(1))
+    assert abs(edited - 7.0e8) / 7.0e8 < 1e-5, f"expected ~7.0e8, got {edited}\n{r.stdout}"
+
+
 @check("verify/gate_v11_gui.py still exits 0 with its full N/N")
 def _():
     r = _run_script(ROOT / "verify" / "gate_v11_gui.py")

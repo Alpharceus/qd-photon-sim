@@ -128,7 +128,12 @@ def n_dots_expected(card_path: str) -> float:
     needed (aperture geometry, not a device-chain output)."""
     design = DeviceDesign.load(_ROOT / card_path)
     ap = design.aperture
-    return ap.density_cm2 * math.pi * (ap.diameter_um / 2.0) ** 2 * 1e-8
+    # pr-pkg1-fix4 item 5: ap.density_cm2 is None-means-unset (same
+    # fsim_core.device.ApertureBlock convention every other consumer
+    # resolves via _legacy_density_cm2's 7.0e8 legacy default) -- this was
+    # the only remaining reader that assumed it was always a float.
+    density_cm2 = ap.density_cm2 if ap.density_cm2 is not None else 7.0e8
+    return density_cm2 * math.pi * (ap.diameter_um / 2.0) ** 2 * 1e-8
 
 
 def drive_field(card_path: str, field: str) -> float:

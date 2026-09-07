@@ -163,6 +163,18 @@ def _x_al_from_algainp_label(label: str):
     return float(m.group(1)) if m else None
 
 
+def _layer_role(name: str) -> str:
+    """pr-pkg1-fix4 item 4: a thermal.layers[*] entry carries no `role`
+    field (name/t_um/k300/alpha/spread only) -- its role is the free-text
+    suffix after the (Al..Ga..)..In..P formula prefix in its own `name`,
+    e.g. "(Al0.70Ga0.30)0.51In0.49P outer cladding" -> "outer cladding",
+    "(Al0.55Ga0.45)0.51In0.49P cladding" -> "cladding". A label that does
+    not parse as AlGaInP at all (e.g. a GaAs substrate) has no formula
+    prefix to strip, so its whole name is its role."""
+    m = _ALGAINP_X_RE.match(name)
+    return name[m.end():].strip() if m else name.strip()
+
+
 def leaves(node, prefix: str = ""):
     """Yield (dotted_path, value) for every scalar leaf under `node` --
     see the module docstring's "Scalar leaf" definition."""
@@ -489,15 +501,22 @@ def check_card(path: Path, anchors: dict) -> set:
         # gaasp's thermal.layers[1] ("outer cladding") is a legitimately
         # different composition from thermal.layers[0] ("core", the layer
         # that plays the confinement "barrier" role) and ret.system.barrier
-        # -- see the card's own KNOWN MODEL LIMITATION note -- so it is
-        # excluded here by name, not silently by index.
-        excluded_layers = {"edge-inp-gaasp-design.yaml": {"(Al0.70Ga0.30)0.51In0.49P outer cladding"}}
-        excluded = excluded_layers.get(path.name, set())
+        # -- see the card's own KNOWN MODEL LIMITATION note. pr-pkg1-fix4
+        # item 4: excluded by ROLE (the free-text suffix _layer_role reads
+        # off the layer's own name, after its (Al..Ga..)..In..P formula
+        # prefix), not by a per-card filename/literal-name list -- a role
+        # of "outer cladding" is physically a different layer than the
+        # barrier on ANY card, gaasp's included, so keying the exclusion on
+        # this card's filename (or its exact current name string) was
+        # accidental, not principled.
+        excluded_role = "outer cladding"
         mismatches = []
         checked = []
+        excluded = []
         for i, layer in enumerate(design.thermal.layers):
             name = layer.get("name", "")
-            if name in excluded:
+            if _layer_role(name) == excluded_role:
+                excluded.append(name)
                 continue
             x_al = _x_al_from_algainp_label(name)
             if x_al is None:
@@ -629,6 +648,36 @@ def check_card(path: Path, anchors: dict) -> set:
         ok(f"{tag}: evaluate() completes in under {CW_RUNTIME_BUDGET_S:g} s "
            f"({eval_seconds:.2f} s)",
            eval_seconds < CW_RUNTIME_BUDGET_S)
+
+        # ---- pr-pkg1-fix4 item 1: the card's finding_1b_record prose
+        # names a specific "1e10 cm^-2 default" S(230 K) literal (the
+        # full-cancellation reproduction, ret.tau_cap_scales_with_density:
+        # true, at the favourable corner) -- pr-pkg1-fix3's version of that
+        # literal was wrong at the 8th-9th digit and nothing caught it.
+        # Recompute it fresh here and require rel 1e-8 agreement with
+        # whatever the card's own text currently claims, so a future stale
+        # literal fails loudly instead of sitting silently wrong again.
+        record_text = " ".join(provenance.get("finding_1b_record", "").split())
+        m = re.search(
+            r"reproduces the 1e10 cm\^-2 default exactly: a_esc\(300 K\) = "
+            r"[0-9.eE+-]+, S\(230 K\) = ([0-9.]+)", record_text)
+        ok(f"{tag}: finding_1b_record names a full-cancellation S(230 K) literal",
+           m is not None)
+        if m is not None:
+            recorded_s230 = float(m.group(1))
+            fresh_design = DeviceDesign.load(path)
+            fresh_design.thermal.T_hs = 230.0
+            fresh_design.dot.gamma300 = 6.0
+            fresh_design.dot.delta_xx = 8.0
+            fresh_design.emission.NA = 0.8
+            fresh_design.emission.R_back = 0.95
+            fresh_design.emission.L_um = 250.0
+            fresh_design.ret.tau_cap_scales_with_density = True
+            fresh_s230 = evaluate(fresh_design)["scalars"]["S_resolved"]
+            ok(f"{tag}: finding_1b_record's full-cancellation S(230 K) literal "
+               f"({recorded_s230!r}) matches a fresh DeviceDesign.load + evaluate "
+               f"({fresh_s230!r}) to rel 1e-8",
+               math.isclose(recorded_s230, fresh_s230, rel_tol=1e-8))
 
     return assumptions
 

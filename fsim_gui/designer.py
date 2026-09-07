@@ -45,6 +45,20 @@ SUBSTRATE = {"name": "GaAs", "k300": 55.0, "alpha": 1.25}
 # instead of silently reverting to its dataclass default.
 _BASELINE_DESIGN = DeviceDesign()
 
+# pr-pkg1-fix4 item 3: whether the aperture.density_cm2 widget has been
+# touched by a real edit since it was last populated by apply_design().
+# collect_design() used to decide "was this edited" by comparing the
+# widget's CURRENT value against the constant unset_display = log10(7.0e8)
+# -- but that display value is exactly what a None-density design's widget
+# is ALSO populated with, so an edit that lands back on 7.0e8 (the same
+# displayed default) was indistinguishable from no edit at all and was
+# silently discarded (None written back instead of the user's 7.0e8). A
+# value-only comparison can never fix this (the two cases produce the
+# identical widget value); only tracking the edit event itself can, so
+# this flag is set True by the widget's own callback (a real edit) and
+# reset False by apply_design() (a re-population, not a user edit).
+_DENSITY_EDITED = False
+
 GREEN = (86, 166, 50)
 AMBER = (227, 162, 26)
 RED = (215, 25, 28)
@@ -204,6 +218,16 @@ def _mk_cb(path, extra=None, transform=None):
     return cb
 
 
+def _mark_density_edited(sender=None, value=None):
+    """pr-pkg1-fix4 item 3: the aperture.density_cm2 widget's own callback
+    -- fires only on a real edit (never on apply_design()'s programmatic
+    dpg.set_value(), which does not invoke callbacks), so collect_design()
+    can tell "edited to the displayed default" apart from "never touched"
+    without comparing widget values (see collect_design()'s docstring)."""
+    global _DENSITY_EDITED
+    _DENSITY_EDITED = True
+
+
 def _update_drive_panel(sender=None, value=None):
     """Live refresh of the ELECTRICAL DRIVE node's v1.1 read-outs: the F9
     granularity info text, the F8 domain warning (amber, WARN-ONLY -- never
@@ -267,19 +291,20 @@ def collect_design() -> DeviceDesign:
     of block/field names, so a field added later needs a WIDGET_TAG entry
     (or none, to keep it preserved) and nothing else here.
 
-    aperture.density_cm2 (pr-pkg1-fix3 item 1): the ONE WIDGET_TAG field
-    that is float | None (device.py's ApertureBlock.density_cm2 -- None
-    means "no explicit aperture density set", the legacy/unset state every
-    consumer resolves its own way; see _legacy_density_cm2). The widget can
-    only ever hold a float, so apply_design() displays the unset case as
+    aperture.density_cm2 (pr-pkg1-fix3 item 1, tracking fixed pr-pkg1-fix4
+    item 3): the ONE WIDGET_TAG field that is float | None (device.py's
+    ApertureBlock.density_cm2 -- None means "no explicit aperture density
+    set", the legacy/unset state every consumer resolves its own way; see
+    _legacy_density_cm2). The widget can only ever hold a float, so
+    apply_design() displays the unset case as
     log10(_legacy_density_cm2(None)) (the same 7.0e8 legacy transport
-    default other None-consumers fall back to). Mirror that here: if the
-    baseline density was None and the widget still reads that same
-    displayed default, write None back (preserving the unset state, and
-    with it a design's own confinement-density resolution -- see
-    device.py's _confinement_params call site); only an actual edit turns
-    it into an explicit float."""
-    import math
+    default other None-consumers fall back to). Whether to write None back
+    is decided by the explicit _DENSITY_EDITED flag (set by the widget's
+    own callback on a real edit, reset by apply_design() on repopulation)
+    -- NOT by comparing the widget's current value against that displayed
+    default, which a genuine edit landing back on 7.0e8 would be
+    indistinguishable from (pr-pkg1-fix4 item 3: that value-only compare
+    silently discarded such an edit and wrote None back)."""
     d = copy.deepcopy(_BASELINE_DESIGN)
     d.name = dpg.get_value("design.name")
     for path, tag in WIDGET_TAG.items():
@@ -288,13 +313,7 @@ def collect_design() -> DeviceDesign:
         value = dpg.get_value(tag)
         if path == "aperture.density_cm2":
             baseline_density = _BASELINE_DESIGN.aperture.density_cm2
-            unset_display = math.log10(_legacy_density_cm2(None))
-            # add_input_float stores float32 internally (~7 sig figs, the
-            # same round-trip tolerance verify_designer_rt.py's own
-            # WIDGET_FLOAT_PATHS uses) -- abs_tol=1e-9 would reject the
-            # widget's OWN unedited float32 read-back of this log-scale
-            # value (~8.845) as "edited".
-            if baseline_density is None and math.isclose(value, unset_display, rel_tol=1e-5):
+            if baseline_density is None and not _DENSITY_EDITED:
                 value = None
             else:
                 value = 10.0 ** value
@@ -316,12 +335,13 @@ def apply_design(d: DeviceDesign):
     float (add_input_float), so an unset (None) density -- the legacy
     default every DeviceDesign() starts with -- is displayed at
     log10(_legacy_density_cm2(None)) = log10(7.0e8), the same transport
-    legacy default collect_design() checks against to decide whether to
-    write None back. This used to be math.log10(value), which raised
+    legacy default. This used to be math.log10(value), which raised
     TypeError on None (verify_designer_rt.py dropped to 4/6, gate_v11_gui.py
     failed the --roundtrip-check subprocess -- a fresh DeviceDesign()'s
-    density_cm2 is None)."""
-    global LAYERS, SUBSTRATE, _BASELINE_DESIGN
+    density_cm2 is None). pr-pkg1-fix4 item 3: also clears _DENSITY_EDITED
+    -- this is a repopulation from `d`, not a user edit, so collect_design()
+    must not mistake the freshly-displayed default for one."""
+    global LAYERS, SUBSTRATE, _BASELINE_DESIGN, _DENSITY_EDITED
     import math
     _BASELINE_DESIGN = copy.deepcopy(d)
     dpg.set_value("design.name", d.name)
@@ -332,6 +352,7 @@ def apply_design(d: DeviceDesign):
         value = getattr(getattr(d, block_name), field_name)
         if path == "aperture.density_cm2":
             value = math.log10(_legacy_density_cm2(value))
+            _DENSITY_EDITED = False
         dpg.set_value(tag, value)
     if dpg.does_item_exist("lemma1_note"):
         dpg.configure_item("lemma1_note", show=(d.cavity.type == "sin_waveguide"))
@@ -1238,6 +1259,7 @@ def build_ui():
                                 dpg.add_input_float(label="log10 density", tag="ap.log_density",
                                                     width=90, default_value=8.845,
                                                     callback=_mk_cb("aperture.density_cm2",
+                                                                   extra=_mark_density_edited,
                                                                    transform=lambda v: 10.0 ** v))
                                 _tag_bullet("aperture.density_cm2")
                             _range_controls("aperture.density_cm2")
@@ -1362,7 +1384,17 @@ def _run_roundtrip_check() -> bool:
     case that used to crash apply_design()'s math.log10(None) before this
     fix (verify_designer_rt.py dropped to 4/6, gate_v11_gui.py's check (c)
     subprocess failed). Assert the untouched round trip preserves that
-    None, not just that it no longer crashes."""
+    None, not just that it no longer crashes.
+
+    pr-pkg1-fix4 item 3: after the untouched check above passes, drive the
+    SAME live aperture.density_cm2 widget through a real edit landing on
+    7.0e8 (invoking its registered callback directly -- dpg.set_value()
+    alone does not fire callbacks, so this is the one way to exercise the
+    actual widget wiring, not a reimplementation of it, in a headless
+    subprocess) and assert collect_design() now returns 7.0e8, not the
+    None a value-only "still reads the display default" comparison used
+    to silently fall back to."""
+    import math
     d = DeviceDesign()
     d.drive.mode = "PL"
     d.drive.dg_inj = 2.0
@@ -1380,10 +1412,22 @@ def _run_roundtrip_check() -> bool:
           and abs(d2.drive.eta_capture - d.drive.eta_capture) < tol
           and abs(d2.drive.C_dep_pF - d.drive.C_dep_pF) < tol
           and d2.aperture.density_cm2 is None)
+
+    edit_value = math.log10(7.0e8)
+    dpg.set_value("ap.log_density", edit_value)
+    dpg.get_item_configuration("ap.log_density")["callback"]("ap.log_density", edit_value)
+    for _ in range(2):
+        dpg.render_dearpygui_frame()
+    d3 = collect_design()
+    density_edit_ok = (d3.aperture.density_cm2 is not None
+                       and abs(d3.aperture.density_cm2 - 7.0e8) / 7.0e8 < tol)
+    ok = ok and density_edit_ok
+
     print(f"roundtrip-check: {'OK' if ok else 'FAIL'}  "
           f"mode={d2.drive.mode} dg_inj={d2.drive.dg_inj} p_inj={d2.drive.p_inj} "
           f"F_p={d2.drive.F_p} eta_capture={d2.drive.eta_capture} "
-          f"C_dep_pF={d2.drive.C_dep_pF} aperture.density_cm2={d2.aperture.density_cm2!r}")
+          f"C_dep_pF={d2.drive.C_dep_pF} aperture.density_cm2={d2.aperture.density_cm2!r}  "
+          f"density_edit_to_7e8={d3.aperture.density_cm2!r}")
     return ok
 
 

@@ -665,7 +665,7 @@ ok("finite-width single-exponential dip: numeric IRF convolution matches the han
 # (b) device.py wiring: independent reconstruction from exposed scalars, and
 # no double-quenching (rho_cw is not the pulsed retention S applied again).
 d_cw = DeviceDesign(); d_cw.thermal.T_hs = 200.; d_cw.drive.mode = "EL-transport"
-d_cw.drive.diode = {"preset": "hkust"}; d_cw.drive.n_dot_cm2 = 1e10; d_cw.drive.cw = True
+d_cw.drive.diode = {"preset": "hkust"}; d_cw.drive.n_dot_cm2 = 1e9; d_cw.drive.cw = True
 d_cw.ret.mode = "confinement"; d_cw.ret.preset = "InP/GaAsP0.4/AlGaAs0.4 on GaAs"
 sc_cw = evaluate(d_cw, [200.])["scalars"]
 Tj_cw = sc_cw["T_j_op"]
@@ -677,7 +677,15 @@ Tj_cw = sc_cw["T_j_op"]
 p_cw = dot_levels.retention_params(
     dot_levels.levels(dot_levels.class_presets()[d_cw.ret.preset](T=Tj_cw)),
     d_cw.ret.tau_rad_ns, d_cw.ret.channel, T_ref=Tj_cw,
-    n_dot_cm2=(d_cw.drive.n_dot_cm2 or d_cw.aperture.density_cm2 or 1e10),
+    # pr-pkg1-fix4 item 2: the resolution device.py actually uses is
+    # ret.n_dot_cm2 (explicit) else aperture.density_cm2 (explicit) else
+    # retention_params' own 1e10 default -- drive.n_dot_cm2 is
+    # TRANSPORT-only and must never reach confinement (see
+    # _confinement_params' own docstring); the old `d_cw.drive.n_dot_cm2
+    # or ...` chain leaked it and only happened to match here because the
+    # d_cw fixture set drive.n_dot_cm2 to the same 1e10 default.
+    n_dot_cm2=(d_cw.ret.n_dot_cm2 if d_cw.ret.n_dot_cm2 is not None else (
+        d_cw.aperture.density_cm2 if d_cw.aperture.density_cm2 is not None else 1e10)),
     verbose=False)
 gamma_X_ns = 1.0 / d_cw.ret.tau_rad_ns
 k_X, k_XX = cw_g2.escape_rates_from_retention(gamma_X_ns, p_cw["a_esc"], p_cw["E_a"],
@@ -1067,7 +1075,14 @@ Tj_gaasp = sc_gaasp["T_j_op"]
 # reconstruction matches what evaluate() actually used for this card.
 p_gaasp = _confinement_params(
     d_gaasp.ret, Tj_gaasp,
-    n_dot_cm2=(d_gaasp.drive.n_dot_cm2 or d_gaasp.aperture.density_cm2 or 1e10))
+    # pr-pkg1-fix4 item 2: _confinement_params itself already checks
+    # ret.n_dot_cm2 first, so the caller-supplied fallback here must be
+    # ONLY the explicit aperture.density_cm2 -- drive.n_dot_cm2 is
+    # TRANSPORT-only and must never reach confinement (see
+    # _confinement_params' own docstring); the old `d_gaasp.drive.
+    # n_dot_cm2 or ...` chain leaked it (this card's drive.n_dot_cm2 is
+    # unset/0.0, so it happened not to matter here).
+    n_dot_cm2=d_gaasp.aperture.density_cm2)
 gamma_gaasp = 1.0 / d_gaasp.ret.tau_rad_ns
 kx_gaasp, kxx_gaasp = cw_g2.escape_rates_from_retention(
     gamma_gaasp, p_gaasp["a_esc"], p_gaasp["E_a"], p_gaasp["b_p"], p_gaasp["E_b"], Tj_gaasp)
@@ -1088,12 +1103,15 @@ cw_x_fraction_gaasp = tx_gaasp * ix_gaasp / sig_gaasp
 bc_inj_gaasp = (1.0 / sc_gaasp["cw_rho_op"] - 1.0
                 - d_gaasp.drive.b_res * cw_x_fraction_gaasp)
 ratio_gaasp = (bc_inj_gaasp / bp_inj_gaasp) / (1.0 / f_cw_gaasp)
+# pr-pkg1-fix4 item 6: tightened 1e-6 -> 1e-8 -- measured abs(ratio - 1) =
+# 2.2e-16 at this operating point, while dropping the 1/f_cw factor gives
+# 2.9e-6, so 1e-8 discriminates the two by ~300x (1e-6 did not).
 ok("item 6 (pr-pkg1-fix3): gaasp card-point rho difference follows the analytic cap-2/CW "
    "loading factor (P(n>=1)/mu divided by CW saturation factor) to float precision AT "
-   "this card's own resolved operating point (tolerance 1e-6, not the previous vacuous "
+   "this card's own resolved operating point (tolerance 1e-8, not the previous vacuous "
    "<1.0)",
    np.isfinite(loading_rate_factor_gaasp) and loading_rate_factor_gaasp < 1.0
-   and np.isfinite(ratio_gaasp) and abs(ratio_gaasp - 1.0) < 1e-6)
+   and np.isfinite(ratio_gaasp) and abs(ratio_gaasp - 1.0) < 1e-8)
 
 # Item 6: photon_budget replaces the tautological carrier_budget_closure --
 # it must equal 1 within 1e-6 at a real operating point, AND the self-test
