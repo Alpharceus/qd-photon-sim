@@ -50,6 +50,7 @@ sys.path.insert(0, str(ROOT))
 RUN_FULL = "--full" in sys.argv
 
 import scripts.run_rt_edge as rte  # noqa: E402
+import scripts.make_presentation as mkpres  # noqa: E402
 
 warnings.filterwarnings("ignore", category=UserWarning, module="fsim_core.transport")
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="fsim_core.cw_g2")
@@ -844,10 +845,19 @@ ok("fixture verdict.md: heading renamed to 'Convention-matched comparison' "
 # first-row-wins dedup (the pre-fix implementation) silently resolved by
 # keeping whichever row happened to be seen first. The all()-reduction must
 # instead count the group as failing overall and flag the disagreement.
+#
+# pkg5-fix2, item 7: the split is built the way the real evaluator can
+# actually produce it -- same g2_pulsed at both irf_ps samples (the pulsed
+# sub-result is IRF-independent by construction, per eval_pulsed_point's own
+# docstring) -- rather than by varying g2_pulsed itself, which no real
+# evaluator run could do within one corner. eligible_row differs instead,
+# standing in for the IRF-convolved CW eligibility check (g2_cw0_raw
+# finiteness) that eligible_row folds in and that genuinely can disagree
+# across the irf_ps axis within one corner.
 _mismatch_rows = [
     make_row(PRIMARY_ID, "primary", 0.2, 0.2, 0.2, True,
             delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0),
-    make_row(PRIMARY_ID, "primary", 0.9, 0.2, 0.2, True,
+    make_row(PRIMARY_ID, "primary", 0.2, 0.2, 0.2, False,
             delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=200.0),
 ]
 for _r in _mismatch_rows:
@@ -865,6 +875,25 @@ mismatch_md_text = dedup_md_path.read_text(encoding="utf-8")
 ok("mismatch fixture verdict.md: a WARNING line is present and names the mismatch count "
    "(pkg5 fix, item 1)",
    "WARNING" in mismatch_md_text and "headline_dedup_mismatch_groups=1" in mismatch_md_text)
+
+# pkg5-fix2, item 1: this fixture is also the branch this task exists to
+# test -- the PASS gate is row-based (one raw row, irf_ps=50, still passes
+# headline_pass) while the deduplicated count is 0 (the group's IRF-axis
+# rows disagree), so the pass-basis sentence must not quote "0 such
+# corner(s)" as if that were consistent with PASS.
+ok("mismatch fixture: PASS is still row-based true despite n_headline_dedup == 0 "
+   "(exercises the pass-basis sentence's else branch)",
+   mismatch_verdict["pass"] and mismatch_stats["n_headline_dedup"] == 0)
+_expected_pass_basis = (
+    f"PASS rests on {mismatch_stats['n_headline']} raw grid row(s) whose IRF-axis partner "
+    f"disagrees (headline_dedup_mismatch_groups = "
+    f"{mismatch_stats['headline_dedup_mismatch_groups']}); no corner passes at every "
+    f"sampled IRF.")
+ok("mismatch fixture verdict.md: pass-basis sentence states PASS rests on raw rows whose "
+   "IRF-axis partner disagrees, instead of quoting the self-contradictory deduplicated "
+   "'0 such corner(s)' (pkg5-fix2, item 1)",
+   "## Pass basis" in mismatch_md_text and _expected_pass_basis in mismatch_md_text
+   and "0 such corner(s)" not in mismatch_md_text)
 
 
 # ---- 1j-iii. live-like fixture (pkg5 fix, item 5): the fixture above never
@@ -932,15 +961,84 @@ for _T, _info in live_stats.get("per_T", {}).items():
             and abs(_val - live_verdict["g2_min"]) < 1e-9):
         _live_argmin_T = _T
         break
-ok("live-like fixture verdict.md: '300 K corner' is not used adjacent to g2_min unless "
-   "the argmin temperature is 300 (non-vacuous: this fixture has a real competing 300 K "
-   "row, and the argmin is correctly resolved to 230 K)",
-   "300 K corner" not in live_md_text or _live_argmin_T == "300")
+# pkg5-fix2, item 7: this fixture's argmin is always 230 K (0.3214 < 0.3986),
+# so "or _live_argmin_T == '300'" in the previous version of this check was a
+# dead disjunct -- it could never be True here, so it could never change the
+# outcome. Assert the argmin directly (non-vacuous: fails if a future edit
+# to this fixture's g2 values moves the argmin to 300 K) and then assert the
+# '300 K corner' rule as its own unconditional check.
+ok("live-like fixture verdict.md: the argmin temperature really is 230 K, not 300 "
+   "(this fixture has a real competing 300 K row, and the argmin is correctly resolved "
+   "to 230 K; peer review finding 9, item 1)",
+   _live_argmin_T == "230")
+ok("live-like fixture verdict.md: '300 K corner' is not used adjacent to g2_min",
+   "300 K corner" not in live_md_text)
 _live_cw_start = live_md_text.find("**3. Why pulsed drive")
 _live_cw_end = live_md_text.find("\n\n", _live_cw_start) if _live_cw_start != -1 else -1
 _live_cw_paragraph = live_md_text[_live_cw_start:_live_cw_end] if _live_cw_start != -1 else ""
 ok("live-like fixture verdict.md: the CW paragraph no longer says 'could never'/'never'",
    _live_cw_start != -1 and "never" not in _live_cw_paragraph.lower())
+
+# pkg5-fix2, item 5: "-- ABOVE the 0.5 threshold" was asserted
+# unconditionally, but this fixture's best-diagnostic corner's raw CW g2(0)
+# is 0.3214 (< 0.5) -- the paragraph must read "still below", never "ABOVE".
+ok("live-like fixture verdict.md: raw CW g2(0) = 0.3214 (< 0.5) renders 'still below the "
+   "0.5 threshold', not 'ABOVE the 0.5 threshold' (pkg5-fix2, item 5)",
+   "still below the 0.5 threshold" in _live_cw_paragraph
+   and "ABOVE" not in _live_cw_paragraph)
+
+
+# ---- 1j-iv. CW else-branch fixture (pkg5-fix2, item 4): no diagnostic row
+# has a finite (g2_cw0, g2_cw0_raw) pair, so best_diagnostic_row's CW values
+# are non-finite and write_markdown must take the "No diagnostic row with
+# both a finite intrinsic and IRF-convolved CW g2(0)" else branch -- untested
+# until now. Built via full_row() (not make_row()) so edge_T_facet/
+# emission_L_um/emission_R_back are populated and the facet-model paragraph
+# (item 6's check, below) actually renders instead of "could not be
+# evaluated".
+_cw_else_rows = [
+    full_row(delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0, T_hs_K=230.0,
+            g2_pulsed=0.2, g2_cw0=float("nan"), g2_cw0_raw=float("nan"),
+            eligible_row=True, eligible_pulsed=True, eligible_cw=True,
+            headline_pass=True, secondary_pass=False,
+            invalid_reasons_pulsed="", invalid_reasons_cw="",
+            diagnostic_valid=True, collected_flux_pulsed_s=2000.0),
+]
+cw_else_stats = rte.compute_stats(_cw_else_rows)
+ok("CW else-branch fixture: best_diagnostic_row exists (finite g2_pulsed) but its CW "
+   "values are non-finite",
+   cw_else_stats["best_diagnostic_row"] is not None
+   and not math.isfinite(cw_else_stats["best_diagnostic_row"]["g2_cw0"])
+   and not math.isfinite(cw_else_stats["best_diagnostic_row"]["g2_cw0_raw"]))
+cw_else_verdict = rte.compute_verdict(_cw_else_rows, cw_else_stats, True, GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown(_cw_else_rows, cw_else_stats, cw_else_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
+cw_else_text = dedup_md_path.read_text(encoding="utf-8")
+_cw_else_start = cw_else_text.find("**3. Why pulsed drive")
+_cw_else_end = cw_else_text.find("\n\n", _cw_else_start) if _cw_else_start != -1 else -1
+_cw_else_paragraph = cw_else_text[_cw_else_start:_cw_else_end] if _cw_else_start != -1 else ""
+ok("CW else-branch fixture verdict.md: renders the generic, IRF-scoped reason and never "
+   "'could never' (pkg5-fix2, item 4)",
+   _cw_else_start != -1
+   and "at the IRF values sampled here" in _cw_else_paragraph
+   and "could never" not in _cw_else_paragraph.lower())
+
+# pkg5-fix2, item 6: facet_model_note() is now a standalone function of
+# verdict.md text (not just a field baked into parse_verdict_md's return
+# dict), so it can be unit-checked directly against a fixture's own text
+# without needing a full sweep run.
+ok("make_presentation.facet_model_note() returns a non-empty string against a fixture "
+   "verdict.md's own text (pkg5-fix2, item 6)",
+   bool(mkpres.facet_model_note(cw_else_text)))
+
+# Regenerate the canonical fixture through the writer one more time (never
+# by running the full sweep) using the live-like row set (pkg5-fix2, item 8)
+# so out/rt_edge/_verify_fixture_verdict.md's saved text -- and the
+# orchestrator's own test command -- reflect the richest fixture: both-
+# ratios paragraph, deduplicated eligible_dedup token, CW if-branch "still
+# below" wording.
+rte.write_markdown(_live_rows, live_stats, live_verdict, rte.build_grid(False), True,
+                   GOOD_EVIDENCE, GOOD_HALLU, dedup_md_path)
 
 
 # ================================== 2. saved full-run artifact verification

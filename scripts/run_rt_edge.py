@@ -801,7 +801,6 @@ def compute_stats(rows: list) -> dict:
         if len(set(eligible_flags)) > 1:
             n_eligible_mismatch_groups += 1
     per_T = {}
-    per_T_pulsed = {}
     for T_hs in (230.0, 250.0, 273.0, 300.0):
         t_rows = [r for r in rows if float(r.get("T_hs_K", float("nan"))) == T_hs]
         t_eligible = [r for r in t_rows if r.get("eligible_row")]
@@ -812,15 +811,34 @@ def compute_stats(rows: list) -> dict:
             "g2_min": _finite_stats([r.get("g2_pulsed") for r in t_eligible])[0],
             "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in t_rows]),
         }
-        t_groups = [grp for key, grp in dedup_groups.items()
-                   if key[-1] is not None and float(key[-1]) == T_hs]
+    # pkg5-fix2, item 3: per_T_pulsed is built from the T_hs_K values
+    # actually present in the dedup groups (sorted; a group whose T_hs_K is
+    # None -- a synthetic fixture row that never set it -- is kept under a
+    # "T=?" bucket, not silently dropped), rather than a hardcoded tuple of
+    # the four T_hs set points that would drop any other T_hs sampled by a
+    # future grid change. The numerators/denominators are guarded to sum to
+    # the pooled headline_coverage_pulsed count so a partition bug fails
+    # loudly instead of silently under/over-counting.
+    per_T_pulsed = {}
+    t_hs_values_present = sorted(
+        {key[-1] for key in dedup_groups}, key=lambda v: (v is None, v))
+    for T_hs in t_hs_values_present:
+        bucket = "T=?" if T_hs is None else str(int(T_hs))
+        t_groups = [grp for key, grp in dedup_groups.items() if key[-1] == T_hs]
         t_n_scheduled_dedup = len(t_groups)
         t_n_headline_dedup = sum(1 for grp in t_groups
                                  if all(bool(r["headline_pass"]) for r in grp))
-        per_T_pulsed[str(int(T_hs))] = {
+        per_T_pulsed[bucket] = {
             "n_scheduled_dedup": t_n_scheduled_dedup,
             "n_headline_dedup": t_n_headline_dedup,
         }
+    _per_T_pulsed_num = sum(v["n_headline_dedup"] for v in per_T_pulsed.values())
+    _per_T_pulsed_den = sum(v["n_scheduled_dedup"] for v in per_T_pulsed.values())
+    if _per_T_pulsed_num != n_headline_dedup or _per_T_pulsed_den != n_scheduled_dedup:
+        raise ValueError(
+            f"per_T_pulsed buckets sum to {_per_T_pulsed_num}/{_per_T_pulsed_den} but the "
+            f"pooled headline_coverage_pulsed is {n_headline_dedup}/{n_scheduled_dedup} -- "
+            "the per-T partition of dedup_groups does not account for every group")
     return {
         "per_card": per_card, "n_total": n_total, "n_eligible": n_eligible,
         "eligible_coverage": (n_eligible / n_total) if n_total else 0.0,
@@ -831,8 +849,12 @@ def compute_stats(rows: list) -> dict:
                                      if n_scheduled_dedup else 0.0),
         "headline_dedup_mismatch_groups": n_headline_mismatch_groups,
         "n_eligible_dedup": n_eligible_dedup,
-        "eligible_pulsed": ((n_eligible_dedup / n_scheduled_dedup)
-                            if n_scheduled_dedup else 0.0),
+        # pkg5-fix2, item 2: named "eligible_dedup" (not "eligible_pulsed",
+        # pkg5's original name), which collided with the pre-existing
+        # per-row CSV column of the same name (a bool: was the pulsed
+        # sub-path eligible for THIS row).
+        "eligible_dedup": ((n_eligible_dedup / n_scheduled_dedup)
+                           if n_scheduled_dedup else 0.0),
         "eligible_dedup_mismatch_groups": n_eligible_mismatch_groups,
         "per_T_pulsed": per_T_pulsed,
         "n_cw0_pass": n_cw0_pass,
@@ -1314,9 +1336,9 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
         "headline_coverage_pulsed_n": stats["n_headline_dedup"],
         "headline_coverage_pulsed_total": stats["n_scheduled_dedup"],
         "headline_dedup_mismatch_groups": stats.get("headline_dedup_mismatch_groups", 0),
-        "eligible_pulsed_n": stats.get("n_eligible_dedup", 0),
-        "eligible_pulsed_total": stats["n_scheduled_dedup"],
-        "eligible_pulsed": stats.get("eligible_pulsed", 0.0),
+        "eligible_dedup_n": stats.get("n_eligible_dedup", 0),
+        "eligible_dedup_total": stats["n_scheduled_dedup"],
+        "eligible_dedup": stats.get("eligible_dedup", 0.0),
         "eligible_dedup_mismatch_groups": stats.get("eligible_dedup_mismatch_groups", 0),
         "cw0_coverage_n": stats["n_cw0_pass"], "cw0_coverage_total": stats["n_eligible"],
         "cw_raw_coverage_n": stats["n_cw_raw_pass"], "cw_raw_coverage_total": stats["n_eligible"],
@@ -1358,8 +1380,8 @@ def verdict_line(verdict: dict) -> str:
             f"headline_coverage_pulsed={verdict['headline_coverage_pulsed_n']}/"
             f"{verdict['headline_coverage_pulsed_total']} "
             f"headline_dedup_mismatch_groups={verdict.get('headline_dedup_mismatch_groups', 0)} "
-            f"eligible_pulsed={verdict.get('eligible_pulsed_n', 0)}/"
-            f"{verdict.get('eligible_pulsed_total', 0)} "
+            f"eligible_dedup={verdict.get('eligible_dedup_n', 0)}/"
+            f"{verdict.get('eligible_dedup_total', 0)} "
             f"eligible_dedup_mismatch_groups={verdict.get('eligible_dedup_mismatch_groups', 0)} "
             f"rows_scheduled={verdict['headline_coverage_n']}/{verdict['headline_coverage_total']} ")
         by_T_pulsed_segment = " headline_by_T_pulsed=" + ",".join(
@@ -1994,14 +2016,22 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     _plain_best = stats.get("best_diagnostic_row")
     if _plain_best is not None and np.isfinite(_plain_best.get("g2_cw0", float("nan"))) \
             and np.isfinite(_plain_best.get("g2_cw0_raw", float("nan"))):
+        # pkg5-fix2, item 5: "ABOVE the 0.5 threshold" was asserted
+        # unconditionally, but this best-diagnostic corner's raw CW g2(0)
+        # is not guaranteed to actually clear 0.5 (e.g. the live-like
+        # fixture's 0.321 does not) -- render the threshold verdict from
+        # the value itself instead of hardcoding it.
+        _cw_raw = _plain_best['g2_cw0_raw']
+        _cw_threshold_phrase = ("ABOVE the 0.5 threshold" if _cw_raw >= G2_THRESHOLD
+                                else "still below the 0.5 threshold")
         lines.append(
             "**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the "
             f"best diagnostic operating point in this sweep, the intrinsic CW g2(0) is "
             f"{_plain_best['g2_cw0']:.3g} (that alone would already satisfy the g2 < 0.5 "
             f"single-photon criterion), but once a realistic single-photon detector's "
             f"finite timing resolution (instrument response function, IRF) is folded in, "
-            f"the measured raw CW g2(0) rises to {_plain_best['g2_cw0_raw']:.3g} -- ABOVE "
-            f"the 0.5 threshold. In plain terms: the antibunching dip this device produces "
+            f"the measured raw CW g2(0) rises to {_cw_raw:.3g} -- {_cw_threshold_phrase}. "
+            f"In plain terms: the antibunching dip this device produces "
             f"under continuous drive is narrower in time than a real detector can resolve, "
             f"so single-photon emission cannot be demonstrated by a CW measurement alone "
             f"at the IRF values sampled here (50-200 ps); a faster detector, a different "
@@ -2031,13 +2061,30 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## Fail reasons" if not verdict["pass"] else "## Pass basis")
     if verdict["pass"]:
-        lines.append(f"At least one eligible corner has pulsed intrinsic g2(0) < 0.5 -- "
-                     f"the contract's headline metric "
-                     f"({stats['n_headline_dedup']} such corner(s), deduplicated over the "
-                     f"IRF axis; {stats['n_headline']} raw grid row(s), across both cards), "
-                     f"grid complete, evidence complete, hallucination "
-                     f"self-test passed. g2_cw0 and g2_cw0_raw are reported above as "
-                     f"secondary diagnostics (see Coverage) and do not gate this PASS.")
+        # pkg5-fix2, item 1: the PASS gate itself is row-based (compute_verdict
+        # requires at least one raw row with headline_pass, never the
+        # deduplicated count), so quoting only the deduplicated count here
+        # could read as self-contradictory when every dedup group disagrees
+        # across the IRF axis (n_headline_dedup == 0 while PASS is still
+        # true). Quote the dedup count only when it is actually >= 1;
+        # otherwise state plainly that PASS rests on raw rows whose IRF-axis
+        # partner disagrees.
+        if stats['n_headline_dedup'] >= 1:
+            lines.append(f"At least one eligible corner has pulsed intrinsic g2(0) < 0.5 -- "
+                         f"the contract's headline metric "
+                         f"({stats['n_headline_dedup']} such corner(s), deduplicated over the "
+                         f"IRF axis; {stats['n_headline']} raw grid row(s), across both cards), "
+                         f"grid complete, evidence complete, hallucination "
+                         f"self-test passed. g2_cw0 and g2_cw0_raw are reported above as "
+                         f"secondary diagnostics (see Coverage) and do not gate this PASS.")
+        else:
+            lines.append(
+                f"PASS rests on {stats['n_headline']} raw grid row(s) whose IRF-axis partner "
+                f"disagrees (headline_dedup_mismatch_groups = "
+                f"{stats.get('headline_dedup_mismatch_groups', 0)}); no corner passes at "
+                f"every sampled IRF. Grid complete, evidence complete, hallucination "
+                f"self-test passed. g2_cw0 and g2_cw0_raw are reported above as secondary "
+                f"diagnostics (see Coverage) and do not gate this PASS.")
     else:
         for r in verdict["fail_reasons"]:
             lines.append(f"- `{r}`")

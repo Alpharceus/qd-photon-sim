@@ -113,6 +113,19 @@ def parse_card_line(line: str) -> dict:
     return kv
 
 
+def facet_model_note(text: str) -> str:
+    """Pull the 'Independent check on eta_facet' forward/back-solved line out
+    of a verdict.md's "Best diagnostic-g2 row and brightness decomposition"
+    section. pkg5-fix2, item 6: that paragraph no longer contains the
+    literal substring "facet_factor" (it now reads e.g. "forward = 0.810767
+    via ray-series-midpoint, back-solved = ..."), so match on "forward ="
+    and "via " instead."""
+    sections = split_markdown_sections(text)
+    facet_section = sections.get("Best diagnostic-g2 row and brightness decomposition", "")
+    return next((line.strip() for line in facet_section.splitlines()
+                if "forward =" in line and "via " in line), "")
+
+
 def parse_verdict_md(path: Path) -> dict:
     text = path.read_text(encoding="utf-8")
     sections = split_markdown_sections(text)
@@ -131,9 +144,7 @@ def parse_verdict_md(path: Path) -> dict:
         key, sep, value = token.partition("=")
         if sep:
             metrics[key] = value
-    facet_section = sections.get("Best diagnostic-g2 row and brightness decomposition", "")
-    facet_note = next((line.strip() for line in facet_section.splitlines()
-                       if "forward =" in line and "facet_factor" in line), "")
+    facet_note = facet_model_note(text)
     anchor_section = sections.get(
         "Verified 6.5 meV anchor (Chatzarakis et al., Phys. Rev. Applied 20, 034011, 2023)", "")
     anchor_lines = [line.strip() for line in anchor_section.splitlines()

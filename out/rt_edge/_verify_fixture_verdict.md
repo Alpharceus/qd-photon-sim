@@ -1,9 +1,9 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-07T08:54:19.587443+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-07T09:37:50.285479+00:00; contract: docs/rt_edge_contract.md.
 
 ```
-VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_pulsed=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,250:0/0,273:0/0,300:2/2 headline_by_T_pulsed=230:1/1,250:0/0,273:0/0,300:1/1
+VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,250:0/0,273:0/0,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
 ```
 ```
 CARD: edge-inp-gaasp-design role=primary eligible rows: 4/4 g2_pulsed_min=0.3214 g2_pulsed_median=0.36 diag_g2_min=0.3214 diag_g2_median=0.36 diag_g2_cw0_min=0.3214 diag_g2_cw0_median=0.36 diag_g2_cw0_raw_min=0.3214 diag_g2_cw0_raw_median=0.36 g2_cw_raw_min=0.3214 g2_cw_raw_median=0.36 eligible=4/4 flux_floor_excluded=0 favorable_rows=4
@@ -46,8 +46,8 @@ Grid complete: True
 | T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | pulsed g2 min | flux max (photons/s) | gamma300 threshold |
 |---:|---:|---:|---:|---:|---:|---|
 | 230 | 2/2 | 2/2 | 1/1 | 0.3214 | nan | >=6 |
-| 250 | 0/0 | 0/0 | 0/0 | nan | nan | n/a |
-| 273 | 0/0 | 0/0 | 0/0 | nan | nan | n/a |
+| 250 | 0/0 | 0/0 | n/a | nan | nan | n/a |
+| 273 | 0/0 | 0/0 | n/a | nan | nan | n/a |
 | 300 | 2/2 | 2/2 | 1/1 | 0.3986 | nan | >=20 |
 
 ## What cooling buys
@@ -113,7 +113,7 @@ single-pass propagation (already inside the facet factor): nan
 
 **2. The background-light assumption is borrowed from a different, colder device.** Every row carries a constant background term (`drive.b_res`) that is not measured on this platform: it is transferred from Reischle et al., Optics Express 16, 12771 (2008) (DOI 10.1364/OE.16.012771 [V], ledger anchor `reischle08-b-res-80k`), whose 80 K electrically driven single-photon source had about 88% real signal and 12% background light (signal fraction rho ~ 0.88). This sweep assumes the same 12% background fraction still applies at 300 K, on a different material system (InP/GaAsP or InP/GaInP edge emitters) than the one actually measured. No 300 K electrical background measurement exists for either card's platform.
 
-**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the best diagnostic operating point in this sweep, the intrinsic CW g2(0) is 0.321 (that alone would already satisfy the g2 < 0.5 single-photon criterion), but once a realistic single-photon detector's finite timing resolution (instrument response function, IRF) is folded in, the measured raw CW g2(0) rises to 0.321 -- ABOVE the 0.5 threshold. In plain terms: the antibunching dip this device produces under continuous drive is narrower in time than a real detector can resolve, so single-photon emission cannot be demonstrated by a CW measurement alone at the IRF values sampled here (50-200 ps); a faster detector, a different gate or different physical rates could change this. Pulsed (gated) operation sidesteps the detector's timing resolution and is therefore required at these IRF values.
+**3. Why pulsed drive, not continuous-wave (CW) drive, is required.** At the best diagnostic operating point in this sweep, the intrinsic CW g2(0) is 0.321 (that alone would already satisfy the g2 < 0.5 single-photon criterion), but once a realistic single-photon detector's finite timing resolution (instrument response function, IRF) is folded in, the measured raw CW g2(0) rises to 0.321 -- still below the 0.5 threshold. In plain terms: the antibunching dip this device produces under continuous drive is narrower in time than a real detector can resolve, so single-photon emission cannot be demonstrated by a CW measurement alone at the IRF values sampled here (50-200 ps); a faster detector, a different gate or different physical rates could change this. Pulsed (gated) operation sidesteps the detector's timing resolution and is therefore required at these IRF values.
 
 ## Evidence gate
 - evidence_complete: True
