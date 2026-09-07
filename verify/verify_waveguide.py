@@ -1,7 +1,7 @@
 """Independent numerical checks for fsim_core.waveguide (published-class values)."""
 import sys
 from pathlib import Path
-from math import pi, tan
+from math import pi, tan, exp
 import numpy as np
 from scipy.optimize import brentq
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -81,28 +81,73 @@ ck(abs(r_na_gaussian.eta_NA - r_na_numeric.eta_NA) < 0.03 * r_na_numeric.eta_NA,
 ck(any('NA collection method: numeric' in note for note in r_na_numeric.notes),
    'numeric NA method is recorded in edge notes')
 
-# council review 2026-09-05 item 3: T_facet must be multiplied into eta_total
-# exactly once (front stays the pure geometric 0.5 split, no R_back given).
-expected_total = r.beta * 0.5 * r.T_facet * r.eta_prop * r.eta_NA
-ck(abs(expected_total - r.eta_total) < 1e-9, 'facet transmission included in eta_total')
+# council review 2026-09-05 item 3, updated for peer-review finding 3
+# (2026-09-07, .workers/review/peer-review-triage.md): T_facet and the
+# propagation loss are now folded into eta_total exactly once each, via the
+# single continuous ray-probability series (0.5 * T * prop_half *
+# (1 + R_back * prop_rt) / (1 - R_back * R_front * prop_rt)); reproduce that
+# by hand for r=edge_emission(..., alpha_cm=5.0 default, L_um=500 default,
+# R_back=None) -- R_back=None resolves to R_back_eff=R_front=1-T_facet.
+_alpha_r, _L_r = 5.0, 500.0
+_prop_half_r = exp(-_alpha_r * (_L_r / 2.0) * 1e-4)
+_prop_rt_r = exp(-2.0 * _alpha_r * _L_r * 1e-4)
+_R_front_r = 1.0 - r.T_facet
+_eta_facet_r = (0.5 * r.T_facet * _prop_half_r * (1.0 + _R_front_r * _prop_rt_r)
+               / (1.0 - _R_front_r * _R_front_r * _prop_rt_r))
+expected_total = r.beta * _eta_facet_r * r.eta_NA
+ck(abs(expected_total - r.eta_total) < 1e-9,
+   'facet transmission (once) and propagation (folded via prop_half/prop_rt) reproduce eta_total by hand')
 ck(r.T_facet < 1.0, 'facet transmission is not unity (so omitting it was not a no-op)')
 
-# council review 2026-09-06 item 1: two facet models, chosen by whether
-# R_back is given, and T_facet must appear exactly once in eta_total either
-# way (the previous bug applied it a second time on top of the escape-rate
-# fraction, ~4% flux under-report at the class R_back=0.95 point).
-r_back0 = edge_emission(s, 2000, 1200, 668, 500, .5, R_back=0.0)
-ck(abs(r_back0.eta_total - r.eta_total) < 1e-9,
-   'R_back=0.0 reproduces the uncoated (R_back=None) eta_total exactly')
-r_back95 = edge_emission(s, 2000, 1200, 668, 500, .5, R_back=0.95)
-expected_escape = r_back95.beta * (r_back95.T_facet / (r_back95.T_facet + (1 - 0.95))) \
-    * r_back95.eta_prop * r_back95.eta_NA
-ck(abs(expected_escape - r_back95.eta_total) < 1e-9,
-   'R_back=0.95 gives the escape-rate facet value exactly (no extra factor of T_facet)')
-r_backs = [edge_emission(s, 2000, 1200, 668, 500, .5, R_back=rb).eta_total
-           for rb in (0.0, 0.3, 0.6, 0.9, 0.95, 0.99)]
-ck(all(a <= b + 1e-12 for a, b in zip(r_backs, r_backs[1:])),
-   'eta_total is monotone non-decreasing in R_back (escape-rate model)')
+# Peer-review finding 3 (2026-09-07): the old two-branch facet model
+# stepped discontinuously by +16.33% at T_facet=0.719371 crossing R_back=0
+# (0.5*T=0.3596855 vs the escape-rate limit T/(T+1)=0.4183916 -- ABOVE
+# 0.5*T, not "strictly below" as the old comment claimed:
+# T/(T+1) - 0.5*T = T(1-T)/(2(T+1)) > 0). Replaced by one continuous
+# ray-probability series. Every check below compares against numbers
+# computed by hand right here, never by calling the facet formula inside
+# edge_emission a second time.
+def _facet_only(res):
+    # beta and eta_NA do not depend on R_back/alpha_cm, so eta_total is
+    # exactly proportional to eta_facet for a fixed stack/ridge/NA/lambda.
+    return res.eta_total / (res.beta * res.eta_NA)
+
+alpha_c, L_c = 5.0, 250.0
+
+# (a) continuity through R_back -> 0 (this is the assertion that used to
+# encode the defect: it asserted R_back=0.0 == R_back=None EXACTLY, which
+# was only true because both were aliased onto the same special-cased
+# branch, not because the underlying escape-rate formula is continuous).
+e_tiny = _facet_only(edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=alpha_c, R_back=1e-9))
+e_zero = _facet_only(edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=alpha_c, R_back=0.0))
+ck(abs(e_tiny - e_zero) < 1e-8,
+   'eta_facet is continuous through R_back=0 (no discontinuous branch switch)')
+
+# (b) alpha=0, R_back=0: the series reduces exactly to the forward term 0.5*T
+r_alpha0 = edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=0.0, R_back=0.0)
+ck(abs(_facet_only(r_alpha0) - 0.5 * r_alpha0.T_facet) < 1e-12,
+   'eta_facet(R_back=0, alpha=0) equals 0.5*T_facet by hand')
+
+# (c) monotone non-decreasing in R_back on a 20-point grid, alpha=5/cm, L=250um
+rb_grid = np.linspace(0.0, 0.99, 20)
+facet_grid = [_facet_only(edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=alpha_c, R_back=rb))
+             for rb in rb_grid]
+ck(all(a <= b + 1e-12 for a, b in zip(facet_grid, facet_grid[1:])),
+   'eta_facet is monotone non-decreasing in R_back on a 20-point grid in [0, 0.99]')
+
+# (d) alpha=0 closed form: eta = 0.5*T*(1+R_back) / (1 - R_back*(1-T))
+T0 = r_alpha0.T_facet
+for rb in (0.3, 0.7, 0.999):
+    r_d = edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=0.0, R_back=rb)
+    closed_form = 0.5 * T0 * (1.0 + rb) / (1.0 - rb * (1.0 - T0))
+    ck(abs(_facet_only(r_d) - closed_form) < 1e-12,
+       f'eta_facet matches the hand-derived alpha=0 closed form at R_back={rb}')
+
+# (e) R_back=None resolves to R_back=R_front=1-T_facet exactly
+r_none = edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=alpha_c)
+r_explicit = edge_emission(s, 2000, 1200, 668, L_c, .5, alpha_cm=alpha_c, R_back=1.0 - r_none.T_facet)
+ck(abs(r_none.eta_total - r_explicit.eta_total) < 1e-12,
+   'R_back=None equals R_back=1-T_facet (cleaved back facet resolves to the front facet Fresnel reflectivity)')
 
 # item 4: position factor -- centred symmetric stack keeps beta near the
 # antinode value (pos > 0.95); a dot moved to the cladding edge (far from the

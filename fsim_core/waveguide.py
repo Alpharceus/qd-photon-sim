@@ -336,28 +336,53 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
                   alpha_cm=5.0, R_back=None, coating=None, na_method="gaussian"):
     """Calculate the collected forward edge-emission probability.
 
-    With no ``R_back``, or ``R_back=0`` (no back-facet reflection to speak
-    of either way -- treated as the same uncoated, symmetric guide), the two
-    facets share emission equally: the forward fraction is the pure
-    geometric split 0.5, and the front facet's Fresnel transmission
-    ``T_facet`` is then applied once on top of that split.
+    Facet model (peer-review finding 3, `.workers/review/peer-review-triage.md`,
+    2026-09-07): a single ray-probability model, continuous in ``R_back``,
+    replaces the old two-branch geometric/escape-rate switch. That switch
+    stepped by +16.33% at T_facet=0.719371 crossing R_back=0 (0.5*T=0.3596855
+    vs the escape-rate limit T/(T+1)=0.4183916), and its comment claimed
+    T/(T+1) was "strictly below" 0.5*T when in fact
+    T/(T+1) - 0.5*T = T(1-T)/(2(T+1)) > 0, i.e. strictly ABOVE.
 
-    With a nonzero ``R_back`` supplied, the facet term switches to the
-    escape-rate fraction ``eta_facet = T_facet / (T_facet + (1 - R_back))``
-    [DR] -- the fraction of generated photons that escape the front facet of
-    a Fabry-Perot cavity with a lossless HR back mirror, in the low-loss
-    limit (Coldren & Corzine, *Diode Lasers and Photonic Integrated
-    Circuits*, mirror-loss/escape-fraction treatment). ``T_facet`` is
-    already folded into ``eta_facet`` here, so it is NOT multiplied in again
-    (council review 2026-09-06 item 1: the previous code applied
-    ``T_facet`` a second time on top of this fraction, ~4% flux
-    under-report at the class R_back=0.95 point). Note the two models are
-    NOT the same formula continued to the boundary: the escape-rate
-    fraction's own R_back -> 0 limit (T_facet/(T_facet+1)) is strictly
-    below 0.5 x T_facet for any T_facet < 1, so R_back=0 is special-cased
-    onto the geometric branch rather than left to fall out of the escape
-    formula. ``R_back=None`` keeps the uncoated 0.5 x T_facet result
-    bit-identical to before this fix.
+    Guided-mode emission from the dot splits 50/50 forward/backward [A]. The
+    dot's position along the ridge is not modelled (uniform assumption
+    [A]), so both halves are taken to travel L_um/2 to reach their own
+    facet: ``prop_half = exp(-alpha_cm * (L_um/2) * 1e-4)``. The forward
+    half reaches the front facet once and escapes with probability
+    ``T_facet``; the backward half reaches the back facet, returns with
+    reflectivity ``R_back``, picking up one additional round trip of length
+    2*L_um, ``prop_rt = exp(-2 * alpha_cm * L_um * 1e-4)``, and then either
+    escapes (``T_facet``) or reflects (``R_front = 1 - T_facet``) for
+    another round trip. Summing the geometric series of round trips gives::
+
+        eta_facet = 0.5 * T_facet * prop_half * (1 + R_back * prop_rt)
+                    / (1 - R_back * R_front * prop_rt)
+
+    [DR] (Coldren & Corzine, *Diode Lasers and Photonic Integrated
+    Circuits*, 2nd ed., ch. 2, mirror-loss/escape-fraction treatment,
+    extended here to a finite, possibly-uncoated back facet and finite
+    ridge loss rather than a lossless HR mirror). Propagation is now
+    entirely inside ``eta_facet`` via ``prop_half``/``prop_rt``, so ``total``
+    below no longer applies a further single-pass ``prop`` factor on top of
+    it -- that would double-count loss already folded into the series
+    (single-pass length convention: ``L_um`` is the full ridge length, and
+    both ``prop_half`` and ``prop_rt`` are derived from it, never from a
+    separately-tracked half-length). The ``eta_prop`` field of the returned
+    :class:`EdgeResult` still reports the old single-full-length diagnostic
+    ``exp(-alpha_cm * L_um * 1e-4)`` for continuity with existing
+    callers/reports, but it is informational only -- it is not multiplied
+    into ``eta_total``.
+
+    ``R_back=None`` means "no HR coating, cleaved back facet": it resolves
+    to ``R_back = R_front = 1 - T_facet`` (the back facet is assumed to be
+    the same uncoated, cleaved semiconductor/air interface as the front, so
+    it shares the front facet's Fresnel reflectivity), rather than falling
+    onto a separate "no back-facet effect" branch as before. With this
+    resolution the model is continuous through ``R_back -> 0`` by
+    construction (checked in verify/verify_waveguide.py): note the true
+    ``R_back -> 0`` limit of the series is ``0.5 * T_facet * prop_half``
+    (the forward term alone), not the bare ``0.5 * T_facet`` of the old
+    geometric branch, since propagation is now always inside the formula.
     """
     if L_um < 0 or alpha_cm < 0 or R_back is not None and not 0 <= R_back <= 1:
         raise ValueError("invalid length, loss, or back reflectance")
@@ -423,36 +448,33 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
     pos = min(1.0, float(field_at_dot ** 2 / np.max(mode.vertical.field ** 2)))
     F, beta = beta_factor(mode.A_mode_um2, lambda_nm, n_dot, ng, pos)
     T = facet_transmission(mode.n_eff, coating)
-    # Council review 2026-09-06 item 1: with R_back given, the escape-rate
-    # fraction T/(T+(1-R_back)) already IS the fully-inclusive front-facet
-    # collection efficiency (T_facet folded in), so multiplying by T a
-    # second time double-counted the front-facet transmission (~4% flux
-    # under-report at the class R_back=0.95 point, 0.673 vs the correct
-    # 0.701). The two facet models are therefore built as complete,
-    # mutually-exclusive facet factors -- exactly one of them ends up in
-    # `total`, and neither is followed by a further factor of T:
-    #   R_back is None or 0: facet_factor = 0.5 * T  (geometric split; a
-    #     symmetric uncoated guide sends equal guided-mode power each way,
-    #     then loses T of that at the facet) -- bit-identical to before this
-    #     fix for R_back=None. R_back=0 is aliased onto this SAME branch
-    #     rather than the escape-rate formula below: the escape-rate
-    #     fraction's own R_back->0 limit is T/(T+1), strictly below 0.5*T
-    #     for any T<1 (not the same "no back reflection" case), so R_back=0
-    #     is defined to mean "no back-facet effect at all", matching None.
-    #   R_back > 0:           facet_factor = T / (T + (1 - R_back))
-    #     (escape-rate fraction, Coldren & Corzine mirror-loss/escape-
-    #     fraction treatment, low-loss limit).
-    if R_back is None or R_back == 0:
-        facet_model = "[A] geometric split: eta_facet = 0.5 x T_facet (no R_back or R_back=0, uncoated symmetric guide)"
-        facet_factor = 0.5 * T
+    R_front = 1.0 - T
+    # Peer-review finding 3 (2026-09-07): R_back=None resolves to the front
+    # facet's own Fresnel reflectivity -- a cleaved, uncoated back facet is
+    # the same semiconductor/air interface as the front -- not to a
+    # separate "no back-facet effect" branch, so the model stays continuous
+    # through R_back -> 0.
+    if R_back is None:
+        R_back_eff = R_front
+        notes.append("[A] R_back=None resolved to R_back=R_front=1-T_facet "
+                     "(no HR coating: cleaved back facet, same Fresnel "
+                     "reflectivity as the front)")
     else:
-        facet_model = ("[DR] escape-rate fraction: eta_facet = T_facet / (T_facet + (1 - R_back)) "
-                       "(Coldren & Corzine, Diode Lasers and Photonic Integrated Circuits, "
-                       "mirror-loss/escape-fraction, low-loss limit); T_facet already included, "
-                       "no further factor of T")
-        facet_factor = T / (T + (1 - R_back))
-    notes.append(facet_model)
-    prop = exp(-alpha_cm * (L_um*1e-4))
+        R_back_eff = R_back
+    prop_half = exp(-alpha_cm * (L_um / 2.0) * 1e-4)
+    prop_rt = exp(-2.0 * alpha_cm * L_um * 1e-4)
+    facet_factor = (0.5 * T * prop_half * (1.0 + R_back_eff * prop_rt)
+                    / (1.0 - R_back_eff * R_front * prop_rt))
+    notes.append(
+        "[DR] ray-probability escape fraction, continuous in R_back: "
+        "eta_facet = 0.5 * T_facet * prop_half * (1 + R_back * prop_rt) "
+        "/ (1 - R_back * R_front * prop_rt), R_front = 1 - T_facet, "
+        "prop_half = exp(-alpha_cm*(L_um/2)*1e-4), "
+        "prop_rt = exp(-2*alpha_cm*L_um*1e-4) (Coldren & Corzine, Diode "
+        "Lasers and Photonic Integrated Circuits, 2nd ed., ch. 2, "
+        "mirror-loss/escape-fraction; propagation is folded entirely into "
+        "this series, so it is NOT applied again as a separate factor below)")
+    prop = exp(-alpha_cm * (L_um * 1e-4))  # diagnostic only; see docstring
     if na_method == "gaussian":
         eta_na = na_collection(mode.wx_um, mode.wy_um, lambda_nm, NA)
     else:
@@ -460,6 +482,6 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
         dy = (mode.vertical.z_nm[1] - mode.vertical.z_nm[0]) * 1e-3
         eta_na = na_collection_numeric(mode.lateral.field, mode.vertical.field,
                                        dx, dy, lambda_nm, NA)
-    total = beta * facet_factor * prop * eta_na
+    total = beta * facet_factor * eta_na
     return EdgeResult(mode.n_eff, float(ng), float(gamma), mode.A_mode_um2, F, beta, T,
                       prop, eta_na, float(total), notes)
