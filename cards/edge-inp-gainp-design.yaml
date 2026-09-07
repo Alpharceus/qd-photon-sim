@@ -461,8 +461,9 @@ design:
           InP/GaInP edge-emitter back-facet coating has been published, so
           this is a stated coating assumption. Declared explicitly per
           council review 2026-09-06 item 3 (previously an undeclared
-          device.py default of None, i.e. two facets sharing emission
-          equally).
+          device.py default of None, i.e. the bare cleaved facet
+          (R_back = R_front) in waveguide.facet_escape_fraction's
+          ray-probability escape-fraction model).
       emission.L_um:
         value: 250.0
         tag: A
@@ -568,10 +569,14 @@ design:
         unit: fraction
         tag: A
         source: >
-          Collection-lever sweep range: 0 (no back-facet coating, legacy
-          equal-split default) to 0.95 (HR-coated back facet, this card's
-          own emission.R_back default), spanning uncoated to standard
-          HR-coated edge-emitter facets.
+          Collection-lever sweep range: 0 (a perfectly absorbing back
+          facet, NOT "no coating" -- an uncoated, bare cleaved facet is
+          emission.R_back=None, which waveguide.edge_emission resolves to
+          the uncoated Fresnel reflectivity ~1-T (~0.28 for this card's
+          own T_facet), an artificial lower bound wider than any physical
+          uncoated-to-HR-coated range) to 0.95 (HR-coated back facet, this
+          card's own emission.R_back default), spanning perfectly
+          absorbing to standard HR-coated edge-emitter facets.
       emission.L_um:
         lo: 250.0
         hi: 500.0

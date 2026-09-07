@@ -40,7 +40,7 @@ The design cards explicitly identify the inputs carrying `[A]` or `[E]` provenan
 | `aperture.density_cm2` | `[A]` single-dot-isolation target |
 | `emission.lambda_nm` | `[DR]` solver-derived wavelength, with an `[E]` index fallback |
 
-The passing fallback configuration declares `NA=0.75`, `R_back=0.95`, and `L_um=250`; its card also declares a density of `3e8 cm^-2`. The flux floor is 1000 photons/s and the maximum flux margin is 1.544. The brightness factor table in `out/rt_edge/verdict.md` attributes the 1544 photons/s maximum to the reported decomposition. The facet model uses the fused factor `T / (T + (1 - R_back))`, independently matching the back-solved factor at 0.935012.
+The passing fallback configuration declares `NA=0.75`, `R_back=0.95`, and `L_um=250`; its card also declares a density of `3e8 cm^-2`. The flux floor is 1000 photons/s and the maximum flux margin is 1.544. The brightness factor table in `out/rt_edge/verdict.md` attributes the 1544 photons/s maximum to the reported decomposition. The facet model is a ray-probability series with the dot at mid-ridge: `eta_facet = 0.5*T*exp(-a*L/2)*(1+R_back*exp(-a*L)) / (1-R_back*R_front*exp(-2*a*L))`, with `R_front = 1-T`, `R_back=None` meaning the bare cleaved facet (`R_back=R_front`), and single-pass propagation already folded into `eta_facet` (`[DR]` Coldren, Corzine & Masanovic, *Diode Lasers and Photonic Integrated Circuits*, 2nd ed., ch. 2). At this configuration it evaluates to `eta_facet=0.7840154`, independently matching the sweep's own back-solved `eta_total/(beta*eta_NA)` (`verify/verify_rt_edge_sweep.py`).
 
 ## Required disclosures
 

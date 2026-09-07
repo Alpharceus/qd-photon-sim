@@ -254,30 +254,42 @@
       "bullets": [
         "Cleaved semiconductor facet has normal Fresnel transmission $T_f = 1 - ((n_{eff}-1)/(n_{eff}+1))^2$.",
         "For $n_{eff} = 3.253$, power reflection is $R_f = 28.06\\%$ and raw transmission is $T_f = 71.94\\%$.",
-        "Uncoated symmetric waveguide splits emission 50/50: geometric escape $\\eta_{facet} = 0.5 T_f = 35.97\\%$.",
+        "Uncoated bare facet ($R_{back}=$None$\\to R_{back}=R_f=28.06\\%$): mid-ridge ray series gives $\\eta_{facet} = 44.91\\%$.",
         "High-reflectivity (HR) back-facet coating ($R_{back} = 0.95$) redirects backward light forward.",
-        "Front-facet escape: repo escape-rate gives $\\eta_{facet} = 93.50\\%$ [DR]; Coldren $F_1$ gives $96.36\\%$.",
-        "HR mirror provides an immediate $2.60\\times$ out-coupling boost over uncoated symmetric bars."
+        "Front-facet escape: mid-ridge ray series gives $\\eta_{facet} = 78.39\\%$ [DR]; Coldren $F_1$ gives $96.36\\%$ (different quantities).",
+        "HR mirror provides a $1.75\\times$ out-coupling boost over the bare, uncoated cleaved facet."
       ],
       "equations": [
         {
-          "latex": "T_f = 1 - \\left(\\frac{n_{eff}-1}{n_{eff}+1}\\right)^2, \\quad \\eta_{facet} = \\frac{T_f}{T_f + (1 - R_{back})}, \\quad F_1 = \\frac{(1-R_1)\\sqrt{R_2}}{(1-R_1)\\sqrt{R_2} + (1-R_2)\\sqrt{R_1}}",
-          "caption": "Fresnel transmission $T_f$, repo escape-rate fraction $\\eta_{facet}$ [DR], and Coldren & Corzine front fraction $F_1$"
+          "latex": "T_f = 1 - \\left(\\frac{n_{eff}-1}{n_{eff}+1}\\right)^2, \\quad \\eta_{facet} = \\frac{0.5\\,T_f\\,e^{-\\alpha L/2}\\,(1 + R_{back}\\,e^{-\\alpha L})}{1 - R_{back}\\,R_f\\,e^{-2\\alpha L}}, \\quad F_1 = \\frac{(1-R_1)\\sqrt{R_2}}{(1-R_1)\\sqrt{R_2} + (1-R_2)\\sqrt{R_1}}",
+          "caption": "Fresnel transmission $T_f$, mid-ridge ray-probability escape fraction $\\eta_{facet}$ [DR] ($R_f=1-T_f$, single-pass propagation already folded in), and Coldren & Corzine front fraction $F_1$"
         }
       ],
       "figure": {
         "path": "presentation2/figures/out/04_07_facet_escape.png",
-        "caption": "Front facet extraction factor $\\eta_{facet}$ as a function of back-facet reflectivity $R_{back}$, comparing repo escape-rate and Coldren & Corzine F1 models.",
+        "caption": "Front facet extraction factor $\\eta_{facet}$ as a function of back-facet reflectivity $R_{back}$, comparing the mid-ridge ray-series escape fraction and Coldren & Corzine F1 models.",
         "script": "presentation2/figures/fig_04_07_facet_escape.py"
       },
       "repo_numbers": {
         "T_facet_gainp": {
           "value": 0.719371,
-          "file": "out/rt_edge/verdict.md"
+          "how": "__import__('fsim_core.waveguide', fromlist=['x']).facet_transmission(3.2530)",
+          "tolerance": 0.000001
         },
-        "combined_facet_factor_gainp": {
-          "value": 0.935012,
-          "file": "out/rt_edge/verdict.md"
+        "eta_facet_bare_gainp": {
+          "value": 0.449120,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), 1.0 - w.facet_transmission(3.2530), d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "eta_facet_hr_gainp": {
+          "value": 0.783940,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "facet_gain_hr_over_bare_gainp": {
+          "value": 1.745504,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um) / w.facet_escape_fraction(w.facet_transmission(3.2530), 1.0 - w.facet_transmission(3.2530), d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
         },
         "F1_coldren_corzine": {
           "value": 0.963599,
@@ -289,9 +301,9 @@
           "file": "cards/edge-inp-gainp-design.yaml"
         }
       },
-      "notes": "Once a photon couples into the guided mode, it travels toward the cleaved facets terminating the waveguide. At normal incidence, the step between effective index n_eff of 3.253 and air produces a Fresnel power reflectivity of 28.06% and transmission T_f of 71.94%. In an uncoated, symmetric waveguide bar, photons emitted spontaneously into the guided mode propagate with equal probability toward both facets. The front escape factor is therefore the product of the 50% directional split and T_f, yielding an out-coupling efficiency of only 35.97%, with half the photons lost out the back. To eliminate this penalty, we deposit a dielectric high-reflectivity mirror coating with R_back of 0.95 on the rear facet. To model this out-coupling, our simulator implements an escape-rate formula, eta_facet equals T_f divided by the sum of T_f and one minus R_back, tagged [DR] in fsim_core.waveguide. For R_back of 0.95, this escape-rate fraction evaluates to 93.50%. We must note that this exact expression is not printed in Coldren & Corzine; their textbook treatment of Fabry-Perot cavity mirror loss derives the front-facet power fraction F_1 as (1 - R_1) sqrt(R_2) divided by [(1 - R_1) sqrt(R_2) + (1 - R_2) sqrt(R_1)], which evaluates to 96.36%. Both models agree that the HR coating breaks front-back symmetry, providing an immediate 2.60x brightness boost over uncoated bars [Coldren, Corzine, Masanovic (2012) ch. 2-3, mirror loss and facet reflectivity].",
+      "notes": "Once a photon couples into the guided mode, it travels toward the cleaved facets terminating the waveguide. At normal incidence, the step between effective index n_eff of 3.253 and air produces a Fresnel power reflectivity of 28.06% and transmission T_f of 71.94%. Our simulator's current facet model is a ray-probability series with the dot placed at mid-ridge: the forward half of the emission travels half the cavity length and either escapes with probability T_f or reflects, the backward half reflects off the back facet with reflectivity R_back and travels the full cavity length forward, and the two paths sum over every round trip, with single-pass propagation loss already folded in, tagged [DR] in fsim_core.waveguide, after Coldren, Corzine and Masanovic ch. 2. An uncoated, bare cleaved back facet carries no coating at all, so R_back resolves to the same Fresnel reflectivity as the front, R_back equals R_f equals 28.06%, giving eta_facet of 44.91%. Depositing a dielectric high-reflectivity mirror coating with R_back of 0.95 on the rear facet raises this to 78.39%, a 1.75x boost. We must note this ray-series value is not the same quantity as Coldren and Corzine's lasing-cavity front-facet output-coupling fraction F1, which for the same R_back evaluates to 96.36%: F1 describes power output coupling from an active lasing cavity, while eta_facet is a spontaneous-emission escape probability, and the two are close but not interchangeable [Coldren, Corzine, Masanovic (2012) ch. 2, mirror loss and facet reflectivity].",
       "sources": [
-        "Coldren, Corzine, Masanovic (2012) ch. 2-3, mirror loss and facet reflectivity"
+        "Coldren, Corzine, Masanovic (2012) ch. 2, mirror loss and facet reflectivity"
       ]
     },
     {
@@ -439,17 +451,17 @@
       "layout": "bullets+figure",
       "title": "The Complete Extraction Chain: Sub-Factor Decomposition",
       "bullets": [
-        "Total edge out-coupling decomposes multiplicatively: $\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA}$.",
-        "Favorable NA=0.80: $\\beta = 2.92\\%$, $\\eta_{facet} = 93.5\\%$, $\\eta_{prop} = 88.2\\%$, $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 2.07\\%$.",
-        "HR mirror lever ($R_{back} = 0.95$ vs $0$): provides a decisive $2.60\\times$ flux multiplier.",
+        "Total edge out-coupling decomposes multiplicatively: $\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{NA}$ ($\\eta_{facet}$ already includes propagation).",
+        "Favorable NA=0.80: $\\beta = 2.92\\%$, $\\eta_{facet} = 78.39\\%$ (mid-ridge ray series), $\\eta_{NA} = 85.8\\% \\implies \\eta_{total} = 1.97\\%$.",
+        "HR mirror lever ($R_{back} = 0.95$ vs bare facet $R_{back}=R_f=0.28$): a $1.75\\times$ facet-escape multiplier.",
         "Cavity length lever ($L = 250$ vs $500\\ \\mu\\text{m}$): saves propagation loss, delivering $1.133\\times$ gain.",
         "Objective collection lever ($\\mathrm{NA} = 0.80$ vs $0.50$): captures circular cone diffraction, adding $1.485\\times$ gain.",
-        "Combined levers provide $4.37\\times$ boost, lifting 300 K flux to 2417 counts/s (230 K reaches 6890)."
+        "Combined levers provide a $2.94\\times$ boost (facet, cavity, NA), raising flux above the 1000 counts/s floor."
       ],
       "equations": [
         {
-          "latex": "\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{prop} \\cdot \\eta_{NA} = (0.02924) \\times (0.9350) \\times (0.8825) \\times (0.8579) = 0.020699",
-          "caption": "multiplicative out-coupling chain for the favorable corner of card edge-inp-gainp-design"
+          "latex": "\\eta_{total} = \\beta \\cdot \\eta_{facet} \\cdot \\eta_{NA} = (0.02924) \\times (0.7839) \\times (0.8579) = 0.019665",
+          "caption": "multiplicative out-coupling chain for the favorable corner of card edge-inp-gainp-design ($\\eta_{facet}$ from the mid-ridge ray series, propagation already folded in)"
         }
       ],
       "figure": {
@@ -462,13 +474,25 @@
           "value": 0.0292412,
           "file": "out/rt_edge/verdict.md"
         },
-        "combined_facet": {
-          "value": 0.935012,
-          "file": "out/rt_edge/verdict.md"
+        "eta_facet_hr_gainp": {
+          "value": 0.783940,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "eta_facet_bare_gainp": {
+          "value": 0.449120,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), 1.0 - w.facet_transmission(3.2530), d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "facet_gain_hr_over_bare_gainp": {
+          "value": 1.745504,
+          "how": "(lambda w, d: w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um) / w.facet_escape_fraction(w.facet_transmission(3.2530), 1.0 - w.facet_transmission(3.2530), d.emission.alpha_cm, d.emission.L_um))(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
         },
         "T_facet": {
           "value": 0.719371,
-          "file": "out/rt_edge/verdict.md"
+          "how": "__import__('fsim_core.waveguide', fromlist=['x']).facet_transmission(3.2530)",
+          "tolerance": 0.000001
         },
         "propagation": {
           "value": 0.882497,
@@ -478,9 +502,15 @@
           "value": 0.857853,
           "file": "out/rt_edge/verdict.md"
         },
-        "eta_total": {
-          "value": 0.0206985,
-          "file": "out/rt_edge/verdict.md"
+        "eta_total_recomputed_gainp": {
+          "value": 0.019665,
+          "how": "(lambda w, d: 0.0292412 * w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um) * 0.857853)(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.0001
+        },
+        "combined_lever_gain": {
+          "value": 2.936819,
+          "how": "(lambda w, d: (w.facet_escape_fraction(w.facet_transmission(3.2530), d.emission.R_back, d.emission.alpha_cm, d.emission.L_um) / w.facet_escape_fraction(w.facet_transmission(3.2530), 1.0 - w.facet_transmission(3.2530), d.emission.alpha_cm, d.emission.L_um)) * 1.133 * 1.485)(__import__('fsim_core.waveguide', fromlist=['x']), __import__('fsim_core.device', fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'))",
+          "tolerance": 0.001
         },
         "collected_flux_pulsed_s": {
           "value": 6890.03,
@@ -519,11 +549,11 @@
           "file": "out/rt_edge/verdict.md"
         }
       },
-      "notes": "We are now in a position to assemble the complete optical out-coupling chain. In out/rt_edge/verdict.md, the end-to-end extraction efficiency eta_total is decomposed into four independent physical factors: the spontaneous emission beta factor of 0.02924, the combined front-facet factor of 0.93501 under a 95% rear mirror, the propagation transmission of 0.88250 over 250 microns, and the circular numerical aperture collection efficiency of 0.85785 with an NA 0.80 objective. Multiplying these terms gives an overall extraction efficiency of 2.070%. Multiplying by the 80 MHz repetition rate, the dot loading probability of 0.635, the carrier retention S of 0.01311 at 230 K, and the 50% spectral window transmission yields a maximum collected pulsed photon flux of 6890.03 counts per second, clearing the 1000 counts per second measurement floor with a 6.89x margin -- this floor is only an eligibility filter, not the sweep's pass/fail gate, whose own verdict is FAIL (evidence incomplete) with headline pulsed-g2 coverage of 130/768 rows. Even at 300 K room temperature, the optimized corner produces 2416.6 counts per second (and 2308 counts per second at the card default NA of 0.75). At the unoptimized baseline (uncoated facets, 500 micron bar, NA 0.50), collected flux at 300 K was only 553 counts per second, failing the 1000 counts per second threshold. Coating the rear facet bought a 2.60x multiplier, shortening the cavity added 1.13x, and upgrading to NA 0.80 added 1.48x. Together, these levers provided a cumulative 4.37x brightness improvement [Coldren, Corzine, Masanovic (2012) ch. 1, 7].",
+      "notes": "We are now in a position to assemble the complete optical out-coupling chain. The current facet model, fsim_core.waveguide.facet_escape_fraction, already folds single-pass ridge propagation into eta_facet, so eta_total decomposes into three independent physical factors, not four: the spontaneous emission beta factor of 0.02924, the mid-ridge ray-series facet factor of 0.7839 under a 95% rear mirror, and the circular numerical aperture collection efficiency of 0.85785 with an NA 0.80 objective. Multiplying these gives an overall extraction efficiency of 1.966%, in place of the older escape-rate model's 2.070%. The propagation transmission over 250 microns, 0.88250, remains a useful diagnostic -- it is what the ray series' own exponential terms amount to -- but it is no longer a separate multiplicative factor. Coating the rear facet now delivers a 1.75x gain over the bare, uncoated cleaved facet, down from the deleted escape-rate model's 2.60x; combined with the 1.133x cavity-length gain and the 1.485x NA-collection gain, the three design levers together provide a 2.94x combined gain, versus the earlier 4.37x. The deck's absolute flux figures -- 6890.03, 2416.6, and 552.6 counts per second, and the 6.89x measurement-floor margin -- were computed under the sweep's last full run and predate this facet correction; a fresh sweep run, out of scope here, is needed before quoting an updated flux [Coldren, Corzine, Masanovic (2012) ch. 1, 2, 7].",
       "sources": [
         "docs/rt_edge_contract.md",
         "out/rt_edge/verdict.md",
-        "Coldren, Corzine, Masanovic (2012) ch. 1, 7"
+        "Coldren, Corzine, Masanovic (2012) ch. 1, 2, 7"
       ]
     },
     {

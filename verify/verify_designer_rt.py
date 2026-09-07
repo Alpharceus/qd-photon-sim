@@ -79,6 +79,14 @@ ENUM_CHOICES = {
     "filter.track": "hold",               # default "mode"
     "filter.track_material": "dot",       # default "" (choices "" | "dot" | "matrix")
     "emission.type": "edge",              # default "none"
+    # pkg4 fix's DeviceDesign.load()/evaluate() now reject any
+    # drive.loading_model outside ("auto", "capped_poisson",
+    # "moment_matched") -- without this entry _non_default's generic
+    # string bump turned the "auto" default into "auto-probe", which
+    # --collect-dump's own DeviceDesign.load() then rejected (not a
+    # pr-pkg6-stale-text C5 item; a pre-existing gap this fixture's
+    # ENUM_CHOICES needs regardless, or this check cannot run at all).
+    "drive.loading_model": "capped_poisson",  # default "auto"
 }
 
 
@@ -262,8 +270,10 @@ def _():
 
 
 @check("pr-pkg1-fix4 item 3: a real edit of aperture.density_cm2 to 7.0e8 on a "
-       "None-density design is written back as 7.0e8 (not silently discarded to "
-       "None), and the untouched case still yields None")
+       "None-density design is written back as 7.0e8, not silently discarded to "
+       "None -- within float32 log-slider quantisation (rel 1.05e-6: the widget "
+       "stores log10(7.0e8) as float32, so 10.0**value on read-back does not "
+       "reproduce 7.0e8 bit-exactly), and the untouched case still yields None")
 def _():
     r = _run(["--roundtrip-check"])
     assert r.returncode == 0, f"exit {r.returncode}\nSTDOUT:\n{r.stdout}\nSTDERR:\n{r.stderr}"

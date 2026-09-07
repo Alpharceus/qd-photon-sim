@@ -37,6 +37,7 @@ if str(_ROOT) not in sys.path:
 from fsim_core import materials, transport  # noqa: E402
 from fsim_core.device import (  # noqa: E402
     DeviceDesign, evaluate, _compose_aperture_g2, _confinement_params,
+    _legacy_density_cm2,
 )
 from fsim_core.integrator import g2_from  # noqa: E402
 from fsim_core.loading import f1b_g2  # noqa: E402
@@ -132,7 +133,10 @@ def n_dots_expected(card_path: str) -> float:
     # fsim_core.device.ApertureBlock convention every other consumer
     # resolves via _legacy_density_cm2's 7.0e8 legacy default) -- this was
     # the only remaining reader that assumed it was always a float.
-    density_cm2 = ap.density_cm2 if ap.density_cm2 is not None else 7.0e8
+    # pr-pkg6-stale-text item C3: call _legacy_density_cm2 itself rather
+    # than hardcoding its 7.0e8 literal a second time, so this stays in
+    # sync if that class default is ever revisited.
+    density_cm2 = _legacy_density_cm2(ap.density_cm2)
     return density_cm2 * math.pi * (ap.diameter_um / 2.0) ** 2 * 1e-8
 
 

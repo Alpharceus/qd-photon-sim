@@ -121,7 +121,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+from fsim_core.device import DeviceDesign, EmissionBlock, evaluate  # noqa: E402
 from fsim_core import waveguide  # noqa: E402
 import verify.verify_rt_edge_papers as rt_papers  # noqa: E402
 
@@ -1197,10 +1197,11 @@ def _facet_factor_forward_check(row: dict) -> dict:
     is read from the row's own `emission_alpha_cm` column (peer-review pkg2
     fix3, 2026-09-07, item 3 -- it is not a swept lever, but IS recorded
     per-row from `design.emission.alpha_cm`); a stale CSV predating that
-    column falls back to the fixed `fsim_core.device.EmissionBlock.alpha_cm`
+    column falls back to the live `fsim_core.device.EmissionBlock.alpha_cm`
     class default, noted in `convention` as `"ray-series-midpoint (alpha
-    from card)"` so the fallback is visible in the printed verdict rather
-    than silently indistinguishable from a genuinely per-row value. Compares
+    from EmissionBlock default)"` so the fallback is visible in the printed
+    verdict rather than silently indistinguishable from a genuinely per-row
+    value. Compares
     the forward value against the back-solved `eta_total/(beta*eta_NA)` from
     `_front_facet_split`. Returns {"back_solved", "forward", "convention",
     "ok"}; `convention` is `None` (not the string) whenever `forward`
@@ -1218,13 +1219,27 @@ def _facet_factor_forward_check(row: dict) -> dict:
         return {"back_solved": back_solved, "forward": float("nan"),
                "convention": None, "ok": False}
     if R_back is None:
+        # `R_back = 1 - T` is only edge_emission()'s R_back=None resolution
+        # when T is itself the UNCOATED Fresnel transmission (edge_emission
+        # resolves R_back=None to `1 - facet_transmission(n_eff, None)`,
+        # not to `1 - T` of a coating-overridden front) -- true here only
+        # because no card in this sweep sets `emission.coating`. Assert
+        # that invariant explicitly rather than silently reusing a formula
+        # that would go wrong the day a coated card is added; the coated
+        # case would need its own R_back = 1 - facet_transmission(n_eff,
+        # None) resolution, which this row-only check has no n_eff to do.
+        assert not any(DeviceDesign.load(c["path"]).emission.coating for c in CARDS), (
+            "a card in this sweep now sets emission.coating; R_back = 1 - T "
+            "here is no longer valid (see comment above)")
         R_back = 1.0 - T  # uncoated Fresnel resolution reduces to this here (item 4)
     alpha_raw = row.get("emission_alpha_cm")
     if alpha_raw in (None, "", "None"):
         # stale CSV predating the emission_alpha_cm column: fall back to
-        # the fixed class default and say so in convention.
-        alpha_cm = 5.0  # fsim_core.device.EmissionBlock.alpha_cm default
-        convention = "ray-series-midpoint (alpha from card)"
+        # the fixed class default (read live from EmissionBlock rather than
+        # a hardcoded literal, so this fallback tracks the class default if
+        # it ever changes) and say so in convention.
+        alpha_cm = EmissionBlock().alpha_cm
+        convention = "ray-series-midpoint (alpha from EmissionBlock default)"
     else:
         try:
             alpha_cm = float(alpha_raw)
@@ -1894,8 +1909,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  check.get("loading")),
                 ("t_X (spectral transmission)", check.get("t_x")),
                 ("S (confinement retention)", check.get("S")),
-                ("eta_total (edge out-coupling: waveguide coupling x front/back facet "
-                 "split x facet transmission x propagation x NA, all in one factor)",
+                ("eta_total (edge out-coupling: waveguide coupling x facet escape "
+                 "(mid-ridge ray series, propagation included) x NA)",
                  check.get("eta_total")),
                 ("rep rate (Hz)", check.get("rep_rate"))]
         facet_check = _facet_factor_forward_check(best)

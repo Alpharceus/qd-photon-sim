@@ -410,7 +410,9 @@ class EmissionBlock:
     L_um: float = 500.0
     NA: float = 0.5
     alpha_cm: float = 5.0        # ridge propagation loss, class estimate [E]
-    R_back: float | None = None  # None: two facets share emission equally [A]
+    R_back: float | None = None  # None: bare cleaved facet (R_back = R_front)
+                                 #   in waveguide.facet_escape_fraction's
+                                 #   ray-probability escape-fraction model [A]
     coating: dict = field(default_factory=dict)  # facet_transmission() override [A]
     core_half_nm: float = 148.0  # matrix (well) layer thickness each side of
                                  #   the dot plane, hkust_ridge_stack class [E]
@@ -1064,11 +1066,23 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # unresolved, per the comment above); _confinement_params
             # itself is_not_None-tests it against ret.n_dot_cm2 first, so
             # this value wins over the 1e10 class default whenever
-            # ret.n_dot_cm2 itself is unset. pr-pkg1-fix4 item 5: an
-            # explicit 0.0 can no longer reach here at all -- both
-            # aperture.density_cm2 and ret.n_dot_cm2 are now validated > 0
-            # if set at DeviceDesign.load() (see load()'s own checks), so
-            # this call site only ever sees a positive float or None.
+            # ret.n_dot_cm2 itself is unset. pr-pkg1-fix4 item 5: both
+            # aperture.density_cm2 and ret.n_dot_cm2 are validated > 0 if
+            # set at DeviceDesign.load() (see load()'s own checks) -- but
+            # load() is not the only way to build a DeviceDesign: a
+            # programmatic caller that constructs one directly and sets
+            # either field to exactly 0.0 skips that check entirely and
+            # would reach dot_levels.retention_params' states_per_dot
+            # (N2D/n_dot_cm2) division with a 0.0 denominator, raising an
+            # unhelpful ZeroDivisionError deep inside the confinement
+            # solve instead of failing here with the bad field named
+            # (pr-pkg6-stale-text item C2). Re-validate both explicitly.
+            if d.aperture.density_cm2 is not None and d.aperture.density_cm2 <= 0:
+                raise ValueError("aperture.density_cm2 must be > 0 if set "
+                                 f"(got {d.aperture.density_cm2!r})")
+            if d.ret.n_dot_cm2 is not None and d.ret.n_dot_cm2 <= 0:
+                raise ValueError("ret.n_dot_cm2 must be > 0 if set "
+                                 f"(got {d.ret.n_dot_cm2!r})")
             derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta
@@ -1470,12 +1484,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             brightness *= op["S"]
 
     # emission.type="edge" (Lemma 1: brightness only -- eta_total already
-    # contains beta, the propagation and NA factors, and ONE facet factor:
-    # geometric 0.5*T_facet with no back mirror, or the escape-rate fraction
-    # T_f/(T_f + (1 - R_back)) with an HR back facet (council review
-    # 2026-09-06 pass 5: the earlier form applied T_facet twice). None of
-    # beta/facet/cavity.beta_sin are applied a second time here; see
-    # waveguide.edge_emission notes for the model in use).
+    # contains beta, the NA factor, and ONE facet factor: a ray-probability
+    # series with the dot at mid-ridge, eta_facet = 0.5*T*exp(-a*L/2) *
+    # (1 + R_back*exp(-a*L)) / (1 - R_back*R_front*exp(-2*a*L)), R_front =
+    # 1 - T, R_back=None meaning the bare cleaved facet (R_back=R_front),
+    # single-pass propagation already folded into eta_facet [DR] Coldren,
+    # Corzine & Masanovic, *Diode Lasers and Photonic Integrated Circuits*,
+    # 2nd ed., ch. 2. None of beta/facet/cavity.beta_sin are applied a
+    # second time here; see waveguide.edge_emission / facet_escape_fraction
+    # for the model in use).
     edge, edge_lambda_nm, edge_err = None, float("nan"), None
     if d.emission.type == "edge" and np.isfinite(op["Tj"]):
         try:

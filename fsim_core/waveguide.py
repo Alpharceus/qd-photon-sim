@@ -394,24 +394,33 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         raise ValueError("R_back must be in [0, 1]")
     if not 0.0 <= dot_position <= 1.0:
         raise ValueError("dot_position must be in [0, 1]")
+    if alpha_cm < 0.0:
+        raise ValueError("alpha_cm must be non-negative")
     R_front = 1.0 - T
     a = alpha_cm * 1e-4  # per um
     x = dot_position
     prop_rt = exp(-2.0 * a * L_um)
     denom = 1.0 - R_back * R_front * prop_rt
     if denom <= 1e-15:
-        if R_back == 1.0 and alpha_cm * L_um == 0.0:
-            # Lossless perfect-mirror limit: with zero ridge loss and a
-            # fully reflective back facet, the front facet is the ONLY
-            # loss channel in the cavity, so by power conservation every
-            # photon eventually escapes forward after enough round trips,
-            # regardless of T -- this is the well-defined analytic limit
-            # of the ray series above (numerator and denominator both -> 0
-            # together, ratio -> 1), not a fallback for an undefined case.
-            return 1.0
+        # Since R_back, R_front, prop_rt are each <= 1.0, denom <= 1e-15
+        # forces all three to (numerically) equal 1, which in turn forces
+        # R_front = 1 - T ~= 1, i.e. T <= ~1e-15: a perfectly reflecting
+        # front facet. With BOTH facets perfectly reflecting (R_back=1) and
+        # a lossless ridge (alpha_cm*L_um=0), there is no loss channel at
+        # all -- forward escape through the front facet has probability
+        # 0.0, not 1.0 as an earlier version of this guard claimed (that
+        # version mistook the degenerate 0/0 ratio for a "final escape"
+        # limit rather than for "no escape channel exists"). For any T >
+        # 1e-15 the general formula below already evaluates to exactly 1.0
+        # in this same R_back=1, alpha*L=0 limit (denom = T there), so this
+        # branch only needs to special-case T <= 1e-15.
+        if T <= 1e-15:
+            return 0.0
         raise ValueError(
-            "degenerate facet cavity: R_back * R_front * exp(-2*alpha_cm*1e-4*L_um) "
-            ">= 1, the round-trip geometric series does not converge")
+            "degenerate facet cavity: R_back * R_front * "
+            "exp(-2*alpha_cm*1e-4*L_um) >= 1 (R_back=%r, T=%r, "
+            "alpha_cm=%r, L_um=%r), the round-trip geometric series does "
+            "not converge" % (R_back, T, alpha_cm, L_um))
     return (0.5 * T * exp(-a * x * L_um)
             * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
 

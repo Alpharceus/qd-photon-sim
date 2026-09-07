@@ -242,27 +242,29 @@ ck(abs(finite_sum - facet_escape_fraction(T_fs, Rb_fs, alpha_fs, L_fs)) < 1e-10,
    '(R_back=1, alpha=20/cm, L=300um, T=0.6)')
 
 # item 5 (pr-pkg2-fix3): the OLD guard raised ValueError on this exact
-# input (T=0, R_back=1, alpha_cm=0 -> denom == 0 exactly); the NEW guard
-# instead returns the analytic lossless perfect-mirror limit -- with zero
-# ridge loss and a fully reflective back facet, the front facet is the
-# ONLY loss channel in the cavity, so by power conservation every photon
-# eventually escapes forward after enough round trips, for ANY T
-# (including T=0), not just as a fallback for an otherwise-undefined 0/0.
-ck(facet_escape_fraction(0.0, 1.0, 0.0, 100.0) == 1.0,
-   'lossless perfect-mirror limit (R_back=1, alpha_cm*L_um=0) returns the analytic limit 1.0')
+# input (T=0, R_back=1, alpha_cm=0 -> denom == 0 exactly); the guard now
+# returns the analytic degenerate-cavity limit for T <= 1e-15, but that
+# limit is 0.0, not 1.0 -- with a perfectly reflecting front facet
+# (T=0), no photon can ever leave through it, no matter how lossless the
+# ridge or how reflective the back facet is. This does NOT hold "for ANY
+# T (including T=0)": for T > 0 the general formula (below) already
+# evaluates to exactly 1.0 in this same lossless, R_back=1 limit (denom
+# reduces to T there), without needing this guard at all.
+ck(facet_escape_fraction(0.0, 1.0, 0.0, 100.0) == 0.0,
+   'lossless perfect-mirror cavity with a perfectly reflecting front facet (T=0) returns 0.0: no escape channel exists')
 ck(abs(facet_escape_fraction(0.6, 1.0, 0.0, 250.0) - 1.0) < 1e-12,
-   'lossless perfect-mirror limit also holds for a non-degenerate T=0.6 (denom=T, no guard needed)')
+   'lossless perfect-mirror limit for a non-degenerate T=0.6 still gives 1.0 (denom=T, general formula, no guard needed)')
 
-# item 5: the guard threshold (denom <= 1e-15) still raises ValueError for a
-# genuinely near-degenerate cavity that does NOT match the lossless
-# perfect-mirror special case above -- alpha_cm*L_um is tiny but nonzero
-# (not exactly 0), so R_back=1, T=0 still drives denom below 1e-15 without
-# taking the analytic-limit shortcut.
-try:
-    facet_escape_fraction(0.0, 1.0, 1e-13, 1.0)
-    ck(False, 'near-degenerate facet cavity (not the lossless-mirror special case) raises ValueError')
-except ValueError:
-    ck(True, 'near-degenerate facet cavity (not the lossless-mirror special case) raises ValueError')
+# item 5: since R_back, R_front=1-T, and prop_rt are each in [0, 1], their
+# product is bounded by R_front, so denom = 1 - product >= 1 - R_front = T
+# always -- reaching the denom <= 1e-15 guard therefore always implies
+# T <= 1e-15 too, even when alpha_cm*L_um is tiny but nonzero (not exactly
+# 0): the guard's 0.0 branch covers every case that reaches it, and the
+# raise below is unreachable for physically valid inputs, kept only to
+# describe the (algebraically impossible) case explicitly rather than
+# silently falling through.
+ck(facet_escape_fraction(0.0, 1.0, 1e-13, 1.0) == 0.0,
+   'near-degenerate facet cavity (alpha_cm*L_um tiny but nonzero, T=0 exactly) also returns 0.0')
 
 # item 5: general-x exponent check at dot_position=0.25, off the x=0.5
 # midpoint default, against a hand closed form -- this specifically

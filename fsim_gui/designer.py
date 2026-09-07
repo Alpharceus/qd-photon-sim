@@ -304,7 +304,16 @@ def collect_design() -> DeviceDesign:
     -- NOT by comparing the widget's current value against that displayed
     default, which a genuine edit landing back on 7.0e8 would be
     indistinguishable from (pr-pkg1-fix4 item 3: that value-only compare
-    silently discarded such an edit and wrote None back)."""
+    silently discarded such an edit and wrote None back).
+
+    The widget itself is a Dear PyGui add_input_float, which stores its
+    value as float32 (~7 significant figures), not the log10 value's own
+    float64 precision -- so ``10.0 ** value`` on read-back does not
+    reproduce whatever density was originally displayed bit-exactly, only
+    to within float32 log-slider quantisation (rel ~1.05e-6 for the
+    7.0e8 case verify/verify_designer_rt.py checks; see that file's
+    WIDGET_FLOAT_PATHS/TOL for the general tolerance every widget-backed
+    field is held to)."""
     d = copy.deepcopy(_BASELINE_DESIGN)
     d.name = dpg.get_value("design.name")
     for path, tag in WIDGET_TAG.items():
@@ -344,6 +353,14 @@ def apply_design(d: DeviceDesign):
     global LAYERS, SUBSTRATE, _BASELINE_DESIGN, _DENSITY_EDITED
     import math
     _BASELINE_DESIGN = copy.deepcopy(d)
+    # pr-pkg6-stale-text item C4: reset unconditionally, BEFORE the
+    # per-widget existence guard below -- this is a repopulation from `d`
+    # regardless of whether the density widget happens to exist in the
+    # current layout, so a stale True left over from a previous design
+    # must not survive into this one just because the guard `continue`d
+    # past the widget before the old reset (nested inside the loop body,
+    # behind both the existence check and the path match) ever ran.
+    _DENSITY_EDITED = False
     dpg.set_value("design.name", d.name)
     for path, tag in WIDGET_TAG.items():
         if not dpg.does_item_exist(tag):
@@ -352,7 +369,6 @@ def apply_design(d: DeviceDesign):
         value = getattr(getattr(d, block_name), field_name)
         if path == "aperture.density_cm2":
             value = math.log10(_legacy_density_cm2(value))
-            _DENSITY_EDITED = False
         dpg.set_value(tag, value)
     if dpg.does_item_exist("lemma1_note"):
         dpg.configure_item("lemma1_note", show=(d.cavity.type == "sin_waveguide"))

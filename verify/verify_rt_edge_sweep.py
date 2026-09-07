@@ -123,6 +123,13 @@ def full_row(**overrides) -> dict:
         "duty_pulsed": rte.PULSE_WIDTH_NS * 1e-9 * rte.REP_RATE_HZ,
         "diagnostic_valid": False,
         "emission_NA": 0.75, "emission_R_back": 0.95, "emission_L_um": 250.0,
+        # emission_alpha_cm (pr-pkg6-stale-text, item A4): present so
+        # _facet_factor_forward_check exercises the real per-row
+        # convention="ray-series-midpoint" path, not the stale-CSV
+        # EmissionBlock-default fallback (fsim_core.device.EmissionBlock's
+        # own alpha_cm class default, matched here for realism, not
+        # because the fallback and real path need to agree numerically).
+        "emission_alpha_cm": 5.0,
     }
     base.update(overrides)
     return base

@@ -82,6 +82,7 @@ from fsim_core import device as device_mod  # noqa: E402
 from fsim_core import dot_levels  # noqa: E402
 from fsim_core import transport as transport_mod  # noqa: E402
 from fsim_core.device import DeviceDesign, evaluate  # noqa: E402
+import scripts.run_rt_edge as rte  # noqa: E402 -- _collected_flux_s/REP_RATE_HZ, item C1
 
 # pr-pkg1-fix2 (peer-review-triage.md finding 1b + runtime item 2): fixing
 # the confinement escape prefactor's dot density (RetentionBlock.n_dot_cm2,
@@ -650,22 +651,78 @@ def check_card(path: Path, anchors: dict) -> set:
            f"({eval_seconds:.2f} s)",
            eval_seconds < CW_RUNTIME_BUDGET_S)
 
-        # ---- pr-pkg1-fix4 item 1: the card's finding_1b_record prose
-        # names a specific "1e10 cm^-2 default" S(230 K) literal (the
-        # full-cancellation reproduction, ret.tau_cap_scales_with_density:
-        # true, at the favourable corner) -- pr-pkg1-fix3's version of that
-        # literal was wrong at the 8th-9th digit and nothing caught it.
-        # Recompute it fresh here and require rel 1e-8 agreement with
-        # whatever the card's own text currently claims, so a future stale
-        # literal fails loudly instead of sitting silently wrong again.
+        # ---- pr-pkg1-fix4 item 1 (extended by pr-pkg6-stale-text item C1):
+        # the card's finding_1b_record prose names several literals --
+        # a_esc(300 K) and S(230 K) for BOTH the no-cancellation (shipped)
+        # and full-cancellation (opt-in) conventions, plus the four g2_op/
+        # collected_flux_pulsed_s values in the favourable-corner table --
+        # pr-pkg1-fix3's version of the full-cancellation S(230 K) literal
+        # was wrong at the 8th-9th digit and nothing caught it before this
+        # (originally single-value) check existed. Every one of these is
+        # now recomputed fresh and required to agree with whatever the
+        # card's own text currently claims, so a future stale literal fails
+        # loudly instead of sitting silently wrong again. The agreement
+        # tolerance is the tightest each literal's OWN printed precision
+        # can support (a_esc(300 K) is quoted to 7 significant figures,
+        # no-cancellation S(230 K) to 6-7; both give rel diffs up to ~1.3e-7
+        # / ~4.3e-7 against a fresh evaluation -- not stale, just rounded
+        # for display), not a single blanket 1e-8: the full-cancellation
+        # S(230 K) literal and the g2/flux table (10 significant figures
+        # each) DO hold to rel 1e-8, and are checked at that tolerance.
         record_text = " ".join(provenance.get("finding_1b_record", "").split())
-        m = re.search(
-            r"reproduces the 1e10 cm\^-2 default exactly: a_esc\(300 K\) = "
-            r"[0-9.eE+-]+, S\(230 K\) = ([0-9.]+)", record_text)
-        ok(f"{tag}: finding_1b_record names a full-cancellation S(230 K) literal",
-           m is not None)
-        if m is not None:
-            recorded_s230 = float(m.group(1))
+        NUM = r"[0-9.eE+-]+"
+
+        m_nocancel = re.search(
+            r"no-cancellation,\s*ret\.\s*tau_cap_scales_with_density\s*unset/\s*false\)\s*"
+            rf"a_esc\(300 K\)\s*=\s*({NUM}),\s*S\(230 K\)\s*=\s*({NUM})", record_text)
+        ok(f"{tag}: finding_1b_record names a no-cancellation a_esc(300 K)/S(230 K) pair",
+           m_nocancel is not None)
+        if m_nocancel is not None:
+            recorded_aesc_nc = float(m_nocancel.group(1))
+            recorded_s230_nc = float(m_nocancel.group(2))
+            fresh_default = DeviceDesign.load(path)
+            sc_default = evaluate(fresh_default)["scalars"]
+            fresh_aesc_nc = device_mod._confinement_params(
+                fresh_default.ret, sc_default["T_j_op"],
+                n_dot_cm2=fresh_default.aperture.density_cm2)["a_esc"]
+            ok(f"{tag}: finding_1b_record's no-cancellation a_esc(300 K) literal "
+               f"({recorded_aesc_nc!r}) matches a fresh DeviceDesign.load + evaluate "
+               f"({fresh_aesc_nc!r}) to rel 2e-7 (7-significant-figure literal)",
+               math.isclose(recorded_aesc_nc, fresh_aesc_nc, rel_tol=2e-7))
+
+            fresh_design_nc = DeviceDesign.load(path)
+            fresh_design_nc.thermal.T_hs = 230.0
+            fresh_design_nc.dot.gamma300 = 6.0
+            fresh_design_nc.dot.delta_xx = 8.0
+            fresh_design_nc.emission.NA = 0.8
+            fresh_design_nc.emission.R_back = 0.95
+            fresh_design_nc.emission.L_um = 250.0
+            fresh_design_nc.ret.tau_cap_scales_with_density = False
+            fresh_s230_nc = evaluate(fresh_design_nc)["scalars"]["S_resolved"]
+            ok(f"{tag}: finding_1b_record's no-cancellation S(230 K) literal "
+               f"({recorded_s230_nc!r}) matches a fresh DeviceDesign.load + evaluate "
+               f"({fresh_s230_nc!r}) to rel 5e-7 (6-7-significant-figure literal)",
+               math.isclose(recorded_s230_nc, fresh_s230_nc, rel_tol=5e-7))
+
+        m_fullcancel = re.search(
+            rf"reproduces the 1e10 cm\^-2 default exactly: a_esc\(300 K\) = ({NUM}), "
+            rf"S\(230 K\) = ({NUM})", record_text)
+        ok(f"{tag}: finding_1b_record names a full-cancellation a_esc(300 K)/S(230 K) pair",
+           m_fullcancel is not None)
+        if m_fullcancel is not None:
+            recorded_aesc_fc = float(m_fullcancel.group(1))
+            recorded_s230 = float(m_fullcancel.group(2))
+            fresh_default_fc = DeviceDesign.load(path)
+            fresh_default_fc.ret.tau_cap_scales_with_density = True
+            sc_default_fc = evaluate(fresh_default_fc)["scalars"]
+            fresh_aesc_fc = device_mod._confinement_params(
+                fresh_default_fc.ret, sc_default_fc["T_j_op"],
+                n_dot_cm2=fresh_default_fc.aperture.density_cm2)["a_esc"]
+            ok(f"{tag}: finding_1b_record's full-cancellation a_esc(300 K) literal "
+               f"({recorded_aesc_fc!r}) matches a fresh DeviceDesign.load + evaluate "
+               f"({fresh_aesc_fc!r}) to rel 2e-7 (7-significant-figure literal)",
+               math.isclose(recorded_aesc_fc, fresh_aesc_fc, rel_tol=2e-7))
+
             fresh_design = DeviceDesign.load(path)
             fresh_design.thermal.T_hs = 230.0
             fresh_design.dot.gamma300 = 6.0
@@ -679,6 +736,41 @@ def check_card(path: Path, anchors: dict) -> set:
                f"({recorded_s230!r}) matches a fresh DeviceDesign.load + evaluate "
                f"({fresh_s230!r}) to rel 1e-8",
                math.isclose(recorded_s230, fresh_s230, rel_tol=1e-8))
+
+        # Favourable-corner g2/flux table: default (no-cancellation) and
+        # full-cancellation g2_op + collected_flux_pulsed_s, four literals,
+        # each quoted to ~10 significant figures -- checked at rel 1e-8.
+        m_table = re.search(
+            rf"default \(no-cancellation\) g2_op=\s*({NUM})\s*\([^)]*\),\s*"
+            rf"collected_flux_pulsed_s=\s*({NUM})\s*(?:s\^-1)?\s*\([^)]*\)[^;]*;\s*"
+            rf"full-cancellation g2_op=\s*({NUM}),\s*"
+            rf"collected_flux_pulsed_s=\s*({NUM})\s*(?:s\^-1)?", record_text)
+        ok(f"{tag}: finding_1b_record names the favourable-corner g2/flux table (both conventions)",
+           m_table is not None)
+        if m_table is not None:
+            recorded_g2_nc, recorded_flux_nc, recorded_g2_fc, recorded_flux_fc = (
+                float(x) for x in m_table.groups())
+            for label, full_cancel, recorded_g2, recorded_flux in (
+                    ("no-cancellation", False, recorded_g2_nc, recorded_flux_nc),
+                    ("full-cancellation", True, recorded_g2_fc, recorded_flux_fc)):
+                corner = DeviceDesign.load(path)
+                corner.thermal.T_hs = 230.0
+                corner.dot.gamma300 = 6.0
+                corner.dot.delta_xx = 8.0
+                corner.emission.NA = 0.8
+                corner.emission.R_back = 0.95
+                corner.emission.L_um = 250.0
+                corner.ret.tau_cap_scales_with_density = full_cancel
+                sc_corner = evaluate(corner)["scalars"]
+                fresh_g2 = sc_corner["g2_op"]
+                fresh_flux = rte._collected_flux_s(sc_corner)
+                ok(f"{tag}: finding_1b_record's {label} favourable-corner g2_op literal "
+                   f"({recorded_g2!r}) matches a fresh evaluate ({fresh_g2!r}) to rel 1e-8",
+                   math.isclose(recorded_g2, fresh_g2, rel_tol=1e-8))
+                ok(f"{tag}: finding_1b_record's {label} favourable-corner "
+                   f"collected_flux_pulsed_s literal ({recorded_flux!r}) matches a fresh "
+                   f"evaluate ({fresh_flux!r}) to rel 1e-8",
+                   math.isclose(recorded_flux, fresh_flux, rel_tol=1e-8))
 
     return assumptions
 
