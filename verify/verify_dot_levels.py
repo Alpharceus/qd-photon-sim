@@ -334,6 +334,25 @@ def _():
     assert 0 < S2 < S1 < 1, (S1, S2)
 
 
+# ------------------------------------------ (f2) finding 1b: retention_params n_dot_cm2
+
+@check("f2: retention_params(gainp card levels, n_dot_cm2=3e8)['a_esc'] ~ 9.771e5 and "
+       "retention(230 K, that a_esc) ~ 0.0010497 (peer-review-triage.md finding 1b)")
+def _():
+    # cards/edge-inp-gainp-design.yaml's own ret.system stack (dot=InP,
+    # matrix=Ga0.51In0.49P, barrier=(Al0.55Ga0.45)0.51In0.49P, substrate=GaAs,
+    # height=3 nm, R=10 nm, Pryor VBO override) is exactly the "InP/GaInP/
+    # AlGaInP0.55 on GaAs" (reischle) class preset -- pr-pkg1-capture-escape
+    # (finding 5) made that literally true by fixing the card's barrier
+    # x_al to the class's own 0.55, so this preset IS "the gainp card's
+    # level set" the triage's reproduction numbers are quoted against.
+    L = lv("InP/GaInP/AlGaInP0.55 on GaAs", T=230.0)
+    rp = D.retention_params(L, tau_rad_ns=1.0, channel="pair_half", n_dot_cm2=3e8, verbose=False)
+    assert abs(rp["a_esc"] / 9.771e5 - 1) < 1e-3, rp["a_esc"]
+    S = float(retention(230.0, rp["a_esc"], rp["E_a"], rp["b_p"], rp["E_b"]))
+    assert abs(S / 0.0010497 - 1) < 1e-3, S
+
+
 # ------------------------------------------------------------ (g) exciton binding
 
 @check("g: Gaussian exciton binding in [10, 40] meV for every preset")

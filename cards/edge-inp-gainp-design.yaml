@@ -23,19 +23,14 @@ meta:
     here. Loads and evaluates with fsim_core.device (DeviceDesign.load /
     evaluate); checked mechanically by verify/verify_rt_edge_cards.py.
 
-    KNOWN MODEL LIMITATION (documented, not hidden -- same one the primary
-    card carries): ret.system.barrier is (Al0.50Ga0.50)0.51In0.49P, NOT the
-    class's native (Al0.55Ga0.45)0.51In0.49P, because materials.
-    MATERIAL_EXTRA has no refractive-index entry for x_al=0.55 and
-    emission.type='edge' reuses this same ret.system stack for its
-    waveguide layers (an untabulated composition raises an uncaught
-    KeyError inside waveguide.edge_emission, not the graceful ValueError
-    device.evaluate() handles). The true (Al0.55Ga0.45)0.51In0.49P cladding
-    is retained in thermal.layers, and drive.diode.preset='red' correctly
-    uses the class's own AlGaInP0.55 barrier internally (transport.
-    red_diode_preset does not touch materials.refractive_index, so it is
-    unaffected by this substitution). See design.provenance.sources
-    ["ret.system.barrier.x_al"].
+    pr-pkg1-capture-escape (peer-review-triage.md finding 5): ret.system.
+    barrier is now the class's native (Al0.55Ga0.45)0.51In0.49P, ONE Al
+    fraction across ret.system.barrier, thermal.layers and drive.diode.
+    preset='red' (materials.MATERIAL_EXTRA now tabulates an x_al=0.55
+    entry; see design.provenance.sources["ret.system.barrier.x_al"]). The
+    KNOWN MODEL LIMITATION previously documented here (x_al=0.50
+    substituted for 0.55 because no refractive-index entry existed) is
+    resolved.
 
 design:
   name: edge-inp-gainp-design
@@ -48,7 +43,7 @@ design:
     system:
       dot: InP
       matrix: {kind: GaInP, x_ga: 0.51}
-      barrier: {kind: AlGaInP, x_al: 0.5, y_III: 0.51}
+      barrier: {kind: AlGaInP, x_al: 0.55, y_III: 0.51}
       substrate: GaAs
       geometry: {height_nm: 3.0, radius_nm: 10.0}
       vbo_override_eV: {dot-matrix: -0.045}
@@ -58,7 +53,7 @@ design:
       preset: red
       active: {kind: GaInP, x_ga: 0.51}
       tau_pulse_ns: 0.1
-    I_uA: 0.0018830313178885266
+    I_uA: 0.0010181197712793297
     duty: 0.008
     b_res: 0.13636363636363635
     cw: true
@@ -155,20 +150,23 @@ design:
           al., JAP 89, 5815 (2001)); Reischle et al., Optics Express 16,
           12771 (2008) matrix material.
       ret.system.barrier.x_al:
-        value: 0.5
-        tag: E
+        value: 0.55
+        tag: V
         source: >
-          Substituted for the class's native (Al0.55Ga0.45)0.51In0.49P
-          barrier (dot_levels.class_presets 'InP/GaInP/AlGaInP0.55 on
-          GaAs') because materials.MATERIAL_EXTRA has no refractive-index
-          entry for x_al=0.55 (only x_al=0.50 is tabulated: Moser et al.,
-          APL 64, 235 (1994); Schubert et al., JAP 86, 2025 (1999)), and
-          emission.type='edge' shares this same ret.system stack
-          (device.py's documented "shared inline stack" rule). The true
-          (Al0.55Ga0.45)0.51In0.49P cladding is retained in thermal.layers
-          and in drive.diode.preset='red' (transport.red_diode_preset's
-          own internal AlGaInP0.55 barrier is unaffected by this
-          substitution, since it never calls materials.refractive_index).
+          The class's own native barrier composition (dot_levels.
+          class_presets 'InP/GaInP/AlGaInP0.55 on GaAs'; Reischle et al.,
+          Optics Express 16, 12771 (2008) p-i-n barrier), now used
+          directly: materials.MATERIAL_EXTRA gained an x_al=0.55
+          "(Al0.55Ga0.45)0.51In0.49P" entry (pr-pkg1-capture-escape,
+          peer-review-triage.md finding 5), so emission.type='edge'
+          (which shares this same ret.system stack, device.py's documented
+          "shared inline stack" rule) no longer needs a substitute
+          composition. ONE Al fraction now runs across ret.system.barrier,
+          thermal.layers (the "(Al0.55Ga0.45)0.51In0.49P cladding" layer)
+          and drive.diode.preset='red' (transport.red_diode_preset's own
+          internal AlGaInP0.55 barrier) -- the KNOWN MODEL LIMITATION this
+          card previously carried (a substituted x_al=0.50 barrier while
+          thermal/transport used 0.55) is resolved.
       ret.system.barrier.y_III:
         value: 0.51
         tag: DR
@@ -230,39 +228,39 @@ design:
         tag: A
         source: "[A] 0.008 duty at 80 MHz, the sweep configuration; 80 MHz-class pulsed electrical drive as in Reischle et al., Appl. Phys. Lett. 97, 143513 (2010) / typical pulsed SPS operation."
       drive.I_uA:
-        value: 0.0018830313178885266
+        value: 0.0010181197712793297
         tag: DR
         source: >
-          [DR] Log-spaced grid I_uA=10^-4..10^-1 (31 points), followed by
-          a local solve on the loaded card at T_hs=300 K, calling
-          fsim_core.device.evaluate: the constrained pulsed-g2 minimum is
-          at the explicit tau_pulse_ns=0.1 ns, duty=0.008 (80 MHz),
-          I_uA=0.0018830313178885266, where V_j=1.6417720892 V,
-          f_qfl=1.0000000000, mu=0.9999999987, rho_op=0.8427621125,
-          g2_op=0.6890713444, and collected_flux_pulsed_s=2308.1279594.
-          Recomputed fresh against the final card (council review
-          2026-09-06): V_j/f_qfl/mu are unchanged from the round-3 numbers
-          (transport is independent of dot.gamma300 and the emission
-          block, Lemma 1); g2_op moves with the new dot.gamma300=12.0 meV
-          default (was 0.7604492717 at the superseded 16.0 meV value --
-          see dot.gamma300's note for the full 6.5/12/16 meV sensitivity);
-          rho_op is independent of the collection levers (Lemma 1): fresh
-          evaluation gives rho_op=0.8427621125 at this card's current
-          gamma300=12.0 meV and rho_op=0.8307178323 at the superseded
-          gamma300=16.0 meV for reference; both values are unchanged when
-          evaluated with NA=0.5/R_back=None/L_um=500 device.py defaults.
-          The value changed only because gamma300 moved from 16.0 to 12.0
-          meV. Following waveguide-na-collection-fix's circular NA-cone
-          collection and 1/e^2-width convention (A_mode = pi w_x w_y),
-          fresh evaluation gives eta_NA=0.8193558507,
-          eta_total=0.0197695945, and collected_flux_pulsed_s=2308.1279594
-          at this operating point. The collected
-          flux now clears the 1 kHz floor (2308.1/s), unlike the prior
-          round-3 number; this is the flux-maximising allowed current. The
-          0.5x point is feasible (mu=0.4278, not sub-turn-on) with
-          g2_op=0.7038910 there, still worse (higher) than this operating
-          point's g2_op, so it does not beat this point; the 2x point has
-          mu=2.0000, outside the allowed [0.05, 1.0] range. No literature
+          [DR] pr-pkg1-capture-escape (peer-review-triage.md finding 1b)
+          re-solve: the confinement retention fix (RetentionBlock.n_dot_cm2
+          now defaults to this card's own aperture.density_cm2=3e8 cm^-2
+          instead of dot_levels.retention_params' 1e10 cm^-2 default)
+          collapses S(300 K) from ~0.0046 to ~0.00019 (see dot_levels'
+          retention_params note and design.provenance's finding-1b record
+          below), so the prior I_uA=0.0018830313178885266 operating point
+          is no longer near-optimal. Re-run: Log-spaced grid I_uA=
+          10^-4..10^-1 (31 points), followed by a local solve (scipy
+          minimize_scalar, bounded) on the loaded card at T_hs=300 K,
+          calling fsim_core.device.evaluate: the constrained pulsed-g2
+          minimum is at the explicit tau_pulse_ns=0.1 ns, duty=0.008
+          (80 MHz), I_uA=0.0010181197712793297, where V_j=1.6101282192 V,
+          f_qfl=0.9978293886, mu=0.5406812735, rho_op=0.7500991150,
+          g2_op=0.7736310524, and collected_flux_pulsed_s=59.2763955005.
+          eta_NA=0.8136400721, eta_total=0.0189441140 (waveguide-na-
+          collection-fix's circular NA-cone / 1/e^2-width convention,
+          A_mode = pi w_x w_y). The collected flux is now far below the
+          1 kHz floor and g2_op is far above 0.5 -- this design NO LONGER
+          clears either acceptance gate at its own default operating
+          point once the density fix is applied (it is still the flux-
+          maximising allowed current: the 0.5x point is feasible
+          (mu=0.0678, not sub-turn-on) with g2_op=0.8101323 there, still
+          worse (higher) than this point's g2_op, so it does not beat this
+          point; the 2x point has mu=1.0814, outside the allowed
+          [0.05, 1.0] range). See design.provenance's finding-1b record
+          for the favourable-corner (T_hs=230 K, gamma300=6, delta_xx=8,
+          NA=0.8, R_back=0.95, L=250 um) g2/flux under both the default
+          (no-cancellation) and the opt-in full-cancellation
+          (ret.tau_cap_scales_with_density) conventions. No literature
           single-dot InP/GaInP drive current exists; this is a
           simulator-derived operating point.
       drive.cw:
@@ -528,3 +526,34 @@ design:
     derived_fields:
       - drive.b_e
       - cavity.beta_sin
+
+    finding_1b_record: >
+      pr-pkg1-capture-escape (peer-review-triage.md finding 1b): the
+      confinement escape prefactor now uses this card's own aperture.
+      density_cm2=3e8 cm^-2 (device.py's _confinement_params, forwarded
+      from the same n_dot_cm2 = d.drive.n_dot_cm2 or d.aperture.density_cm2
+      expression transport.evaluate_injection already used) instead of
+      dot_levels.retention_params' 1e10 cm^-2 default. Numbers obtained
+      (DeviceDesign.load + evaluate with the card as shipped; dot_levels'
+      "InP/GaInP/AlGaInP0.55 on GaAs" class preset, now IDENTICAL to this
+      card's ret.system stack post finding-5 fix, tau_rad_ns=1.0,
+      channel=pair_half): default (no-cancellation, ret.
+      tau_cap_scales_with_density unset/false) a_esc(300 K) = 9.771319e5
+      (was 2.931396e4 at the 1e10 cm^-2 default), S(230 K) = 0.0010497157
+      (was 0.0131111765). Opt-in full-cancellation
+      (ret.tau_cap_scales_with_density: true, tau_cap = 10 ps *
+      (1e10/3e8) = 333.33 ps) reproduces the 1e10 cm^-2 default exactly:
+      a_esc(300 K) = 2.931396e4, S(230 K) = 0.0131111765 (bit-identical to
+      the pre-fix legacy number, as designed -- the two effects cancel).
+      At the favourable corner (T_hs=230 K, dot.gamma300=6, dot.delta_xx=8,
+      emission.NA=0.8, emission.R_back=0.95, emission.L_um=250, this
+      card's own re-solved drive.I_uA -- see drive.I_uA's own source):
+      default (no-cancellation) g2_op=0.4801013305,
+      collected_flux_pulsed_s=331.2299778 s^-1 (fails both the g2<0.5 and
+      the 1 kHz floor gates by design-relevant margins); full-cancellation
+      g2_op=0.3011246533, collected_flux_pulsed_s=4137.134577 s^-1 (clears
+      both gates). This card ships the default (no-cancellation)
+      convention -- the physically-motivated fix -- not the
+      full-cancellation opt-in, so its own operating point (drive.I_uA's
+      source) and the favourable corner above both fail the acceptance
+      gates under the density this card actually declares.

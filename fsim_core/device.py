@@ -94,6 +94,30 @@ class RetentionBlock:
                                   # from `system` so a preset stack can still be
                                   # combined with explicit overrides. An explicit
                                   # 0.0 here always wins (never a truthy-or fallback).
+    n_dot_cm2: float | None = None  # cm^-2; peer-review-triage.md finding 1b -- the
+                                  # confinement escape prefactor (a_esc, via
+                                  # dot_levels.retention_params' states_per_dot =
+                                  # n2d_cm2 / n_dot_cm2) otherwise silently used
+                                  # retention_params' own 1e10 cm^-2 default instead
+                                  # of the SAME dot density device.py's transport
+                                  # call already uses (aperture.density_cm2 /
+                                  # drive.n_dot_cm2). None (default): _confinement_params
+                                  # falls back to the caller-supplied n_dot_cm2 (that
+                                  # shared density), then to retention_params' own
+                                  # 1e10 default -- bit-identical to today when a card
+                                  # sets neither this nor aperture.density_cm2 [DR].
+    tau_cap_ps: float | None = None  # ps; None -> retention_params' own 10.0 ps [E]
+                                  # capture-time class default (dot_levels.py).
+    tau_cap_scales_with_density: bool = False  # [A] nu_esc0 = (1/tau_cap) * N2D/N_dot
+                                  # (dot_levels.retention_params): a sparser n_dot_cm2
+                                  # already raises a_esc through N2D/N_dot alone (the
+                                  # default, "no-cancellation" convention). True opts
+                                  # into the alternative "full-cancellation" convention
+                                  # -- tau_cap scaled by (1e10 / n_eff) so per-dot
+                                  # capture slows in step with the sparser density and
+                                  # the two effects cancel out of a_esc. False (default)
+                                  # is legacy/bit-identical whenever n_dot_cm2 is also
+                                  # unset.
 
 
 @dataclass
@@ -409,19 +433,45 @@ def _diode_from_drive(drive: DriveBlock, aperture_diameter_um: float):
     raise ValueError("drive.mode='EL-transport' requires diode.preset 'hkust' or 'red'")
 
 
-def _confinement_params(ret: RetentionBlock, Tj: float) -> dict:
+def _confinement_params(ret: RetentionBlock, Tj: float, n_dot_cm2: float | None = None,
+                        tau_cap_ps: float | None = None) -> dict:
     """Resolve confinement at the temperature consumed by escape [DR].  Also
     carries the level table's own E_X_eV (resolved transition energy) for
     the item-2 sub-turn-on loading suppression -- the SAME confinement
-    solve, never a second one."""
+    solve, never a second one.
+
+    n_dot_cm2 / tau_cap_ps (peer-review-triage.md finding 1b): the escape
+    prefactor a_esc = tau_rad * nu_esc0, nu_esc0 = (1/tau_cap) * N2D/N_dot
+    (dot_levels.retention_params), used to silently take retention_params'
+    own 1e10 cm^-2 / 10 ps defaults no matter what dot density the SAME
+    card's transport call (device.py's aperture.density_cm2 / drive.
+    n_dot_cm2) already used. Resolution order: the card's own ret.n_dot_cm2
+    / ret.tau_cap_ps win; else the caller-supplied n_dot_cm2/tau_cap_ps (the
+    shared aperture/drive density this call site passes in); else
+    retention_params' own 1e10 cm^-2 / 10 ps [E] class defaults -- so a
+    legacy card (neither set, no aperture.density_cm2 forwarded) is
+    bit-identical to before this fix. [DR] coupling algebra (the a_esc
+    formula itself, unchanged, lives in dot_levels.retention_params)."""
+    n_eff = ret.n_dot_cm2 or n_dot_cm2 or 1e10
+    tau_cap = ret.tau_cap_ps or tau_cap_ps or 10.0  # [E] dot_levels.py capture-time class default
+    if ret.tau_cap_scales_with_density:
+        # [A] full-cancellation convention: nu_esc0 = (1/tau_cap) * N2D/N_dot
+        # already makes a sparser n_eff raise a_esc through N2D/N_dot alone
+        # (the default, no-cancellation convention); this additionally
+        # scales tau_cap by (1e10 / n_eff) so per-dot capture slows in step
+        # with the sparser density and the two effects cancel -- a_esc then
+        # stops moving with n_eff at all.
+        tau_cap = tau_cap * (1e10 / n_eff)
     system = _retention_system(ret)
     # DotSystem is mutable, so copy rather than mutating the card-derived
     # object.  This is also why evaluate leaves its input design untouched.
     system = copy.copy(system)
     system.T = float(Tj)
     lv = dot_levels.levels(system)
-    params = dot_levels.retention_params(lv, ret.tau_rad_ns, ret.channel, verbose=False)
+    params = dot_levels.retention_params(lv, ret.tau_rad_ns, ret.channel,
+                                         n_dot_cm2=n_eff, tau_cap_ps=tau_cap, verbose=False)
     params["E_X_eV"] = lv.E_X_eV
+    params["n_dot_cm2_used"] = n_eff
     return params
 
 
@@ -626,6 +676,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                             cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
+                            n_dot_cm2_used=np.nan,
                             invalid_reason="EL-transport requires positive current")
             converged = False
             for _ in range(12):
@@ -645,6 +696,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                             g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                             cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
+                            n_dot_cm2_used=np.nan,
                             invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
@@ -652,6 +704,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                         eta_capture=np.nan, b_e=np.nan, injection=None, S=np.nan,
                         g2_cw0=np.nan, g2_cw0_raw=np.nan, cw_r_ns=np.nan,
                         cw_gamma_X_ns=np.nan, cw_rho=np.nan, w=np.nan,
+                        n_dot_cm2_used=np.nan,
                         invalid_reason="thermal runaway")
         gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
                     d.dot.E_LO, d.dot.gamma300))) if d.dot.linewidth == "anchored"
@@ -754,7 +807,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         else:
             spec = epsilon(d.dot.delta_xx, gam, d.dot.r_xx * gam, w=w, kappa=kappa, dx=dx)
         if d.ret.mode == "confinement":
-            derived = _confinement_params(d.ret, Tj)
+            # Finding 1b: the SAME dot density transport.evaluate_injection
+            # uses below (device.py's documented aperture/drive convention),
+            # so one density serves confinement and transport.
+            derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.drive.n_dot_cm2 or d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta
             # ret.overrides is an explicit dict (distinct from ret.system, which
@@ -771,9 +827,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # has no confinement level structure, so E_X_eV stays None there
             # (transport.dot_loading's documented legacy-numerics default).
             E_X_eV = derived["E_X_eV"]
+            n_dot_cm2_used = derived["n_dot_cm2_used"]
         else:
             params = rp
             E_X_eV = None
+            n_dot_cm2_used = float("nan")  # proxy mode: no confinement density used
         # R2: Purcell speeds the radiative channel by rate_mult (photon-
         # weighted; Lorentzian path uses F_eff directly since there is no
         # sideband split), so the escape-to-radiative ratios divide by it.
@@ -961,7 +1019,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     mu=mu_use, eta_capture=eta_use, b_e=inj_bg,
                     injection=injection, S=S, g2_cw0=g2_cw0, g2_cw0_raw=g2_cw0_raw,
                     cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho,
-                    w=(w if w is not None else float("nan")))
+                    w=(w if w is not None else float("nan")),
+                    n_dot_cm2_used=n_dot_cm2_used)
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     rows = [one(T) for T in Ts]
@@ -1199,7 +1258,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                           "note": "anchored linewidth model" if d.dot.linewidth == "anchored"
                                   else "arsenide class proxy"},
             "retention": {"tag": "E" if d.ret.mode == "confinement" else "A",
-                          "note": retention_note},
+                          "note": retention_note,
+                          # finding 1b: the dot density _confinement_params actually
+                          # resolved and forwarded to dot_levels.retention_params
+                          # (NaN in proxy mode, where no confinement density is used).
+                          "n_dot_cm2_used": op["n_dot_cm2_used"]},
             "drive": {"tag": "E" if diode is not None else "A",
                       "note": "transport Diode injection result" if diode is not None
                               else "legacy drive fields"},
