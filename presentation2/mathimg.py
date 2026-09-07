@@ -12,6 +12,7 @@ keep the two in sync if this changes.
 CLI: python presentation2/mathimg.py "<latex>"   -> prints the output path.
 """
 from __future__ import annotations
+import re
 
 import hashlib
 import sys
@@ -36,6 +37,23 @@ def cache_path(latex: str) -> Path:
     return CACHE_DIR / f"eq_{_cache_key(latex)}.png"
 
 
+
+def normalize(latex: str) -> str:
+    """Rewrite common LaTeX idioms that matplotlib mathtext does not accept
+    into forms it does (mathtext is a dialect, not full LaTeX)."""
+    for short, full in (("ge", "geq"), ("le", "leq"), ("ne", "neq")):
+        latex = re.sub(r"\\" + short + r"(?![a-zA-Z])", "\\\\" + full, latex)
+    # \mathbf d -> \mathbf{d}: mathtext needs the braces; same for the other font commands
+    latex = re.sub(r"\\(mathbf|mathrm|mathit|mathcal|boldsymbol)\s+([A-Za-z0-9])", r"\\\1{\2}", latex)
+    # \sqrt2 -> \sqrt{2}
+    latex = re.sub(r"\\sqrt\s*([0-9A-Za-z])", r"\\sqrt{\1}", latex)
+    # \big( \Big[ \bigl\{ ...: mathtext has no delimiter sizing; use plain delimiters
+    latex = re.sub(r"\\[bB]ig{1,2}[lrm]?(?![A-Za-z])\s*", "", latex)
+    # \xrightarrow{label} -> \overset{label}{\longrightarrow}
+    latex = re.sub(r"\\xrightarrow\{((?:[^{}]|\{[^{}]*\})*)\}", r"\\overset{\1}{\\longrightarrow}", latex)
+    return latex
+
+
 def render_equation(latex: str, force: bool = False) -> Path:
     """Render `latex` (no surrounding $ needed) to a white-background PNG
     at 300 dpi, tightly cropped to the glyphs plus a small pad. Returns the
@@ -45,6 +63,7 @@ def render_equation(latex: str, force: bool = False) -> Path:
     if out_path.exists() and not force:
         return out_path
 
+    latex = normalize(latex)
     text = f"${latex}$"
 
     # Measure the rendered text first (a throwaway figure), then build a
