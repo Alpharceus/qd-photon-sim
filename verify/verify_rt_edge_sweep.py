@@ -33,6 +33,7 @@ import csv
 import io
 import json
 import math
+import re
 import statistics
 import sys
 import tempfile
@@ -1316,6 +1317,38 @@ if not RUN_FULL:
     ok("saved full run: manifest card hashes match current cards",
        all(entry["sha256"] == rte._sha256_file(Path(entry["path"]))
            for entry in saved_manifest["cards"]))
+
+    # pkg5b self-check fix, item 1: the flux self-check line (brightness
+    # decomposition, "Best diagnostic-g2 row" section) must report PASS on
+    # the shipped run -- the model-aware _brightness_factor_check fix's
+    # whole point. re.search finds the FIRST "self-check" occurrence, which
+    # is this table row (the facet-independent-check paragraph's own use of
+    # the word "self-check" appears later in the document).
+    _self_check_match = re.search(r"self-check[^\n]*", saved_md)
+    ok("saved full run: verdict.md's own flux self-check line reports PASS (model-aware "
+       "brightness reconstruction; pkg5b self-check fix, item 1)",
+       bool(_self_check_match) and "PASS" in _self_check_match.group(0)
+       and "FAIL" not in _self_check_match.group(0))
+
+    # pkg5b self-check fix, item 1: the "Model sensitivity" table's four
+    # rows (one per drive.finite_pulse x ret.tau_cap_scales_with_density
+    # combination) must equal eligible/headline passes/g2 min/flux max
+    # recomputed from sweep.csv -- built with the SAME formatting
+    # (_model_token/_fmt_or_na) write_markdown itself uses, so this is an
+    # exact-text containment check, not a fuzzy numeric comparison.
+    _recomputed_model_sensitivity = rte.compute_model_sensitivity(_rows_typed)
+    _model_sensitivity_rows_ok = True
+    for _combo in rte.MODEL_COMBOS:
+        _info = _recomputed_model_sensitivity.get(rte._model_key(_combo), {})
+        _label = rte._model_token(_combo) + (" (headline)" if _combo == rte.HEADLINE_MODEL else "")
+        _expected_row = (f"| {_label} | {_info.get('n_eligible', 0)}/{_info.get('n_total', 0)} | "
+                        f"{_info.get('n_headline', 0)} | {rte._fmt_or_na(_info.get('g2_pulsed_min'))} | "
+                        f"{rte._fmt_or_na(_info.get('flux_max'))} |")
+        if _expected_row not in saved_md:
+            _model_sensitivity_rows_ok = False
+    ok("saved full run: verdict.md's Model sensitivity table's four rows (eligible, headline "
+       "passes, g2 min, flux max per combination) equal the values recomputed from sweep.csv",
+       _model_sensitivity_rows_ok)
 
     # Six fixed rows cover both cards, endpoints and all four temperatures.
     # Replay both pulsed and CW paths and compare directly with the CSV.

@@ -680,32 +680,32 @@
         "g2_op_gainp_80K": {
           "value": 0.22887974093486363,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=False)"
         },
         "g2_op_gainp_230K": {
           "value": 0.650774,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0, finite_pulse=False)"
         },
         "g2_op_gainp_300K": {
           "value": 0.773631,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=False)"
         },
         "flux_gainp_80K": {
           "value": 24107.110486,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0, finite_pulse=False)"
         },
         "flux_gainp_230K": {
           "value": 428.895637,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0, finite_pulse=False)"
         },
         "flux_gainp_300K": {
           "value": 59.276395,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0, finite_pulse=False)"
         },
         "eps_op_gainp_80K": {
           "value": 0.001186008684294538,
@@ -720,12 +720,12 @@
         "rho_op_gainp_80K": {
           "value": 0.8799998742597043,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=80.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=80.0, finite_pulse=False)"
         },
         "rho_op_gainp_300K": {
           "value": 0.750099,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=300.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', T_hs=300.0, finite_pulse=False)"
         },
         "S_gainp_80K": {
           "value": 0.07575122814964598,
@@ -756,11 +756,33 @@
         "GOAL_PROMPT.md's 2026-09-06 update: PASS now requires ONE eligible T_hs in {230,250,273,300} K, not just 300 K",
         "This reframes the project's target from 'room temperature or nothing' to 'no cryogen, any of four set points'"
       ],
-      "notes": "Every electrically driven single-photon result in the digested literature -- 80 K (Reischle 2008), 20-40 K (Reischle 2010) -- was cryostat-cooled. A single-stage thermoelectric (Peltier) cooler, by contrast, is a compact, cryogen-free, room-temperature-rejecting solid-state device that routinely holds a small package at 200-230 K continuously, with no liquid helium, no liquid nitrogen, and no vacuum dewar -- exactly the kind of engineering simplification that could turn a laboratory demonstration into a deployable component. The retention ladder on the previous slide shows why this matters quantitatively: S(T) at 230 K (0.0131 for the gainp card) is nearly 3x the 300 K value (0.0046), and for the primary gaasp card, whose injection efficiency is far more temperature-sensitive, eta_inj at 230 K (0.715) is more than double its 300 K value (0.338). The project's own goal document was updated on 2026-09-06 to reflect exactly this: rather than demanding a passing operating point specifically at 300 K, the acceptance gate (docs/rt_edge_contract.md) now asks only that AT LEAST ONE heat-sink temperature in {230, 250, 273, 300} K have a physically eligible, g2(0) < 0.5 corner -- any of which is achievable with a single-stage TEC and none of which needs a cryostat. This is the project's relaxed stop rule: 'non-cryogenic', not 'room-temperature-only', is the actual engineering target, and it is a materially easier one given how steeply both retention and injection efficiency recover between 300 K and 230 K.",
+      "notes": "Every electrically driven single-photon result in the digested literature -- 80 K (Reischle 2008), 20-40 K (Reischle 2010) -- was cryostat-cooled. A single-stage thermoelectric (Peltier) cooler, by contrast, is a compact, cryogen-free, room-temperature-rejecting solid-state device that routinely holds a small package at 200-230 K continuously, with no liquid helium, no liquid nitrogen, and no vacuum dewar -- exactly the kind of engineering simplification that could turn a laboratory demonstration into a deployable component. The retention ladder on the previous slide shows why this matters quantitatively: S(T) at 230 K (0.0013480 for the gainp card) is about 7.2x the 300 K value (0.00018730), and for the primary gaasp card, whose injection efficiency is far more temperature-sensitive, eta_inj at 230 K (0.715) is more than double its 300 K value (0.338). The project's own goal document was updated on 2026-09-06 to reflect exactly this: rather than demanding a passing operating point specifically at 300 K, the acceptance gate (docs/rt_edge_contract.md) now asks only that AT LEAST ONE heat-sink temperature in {230, 250, 273, 300} K have a physically eligible, g2(0) < 0.5 corner -- any of which is achievable with a single-stage TEC and none of which needs a cryostat. This is the project's relaxed stop rule: 'non-cryogenic', not 'room-temperature-only', is the actual engineering target, and it is a materially easier one given how steeply both retention and injection efficiency recover between 300 K and 230 K.",
       "sources": [
         "../_goal/GOAL_PROMPT.md, Update 2026-09-06",
         "docs/rt_edge_contract.md"
-      ]
+      ],
+      "repo_numbers": {
+        "S_gainp_230K_tec": {
+          "value": 0.0013480198797291057,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=230.0, finite_pulse=False)"
+        },
+        "S_gainp_300K_tec": {
+          "value": 0.00018729942217947843,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=300.0, finite_pulse=False)"
+        },
+        "eta_inj_gaasp_230K_tec": {
+          "value": 0.7154746130078012,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'eta_inj', T_hs=230.0, finite_pulse=False)"
+        },
+        "eta_inj_gaasp_300K_tec": {
+          "value": 0.3378241634946276,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'eta_inj', T_hs=300.0, finite_pulse=False)"
+        }
+      }
     },
     {
       "id": "03-21",
@@ -777,7 +799,7 @@
           [
             "purity g2(0)",
             "excellent (<0.01 reported, resonant)",
-            "0.03 background-corrected @ 80 K (Reischle); 0.229-0.689 across this project's gainp-card 80-300 K ladder (gaasp flux: 40 133/s @ 80 K, 2 260/s @ 230 K -- both above the 1 kHz floor; only 300 K, 474.5/s, is diagnostic-only, below it)"
+            "0.03 background-corrected @ 80 K (Reischle); 0.229-0.774 across this project's gainp-card 80-300 K ladder (gaasp flux: 35 597/s @ 80 K, 87.6/s @ 230 K, 2.17/s @ 300 K -- all below the 1 kHz floor except 80 K)"
           ],
           [
             "brightness",
@@ -806,7 +828,34 @@
         "Reischle et al., Opt. Express 16, 12771 (2008)",
         "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)",
         "Laferriere et al., Nano Lett. 23, 962 (2023)"
-      ]
+      ],
+      "repo_numbers": {
+        "gainp_ladder_g2_80K": {
+          "value": 0.22887974093486363,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=False)"
+        },
+        "gainp_ladder_g2_300K": {
+          "value": 0.7736310533632693,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=False)"
+        },
+        "gaasp_flux_80K": {
+          "value": 35596.889762,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0, finite_pulse=False)"
+        },
+        "gaasp_flux_230K": {
+          "value": 87.583465,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0, finite_pulse=False)"
+        },
+        "gaasp_flux_300K": {
+          "value": 2.174516,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0, finite_pulse=False)"
+        }
+      }
     },
     {
       "id": "03-22",
@@ -819,14 +868,14 @@
         "Spectral transmission t_X (filter matched to the line's own width): 0.500",
         "Thermal retention S (confinement escape at 300 K): 0.000187 -- the single biggest loss in the chain",
         "Edge out-coupling eta_total (waveguide beta x facets x propagation x NA), folded into one factor: 0.01985",
-        "Same levers at T_hs = 230 K: S=0.001348, flux=449/s (below the 1 kHz floor), g2(0)=0.4439"
+        "Same levers at T_hs = 230 K: S=0.001348, flux=578.8/s (below the 1 kHz floor), g2(0)=0.9817"
       ],
       "figure": {
         "path": "presentation2/figures/out/03_22_efficiency_chain.png",
         "caption": "the multiplicative efficiency chain reproducing collected_flux_pulsed_s at the favourable 300 K corner (out/rt_edge/verdict.md factor table, reproduced by fresh evaluate())",
         "script": "presentation2/figures/fig_03_22_efficiency_chain.py"
       },
-      "notes": "This slide and the next three walk one electron, injected at the n-contact, all the way to a detected photon in the fibre, multiplying every efficiency factor the previous slides introduced -- at the repository's own best-g2 evaluated corner, evaluated here at T_hs = 300 K by a fresh evaluate() call, not read off a possibly-stale sweep file. Four factors compose, in order: the Poisson loading probability of at least one exciton per pulse at mu = 0.541 (1 - e^-0.541 = 0.4176); the spectral filter's transmission of the X line itself, t_X = 0.5 by construction of the auto-window convention (the filter is always set to exactly the line's own width, so half the line's photons fall inside it regardless of the real, currently unmeasured, 300 K linewidth); the dot's OWN thermal retention S = 0.000187, the confinement-escape survival probability and, by a wide margin, the single biggest loss in this chain; and the edge-emission out-coupling efficiency eta_total = 0.01985, the product of the waveguide beta factor, facet transmission and reflectivity, propagation loss, and collection numerical aperture -- counted exactly once, per the repository's own Lemma 1. Multiplying these four factors by the 80 MHz repetition rate reproduces the reported collected flux of 62.1 photons/s, well below the 1 kHz eligibility floor. At the SAME levers, T_hs = 230 K raises retention to S = 0.001348, but collected flux only reaches 449/s -- still below the floor, so neither corner is eligible under the corrected finite-pulse loading model.",
+      "notes": "This slide and the next three walk one electron, injected at the n-contact, all the way to a detected photon in the fibre, multiplying every efficiency factor the previous slides introduced -- at the repository's own best-g2 evaluated corner, evaluated at T_hs = 300 K by a fresh evaluate() call, not read off a possibly-stale sweep file. Four factors compose, in order: the Poisson loading probability of at least one exciton per pulse at mu = 0.541 (1 - e^-0.541 = 0.4176); the spectral filter's transmission of the X line itself, t_X = 0.5 by construction of the auto-window convention; the dot's OWN thermal retention S = 0.000187, by a wide margin the single biggest loss in this chain; and the edge-emission out-coupling efficiency eta_total = 0.01985, the waveguide beta x facet x NA product, counted exactly once per the repository's own Lemma 1. Multiplying these by the 80 MHz repetition rate reproduces the STATIC-loading flux of 62.1 photons/s, shown here as the labelled comparison -- but the corrected finite-pulse loading model (the headline model out/rt_edge/verdict.md reports) instead derives brightness from pulse_counting's own mean-count dynamics, not this (1-e^-mu)*t_X*S product, and the ACTUAL reported collected flux at this corner is 80.3 photons/s, still well below the 1 kHz floor. At the SAME levers, T_hs = 230 K raises retention to S = 0.001348 and the corrected finite-pulse flux to 578.8 photons/s -- still below the floor, so neither corner is eligible under the corrected model.",
       "sources": [
         "out/rt_edge/verdict.md",
         "fsim_core/waveguide.py: edge_emission",
@@ -853,9 +902,14 @@
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'edge_eta_total', favorable=True)"
         },
-        "collected_flux_favorable_corner": {
+        "collected_flux_favorable_corner_static_loading": {
           "value": 62.115986,
           "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True, finite_pulse=False)"
+        },
+        "collected_flux_favorable_corner": {
+          "value": 80.344183,
+          "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True)"
         },
         "S_favorable_corner_230K": {
@@ -863,8 +917,13 @@
           "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', favorable=True, T_hs=230.0)"
         },
-        "collected_flux_favorable_corner_230K": {
+        "collected_flux_favorable_corner_230K_static_loading": {
           "value": 449.441558,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True, T_hs=230.0, finite_pulse=False)"
+        },
+        "collected_flux_favorable_corner_230K": {
+          "value": 578.843496,
           "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', favorable=True, T_hs=230.0)"
         }
@@ -880,7 +939,7 @@
         "eps (single-dot multiphoton probability from the loading/filter chain): 0.1362",
         "g2_dot before aperture composition: f1b_g2(mu=0.541, eps=0.1362) = 0.1502",
         "After continuous aperture composition (N_w-weighted lam=0.0170): g2_dot = 0.1783",
-        "g2(0) = 1 - rho^2 (1 - g2_dot) = 0.4605 -- clears the gate, fails the floor"
+        "Static chain above: g2(0) = 0.4605 (superseded); actual finite-pulse g2_op = 0.9977 -- clears neither gate nor floor"
       ],
       "equations": [
         {
@@ -896,7 +955,7 @@
           "caption": "background law (fsim_core.integrator.g2_from); rho enters here squared, AFTER g2_dot already carries the loading and aperture corrections"
         }
       ],
-      "notes": "The same favourable operating point that produced the collected-flux chain on the previous slide also fixes the quantities that determine g2(0), and the full chain -- not just its first step -- matters. rho = GS/(GS+B) is the fraction of collected light that is genuine dot signal rather than background: at this corner rho = 0.810, meaning roughly 19% of collected counts are background, dominated by b_res (transferred from Reischle 2008) plus the transport-computed matrix/WL channel b_e. eps = 0.136 is the single-dot multiphoton probability the spectral/filter chain leaves behind, unchanged from the earlier physics at this corner's own delta_xx = 8 meV (eps_op falls from 0.6509 to 0.1798 at delta_xx = 7 meV alone). The dot-side cap-2 formula, now evaluated at the corrected mu = 0.541 rather than mu = 1, f1b_g2(mu=0.541, eps=0.136), gives g2_dot = 0.150 -- NOT yet g2(0). Continuous aperture composition with the neighbour-dot bath (lam = 0.0170) raises this to g2_dot = 0.178. Only then does the background law apply: g2(0) = 1 - rho^2 (1 - g2_dot) = 0.461 at T_hs = 300 K, numerically below the 0.5 threshold but at only 62.1 photons/s -- below the collected-flux eligibility floor, so this corner is not a genuine headline pass. The SAME favourable levers reach g2(0) = 0.444 at T_hs = 230 K (449 photons/s), also below the flux floor. Skipping aperture composition would instead give g2(0) = 0.442, an easily missed omission this slide shows explicitly.",
+      "notes": "The same favourable operating point that produced the collected-flux chain on the previous slide also fixes the quantities that determine g2(0) under the STATIC-loading formula -- but the headline model (drive.finite_pulse=true) instead computes g2_op from pulse_counting's own finite-pulse dynamics, a different code path this chain does not reproduce, so the two numbers below diverge; the static chain is kept as a labelled comparison, not the reported number. rho = GS/(GS+B): under the static formula, rho = 0.810, meaning roughly 19% of collected counts are background (b_res transferred from Reischle 2008, plus the transport-computed matrix/WL channel b_e). eps = 0.136 is the single-dot multiphoton probability the spectral/filter chain leaves behind (finite_pulse-invariant), unchanged from delta_xx = 8 meV physics (eps_op falls from 0.6509 to 0.1798 at delta_xx = 7 meV alone). The dot-side cap-2 formula, at the corrected mu = 0.541 rather than mu = 1, f1b_g2(mu=0.541, eps=0.136), gives g2_dot = 0.150 -- NOT yet g2(0). Aperture composition (lam = 0.0170) raises this to g2_dot = 0.178, and the static background law then gives g2(0) = 0.461 at T_hs = 300 K -- not the number the headline model reports. Under the corrected finite-pulse model, g2(0) = 0.998 at 300 K (80.3 photons/s, below the flux floor) and 0.982 at 230 K (578.8 photons/s, also below floor). Skipping aperture composition in the static chain would instead give g2(0) = 0.442, an easily missed omission this slide shows explicitly.",
       "sources": [
         "fsim_core/loading.py: f1b_g2, f8_g2, aperture_g2",
         "fsim_core/integrator.py: g2_from",
@@ -906,7 +965,7 @@
         "rho_favorable_corner": {
           "value": 0.810306,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', favorable=True)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'rho_op', favorable=True, finite_pulse=False)"
         },
         "eps_favorable_corner": {
           "value": 0.13616541706364768,
@@ -928,15 +987,20 @@
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_dot_post_aperture('cards/edge-inp-gainp-design.yaml', favorable=True)"
         },
-        "g2_favorable_corner": {
+        "g2_favorable_corner_static_loading": {
           "value": 0.460506,
           "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True, finite_pulse=False)"
+        },
+        "g2_favorable_corner": {
+          "value": 0.997658,
+          "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True)"
         },
-        "g2_favorable_corner_from_chain": {
+        "g2_favorable_corner_from_chain_static_loading": {
           "value": 0.460506,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_op_from_chain('cards/edge-inp-gainp-design.yaml', favorable=True)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).g2_op_from_chain('cards/edge-inp-gainp-design.yaml', favorable=True, finite_pulse=False)"
         },
         "eps_op_gamma300_12meV_delta7_300K": {
           "value": 0.650940040491455,
@@ -948,8 +1012,13 @@
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).eps_op_at('cards/edge-inp-gainp-design.yaml', gamma300=6.0, T_hs=300.0)"
         },
-        "g2_favorable_corner_230K_grid_min": {
+        "g2_favorable_corner_230K_grid_min_static_loading": {
           "value": 0.443925,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True, T_hs=230.0, finite_pulse=False)"
+        },
+        "g2_favorable_corner_230K_grid_min": {
+          "value": 0.981747,
           "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True, T_hs=230.0)"
         }
@@ -1022,14 +1091,14 @@
             "300 (favourable corner)",
             "0.99266",
             "0.000187",
-            "0.461",
-            "0.810",
-            "62.1",
-            "gate PASS, flux FAIL"
+            "0.998",
+            "0.866",
+            "80.3",
+            "gate FAIL, flux FAIL"
           ]
         ]
       },
-      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from earlier in the worked example, so the two threads of this section -- 'what happens as heat-sink temperature rises at the card's own default parameters' and 'what is the best this platform can do at 300 K under its own sampled grid' -- sit side by side. At the gainp card's default dot parameters (delta_xx=7 meV, gamma300=12 meV), the single-photon gate g2(0) < 0.5 clearly passes at 80 K and clearly fails at both 230 K and 300 K under the corrected finite-pulse loading model. Resampling dot.gamma300 -- an unmeasured [E]-class input -- together with the collection-lever axes at 300 K still finds a corner, delta_xx=8 meV, gamma300=6 meV, NA=0.8, R_back=0.95, L_um=250 um, where g2(0) = 0.461 numerically clears the gate, but its collected flux, 62.1 photons/s, now falls far below the 1000 photons/s eligibility floor -- this corner is no longer measurable, let alone comfortably passing. Neither row is 'the' answer: the default-parameter ladder is honest about what this card does at its own as-designed point, and the favourable corner shows that even the best sampled linewidth/collection combination cannot restore eligibility once the finite-pulse loading correction is applied. Every number in both rows traces to the SAME evaluate() call convention used throughout this section.",
+      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from earlier in the worked example, so the two threads of this section -- 'what happens as heat-sink temperature rises at the card's own default parameters' and 'what is the best this platform can do at 300 K under its own sampled grid' -- sit side by side. At the gainp card's default dot parameters (delta_xx=7 meV, gamma300=12 meV), the single-photon gate g2(0) < 0.5 clearly passes at 80 K and clearly fails at 230/300 K under the static-loading formula shown here (see 03-19). Resampling dot.gamma300 -- an unmeasured [E]-class input -- with the collection-lever axes at 300 K, under the corrected finite-pulse loading model (the headline model out/rt_edge/verdict.md reports), finds a corner, delta_xx=8 meV, gamma300=6 meV, NA=0.8, R_back=0.95, L_um=250 um, where g2(0) = 0.998 -- no longer clears the gate -- and collected flux, 80.3 photons/s, falls far below the 1000 photons/s floor: no longer measurable, let alone passing. Neither row is 'the' answer: the ladder is honest about the as-designed point under the static formula, and the favourable corner shows even the best sampled combination cannot restore eligibility once the finite-pulse correction is applied. Every number traces to the SAME evaluate() convention used throughout this section.",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md"
@@ -1038,16 +1107,16 @@
         "gate_pass_80K": {
           "value": 1,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=80.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=80.0, finite_pulse=False)"
         },
         "gate_pass_300K_default": {
           "value": 0,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=300.0)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=300.0, finite_pulse=False)"
         },
         "gate_pass_300K_favorable": {
-          "value": 1,
-          "file": "cards/edge-inp-gainp-design.yaml",
+          "value": 0,
+          "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', favorable=True)"
         }
       }

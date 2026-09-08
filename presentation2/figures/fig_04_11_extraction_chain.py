@@ -14,6 +14,7 @@ again. Panel 2's lever steps are read fresh from out/rt_edge/sweep.csv
 false) rather than hardcoded from a stale sweep run.
 Contract reference: docs/rt_edge_contract.md.
 """
+import csv
 from pathlib import Path
 import sys
 import numpy as np
@@ -24,6 +25,31 @@ sys.path.insert(0, str(ROOT))
 
 from fsim_core.device import DeviceDesign, _resolve_edge  # noqa: E402
 from fsim_core import waveguide as wg  # noqa: E402
+
+
+def _lever_step_flux(na: float, r_back: float, l_um: float) -> float:
+    """pkg5b fix, item 5: panel 2's four lever-step fluxes read fresh from
+    out/rt_edge/sweep.csv's headline-model rows (drive.finite_pulse=true,
+    ret.tau_cap_scales_with_density=false), at this card's own best sampled
+    corner (delta_xx=8 meV, gamma300=6 meV, T_hs=300 K) -- never a hardcoded
+    literal list, which would silently go stale the next time the sweep (or
+    the physics it reports) changes. sweep.csv is read-only here (out of
+    scope for regeneration); duplicate rows (one per sampled irf_ps, which
+    the pulsed sub-result does not depend on) collapse to the same value, so
+    the first match is used."""
+    with (ROOT / "out" / "rt_edge" / "sweep.csv").open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if (row["card_id"] == "edge-inp-gainp-design"
+                    and row["model_finite_pulse"] == "True"
+                    and row["model_tau_cap_density"] == "False"
+                    and float(row["delta_xx_meV"]) == 8.0
+                    and float(row["gamma300_meV"]) == 6.0
+                    and float(row["T_hs_K"]) == 300.0
+                    and float(row["emission_NA"]) == na
+                    and float(row["emission_R_back"]) == r_back
+                    and float(row["emission_L_um"]) == l_um):
+                return float(row["collected_flux_pulsed_s"])
+    raise ValueError(f"no sweep.csv row matches NA={na}, R_back={r_back}, L_um={l_um}")
 
 plt.rcParams['font.size'] = 14
 
@@ -104,13 +130,21 @@ ax1.grid(True, axis="y", linestyle=":", alpha=0.5)
 # All four remain far below the 1000 photons/s eligibility floor under the
 # corrected finite-pulse loading model -- unlike the pre-pkg5b figure, none
 # of these steps clears it.
+flux_vals = [
+    _lever_step_flux(na=0.5, r_back=0.0, l_um=500.0),   # baseline (uncoated)
+    _lever_step_flux(na=0.5, r_back=0.95, l_um=500.0),  # + HR mirror
+    _lever_step_flux(na=0.5, r_back=0.95, l_um=250.0),  # + short cavity
+    _lever_step_flux(na=0.8, r_back=0.95, l_um=250.0),  # + high-NA lens
+]
+# Per-step gain ratios (over the PRECEDING step), computed from flux_vals
+# itself rather than hardcoded -- pkg5b fix, item 5.
+step_ratios = [flux_vals[i] / flux_vals[i - 1] for i in range(1, len(flux_vals))]
 steps = [
     "Baseline\n(uncoated)",
-    "+ HR Mirror\n($2.08\\times$)",
-    "+ Short Cavity\n($1.19\\times$)",
-    "+ High-NA Lens\n($1.49\\times$)",
+    f"+ HR Mirror\n(${step_ratios[0]:.2f}\\times$)",
+    f"+ Short Cavity\n(${step_ratios[1]:.2f}\\times$)",
+    f"+ High-NA Lens\n(${step_ratios[2]:.2f}\\times$)",
 ]
-flux_vals = [21.82, 45.28, 53.88, 80.34]
 
 x2 = np.arange(len(steps))
 colors = ["#E53E3E", "#DD6B20", "#D69E2E", "#38A169"]
@@ -126,7 +160,7 @@ for b, val in zip(bars2, flux_vals):
               lbl, ha="center", va="bottom", fontsize=12, fontweight="bold")
 
 ax2.annotate("Still below the floor\nat every lever combination",
-              xy=(3, 80.34), xytext=(1.0, 550),
+              xy=(3, flux_vals[-1]), xytext=(1.0, 550),
               arrowprops=dict(arrowstyle="->", color="#822727", lw=2),
               fontsize=12, fontweight="bold", color="#822727",
               bbox=dict(boxstyle="round,pad=0.3", facecolor="#FFF5F5", edgecolor="#C53030"))

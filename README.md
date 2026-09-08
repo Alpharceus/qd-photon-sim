@@ -163,8 +163,16 @@ the previous conditional result no longer holds. The old, uncorrected
 `finite_pulse=false, tau_cap_density=false` combination (every package before
 this one) now also reports `0/768` eligible on the current physics; only the
 opt-in `ret.tau_cap_scales_with_density=true` ("full-cancellation") retention
-convention restores any eligible/passing rows (392/768 eligible, 170 headline
-passes, `g2_min=0.2995` at `finite_pulse=false`) -- see the verdict's "Model
+convention restores any eligible/passing rows when `finite_pulse=false`
+(392/768 eligible, 170 headline passes, `g2_min=0.2995`) -- but that
+combination never runs with the corrected loading model. With
+`finite_pulse=true` (the corrected model) turned on, `tau_cap_density=true`
+gives 496/768 eligible rows and still **0 headline passes**
+(`g2_min=0.8291`, above the 0.5 gate): **nothing passes g2 < 0.5 once
+finite-pulse counting is on**, in either retention convention. The
+mechanism is re-excitation inside the 100 ps pulsed-counting gate (a second
+capture-emission cycle before the gate closes), which the static
+per-pulse loading approximation could not see. See the verdict's "Model
 sensitivity" table for all four combinations side by side. See
 **`docs/rt_edge_tier.md`** for current counts, assumptions, disclosures, and
 council review history.

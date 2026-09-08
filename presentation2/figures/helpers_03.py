@@ -90,13 +90,28 @@ def _apply_overrides(design: DeviceDesign, overrides: dict) -> None:
 
 
 def load_design(card_path: str, favorable: bool = False, cw: bool = False,
-                 T_hs: float | None = None, irf_ps: float | None = None) -> DeviceDesign:
+                 T_hs: float | None = None, irf_ps: float | None = None,
+                 finite_pulse: bool = True, tau_cap_density: bool = False) -> DeviceDesign:
     """Load `card_path` (relative to the repository root) fresh and apply the
     overrides a slide describes: `favorable` for the favourable diagnostic
     corner (pulsed by default unless `cw`), `cw` to force CW drive (with
     `irf_ps` overriding drive.cw_irf_fwhm_ps), `T_hs` to override
-    thermal.T_hs."""
+    thermal.T_hs.
+
+    pkg5b self-check fix, item 2: `finite_pulse`/`tau_cap_density` set
+    `design.drive.finite_pulse`/`design.ret.tau_cap_scales_with_density` --
+    scripts/run_rt_edge.py's own HEADLINE_MODEL, `{drive.finite_pulse: True,
+    ret.tau_cap_scales_with_density: False}` (the corrected, no-cancellation
+    model out/rt_edge/verdict.md's VERDICT line is computed over) -- so
+    `finite_pulse` DEFAULTS TO TRUE here, not device.py's own dataclass
+    default (False): every slide quoting a "corrected finite-pulse" number
+    must call this with the headline model, and doing so requires no
+    override at all now. Pass `finite_pulse=False` explicitly for a slide
+    that deliberately quotes the superseded static-loading number for
+    comparison (labelled as such in the slide's own prose)."""
     design = DeviceDesign.load(_ROOT / card_path)
+    design.drive.finite_pulse = bool(finite_pulse)
+    design.ret.tau_cap_scales_with_density = bool(tau_cap_density)
     if favorable:
         _apply_overrides(design, FAVORABLE_OVERRIDES)
         if not cw:
@@ -114,11 +129,14 @@ def load_design(card_path: str, favorable: bool = False, cw: bool = False,
 
 def evaluate_card(card_path: str, key: str | None = None, favorable: bool = False,
                    cw: bool = False, T_hs: float | None = None,
-                   irf_ps: float | None = None):
+                   irf_ps: float | None = None, finite_pulse: bool = True,
+                   tau_cap_density: bool = False):
     """Fresh DeviceDesign.load(card_path) -> evaluate() at thermal.T_hs
     (after any override), returning scalars[key] if given, else the full
-    scalars dict."""
-    design = load_design(card_path, favorable=favorable, cw=cw, T_hs=T_hs, irf_ps=irf_ps)
+    scalars dict. `finite_pulse`/`tau_cap_density` forward to load_design
+    (pkg5b self-check fix, item 2): default is the HEADLINE_MODEL."""
+    design = load_design(card_path, favorable=favorable, cw=cw, T_hs=T_hs, irf_ps=irf_ps,
+                         finite_pulse=finite_pulse, tau_cap_density=tau_cap_density)
     scalars = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]
     return scalars[key] if key is not None else scalars
 
@@ -148,10 +166,13 @@ def drive_field(card_path: str, field: str) -> float:
 
 
 def gate_pass(card_path: str, threshold: float = 0.5, favorable: bool = False,
-              T_hs: float | None = None) -> float:
+              T_hs: float | None = None, finite_pulse: bool = True) -> float:
     """1.0 if scalars['g2_op'] < threshold else 0.0, at the given corner --
-    the section's pass/fail gate, as a float for the how-expression contract."""
-    g2 = evaluate_card(card_path, "g2_op", favorable=favorable, T_hs=T_hs)
+    the section's pass/fail gate, as a float for the how-expression contract.
+    `finite_pulse` forwards to evaluate_card (pkg5b self-check fix, item 2);
+    default True (the headline model)."""
+    g2 = evaluate_card(card_path, "g2_op", favorable=favorable, T_hs=T_hs,
+                       finite_pulse=finite_pulse)
     return 1.0 if g2 < threshold else 0.0
 
 
@@ -175,11 +196,22 @@ def g2_dot_post_aperture(card_path: str, favorable: bool = False,
 
 
 def g2_op_from_chain(card_path: str, favorable: bool = False,
-                      T_hs: float | None = None) -> float:
+                      T_hs: float | None = None, finite_pulse: bool = True) -> float:
     """The full item-1 chain reproduced end to end -- f1b_g2 -> aperture
     composition -> g2_from(g2_dot, rho) -- as an independent cross-check
-    that it reaches the SAME g2_op evaluate() itself reports."""
-    sc = evaluate_card(card_path, favorable=favorable, T_hs=T_hs)
+    that it reaches the SAME g2_op evaluate() itself reports.
+
+    pkg5b self-check fix, item 2: this chain (f1b_g2 -> aperture composition
+    -> g2_from) is device.py's `drive.finite_pulse=False` (static-loading)
+    g2 formula ONLY -- under `finite_pulse=True` (the headline model),
+    device.py instead computes g2_op from pulse_counting's own finite-pulse
+    dynamics (finite_pulse_g2_dot), a different code path this chain does
+    NOT reproduce, so the two values genuinely diverge once finite_pulse is
+    on. `finite_pulse` therefore forwards to `evaluate_card` (rho_op is
+    finite_pulse-sensitive; g2_dot_post_aperture's own f1b_g2/eps_op inputs
+    are not) -- pass `finite_pulse=False` explicitly for the labelled
+    static-loading cross-check this chain actually performs."""
+    sc = evaluate_card(card_path, favorable=favorable, T_hs=T_hs, finite_pulse=finite_pulse)
     g2_dot = g2_dot_post_aperture(card_path, favorable=favorable, T_hs=T_hs)
     return float(g2_from(g2_dot, sc["rho_op"]))
 

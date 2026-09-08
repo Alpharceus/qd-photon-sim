@@ -794,7 +794,9 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "Why brightness changes the answer",
         [f"Flux margin is {flux_margin}; values above 1 clear the 1000 photons/s floor, below 1 do not",
          "The corrected circular-NA model raises collected flux, but not enough under the corrected loading model",
-         f"Maximum collected flux is {brightness['reported collected_flux_pulsed_s']} photons/s"],
+         f"Maximum collected flux across the grid is {verdict['metrics']['flux_max']} photons/s; "
+         f"the best-diagnostic (lowest-g2) row reaches "
+         f"{brightness['reported collected_flux_pulsed_s']}"],
         f"The factor table is read from out/rt_edge/verdict.md: loading={brightness[loading_key]}, "
         f"t_X={brightness['t_X (spectral transmission)']}, retention={brightness['S (confinement retention)']}, "
         f"and repetition rate={brightness['rep rate (Hz)']} Hz. These levers no longer buy enough "
