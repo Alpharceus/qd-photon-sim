@@ -360,7 +360,7 @@
         "caption": "Fresh gainp-card rate-equation g2_meas(tau), plotted from -0.25 to +0.25 ns with 4 ps sampling.",
         "script": "presentation2/figures/fig_02_14_cw.py"
       },
-      "notes": "Continuous electrical or optical pumping produces a steady-state photon stream rather than discrete pulses, and its g^(2)(tau) is obtained by a different route: the quantum regression theorem, which for the classical three-state Markov chain of the previous slides reduces to 'propagate the post-jump state forward under the same generator M'. After detecting an X photon the dot is reset to |0>; after detecting an XX photon it is reset to |X>; cw_g2.py's cw_report() builds both post-jump propagators, weights them by their steady-state photon rates and the filter transmissions t_X, t_XX, and returns the intrinsic curve g2_dot, the background-mixed curve g2_meas, and the IRF-convolved curve g2_raw together [Gardiner and Collett, Phys. Rev. A 31, 3761 (1985)]. In the low-pump limit this reduces to g^(2)_dot(0) -> epsilon * pump_ratio * (S_XX/S_X), the CW analogue of the pulsed F1 identity. The figure loads the fresh gainp design card (cards/edge-inp-gainp-design.yaml) at its own resolved 80 K and 300 K operating points -- pump rate, retention, escape, filter window, and background all recomputed from the card, giving g2_meas(0) about 0.23 at 80 K and 0.72 at 300 K -- and this is a rate-equation regression on a classical generator, not a field-quantized calculation; CW and pulsed g^(2) remain genuinely different observables of the same device.",
+      "notes": "Continuous electrical or optical pumping produces a steady-state photon stream rather than discrete pulses, and its g^(2)(tau) is obtained by a different route: the quantum regression theorem, which for the classical three-state Markov chain of the previous slides reduces to 'propagate the post-jump state forward under the same generator M'. After detecting an X photon the dot is reset to |0>; after detecting an XX photon it is reset to |X>; cw_g2.py's cw_report() builds both post-jump propagators, weights them by their steady-state photon rates and the filter transmissions t_X, t_XX, and returns the intrinsic curve g2_dot, the background-mixed curve g2_meas, and the IRF-convolved curve g2_raw together [Gardiner and Collett, Phys. Rev. A 31, 3761 (1985)]. In the low-pump limit this reduces to g^(2)_dot(0) -> epsilon * pump_ratio * (S_XX/S_X), the CW analogue of the pulsed F1 identity. The figure loads the fresh gainp design card (cards/edge-inp-gainp-design.yaml) at its own resolved 80 K and 300 K operating points -- pump rate, retention, escape, filter window, and background all recomputed from the card, giving g2_meas(0) about 0.23 at 80 K and 0.74 at 300 K -- and this is a rate-equation regression on a classical generator, not a field-quantized calculation; CW and pulsed g^(2) remain genuinely different observables of the same device.",
       "sources": [
         "fsim_core/cw_g2.py: cw_report",
         "Gardiner and Collett 1985"
@@ -368,12 +368,12 @@
       "repo_numbers": {
         "cw_gainp_g2_meas0_80K": {
           "file": "presentation2/figures/fig_02_14_cw.py",
-          "value": 0.2273157246955827,
+          "value": 0.22688352202693884,
           "how": "(design := __import__('fsim_core.device',fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'), setattr(design.thermal,'T_hs',80.0), (dev := __import__('fsim_core.device',fromlist=['x'])), (cwm := __import__('fsim_core.cw_g2',fromlist=['x'])), (sc := dev.evaluate(design, T_grid=[80.0])['scalars']), (params := dev._confinement_params(design.ret, 80.0)), (gamma := float(sc['cw_gamma_X_ns'])), (kx_kxx := cwm.escape_rates_from_retention(gamma, params['a_esc'], params['E_a'], params['b_p'], params['E_b'], 80.0, gamma_XX_ns=2.0*gamma)), cwm.cw_report(float(sc['cw_r_ns']), gamma, 2.0*gamma, kx_kxx[0], kx_kxx[1], 1.0, float(sc['eps_op']), float(sc['cw_rho_op']), irf_fwhm_ps=0, tau_max_ns=0.25, n_tau=4001)['g2_meas0'])[-1]"
         },
         "cw_gainp_g2_meas0_300K": {
           "file": "presentation2/figures/fig_02_14_cw.py",
-          "value": 0.7236904976348915,
+          "value": 0.742740390916948,
           "how": "(design := __import__('fsim_core.device',fromlist=['x']).DeviceDesign.load('cards/edge-inp-gainp-design.yaml'), setattr(design.thermal,'T_hs',300.0), (dev := __import__('fsim_core.device',fromlist=['x'])), (cwm := __import__('fsim_core.cw_g2',fromlist=['x'])), (sc := dev.evaluate(design, T_grid=[300.0])['scalars']), (params := dev._confinement_params(design.ret, 300.0)), (gamma := float(sc['cw_gamma_X_ns'])), (kx_kxx := cwm.escape_rates_from_retention(gamma, params['a_esc'], params['E_a'], params['b_p'], params['E_b'], 300.0, gamma_XX_ns=2.0*gamma)), cwm.cw_report(float(sc['cw_r_ns']), gamma, 2.0*gamma, kx_kxx[0], kx_kxx[1], 1.0, float(sc['eps_op']), float(sc['cw_rho_op']), irf_fwhm_ps=0, tau_max_ns=0.25, n_tau=4001)['g2_meas0'])[-1]"
         }
       }
@@ -599,7 +599,7 @@
         "caption": "2x2 sampled grid; each box aggregates 192 sweep rows (min/median/max shown by the distribution).",
         "script": "presentation2/figures/fig_02_22_landscape.py"
       },
-      "notes": "This is not a continuous landscape. out/rt_edge/sweep.csv samples only a 2x2 grid: Gamma(300 K) = 6 or 20 meV and Delta_XX = 4 or 8 meV. Each cell contains 192 rows varying card, T_hs, IRF, NA, R_back, and L; the plot honestly summarizes their pulsed g^(2) distributions. Its cell minima are 0.437, 0.321, 0.763, and 0.653 respectively for (6,4), (6,8), (20,4), and (20,8) meV. The sensitivity remains design guidance, not a device measurement. Laferriere's optically pumped InAsP/InP nanowire dot reaches g^(2)(0)=0.57 at 300 K [Laferriere et al., Nano Lett. 23, 962 (2023)], while Deshpande's electrical 300 K result is g^(2)(0)=0.29 on nitride InGaN/GaN [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]. No row combines electrical drive, 300 K, g^(2)(0) < 0.5 and an arsenide or phosphide epitaxial dot.",
+      "notes": "This is not a continuous landscape. out/rt_edge/sweep.csv now also carries two opt-in physics-model axes (pkg5b); restricted to the corrected headline combination (drive.finite_pulse=true, ret.tau_cap_scales_with_density=false), it still samples the SAME 2x2 grid: Gamma(300 K) = 6 or 20 meV and Delta_XX = 4 or 8 meV. Each cell contains 192 rows varying card, T_hs, IRF, NA, R_back, and L; the plot honestly summarizes their pulsed g^(2) distributions. Its cell minima are now 0.985, 0.982, 1.000, and 0.991 respectively for (6,4), (6,8), (20,4), and (20,8) meV -- none clears the 0.5 threshold anywhere in this grid under the corrected loading model, consistent with the sweep's own 0/768 eligible headline rows. The sensitivity remains design guidance, not a device measurement. Laferriere's optically pumped InAsP/InP nanowire dot reaches g^(2)(0)=0.57 at 300 K [Laferriere et al., Nano Lett. 23, 962 (2023)], while Deshpande's electrical 300 K result is g^(2)(0)=0.29 on nitride InGaN/GaN [Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)]. No row combines electrical drive, 300 K, g^(2)(0) < 0.5 and an arsenide or phosphide epitaxial dot.",
       "sources": [
         "out/rt_edge/sweep.csv",
         "Chatzarakis et al. 2023",
@@ -611,37 +611,37 @@
         "sweep_row_count": {
           "file": "out/rt_edge/sweep.csv",
           "value": 768,
-          "how": "sum(1 for _ in open('out/rt_edge/sweep.csv'))-1",
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').shape[0]",
           "tolerance": 0.001
         },
         "sweep_cell_count": {
           "file": "out/rt_edge/sweep.csv",
           "value": 192,
-          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').groupby(['gamma300_meV','delta_xx_meV']).size().iloc[0]",
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').groupby(['gamma300_meV','delta_xx_meV']).size().iloc[0]",
           "tolerance": 0.001
         },
         "sweep_cell_min_6_8": {
           "file": "out/rt_edge/sweep.csv",
-          "value": 0.321359,
-          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 6 and delta_xx_meV == 8').g2_pulsed.min()",
+          "value": 0.9817466321937582,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').query('gamma300_meV == 6 and delta_xx_meV == 8').g2_pulsed.min()",
           "tolerance": 0.001
         },
         "sweep_cell_min_6_4": {
           "file": "out/rt_edge/sweep.csv",
-          "value": 0.436875,
-          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 6 and delta_xx_meV == 4').g2_pulsed.min()",
+          "value": 0.9845531718155868,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').query('gamma300_meV == 6 and delta_xx_meV == 4').g2_pulsed.min()",
           "tolerance": 0.001
         },
         "sweep_cell_min_20_4": {
           "file": "out/rt_edge/sweep.csv",
-          "value": 0.763185,
-          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 20 and delta_xx_meV == 4').g2_pulsed.min()",
+          "value": 0.9997213917364756,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').query('gamma300_meV == 20 and delta_xx_meV == 4').g2_pulsed.min()",
           "tolerance": 0.001
         },
         "sweep_cell_min_20_8": {
           "file": "out/rt_edge/sweep.csv",
-          "value": 0.653321,
-          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('gamma300_meV == 20 and delta_xx_meV == 8').g2_pulsed.min()",
+          "value": 0.9913911288541007,
+          "how": "__import__('pandas').read_csv('out/rt_edge/sweep.csv').query('model_finite_pulse == True and model_tau_cap_density == False').query('gamma300_meV == 20 and delta_xx_meV == 8').g2_pulsed.min()",
           "tolerance": 0.001
         }
       }
@@ -751,7 +751,7 @@
         "Add HOM visibility and electrical-pulsing data.",
         "Treat the sweep as design guidance, not evidence."
       ],
-      "notes": "Five items remain open, matching the slide bullets. First and most gating is Measurement 1: an actual Gamma(T) and Delta_XX distribution to 300 K on the electrical InP/GaAsP target dot. Second is demonstrating confinement and edge collection together. Third is calibrating background, IRF, filter, and pulsing. Fourth is adding HOM visibility and electrical-pulsing data. Fifth is retaining the sweep as design guidance rather than evidence. For the electrical arm, Kantner-style transport-to-Lindblad coupling would replace device.py's one-way injection parameters with a dynamical, bidirectional link [Kantner, Mittnenzweig and Koprucki, Phys. Rev. B 96, 205301 (2017)]. The staged 120 K, g^(2)<=0.1 target with a large-lens dot, quiet high-impedance rail, and 10-12 pair DBR, and the 77 K slit-filter/no-cavity target, are from the owner's slide 9 [digest-qd-quantum-treatment.md]. The actual current repository verdict is FAIL with evidence=incomplete and conditional=true [out/rt_edge/verdict.md], so those staged targets are not a simulator verdict.",
+      "notes": "Five items remain open, matching the slide bullets. First and most gating is Measurement 1: an actual Gamma(T) and Delta_XX distribution to 300 K on the electrical InP/GaAsP target dot. Second is demonstrating confinement and edge collection together. Third is calibrating background, IRF, filter, and pulsing. Fourth is adding HOM visibility and electrical-pulsing data. Fifth is retaining the sweep as design guidance rather than evidence. For the electrical arm, Kantner-style transport-to-Lindblad coupling would replace device.py's one-way injection parameters with a dynamical, bidirectional link [Kantner, Mittnenzweig and Koprucki, Phys. Rev. B 96, 205301 (2017)]. The staged 120 K, g^(2)<=0.1 target with a large-lens dot, quiet high-impedance rail, and 10-12 pair DBR, and the 77 K slit-filter/no-cavity target, are from the owner's slide 9 [digest-qd-quantum-treatment.md]. The actual current repository verdict is FAIL with evidence=incomplete, conditional=false, and 0/768 eligible rows under the corrected finite-pulse loading model [out/rt_edge/verdict.md], so those staged targets are not a simulator verdict.",
       "sources": [
         "Project's own treatment slides",
         "Kantner et al., PRB 96, 205301 (2017)",
@@ -761,7 +761,7 @@
       "repo_numbers": {
         "verdict_conditional": {
           "file": "out/rt_edge/verdict.md",
-          "value": 1,
+          "value": 0,
           "how": "int('conditional=true' in open('out/rt_edge/verdict.md', encoding='utf-8').read())"
         }
       }

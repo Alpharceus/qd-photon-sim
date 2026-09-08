@@ -148,20 +148,24 @@ p-i-n transport, ridge waveguide, and CW correlation; new opt-in
 `device.py` blocks; two design cards; and a reproducible acceptance sweep
 (`scripts/run_rt_edge.py`) with its own verify suite.
 
-The honest conditional outcome, from `out/rt_edge/verdict.md`, is:
+The honest outcome, from `out/rt_edge/verdict.md`, is:
 
 ```
-VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192
+VERDICT: FAIL model=finite_pulse:true,tau_cap_density:false g2_min=nan g2_median_eligible=nan diag_g2_min=0.9817 diag_g2_median_diagnostic=0.9993 flux_max=582.8 flux_margin=0.5828 flux_shortfall_deprecated=1.716 median_pass=false coverage_over_eligible=nan eligible_fraction=0 eligible=0/768 flux_floor_excluded=768 evidence=incomplete conditional=false headline_coverage=0/768 headline_coverage_pulsed=0/384 headline_dedup_mismatch_groups=0 eligible_dedup=0/384 eligible_dedup_mismatch_groups=0 rows_scheduled=0/768 cw_raw_coverage=0/0 gamma300_pass_max=nan gamma300_threshold=n/a T_pass_min=none headline_by_T=230:0/192,250:0/192,273:0/192,300:0/192 headline_by_T_pulsed=230:0/96,250:0/96,273:0/96,300:0/96
 ```
 
-Under the relaxed stop rule (`T_hs >= 230 K`), the primary card passes at 230,
-250, and 273 K, while the fallback card passes at 230, 250, 273, and 300 K;
-all headline passes are at sampled `gamma300=6.0 meV`. The 300 K line remains
-the room-temperature result and is conditional on the fallback card and an
-unmeasured linewidth. The pooled threshold is 10--12 meV and
-`T_pass_min=230`; evidence remains incomplete, so this is not a PASS. The
-corrected circular-NA collection model raises the favourable-corner flux from
-1544.4 to 6890.03 photons/s (NA 0.548244 to 0.857853). See
+This is the pkg5b-corrected headline model (`drive.finite_pulse=true`, the
+real finite-pulse-waveform loading calculation, replacing the legacy static
+per-pulse `mu` approximation every earlier package used): under it, **no
+sampled corner clears the 1 kHz collected-flux floor at all**
+(`eligible=0/768`), so `g2_min`/`T_pass_min` are undefined (`nan`/`none`) and
+the previous conditional result no longer holds. The old, uncorrected
+`finite_pulse=false, tau_cap_density=false` combination (every package before
+this one) now also reports `0/768` eligible on the current physics; only the
+opt-in `ret.tau_cap_scales_with_density=true` ("full-cancellation") retention
+convention restores any eligible/passing rows (392/768 eligible, 170 headline
+passes, `g2_min=0.2995` at `finite_pulse=false`) -- see the verdict's "Model
+sensitivity" table for all four combinations side by side. See
 **`docs/rt_edge_tier.md`** for current counts, assumptions, disclosures, and
 council review history.
 

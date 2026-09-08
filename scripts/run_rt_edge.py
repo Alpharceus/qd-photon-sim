@@ -214,6 +214,51 @@ RANGE_BOUNDS = resolve_range_bounds()
 # declared range (or falls back to that card's own scalar) at run time.
 LEVER_PATHS = ["emission.NA", "emission.R_back", "emission.L_um"]
 
+# pkg5b (post council review of pkg1-6) item 1/2: two opt-in physics-
+# correction switches -- peer-review-triage.md finding 1 (drive.finite_pulse:
+# a genuine finite-pulse-waveform loading calculation, replacing the legacy
+# static per-pulse `mu` Poisson-loading approximation) and finding 1b
+# (ret.tau_cap_scales_with_density: whether the confinement escape rate's
+# capture time scales with dot density, the opt-in "full-cancellation"
+# convention, vs the shipped "no-cancellation" default) -- become genuine
+# sweep axes instead of being silently fixed at both cards' shared (False,
+# False) defaults, so the verdict reports the corrected model and the old
+# one side by side (docs/rt_edge_contract.md). drive.finite_pulse only
+# affects the PULSED per-pulse loading calculation (the CW rate-equation
+# path uses transport.loading.r_dot directly and never consults it, so
+# eval_cw_point below never overrides it -- it stays at the card's own
+# legacy False); ret.tau_cap_scales_with_density is retention/escape
+# physics shared by both the pulsed and CW sub-results, so both evaluators
+# override it identically for a given row.
+MODEL_AXIS_PATHS = ["drive.finite_pulse", "ret.tau_cap_scales_with_density"]
+MODEL_COMBOS = [
+    {"drive.finite_pulse": fp, "ret.tau_cap_scales_with_density": tcd}
+    for fp in (False, True) for tcd in (False, True)
+]
+# THE headline: the corrected finite-pulse loading model (finding 1 fixed),
+# left at the shipped no-cancellation retention convention (finding 1b's
+# default). headline_coverage_pulsed, T_pass_min, headline_by_T*, g2_min and
+# flux_max are all computed over ONLY this combination's rows (run_sweep);
+# the other three combinations never gate PASS and are reported side by side
+# in the "Model sensitivity" table instead. Every package before this one
+# left both switches at their card-default (False, False) -- the OLD,
+# uncorrected model is therefore exactly the (False, False) combination
+# below, not a hypothetical fifth configuration.
+HEADLINE_MODEL = {"drive.finite_pulse": True, "ret.tau_cap_scales_with_density": False}
+
+
+def _model_key(model: dict) -> str:
+    """Stable short dict/manifest key for a model combination, e.g. 'fp1_tcd0'."""
+    return (f"fp{int(bool(model['drive.finite_pulse']))}_"
+           f"tcd{int(bool(model['ret.tau_cap_scales_with_density']))}")
+
+
+def _model_token(model: dict) -> str:
+    """VERDICT-line/manifest token: finite_pulse:<bool>,tau_cap_density:<bool>
+    (no spaces, so it survives verdict_line's plain str.split() tokenizing)."""
+    return (f"finite_pulse:{'true' if model['drive.finite_pulse'] else 'false'},"
+           f"tau_cap_density:{'true' if model['ret.tau_cap_scales_with_density'] else 'false'}")
+
 # [A] pulsed-drive assumption: no published single-dot InP/GaAsP or
 # InP/GaInP pulsed excitation scheme exists at this design's pA-nA current
 # scale (cards/edge-inp-*-design.yaml provenance.sources["drive.I_uA"]).
@@ -304,24 +349,31 @@ REISCHLE_DECONV_G2_ERR = rt_papers.anchor_bound(_rt_anchors[_DECONV_G2_ANCHOR_ID
 
 # --------------------------------------------------------------------- grid
 
-def build_grid(quick: bool) -> dict:
+def build_grid(quick: bool, reduced: bool = False) -> dict:
     """{"dot.delta_xx": [...], "dot.gamma300": [...], "irf_ps": [...]}, always
     including both declared endpoints; quick=True is endpoints-only (spec:
     "explicitly marked incomplete and cannot grant scientific PASS"). The
     full grid was endpoints-plus-one-interior-sample (n=3) before council
     review round 4; it is now endpoints-only (n=2, same as --quick) so the
     three new emission.NA/R_back/L_um lever axes below (up to ~12 combos
-    per card) fit the ~15 minute runtime budget -- see _FULL_N above."""
+    per card) fit the ~15 minute runtime budget -- see _FULL_N above.
+
+    reduced (pkg5b item 1, non-headline model-combination fallback): collapse
+    irf_ps to its first sample only (2 x 2 x 1 x 4, matching the spec's
+    reduced-grid description). Never used for the headline model
+    combination, and ignored under --quick (already smaller than reduced)."""
     n = _ENDPOINT_N if quick else _FULL_N
     grid = {path: [float(v) for v in np.linspace(lo, hi, n)]
             for path, (lo, hi, _unit) in RANGE_BOUNDS.items()}
     lo, hi, _unit = RANGE_BOUNDS["thermal.T_hs"]
     grid["thermal.T_hs"] = ([float(lo), 250.0, 273.0, float(hi)]
                              if not quick else [float(lo), float(hi)])
+    if reduced and not quick:
+        grid["irf_ps"] = grid["irf_ps"][:1]
     return grid
 
 
-def resolve_lever_grid(design0: DeviceDesign, quick: bool) -> dict:
+def resolve_lever_grid(design0: DeviceDesign, quick: bool, reduced: bool = False) -> dict:
     """Per-card sample set for each of the three collection-lever axes
     (LEVER_PATHS): the card's own declared provenance.ranges endpoints plus
     the card's own scalar value, deduplicated (spec: "sampled at the range
@@ -332,7 +384,13 @@ def resolve_lever_grid(design0: DeviceDesign, quick: bool) -> dict:
     collapses every lever to the card's own scalar only (a single point),
     matching --quick's existing endpoints-only-but-smaller convention for
     the other axes (still explicitly incomplete; grid_complete governs
-    PASS eligibility, not this axis's density)."""
+    PASS eligibility, not this axis's density).
+
+    reduced (pkg5b item 1, non-headline model-combination fallback): collapse
+    to at most 4 lever combinations (2 x 2 x 1) instead of the full up-to-12
+    -- the first two resolved values on each of the first two LEVER_PATHS
+    (emission.NA, emission.R_back), and the card's own scalar only on the
+    last (emission.L_um). Never used for the headline combination."""
     ranges = (design0.provenance or {}).get("ranges", {})
     grid = {}
     for path in LEVER_PATHS:
@@ -353,6 +411,15 @@ def resolve_lever_grid(design0: DeviceDesign, quick: bool) -> dict:
             if not any(abs(v - seen) < 1e-12 for seen in deduped):
                 deduped.append(v)
         grid[path] = deduped
+    if reduced and not quick:
+        for i, path in enumerate(LEVER_PATHS):
+            if i == len(LEVER_PATHS) - 1:
+                # last lever axis (emission.L_um): collapse to the card's own
+                # scalar, matching --quick's own single-point convention.
+                block_name, field_name = path.split(".", 1)
+                grid[path] = [getattr(getattr(design0, block_name), field_name)]
+            else:
+                grid[path] = grid[path][:2]
     return grid
 
 
@@ -388,17 +455,28 @@ def _sha256_file(path: Path) -> str:
 
 def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
                       lever: dict, cache: dict | None = None,
-                      T_hs: float | None = None) -> dict:
+                      T_hs: float | None = None, model: dict | None = None) -> dict:
     """Pulsed sub-result at (delta_xx, gamma300, lever); irf_ps-independent,
     so cache is keyed without it and reused across the irf_ps sweep axis.
     g2_op itself does not depend on the emission.NA/R_back/L_um collection
     levers (device.py's edge-out-coupling factor only multiplies into
     brightness_per_pulse, never into op["g2"]) but brightness/collected
     flux do, so the lever values are still part of the cache key -- a
-    lever-varying row cannot reuse another lever's cached brightness."""
+    lever-varying row cannot reuse another lever's cached brightness.
+
+    model (pkg5b item 1/2): {"drive.finite_pulse": bool,
+    "ret.tau_cap_scales_with_density": bool} overrides -- also part of the
+    cache key, since both switches change the physics at an otherwise
+    identical (delta_xx, gamma300, lever, T_hs) point. Defaults to
+    HEADLINE_MODEL so every pre-existing caller that never passes `model`
+    (refine_gamma300, anchor_check, the section-1 fixtures) transparently
+    evaluates the corrected, headline model -- not the old (False, False)
+    default every package before this one silently used."""
+    model = model if model is not None else HEADLINE_MODEL
     base_T_hs = DeviceDesign.load(card_path).thermal.T_hs if T_hs is None else T_hs
     key = (str(card_path), "pulsed", delta_xx, gamma300, base_T_hs,
-          lever["emission.NA"], lever["emission.R_back"], lever["emission.L_um"])
+          lever["emission.NA"], lever["emission.R_back"], lever["emission.L_um"],
+          model["drive.finite_pulse"], model["ret.tau_cap_scales_with_density"])
     if cache is not None and key in cache:
         return cache[key]
     base = DeviceDesign.load(card_path)
@@ -407,6 +485,8 @@ def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
         "dot.delta_xx": delta_xx, "dot.gamma300": gamma300, "thermal.T_hs": base_T_hs,
         "drive.duty": duty, "drive.cw": False,
         "drive.diode": {**base.drive.diode, "tau_pulse_ns": PULSE_WIDTH_NS},
+        "drive.finite_pulse": model["drive.finite_pulse"],
+        "ret.tau_cap_scales_with_density": model["ret.tau_cap_scales_with_density"],
     }
     overrides.update(lever)
     design = resolve_device_card(card_path, overrides)
@@ -414,20 +494,32 @@ def eval_pulsed_point(card_path: Path, delta_xx: float, gamma300: float,
     flux = _collected_flux_s(sc)
     eligible, reasons = _classify(sc, flux, "pulsed")
     result = {"scalars": sc, "flux_s": flux, "eligible": eligible,
-              "reasons": reasons, "duty": duty}
+              "reasons": reasons, "duty": duty, "model": dict(model)}
     if cache is not None:
         cache[key] = result
     return result
 
 
 def eval_cw_point(card_path: Path, delta_xx: float, gamma300: float,
-                  irf_ps: float, lever: dict, T_hs: float | None = None) -> dict:
+                  irf_ps: float, lever: dict, T_hs: float | None = None,
+                  model: dict | None = None) -> dict:
     """CW (duty=1 DC) sub-result; genuinely irf_ps-dependent (g2_cw0_raw),
-    so every irf_ps grid value gets its own evaluate() call."""
+    so every irf_ps grid value gets its own evaluate() call.
+
+    model (pkg5b item 1/2): only ret.tau_cap_scales_with_density is applied
+    here -- drive.finite_pulse is the PULSED per-pulse loading calculation
+    (transport.dot_loading's static/finite-pulse `mu`), which the CW rate-
+    equation path (transport.loading.r_dot) never consults, so overriding it
+    for a CW evaluate() call would change nothing physically and would
+    additionally require an explicit drive.rep_rate_hz/duty (device.py's
+    EL-transport pulse-period guard) purely to satisfy a validation this row
+    does not need. Defaults to HEADLINE_MODEL, matching eval_pulsed_point."""
+    model = model if model is not None else HEADLINE_MODEL
     overrides = {
         "dot.delta_xx": delta_xx, "dot.gamma300": gamma300,
         "thermal.T_hs": (DeviceDesign.load(card_path).thermal.T_hs if T_hs is None else T_hs),
         "drive.duty": 1.0, "drive.cw": True, "drive.cw_irf_fwhm_ps": irf_ps,
+        "ret.tau_cap_scales_with_density": model["ret.tau_cap_scales_with_density"],
     }
     overrides.update(lever)
     design = resolve_device_card(card_path, overrides)
@@ -494,11 +586,19 @@ def _classify(sc: dict, flux_s: float, role: str) -> tuple[bool, list]:
 
 # ------------------------------------------------------------------ sweep
 
-def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple:
+def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool,
+              model: dict | None = None, reduced: bool = False) -> tuple:
     """One card's full cartesian (delta_xx, gamma300, irf_ps, lever) grid ->
     rows, plus the resolved per-card lever grid/combo count for manifest
     reporting. Every scheduled row is emitted, eligible or not (spec: never
-    drop invalid rows)."""
+    drop invalid rows).
+
+    model (pkg5b item 1/2): defaults to HEADLINE_MODEL; `reduced` selects the
+    non-headline model combinations' reduced lever grid (resolve_lever_grid's
+    own `reduced` flag) -- `grid` itself must already be the caller's chosen
+    full/reduced irf_ps grid (build_grid's `reduced` flag), since that axis
+    is shared across cards, not per-card like the lever grid."""
+    model = model if model is not None else HEADLINE_MODEL
     card_path = card["path"]
     design0 = DeviceDesign.load(card_path)
     provenance = design0.provenance or {}
@@ -506,19 +606,20 @@ def sweep_card(card: dict, grid: dict, pulsed_cache: dict, quick: bool) -> tuple
     card_assumptions = list(provenance.get("assumptions", []))
     i_ua = design0.drive.I_uA
     alpha_cm = design0.emission.alpha_cm
-    lever_grid = resolve_lever_grid(design0, quick)
+    lever_grid = resolve_lever_grid(design0, quick, reduced=reduced)
     combos = build_lever_combos(lever_grid)
     rows = []
     for lever in combos:
         for T_hs in grid["thermal.T_hs"]:
             for delta_xx in grid["dot.delta_xx"]:
                 for gamma300 in grid["dot.gamma300"]:
-                    pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache, T_hs)
+                    pulsed = eval_pulsed_point(card_path, delta_xx, gamma300, lever, pulsed_cache,
+                                               T_hs, model)
                     for irf_ps in grid["irf_ps"]:
-                        cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever, T_hs)
+                        cw = eval_cw_point(card_path, delta_xx, gamma300, irf_ps, lever, T_hs, model)
                         rows.append(_build_row(card, ranges, card_assumptions, i_ua,
                                                delta_xx, gamma300, irf_ps, T_hs, lever, pulsed, cw,
-                                               alpha_cm))
+                                               alpha_cm, model))
     return rows, lever_grid, len(combos)
 
 
@@ -592,7 +693,8 @@ def anchor_check(card: dict, pulsed_cache: dict) -> dict:
 
 
 def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps, T_hs,
-              lever, pulsed, cw, alpha_cm) -> dict:
+              lever, pulsed, cw, alpha_cm, model=None) -> dict:
+    model = model if model is not None else HEADLINE_MODEL
     scp, sccw = pulsed["scalars"], cw["scalars"]
     eligible_row = bool(pulsed["eligible"] and cw["eligible"])
     g2_p, g2_cw0, g2_cw0_raw = scp.get("g2_op"), sccw.get("g2_cw0"), sccw.get("g2_cw0_raw")
@@ -609,7 +711,7 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
     config_hash = hashlib.sha256(json.dumps(
         {"card": card["id"], "delta_xx": delta_xx, "gamma300": gamma300, "T_hs": T_hs,
          "irf_ps": irf_ps, "pulse_width_ns": PULSE_WIDTH_NS, "rep_rate_hz": REP_RATE_HZ,
-         "lever": lever},
+         "lever": lever, "model": model},
         sort_keys=True).encode()).hexdigest()[:16]
     return {
         "card_id": card["id"], "card_class": card["class"], "config_id": config_hash,
@@ -655,6 +757,10 @@ def _build_row(card, ranges, card_assumptions, i_ua, delta_xx, gamma300, irf_ps,
         # so _facet_factor_forward_check's forward recomputation reads the
         # ACTUAL card value instead of a hardcoded literal.
         "emission_alpha_cm": alpha_cm,
+        # Model axes (pkg5b item 1/2): which of the four drive.finite_pulse x
+        # ret.tau_cap_scales_with_density combinations produced THIS row.
+        "model_finite_pulse": model["drive.finite_pulse"],
+        "model_tau_cap_density": model["ret.tau_cap_scales_with_density"],
     }
 
 
@@ -672,7 +778,7 @@ def csv_fieldnames() -> list:
             "duty_pulsed", "edge_T_facet", "edge_eta_prop", "edge_eta_NA",
             "diagnostic_valid", "diag_g2_pulsed", "diag_g2_cw0",
             "diag_g2_cw0_raw", "emission_NA", "emission_R_back", "emission_L_um",
-            "emission_alpha_cm"]
+            "emission_alpha_cm", "model_finite_pulse", "model_tau_cap_density"]
 
 
 # -------------------------------------------------------------- statistics
@@ -702,6 +808,27 @@ def _t_hs_bucket_key(t_hs) -> str:
 def _t_bucket_sort_key(bucket: str):
     """Sort per-temperature bucket keys ascending by value, "T=?" last."""
     return (bucket == "T=?", float(bucket) if bucket != "T=?" else 0.0)
+
+
+def _closest_T_bucket(per_T_stats: dict, target: float = 300.0,
+                      tol: float = 10.0) -> str | None:
+    """The numeric per_T/per_T_stats bucket key nearest `target` (pkg5b
+    pre-step 0: replaces three hardcoded `"300"` bucket-key lookups, which
+    assumed the sweep always samples the exact string "300" -- true only by
+    coincidence of `_t_hs_bucket_key`'s `g`-format on 300.0). The "T=?"
+    bucket is never a candidate. Returns None if no numeric bucket exists, or
+    if the nearest one is more than `tol` K away -- e.g. a run whose only
+    sampled heatsink temperature is 230 K must not be reported as "the 300 K
+    corner" merely because 230 is the only (and therefore "closest")
+    candidate; `tol` is well under the real grid's own spacing (>= 23 K
+    between 230/250/273/300), so an exact 300 K sample (distance 0) is
+    always preferred and a genuinely different sampled temperature is never
+    mistaken for it."""
+    numeric_buckets = [b for b in per_T_stats if b != "T=?"]
+    if not numeric_buckets:
+        return None
+    closest = min(numeric_buckets, key=lambda b: abs(float(b) - target))
+    return closest if abs(float(closest) - target) <= tol else None
 
 
 def _diagnostic_valid(pulsed: dict, cw: dict) -> bool:
@@ -879,13 +1006,15 @@ def compute_stats(rows: list) -> dict:
         "headline_coverage_pulsed": ((n_headline_dedup / n_scheduled_dedup)
                                      if n_scheduled_dedup else 0.0),
         "headline_dedup_mismatch_groups": n_headline_mismatch_groups,
-        "n_eligible_dedup": n_eligible_dedup,
         # pkg5-fix2, item 2: named "eligible_dedup" (not "eligible_pulsed",
         # pkg5's original name), which collided with the pre-existing
         # per-row CSV column of the same name (a bool: was the pulsed
-        # sub-path eligible for THIS row).
-        "eligible_dedup": ((n_eligible_dedup / n_scheduled_dedup)
-                           if n_scheduled_dedup else 0.0),
+        # sub-path eligible for THIS row). pkg5b pre-step 0: the float ratio
+        # this key used to also carry here was dead (compute_verdict only
+        # ever reads n_eligible_dedup/n_scheduled_dedup, shaped like
+        # headline_coverage_pulsed_n/_total) -- dropped, keeping only the
+        # two ints below.
+        "n_eligible_dedup": n_eligible_dedup,
         "eligible_dedup_mismatch_groups": n_eligible_mismatch_groups,
         "per_T_pulsed": per_T_pulsed,
         "n_cw0_pass": n_cw0_pass,
@@ -904,6 +1033,32 @@ def compute_stats(rows: list) -> dict:
         "flux_max": _max_finite([r.get("collected_flux_pulsed_s") for r in diagnostic_rows]),
         "best_diagnostic_row": _best_diagnostic_row(diagnostic_rows),
     }
+
+
+def compute_model_sensitivity(rows: list) -> dict:
+    """pkg5b item 2: pooled eligible/headline-passes/g2_min/flux_max, per
+    (drive.finite_pulse, ret.tau_cap_scales_with_density) combination, for
+    the "Model sensitivity" table -- reuses compute_stats() on each
+    combination's row subset (never a bespoke aggregation), so the same
+    eligible/diagnostic-row conventions apply uniformly across all four
+    combinations, headline included. Rows missing the model_* columns
+    (pre-pkg5b fixtures/CSVs) are treated as the legacy (False, False)
+    combination -- the value every prior package silently used."""
+    result = {}
+    for combo in MODEL_COMBOS:
+        subset = [r for r in rows
+                 if bool(r.get("model_finite_pulse", False)) == combo["drive.finite_pulse"]
+                 and bool(r.get("model_tau_cap_density", False)) == combo["ret.tau_cap_scales_with_density"]]
+        s = compute_stats(subset) if subset else None
+        result[_model_key(combo)] = {
+            "model": dict(combo), "is_headline": combo == HEADLINE_MODEL,
+            "n_total": s["n_total"] if s else 0,
+            "n_eligible": s["n_eligible"] if s else 0,
+            "n_headline": s["n_headline"] if s else 0,
+            "g2_pulsed_min": s["g2_pulsed_min"] if s else float("nan"),
+            "flux_max": s["flux_max"] if s else float("nan"),
+        }
+    return result
 
 
 def _max_finite(values):
@@ -1377,6 +1532,14 @@ def compute_verdict(rows: list, stats: dict, grid_complete: bool,
                   if np.isfinite(stats["flux_max"]) else float("nan"))
 
     return {
+        # pkg5b item 2: which model combination the headline metrics below
+        # (g2_min, T_pass_min, headline_by_T*, ...) were computed over --
+        # ALWAYS HEADLINE_MODEL, since this function's `rows` is assumed to
+        # already be filtered to that combination by the caller (run_sweep);
+        # a fixed constant, not derived from `rows`, so synthetic-fixture
+        # callers that never set model_* columns still get a well-formed
+        # verdict.
+        "model": dict(HEADLINE_MODEL),
         "pass": passed, "fail_reasons": fail_reasons,
         "g2_min": g2_min, "g2_median": g2_median, "median_pass": median_pass,
         "coverage": coverage_over_eligible, "eligible_fraction": eligible_fraction,
@@ -1438,7 +1601,13 @@ def verdict_line(verdict: dict) -> str:
         by_T_pulsed_segment = " headline_by_T_pulsed=" + ",".join(
             f"{T}:{info.get('n_headline_dedup', 0)}/{info.get('n_scheduled_dedup', 0)}"
             for T, info in verdict.get('headline_by_T_pulsed', {}).items())
+    # pkg5b item 2: `.get` with a HEADLINE_MODEL fallback, so a verdict dict
+    # saved before this package (no "model" key) still renders instead of
+    # raising KeyError -- same backward-compatibility convention as
+    # pulsed_segment above.
+    model_token = _model_token(verdict.get("model", HEADLINE_MODEL))
     return (f"VERDICT: {'PASS' if verdict['pass'] else 'FAIL'} "
+            f"model={model_token} "
             f"g2_min={verdict['g2_min']:.4g} g2_median_eligible={verdict['g2_median']:.4g} "
             f"diag_g2_min={verdict['diag_g2_min']:.4g} "
             f"diag_g2_median_diagnostic={verdict['diag_g2_median']:.4g} "
@@ -1579,7 +1748,9 @@ def write_png(rows: list, stats: dict, path: Path) -> None:
 def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                    grid_complete: bool, evidence_report: dict,
                    hallucination_report: dict, path: Path,
-                   lever_info: dict | None = None) -> None:
+                   lever_info: dict | None = None,
+                   model_sensitivity: dict | None = None,
+                   sweep_mode: dict | None = None) -> None:
     lever_info = lever_info or {}
     lines = []
     lines.append("# RT edge-emitter acceptance sweep verdict")
@@ -1643,6 +1814,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     # ratios reported -- taken from stats["per_T"], never hardcoded.
     g2_min = verdict.get("g2_min", float("nan"))
     per_T_stats = stats.get("per_T", {})
+    # pkg5b pre-step 0: resolved once and reused below instead of the three
+    # hardcoded `"300"` bucket-key lookups this replaces.
+    bucket_300 = _closest_T_bucket(per_T_stats, 300.0)
     argmin_T = None
     for T, info in per_T_stats.items():
         val = info.get("g2_min")
@@ -1652,7 +1826,7 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             break
     if np.isfinite(g2_min) and g2_min > 0:
         ratio = g2_min / REISCHLE_DECONV_G2
-        if argmin_T == "300":
+        if argmin_T == bucket_300 and bucket_300 is not None:
             corner_label = "best 300 K corner"
         elif argmin_T is not None:
             # pkg5 fix, item 6: no inner parens around "at N K" -- callers
@@ -1674,9 +1848,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                 f"(g2_min={g2_min:.4g}) is already at or below the 80 K "
                 f"Reischle deconvolved value ({REISCHLE_DECONV_G2:.2f} +/- "
                 f"{REISCHLE_DECONV_G2_ERR:.2f}).")
-        g2_min_300 = per_T_stats.get("300", {}).get("g2_min")
+        g2_min_300 = (per_T_stats.get(bucket_300, {}).get("g2_min")
+                     if bucket_300 is not None else None)
         if (g2_min_300 is not None and np.isfinite(g2_min_300) and g2_min_300 > 0
-                and argmin_T != "300"):
+                and argmin_T != bucket_300):
             ratio_300 = g2_min_300 / REISCHLE_DECONV_G2
             # pkg5 fix, item 6: when argmin_T is unresolved, "an unresolved
             # temperature" already says there is no number to give a unit
@@ -1794,6 +1969,41 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                 lines.append(f"- `{card_id}` `{lever_path}`: sampled at {vals}")
             lines.append(f"- `{card_id}` lever combinations evaluated: {info.get('n_combos')}")
     lines.append("")
+    sweep_mode = sweep_mode or {}
+    if sweep_mode.get("decision") == "measured":
+        _spr, _proj = sweep_mode.get("seconds_per_row"), sweep_mode.get("projected_full_s")
+        lines.append(
+            f"Grid sizing (pkg5b item 1): one row measured at {_spr:.3g} s; extrapolated to "
+            f"{_proj / 60.0:.1f} minutes for the full four-model-combination grid "
+            f"({sweep_mode.get('n_rows_one_combo')} rows x 4 combinations), against a "
+            f"{sweep_mode.get('budget_s', SECONDARY_MODEL_BUDGET_S) / 60.0:.0f}-minute budget -- "
+            + ("the reduced grid (2 x 2 x 1 irf x 4 T_hs x <=4 levers x 2 cards) was used for the "
+               "three non-headline model combinations." if sweep_mode.get("use_reduced_secondary")
+               else "the full grid was used for all four model combinations."))
+        lines.append("")
+    lines.append("## Model sensitivity")
+    lines.append(
+        f"Two opt-in physics-correction switches (`drive.finite_pulse`, peer-review-triage.md "
+        f"finding 1; `ret.tau_cap_scales_with_density`, finding 1b) are now genuine sweep axes "
+        f"(pkg5b) instead of both being silently fixed at their card-default (false, false), "
+        f"which every prior package used. The headline above -- headline_coverage_pulsed, "
+        f"T_pass_min, headline_by_T*, g2_min, flux_max -- is computed over ONLY "
+        f"`model={_model_token(HEADLINE_MODEL)}` rows (the corrected, no-cancellation model). "
+        f"The other three combinations never gate PASS; they are reported here for comparison, "
+        f"pooled across both cards at each combination's own best corner.")
+    lines.append("")
+    lines.append("| model (finite_pulse, tau_cap_density) | eligible | headline passes | "
+                 "pulsed g2 min | flux max (photons/s) |")
+    lines.append("|---|---:|---:|---:|---:|")
+    model_sensitivity = model_sensitivity or {}
+    for combo in MODEL_COMBOS:
+        info = model_sensitivity.get(_model_key(combo), {})
+        label = _model_token(combo) + (" (headline)" if combo == HEADLINE_MODEL else "")
+        lines.append(
+            f"| {label} | {info.get('n_eligible', 0)}/{info.get('n_total', 0)} | "
+            f"{info.get('n_headline', 0)} | {_fmt_or_na(info.get('g2_pulsed_min'))} | "
+            f"{_fmt_or_na(info.get('flux_max'))} |")
+    lines.append("")
     lines.append("## Per-temperature acceptance")
     lines.append("| T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | "
                  "pulsed g2 min | flux max (photons/s) | gamma300 threshold |")
@@ -1818,6 +2028,11 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append("")
     lines.append("## What cooling buys")
     for T, info in headline_by_T.items():
+        # pkg5b pre-step 0: the "T=?" bucket (T_hs_K missing/None/NaN) is not
+        # a heatsink temperature "cooling" can be attributed to -- skip it
+        # rather than rendering "At T_hs=T=? K, ...".
+        if T == "T=?":
+            continue
         candidates = [r for r in rows if _t_hs_bucket_key(r.get("T_hs_K")) == T]
         best = _best_diagnostic_row(candidates)
         if best:
@@ -2099,11 +2314,17 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                 "already resolve the antibunching; pulsed operation remains the "
                 "contract's headline metric for the reasons above but is not forced by "
                 "the CW result here.")
+        # pkg5b pre-step 0: the "(that alone would already satisfy the g2 <
+        # 0.5 criterion)" aside is only true when g2_cw0 itself clears the
+        # threshold -- it used to be printed unconditionally even for a
+        # best-diagnostic corner whose intrinsic CW g2(0) is already >= 0.5.
+        _cw0 = _plain_best['g2_cw0']
+        _cw0_clause = (" (that alone would already satisfy the g2 < 0.5 "
+                       "single-photon criterion)") if _cw0 < G2_THRESHOLD else ""
         lines.append(
             "**3. CW versus pulsed measurement at the best diagnostic point.** At the "
             f"best diagnostic operating point in this sweep, the intrinsic CW g2(0) is "
-            f"{_plain_best['g2_cw0']:.3g} (that alone would already satisfy the g2 < 0.5 "
-            f"single-photon criterion), but once a realistic single-photon detector's "
+            f"{_cw0:.3g}{_cw0_clause}, but once a realistic single-photon detector's "
             f"finite timing resolution (instrument response function, IRF) is folded in, "
             f"the measured raw CW g2(0) rises to {_cw_raw:.3g} -- {_cw_threshold_phrase}, "
             f"{_cw_conclusion}")
@@ -2170,7 +2391,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
 def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
                    grid_complete: bool, evidence_report: dict,
                    hallucination_report: dict, runtime_s: float, quick: bool,
-                   path: Path, lever_info: dict | None = None) -> None:
+                   path: Path, lever_info: dict | None = None,
+                   model_sensitivity: dict | None = None,
+                   sweep_mode: dict | None = None) -> None:
     manifest = {
         "schema_version": 1,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
@@ -2180,6 +2403,15 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
         # item 1) -- {card_id: {"grid": {path: [values]}, "n_combos": int}};
         # unlike range_bounds/grid above these are per-card, not shared.
         "lever_info": lever_info or {},
+        # pkg5b item 1/2: which of the four drive.finite_pulse x
+        # ret.tau_cap_scales_with_density combinations is the headline, the
+        # per-combination pooled sensitivity numbers, and how the sweep
+        # decided full vs. reduced grid for the three non-headline
+        # combinations (measured single-row cost, extrapolated four-
+        # combination wall time, 90-minute budget, decision taken).
+        "model_combos": MODEL_COMBOS, "headline_model": HEADLINE_MODEL,
+        "model_sensitivity": model_sensitivity or {},
+        "sweep_mode": sweep_mode or {},
         "pulse_assumption": PULSE_ASSUMPTION,
         "cards": [{"id": c["id"], "class": c["class"], "path": str(c["path"]),
                   "sha256": _sha256_file(c["path"])} for c in CARDS],
@@ -2221,27 +2453,122 @@ def write_manifest(rows: list, stats: dict, verdict: dict, grid: dict,
 
 # ------------------------------------------------------------------- main
 
-def run_sweep(quick: bool) -> tuple:
-    grid = build_grid(quick)
+# pkg5b item 1: 90-minute wall-time budget for the full four-model-
+# combination grid; if a measured single-row cost, extrapolated across all
+# four combinations at full grid, would exceed this, the three non-headline
+# combinations fall back to the reduced grid (build_grid/resolve_lever_grid's
+# own `reduced` flags) instead. The headline combination always runs the
+# full grid, regardless of this decision.
+SECONDARY_MODEL_BUDGET_S = 90 * 60
+
+
+def _count_full_grid_rows(grid: dict, quick: bool) -> int:
+    """Total scheduled rows for ONE model combination at the given (non-
+    reduced) grid, summed over both cards' own full lever combinations --
+    pure bookkeeping (card YAML loads only, no evaluate() calls), used only
+    to extrapolate wall time before committing to the full sweep."""
+    n = 0
+    for card in CARDS:
+        design0 = DeviceDesign.load(card["path"])
+        n_combos = len(build_lever_combos(resolve_lever_grid(design0, quick, reduced=False)))
+        n += (n_combos * len(grid["thermal.T_hs"]) * len(grid["dot.delta_xx"])
+             * len(grid["dot.gamma300"]) * len(grid["irf_ps"]))
+    return n
+
+
+def _time_one_row_s(grid: dict) -> float:
+    """Measure one row's real wall-clock cost (pkg5b item 1: "measure one
+    row's cost before launching the full sweep and extrapolate") -- one
+    fresh (uncached) pulsed evaluate() call plus one CW evaluate() call,
+    HEADLINE_MODEL, at the fallback card's own declared operating corner and
+    the grid's first (delta_xx, gamma300, T_hs, irf_ps) sample."""
+    card = next(c for c in CARDS if c["class"] == "fallback")
+    design0 = DeviceDesign.load(card["path"])
+    lever = {"emission.NA": design0.emission.NA, "emission.R_back": design0.emission.R_back,
+            "emission.L_um": design0.emission.L_um}
+    delta_xx, gamma300 = grid["dot.delta_xx"][0], grid["dot.gamma300"][0]
+    T_hs, irf_ps = grid["thermal.T_hs"][0], grid["irf_ps"][0]
+    t0 = time.time()
+    eval_pulsed_point(card["path"], delta_xx, gamma300, lever, None, T_hs, HEADLINE_MODEL)
+    eval_cw_point(card["path"], delta_xx, gamma300, irf_ps, lever, T_hs, HEADLINE_MODEL)
+    return time.time() - t0
+
+
+def run_sweep(quick: bool, force_secondary_reduced: bool | None = None) -> tuple:
+    """pkg5b item 1/2: sweeps all four MODEL_COMBOS -- the headline
+    (HEADLINE_MODEL) always at the full grid, the other three at the full
+    grid too UNLESS the 90-minute four-combination budget forces the reduced
+    grid (measured single-row cost, extrapolated; see
+    SECONDARY_MODEL_BUDGET_S). `force_secondary_reduced` overrides the
+    auto-decision (True/False) for tests/reproducibility; None (default)
+    measures. --quick's grid is already minimal on every axis, so the
+    reduced-secondary question does not apply there.
+
+    Returns (all_rows, headline_rows, headline_stats, grid, lever_info,
+    gamma300_refine_rows, anchor_report, model_sensitivity, sweep_mode) --
+    `grid` is always the FULL grid (the headline's own), `lever_info` is the
+    headline combination's per-card lever grid (matching every pre-pkg5b
+    caller's expectation), and `sweep_mode` records the timing-probe
+    decision for the verdict/manifest."""
+    full_grid = build_grid(quick)
+    reduced_grid = build_grid(quick, reduced=True)
     pulsed_cache: dict = {}
+
+    if quick:
+        use_reduced_secondary = False
+        sweep_mode = {"quick": True, "decision": "quick_grid_already_minimal",
+                     "seconds_per_row": None, "n_rows_one_combo": None,
+                     "projected_full_s": None, "budget_s": SECONDARY_MODEL_BUDGET_S,
+                     "use_reduced_secondary": False}
+    elif force_secondary_reduced is not None:
+        use_reduced_secondary = bool(force_secondary_reduced)
+        sweep_mode = {"quick": False, "decision": "forced", "seconds_per_row": None,
+                     "n_rows_one_combo": None, "projected_full_s": None,
+                     "budget_s": SECONDARY_MODEL_BUDGET_S,
+                     "use_reduced_secondary": use_reduced_secondary}
+    else:
+        seconds_per_row = _time_one_row_s(full_grid)
+        n_rows_one_combo = _count_full_grid_rows(full_grid, quick)
+        projected_full_s = seconds_per_row * n_rows_one_combo * len(MODEL_COMBOS)
+        use_reduced_secondary = projected_full_s > SECONDARY_MODEL_BUDGET_S
+        sweep_mode = {"quick": False, "decision": "measured",
+                     "seconds_per_row": seconds_per_row, "n_rows_one_combo": n_rows_one_combo,
+                     "projected_full_s": projected_full_s, "budget_s": SECONDARY_MODEL_BUDGET_S,
+                     "use_reduced_secondary": use_reduced_secondary}
+
     rows = []
     lever_info = {}
-    for card in CARDS:
-        card_rows, lever_grid, n_combos = sweep_card(card, grid, pulsed_cache, quick)
-        rows.extend(card_rows)
-        lever_info[card["id"]] = {"grid": lever_grid, "n_combos": n_combos}
-    stats = compute_stats(rows)
+    for combo in MODEL_COMBOS:
+        is_headline = combo == HEADLINE_MODEL
+        combo_reduced = (not is_headline) and use_reduced_secondary
+        grid_for_combo = reduced_grid if combo_reduced else full_grid
+        for card in CARDS:
+            card_rows, lever_grid, n_combos = sweep_card(
+                card, grid_for_combo, pulsed_cache, quick, model=combo, reduced=combo_reduced)
+            rows.extend(card_rows)
+            if is_headline:
+                lever_info[card["id"]] = {"grid": lever_grid, "n_combos": n_combos}
+
+    headline_rows = [r for r in rows
+                     if r["model_finite_pulse"] == HEADLINE_MODEL["drive.finite_pulse"]
+                     and r["model_tau_cap_density"] == HEADLINE_MODEL["ret.tau_cap_scales_with_density"]]
+    stats = compute_stats(headline_rows)
+    model_sensitivity = compute_model_sensitivity(rows)
     # Council review round 5, item 2: the finer gamma300_pass_max/threshold
     # determination (GAMMA300_REFINE_MEV) is skipped for --quick (kept fast,
     # matching --quick's existing "smaller, explicitly incomplete"
     # convention for every other axis -- an incomplete grid can never PASS
     # regardless, so the extra resolution buys nothing there). The verified
     # 6.5 meV anchor check is two eval_pulsed_point calls total (negligible
-    # cost) and is always computed.
+    # cost) and is always computed. Both use the shared pulsed_cache (still
+    # keyed on model, so they transparently evaluate HEADLINE_MODEL --
+    # eval_pulsed_point's own default -- consistent with the headline stats
+    # above, and reuse cache hits from the headline combination's own sweep
+    # above wherever the (delta_xx, gamma300, lever, T_hs) point coincides.
     gamma300_refine_rows = []
     if not quick:
         passing_T = [float(T) for T, info in stats.get("per_T", {}).items()
-                     if info.get("n_headline", 0) > 0]
+                     if T != "T=?" and info.get("n_headline", 0) > 0]
         # The eight-point linewidth refinement is deliberately restricted to
         # the lowest passing TEC set point and the retained 300 K headline.
         refine_T = sorted(set(([min(passing_T)] if passing_T else []) + [300.0]))
@@ -2256,7 +2583,8 @@ def run_sweep(quick: bool) -> tuple:
             gamma300_refine_rows.extend(
                 refine_gamma300(card, [design0.dot.delta_xx], combos, pulsed_cache, refine_T))
     anchor_report = {card["id"]: anchor_check(card, pulsed_cache) for card in CARDS}
-    return rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report
+    return (rows, headline_rows, stats, full_grid, lever_info, gamma300_refine_rows,
+           anchor_report, model_sensitivity, sweep_mode)
 
 
 def main(argv=None) -> int:
@@ -2268,7 +2596,8 @@ def main(argv=None) -> int:
     out_dir = Path(args.out_dir)
 
     t0 = time.time()
-    rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report = run_sweep(args.quick)
+    (rows, headline_rows, stats, grid, lever_info, gamma300_refine_rows, anchor_report,
+    model_sensitivity, sweep_mode) = run_sweep(args.quick)
 
     # Fresh paper-check invocation (spec: "Invoke paper-check run_checks()
     # freshly"); this file never writes evidence.json (out of scope --
@@ -2277,20 +2606,27 @@ def main(argv=None) -> int:
     hallucination_report = rt_papers.run_checks(self_test=True)
 
     grid_complete = not args.quick
-    verdict = compute_verdict(rows, stats, grid_complete, evidence_report, hallucination_report,
+    # pkg5b item 2: the headline (g2_min, T_pass_min, headline_by_T*, ...) is
+    # computed over ONLY the corrected-model rows -- `rows` (all four model
+    # combinations, used for sweep.csv/manifest) is never passed to
+    # compute_verdict/write_png/write_markdown; `headline_rows`/`stats`
+    # (already filtered/computed in run_sweep) are.
+    verdict = compute_verdict(headline_rows, stats, grid_complete, evidence_report, hallucination_report,
                               gamma300_refine_rows=(gamma300_refine_rows or None),
                               anchor_report=anchor_report)
     runtime_s = time.time() - t0
 
     try:
         write_csv(rows, out_dir / "sweep.csv")
-        write_png(rows, stats, out_dir / "envelope.png")
-        write_markdown(rows, stats, verdict, grid, grid_complete,
+        write_png(headline_rows, stats, out_dir / "envelope.png")
+        write_markdown(headline_rows, stats, verdict, grid, grid_complete,
                        evidence_report, hallucination_report, out_dir / "verdict.md",
-                       lever_info=lever_info)
+                       lever_info=lever_info, model_sensitivity=model_sensitivity,
+                       sweep_mode=sweep_mode)
         write_manifest(rows, stats, verdict, grid, grid_complete, evidence_report,
                        hallucination_report, runtime_s, args.quick, out_dir / "manifest.json",
-                       lever_info=lever_info)
+                       lever_info=lever_info, model_sensitivity=model_sensitivity,
+                       sweep_mode=sweep_mode)
     except OSError as exc:
         print(f"FAIL: could not write output artifacts: {exc}", file=sys.stderr)
         return 1

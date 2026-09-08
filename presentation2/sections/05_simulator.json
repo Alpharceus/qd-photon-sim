@@ -364,55 +364,43 @@
       "layout": "bullets",
       "title": "Acceptance sweep: gates, axes, and verdict",
       "bullets": [
-        "Axes: ΔXX, Γ300, IRF, NA, Rback, length, and heat-sink temperature.",
+        "Axes: ΔXX, Γ300, IRF, NA, Rback, length, heat-sink T, and two physics-model switches.",
         "Eligible rows must clear the collected-flux floor.",
-        "Headline gate: pulsed intrinsic g² below one half.",
+        "Headline gate: pulsed intrinsic g² below one half, corrected model only.",
         "CW metrics are diagnostic; the evidence gate is separate."
       ],
-      "notes": "The acceptance sweep is designed to make tradeoffs visible. It spans biexciton splitting, room-temperature linewidth, detector response, collection levers, and heat-sink temperature. A row must first satisfy the collected-flux floor to be eligible. The headline gate is pulsed intrinsic g² below one half. CW correlations remain diagnostics. The verdict is FAIL solely because its Fail reasons section reads verbatim: Fail reasons\n- `evidence_incomplete`. The median_pass=false outcome is reported but does not block PASS. Closing the three single-source evidence gaps would flip this completed sweep to PASS. Individual favourable rows already pass the pulsed statistic, so this remains conditional design guidance rather than an electrical demonstration [out/rt_edge/verdict.md] [docs/rt_edge_contract.md]. Exact sweep line: VERDICT: FAIL g2_min=0.3214 g2_median_eligible=0.6373 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.6706 flux_max=6890 flux_margin=6.89 flux_shortfall_deprecated=0.1451 median_pass=false coverage_over_eligible=0.3066 eligible_fraction=0.5521 eligible=424/768 flux_floor_excluded=344 evidence=incomplete conditional=true headline_coverage=130/768 cw_raw_coverage=0/424 gamma300_pass_max=10 gamma300_threshold=10-12 T_pass_min=230 headline_by_T=230:60/192,250:34/192,273:24/192,300:12/192",
+      "notes": "The acceptance sweep is designed to make tradeoffs visible. It spans biexciton splitting, room-temperature linewidth, detector response, collection levers, the two opt-in finite-pulse-loading and retention-density physics switches, and heat-sink temperature. A row must first satisfy the collected-flux floor to be eligible. The headline gate is pulsed intrinsic g squared below one half. Under the pkg5b headline model, the corrected finite-pulse loading calculation paired with the shipped no-cancellation retention convention, no sampled corner anywhere in the grid clears the collected-flux floor, so g squared minimum and the temperature and linewidth thresholds are all undefined. Fail reasons now read verbatim: Fail reasons\n- `evidence_incomplete`\n- `no_eligible_rows`. Only the opt-in full-cancellation retention convention restores any eligible rows at all, reported as a model-sensitivity comparison, never as the headline [out/rt_edge/verdict.md] [docs/rt_edge_contract.md]. Exact sweep line: VERDICT: FAIL model=finite_pulse:true,tau_cap_density:false g2_min=nan g2_median_eligible=nan diag_g2_min=0.9817 diag_g2_median_diagnostic=0.9993 flux_max=582.8 flux_margin=0.5828 flux_shortfall_deprecated=1.716 median_pass=false coverage_over_eligible=nan eligible_fraction=0 eligible=0/768 flux_floor_excluded=768 evidence=incomplete conditional=false headline_coverage=0/768 headline_coverage_pulsed=0/384 headline_dedup_mismatch_groups=0 eligible_dedup=0/384 eligible_dedup_mismatch_groups=0 rows_scheduled=0/768 cw_raw_coverage=0/0 gamma300_pass_max=nan gamma300_threshold=n/a T_pass_min=none headline_by_T=230:0/192,250:0/192,273:0/192,300:0/192 headline_by_T_pulsed=230:0/96,250:0/96,273:0/96,300:0/96",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md"
       ],
       "repo_numbers": {
-        "g2_min": {
-          "value": 0.3214,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "g2_median_eligible": {
-          "value": 0.6373,
-          "file": "out/rt_edge/verdict.md"
-        },
         "diag_g2_min": {
-          "value": 0.3214,
+          "value": 0.9817,
           "file": "out/rt_edge/verdict.md"
         },
         "diag_g2_median_diagnostic": {
-          "value": 0.6706,
+          "value": 0.9993,
           "file": "out/rt_edge/verdict.md"
         },
         "flux_max": {
-          "value": 6890,
+          "value": 582.8,
           "file": "out/rt_edge/verdict.md"
         },
         "flux_margin": {
-          "value": 6.89,
+          "value": 0.5828,
           "file": "out/rt_edge/verdict.md"
         },
         "flux_shortfall_deprecated": {
-          "value": 0.1451,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "coverage_over_eligible": {
-          "value": 0.3066,
+          "value": 1.716,
           "file": "out/rt_edge/verdict.md"
         },
         "eligible_fraction": {
-          "value": 0.5521,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "eligible_count": {
-          "value": 424,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "grid_total": {
@@ -420,43 +408,11 @@
           "file": "out/rt_edge/verdict.md"
         },
         "flux_floor_excluded": {
-          "value": 344,
+          "value": 768,
           "file": "out/rt_edge/verdict.md"
         },
         "headline_coverage_count": {
-          "value": 130,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "gamma300_pass_max": {
-          "value": 10,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "gamma300_threshold_min": {
-          "value": 10,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "gamma300_threshold_max": {
-          "value": 12,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T_pass_min": {
-          "value": 230,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "headline_T230": {
-          "value": 60,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "headline_T250": {
-          "value": 34,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "headline_T273": {
-          "value": 24,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "headline_T300": {
-          "value": 12,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "slice_total": {
@@ -474,10 +430,10 @@
       "layout": "bullets+figure",
       "title": "Results by heat-sink temperature",
       "bullets": [
-        "Favourable corners exist from the non-cryogenic minimum upward.",
-        "Minimum g² rises across the temperature slices.",
-        "The sampled linewidth threshold narrows at the warm end.",
-        "Temperature changes eligibility as strongly as purity."
+        "No sampled corner clears the collected-flux floor at any heat-sink temperature.",
+        "Collected flux falls monotonically as the heat sink warms, 582.8 to 80.43 photons/s.",
+        "The sampled linewidth threshold is undefined at every temperature slice.",
+        "Temperature alone cannot rescue eligibility under the corrected loading model."
       ],
       "figure": {
         "path": "presentation2/figures/out/05_15_temperature.png",
@@ -496,122 +452,90 @@
         "rows": [
           [
             "230 K",
-            "144/192",
-            "60/192",
-            "0.3214",
-            "6890",
-            "10–12"
+            "0/192",
+            "0/192",
+            "n/a",
+            "582.8",
+            "n/a"
           ],
           [
             "250 K",
-            "136/192",
-            "34/192",
-            "0.376",
-            "5168",
+            "0/192",
+            "0/192",
+            "n/a",
+            "302.4",
             "n/a"
           ],
           [
             "273 K",
-            "96/192",
-            "24/192",
-            "0.3775",
-            "3639",
+            "0/192",
+            "0/192",
+            "n/a",
+            "156.4",
             "n/a"
           ],
           [
             "300 K",
-            "48/192",
-            "12/192",
-            "0.3986",
-            "2417",
-            "7–8"
+            "0/192",
+            "0/192",
+            "n/a",
+            "80.43",
+            "n/a"
           ]
         ]
       },
-      "notes": "The temperature table is the most direct answer to “what does cooling buy?” At the lowest non-cryogenic heat-sink slice, more rows are flux eligible and more clear the pulsed headline gate. As the heat sink warms, flux eligibility falls and the favourable minimum rises, although individual sampled corners remain below the headline threshold even at the warmest slice. The linewidth threshold information must be read as a sampled bracket, not a continuous fit: it identifies where the grid changes classification. The reported minimum passing heat-sink temperature is the lowest scheduled non-cryogenic slice with a passing corner, not a universal operating temperature for either platform. This plot uses the live verdict values and visualizes only the favourable boundary; it does not substitute for the full multidimensional sweep. The full CSV remains the source for lever-by-lever interpretation [out/rt_edge/verdict.md] [out/rt_edge/sweep.csv].",
+      "notes": "The temperature table is the most direct answer to what cooling buys under the corrected finite-pulse loading model, and the answer is now stark: no sampled corner at any heat-sink slice clears the collected-flux floor. The maximum collected flux still falls monotonically as the heat sink warms, from 582.8 photons per second at 230 K down to 80.43 at 300 K, but every value sits below the 1000 photons per second eligibility floor, so no pulsed intrinsic g squared statistic is even defined at any of the four sampled temperatures. The linewidth threshold bracket is likewise undefined everywhere: with zero eligible rows, gamma300 pass max has nothing to report. This plot uses the live verdict values and visualizes only the collected-flux trend; it does not substitute for the full multidimensional sweep. The full CSV remains the source for lever-by-lever interpretation [out/rt_edge/verdict.md] [out/rt_edge/sweep.csv].",
       "sources": [
         "out/rt_edge/verdict.md",
         "out/rt_edge/sweep.csv"
       ],
       "repo_numbers": {
         "T230_eligible": {
-          "value": 144,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T230_passes": {
-          "value": 60,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T230_g2": {
-          "value": 0.3214,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T230_flux": {
-          "value": 6890,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T230_gamma_min": {
-          "value": 10,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T230_gamma_max": {
-          "value": 12,
+          "value": 582.8,
           "file": "out/rt_edge/verdict.md"
         },
         "T250_eligible": {
-          "value": 136,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T250_passes": {
-          "value": 34,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T250_g2": {
-          "value": 0.376,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T250_flux": {
-          "value": 5168,
+          "value": 302.4,
           "file": "out/rt_edge/verdict.md"
         },
         "T273_eligible": {
-          "value": 96,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T273_passes": {
-          "value": 24,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T273_g2": {
-          "value": 0.3775,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T273_flux": {
-          "value": 3639,
+          "value": 156.4,
           "file": "out/rt_edge/verdict.md"
         },
         "T300_eligible": {
-          "value": 48,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T300_passes": {
-          "value": 12,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T300_g2": {
-          "value": 0.3986,
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         },
         "T300_flux": {
-          "value": 2417,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T300_gamma_min": {
-          "value": 7,
-          "file": "out/rt_edge/verdict.md"
-        },
-        "T300_gamma_max": {
-          "value": 8,
+          "value": 80.43,
           "file": "out/rt_edge/verdict.md"
         },
         "slice_denom": {
@@ -634,38 +558,38 @@
         "rows": [
           [
             "230 K",
-            "0.01311",
+            "0.001348",
             "3.55 meV",
-            "0.01479"
+            "0.07775"
           ],
           [
             "250 K",
-            "0.009837",
+            "0.0006996",
             "4.213 meV",
-            "0.03107"
+            "0.06934"
           ],
           [
             "273 K",
-            "0.006935",
+            "0.0003624",
             "5.015 meV",
-            "0.01963"
+            "0.05962"
           ],
           [
             "300 K",
-            "0.004617",
+            "0.0001873",
             "6 meV",
-            "0.01247"
+            "0.04887"
           ]
         ]
       },
-      "notes": "Cooling changes more than one scalar, so a single intuitive explanation is insufficient. At the favourable corner, the retained carrier fraction drops as temperature rises, the linewidth broadens, and the in-window background changes with the operating model. The table places these quantities together precisely to avoid attributing the whole trend to linewidth alone. Retention is especially consequential because it enters the brightness chain multiplicatively and becomes the smallest factor at the warm end. The non-monotonic background values also warn against telling a simple “hotter means more background” story without specifying the spectral window, injection state, and thermal solution. These are evaluated sweep outputs, not independent measurements. The experimental implication is clear: cooling can buy both usable flux and spectral separation, but the room-temperature platform decision still requires direct Γ(T) and splitting measurements. The verdict’s temperature table and cooling section are the authoritative numerical record [out/rt_edge/verdict.md] [fsim_core/device.py].",
+      "notes": "Cooling changes more than one scalar, so a single intuitive explanation is insufficient. At the best diagnostic corner per temperature, the retained carrier fraction drops sharply as temperature rises, the linewidth broadens, and the in-window background changes with the operating model. The table places these quantities together precisely to avoid attributing the whole trend to linewidth alone. Retention collapses by roughly seven times between 230 and 300 K and is the dominant reason none of these corners clear the collected-flux floor under the corrected finite-pulse loading model, not a numerical-aperture or facet limitation. These rows are diagnostic only now: none is eligible, so this table shows what cooling would buy if brightness alone were the constraint, not a set of measurable operating points. The verdict's temperature table and cooling section remain the authoritative numerical record [out/rt_edge/verdict.md] [fsim_core/device.py].",
       "sources": [
         "out/rt_edge/verdict.md",
         "fsim_core/device.py"
       ],
       "repo_numbers": {
         "S230": {
-          "value": 0.01311,
+          "value": 0.001348,
           "file": "out/rt_edge/verdict.md"
         },
         "gamma230": {
@@ -673,11 +597,11 @@
           "file": "out/rt_edge/verdict.md"
         },
         "b_e230": {
-          "value": 0.01479,
+          "value": 0.07775,
           "file": "out/rt_edge/verdict.md"
         },
         "S250": {
-          "value": 0.009837,
+          "value": 0.0006996,
           "file": "out/rt_edge/verdict.md"
         },
         "gamma250": {
@@ -685,11 +609,11 @@
           "file": "out/rt_edge/verdict.md"
         },
         "b_e250": {
-          "value": 0.03107,
+          "value": 0.06934,
           "file": "out/rt_edge/verdict.md"
         },
         "S273": {
-          "value": 0.006935,
+          "value": 0.0003624,
           "file": "out/rt_edge/verdict.md"
         },
         "gamma273": {
@@ -697,11 +621,11 @@
           "file": "out/rt_edge/verdict.md"
         },
         "b_e273": {
-          "value": 0.01963,
+          "value": 0.05962,
           "file": "out/rt_edge/verdict.md"
         },
         "S300": {
-          "value": 0.004617,
+          "value": 0.0001873,
           "file": "out/rt_edge/verdict.md"
         },
         "gamma300": {
@@ -709,7 +633,7 @@
           "file": "out/rt_edge/verdict.md"
         },
         "b_e300": {
-          "value": 0.01247,
+          "value": 0.04887,
           "file": "out/rt_edge/verdict.md"
         }
       }
@@ -724,7 +648,7 @@
         "At the favourable cold corner, retention is the smallest factor.",
         "Collection improves rate; Lemma 1 protects g² accounting."
       ],
-      "notes": "Brightness is not a monolithic output. The verdict decomposes it into the repetition and loading route, thermal retention, spectral transmission, and optical extraction chain. That factor table is more actionable than a final count rate because it identifies whether the next engineering intervention should be electrical, material, spectral, or optical. In the reviewed favourable cold corner (T_hs = 230 K), the dominant limiter across the whole chain is retention S (0.01311), not the numerical aperture or facet once the collection levers are applied. This is consistent with the temperature sweep: a better lens cannot restore carriers that escape before radiative emission. Conversely, collection changes can still be essential because the acceptance protocol has a minimum measurable-flux requirement. The correct optimization order therefore uses the factor table: remove the smallest physical multiplier first, while keeping purity and collection accounting distinct. The council review specifically required the whole-chain smallest factor to be named, preventing a visually prominent optical lever from being mistaken for the fundamental bottleneck [out/rt_edge/verdict.md] [docs/rt_edge_tier.md] [fsim_core/waveguide.py].",
+      "notes": "Brightness is not a monolithic output. The verdict decomposes it into the repetition and loading route, thermal retention, spectral transmission, and optical extraction chain. That factor table is more actionable than a final count rate because it identifies whether the next engineering intervention should be electrical, material, spectral, or optical. In the reviewed favourable cold corner (T_hs = 230 K), the dominant limiter across the whole chain is still retention S (0.001348 under the corrected finite-pulse loading model), not the numerical aperture or facet once the collection levers are applied. This is consistent with the temperature sweep: a better lens cannot restore carriers that escape before radiative emission. Because this corner is no longer flux-eligible at all, the factor table is now purely diagnostic, but the optimization order is unchanged: remove the smallest physical multiplier first, while keeping purity and collection accounting distinct [out/rt_edge/verdict.md] [docs/rt_edge_tier.md] [fsim_core/waveguide.py].",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_tier.md",
@@ -732,7 +656,7 @@
       ],
       "repo_numbers": {
         "S_cold": {
-          "value": 0.0131112,
+          "value": 0.00134802,
           "file": "out/rt_edge/verdict.md"
         }
       }
@@ -747,7 +671,7 @@
         "Fresh card evaluation prevents stale fixture values.",
         "Predictions are not retrospective measurements."
       ],
-      "notes": "Paper validation is useful only when the reported conventions match. For Reischle, the appropriate comparison is the IRF-deconvolved but background-included value, not the raw detector-broadened dip and not the fully background-corrected value. The tier document records the 0.25 plus or minus 0.05 anchor and calls the model comparison a prediction; the roughly four-kilocounts-per-second component comes from the paper digest. For Chatzarakis, the comparison is a temperature-trend point of 0.36 near 230 K rather than a claim of shared material or electrical drive. The verification route loads the current card and calls device.evaluate, avoiding a stale hard-coded result. This is the right use of literature: test units, trends, and reporting conventions while retaining material and excitation differences. A match at a proxy point does not convert an estimated InP/GaAsP room-temperature linewidth into a measurement [docs/rt_edge_tier.md] [../_goal/paper_digests.md] [verify/verify_rt_edge_papers.py].",
+      "notes": "Paper validation is useful only when the reported conventions match. For Reischle, the appropriate comparison is the IRF-deconvolved but background-included value, not the raw detector-broadened dip and not the fully background-corrected value; the tier document records the 0.25 plus or minus 0.05 anchor, but under the corrected finite-pulse loading model there is no finite pooled g2_min left to compare it against at all -- every sampled corner now falls below the collected-flux floor. Chatzarakis's own reported class-proxy value, 0.36 near 230 K, is retained in the evidence ledger as a distinct-material anchor, not as a numerical match to this sweep's now-undefined prediction. The verification route loads the current card and calls device.evaluate, avoiding a stale hard-coded result. A proxy-point anchor does not convert an estimated InP/GaAsP room-temperature linewidth into a measurement [docs/rt_edge_tier.md] [../_goal/paper_digests.md] [verify/verify_rt_edge_papers.py].",
       "sources": [
         "docs/rt_edge_tier.md",
         "verify/verify_rt_edge_papers.py",
@@ -762,7 +686,7 @@
         },
         "chatzarakis_g2": {
           "value": 0.36,
-          "file": "docs/rt_edge_tier.md"
+          "file": "verify/data/rt_edge_anchors.yaml"
         }
       }
     },
@@ -787,27 +711,27 @@
     {
       "id": "05-20",
       "layout": "bullets",
-      "title": "Honest conclusion: conditional non-cryogenic passes, no unconditional PASS",
+      "title": "Honest conclusion: the corrected model finds no eligible corner",
       "bullets": [
-        "Individual favourable corners meet the pulsed g² gate.",
-        "Closing three evidence gaps would flip the sweep to PASS.",
+        "No sampled corner clears the collected-flux floor under the corrected model.",
+        "Closing the evidence gaps would NOT flip this sweep to PASS by itself.",
         "Measurement 1: ΔXX distribution and Γ(T) on InP/GaAsP.",
-        "Measurement 2: second independent source for 80 K anchor.",
-        "Platform down-selection awaits platform-specific measurements."
+        "Measurement 2: second independent source for the 80 K anchor.",
+        "Only the opt-in full-cancellation retention convention restores eligibility."
       ],
-      "notes": "The stop rule is intentionally weaker than an unqualified room-temperature claim: it asks whether a favourable design point exists at a non-cryogenic heat-sink temperature, defined here as at least 230 K. The sweep finds such corners, so the physics sensitivity exercise has a useful result. But the final verdict remains FAIL solely because the evidence ledger is incomplete; median_pass=false is reported but is not a PASS gate. The Fail reasons section reads verbatim: Fail reasons\n- `evidence_incomplete`. Closing the three single-source evidence gaps would therefore flip this exact sweep to PASS. Measurement 1 remains a distribution of biexciton splittings and linewidth versus temperature on the primary platform, and a second independent source is needed for the electrical 80 K anchor. The distinction tells an experimental team exactly which evidence changes the conclusion while keeping a conditional model corner distinct from a demonstration claim [out/rt_edge/verdict.md] [docs/rt_edge_contract.md] [docs/rt_edge_tier.md].",
+      "notes": "The stop rule asks whether a favourable design point exists at a non-cryogenic heat-sink temperature, defined here as at least 230 K, under the corrected finite-pulse loading calculation. This rerun finds none: every sampled corner across all four temperatures falls below the collected-flux floor, so fail reasons now read verbatim: Fail reasons\n- `evidence_incomplete`\n- `no_eligible_rows`. Unlike the earlier, uncorrected sweep, closing the three single-source evidence gaps would NOT by itself flip this exact sweep to PASS, because there is no eligible row for a completed evidence ledger to validate. Only the opt-in ret.tau_cap_scales_with_density full-cancellation retention convention restores any eligible or passing rows, reported separately as a model-sensitivity comparison. Measurement 1 remains a distribution of biexciton splittings and linewidth versus temperature on the primary platform, and a second independent source is still needed for the electrical 80 K anchor [out/rt_edge/verdict.md] [docs/rt_edge_contract.md] [docs/rt_edge_tier.md].",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md",
         "docs/rt_edge_tier.md"
       ],
       "repo_numbers": {
-        "T_stop": {
-          "value": 230,
-          "file": "out/rt_edge/verdict.md"
-        },
         "evidence_gaps": {
           "value": 3,
+          "file": "out/rt_edge/verdict.md"
+        },
+        "eligible_count": {
+          "value": 0,
           "file": "out/rt_edge/verdict.md"
         }
       }

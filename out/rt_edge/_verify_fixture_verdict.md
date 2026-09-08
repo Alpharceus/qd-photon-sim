@@ -1,9 +1,9 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-07T21:58:43.537343+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-08T02:56:39.596968+00:00; contract: docs/rt_edge_contract.md.
 
 ```
-VERDICT: PASS g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
+VERDICT: PASS model=finite_pulse:true,tau_cap_density:false g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
 ```
 ```
 CARD: edge-inp-gaasp-design role=primary eligible rows: 4/4 g2_pulsed_min=0.3214 g2_pulsed_median=0.36 diag_g2_min=0.3214 diag_g2_median=0.36 diag_g2_cw0_min=0.1 diag_g2_cw0_median=0.1 diag_g2_cw0_raw_min=0.32 diag_g2_cw0_raw_median=0.32 g2_cw_raw_min=0.32 g2_cw_raw_median=0.32 eligible=4/4 flux_floor_excluded=0 favorable_rows=4
@@ -41,6 +41,16 @@ Grid complete: True
 - `dot.gamma300` in [6.0, 20.0] meV: sampled at 6, 20
 - `irf_ps` in [50.0, 200.0] ps: sampled at 50, 200
 - `thermal.T_hs` in [230.0, 300.0] K: sampled at 230, 250, 273, 300
+
+## Model sensitivity
+Two opt-in physics-correction switches (`drive.finite_pulse`, peer-review-triage.md finding 1; `ret.tau_cap_scales_with_density`, finding 1b) are now genuine sweep axes (pkg5b) instead of both being silently fixed at their card-default (false, false), which every prior package used. The headline above -- headline_coverage_pulsed, T_pass_min, headline_by_T*, g2_min, flux_max -- is computed over ONLY `model=finite_pulse:true,tau_cap_density:false` rows (the corrected, no-cancellation model). The other three combinations never gate PASS; they are reported here for comparison, pooled across both cards at each combination's own best corner.
+
+| model (finite_pulse, tau_cap_density) | eligible | headline passes | pulsed g2 min | flux max (photons/s) |
+|---|---:|---:|---:|---:|
+| finite_pulse:false,tau_cap_density:false | 0/0 | 0 | n/a | n/a |
+| finite_pulse:false,tau_cap_density:true | 0/0 | 0 | n/a | n/a |
+| finite_pulse:true,tau_cap_density:false (headline) | 0/0 | 0 | n/a | n/a |
+| finite_pulse:true,tau_cap_density:true | 0/0 | 0 | n/a | n/a |
 
 ## Per-temperature acceptance
 | T_hs (K) | eligible | headline passes | deduplicated (IRF axis collapsed) | pulsed g2 min | flux max (photons/s) | gamma300 threshold |

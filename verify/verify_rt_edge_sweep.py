@@ -314,6 +314,94 @@ ok("pkg5-fix3, item 2: write_markdown does not crash with a 'T=?' bucket present
    "bucket is rendered (not silently dropped)",
    "| T=? |" in _t_mixed_text)
 
+# ---- pkg5b pre-step 0 (leftovers from the Opus PASS review of pkg5 fix3,
+# commit 7347274) fixture checks, one per item, added where cheap.
+
+# Item 1: run_sweep()'s `passing_T` list comprehension must skip the "T=?"
+# bucket instead of calling float("T=?"). run_sweep() itself always drives a
+# full (non --quick) grid of real evaluate() calls, too expensive for this
+# file, so the fixed expression is mirrored here verbatim against a
+# synthetic per_T dict that deliberately puts a headline-passing "T=?"
+# bucket alongside a numeric one.
+_passing_t_per_T = {"T=?": {"n_headline": 5}, "230": {"n_headline": 0},
+                    "250": {"n_headline": 2}}
+_passing_T = [float(T) for T, info in _passing_t_per_T.items()
+             if T != "T=?" and info.get("n_headline", 0) > 0]
+ok("pkg5b pre-step 0, item 1: the passing_T comprehension (run_sweep) skips the 'T=?' "
+   "bucket instead of raising on float('T=?')",
+   _passing_T == [250.0])
+
+# Item 2: "## What cooling buys" must not render "At T_hs=T=? K" for the
+# non-rankable bucket. Reuses the _t_mixed_* fixture above, which already
+# has both a "230" and a "T=?" bucket, both headline-passing.
+ok("pkg5b pre-step 0, item 2: 'What cooling buys' skips the 'T=?' bucket instead of "
+   "rendering 'At T_hs=T=? K'",
+   "At T_hs=T=?" not in _t_mixed_text and "At T_hs=230 K" in _t_mixed_text)
+
+# Item 3: the "(that alone would already satisfy the g2 < 0.5 criterion)"
+# aside must be conditional on g2_cw0 < 0.5, not printed unconditionally.
+_cool_path = ROOT / "out" / "rt_edge" / "_verify_fixture_verdict.md"
+_g2cw_high_row = full_row(delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0, T_hs_K=230.0,
+                          g2_pulsed=0.2, g2_cw0=0.6, g2_cw0_raw=0.7,
+                          eligible_row=True, eligible_pulsed=True, eligible_cw=True,
+                          headline_pass=True, secondary_pass=False,
+                          invalid_reasons_pulsed="", invalid_reasons_cw="",
+                          diagnostic_valid=True, collected_flux_pulsed_s=2000.0)
+_g2cw_high_stats = rte.compute_stats([_g2cw_high_row])
+_g2cw_high_verdict = rte.compute_verdict([_g2cw_high_row], _g2cw_high_stats, True,
+                                         GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown([_g2cw_high_row], _g2cw_high_stats, _g2cw_high_verdict,
+                   rte.build_grid(False), True, GOOD_EVIDENCE, GOOD_HALLU, _cool_path)
+_g2cw_high_text = _cool_path.read_text(encoding="utf-8")
+ok("pkg5b pre-step 0, item 3: the '(that alone would already satisfy ...)' aside is "
+   "omitted when the best diagnostic corner's intrinsic CW g2(0) is itself >= 0.5",
+   "the intrinsic CW g2(0) is 0.6" in _g2cw_high_text
+   and "that alone would already satisfy" not in _g2cw_high_text)
+_g2cw_low_row = full_row(delta_xx_meV=4.0, gamma300_meV=6.0, irf_ps=50.0, T_hs_K=230.0,
+                         g2_pulsed=0.2, g2_cw0=0.3, g2_cw0_raw=0.7,
+                         eligible_row=True, eligible_pulsed=True, eligible_cw=True,
+                         headline_pass=True, secondary_pass=False,
+                         invalid_reasons_pulsed="", invalid_reasons_cw="",
+                         diagnostic_valid=True, collected_flux_pulsed_s=2000.0)
+_g2cw_low_stats = rte.compute_stats([_g2cw_low_row])
+_g2cw_low_verdict = rte.compute_verdict([_g2cw_low_row], _g2cw_low_stats, True,
+                                        GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown([_g2cw_low_row], _g2cw_low_stats, _g2cw_low_verdict,
+                   rte.build_grid(False), True, GOOD_EVIDENCE, GOOD_HALLU, _cool_path)
+_g2cw_low_text = _cool_path.read_text(encoding="utf-8")
+ok("pkg5b pre-step 0, item 3: the aside IS present when g2_cw0 < 0.5",
+   "that alone would already satisfy" in _g2cw_low_text)
+
+# Item 4: the dead float stats["eligible_dedup"] is removed; only the two
+# int keys survive (n_eligible_dedup, eligible_dedup_mismatch_groups),
+# shaped like headline_coverage_pulsed_n/_total.
+_dedup_stats = rte.compute_stats([make_row(PRIMARY_ID, "primary", 0.3, 0.3, 0.3, True)])
+ok("pkg5b pre-step 0, item 4: dead float stats['eligible_dedup'] removed",
+   "eligible_dedup" not in _dedup_stats
+   and "n_eligible_dedup" in _dedup_stats
+   and "eligible_dedup_mismatch_groups" in _dedup_stats)
+
+# Item 5: the three hardcoded "300" bucket-key lookups are replaced by
+# _closest_T_bucket, resolved once and reused -- it must find the numeric
+# bucket nearest 300 K even when the grid does not sample the literal
+# string "300", and return None when only "T=?" is present.
+ok("pkg5b pre-step 0, item 5: _closest_T_bucket resolves the nearest numeric bucket within "
+   "tolerance, not a hardcoded '300' key, and returns None when nothing sampled is close "
+   "to 300 K (a lone 230 K bucket must not be mistaken for '300 K')",
+   rte._closest_T_bucket({"230": {}, "301": {}}) == "301"
+   and rte._closest_T_bucket({"230": {}, "250": {}}) is None
+   and rte._closest_T_bucket({"T=?": {}}) is None)
+_bucket301_row = dict(make_row(PRIMARY_ID, "primary", 0.2, 0.3, 0.3, True), T_hs_K=301.0)
+_bucket301_stats = rte.compute_stats([_bucket301_row])
+_bucket301_verdict = rte.compute_verdict([_bucket301_row], _bucket301_stats, True,
+                                         GOOD_EVIDENCE, GOOD_HALLU)
+rte.write_markdown([_bucket301_row], _bucket301_stats, _bucket301_verdict,
+                   rte.build_grid(False), True, GOOD_EVIDENCE, GOOD_HALLU, _cool_path)
+_bucket301_text = _cool_path.read_text(encoding="utf-8")
+ok("pkg5b pre-step 0, item 5: write_markdown labels a 301 K-only best corner 'best 300 K "
+   "corner' via _closest_T_bucket, not only an exact '300' bucket",
+   "best 300 K corner" in _bucket301_text)
+
 # -- fallback-only pass: primary card never favorable, fallback card is
 rows = [make_row(PRIMARY_ID, "primary", 0.9, 0.9, 0.9, True),
         make_row(FALLBACK_ID, "fallback", 0.3, 0.3, 0.3, True)]
@@ -1149,7 +1237,8 @@ if not RUN_FULL:
     # Rebuild precisely the data types compute_stats consumes; this is a
     # CSV-derived recomputation, not a trust in manifest stats.
     _bool_fields = {"eligible_pulsed", "eligible_cw", "eligible_row", "headline_pass",
-                    "secondary_pass", "diagnostic_valid"}
+                    "secondary_pass", "diagnostic_valid",
+                    "model_finite_pulse", "model_tau_cap_density"}
     _text_fields = {"card_id", "card_class", "config_id", "delta_xx_tag", "gamma300_tag",
                     "irf_tag", "invalid_reasons_pulsed", "invalid_reasons_cw", "assumptions"}
     _rows_typed = []
@@ -1163,23 +1252,64 @@ if not RUN_FULL:
             else:
                 typed[key] = float(value) if value not in ("", "nan") else float("nan")
         _rows_typed.append(typed)
-    recomputed_stats = rte.compute_stats(_rows_typed)
+    # pkg5b item 2: sweep.csv now mixes all four drive.finite_pulse x
+    # ret.tau_cap_scales_with_density combinations, but manifest["stats"] is
+    # the HEADLINE combination's stats only (compute_stats(headline_rows) in
+    # run_sweep/main) -- recompute from the SAME headline-only subset, never
+    # every row, or this comparison would spuriously fail.
+    _headline_rows_typed = [r for r in _rows_typed
+                            if r["model_finite_pulse"] == rte.HEADLINE_MODEL["drive.finite_pulse"]
+                            and r["model_tau_cap_density"] == rte.HEADLINE_MODEL["ret.tau_cap_scales_with_density"]]
+    recomputed_stats = rte.compute_stats(_headline_rows_typed)
     _stat_keys = ("n_total", "n_eligible", "n_headline", "n_cw0_pass", "n_cw_raw_pass",
                   "n_flux_floor_excluded", "g2_pulsed_min", "g2_pulsed_median", "flux_max")
-    ok("saved full run: pooled statistics recomputed from CSV equal manifest",
-       all((recomputed_stats[k] == saved_manifest["stats"][k]
-            if isinstance(recomputed_stats[k], int)
-            else math.isclose(recomputed_stats[k], saved_manifest["stats"][k], rel_tol=0, abs_tol=1e-9))
-           for k in _stat_keys))
-    ok("saved full run: per-temperature statistics recomputed from CSV equal manifest",
-       recomputed_stats["per_T"] == saved_manifest["stats"]["per_T"])
 
-    expected_rows = sum(info["n_combos"] for info in saved_manifest["lever_info"].values())
+    def _num_equal(a, b):
+        """pkg5b item 3 fallout: with drive.finite_pulse=true as the headline
+        (0/768 eligible in this run -- every corner falls below the flux
+        floor under the corrected model), g2_pulsed_min/median and several
+        per_T g2_min values are legitimately NaN on BOTH sides; plain
+        math.isclose(nan, nan) is False, which would make this a spurious
+        failure rather than a real inconsistency."""
+        if isinstance(a, int) and isinstance(b, int):
+            return a == b
+        try:
+            fa, fb = float(a), float(b)
+        except (TypeError, ValueError):
+            return a == b
+        if math.isnan(fa) and math.isnan(fb):
+            return True
+        return math.isclose(fa, fb, rel_tol=0, abs_tol=1e-9)
+
+    ok("saved full run: pooled statistics recomputed from CSV's headline-model rows equal "
+       "manifest",
+       all(_num_equal(recomputed_stats[k], saved_manifest["stats"][k]) for k in _stat_keys))
+    ok("saved full run: per-temperature statistics recomputed from CSV's headline-model rows "
+       "equal manifest",
+       set(recomputed_stats["per_T"]) == set(saved_manifest["stats"]["per_T"])
+       and all(_num_equal(recomputed_stats["per_T"][t][k], saved_manifest["stats"]["per_T"][t][k])
+              for t in recomputed_stats["per_T"] for k in recomputed_stats["per_T"][t]))
+
+    # The headline combination always runs the full grid (manifest["grid"]/
+    # ["lever_info"] are the headline's own) regardless of whether the three
+    # non-headline combinations fell back to the reduced grid.
+    expected_headline_rows = sum(info["n_combos"] for info in saved_manifest["lever_info"].values())
     for values in saved_manifest["grid"].values():
-        expected_rows *= len(values)
-    ok("saved full run: grid is complete and every lever/axis combination is present",
-       saved_manifest["grid_complete"] is True and len(saved_csv_rows) == expected_rows
+        expected_headline_rows *= len(values)
+    ok("saved full run: the headline model combination's grid is complete and every "
+       "lever/axis combination is present",
+       saved_manifest["grid_complete"] is True
+       and len(_headline_rows_typed) == expected_headline_rows
        and {r["card_id"] for r in saved_csv_rows} == {PRIMARY_ID, FALLBACK_ID})
+    # All four model combinations together must account for every scheduled
+    # row -- robust to the reduced-grid fallback (unlike a fixed row-count
+    # formula), since manifest["model_sensitivity"]'s own n_total per
+    # combination already reflects whichever grid (full or reduced) that
+    # combination actually used.
+    ok("saved full run: model_sensitivity's four combinations' row counts sum to the total "
+       "CSV row count",
+       sum(info["n_total"] for info in saved_manifest.get("model_sensitivity", {}).values())
+       == len(saved_csv_rows))
     expected_line = rte.verdict_line(saved_manifest["verdict"])
     ok("saved full run: verdict.md VERDICT line equals manifest verdict",
        expected_line in saved_md)
@@ -1195,11 +1325,19 @@ if not RUN_FULL:
     for raw in replay_rows:
         lever = {key: float(raw["emission_" + key.split(".")[1]])
                  for key in rte.LEVER_PATHS}
+        # pkg5b item 1/2: replay the SAME model combination the row was
+        # actually generated under (sweep.csv now mixes all four
+        # combinations), never the eval_*_point default (HEADLINE_MODEL) --
+        # a row from a non-headline combination would otherwise replay
+        # against the wrong physics and spuriously fail this check.
+        model = {"drive.finite_pulse": raw["model_finite_pulse"] == "True",
+                "ret.tau_cap_scales_with_density": raw["model_tau_cap_density"] == "True"}
         pulsed = rte.eval_pulsed_point(card_paths[raw["card_id"]], float(raw["delta_xx_meV"]),
-                                       float(raw["gamma300_meV"]), lever, T_hs=float(raw["T_hs_K"]))
+                                       float(raw["gamma300_meV"]), lever, T_hs=float(raw["T_hs_K"]),
+                                       model=model)
         cw = rte.eval_cw_point(card_paths[raw["card_id"]], float(raw["delta_xx_meV"]),
                                float(raw["gamma300_meV"]), float(raw["irf_ps"]), lever,
-                               T_hs=float(raw["T_hs_K"]))
+                               T_hs=float(raw["T_hs_K"]), model=model)
         checks = ((pulsed["flux_s"], raw["collected_flux_pulsed_s"]),
                   (pulsed["scalars"]["g2_op"], raw["g2_pulsed"]),
                   (cw["flux_s"], raw["collected_flux_cw_s"]),

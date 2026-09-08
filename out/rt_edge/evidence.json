@@ -1676,7 +1676,7 @@
     {
       "name": "evaluator cross-check [edge_extraction_efficiency]",
       "status": "ok",
-      "reason": "gainp card edge_beta=0.0292 sits in its own [E] ridge class (0.3%-3%, True) and stays distinct from both vertical-reference anchors (0.276, 9e-05) -- a vertical collection efficiency does not validate this edge ridge's beta"
+      "reason": "gainp card edge_beta=0.0297 sits in its own [E] ridge class (0.3%-3%, True) and stays distinct from both vertical-reference anchors (0.276, 9e-05) -- a vertical collection efficiency does not validate this edge ridge's beta"
     },
     {
       "name": "evaluator cross-check [retention_Ea_inp_algainp]",
@@ -1686,7 +1686,7 @@
     {
       "name": "evaluator cross-check [temperature_trend_g2]",
       "status": "ok",
-      "reason": "Chatzarakis-class fixture g2(T) over [200.0, 230.0, 260.0, 300.0] = [np.float64(0.5857), np.float64(0.6982), np.float64(0.775), np.float64(0.8548)]: non-decreasing with T (True), matching the direction BOTH independent papers (Chatzarakis 0.36@230K, Laferriere 0.57@300K) report; not a claim that the model reproduces their absolute numbers (different material systems)"
+      "reason": "Chatzarakis-class fixture g2(T) over [200.0, 230.0, 260.0, 300.0] = [np.float64(0.5846), np.float64(0.6958), np.float64(0.7718), np.float64(0.8552)]: non-decreasing with T (True), matching the direction BOTH independent papers (Chatzarakis 0.36@230K, Laferriere 0.57@300K) report; not a claim that the model reproduces their absolute numbers (different material systems)"
     },
     {
       "name": "evaluator cross-check [reischle2008_g2_80K]",
@@ -1697,8 +1697,8 @@
   "source_ledger_sha256": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
   "evaluator_input_hashes": {
     "verify/data/rt_edge_anchors.yaml": "33782d5721bfca0d3cf6f73130cabe089b461b598d2a17a86e897218c1ff9a5d",
-    "cards/edge-inp-gaasp-design.yaml": "f89fdb61f6fe2de7da27d6d94574c353818c1e1326ede5dd4422a66f1e905fc3",
-    "cards/edge-inp-gainp-design.yaml": "453f0b08f80c71a68210e8bff048eb0220158b6c8064f8c24f7118b64668865b"
+    "cards/edge-inp-gaasp-design.yaml": "f875d37bb09dfaab193b993fa9a46cc71083dba5e31cefa148f486d99027b1b0",
+    "cards/edge-inp-gainp-design.yaml": "84f7df390b1623dc42f25d206758639e6dbee8da8ef062464efea0292cdd61c5"
   },
   "checks_passed": 14,
   "checks_total": 17,

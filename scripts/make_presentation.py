@@ -518,9 +518,17 @@ def draw_linewidth_sweep(path: Path, rows: list[dict]) -> dict:
 
 
 def verdict_brightness_factors() -> dict:
-    """Read the verdict's brightness-decomposition table for result slides."""
+    """Read the verdict's brightness-decomposition table for result slides.
+    pkg5b: when no row is eligible (n_eligible == 0), run_rt_edge.py's
+    write_markdown prints a "Why no row is eligible" heading in place of
+    "Best diagnostic-g2 row and brightness decomposition" ahead of the SAME
+    factor table -- try both headings rather than crashing on whichever one
+    the current run did not print."""
     text = VERDICT_MD.read_text(encoding="utf-8")
-    section = split_markdown_sections(text)["Best diagnostic-g2 row and brightness decomposition"]
+    sections = split_markdown_sections(text)
+    section = sections.get("Best diagnostic-g2 row and brightness decomposition")
+    if section is None:
+        section = sections.get("Why no row is eligible", "")
     return {name.strip(): value.strip() for name, value in
             re.findall(r"^\| ([^|]+) \| ([^|]+) \|$", section, re.MULTILINE)}
 
@@ -550,7 +558,12 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
 
     beta_lo, beta_hi = min(wg_info["beta_pct_range"]), max(wg_info["beta_pct_range"])
     fallback_card = verdict["cards"]["edge-inp-gainp-design"]
-    best_g2_pulsed = fallback_card["g2_pulsed_min"]
+    # pkg5b: a card with zero eligible rows (the current headline model's own
+    # result) prints diag_g2_min/median instead of g2_pulsed_min/median
+    # (scripts/run_rt_edge.py's card_line()); fall back to the diagnostic
+    # value rather than crashing on the now-absent eligible-only key.
+    best_g2_pulsed = fallback_card.get("g2_pulsed_min", fallback_card.get("diag_g2_min"))
+    best_g2_eligible = "g2_pulsed_min" in fallback_card
     threshold = verdict["gamma300_threshold"]
     flux_margin = verdict["flux_margin"]
     anchor_text = " ".join(verdict["gamma300_anchor_lines"])
@@ -742,23 +755,30 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "g2(0): the number that matters",
         ["g2(0): how often two photons arrive together. 0 = perfect single photon, 1 = ordinary lamp",
          "0.5 is the usual single-photon threshold",
-         f"This design's best pulsed corner reaches {best_g2_pulsed:.4f}, only at the narrow-line, wide-splitting extreme"],
+         (f"This design's best pulsed corner reaches {best_g2_pulsed:.4f}, only at the narrow-line, wide-splitting extreme"
+          if best_g2_eligible else
+          f"Under the corrected finite-pulse loading model, the best DIAGNOSTIC corner reaches {best_g2_pulsed:.4f} -- above threshold and below the flux floor")],
         "g2(0) is the only equation this deck states explicitly, and even it is explained rather "
         "than derived: it is the probability of detecting two photons at (almost) the same instant, "
         "normalized so that a classical, many-photon source gives 1 and a perfect single-photon "
         "emitter gives 0. The dashed curve on this slide is the published 300 K ceiling (no "
         "electrically or optically driven III-V dot has ever demonstrated g2(0) < 0.5 at 300 K, "
         "docs/rt_edge_contract.md); the solid curve is this design's own best pulsed-drive corner "
-        f"from the acceptance sweep, g2 = {best_g2_pulsed:.4f} -- better than the "
-        "published ceiling, but only at the extreme corner of the swept range (narrowest linewidth, "
-        "widest X-XX splitting) and only under pulsed, not continuous, drive.", image=figures["g2"]))
+        f"from the acceptance sweep, g2 = {best_g2_pulsed:.4f}" + (
+            " -- better than the published ceiling, but only at the extreme corner of the swept "
+            "range (narrowest linewidth, widest X-XX splitting) and only under pulsed, not "
+            "continuous, drive." if best_g2_eligible else
+            " -- WORSE than the published ceiling under the corrected finite-pulse loading model "
+            "(peer-review-triage.md finding 1), and this corner does not clear the collected-flux "
+            "eligibility floor either, so it is a diagnostic value, not a measurable one."),
+        image=figures["g2"]))
 
     slides.append(Slide(
         "Results: the room-temperature acceptance sweep",
         [f"At the best {linewidth_sweep['split']:g} meV splitting, pulsed g2 rises with linewidth",
-         f"Non-cryogenic passes begin at T_hs=230 K; pooled gamma300 threshold={threshold} meV",
-         "At 300 K the fallback card passes conditionally; evidence is still incomplete",
-         "The 6.5 meV per-card anchor passes only for the fallback card",
+         f"Under the corrected finite-pulse loading model, no sampled corner clears the flux floor (gamma300 threshold={threshold})",
+         "No T_hs, card, or lever combination passes the headline gate; evidence is also still incomplete",
+         "The 6.5 meV per-card anchor now fails on both cards under the corrected model",
          f"Verified class anchors: {linewidth_sweep['low']:g} and {linewidth_sweep['mid']:g} meV"],
         f"{verdict['verdict_line']}\nThe sweep was generated by scripts/run_rt_edge.py "
         f"({verdict['generated']}) over the full contract-declared grid (docs/rt_edge_contract.md): "
@@ -772,14 +792,14 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
 
     slides.append(Slide(
         "Why brightness changes the answer",
-        [f"Flux margin is {flux_margin}; values above 1 clear the 1000 photons/s floor",
-         "The corrected circular-NA model raises the favourable-corner flux to the reported value",
+        [f"Flux margin is {flux_margin}; values above 1 clear the 1000 photons/s floor, below 1 do not",
+         "The corrected circular-NA model raises collected flux, but not enough under the corrected loading model",
          f"Maximum collected flux is {brightness['reported collected_flux_pulsed_s']} photons/s"],
         f"The factor table is read from out/rt_edge/verdict.md: loading={brightness[loading_key]}, "
         f"t_X={brightness['t_X (spectral transmission)']}, retention={brightness['S (confinement retention)']}, "
-        f"eta_total={brightness['eta_total (edge out-coupling: waveguide coupling x front/back facet split x facet transmission x propagation x NA, all in one factor)']}, "
-        f"and repetition rate={brightness['rep rate (Hz)']} Hz. These levers buy enough collection "
-        "for only the fallback low-linewidth corner; they do not improve intrinsic g2. The floor, "
+        f"and repetition rate={brightness['rep rate (Hz)']} Hz. These levers no longer buy enough "
+        "collection at any sampled corner under the corrected finite-pulse loading model; they do "
+        "not improve intrinsic g2 either way. The floor, "
         "factors, and lever values are the acceptance artifact's brightness decomposition. "
         f"Facet-model note from the verdict: {verdict['facet_model_note']}",
         image=ENVELOPE_PNG))
@@ -816,20 +836,20 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
 
     slides.append(Slide(
         "The honest verdict",
-        ["Under the relaxed rule, the sweep passes from 230 K; the result remains conditional, not a PASS",
-         f"Pooled gamma300 threshold is {threshold} meV; the 300 K line passes only on the fallback card",
-         "Evidence is incomplete and the primary card has no 300 K headline pass",
+        ["Under the corrected finite-pulse loading model, NO sampled corner passes at any T_hs",
+         f"Pooled gamma300 threshold is {threshold}; neither card's own 6.5 meV anchor passes either",
+         "Evidence is also still incomplete: this is a double FAIL, not a conditional PASS",
          "No published dot has broken the g2 ≈ 0.5, 300 K ceiling -- electrical or optical"],
         f"{verdict['verdict_line']}\nFail reasons: " + ", ".join(verdict["fail_reasons"]) + ". "
         "The relaxed stop rule requires g2(0) < 0.5 with working electrical injection, "
-        "in-plane out-coupling, every claim cross-checked against at least two "
-        "operation at T_hs >= 230 K, with all claims cross-checked against independent papers. "
-        "The temperature-axis sweep passes at 230 K and above as reported, but evidence claims "
-        "still lack independent support. This remains a "
-        "FAIL rather than a conditional PASS because docs/rt_edge_contract.md makes evidence "
-        "completeness mandatory, and because "
-        "no published III-V quantum dot -- at any drive scheme -- has demonstrated g2(0) < 0.5 at "
-        "conditional verdict rather than a PASS.",
+        "in-plane out-coupling, and every claim cross-checked against at least two independent "
+        "papers, at T_hs >= 230 K. Under the corrected finite-pulse loading calculation (peer-"
+        "review-triage.md finding 1), replacing the legacy static per-pulse loading approximation "
+        "every earlier package used, no sampled corner anywhere in the grid clears even the "
+        "collected-flux eligibility floor, let alone the g2(0) gate. This is not a conditional "
+        "PASS pending evidence completion: the verdict now fails BOTH on evidence "
+        "(docs/rt_edge_contract.md requires completeness) AND on having no eligible row at all -- "
+        "closing the evidence gaps alone would not flip this sweep to PASS.",
         verbatim=[verdict["verdict_line"]]))
 
     slides.append(Slide(
@@ -1059,7 +1079,8 @@ def main():
     draw_pin_diode(figures["pin"], diode_info["diode"], diode_info["V_j"], diode_info["I_uA"])
     draw_spectral_overlap(figures["overlap"], lw_info["params"], 4.0, 7.0)
     draw_waveguide_mode(figures["wg"], wg_info["stack"], wg_info["mode"], wg_info["edge"])
-    best_g2_pulsed = verdict["cards"]["edge-inp-gainp-design"]["g2_pulsed_min"]
+    _g2_card = verdict["cards"]["edge-inp-gainp-design"]
+    best_g2_pulsed = _g2_card.get("g2_pulsed_min", _g2_card.get("diag_g2_min"))
     draw_g2_dip(figures["g2"], best_g2_pulsed, 0.5)
     linewidth_sweep = draw_linewidth_sweep(figures["linewidth"], sweep_rows)
     brightness = verdict_brightness_factors()
