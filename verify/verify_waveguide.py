@@ -270,15 +270,33 @@ ck(_eta_tiny_T > 0.5 and abs(_eta_tiny_T - 1.0) < 1e-2,
 
 # item 5: since R_back, R_front=1-T, and prop_rt are each in [0, 1], their
 # product is bounded by R_front, so denom = 1 - product >= 1 - R_front = T
-# always -- reaching the denom <= 1e-15 guard with T == 0.0 exactly (the
-# only value the guard now special-cases) therefore always has denom == 0.0
-# exactly too, even when alpha_cm*L_um is tiny but nonzero (not exactly
-# 0): the guard's 0.0 branch covers every case that reaches it, and the
-# raise below is unreachable for physically valid inputs, kept only to
+# always -- reaching the denom <= 1e-15 guard with T == 0.0 exactly always
+# has denom == 0.0 exactly too, even when alpha_cm*L_um is tiny but
+# nonzero (not exactly 0): the T == 0.0 branch covers every such case, and
+# the raise below is unreachable for physically valid inputs, kept only to
 # describe the (algebraically impossible) case explicitly rather than
 # silently falling through.
 ck(facet_escape_fraction(0.0, 1.0, 1e-13, 1.0) == 0.0,
    'near-degenerate facet cavity (alpha_cm*L_um tiny but nonzero, T=0 exactly) also returns 0.0')
+
+# pr-pkg4-fix4 item 3 (Opus review): a SECOND, distinct way to reach
+# denom == 0.0 with T > 0 exists -- not the T == 0.0 degeneracy above, but
+# a float64 rounding artifact: for 0 < T < ~1.11e-16 (half machine
+# epsilon), R_front = 1.0 - T itself rounds to exactly 1.0 before denom is
+# computed, so with R_back == 1 and a lossless ridge (alpha_cm*L_um == 0)
+# denom underflows to exactly 0.0 even though the analytic series
+# converges to 1.0 for any T > 0 (an earlier version of this module's own
+# comment on this branch falsely claimed the general formula "already
+# evaluates to exactly 1.0 ... even for T as small as 1e-300" -- it did
+# not: without an explicit branch it instead divided by this same
+# underflowed 0.0 and raised). Confirm the function returns the analytic
+# 1.0 rather than raising at T=1e-17 and T=1e-300.
+ck(facet_escape_fraction(1e-17, 1.0, 0.0, 100.0) == 1.0,
+   'T=1e-17 (below the float64 1.0-T rounding threshold), lossless ridge, R_back=1: '
+   'returns the analytic escape-fraction limit 1.0, not a raised ValueError from '
+   'the underflowed denominator')
+ck(facet_escape_fraction(1e-300, 1.0, 0.0, 100.0) == 1.0,
+   'T=1e-300 (far below the rounding threshold), lossless ridge, R_back=1: also returns 1.0')
 
 # item 5: general-x exponent check at dot_position=0.25, off the x=0.5
 # midpoint default, against a hand closed form -- this specifically

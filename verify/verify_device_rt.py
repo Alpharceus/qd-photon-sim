@@ -53,17 +53,33 @@ def ok(name, value):
 
 
 def _cw_reduction_guard(design, label):
-    """pr-pkg4-fix3 item 3: device.py's rho_pulsed reduces to cw_rho_op in
-    the tau_dark_ns -> 0 limit ONLY when ret.b0 = ret.beta = 0 and the
-    cavity is disabled -- cw_rho_op's own background never carries a
+    """pr-pkg4-fix3 item 3, corrected by pr-pkg4-fix4 item 1 (Opus review):
+    device.py's rho_pulsed reduces to cw_rho_op in the tau_dark_ns -> 0
+    limit ONLY when the RESOLVED retention params evaluate() actually used
+    -- scalars["retention_params_used"]["b0"]/["beta"] -- are both 0.0 and
+    the cavity is disabled -- cw_rho_op's own background never carries a
     b0/beta term and its own signal never carries a cavity gain factor, so
     either active makes the two rho definitions differ BY CONSTRUCTION
-    (see device.py's finite_pulse block, item 3). Skip with an explanatory
-    message rather than asserting a false equivalence if a future card
-    under test sets either."""
-    if design.ret.b0 != 0.0 or design.ret.beta != 0.0 or design.cavity.enabled:
-        print(f"skip {label}: card sets ret.b0/beta != 0 or enables the "
-              "cavity -- rho_pulsed and cw_rho_op differ by construction "
+    (see device.py's finite_pulse block, item 3).
+
+    The raw design.ret.b0/design.ret.beta fields the previous version of
+    this guard tested are NOT the right condition: in ret.mode="proxy"
+    (device.py's default) an unset (0.0) ret.b0/ret.beta resolves through
+    the class-proxy Arrhenius fit to a nonzero b0/beta, so a proxy-mode
+    card can fail the reduction while its own raw fields still read 0.0 --
+    the old guard would have wrongly let such a card through checks E/F.
+    In ret.mode="confinement" an explicit ret.overrides entry can likewise
+    set a nonzero b0/beta on top of raw fields that stay 0.0, breaking the
+    reduction the same way. Skip with an explanatory message rather than
+    asserting a false equivalence if a future card under test resolves
+    either to nonzero."""
+    rpu = evaluate(design)["scalars"]["retention_params_used"]
+    b0_used = rpu["b0"] if rpu is not None else float("nan")
+    beta_used = rpu["beta"] if rpu is not None else float("nan")
+    if not (b0_used == 0.0 and beta_used == 0.0) or design.cavity.enabled:
+        print(f"skip {label}: resolved retention params b0={b0_used!r}/"
+              f"beta={beta_used!r} are not both 0.0, or the cavity is "
+              "enabled -- rho_pulsed and cw_rho_op differ by construction "
               "(pr-pkg4-fix3 item 3), not comparable here")
         return True
     return False
@@ -916,6 +932,34 @@ supply_bound_gainp = f_QD_gainp * lk_gainp.eta_inj * (d_gainp.drive.I_uA * 1e-6 
 ok("gainp card: loading.r_dot never exceeds f_QD*eta_inj*(I/q) (carrier conservation)",
    sc_gainp["loading.r_dot"] <= supply_bound_gainp * (1.0 + 1e-6))
 
+# pr-pkg4-fix4 item 2 (Opus review): regression checks for the hoisted
+# density validation (pr-pkg6-fix item 1) -- previously untested. All
+# three raise ValueError (not the underlying division's ZeroDivisionError
+# -- an uncaught ZeroDivisionError here would crash this script rather
+# than being silently missed) on the gainp card, whose ret.mode=
+# "confinement" and drive.mode="EL-transport" both satisfy the mode gate.
+d_dens0 = copy.deepcopy(d_gainp); d_dens0.aperture.density_cm2 = 0.0
+raises("item 2: aperture.density_cm2=0.0 raises ValueError (not "
+       "ZeroDivisionError) on the gainp card", lambda: evaluate(d_dens0))
+d_densneg = copy.deepcopy(d_gainp); d_densneg.aperture.density_cm2 = -1.0
+raises("item 2: aperture.density_cm2<0 raises ValueError (not "
+       "ZeroDivisionError) on the gainp card", lambda: evaluate(d_densneg))
+d_ndot0 = copy.deepcopy(d_gainp); d_ndot0.ret.n_dot_cm2 = 0.0
+raises("item 2: ret.n_dot_cm2=0.0 raises ValueError (not "
+       "ZeroDivisionError) on the gainp card", lambda: evaluate(d_ndot0))
+
+# pr-pkg4-fix4 item 2: a NEGATIVE aperture.density_cm2 must raise in EVERY
+# mode, unlike the `== 0.0` case above (which stays mode-gated to protect
+# aperture.compose's own N=0 use -- see device.py's comment at the
+# validation site) -- construct a design where NEITHER mode-gate condition
+# holds (ret.mode="proxy", drive.mode="EL", both untouched defaults) and
+# confirm the unconditional check still catches the negative density.
+d_density_proxy_neg = DeviceDesign()
+d_density_proxy_neg.aperture.density_cm2 = -1.0
+raises("item 2: NEGATIVE aperture.density_cm2 raises ValueError even in "
+       "proxy mode / drive.mode='EL' (neither mode-gate condition holds)",
+       lambda: evaluate(d_density_proxy_neg))
+
 # Item 6 (council review 2026-09-05): the round-1 mu bound (0.53) was a
 # hard-coded magic number, not computed from the card -- mu = r_dot *
 # tau_pulse, and r_dot is bounded by the (per-dot, N_eff-capped) supply, so
@@ -1445,30 +1489,30 @@ period_c = tau_pulse_c / d_gate.drive.duty
 ok("item 1/finding 4 check C(b) precondition: gate_grid's last point must be "
    "the card's own period", abs(period_c - gate_grid[-1]) < 1e-9)
 rho_period_c = rho_gate[-1]
-# item 5 (pr-pkg4-fix3): the previous absolute-1e-12 comparison implicitly
-# assumed tau_rad_ns alone sets the cascade's decay tail -- a slower
-# escape channel (small k_X) can make the ACTUAL population decay time
-# 1/(k_X+gamma_X) longer than tau_rad_ns, in which case tau_pulse+5*tau_rad
-# would under-cover the tail at some future card. Use the effective decay
-# time as the larger of the two candidate rates' timescales (mirroring
-# DriveBlock.gate_ns's own recommendation), and a relative (not absolute)
-# tolerance so the claim survives whichever escape rate this or a future
-# card ships with.
-d_gp = copy.deepcopy(d_gate); d_gp.drive.gate_ns = period_c
-sc_gp = evaluate(d_gp)["scalars"]
-gamma_X_c, k_X_c = sc_gp["finite_pulse_gamma_X_ns"], sc_gp["finite_pulse_k_X"]
-tau_esc_c = 1.0 / (k_X_c + gamma_X_c) if (k_X_c + gamma_X_c) > 0 else float("inf")
-tau_eff_c = max(d_gate.ret.tau_rad_ns, tau_esc_c)
-gate_tail_c = tau_pulse_c + 5.0 * tau_eff_c
+# item 5 (pr-pkg4-fix3), corrected by item 4 (pr-pkg4-fix4, Opus review):
+# the previous absolute-1e-12 comparison implicitly assumed tau_rad_ns
+# alone sets the cascade's decay tail, and a since-removed "escape-aware
+# effective decay time" max(tau_rad_ns, 1/(k_X+gamma_X)) was computed here
+# to guard against a slower escape channel lengthening it -- but escape
+# (k_X > 0) only ADDS to the total decay rate, gamma_X + k_X >= gamma_X,
+# so 1/(k_X+gamma_X) <= 1/gamma_X = tau_rad_ns ALWAYS: the max() could
+# never actually pick the escape-derived timescale, so that computation
+# silently reduced to plain tau_rad_ns in every case anyway. Escape only
+# ever SHORTENS the true decay time, so gate = tau_pulse_ns + 5*tau_rad_ns
+# (DriveBlock.gate_ns's own recommendation) is a conservative (wider than
+# the true tail needs) cover of the cascade's decay tail regardless of
+# escape, never too narrow -- a relative (not absolute) tolerance still
+# lets the claim survive whichever escape rate this or a future card
+# ships with.
+gate_tail_c = tau_pulse_c + 5.0 * d_gate.ret.tau_rad_ns
 d_tail = copy.deepcopy(d_gate); d_tail.drive.gate_ns = gate_tail_c
 rho_tail_c = evaluate(d_tail)["scalars"]["rho_pulsed"]
 ok(f"item 1/finding 4 check C(b): rho_pulsed(gate=period={period_c:g} ns) "
-   f"({rho_period_c!r}) equals rho_pulsed(gate=tau_pulse+5*max(tau_rad, "
-   f"1/(k_X+gamma_X)), effective decay time {tau_eff_c:g} ns, gate="
-   f"{gate_tail_c:g} ns) ({rho_tail_c!r}) to rtol 1e-6 -- both gates fully "
+   f"({rho_period_c!r}) equals rho_pulsed(gate=tau_pulse+5*tau_rad="
+   f"{gate_tail_c:g} ns) ({rho_tail_c!r}) to rtol 1e-9 -- both gates fully "
    "cover the cascade's decay tail, so both sit on the same plateau",
    np.isfinite(rho_period_c) and np.isfinite(rho_tail_c)
-   and abs(rho_period_c - rho_tail_c) < 1e-6 * abs(rho_period_c))
+   and abs(rho_period_c - rho_tail_c) < 1e-9 * abs(rho_period_c))
 
 ok(f"item 1/finding 4 check C(c): rho_pulsed(gate=0.02 ns, still inside the "
    f"pump window) ({rho_gate[0]!r}) is strictly less than rho_pulsed(gate="
@@ -1556,6 +1600,22 @@ if not _cw_reduction_guard(d_f, "item 2/finding 4 check F"):
        sc_f["finite_pulse_converged"] and np.isfinite(sc_f["rho_pulsed"])
        and np.isfinite(sc_f["cw_rho_op"])
        and abs(sc_f["rho_pulsed"] - sc_f["cw_rho_op"]) < 1e-3 * sc_f["cw_rho_op"])
+
+# pr-pkg4-fix4 item 1 (Opus review): _cw_reduction_guard itself is under
+# test here -- a proxy-mode variant of the gainp card resolves ret.b0/beta
+# to nonzero through the class-proxy Arrhenius fit (rp in device.py) even
+# though the card's own raw RetentionBlock fields stay untouched at their
+# proxy-mode default of 0.0. The OLD guard (design.ret.b0/design.ret.beta)
+# would have wrongly let this card through checks E/F; the fixed guard
+# reads the RESOLVED params and must skip.
+d_proxy_variant = copy.deepcopy(d_gainp)
+d_proxy_variant.ret.mode = "proxy"
+_proxy_skipped = _cw_reduction_guard(d_proxy_variant, "item 1 proxy-mode self-test")
+ok("item 1: a proxy-mode variant of the gainp card resolves b0/beta "
+   "nonzero via the class-proxy fit even though design.ret.b0=="
+   f"{d_proxy_variant.ret.b0!r}/design.ret.beta=={d_proxy_variant.ret.beta!r} "
+   "stay 0.0 -- the guard skips E/F on the RESOLVED value, not the raw fields",
+   _proxy_skipped and d_proxy_variant.ret.b0 == 0.0 and d_proxy_variant.ret.beta == 0.0)
 
 # Item 7: an unconverged pulse_counting.pulse_g2 periodic steady state must
 # nan g2_dot/rho and mark the row invalid the way the other early-return

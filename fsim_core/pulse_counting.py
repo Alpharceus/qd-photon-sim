@@ -95,25 +95,38 @@ dynamics), but the transport background rate has no such tail modeled
 anywhere in this module or its caller -- background afterglow past the
 pulse is neglected [A]. This choice, not a wider or narrower window, is
 what makes device.py's rho_pulsed reduce exactly to its CW rho in the
-tau_dark_ns -> 0 limit (pr-pkg4-fix3 item 3: ONLY when device.py's
-ret.b0 = ret.beta = 0 and the cavity is disabled, true of every shipped
-card -- with either active the two rho definitions differ by construction,
-since the CW rho's own background/signal never carry a b0/beta term or a
-cavity gain factor at all; see device.py's finite_pulse block for the
-detail): both quantities then integrate signal and background over the
-same (pump-only) window.
+tau_dark_ns -> 0 limit (pr-pkg4-fix3 item 3, corrected by pr-pkg4-fix4
+item 1: ONLY when the RESOLVED retention params device.py's evaluate()
+actually used -- params["b0"] == params["beta"] == 0, exposed as
+scalars["retention_params_used"] -- and the cavity is disabled, true of
+every shipped card. This is NOT the same as device.py's raw
+design.ret.b0/design.ret.beta fields: in ret.mode="proxy" (the default) an
+unset (0.0) ret.b0/ret.beta resolves through the class-proxy Arrhenius fit
+to a nonzero b0/beta, and in ret.mode="confinement" an explicit
+ret.overrides entry can set a nonzero b0/beta on top of raw fields that
+still read 0.0 -- either way the two rho definitions then differ by
+construction, since the CW rho's own background/signal never carry a
+b0/beta term or a cavity gain factor at all; see device.py's finite_pulse
+block for the detail): both quantities then integrate signal and
+background over the same (pump-only) window.
 
 Physics honesty (pr-pkg4-fix3 item 4). Neglecting background afterglow
 past the pulse end is one-sided and optimistic, never the reverse: it can
 only omit background photons a real detector would still see, so
 device.py's rho_pulsed is an UPPER BOUND on the true pulsed rho, not a
-central estimate. At the gainp corner (230 K) the neglected background is
-already ~17% of the counted background (n_bg/B_fp); a ~1 ns background
-carrier lifetime (afterglow decaying on that scale instead of being cut
-off at the pulse end) would carry ~11x more background photons into the
-counting window and move rho_pulsed from 0.858 to ~0.69, while g2_op moves
-only from 0.9817 to 0.9880 over the same change [A] -- g2 depends on the
-cascade dynamics this module already tracks exactly, not on the
+central estimate. At the FAVOURABLE corner (gamma300=6, delta_xx=8,
+NA=0.8, R_back=0.95, L=250 um) n_bg -- the COUNTED injection-window
+background, not the neglected afterglow -- is already ~17.42% of the
+counted background B_fp (n_bg/B_fp; pr-pkg4-fix4 item 5 correction: an
+earlier version of this paragraph mislabeled n_bg/B_fp itself as "the
+neglected background", which it is not -- n_bg IS counted, matching
+device.py's own phrasing at device.py's DriveBlock.gate_ns docstring); a
+~1 ns background carrier lifetime (afterglow decaying on that scale
+instead of being cut off at the pulse end) would carry ~11x more
+background photons into the counting window and move rho_pulsed from
+0.858 to ~0.69, while g2_op moves only from 0.9817 to 0.98826 over the
+same change [A] -- g2 depends on the cascade dynamics this module already
+tracks exactly, not on the
 signal-to-background ratio, so it is far less sensitive to the neglected
 background model than rho is.
 

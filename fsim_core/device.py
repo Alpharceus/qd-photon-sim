@@ -291,11 +291,13 @@ class DriveBlock:
                                   # decay tail). Neglecting background
                                   # afterglow is one-sided and optimistic:
                                   # rho_pulsed is an UPPER BOUND -- at the
-                                  # gainp corner n_bg is ~17% of B_fp, and a
+                                  # FAVOURABLE corner (gamma300=6,
+                                  # delta_xx=8, NA=0.8, R_back=0.95,
+                                  # L=250 um) n_bg is ~17% of B_fp, and a
                                   # ~1 ns background carrier lifetime (~11x
                                   # more background photons there) would
                                   # move rho_pulsed from 0.858 to ~0.69,
-                                  # while g2_op moves only 0.9817 -> 0.9880
+                                  # while g2_op moves only 0.9817 -> 0.98826
                                   # [A]. Exposed as finite_pulse_gate_ns_used
                                   # on the evaluation dict (the resolved
                                   # value, whichever of the two applied,
@@ -849,8 +851,18 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     # exercises it under the untouched EL/proxy defaults, so this guard must
     # NOT fire for that design (neither ret.mode == "confinement" nor
     # drive.mode == "EL-transport" there).
+    #
+    # pr-pkg4-fix4 item 2 (Opus review): a NEGATIVE aperture.density_cm2 is
+    # unlike the `== 0.0` case above -- it is not "genuinely fine" for
+    # aperture.compose's own product-only use either (n_window_competitors
+    # would silently compute a negative Nw, not raise), so it is checked
+    # UNCONDITIONALLY, in every mode, ahead of (and independent from) the
+    # mode-gated `== 0.0` guard below.
+    if d.aperture.density_cm2 is not None and d.aperture.density_cm2 < 0:
+        raise ValueError("aperture.density_cm2 must be > 0 if set "
+                         f"(got {d.aperture.density_cm2!r})")
     if d.ret.mode == "confinement" or d.drive.mode == "EL-transport":
-        if d.aperture.density_cm2 is not None and d.aperture.density_cm2 <= 0:
+        if d.aperture.density_cm2 is not None and d.aperture.density_cm2 == 0.0:
             raise ValueError("aperture.density_cm2 must be > 0 if set "
                              f"(got {d.aperture.density_cm2!r})")
         if d.ret.n_dot_cm2 is not None and d.ret.n_dot_cm2 <= 0:
@@ -961,7 +973,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                             finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
                             finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
-                            rho_pulsed=np.nan,
+                            rho_pulsed=np.nan, retention_params_used=None,
                             invalid_reason="EL-transport requires positive current")
             converged = False
             for _ in range(12):
@@ -985,7 +997,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                             finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                             finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
                             finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
-                            rho_pulsed=np.nan,
+                            rho_pulsed=np.nan, retention_params_used=None,
                             invalid_reason="transport self-heating did not converge")
         if not np.isfinite(Tj):
             return dict(Tj=np.inf, gam=np.nan, eps=np.nan, rho=np.nan,
@@ -997,7 +1009,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                         finite_pulse_g2_dot=np.nan, finite_pulse_mean_counts=np.nan,
                         finite_pulse_mean_counts_x=np.nan, finite_pulse_rates=_nan_fp_rates(),
                         finite_pulse_gate_ns_used=np.nan, finite_pulse_converged=False,
-                        rho_pulsed=np.nan,
+                        rho_pulsed=np.nan, retention_params_used=None,
                         invalid_reason="thermal runaway")
         gam_base = (float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0, d.dot.a_ac,
                     d.dot.E_LO, d.dot.gamma300))) if d.dot.linewidth == "anchored"
@@ -1312,20 +1324,35 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # correction does not move any card's numbers today regardless of
         # which placement had been chosen.
         #
-        # pr-pkg4-fix3 item 3 (Opus review): the "reduces exactly to
-        # cw_rho_op" claim below holds ONLY when ret.b0 = ret.beta = 0 AND
-        # the cavity is disabled (true of every shipped card) -- with
-        # either active the two rho definitions differ BY CONSTRUCTION, not
-        # by approximation error: cw_rho_op's own bg (the CW branch further
-        # below) never carries a b0/beta term at all, so a nonzero b0/beta
-        # only ever inflates B_fp, pulling rho_pulsed below cw_rho_op no
-        # matter how small tau_dark_ns gets; and cw_rho_op's own signal
-        # (sig = t_X*I_X + t_XX*I_XX, CW branch further below) never
-        # carries a G factor at all, so G != 1.0 (cavity enabled) scales
-        # signal_fp above but leaves cw_rho_op's numerator untouched,
-        # again breaking the reduction regardless of tau_dark_ns. Checks
-        # E/F below skip (with an explanatory message) whenever the card
-        # under test sets b0/beta or enables the cavity.
+        # pr-pkg4-fix3 item 3 (Opus review); pr-pkg4-fix4 item 1 (Opus
+        # review, correcting this same comment): the "reduces exactly to
+        # cw_rho_op" claim below holds ONLY when the RESOLVED retention
+        # params actually used above -- params["b0"] == params["beta"] ==
+        # 0 -- AND the cavity is disabled (true of every shipped card) --
+        # with either active the two rho definitions differ BY
+        # CONSTRUCTION, not by approximation error: cw_rho_op's own bg (the
+        # CW branch further below) never carries a b0/beta term at all, so
+        # a nonzero b0/beta only ever inflates B_fp, pulling rho_pulsed
+        # below cw_rho_op no matter how small tau_dark_ns gets; and
+        # cw_rho_op's own signal (sig = t_X*I_X + t_XX*I_XX, CW branch
+        # further below) never carries a G factor at all, so G != 1.0
+        # (cavity enabled) scales signal_fp above but leaves cw_rho_op's
+        # numerator untouched, again breaking the reduction regardless of
+        # tau_dark_ns. The condition is on params["b0"]/params["beta"], NOT
+        # the raw design.ret.b0/design.ret.beta fields: in ret.mode=
+        # "proxy" (the default) an unset (0.0) ret.b0/ret.beta resolves
+        # through the class-proxy Arrhenius fit to b0=0.01276, beta=1e-4 --
+        # nonzero -- via `rp` above, so a proxy-mode card can fail this
+        # reduction while its own raw RetentionBlock fields still read
+        # 0.0; and in ret.mode="confinement" an explicit ret.overrides
+        # entry can likewise set a nonzero b0/beta on top of the raw
+        # (still-0.0) RetentionBlock fields. Exposed to callers as
+        # scalars["retention_params_used"] (b0/beta only) so a guard
+        # outside this module (verify_device_rt.py's _cw_reduction_guard)
+        # can test the condition that actually applies here rather than
+        # the raw fields. Checks E/F below skip (with an explanatory
+        # message) whenever the RESOLVED b0/beta is nonzero or the cavity
+        # is enabled.
         #
         # n_bg (item 1, pr-pkg4-fix2) is integrated over min(gate_fp,
         # tau_pulse_ns_val), NOT the full gate: background photons are
@@ -1343,12 +1370,13 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # pr-pkg4-fix3 item 4 (physics honesty): neglecting background
         # afterglow past the pulse end is one-sided and optimistic --
         # rho_pulsed is therefore an UPPER BOUND on the true pulsed rho,
-        # not a central estimate. At the gainp corner (230 K) n_bg is
+        # not a central estimate. At the FAVOURABLE corner (gamma300=6,
+        # delta_xx=8, NA=0.8, R_back=0.95, L=250 um) n_bg is
         # ~17% of B_fp; a ~1 ns background carrier lifetime (afterglow
         # decaying on that scale rather than being cut off at the pulse
         # end) would carry ~11x more background photons in the counting
         # window and move rho_pulsed from 0.858 to ~0.69, while g2_op
-        # moves only from 0.9817 to 0.9880 over the same change [A] (g2 is
+        # moves only from 0.9817 to 0.98826 over the same change [A] (g2 is
         # far less sensitive to the background model than rho is, since
         # g2 depends on the cascade dynamics rather than the signal-to-
         # background ratio directly).
@@ -1525,6 +1553,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     finite_pulse_gate_ns_used=finite_pulse_gate_ns_used,
                     finite_pulse_converged=finite_pulse_converged,
                     rho_pulsed=rho_pulsed,
+                    # pr-pkg4-fix4 item 1: the RESOLVED b0/beta this
+                    # operating point actually used (params["b0"]/
+                    # params["beta"] above) -- NOT design.ret.b0/
+                    # design.ret.beta, which can differ from these (proxy
+                    # mode's class-fit fallback, confinement mode's
+                    # ret.overrides). See the pr-pkg4-fix3 item 3 comment
+                    # above for why the cw-reduction identity depends on
+                    # THESE values, not the raw RetentionBlock fields.
+                    retention_params_used={"b0": params["b0"], "beta": params["beta"]},
                     **({"invalid_reason": invalid_reason} if invalid_reason else {}))
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
@@ -1705,6 +1742,14 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "tag_chain": "[A]",  # unmeasured inputs are always in the chain today
         "linewidth_source": d.dot.linewidth,
         "retention_source": d.ret.mode,
+        # pr-pkg4-fix4 item 1: the RESOLVED b0/beta this operating point
+        # actually used (None whenever `one()` returned via an early-exit
+        # branch before params was ever computed -- I_uA<=0, non-
+        # convergence, thermal runaway). See the pr-pkg4-fix3 item 3
+        # comment in the finite_pulse block above for why callers (e.g.
+        # verify_device_rt.py's _cw_reduction_guard) must test THIS, not
+        # design.ret.b0/design.ret.beta.
+        "retention_params_used": op["retention_params_used"],
         "drive_source": d.drive.mode,
         "mu_resolved": op["mu"],
         "eta_capture_resolved": op["eta_capture"],

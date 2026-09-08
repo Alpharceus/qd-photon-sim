@@ -671,9 +671,17 @@ def check_card(path: Path, anchors: dict) -> set:
         # display), checked at a correspondingly relaxed 2e-7/5e-7 rather
         # than this file's blanket rel 1e-8; the card literals are now
         # re-quoted to 10 significant figures (matching the full-
-        # cancellation S(230 K) literal, mu_resolved, and the g2/flux
-        # table, which already held 10 significant figures), so every one
-        # of these checks now holds at the SAME rel 1e-8.
+        # cancellation S(230 K) literal and the g2/flux table, which
+        # already held 10 significant figures), so every one of these
+        # checks now holds at the SAME rel 1e-8. pr-pkg4-fix4 item 6 (Opus
+        # review, correcting this same comment): the claim that
+        # mu_resolved "already held 10 significant figures" was true for
+        # the gainp card but false for the gaasp card, whose mu_resolved
+        # was quoted to only 8 (1.9755510 vs a fresh 1.9755510037900392, a
+        # rel diff of ~1.9e-9 -- well inside this file's rel 1e-8, so this
+        # (dynamic, regex-extracted) check never flagged it wrong, only
+        # under-precision) -- the gaasp card's own literal is now re-quoted
+        # to 10 significant figures too (1.975551004).
         record_text = " ".join(provenance.get("finding_1b_record", "").split())
         NUM = r"[0-9.eE+-]+"
 

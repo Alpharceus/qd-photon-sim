@@ -653,7 +653,7 @@ design:
       dot.gamma300=6, dot.delta_xx=8, emission.NA=0.8, emission.R_back=
       0.95, emission.L_um=250, this card's own (300 K-resolved) drive.I_uA,
       unchanged -- see drive.I_uA's own source):
-      INFEASIBLE OPERATING POINT (mu out of range): mu_resolved=1.9755510
+      INFEASIBLE OPERATING POINT (mu out of range): mu_resolved=1.975551004
       is outside the card's own [0.05, 1.0] loading range at this corner
       (this card's I_uA was resolved to be near-optimal at its own 300 K
       operating point, not re-solved for the 230 K corner; a genuine

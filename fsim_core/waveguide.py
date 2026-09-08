@@ -410,14 +410,33 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         # all -- forward escape through the front facet has probability
         # 0.0, not 1.0 as an earlier version of this guard claimed (that
         # version mistook the degenerate 0/0 ratio for a "final escape"
-        # limit rather than for "no escape channel exists"). For any T > 0.0
-        # the general formula below already evaluates to exactly 1.0 in this
-        # same R_back=1, alpha*L=0 limit (denom = T there, numerator = T),
-        # a finite (not degenerate) ratio even for T as small as 1e-300 --
-        # so this branch only needs to special-case the true 0/0 at T ==
-        # 0.0, never T <= 1e-15 (pr-pkg6-fix item 3).
+        # limit rather than for "no escape channel exists"). That is the
+        # genuine T == 0.0 degeneracy, handled first below.
+        #
+        # pr-pkg4-fix4 item 3 (Opus review): a SECOND, distinct way to land
+        # in this branch with T > 0 exists, and an earlier version of this
+        # comment claimed it away falsely. For 0 < T < ~1.11e-16 (half of
+        # float64 machine epsilon), R_front = 1.0 - T itself rounds to
+        # EXACTLY 1.0 in the subtraction above -- T is lost before denom is
+        # even computed -- so with R_back == 1 and a lossless ridge
+        # (alpha_cm*L_um == 0) denom underflows to exactly 0.0 too, NOT
+        # because the round-trip series fails to converge (it converges to
+        # 1.0 for any T > 0 -- see the checks in verify_waveguide.py at
+        # T=1e-17 and T=1e-300) but because R_front was rounded away first.
+        # The earlier claim that "the general formula below already
+        # evaluates to exactly 1.0 ... even for T as small as 1e-300" was
+        # false: the general formula's own denom IS this same
+        # already-underflowed value, so without the explicit branch below
+        # it divides by that 0.0 and the raise a few lines down fired
+        # instead of returning 1.0. Handled explicitly: with R_back=1 and
+        # alpha_cm*L_um=0, every photon that does not immediately reflect
+        # off the front facet eventually escapes forward after enough
+        # round trips, so the analytic round-trip series [DR] converges to
+        # exactly 1.0 in this limit for ANY T > 0.
         if T == 0.0:
             return 0.0
+        if R_back == 1.0 and alpha_cm * L_um == 0.0 and denom == 0.0:
+            return 1.0
         if denom <= 0.0:
             raise ValueError(
                 "degenerate facet cavity: R_back * R_front * "
@@ -427,7 +446,8 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         # else: 0 < T <= 1e-15 here (denom >= T always, see the module-level
         # bound above, so denom <= 1e-15 forces T into the same range) with
         # 0 < denom <= 1e-15 -- a genuinely finite (denom ~= T) ratio, not a
-        # 0/0 degeneracy, so fall through to the general formula below.
+        # 0/0 degeneracy or the R_back=1/alpha*L=0 underflow case just
+        # handled, so fall through to the general formula below.
     return (0.5 * T * exp(-a * x * L_um)
             * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
 
