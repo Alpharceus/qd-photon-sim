@@ -629,16 +629,18 @@
       "id": "03-19",
       "layout": "table",
       "title": "Retention meets injection: the temperature ladder",
-      "subtitle": "80 -> 230 -> 300 K, fallback (gainp) card, fresh evaluate() at each heat-sink set point",
+      "subtitle": "80 -> 230 -> 300 K, fallback (gainp) card, fresh evaluate() at each heat-sink set point -- static loading (finite_pulse off) and finite-pulse (headline) models shown side by side",
       "table": {
         "header": [
           "T_hs (K)",
           "T_j (K)",
           "eta_inj",
           "S (retention)",
-          "g2 (pulsed, intrinsic)",
-          "collected flux (photons/s)",
-          "flux-eligible"
+          "g2, static loading (finite_pulse off)",
+          "g2, finite-pulse (headline)",
+          "collected flux, static loading (finite_pulse off) (photons/s)",
+          "collected flux, finite-pulse (headline) (photons/s)",
+          "flux-eligible (either model)"
         ],
         "rows": [
           [
@@ -647,7 +649,9 @@
             "1.00000",
             "0.0758",
             "0.229",
+            "0.4985",
             "24 107",
+            "26 130",
             "yes"
           ],
           [
@@ -656,7 +660,9 @@
             "0.99969",
             "0.001348",
             "0.651",
+            "0.9863",
             "429",
+            "553",
             "no"
           ],
           [
@@ -665,12 +671,14 @@
             "0.99266",
             "0.000187",
             "0.774",
+            "0.9991",
             "59.3",
+            "76.7",
             "no"
           ]
         ]
       },
-      "notes": "This ladder is the single clearest picture of the temperature cost this section has been building toward, computed fresh (fsim_core.device.DeviceDesign.load + fsim_core.device.evaluate, overriding only thermal.T_hs) against the fallback 'gainp' card at its OWN default operating current and dot parameters -- no numbers here are read from a stale sweep file. Three things move together as the heat sink warms from 80 to 300 K. Injection efficiency barely moves for this card (0.9999 to 0.9927) because its AlGaInP barrier gives a large conduction-band offset; the OTHER (primary, 'gaasp') card's smaller barrier would show a much sharper fall, as the injection-efficiency slide showed. Retention S -- the fraction of captured excitons that decay radiatively before escaping the dot -- falls steeply, by more than two orders of magnitude (0.0758 to 0.000187), because thermal escape over the confinement barrier is exponentially activated in T; this is the dominant reason collected flux collapses from roughly 24,100 to about 59 photons/s. Pulsed intrinsic g2(0) correspondingly rises from 0.229 (comfortably single-photon) to 0.774 (above threshold), while the background/signal fraction rho also falls, from 0.880 to 0.750, rather than staying flat. Only the 80 K row clears this project's 1 kHz collected-flux eligibility floor; the 230 K and 300 K rows are diagnostic only (429 and 59 photons/s), and only the 80 K row passes the g2(0) < 0.5 gate at these delta_xx/gamma300 defaults.",
+      "notes": "This ladder is computed fresh (fsim_core.device.DeviceDesign.load + evaluate, overriding only thermal.T_hs) against the fallback 'gainp' card at its own default operating point -- no numbers here are read from a stale sweep file. The g2 and flux columns are each shown TWICE, one drive model per column and clearly labelled (pkg5b-fix2 item 3): 'static loading (finite_pulse off)' is device.py's superseded per-pulse-area formula, kept for continuity with earlier slides; 'finite-pulse (headline)' is scripts/run_rt_edge.py's HEADLINE_MODEL, the model out/rt_edge/verdict.md's VERDICT line is actually computed over. The two models diverge sharply: static g2 rises 0.229 to 0.774 across the ladder, while headline g2 rises 0.499 to 0.999 -- already close to the 0.5 gate at 80 K under the corrected model. Three things move together as the heat sink warms, regardless of drive model. Injection efficiency barely moves for this card (0.9999 to 0.9927), a large AlGaInP conduction-band offset; the other (primary, 'gaasp') card's smaller barrier falls much more sharply, as the injection-efficiency slide showed. Retention S falls by more than two orders of magnitude (0.0758 to 0.000187), since thermal escape over the confinement barrier is exponentially activated in T; this is the dominant reason static-loading flux collapses from about 24,100 to 59 photons/s (headline: 26,130 to about 77). Only the 80 K row clears the 1 kHz eligibility floor under either model; only it also passes the g2(0) < 0.5 gate, and under the headline model that pass is a much narrower margin (0.4985) than the static number (0.229) suggested.",
       "sources": [
         "docs/rt_edge_contract.md",
         "out/rt_edge/verdict.md",
@@ -741,6 +749,36 @@
           "value": 0.00018729942217947843,
           "file": "cards/edge-inp-gainp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'S_resolved', T_hs=300.0)"
+        },
+        "g2_op_gainp_80K_headline": {
+          "value": 0.4985028013978987,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=True)"
+        },
+        "g2_op_gainp_230K_headline": {
+          "value": 0.9862986613719527,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0, finite_pulse=True)"
+        },
+        "g2_op_gainp_300K_headline": {
+          "value": 0.9991115740812607,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=True)"
+        },
+        "flux_gainp_80K_headline": {
+          "value": 26129.980000349602,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0, finite_pulse=True)"
+        },
+        "flux_gainp_230K_headline": {
+          "value": 553.1460443017468,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0, finite_pulse=True)"
+        },
+        "flux_gainp_300K_headline": {
+          "value": 76.71119167206093,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0, finite_pulse=True)"
         }
       }
     },
@@ -799,7 +837,7 @@
           [
             "purity g2(0)",
             "excellent (<0.01 reported, resonant)",
-            "0.03 background-corrected @ 80 K (Reischle); 0.229-0.774 across this project's gainp-card 80-300 K ladder (gaasp flux: 35 597/s @ 80 K, 87.6/s @ 230 K, 2.17/s @ 300 K -- all below the 1 kHz floor except 80 K)"
+            "0.03 background-corrected @ 80 K (Reischle); static loading (finite_pulse off): g2 0.229-0.774 across this project's gainp-card 80-300 K ladder (gaasp flux, static: 35 597/s @ 80 K, 87.6/s @ 230 K, 2.17/s @ 300 K -- all below the 1 kHz floor except 80 K); finite-pulse (headline): gainp g2 0.499-0.999, gaasp flux 51 290.6/s @ 80 K, 200.6/s @ 230 K, 2.29/s @ 300 K -- still all below the 1 kHz floor except 80 K"
           ],
           [
             "brightness",
@@ -823,7 +861,7 @@
           ]
         ]
       },
-      "notes": "This table is deliberately not a verdict in either direction: the honest picture from the digested literature (../_goal/paper_digests.md) is that optical and electrical excitation have never been demonstrated at the same temperature on the same platform, so any single-number comparison would overstate what is actually known. Optically pumped single dots have reached impressively high temperatures (Chatzarakis et al., antibunching to 230 K in InAs/AlGaAs-superlattice dots; Laferriere et al., single-dot emission observed to 300 K, though g2(0) rises to 0.57 there) because a resonant or near-resonant laser puts population directly into the transition with minimal jitter and no competing current-injection background. The best electrically driven single-dot result in the same literature set (Reischle et al. 2008) reaches only 80 K, limited explicitly by background electroluminescence, not by dot brightness -- and needs no laser at all, trading optical complexity for electrical simplicity. This project's own temperature ladder (previous slides) sits inside that gap: electrically driven, computed to 300 K, with g2(0) crossing the 0.5 single-photon threshold somewhere between 80 K and 230 K depending on the card and its dot parameters. Practically, the electrical route is what integration and scaling ultimately require -- no free-space optics, no wavelength stabilization -- which is why this section has spent so much of its time on it, even though the optical route currently holds the higher-temperature single-dot antibunching record.",
+      "notes": "This table is deliberately not a verdict in either direction: optical and electrical excitation have never been demonstrated at the same temperature on the same platform (../_goal/paper_digests.md), so any single-number comparison would overstate what is actually known. Optically pumped single dots have reached impressively high temperatures (Chatzarakis et al., antibunching to 230 K; Laferriere et al., single-dot emission to 300 K, g2(0) rising to 0.57 there) because a resonant laser puts population directly into the transition with minimal jitter and no injection background. The best electrically driven single-dot result (Reischle et al. 2008) reaches only 80 K, limited by background electroluminescence, not dot brightness -- and needs no laser at all. This project's own purity-row numbers are now shown under BOTH drive models, clearly labelled (pkg5b-fix2 item 3): 'static loading (finite_pulse off)' is device.py's superseded formula; 'finite-pulse (headline)' is the HEADLINE_MODEL out/rt_edge/verdict.md's VERDICT line actually uses, and it is uniformly worse (higher g2, and for the gaasp card also higher flux) than the static numbers this section quoted earlier -- see 03-19 for the same static/headline split on the temperature ladder. Practically, the electrical route is what integration and scaling ultimately require -- no free-space optics, no wavelength stabilization -- which is why this section has spent so much time on it, even though the optical route holds the higher-temperature single-dot antibunching record.",
       "sources": [
         "Reischle et al., Opt. Express 16, 12771 (2008)",
         "Chatzarakis et al., Phys. Rev. Applied 20, 034011 (2023)",
@@ -854,6 +892,31 @@
           "value": 2.174516,
           "file": "cards/edge-inp-gaasp-design.yaml",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0, finite_pulse=False)"
+        },
+        "gaasp_flux_80K_headline": {
+          "value": 51290.56728462067,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=80.0, finite_pulse=True)"
+        },
+        "gaasp_flux_230K_headline": {
+          "value": 200.59125446955983,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=230.0, finite_pulse=True)"
+        },
+        "gaasp_flux_300K_headline": {
+          "value": 2.2850468690099137,
+          "file": "cards/edge-inp-gaasp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gaasp-design.yaml', 'collected_flux_pulsed_s', T_hs=300.0, finite_pulse=True)"
+        },
+        "gainp_ladder_g2_80K_headline": {
+          "value": 0.4985028013978987,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=True)"
+        },
+        "gainp_ladder_g2_300K_headline": {
+          "value": 0.9991115740812607,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=True)"
         }
       }
     },
@@ -1054,10 +1117,11 @@
           "T_hs (K)",
           "eta_inj",
           "S",
-          "g2 (pulsed)",
+          "g2 static loading (finite_pulse off)",
+          "g2 finite-pulse (headline)",
           "rho",
           "collected flux (photons/s)",
-          "single-photon gate (<0.5)"
+          "single-photon gate (<0.5, headline model)"
         ],
         "rows": [
           [
@@ -1065,6 +1129,7 @@
             "1.00000",
             "0.0758",
             "0.229",
+            "0.4985",
             "0.880",
             "24 107",
             "PASS"
@@ -1074,6 +1139,7 @@
             "0.99969",
             "0.001348",
             "0.651",
+            "0.9863",
             "0.695",
             "429",
             "fail"
@@ -1083,6 +1149,7 @@
             "0.99266",
             "0.000187",
             "0.774",
+            "0.9991",
             "0.750",
             "59.3",
             "fail (this card's default gamma300)"
@@ -1091,14 +1158,15 @@
             "300 (favourable corner)",
             "0.99266",
             "0.000187",
-            "0.998",
+            "0.4605",
+            "0.9977",
             "0.866",
             "80.3",
             "gate FAIL, flux FAIL"
           ]
         ]
       },
-      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from earlier in the worked example, so the two threads of this section -- 'what happens as heat-sink temperature rises at the card's own default parameters' and 'what is the best this platform can do at 300 K under its own sampled grid' -- sit side by side. At the gainp card's default dot parameters (delta_xx=7 meV, gamma300=12 meV), the single-photon gate g2(0) < 0.5 clearly passes at 80 K and clearly fails at 230/300 K under the static-loading formula shown here (see 03-19). Resampling dot.gamma300 -- an unmeasured [E]-class input -- with the collection-lever axes at 300 K, under the corrected finite-pulse loading model (the headline model out/rt_edge/verdict.md reports), finds a corner, delta_xx=8 meV, gamma300=6 meV, NA=0.8, R_back=0.95, L_um=250 um, where g2(0) = 0.998 -- no longer clears the gate -- and collected flux, 80.3 photons/s, falls far below the 1000 photons/s floor: no longer measurable, let alone passing. Neither row is 'the' answer: the ladder is honest about the as-designed point under the static formula, and the favourable corner shows even the best sampled combination cannot restore eligibility once the finite-pulse correction is applied. Every number traces to the SAME evaluate() convention used throughout this section.",
+      "notes": "This closing table restates the temperature ladder alongside the favourable-corner result from the worked example, so the as-designed point and the best this platform can do at 300 K under its own sampled grid sit side by side. The g2 column is now split in two, labelled (pkg5b-fix2 item 3): 'g2 static loading (finite_pulse off)' is device.py's superseded formula (see 03-19 for the same label); 'g2 finite-pulse (headline)' is the HEADLINE_MODEL out/rt_edge/verdict.md's VERDICT line actually uses -- previously this table quoted the static value for the first three rows and the headline value for the favourable corner in ONE unlabelled column, silently mixing two physics models row to row. Under the headline model the favourable corner (g2=0.9977) genuinely reads as better than the card's own default 300 K gamma300 (g2=0.9991) -- a real, if small, improvement from resampling dot.gamma300 and the collection levers, though neither clears the single-photon gate. The gate column is now evaluated uniformly against the headline g2 column for every row (previously it silently tracked whichever model that row's single g2 column showed): 80 K still PASSes under the corrected model (headline g2=0.4985, just under 0.5); 230 K and both 300 K rows fail. rho/collected flux keep each row's originally associated model for continuity with 03-19/03-22 (static for the ladder, headline for the favourable corner) -- diagnostic context, not part of the gate. Every number traces to the SAME evaluate() convention used throughout this section.",
       "sources": [
         "out/rt_edge/verdict.md",
         "docs/rt_edge_contract.md"
@@ -1107,17 +1175,57 @@
         "gate_pass_80K": {
           "value": 1,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=80.0, finite_pulse=False)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=80.0, finite_pulse=True)"
         },
         "gate_pass_300K_default": {
           "value": 0,
           "file": "cards/edge-inp-gainp-design.yaml",
-          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=300.0, finite_pulse=False)"
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', T_hs=300.0, finite_pulse=True)"
         },
         "gate_pass_300K_favorable": {
           "value": 0,
           "file": "out/rt_edge/verdict.md",
           "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).gate_pass('cards/edge-inp-gainp-design.yaml', favorable=True)"
+        },
+        "g2_op_gainp_80K_static": {
+          "value": 0.22887974093486363,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=False)"
+        },
+        "g2_op_gainp_230K_static": {
+          "value": 0.650774,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0, finite_pulse=False)"
+        },
+        "g2_op_gainp_300K_static": {
+          "value": 0.773631,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=False)"
+        },
+        "g2_op_gainp_80K_headline": {
+          "value": 0.4985028013978987,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=80.0, finite_pulse=True)"
+        },
+        "g2_op_gainp_230K_headline": {
+          "value": 0.9862986613719527,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=230.0, finite_pulse=True)"
+        },
+        "g2_op_gainp_300K_headline": {
+          "value": 0.9991115740812607,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', T_hs=300.0, finite_pulse=True)"
+        },
+        "g2_op_gainp_300K_favorable_static": {
+          "value": 0.460505786236155,
+          "file": "cards/edge-inp-gainp-design.yaml",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True, T_hs=300.0, finite_pulse=False)"
+        },
+        "g2_op_gainp_300K_favorable_headline": {
+          "value": 0.9976578220966792,
+          "file": "out/rt_edge/verdict.md",
+          "how": "__import__('presentation2.figures.helpers_03',fromlist=['x']).evaluate_card('cards/edge-inp-gainp-design.yaml', 'g2_op', favorable=True, T_hs=300.0, finite_pulse=True)"
         }
       }
     },

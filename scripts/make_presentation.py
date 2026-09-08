@@ -568,6 +568,14 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
     flux_margin = verdict["flux_margin"]
     anchor_text = " ".join(verdict["gamma300_anchor_lines"])
     loading_key = next(key for key in brightness if key.startswith("loading = 1 - e^-mu"))
+    # pkg5b-fix2 item 5: the finite-pulse chain's own keys -- mean_counts is
+    # only printed for a finite-pulse row (always true here: the headline
+    # model this deck reads is HEADLINE_MODEL, drive.finite_pulse=True), so
+    # this falls back to None (looked up with .get() below) rather than
+    # raising if a future run's headline model ever flips back to static.
+    mean_counts_key = next((key for key in brightness
+                            if key.startswith("finite_pulse_mean_counts")), None)
+    eta_total_key = next(key for key in brightness if key.startswith("eta_total"))
 
     slides = []
 
@@ -797,12 +805,18 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
          f"Maximum collected flux across the grid is {verdict['metrics']['flux_max']} photons/s; "
          f"the best-diagnostic (lowest-g2) row reaches "
          f"{brightness['reported collected_flux_pulsed_s']}"],
-        f"The factor table is read from out/rt_edge/verdict.md: loading={brightness[loading_key]}, "
-        f"t_X={brightness['t_X (spectral transmission)']}, retention={brightness['S (confinement retention)']}, "
-        f"and repetition rate={brightness['rep rate (Hz)']} Hz. These levers no longer buy enough "
-        "collection at any sampled corner under the corrected finite-pulse loading model; they do "
-        "not improve intrinsic g2 either way. The floor, "
-        "factors, and lever values are the acceptance artifact's brightness decomposition. "
+        f"The factor table is read from out/rt_edge/verdict.md's finite-pulse chain (pkg5b-fix2 "
+        f"item 5: the headline model's own formula, not the superseded static loading/t_X/S "
+        f"product): finite_pulse_mean_counts={brightness.get(mean_counts_key, 'n/a')}, "
+        f"eta_total={brightness[eta_total_key]}, and repetition rate={brightness['rep rate (Hz)']} "
+        "Hz -- mean_counts x eta_total x rep_rate reproduces the reported collected flux; "
+        f"loading={brightness[loading_key]}, t_X={brightness['t_X (spectral transmission)']} and "
+        f"retention={brightness['S (confinement retention)']} are shown in the verdict for "
+        "reference only and are NOT part of this row's finite-pulse flux formula (already folded "
+        "into finite_pulse_mean_counts). These levers no longer buy enough collection at any "
+        "sampled corner under the corrected finite-pulse loading model; they do not improve "
+        "intrinsic g2 either way. The floor, factors, and lever values are the acceptance "
+        "artifact's brightness decomposition. "
         f"Facet-model note from the verdict: {verdict['facet_model_note']}",
         image=ENVELOPE_PNG))
 

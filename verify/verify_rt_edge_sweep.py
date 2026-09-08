@@ -1318,17 +1318,55 @@ if not RUN_FULL:
        all(entry["sha256"] == rte._sha256_file(Path(entry["path"]))
            for entry in saved_manifest["cards"]))
 
-    # pkg5b self-check fix, item 1: the flux self-check line (brightness
-    # decomposition, "Best diagnostic-g2 row" section) must report PASS on
-    # the shipped run -- the model-aware _brightness_factor_check fix's
-    # whole point. re.search finds the FIRST "self-check" occurrence, which
-    # is this table row (the facet-independent-check paragraph's own use of
-    # the word "self-check" appears later in the document).
+    # pkg5b-fix2 item 1: the flux self-check line (brightness decomposition,
+    # "Best diagnostic-g2 row" section) must report PASS on the shipped run,
+    # with a genuinely small (< 1%) relative difference parsed out of the
+    # line -- not merely a substring-contains-"PASS" grep, which the old
+    # tautological back-solve would trivially satisfy for ANY reported flux
+    # (0% relative difference always, by construction). re.search finds the
+    # FIRST "self-check" occurrence, which is this table row (the
+    # facet-independent-check paragraph's own use of the word "self-check"
+    # appears later in the document).
     _self_check_match = re.search(r"self-check[^\n]*", saved_md)
-    ok("saved full run: verdict.md's own flux self-check line reports PASS (model-aware "
-       "brightness reconstruction; pkg5b self-check fix, item 1)",
-       bool(_self_check_match) and "PASS" in _self_check_match.group(0)
-       and "FAIL" not in _self_check_match.group(0))
+    _self_check_line = _self_check_match.group(0) if _self_check_match else ""
+    _rel_diff_match = re.search(r"relative difference \| ([\d.]+)%", _self_check_line)
+    ok("saved full run: verdict.md's own flux self-check line reports PASS with a parsed "
+       "relative difference under 1% -- not a bare substring grep, and not the tautological "
+       "'flux-implied' back-solve (pkg5b-fix2 item 1)",
+       bool(_self_check_match) and bool(_rel_diff_match)
+       and "PASS" in _self_check_line and "FAIL" not in _self_check_line
+       and "flux-implied" not in _self_check_line
+       and float(_rel_diff_match.group(1)) < 1.0)
+
+    # pkg5b-fix2 item 1 falsifiability proof: the OLD tier-3 back-solve
+    # (implied_bpp = collected_flux_pulsed_s / (eta_total * rep_rate),
+    # multiplied straight back through the same eta_total/rep_rate) was a
+    # bare algebraic identity that reproduced ANY reported flux at 0%
+    # relative difference -- it could never fail. The fixed self-check
+    # instead runs one fresh, independent eval_pulsed_point() call on the
+    # row's own card/lever/temperature/model
+    # (_independent_finite_pulse_reconstruction), so perturbing the row's
+    # OWN reported collected_flux_pulsed_s now moves only one side of the
+    # comparison and must make the self-check FAIL.
+    _best_row_for_falsifiability = recomputed_stats.get("best_diagnostic_row")
+    if _best_row_for_falsifiability is not None:
+        _check_shipped = rte._brightness_factor_check(_best_row_for_falsifiability)
+        ok("saved full run: recomputing the best-diagnostic row's self-check directly (not "
+           "via verdict.md text) confirms PASS with rel diff < 1%, via an independent "
+           "reconstruction (not the tautological 'flux-implied' back-solve; pkg5b-fix2 item 1)",
+           _check_shipped["ok"] and _check_shipped["rel_diff"] < 0.01
+           and "flux-implied" not in _check_shipped["reconstruction"])
+        _perturbed_row = dict(_best_row_for_falsifiability)
+        _perturbed_row["collected_flux_pulsed_s"] = (
+            _best_row_for_falsifiability["collected_flux_pulsed_s"] * 1.05)
+        _check_perturbed = rte._brightness_factor_check(_perturbed_row)
+        ok("saved full run: perturbing the best-diagnostic row's collected_flux_pulsed_s by "
+           "5% makes the self-check report FAIL (falsifiability proof, pkg5b-fix2 item 1) -- "
+           "the old tautological back-solve could never fail this way",
+           not _check_perturbed["ok"] and _check_perturbed["rel_diff"] > 0.01)
+    else:
+        ok("saved full run: best_diagnostic_row is present so the falsifiability proof can run "
+           "(pkg5b-fix2 item 1)", False)
 
     # pkg5b self-check fix, item 1: the "Model sensitivity" table's four
     # rows (one per drive.finite_pulse x ret.tau_cap_scales_with_density

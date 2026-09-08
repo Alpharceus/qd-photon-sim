@@ -413,7 +413,8 @@
         },
         "headline_coverage_pulsed_count": {
           "value": 0,
-          "file": "out/rt_edge/verdict.md"
+          "file": "out/rt_edge/verdict.md",
+          "how": "int(__import__('re').search(r'headline_coverage_pulsed=(\\d+)/', open('out/rt_edge/verdict.md', encoding='utf-8').read()).group(1))"
         },
         "slice_total": {
           "value": 192,

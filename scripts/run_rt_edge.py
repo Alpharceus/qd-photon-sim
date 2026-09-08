@@ -791,6 +791,35 @@ _CSV_BOOL_FIELDS = {"eligible_pulsed", "eligible_cw", "eligible_row", "headline_
 _CSV_TEXT_FIELDS = {"card_id", "card_class", "config_id", "delta_xx_tag", "gamma300_tag",
                     "irf_tag", "invalid_reasons_pulsed", "invalid_reasons_cw", "assumptions"}
 
+# pkg5b-fix2 item 6: the sweep's own row schema -- _build_row's dict
+# literal's key order, transcribed here (not derived from csv_fieldnames(),
+# which deliberately reorders several columns for the CSV header) -- kept
+# in sync with _build_row by hand, the same way csv_fieldnames() already is.
+# load_rows_from_csv builds each row dict in THIS order rather than the
+# CSV's own column order, so a row reloaded from sweep.csv has the same
+# dict key order (and therefore the same json.dumps key order wherever a
+# row is embedded whole, e.g. manifest["stats"]["best_diagnostic_row"]) as
+# the same row would have straight out of a real sweep run -- without this,
+# --rewrite-verdict-only's manifest.json would not be byte-reproducible
+# against a real run even though every value is identical.
+ROW_SCHEMA_ORDER = [
+    "card_id", "card_class", "config_id", "delta_xx_meV", "delta_xx_tag",
+    "gamma300_meV", "gamma300_tag", "irf_ps", "irf_tag", "T_hs_K",
+    "Tj_pulsed_K", "Tj_cw_K", "I_uA", "V_j_pulsed_V", "V_j_cw_V",
+    "mu_pulsed", "eta_inj_pulsed", "eta_inj_cw", "S_retention_pulsed",
+    "S_retention_cw", "Gamma_pulsed_meV", "b_e_window_pulsed", "b_e_window_cw",
+    "t_x_pulsed", "eps_pulsed", "t_x_cw", "eps_cw", "edge_beta", "edge_eta_total",
+    "edge_T_facet", "edge_eta_prop", "edge_eta_NA",
+    "collected_flux_pulsed_s", "collected_flux_cw_s",
+    "g2_pulsed", "g2_cw0", "g2_cw0_raw",
+    "diag_g2_pulsed", "diag_g2_cw0", "diag_g2_cw0_raw",
+    "eligible_pulsed", "eligible_cw", "eligible_row", "headline_pass", "secondary_pass",
+    "diagnostic_valid", "invalid_reasons_pulsed", "invalid_reasons_cw", "assumptions",
+    "pulse_width_ns", "rep_rate_hz", "duty_pulsed",
+    "emission_NA", "emission_R_back", "emission_L_um", "emission_alpha_cm",
+    "model_finite_pulse", "model_tau_cap_density",
+]
+
 
 def load_rows_from_csv(path: Path) -> list:
     """--rewrite-verdict-only support (pkg5b fix): reloads sweep.csv's
@@ -800,12 +829,22 @@ def load_rows_from_csv(path: Path) -> list:
     known bool/text columns are special-cased, everything else is parsed as
     a float (blank or "nan" both become float('nan'), never None, since
     every consumer of these rows already treats None and NaN identically
-    via np.isfinite()/a try-except float() coercion)."""
+    via np.isfinite()/a try-except float() coercion).
+
+    pkg5b-fix2 item 6: rows are built by iterating ROW_SCHEMA_ORDER (the
+    sweep's own row schema), not `raw.items()` (the CSV's own column
+    order, from csv_fieldnames()) -- the two orders differ (csv_fieldnames()
+    reorders several columns for the CSV header), and a row dict's own key
+    order is otherwise visible wherever it is serialized whole (e.g.
+    manifest.json's best_diagnostic_row), so building it in CSV-column
+    order made --rewrite-verdict-only's manifest.json NOT byte-reproducible
+    against a real run even when every value matched."""
     rows = []
     with path.open("r", newline="", encoding="utf-8") as f:
         for raw in csv.DictReader(f):
             row = {}
-            for key, value in raw.items():
+            for key in ROW_SCHEMA_ORDER:
+                value = raw[key]
                 if key in _CSV_BOOL_FIELDS:
                     row[key] = (value == "True")
                 elif key in _CSV_TEXT_FIELDS:
@@ -1302,6 +1341,57 @@ def _loading_term(mu) -> float:
     return 1.0 - np.exp(-mu_f) if np.isfinite(mu_f) else float("nan")
 
 
+def _independent_finite_pulse_reconstruction(row: dict) -> dict | None:
+    """pkg5b-fix2 self-check fix (.workers/specs/pr-pkg5b-fix2.md item 1):
+    runs ONE fresh `eval_pulsed_point()` call -- the SAME function the
+    sweep itself calls to produce every pulsed sub-result in sweep.csv, not
+    a duplicated formula -- on the row's own card (looked up from CARDS by
+    `row["card_id"]`), at the row's own (delta_xx, gamma300, T_hs,
+    emission.NA/R_back/L_um) point, with the row's own drive-model switches
+    (`model_finite_pulse`, `model_tau_cap_density`) applied. This is a
+    genuinely independent reconstruction -- unlike the tier-3 fallback it
+    replaces, nothing here is algebraically derived from
+    `collected_flux_pulsed_s`, so a corrupted or perturbed reported flux
+    cannot make this reconstruction agree with it by construction (see
+    verify_rt_edge_sweep.py's falsifiability check).
+
+    Returns `{"mean_counts": ..., "eta_total": ...}` (both read off the
+    fresh evaluation's own scalars: `finite_pulse_mean_counts`, the raw
+    per-pulse-period detected count device.py's brightness formula actually
+    multiplies, device.py:1652; `edge_eta_total`, that same fresh
+    evaluation's edge out-coupling factor -- never the row's own value, so
+    neither side of the self-check reuses the same number twice) on
+    success, or None (not NaN) if the row's card_id/lever/temperature
+    fields cannot be resolved or the evaluation raises, so the caller
+    reports 'insufficient data' rather than a spurious agreement."""
+    card = next((c for c in CARDS if c["id"] == row.get("card_id")), None)
+    if card is None:
+        return None
+    try:
+        delta_xx = float(row["delta_xx_meV"])
+        gamma300 = float(row["gamma300_meV"])
+        T_hs = float(row["T_hs_K"])
+        lever = {"emission.NA": float(row["emission_NA"]),
+                 "emission.R_back": float(row["emission_R_back"]),
+                 "emission.L_um": float(row["emission_L_um"])}
+        model = {"drive.finite_pulse": bool(row.get("model_finite_pulse", False)),
+                 "ret.tau_cap_scales_with_density": bool(row.get("model_tau_cap_density", False))}
+    except (KeyError, TypeError, ValueError):
+        return None
+    try:
+        result = eval_pulsed_point(card["path"], delta_xx, gamma300, lever,
+                                   cache=None, T_hs=T_hs, model=model)
+    except (ValueError, KeyError, AttributeError, RuntimeError):
+        return None
+    sc = result.get("scalars", {})
+    mean_counts = _f_or_none(sc.get("finite_pulse_mean_counts"))
+    eta_total = _f_or_none(sc.get("edge_eta_total"))
+    if (mean_counts is None or eta_total is None
+            or not (np.isfinite(mean_counts) and np.isfinite(eta_total))):
+        return None
+    return {"mean_counts": mean_counts, "eta_total": eta_total}
+
+
 def _brightness_factor_check(row: dict) -> dict:
     """Reconstructs collected_flux_pulsed_s as the plain product of
     device.py's own already-computed scalars -- loading (1-e^-mu), t_X, S
@@ -1334,23 +1424,41 @@ def _brightness_factor_check(row: dict) -> dict:
     This function is now model-aware via `row["model_finite_pulse"]`. The
     finite-pulse reconstruction prefers, in order: (1) `finite_pulse_mean_
     counts` (the raw per-pulse count device.py's brightness formula
-    actually multiplies) times eta_total times rep_rate; (2)
-    `brightness_per_pulse` (device.py's fully-formed per-pulse brightness,
-    mean_counts * eta_total already applied -- do not multiply eta_total
-    again) times rep_rate, when mean_counts is absent; (3) when NEITHER
-    raw column is present -- true for every row in the shipped, frozen
-    out/rt_edge/sweep.csv, since csv_fieldnames() carries neither and the
-    CSV cannot be regenerated to add them -- back-solving the implied
-    brightness_per_pulse from the reported flux itself
-    (collected_flux_pulsed_s / (eta_total * rep_rate)) and multiplying
-    back through the same eta_total/rep_rate. Tier 3 is exact by
-    construction (0% relative difference, since it inverts the very
-    formula it re-applies): it confirms the eta_total/rep_rate bookkeeping
-    (no accidental extra duty/facet factor sneaking in) but, unlike tiers
-    1-2, is NOT an independent re-derivation of the pulse-counting
-    dynamics upstream. The returned `reconstruction` key names which tier
-    (or the static-loading formula) applied; write_markdown's verdict text
-    prints it."""
+    actually multiplies), when the row itself already carries it, times
+    eta_total times rep_rate; (2) `brightness_per_pulse` (device.py's
+    fully-formed per-pulse brightness, mean_counts * eta_total already
+    applied -- do not multiply eta_total again) times rep_rate, when
+    mean_counts is absent but brightness_per_pulse is present; (3) when
+    NEITHER raw column is present -- true for every row in the shipped,
+    frozen out/rt_edge/sweep.csv, since csv_fieldnames() carries neither
+    and the CSV cannot be regenerated to add them --
+    `_independent_finite_pulse_reconstruction()` runs ONE fresh
+    `eval_pulsed_point()` call on the row's own card/lever/temperature/
+    model and reads `finite_pulse_mean_counts` and `edge_eta_total` off
+    THAT evaluation's own scalars (pkg5b-fix2, .workers/specs/
+    pr-pkg5b-fix2.md item 1).
+
+    pkg5b-fix2 fixed a tautology in tier 3: the prior version back-solved
+    `implied_bpp = collected_flux_pulsed_s / (eta_total * rep_rate)` and
+    then multiplied it straight back through that SAME eta_total and
+    rep_rate -- a bare algebraic identity, true for any reported flux
+    whatsoever (0% relative difference always, by construction, so it
+    could never fail and was not a self-check at all). Tier 3 is now a
+    genuine wiring/regression check instead: it confirms sweep.csv's
+    recorded flux is consistent with what device.py computes TODAY at that
+    row's own operating point, via the SAME function (eval_pulsed_point)
+    the sweep itself calls -- not a duplicated formula, and not derived
+    from collected_flux_pulsed_s at all, so a corrupted or perturbed
+    reported flux moves only one side of the comparison and the self-check
+    can genuinely FAIL (see verify_rt_edge_sweep.py's falsifiability
+    check). If the reconstruction cannot be evaluated (unresolvable
+    card_id, missing lever/temperature fields, or the evaluation raises),
+    tier 3 reports 'insufficient data' rather than guessing. The returned
+    `reconstruction` key names which tier (or the static-loading formula)
+    applied, and `mean_counts` carries the finite-pulse tier's recomputed
+    per-pulse-period count (NaN for static-loading rows) so
+    write_markdown's factor table can print it; write_markdown's verdict
+    text prints `reconstruction`."""
     mu, t_x = row.get("mu_pulsed"), row.get("t_x_pulsed")
     S, eta_total = row.get("S_retention_pulsed"), row.get("edge_eta_total")
     rep_rate, reported_flux = row.get("rep_rate_hz"), row.get("collected_flux_pulsed_s")
@@ -1363,6 +1471,7 @@ def _brightness_factor_check(row: dict) -> dict:
     static_inputs_ok = all(np.isfinite(v) for v in fields_f)
     loading_f, t_x_f, S_f, eta_f, rep_f = fields_f
     reported_flux_f = _f_or_none(reported_flux)
+    mean_counts_out = float("nan")
 
     finite_pulse = bool(row.get("model_finite_pulse", False))
     if finite_pulse:
@@ -1371,19 +1480,22 @@ def _brightness_factor_check(row: dict) -> dict:
         if mean_counts is not None and np.isfinite(eta_f) and np.isfinite(rep_f):
             reconstruction = "finite-pulse (finite_pulse_mean_counts * eta_total * rep_rate)"
             product_flux = mean_counts * eta_f * rep_f
+            mean_counts_out = mean_counts
         elif bpp is not None and np.isfinite(rep_f):
             reconstruction = "finite-pulse (brightness_per_pulse * rep_rate)"
             product_flux = bpp * rep_f
-        elif (reported_flux_f is not None and np.isfinite(eta_f) and np.isfinite(rep_f)
-              and eta_f * rep_f != 0):
-            reconstruction = ("finite-pulse (flux-implied brightness_per_pulse; sweep.csv "
-                              "carries neither finite_pulse_mean_counts nor "
-                              "brightness_per_pulse for this row)")
-            implied_bpp = reported_flux_f / (eta_f * rep_f)
-            product_flux = implied_bpp * eta_f * rep_f
         else:
-            reconstruction = "finite-pulse (insufficient data)"
-            product_flux = float("nan")
+            fresh = _independent_finite_pulse_reconstruction(row)
+            if fresh is not None and np.isfinite(rep_f):
+                reconstruction = ("finite-pulse (independent evaluate(): fresh "
+                                  "finite_pulse_mean_counts * fresh eta_total * rep_rate; "
+                                  "sweep.csv carries neither finite_pulse_mean_counts nor "
+                                  "brightness_per_pulse for this row)")
+                product_flux = fresh["mean_counts"] * fresh["eta_total"] * rep_f
+                mean_counts_out = fresh["mean_counts"]
+            else:
+                reconstruction = "finite-pulse (insufficient data for an independent reconstruction)"
+                product_flux = float("nan")
     else:
         reconstruction = "static-loading ((1-e^-mu)*t_X*S*eta_total*rep_rate)"
         product_flux = (loading_f * t_x_f * S_f * eta_f * rep_f) if static_inputs_ok else float("nan")
@@ -1396,7 +1508,7 @@ def _brightness_factor_check(row: dict) -> dict:
     return {"ok": ok, "reconstruction": reconstruction, "loading": loading_f, "t_x": t_x_f,
             "S": S_f, "eta_total": eta_f, "rep_rate": rep_f, "product_flux": product_flux,
             "reported_flux": reported_flux_f if reported_flux_f is not None else float("nan"),
-            "rel_diff": rel_diff}
+            "rel_diff": rel_diff, "mean_counts": mean_counts_out}
 
 
 def _front_facet_split(row: dict) -> float:
@@ -2212,6 +2324,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         # NA (already folded into eta_total) or duty (already folded into
         # rep_rate_hz's own derivation).
         check = _brightness_factor_check(best)
+        reconstruction = check.get("reconstruction", "static-loading")
+        is_static_reconstruction = reconstruction.startswith("static-loading")
         chain = [("loading = 1 - e^-mu (mu={:.4g})".format(
                      float(best["mu_pulsed"]) if best.get("mu_pulsed") is not None
                      and np.isfinite(best.get("mu_pulsed")) else float("nan")),
@@ -2222,6 +2336,19 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  "(mid-ridge ray series, propagation included) x NA)",
                  check.get("eta_total")),
                 ("rep rate (Hz)", check.get("rep_rate"))]
+        if not is_static_reconstruction:
+            # pkg5b-fix2 item 1: insert the finite-pulse tier's own
+            # recomputed per-pulse-period count (from an independent, fresh
+            # evaluate() call -- see _independent_finite_pulse_reconstruction)
+            # right before eta_total, so the printed chain reads
+            # mean_counts x eta_total x rep_rate and that product genuinely
+            # multiplies to the reported flux for this row too -- `loading`/
+            # `t_X`/`S` stay in the table for reference (they still feed the
+            # dominant-limiter comparison below) but are NOT part of this
+            # row's flux formula; see closing_clause.
+            chain.insert(3, ("finite_pulse_mean_counts (recomputed via an independent, fresh "
+                             "evaluate() call; detected counts per pulse period, escape and "
+                             "filter transmission already folded in)", check.get("mean_counts")))
         facet_check = _facet_factor_forward_check(best)
         front_split = facet_check["back_solved"]
         component_factors = [("beta (waveguide coupling / spontaneous-emission factor)",
@@ -2252,14 +2379,13 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                              if v is not None and np.isfinite(v) and v > 0]
         dominant = (min(finite_components, key=lambda x: x[1])[0]
                    if finite_components else "the collection chain")
-        reconstruction = check.get("reconstruction", "static-loading")
-        is_static_reconstruction = reconstruction.startswith("static-loading")
         closing_clause = (
-            f"the flux reconstruction below uses the formula this row's own "
-            f"`model_finite_pulse` flag actually selected (reconstruction: "
-            f"`{reconstruction}`), which for a finite-pulse row is NOT the product of "
-            f"the chain shown here:" if not is_static_reconstruction else
-            f"the multiplicative chain that reproduces the reported "
+            f"`loading`/`t_X`/`S` are shown for reference only and are NOT part of this "
+            f"row's finite-pulse flux formula (already folded into "
+            f"`finite_pulse_mean_counts`, recomputed via `{reconstruction}`); the "
+            f"multiplicative chain that reproduces the reported collected pulsed flux is "
+            f"finite_pulse_mean_counts x eta_total x rep_rate:" if not is_static_reconstruction
+            else f"the multiplicative chain that reproduces the reported "
             f"collected pulsed flux is:")
         lines.append(f"The dominant brightness limiter at the favourable diagnostic corner -- "
                      f"the smallest factor across the WHOLE chain (loading, t_X, S, and "
@@ -2273,7 +2399,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             lines.append(f"| {name} | {value:.6g} |" if value is not None and np.isfinite(value)
                          else f"| {name} | nan |")
         product_label = ("**product x rep rate**" if is_static_reconstruction
-                         else f"**reconstructed flux ({reconstruction})**")
+                         else "**reconstructed flux (finite_pulse_mean_counts x eta_total x "
+                              f"rep_rate; {reconstruction})**")
         lines.append(f"| {product_label} | {check['product_flux']:.6g} photons/s |"
                      if np.isfinite(check.get("product_flux", float("nan")))
                      else f"| {product_label} | nan |")
@@ -2690,10 +2817,15 @@ def run_sweep(quick: bool, force_secondary_reduced: bool | None = None) -> tuple
 
 def _rewrite_verdict_only(out_dir: Path) -> int:
     """pkg5b fix (Opus sign-off): rewrites verdict.md/manifest.json from the
-    ALREADY-SAVED sweep.csv/manifest.json in `out_dir`, without evaluating
-    anything -- no eval_pulsed_point/eval_cw_point/refine_gamma300/
-    anchor_check call is made, and sweep.csv is never opened for writing, so
-    the 26-minute sweep is never rerun and sweep.csv stays byte-identical.
+    ALREADY-SAVED sweep.csv/manifest.json in `out_dir`, without rerunning the
+    sweep -- no refine_gamma300/anchor_check call is made, no eval_pulsed_
+    point/eval_cw_point call is made over the sweep's own grid, and
+    sweep.csv is never opened for writing, so the 26-minute, thousands-of-
+    evaluate()-calls sweep is never rerun and sweep.csv stays byte-identical.
+    (pkg5b-fix2 item 1: write_markdown's brightness self-check DOES make
+    ONE eval_pulsed_point() call, on the single best-diagnostic row only,
+    via _independent_finite_pulse_reconstruction -- a single fresh
+    evaluation, not a rerun of the grid, and still well under a second.)
 
     `verdict` (gamma300_pass_max*, anchor_6_5mev_by_card, T_pass_min,
     headline_by_T* -- every field compute_verdict can only produce from a
@@ -2713,8 +2845,11 @@ def _rewrite_verdict_only(out_dir: Path) -> int:
     -- which reproduces the prior run's own numbers exactly (same frozen
     CSV in, same pure functions), except for whatever write_markdown
     derives from them at render time: the brightness self-check line
-    (_brightness_factor_check, now model-aware) and the "Model sensitivity"
-    table it feeds."""
+    (_brightness_factor_check, model-aware, and -- for a finite-pulse
+    row lacking a raw mean_counts/brightness_per_pulse column, true of
+    every row in the shipped CSV -- backed by one fresh, independent
+    eval_pulsed_point() call rather than a back-solve; pkg5b-fix2 item 1)
+    and the "Model sensitivity" table it feeds."""
     manifest_path = out_dir / "manifest.json"
     csv_path = out_dir / "sweep.csv"
     old_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

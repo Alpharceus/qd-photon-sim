@@ -1,6 +1,6 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-08T02:56:39.596968+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-08T04:53:01.199318+00:00; contract: docs/rt_edge_contract.md.
 
 ```
 VERDICT: PASS model=finite_pulse:true,tau_cap_density:false g2_min=0.3214 g2_median_eligible=0.36 diag_g2_min=0.3214 diag_g2_median_diagnostic=0.36 flux_max=nan flux_margin=nan flux_shortfall_deprecated=nan median_pass=true coverage_over_eligible=1 eligible_fraction=1 eligible=4/4 flux_floor_excluded=0 evidence=complete conditional=false headline_coverage=4/4 headline_coverage_pulsed=2/2 headline_dedup_mismatch_groups=0 eligible_dedup=2/2 eligible_dedup_mismatch_groups=0 rows_scheduled=4/4 cw_raw_coverage=4/4 gamma300_pass_max=20 gamma300_threshold=>=20 T_pass_min=230 headline_by_T=230:2/2,300:2/2 headline_by_T_pulsed=230:1/1,300:1/1
@@ -81,7 +81,7 @@ At T_hs=300 K, the favourable corner has retention S=n/a, linewidth Gamma(T)=n/a
 | edge-inp-gaasp-design | primary | 0.3214 / 0.36 | 0.1 / 0.1 | 0.32 / 0.32 | 4/4 | 0 | 4 |
 
 ## Best diagnostic-g2 row and brightness decomposition
-The dominant brightness limiter at the favourable diagnostic corner -- the smallest factor across the WHOLE chain (loading, t_X, S, and eta_total's own sub-factors; council review round 6, item 3) -- is the collection chain; the multiplicative chain that reproduces the reported collected pulsed flux is:
+The dominant brightness limiter at the favourable diagnostic corner -- the smallest factor across the WHOLE chain (loading, t_X, S, and eta_total's own sub-factors; council review round 6, item 3) -- is the collection chain. `loading`/`t_X`/`S` below are device.py's static-loading scalars, shown for every row regardless of drive model; the multiplicative chain that reproduces the reported collected pulsed flux is:
 
 | factor | value |
 |---|---:|
@@ -92,7 +92,7 @@ The dominant brightness limiter at the favourable diagnostic corner -- the small
 | rep rate (Hz) | nan |
 | **product x rep rate** | nan |
 | reported collected_flux_pulsed_s | nan |
-| self-check: relative difference | nan (non-finite inputs) |
+| self-check (static-loading ((1-e^-mu)*t_X*S*eta_total*rep_rate)): relative difference | nan (non-finite inputs) |
 
 `beta`/`eta_facet`/`T_facet`/`NA` are shown below for diagnosis only -- `beta`, `eta_facet` and `NA` are already folded into `eta_total` above exactly once each (their product reproduces eta_total, by construction of eta_facet -- NOT independent evidence, see below) and must NOT also be multiplied into the flux self-check. Single-pass propagation is NOT listed here as a separate multiplicative row (peer-review pkg2 facet fix, 2026-09-07): it is reported below as an informational line only, already folded inside `eta_facet`'s ray series.
 

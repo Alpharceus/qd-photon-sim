@@ -170,10 +170,15 @@ combination never runs with the corrected loading model. With
 gives 496/768 eligible rows and still **0 headline passes**
 (`g2_min=0.8291`, above the 0.5 gate): **nothing passes g2 < 0.5 once
 finite-pulse counting is on**, in either retention convention. The
-mechanism is re-excitation inside the 100 ps pulsed-counting gate (a second
-capture-emission cycle before the gate closes), which the static
-per-pulse loading approximation could not see. See the verdict's "Model
-sensitivity" table for all four combinations side by side. See
+mechanism: the dot is re-loaded by the injected current during the 100 ps
+electrical pump pulse (`drive.diode.tau_pulse_ns = 0.1`), because thermal
+escape (`k_X ~ 740/ns` at the favourable 230 K corner) empties it ~740x
+faster than it radiates (`gamma_X = 1/ns`), giving ~0.5 independent
+load-escape cycles per 100 ps pump pulse (`mu_resolved ~ 0.54`) -- which the
+static per-pulse loading approximation could not see. The photon-counting
+gate itself is the FULL 12.5 ns pulse period (`gate_ns: null` resolves to
+`finite_pulse_gate_ns_used = 12.5`), not the 100 ps pump pulse. See the
+verdict's "Model sensitivity" table for all four combinations side by side. See
 **`docs/rt_edge_tier.md`** for current counts, assumptions, disclosures, and
 council review history.
 

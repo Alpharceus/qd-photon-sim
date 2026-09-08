@@ -1,6 +1,6 @@
 # RT edge-emitter acceptance sweep verdict
 
-Generated 2026-09-08T04:03:18.524447+00:00; contract: docs/rt_edge_contract.md.
+Generated 2026-09-08T04:28:53.164218+00:00; contract: docs/rt_edge_contract.md.
 
 ```
 VERDICT: FAIL model=finite_pulse:true,tau_cap_density:false g2_min=nan g2_median_eligible=nan diag_g2_min=0.9817 diag_g2_median_diagnostic=0.9993 flux_max=582.8 flux_margin=0.5828 flux_shortfall_deprecated=1.716 median_pass=false coverage_over_eligible=nan eligible_fraction=0 eligible=0/768 flux_floor_excluded=768 evidence=incomplete conditional=false headline_coverage=0/768 headline_coverage_pulsed=0/384 headline_dedup_mismatch_groups=0 eligible_dedup=0/384 eligible_dedup_mismatch_groups=0 rows_scheduled=0/768 cw_raw_coverage=0/0 gamma300_pass_max=nan gamma300_threshold=n/a T_pass_min=none headline_by_T=230:0/192,250:0/192,273:0/192,300:0/192 headline_by_T_pulsed=230:0/96,250:0/96,273:0/96,300:0/96
@@ -106,18 +106,19 @@ At T_hs=300 K, the favourable corner has retention S=0.0001873, linewidth Gamma(
 
 ## Why no row is eligible
 Every row is below the 1000 photons/s collected-flux floor; the grid maximum is only 582.8 photons/s (floor/maximum = 1.716).
-The dominant brightness limiter at the favourable diagnostic corner -- the smallest factor across the WHOLE chain (loading, t_X, S, and eta_total's own sub-factors; council review round 6, item 3) -- is S (confinement retention). `loading`/`t_X`/`S` below are device.py's static-loading scalars, shown for every row regardless of drive model; the flux reconstruction below uses the formula this row's own `model_finite_pulse` flag actually selected (reconstruction: `finite-pulse (flux-implied brightness_per_pulse; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row)`), which for a finite-pulse row is NOT the product of the chain shown here:
+The dominant brightness limiter at the favourable diagnostic corner -- the smallest factor across the WHOLE chain (loading, t_X, S, and eta_total's own sub-factors; council review round 6, item 3) -- is S (confinement retention). `loading`/`t_X`/`S` below are device.py's static-loading scalars, shown for every row regardless of drive model; `loading`/`t_X`/`S` are shown for reference only and are NOT part of this row's finite-pulse flux formula (already folded into `finite_pulse_mean_counts`, recomputed via `finite-pulse (independent evaluate(): fresh finite_pulse_mean_counts * fresh eta_total * rep_rate; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row)`); the multiplicative chain that reproduces the reported collected pulsed flux is finite_pulse_mean_counts x eta_total x rep_rate:
 
 | factor | value |
 |---|---:|
 | loading = 1 - e^-mu (mu=0.5445) | 0.419876 |
 | t_X (spectral transmission) | 0.5 |
 | S (confinement retention) | 0.00134802 |
+| finite_pulse_mean_counts (recomputed via an independent, fresh evaluate() call; detected counts per pulse period, escape and filter transmission already folded in) | 0.000364481 |
 | eta_total (edge out-coupling: waveguide coupling x facet escape (mid-ridge ray series, propagation included) x NA) | 0.0198516 |
 | rep rate (Hz) | 8e+07 |
-| **reconstructed flux (finite-pulse (flux-implied brightness_per_pulse; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row))** | 578.843 photons/s |
+| **reconstructed flux (finite_pulse_mean_counts x eta_total x rep_rate; finite-pulse (independent evaluate(): fresh finite_pulse_mean_counts * fresh eta_total * rep_rate; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row))** | 578.843 photons/s |
 | reported collected_flux_pulsed_s | 578.843 photons/s |
-| self-check (finite-pulse (flux-implied brightness_per_pulse; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row)): relative difference | 0.0000% (PASS, within 1%) |
+| self-check (finite-pulse (independent evaluate(): fresh finite_pulse_mean_counts * fresh eta_total * rep_rate; sweep.csv carries neither finite_pulse_mean_counts nor brightness_per_pulse for this row)): relative difference | 0.0000% (PASS, within 1%) |
 
 `beta`/`eta_facet`/`T_facet`/`NA` are shown below for diagnosis only -- `beta`, `eta_facet` and `NA` are already folded into `eta_total` above exactly once each (their product reproduces eta_total, by construction of eta_facet -- NOT independent evidence, see below) and must NOT also be multiplied into the flux self-check. Single-pass propagation is NOT listed here as a separate multiplicative row (peer-review pkg2 facet fix, 2026-09-07): it is reported below as an informational line only, already folded inside `eta_facet`'s ray series.
 
