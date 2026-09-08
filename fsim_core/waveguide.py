@@ -415,29 +415,57 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         #
         # pr-pkg4-fix4 item 3 (Opus review): a SECOND, distinct way to land
         # in this branch with T > 0 exists, and an earlier version of this
-        # comment claimed it away falsely. For 0 < T < ~1.11e-16 (half of
-        # float64 machine epsilon), R_front = 1.0 - T itself rounds to
-        # EXACTLY 1.0 in the subtraction above -- T is lost before denom is
-        # even computed -- so with R_back == 1 and a lossless ridge
-        # (alpha_cm*L_um == 0) denom underflows to exactly 0.0 too, NOT
-        # because the round-trip series fails to converge (it converges to
-        # 1.0 for any T > 0 -- see the checks in verify_waveguide.py at
-        # T=1e-17 and T=1e-300) but because R_front was rounded away first.
-        # The earlier claim that "the general formula below already
-        # evaluates to exactly 1.0 ... even for T as small as 1e-300" was
-        # false: the general formula's own denom IS this same
-        # already-underflowed value, so without the explicit branch below
-        # it divides by that 0.0 and the raise a few lines down fired
-        # instead of returning 1.0. Handled explicitly: with R_back=1 and
-        # alpha_cm*L_um=0, every photon that does not immediately reflect
-        # off the front facet eventually escapes forward after enough
-        # round trips, so the analytic round-trip series [DR] converges to
-        # exactly 1.0 in this limit for ANY T > 0.
+        # comment claimed it away falsely. For 0 < T < eps/4 = 5.55e-17
+        # (one quarter of float64 machine epsilon -- the representable
+        # values just below 1.0 are spaced eps/2 apart, and round-to-nearest
+        # rounds up to 1.0 within half of that spacing, i.e. eps/4, of
+        # 1.0), R_front = 1.0 - T itself rounds to EXACTLY 1.0 in the
+        # subtraction above -- T is lost before denom is even computed --
+        # so with R_back == 1 and a lossless ridge (alpha_cm*L_um == 0)
+        # denom underflows to exactly 0.0 too, NOT because the round-trip
+        # series fails to converge (it converges to 1.0 for any T > 0 --
+        # see the checks in verify_waveguide.py at T=1e-17 and T=1e-300)
+        # but because R_front was rounded away first. The earlier claim
+        # that "the general formula below already evaluates to exactly
+        # 1.0 ... even for T as small as 1e-300" was false: the general
+        # formula's own denom IS this same already-underflowed value, so
+        # without the explicit branch below it divides by that 0.0 and the
+        # raise a few lines down fired instead of returning 1.0. Handled
+        # explicitly: with R_back=1 and alpha_cm*L_um=0, every photon that
+        # does not immediately reflect off the front facet eventually
+        # escapes forward after enough round trips, so the analytic
+        # round-trip series [DR] converges to exactly 1.0 in this limit
+        # for ANY T > 0.
         if T == 0.0:
             return 0.0
-        if R_back == 1.0 and alpha_cm * L_um == 0.0 and denom == 0.0:
+        # pr-final-nits: an earlier version of this guard fired only on the
+        # EXACT-equality condition R_back == 1.0 and alpha_cm * L_um ==
+        # 0.0, which missed inputs that are lossless only to double
+        # precision -- e.g. R_back=1.0, alpha_cm=1e-13, L_um=1.0, where
+        # alpha_cm*L_um*1e-4 = 1e-17 is well below any measurable loss but
+        # is not exactly 0.0, so denom still underflows to 0.0 (T is tiny
+        # too) and the exact-equality check missed it, falling through to
+        # the raise below for a case that is physically the same lossless
+        # limit. Replaced by a robust threshold: R_back within 1e-12 of 1
+        # and a round-trip power loss alpha_cm*L_um*1e-4 below 1e-12 is a
+        # "lossless perfect mirror to double precision" -- for any T > 0
+        # (already excluded above) that limit analytically escapes with
+        # probability 1.0, regardless of how the finite-precision series
+        # itself rounds (it can round to anywhere from 0.0 to slightly
+        # above 1.0 once R_front = 1 - T has itself rounded to 1.0 -- see
+        # the clamp below).
+        if R_back >= 1.0 - 1e-12 and alpha_cm * L_um * 1e-4 < 1e-12:
             return 1.0
         if denom <= 0.0:
+            # Reachable only here (denom <= 0.0): T == 0.0 and the
+            # lossless-perfect-mirror limit are both excluded above, and
+            # denom <= 0.0 forces R_back, R_front and prop_rt each
+            # (numerically) to 1.0 -- i.e. R_back == 1.0 and a round-trip
+            # loss indistinguishable from 0.0 at double precision -- which
+            # is exactly the lossless-perfect-mirror condition just
+            # checked, so this raise is unreachable for physically valid
+            # inputs and is kept only as a defensive guard against a
+            # genuinely non-converging series.
             raise ValueError(
                 "degenerate facet cavity: R_back * R_front * "
                 "exp(-2*alpha_cm*1e-4*L_um) >= 1 (R_back=%r, T=%r, "
@@ -446,10 +474,22 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         # else: 0 < T <= 1e-15 here (denom >= T always, see the module-level
         # bound above, so denom <= 1e-15 forces T into the same range) with
         # 0 < denom <= 1e-15 -- a genuinely finite (denom ~= T) ratio, not a
-        # 0/0 degeneracy or the R_back=1/alpha*L=0 underflow case just
-        # handled, so fall through to the general formula below.
-    return (0.5 * T * exp(-a * x * L_um)
-            * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
+        # 0/0 degeneracy or the lossless-perfect-mirror case just handled,
+        # so fall through to the general formula below.
+    result = (0.5 * T * exp(-a * x * L_um)
+              * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
+    # pr-final-nits: this closed-form series is exact in real arithmetic
+    # but can overshoot 1.0 by round-off once R_front = 1 - T itself
+    # rounds to exactly 1.0 while T > 0 still contributes a nonzero
+    # numerator -- e.g. 1.0809 at T=1.2e-16, R_back=1.0, alpha_cm=0.0 (the
+    # lossless-perfect-mirror branch above already intercepts that case
+    # and returns 1.0 directly, but the clamp is kept here as a defensive
+    # bound on the general formula for any other rounding path into the
+    # same regime). Clamp to the physically valid [0, 1] escape-fraction
+    # range; this never triggers away from this sub-ULP T regime (e.g. at
+    # the T~0.72 textbook cross-check above, denom is O(1) and the formula
+    # is already exact).
+    return max(0.0, min(1.0, result))
 
 
 def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,

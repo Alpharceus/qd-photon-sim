@@ -272,31 +272,65 @@ ck(_eta_tiny_T > 0.5 and abs(_eta_tiny_T - 1.0) < 1e-2,
 # product is bounded by R_front, so denom = 1 - product >= 1 - R_front = T
 # always -- reaching the denom <= 1e-15 guard with T == 0.0 exactly always
 # has denom == 0.0 exactly too, even when alpha_cm*L_um is tiny but
-# nonzero (not exactly 0): the T == 0.0 branch covers every such case, and
-# the raise below is unreachable for physically valid inputs, kept only to
-# describe the (algebraically impossible) case explicitly rather than
-# silently falling through.
+# nonzero (not exactly 0): the T == 0.0 branch covers every such case. The
+# ValueError raise in facet_escape_fraction is reachable only for
+# denom <= 0.0 (structurally: it sits inside that guard), and even there
+# is unreachable for physically valid inputs, since denom <= 0.0 forces
+# R_back, R_front and prop_rt each (numerically) to 1.0 -- exactly the
+# lossless-perfect-mirror condition the function checks (and returns 1.0
+# for) just above the raise -- kept only as a defensive guard against a
+# genuinely non-converging series rather than silently falling through.
 ck(facet_escape_fraction(0.0, 1.0, 1e-13, 1.0) == 0.0,
    'near-degenerate facet cavity (alpha_cm*L_um tiny but nonzero, T=0 exactly) also returns 0.0')
 
 # pr-pkg4-fix4 item 3 (Opus review): a SECOND, distinct way to reach
 # denom == 0.0 with T > 0 exists -- not the T == 0.0 degeneracy above, but
-# a float64 rounding artifact: for 0 < T < ~1.11e-16 (half machine
-# epsilon), R_front = 1.0 - T itself rounds to exactly 1.0 before denom is
-# computed, so with R_back == 1 and a lossless ridge (alpha_cm*L_um == 0)
-# denom underflows to exactly 0.0 even though the analytic series
-# converges to 1.0 for any T > 0 (an earlier version of this module's own
-# comment on this branch falsely claimed the general formula "already
-# evaluates to exactly 1.0 ... even for T as small as 1e-300" -- it did
-# not: without an explicit branch it instead divided by this same
-# underflowed 0.0 and raised). Confirm the function returns the analytic
-# 1.0 rather than raising at T=1e-17 and T=1e-300.
+# a float64 rounding artifact: for 0 < T < eps/4 = 5.55e-17 (one quarter
+# of float64 machine epsilon, not ~1.11e-16/half machine epsilon as an
+# earlier version of this comment claimed), R_front = 1.0 - T itself
+# rounds to exactly 1.0 before denom is computed, so with R_back == 1 and
+# a lossless ridge (alpha_cm*L_um == 0) denom underflows to exactly 0.0
+# even though the analytic series converges to 1.0 for any T > 0 (an
+# earlier version of this module's own comment on this branch falsely
+# claimed the general formula "already evaluates to exactly 1.0 ... even
+# for T as small as 1e-300" -- it did not: without an explicit branch it
+# instead divided by this same underflowed 0.0 and raised). Confirm the
+# function returns the analytic 1.0 rather than raising at T=1e-17 and
+# T=1e-300.
 ck(facet_escape_fraction(1e-17, 1.0, 0.0, 100.0) == 1.0,
    'T=1e-17 (below the float64 1.0-T rounding threshold), lossless ridge, R_back=1: '
    'returns the analytic escape-fraction limit 1.0, not a raised ValueError from '
    'the underflowed denominator')
 ck(facet_escape_fraction(1e-300, 1.0, 0.0, 100.0) == 1.0,
    'T=1e-300 (far below the rounding threshold), lossless ridge, R_back=1: also returns 1.0')
+
+# pr-final-nits item 1 (Opus review of 025bead): the general formula can
+# overshoot 1.0 by round-off once R_front = 1 - T rounds to exactly 1.0
+# while T itself has not yet underflowed denom to 0.0 -- e.g. T=1.2e-16
+# gives a raw ratio of 1.0809 (denom = 2**-53, T/denom > 1). The robust
+# "lossless perfect mirror to double precision" rule (R_back >= 1-1e-12
+# and alpha_cm*L_um*1e-4 < 1e-12) intercepts all three of these T values
+# directly and returns exactly 1.0, before the overshooting ratio is even
+# used; the general-formula clamp to [0, 1] is a second, independent line
+# of defense for any other rounding path into the same sub-ULP regime.
+ck(facet_escape_fraction(5.6e-17, 1.0, 0.0, 100.0) == 1.0,
+   'T=5.6e-17, lossless ridge, R_back=1: robust rule returns exactly 1.0 '
+   '(raw ratio would be 0.5044, since R_front already rounds to 1.0 here)')
+ck(facet_escape_fraction(1e-16, 1.0, 0.0, 100.0) == 1.0,
+   'T=1e-16, lossless ridge, R_back=1: robust rule returns exactly 1.0 '
+   '(raw ratio would be 0.9007)')
+ck(facet_escape_fraction(1.2e-16, 1.0, 0.0, 100.0) == 1.0,
+   'T=1.2e-16, lossless ridge, R_back=1: robust rule returns exactly 1.0, '
+   'not the raw ratio 1.0809 (> 1) that the clamp would otherwise need to catch')
+
+# pr-final-nits item 1: a genuinely lossy (alpha_cm > 0) tiny-T case that
+# the old exact-equality guard (R_back == 1.0 and alpha_cm * L_um == 0.0)
+# missed and raised ValueError on -- alpha_cm*L_um*1e-4 = 1e-17 here is
+# lossless only to double precision, not exactly 0.0.
+_eta_lossy_tiny = facet_escape_fraction(1e-17, 1.0, 1e-13, 1.0)
+ck(0.0 <= _eta_lossy_tiny <= 1.0,
+   'facet_escape_fraction(1e-17, 1.0, 1e-13, 1.0): lossy but sub-double-precision tiny-T '
+   'case returns a finite value in [0, 1] instead of raising')
 
 # item 5: general-x exponent check at dot_position=0.25, off the x=0.5
 # midpoint default, against a hand closed form -- this specifically

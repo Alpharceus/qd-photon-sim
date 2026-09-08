@@ -73,7 +73,11 @@ def _cw_reduction_guard(design, label):
     reduction the same way. Skip with an explanatory message rather than
     asserting a false equivalence if a future card under test resolves
     either to nonzero."""
-    rpu = evaluate(design)["scalars"]["retention_params_used"]
+    # pr-final-nits item 3: restrict the sweep to the single T_hs point the
+    # guard actually reads (identical result to the full default T_grid,
+    # since retention_params_used at T_hs is unaffected by which other
+    # points are also evaluated) -- 59 s -> ~1 s per call.
+    rpu = evaluate(design, T_grid=[design.thermal.T_hs])["scalars"]["retention_params_used"]
     b0_used = rpu["b0"] if rpu is not None else float("nan")
     beta_used = rpu["beta"] if rpu is not None else float("nan")
     if not (b0_used == 0.0 and beta_used == 0.0) or design.cavity.enabled:
@@ -1495,7 +1499,11 @@ rho_period_c = rho_gate[-1]
 # effective decay time" max(tau_rad_ns, 1/(k_X+gamma_X)) was computed here
 # to guard against a slower escape channel lengthening it -- but escape
 # (k_X > 0) only ADDS to the total decay rate, gamma_X + k_X >= gamma_X,
-# so 1/(k_X+gamma_X) <= 1/gamma_X = tau_rad_ns ALWAYS: the max() could
+# so 1/(k_X+gamma_X) <= 1/gamma_X = tau_rad_ns ALWAYS (rm >= 1 keeps this
+# true with a cavity: gamma_X here is the Purcell-enhanced rate rm*gamma_X_bare,
+# and rm >= 1 -- enhancement, never suppression, the only regime these
+# cards ship -- means gamma_X >= gamma_X_bare too, so 1/gamma_X stays
+# <= tau_rad_ns = 1/gamma_X_bare): the max() could
 # never actually pick the escape-derived timescale, so that computation
 # silently reduced to plain tau_rad_ns in every case anyway. Escape only
 # ever SHORTENS the true decay time, so gate = tau_pulse_ns + 5*tau_rad_ns
@@ -1611,11 +1619,22 @@ if not _cw_reduction_guard(d_f, "item 2/finding 4 check F"):
 d_proxy_variant = copy.deepcopy(d_gainp)
 d_proxy_variant.ret.mode = "proxy"
 _proxy_skipped = _cw_reduction_guard(d_proxy_variant, "item 1 proxy-mode self-test")
+# pr-final-nits item 3: assert the RESOLVED b0 is actually nonzero
+# explicitly, rather than only checking the guard skipped and the raw
+# fields stayed 0.0 -- either of those two alone is also true if the
+# guard skipped for the unrelated reason of the cavity being enabled, so
+# without this the self-test could pass without ever exercising the
+# proxy-fit resolution path it claims to.
+_proxy_b0_used = evaluate(
+    d_proxy_variant, T_grid=[d_proxy_variant.thermal.T_hs]
+)["scalars"]["retention_params_used"]["b0"]
 ok("item 1: a proxy-mode variant of the gainp card resolves b0/beta "
    "nonzero via the class-proxy fit even though design.ret.b0=="
    f"{d_proxy_variant.ret.b0!r}/design.ret.beta=={d_proxy_variant.ret.beta!r} "
-   "stay 0.0 -- the guard skips E/F on the RESOLVED value, not the raw fields",
-   _proxy_skipped and d_proxy_variant.ret.b0 == 0.0 and d_proxy_variant.ret.beta == 0.0)
+   f"stay 0.0 -- the guard skips E/F on the RESOLVED value (b0_used={_proxy_b0_used!r} "
+   "!= 0.0), not the raw fields",
+   _proxy_skipped and d_proxy_variant.ret.b0 == 0.0 and d_proxy_variant.ret.beta == 0.0
+   and _proxy_b0_used != 0.0)
 
 # Item 7: an unconverged pulse_counting.pulse_g2 periodic steady state must
 # nan g2_dot/rho and mark the row invalid the way the other early-return

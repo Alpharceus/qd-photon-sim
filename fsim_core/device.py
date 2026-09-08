@@ -291,14 +291,20 @@ class DriveBlock:
                                   # decay tail). Neglecting background
                                   # afterglow is one-sided and optimistic:
                                   # rho_pulsed is an UPPER BOUND -- at the
-                                  # FAVOURABLE corner (gamma300=6,
-                                  # delta_xx=8, NA=0.8, R_back=0.95,
-                                  # L=250 um) n_bg is ~17% of B_fp, and a
-                                  # ~1 ns background carrier lifetime (~11x
-                                  # more background photons there) would
-                                  # move rho_pulsed from 0.858 to ~0.69,
-                                  # while g2_op moves only 0.9817 -> 0.98826
-                                  # [A]. Exposed as finite_pulse_gate_ns_used
+                                  # FAVOURABLE corner (T_hs=230 K,
+                                  # gamma300=6, delta_xx=8, NA=0.8,
+                                  # R_back=0.95, L=250 um) n_bg is ~17% of
+                                  # B_fp, and a ~1 ns background carrier
+                                  # lifetime (~11x more background photons
+                                  # there) would move rho_pulsed from 0.858
+                                  # to ~0.69, while g2_op moves only
+                                  # 0.9817 -> 0.98826 [A]. At T_hs=300 K
+                                  # instead (same corner otherwise) n_bg/
+                                  # B_fp = 0.117152, rho_pulsed = 0.8662227488,
+                                  # g2_op = 0.9976578221 -- quote both
+                                  # temperatures, they are not
+                                  # interchangeable. Exposed as
+                                  # finite_pulse_gate_ns_used
                                   # on the evaluation dict (the resolved
                                   # value, whichever of the two applied,
                                   # NaN if finite_pulse was requested but
@@ -859,12 +865,16 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     # UNCONDITIONALLY, in every mode, ahead of (and independent from) the
     # mode-gated `== 0.0` guard below.
     if d.aperture.density_cm2 is not None and d.aperture.density_cm2 < 0:
-        raise ValueError("aperture.density_cm2 must be > 0 if set "
-                         f"(got {d.aperture.density_cm2!r})")
+        raise ValueError("aperture.density_cm2 must be non-negative if set, "
+                         "in every mode (a negative competitor density has "
+                         f"no physical meaning) (got {d.aperture.density_cm2!r})")
     if d.ret.mode == "confinement" or d.drive.mode == "EL-transport":
         if d.aperture.density_cm2 is not None and d.aperture.density_cm2 == 0.0:
-            raise ValueError("aperture.density_cm2 must be > 0 if set "
-                             f"(got {d.aperture.density_cm2!r})")
+            raise ValueError("aperture.density_cm2 must be > 0 if set in "
+                             "ret.mode='confinement' or drive.mode='EL-transport' "
+                             f"(got {d.aperture.density_cm2!r}; 0.0 is only "
+                             "valid outside those modes, where aperture.compose's "
+                             "own product-only use of it is genuinely fine at 0)")
         if d.ret.n_dot_cm2 is not None and d.ret.n_dot_cm2 <= 0:
             raise ValueError("ret.n_dot_cm2 must be > 0 if set "
                              f"(got {d.ret.n_dot_cm2!r})")
@@ -1370,8 +1380,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # pr-pkg4-fix3 item 4 (physics honesty): neglecting background
         # afterglow past the pulse end is one-sided and optimistic --
         # rho_pulsed is therefore an UPPER BOUND on the true pulsed rho,
-        # not a central estimate. At the FAVOURABLE corner (gamma300=6,
-        # delta_xx=8, NA=0.8, R_back=0.95, L=250 um) n_bg is
+        # not a central estimate. At the FAVOURABLE corner (T_hs=230 K,
+        # gamma300=6, delta_xx=8, NA=0.8, R_back=0.95, L=250 um) n_bg is
         # ~17% of B_fp; a ~1 ns background carrier lifetime (afterglow
         # decaying on that scale rather than being cut off at the pulse
         # end) would carry ~11x more background photons in the counting
@@ -1379,7 +1389,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # moves only from 0.9817 to 0.98826 over the same change [A] (g2 is
         # far less sensitive to the background model than rho is, since
         # g2 depends on the cascade dynamics rather than the signal-to-
-        # background ratio directly).
+        # background ratio directly). At T_hs=300 K instead (same corner
+        # otherwise) n_bg/B_fp = 0.117152, rho_pulsed = 0.8662227488,
+        # g2_op = 0.9976578221 -- quote both temperatures, they are not
+        # interchangeable.
         finite_pulse_g2_dot = float("nan")
         finite_pulse_mean_counts = float("nan")
         finite_pulse_mean_counts_x = float("nan")

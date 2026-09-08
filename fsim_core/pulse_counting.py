@@ -114,8 +114,8 @@ Physics honesty (pr-pkg4-fix3 item 4). Neglecting background afterglow
 past the pulse end is one-sided and optimistic, never the reverse: it can
 only omit background photons a real detector would still see, so
 device.py's rho_pulsed is an UPPER BOUND on the true pulsed rho, not a
-central estimate. At the FAVOURABLE corner (gamma300=6, delta_xx=8,
-NA=0.8, R_back=0.95, L=250 um) n_bg -- the COUNTED injection-window
+central estimate. At the FAVOURABLE corner (T_hs=230 K, gamma300=6,
+delta_xx=8, NA=0.8, R_back=0.95, L=250 um) n_bg -- the COUNTED injection-window
 background, not the neglected afterglow -- is already ~17.42% of the
 counted background B_fp (n_bg/B_fp; pr-pkg4-fix4 item 5 correction: an
 earlier version of this paragraph mislabeled n_bg/B_fp itself as "the
@@ -128,7 +128,9 @@ background photons into the counting window and move rho_pulsed from
 same change [A] -- g2 depends on the cascade dynamics this module already
 tracks exactly, not on the
 signal-to-background ratio, so it is far less sensitive to the neglected
-background model than rho is.
+background model than rho is. At T_hs=300 K instead (same corner
+otherwise) n_bg/B_fp = 0.117152, rho_pulsed = 0.8662227488, g2_op =
+0.9976578221 -- quote both temperatures, they are not interchangeable.
 
 Lemma 1 (collection-efficiency invariance): g2 is invariant under scaling
 t_X and t_XX by a common factor, because J (and hence m1) scales linearly in
