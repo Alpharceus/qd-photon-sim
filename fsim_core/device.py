@@ -799,6 +799,35 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         raise ValueError(f"unknown emission.type {d.emission.type!r}")
     if d.filter.track_material not in ("", "dot", "matrix"):
         raise ValueError(f"unknown filter.track_material {d.filter.track_material!r}")
+    # pr-pkg6-fix item 1 (pr-pkg6-stale-text item C2): both fields are
+    # validated > 0 if set at DeviceDesign.load() (see load()'s own checks),
+    # but load() is not the only way to build a DeviceDesign -- a
+    # programmatic caller that constructs one directly and sets either field
+    # to exactly 0.0 (or negative) skipped that check entirely. The
+    # ZeroDivisionError this used to reach was NOT confinement-only: it also
+    # fires ~170 lines before the (formerly confinement-only) re-validation
+    # even ran, inside transport.evaluate_injection's dot_loading (f_qd:
+    # 1e10 / n_dot_cm2) for EL-transport under ANY ret.mode, not just
+    # "confinement" (dot_levels.retention_params' states_per_dot division is
+    # the confinement-only site). Validated here, before either consumer
+    # runs, for every mode that actually reaches one of those two divisions
+    # -- ret.mode == "confinement" (retention_params, both fields) or
+    # drive.mode == "EL-transport" (dot_loading's f_qd, aperture.density_cm2
+    # only). aperture.compose's OWN use of aperture.density_cm2
+    # (n_window_competitors: a pure product, n_qd_cm2 * aperture_um2 *
+    # w/sigma, never a divisor) is a THIRD, unrelated consumer that is
+    # genuinely fine at 0.0 -- N=0 competitors is exactly how "continuous
+    # aperture N=0 reproduces the unmixed g2 exactly" (verify_device_rt.py)
+    # exercises it under the untouched EL/proxy defaults, so this guard must
+    # NOT fire for that design (neither ret.mode == "confinement" nor
+    # drive.mode == "EL-transport" there).
+    if d.ret.mode == "confinement" or d.drive.mode == "EL-transport":
+        if d.aperture.density_cm2 is not None and d.aperture.density_cm2 <= 0:
+            raise ValueError("aperture.density_cm2 must be > 0 if set "
+                             f"(got {d.aperture.density_cm2!r})")
+        if d.ret.n_dot_cm2 is not None and d.ret.n_dot_cm2 <= 0:
+            raise ValueError("ret.n_dot_cm2 must be > 0 if set "
+                             f"(got {d.ret.n_dot_cm2!r})")
     if d.emission.type == "edge" and d.cavity.enabled:
         # Reject conflicting SiN/edge and resonant-cavity collection (docs/
         # rt_edge_contract.md): coexistence needs an explicit supported
@@ -1067,22 +1096,23 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # itself is_not_None-tests it against ret.n_dot_cm2 first, so
             # this value wins over the 1e10 class default whenever
             # ret.n_dot_cm2 itself is unset. pr-pkg1-fix4 item 5: both
-            # aperture.density_cm2 and ret.n_dot_cm2 are validated > 0 if
-            # set at DeviceDesign.load() (see load()'s own checks) -- but
-            # load() is not the only way to build a DeviceDesign: a
-            # programmatic caller that constructs one directly and sets
-            # either field to exactly 0.0 skips that check entirely and
-            # would reach dot_levels.retention_params' states_per_dot
-            # (N2D/n_dot_cm2) division with a 0.0 denominator, raising an
-            # unhelpful ZeroDivisionError deep inside the confinement
-            # solve instead of failing here with the bad field named
-            # (pr-pkg6-stale-text item C2). Re-validate both explicitly.
-            if d.aperture.density_cm2 is not None and d.aperture.density_cm2 <= 0:
-                raise ValueError("aperture.density_cm2 must be > 0 if set "
-                                 f"(got {d.aperture.density_cm2!r})")
-            if d.ret.n_dot_cm2 is not None and d.ret.n_dot_cm2 <= 0:
-                raise ValueError("ret.n_dot_cm2 must be > 0 if set "
-                                 f"(got {d.ret.n_dot_cm2!r})")
+            # aperture.density_cm2 and ret.n_dot_cm2 are validated > 0 if set
+            # at DeviceDesign.load() (see load()'s own checks) -- but load()
+            # is not the only way to build a DeviceDesign, and a 0.0 here
+            # feeds dot_levels.retention_params' states_per_dot (N2D/
+            # n_dot_cm2) division (this branch only runs for ret.mode ==
+            # "confinement", so that condition already holds here).
+            # pr-pkg6-fix item 1: that re-validation is no longer done here
+            # -- it is hoisted to the top of evaluate() (before ANY use,
+            # gated on ret.mode == "confinement" or drive.mode ==
+            # "EL-transport", the two consumers that actually divide by
+            # these fields) since transport.evaluate_injection's own
+            # dot_loading (f_qd, EL-transport, ANY ret.mode) divides by the
+            # same aperture.density_cm2 ~170 lines before this branch is
+            # even reached, so a confinement-only guard here left that
+            # earlier ZeroDivisionError reachable under ret.mode ==
+            # "proxy" + drive.mode == "EL-transport" (pr-pkg6-stale-text
+            # item C2).
             derived = _confinement_params(d.ret, Tj, n_dot_cm2=d.aperture.density_cm2)
             params = {k: derived[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
             params["b0"], params["beta"] = d.ret.b0, d.ret.beta

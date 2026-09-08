@@ -651,24 +651,28 @@ def check_card(path: Path, anchors: dict) -> set:
            f"({eval_seconds:.2f} s)",
            eval_seconds < CW_RUNTIME_BUDGET_S)
 
-        # ---- pr-pkg1-fix4 item 1 (extended by pr-pkg6-stale-text item C1):
-        # the card's finding_1b_record prose names several literals --
-        # a_esc(300 K) and S(230 K) for BOTH the no-cancellation (shipped)
-        # and full-cancellation (opt-in) conventions, plus the four g2_op/
-        # collected_flux_pulsed_s values in the favourable-corner table --
-        # pr-pkg1-fix3's version of the full-cancellation S(230 K) literal
-        # was wrong at the 8th-9th digit and nothing caught it before this
-        # (originally single-value) check existed. Every one of these is
-        # now recomputed fresh and required to agree with whatever the
-        # card's own text currently claims, so a future stale literal fails
-        # loudly instead of sitting silently wrong again. The agreement
-        # tolerance is the tightest each literal's OWN printed precision
-        # can support (a_esc(300 K) is quoted to 7 significant figures,
-        # no-cancellation S(230 K) to 6-7; both give rel diffs up to ~1.3e-7
-        # / ~4.3e-7 against a fresh evaluation -- not stale, just rounded
-        # for display), not a single blanket 1e-8: the full-cancellation
-        # S(230 K) literal and the g2/flux table (10 significant figures
-        # each) DO hold to rel 1e-8, and are checked at that tolerance.
+        # ---- pr-pkg1-fix4 item 1 (extended by pr-pkg6-stale-text item C1;
+        # tolerances tightened by pr-pkg6-fix item 2): the card's
+        # finding_1b_record prose names several literals -- a_esc(300 K)
+        # and S(230 K) for BOTH the no-cancellation (shipped) and
+        # full-cancellation (opt-in) conventions, the favourable-corner
+        # mu_resolved, and the four g2_op/collected_flux_pulsed_s values in
+        # the favourable-corner table -- pr-pkg1-fix3's version of the
+        # full-cancellation S(230 K) literal was wrong at the 8th-9th digit
+        # and nothing caught it before this (originally single-value) check
+        # existed. Every one of these is now recomputed fresh and required
+        # to agree with whatever the card's own text currently claims, so a
+        # future stale literal fails loudly instead of sitting silently
+        # wrong again. pr-pkg6-fix item 2: the no-cancellation a_esc(300 K)/
+        # S(230 K) and full-cancellation a_esc(300 K) literals used to be
+        # quoted to only 6-7 significant figures (rel diffs up to ~1.3e-7 /
+        # ~4.3e-7 against a fresh evaluation -- not stale, just rounded for
+        # display), checked at a correspondingly relaxed 2e-7/5e-7 rather
+        # than this file's blanket rel 1e-8; the card literals are now
+        # re-quoted to 10 significant figures (matching the full-
+        # cancellation S(230 K) literal, mu_resolved, and the g2/flux
+        # table, which already held 10 significant figures), so every one
+        # of these checks now holds at the SAME rel 1e-8.
         record_text = " ".join(provenance.get("finding_1b_record", "").split())
         NUM = r"[0-9.eE+-]+"
 
@@ -687,8 +691,8 @@ def check_card(path: Path, anchors: dict) -> set:
                 n_dot_cm2=fresh_default.aperture.density_cm2)["a_esc"]
             ok(f"{tag}: finding_1b_record's no-cancellation a_esc(300 K) literal "
                f"({recorded_aesc_nc!r}) matches a fresh DeviceDesign.load + evaluate "
-               f"({fresh_aesc_nc!r}) to rel 2e-7 (7-significant-figure literal)",
-               math.isclose(recorded_aesc_nc, fresh_aesc_nc, rel_tol=2e-7))
+               f"({fresh_aesc_nc!r}) to rel 1e-8 (10-significant-figure literal)",
+               math.isclose(recorded_aesc_nc, fresh_aesc_nc, rel_tol=1e-8))
 
             fresh_design_nc = DeviceDesign.load(path)
             fresh_design_nc.thermal.T_hs = 230.0
@@ -701,8 +705,8 @@ def check_card(path: Path, anchors: dict) -> set:
             fresh_s230_nc = evaluate(fresh_design_nc)["scalars"]["S_resolved"]
             ok(f"{tag}: finding_1b_record's no-cancellation S(230 K) literal "
                f"({recorded_s230_nc!r}) matches a fresh DeviceDesign.load + evaluate "
-               f"({fresh_s230_nc!r}) to rel 5e-7 (6-7-significant-figure literal)",
-               math.isclose(recorded_s230_nc, fresh_s230_nc, rel_tol=5e-7))
+               f"({fresh_s230_nc!r}) to rel 1e-8 (10-significant-figure literal)",
+               math.isclose(recorded_s230_nc, fresh_s230_nc, rel_tol=1e-8))
 
         m_fullcancel = re.search(
             rf"reproduces the 1e10 cm\^-2 default exactly: a_esc\(300 K\) = ({NUM}), "
@@ -720,8 +724,8 @@ def check_card(path: Path, anchors: dict) -> set:
                 n_dot_cm2=fresh_default_fc.aperture.density_cm2)["a_esc"]
             ok(f"{tag}: finding_1b_record's full-cancellation a_esc(300 K) literal "
                f"({recorded_aesc_fc!r}) matches a fresh DeviceDesign.load + evaluate "
-               f"({fresh_aesc_fc!r}) to rel 2e-7 (7-significant-figure literal)",
-               math.isclose(recorded_aesc_fc, fresh_aesc_fc, rel_tol=2e-7))
+               f"({fresh_aesc_fc!r}) to rel 1e-8 (10-significant-figure literal)",
+               math.isclose(recorded_aesc_fc, fresh_aesc_fc, rel_tol=1e-8))
 
             fresh_design = DeviceDesign.load(path)
             fresh_design.thermal.T_hs = 230.0
@@ -750,6 +754,19 @@ def check_card(path: Path, anchors: dict) -> set:
         if m_table is not None:
             recorded_g2_nc, recorded_flux_nc, recorded_g2_fc, recorded_flux_fc = (
                 float(x) for x in m_table.groups())
+            # pr-pkg6-fix item 2: mu_resolved (the pulsed loading parameter
+            # gating F1/f1b_g2's [0.05, 1.0] validity) is named once in the
+            # favourable-corner prose, ahead of the g2/flux split -- it is
+            # resolved by transport/injection upstream of ret.
+            # tau_cap_scales_with_density, so it is convention-independent
+            # (identical whether the loop below is on its no-cancellation
+            # or full-cancellation pass); captured from whichever pass runs
+            # first rather than with a dedicated third evaluate() call.
+            m_mu = re.search(rf"mu_resolved\s*=\s*({NUM})", record_text)
+            ok(f"{tag}: finding_1b_record names the favourable-corner mu_resolved",
+               m_mu is not None)
+            recorded_mu = float(m_mu.group(1)) if m_mu is not None else None
+            fresh_mu = None
             for label, full_cancel, recorded_g2, recorded_flux in (
                     ("no-cancellation", False, recorded_g2_nc, recorded_flux_nc),
                     ("full-cancellation", True, recorded_g2_fc, recorded_flux_fc)):
@@ -762,6 +779,8 @@ def check_card(path: Path, anchors: dict) -> set:
                 corner.emission.L_um = 250.0
                 corner.ret.tau_cap_scales_with_density = full_cancel
                 sc_corner = evaluate(corner)["scalars"]
+                if fresh_mu is None:
+                    fresh_mu = sc_corner.get("mu_resolved")
                 fresh_g2 = sc_corner["g2_op"]
                 fresh_flux = rte._collected_flux_s(sc_corner)
                 ok(f"{tag}: finding_1b_record's {label} favourable-corner g2_op literal "
@@ -771,6 +790,10 @@ def check_card(path: Path, anchors: dict) -> set:
                    f"collected_flux_pulsed_s literal ({recorded_flux!r}) matches a fresh "
                    f"evaluate ({fresh_flux!r}) to rel 1e-8",
                    math.isclose(recorded_flux, fresh_flux, rel_tol=1e-8))
+            if recorded_mu is not None:
+                ok(f"{tag}: finding_1b_record's favourable-corner mu_resolved literal "
+                   f"({recorded_mu!r}) matches a fresh evaluate ({fresh_mu!r}) to rel 1e-8",
+                   fresh_mu is not None and math.isclose(recorded_mu, fresh_mu, rel_tol=1e-8))
 
     return assumptions
 

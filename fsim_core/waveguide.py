@@ -410,17 +410,24 @@ def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
         # all -- forward escape through the front facet has probability
         # 0.0, not 1.0 as an earlier version of this guard claimed (that
         # version mistook the degenerate 0/0 ratio for a "final escape"
-        # limit rather than for "no escape channel exists"). For any T >
-        # 1e-15 the general formula below already evaluates to exactly 1.0
-        # in this same R_back=1, alpha*L=0 limit (denom = T there), so this
-        # branch only needs to special-case T <= 1e-15.
-        if T <= 1e-15:
+        # limit rather than for "no escape channel exists"). For any T > 0.0
+        # the general formula below already evaluates to exactly 1.0 in this
+        # same R_back=1, alpha*L=0 limit (denom = T there, numerator = T),
+        # a finite (not degenerate) ratio even for T as small as 1e-300 --
+        # so this branch only needs to special-case the true 0/0 at T ==
+        # 0.0, never T <= 1e-15 (pr-pkg6-fix item 3).
+        if T == 0.0:
             return 0.0
-        raise ValueError(
-            "degenerate facet cavity: R_back * R_front * "
-            "exp(-2*alpha_cm*1e-4*L_um) >= 1 (R_back=%r, T=%r, "
-            "alpha_cm=%r, L_um=%r), the round-trip geometric series does "
-            "not converge" % (R_back, T, alpha_cm, L_um))
+        if denom <= 0.0:
+            raise ValueError(
+                "degenerate facet cavity: R_back * R_front * "
+                "exp(-2*alpha_cm*1e-4*L_um) >= 1 (R_back=%r, T=%r, "
+                "alpha_cm=%r, L_um=%r), the round-trip geometric series does "
+                "not converge" % (R_back, T, alpha_cm, L_um))
+        # else: 0 < T <= 1e-15 here (denom >= T always, see the module-level
+        # bound above, so denom <= 1e-15 forces T into the same range) with
+        # 0 < denom <= 1e-15 -- a genuinely finite (denom ~= T) ratio, not a
+        # 0/0 degeneracy, so fall through to the general formula below.
     return (0.5 * T * exp(-a * x * L_um)
             * (1.0 + R_back * exp(-2.0 * a * (1.0 - x) * L_um)) / denom)
 

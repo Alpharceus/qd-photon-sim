@@ -1223,14 +1223,18 @@ def _facet_factor_forward_check(row: dict) -> dict:
         # when T is itself the UNCOATED Fresnel transmission (edge_emission
         # resolves R_back=None to `1 - facet_transmission(n_eff, None)`,
         # not to `1 - T` of a coating-overridden front) -- true here only
-        # because no card in this sweep sets `emission.coating`. Assert
-        # that invariant explicitly rather than silently reusing a formula
-        # that would go wrong the day a coated card is added; the coated
-        # case would need its own R_back = 1 - facet_transmission(n_eff,
-        # None) resolution, which this row-only check has no n_eff to do.
-        assert not any(DeviceDesign.load(c["path"]).emission.coating for c in CARDS), (
-            "a card in this sweep now sets emission.coating; R_back = 1 - T "
-            "here is no longer valid (see comment above)")
+        # when this ROW's OWN card sets no `emission.coating`. pr-pkg6-fix
+        # item 4: check that invariant on the row's own card explicitly
+        # (a bare `assert` vanishes under `python -O`, silently reusing a
+        # formula that would go wrong the day a coated card is added) --
+        # the coated case would need its own R_back = 1 - facet_transmission
+        # (n_eff, None) resolution, which this row-only check has no n_eff
+        # to do.
+        card = next((c for c in CARDS if c["id"] == row.get("card_id")), None)
+        if card is not None and DeviceDesign.load(card["path"]).emission.coating:
+            raise ValueError(
+                f"card {row.get('card_id')!r} sets emission.coating; "
+                "R_back = 1 - T here is no longer valid (see comment above)")
         R_back = 1.0 - T  # uncoated Fresnel resolution reduces to this here (item 4)
     alpha_raw = row.get("emission_alpha_cm")
     if alpha_raw in (None, "", "None"):

@@ -243,8 +243,8 @@ ck(abs(finite_sum - facet_escape_fraction(T_fs, Rb_fs, alpha_fs, L_fs)) < 1e-10,
 
 # item 5 (pr-pkg2-fix3): the OLD guard raised ValueError on this exact
 # input (T=0, R_back=1, alpha_cm=0 -> denom == 0 exactly); the guard now
-# returns the analytic degenerate-cavity limit for T <= 1e-15, but that
-# limit is 0.0, not 1.0 -- with a perfectly reflecting front facet
+# returns the analytic degenerate-cavity limit for T == 0.0 exactly, but
+# that limit is 0.0, not 1.0 -- with a perfectly reflecting front facet
 # (T=0), no photon can ever leave through it, no matter how lossless the
 # ridge or how reflective the back facet is. This does NOT hold "for ANY
 # T (including T=0)": for T > 0 the general formula (below) already
@@ -255,10 +255,24 @@ ck(facet_escape_fraction(0.0, 1.0, 0.0, 100.0) == 0.0,
 ck(abs(facet_escape_fraction(0.6, 1.0, 0.0, 250.0) - 1.0) < 1e-12,
    'lossless perfect-mirror limit for a non-degenerate T=0.6 still gives 1.0 (denom=T, general formula, no guard needed)')
 
+# pr-pkg6-fix item 3: the guard fires ONLY on T == 0.0 (the true 0/0), not
+# T <= 1e-15 -- for 0 < T <= 1e-15 denom = T > 0.0 in this same lossless,
+# R_back=1 limit, and the general formula is finite there too (ratio ~= 1.0,
+# not exact at this scale since T and denom are both within ~1 ULP of
+# double precision, but never the 0.0 the old T <= 1e-15 guard would have
+# returned), so a tiny-but-nonzero T must fall through to the formula
+# rather than being short-circuited to 0.0 (wrong by ~1.0, not a rounding
+# error).
+_eta_tiny_T = facet_escape_fraction(1e-15, 1.0, 0.0, 100.0)
+ck(_eta_tiny_T > 0.5 and abs(_eta_tiny_T - 1.0) < 1e-2,
+   'a tiny but nonzero T (1e-15, at the old guard threshold) falls through to the general '
+   'formula and gives ~1.0 (finite, non-degenerate), not the T==0.0 guard value of 0.0')
+
 # item 5: since R_back, R_front=1-T, and prop_rt are each in [0, 1], their
 # product is bounded by R_front, so denom = 1 - product >= 1 - R_front = T
-# always -- reaching the denom <= 1e-15 guard therefore always implies
-# T <= 1e-15 too, even when alpha_cm*L_um is tiny but nonzero (not exactly
+# always -- reaching the denom <= 1e-15 guard with T == 0.0 exactly (the
+# only value the guard now special-cases) therefore always has denom == 0.0
+# exactly too, even when alpha_cm*L_um is tiny but nonzero (not exactly
 # 0): the guard's 0.0 branch covers every case that reaches it, and the
 # raise below is unreachable for physically valid inputs, kept only to
 # describe the (algebraically impossible) case explicitly rather than
