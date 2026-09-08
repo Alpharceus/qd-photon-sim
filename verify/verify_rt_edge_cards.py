@@ -40,7 +40,7 @@ job). It checks that the cards are self-describing and honest:
      Matsuda 2001 class value (12.0 meV) and its provenance names Matsuda
      2001 without naming the superseded Laferriere detection-filter-width
      proxy; drive.b_res is re-sourced to Reischle et al., Optics Express 16,
-     12771 (2008) (InP/AlGaInP QD C, 80 K), not Appl. Phys. Lett. 92, 233113,
+     12771 (2008) (InP/AlGaInP QD C, 80 K), not Appl. Phys. Lett. 92, 233113 (# citation-guard: documents the wrong string),
      and never calls the device "InP/GaInP" in that sentence; the emission
      collection levers (emission.NA, emission.R_back, emission.L_um,
      emission.alpha_cm) are explicit, literature-ordinary values with
@@ -283,13 +283,14 @@ def check_card(path: Path, anchors: dict) -> set:
        and "residual" in bres_entry.get("source", ""))
     # Council review 2026-09-06 item 2: b_res is re-sourced to Reischle et
     # al., Optics Express 16, 12771 (2008) (InP/AlGaInP QD C at 80 K), not
-    # Appl. Phys. Lett. 92, 233113; the device must not be called "InP/GaInP"
-    # in this specific sentence (it is InP/AlGaInP).
+    # Appl. Phys. Lett. 92, 233113 (# citation-guard: documents the wrong string);
+    # the device must not be called "InP/GaInP" in this specific sentence
+    # (it is InP/AlGaInP).
     bres_source = bres_entry.get("source", "")
     ok(f"{tag}: drive.b_res source cites Opt. Express 16, 12771 (2008), "
-       "not Appl. Phys. Lett. 92, 233113, and does not call the device InP/GaInP",
+       "not Appl. Phys. Lett. 92, 233113, and does not call the device InP/GaInP",  # citation-guard: documents the wrong string
        "Express 16, 12771" in bres_source and "2008" in bres_source
-       and "233113" not in bres_source
+       and "233113" not in bres_source  # citation-guard: documents the wrong string
        and "InP/GaInP" not in bres_source)
     # Council review 2026-09-06 (fifth round) item 2: the ledger anchor
     # (reischle08-b-res-80k) states the 80 K -> 300 K, cross-material
@@ -816,39 +817,39 @@ def main() -> int:
     # two per-card provenance-string guards above (drive.b_res's source
     # text) only ever see the wrong Reischle citation if a CARD
     # reintroduces it; extend the same guard to every source, verify,
-    # script, card, and doc file -- Appl. Phys. Lett. 92, 233113 (2008) is
+    # script, card, and doc file -- Appl. Phys. Lett. 92, 233113 (2008) is  # citation-guard: documents the wrong string
     # not a Reischle et al. paper (that is Optics Express 16, 12771 (2008),
     # DOI 10.1364/OE.16.012771) and must never appear outside the files
     # that document this guard's own history or existence.
     #
-    # Whitelist (pr-pkg4-fix2 item 6): these files legitimately name the
-    # drifted citation string -- this file's own comment above and the
-    # bad-citation substrings it searches for, verify_rt_edge_sweep.py's
-    # check that verdict.md never cites it (a Python string literal that
-    # itself contains the drifted text), and run_rt_edge.py's comment on
-    # the now-generated (not hardcoded) citation -- none of these is an
-    # actual mis-citation, so path-whitelist them rather than weakening
-    # the substring match.
-    _citation_guard_whitelist = {
-        ROOT / "verify" / "verify_rt_edge_cards.py",
-        ROOT / "verify" / "verify_rt_edge_sweep.py",
-        ROOT / "scripts" / "run_rt_edge.py",
-    }
+    # Whitelist (pr-pkg4-fix2 item 6; tightened to per-LINE, pr-pkg4-fix3
+    # item 6): three files legitimately name the drifted citation string --
+    # this file's own comments and the bad-citation substrings its guards
+    # search for (this one and the per-card drive.b_res source guard
+    # above), verify_rt_edge_sweep.py's check that verdict.md never cites
+    # it (a Python string literal that itself contains the drifted text),
+    # and run_rt_edge.py's comment on the now-generated (not hardcoded)
+    # citation -- none of these is an actual mis-citation. Rather than
+    # exempting the three whole FILES (which would also silently swallow a
+    # genuinely new mis-citation added anywhere else in them), exempt only
+    # the individual LINES that carry the guard's own marker comment below
+    # -- a new mis-citation on an unmarked line, in any file, still fails.
+    _CITATION_GUARD_MARKER = "# citation-guard: documents the wrong string"
     citation_guard_globs = ("fsim_core/*.py", "verify/*.py", "scripts/*.py",
                             "cards/*.yaml", "docs/*.md")
-    bad_citation_files = []
+    bad_citation_lines = []
     for pattern in citation_guard_globs:
         for f in sorted(glob.glob(str(ROOT / pattern))):
             fp = Path(f)
-            if fp in _citation_guard_whitelist:
-                continue
-            text = fp.read_text(encoding="utf-8")  # read once, check both substrings
-            if "233113" in text or "Appl. Phys. Lett. 92" in text:
-                bad_citation_files.append(str(fp))
+            for lineno, line in enumerate(fp.read_text(encoding="utf-8").splitlines(), 1):
+                if _CITATION_GUARD_MARKER in line:
+                    continue
+                if "233113" in line or "Appl. Phys. Lett. 92" in line:  # citation-guard: documents the wrong string
+                    bad_citation_lines.append(f"{fp}:{lineno}")
     ok("fsim_core/*.py, verify/*.py, scripts/*.py, cards/*.yaml, docs/*.md never cite "
-       "the drifted 'Appl. Phys. Lett. 92, 233113' Reischle source outside this guard's "
-       "own whitelisted files (got: " + repr(bad_citation_files) + ")",
-       not bad_citation_files)
+       "the drifted 'Appl. Phys. Lett. 92, 233113' Reischle source outside lines "  # citation-guard: documents the wrong string
+       "explicitly marked as documenting it (got: " + repr(bad_citation_lines) + ")",
+       not bad_citation_lines)
 
     print(f"{sum(CHECKS)}/{len(CHECKS)} rt-edge card checks passed")
     return 0 if all(CHECKS) else 1

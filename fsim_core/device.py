@@ -259,22 +259,50 @@ class DriveBlock:
                                   # finite_pulse above). n_X+n_XX comes from
                                   # pulse_counting's own gate-restricted
                                   # mean_counts (already includes escape and
-                                  # the XX line); n_bg = the SAME injection
-                                  # background rate the CW path uses,
-                                  # integrated over the SAME gate; signal =
-                                  # G*(n_X+n_XX); B = b0 + beta*(1-S) + n_bg
-                                  # + b_res*n_X; rho = signal/(signal+B) --
-                                  # the legacy pulsed rho's own G and b0/beta
-                                  # placement, with counts substituted for
-                                  # the static-loading probabilities. [DR]
-                                  # counts, [A] gate width -- recommended
-                                  # gate_ns = tau_pulse_ns +
-                                  # 5*d.ret.tau_rad_ns (catches >99% of a
-                                  # single-exponential decay tail). Exposed
-                                  # as finite_pulse_gate_ns_used on the
-                                  # evaluation dict (the resolved value,
-                                  # whichever of the two applied). Ignored
-                                  # unless finite_pulse is also True.
+                                  # the XX line); gate_ns restricts the
+                                  # SIGNAL counting window only (pr-pkg4-fix3
+                                  # item 1, Opus review: an earlier version
+                                  # of this comment falsely claimed n_bg was
+                                  # the same injection background rate the
+                                  # CW path uses, integrated over that same
+                                  # gate width). The background is
+                                  # integrated separately, over min(gate_ns,
+                                  # tau_pulse_ns) only: background photons
+                                  # are counted while injection current
+                                  # actually flows, and any afterglow past
+                                  # the pulse end is neglected [A] (see
+                                  # finite_pulse above and
+                                  # pulse_counting.py's module docstring).
+                                  # signal = G*(n_X+n_XX); B_fp = b0 +
+                                  # beta*(1-S) + n_bg + b_res*n_X, WITHOUT
+                                  # the legacy pulsed rho's own G*S factor on
+                                  # the background terms (another earlier
+                                  # false claim in this comment, that the
+                                  # formula used "the legacy pulsed rho's
+                                  # own G and b0/beta placement"): n_bg and
+                                  # b_res*n_X are already absolute counts on
+                                  # the same footing as G*mean_counts, so
+                                  # only the signal term carries G; rho =
+                                  # signal/(signal+B_fp). [DR] counts, [A]
+                                  # gate width and the afterglow-neglect
+                                  # above -- recommended gate_ns =
+                                  # tau_pulse_ns + 5*d.ret.tau_rad_ns
+                                  # (catches >99% of a single-exponential
+                                  # decay tail). Neglecting background
+                                  # afterglow is one-sided and optimistic:
+                                  # rho_pulsed is an UPPER BOUND -- at the
+                                  # gainp corner n_bg is ~17% of B_fp, and a
+                                  # ~1 ns background carrier lifetime (~11x
+                                  # more background photons there) would
+                                  # move rho_pulsed from 0.858 to ~0.69,
+                                  # while g2_op moves only 0.9817 -> 0.9880
+                                  # [A]. Exposed as finite_pulse_gate_ns_used
+                                  # on the evaluation dict (the resolved
+                                  # value, whichever of the two applied,
+                                  # NaN if finite_pulse was requested but
+                                  # the operating point never converged --
+                                  # see pr-pkg4-fix3 item 2). Ignored unless
+                                  # finite_pulse is also True.
     b_res: float = 0.0            # council review 2026-09-05 item 8 -- residual
                                   # background channel, T-independent:
                                   # background photons in the collection
@@ -1284,6 +1312,21 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # correction does not move any card's numbers today regardless of
         # which placement had been chosen.
         #
+        # pr-pkg4-fix3 item 3 (Opus review): the "reduces exactly to
+        # cw_rho_op" claim below holds ONLY when ret.b0 = ret.beta = 0 AND
+        # the cavity is disabled (true of every shipped card) -- with
+        # either active the two rho definitions differ BY CONSTRUCTION, not
+        # by approximation error: cw_rho_op's own bg (the CW branch further
+        # below) never carries a b0/beta term at all, so a nonzero b0/beta
+        # only ever inflates B_fp, pulling rho_pulsed below cw_rho_op no
+        # matter how small tau_dark_ns gets; and cw_rho_op's own signal
+        # (sig = t_X*I_X + t_XX*I_XX, CW branch further below) never
+        # carries a G factor at all, so G != 1.0 (cavity enabled) scales
+        # signal_fp above but leaves cw_rho_op's numerator untouched,
+        # again breaking the reduction regardless of tau_dark_ns. Checks
+        # E/F below skip (with an explanatory message) whenever the card
+        # under test sets b0/beta or enables the cavity.
+        #
         # n_bg (item 1, pr-pkg4-fix2) is integrated over min(gate_fp,
         # tau_pulse_ns_val), NOT the full gate: background photons are
         # counted only while injection current actually flows, and any
@@ -1295,7 +1338,20 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # with the fix, rho_pulsed -> cw_rho_op exactly as tau_dark_ns ->
         # 0, for any gate_fp that still covers the whole pump window
         # (gate_fp == period or gate_fp == tau_pulse_ns + 5*tau_rad_ns
-        # both qualify).
+        # both qualify) -- subject to the b0/beta/cavity caveat just above.
+        #
+        # pr-pkg4-fix3 item 4 (physics honesty): neglecting background
+        # afterglow past the pulse end is one-sided and optimistic --
+        # rho_pulsed is therefore an UPPER BOUND on the true pulsed rho,
+        # not a central estimate. At the gainp corner (230 K) n_bg is
+        # ~17% of B_fp; a ~1 ns background carrier lifetime (afterglow
+        # decaying on that scale rather than being cut off at the pulse
+        # end) would carry ~11x more background photons in the counting
+        # window and move rho_pulsed from 0.858 to ~0.69, while g2_op
+        # moves only from 0.9817 to 0.9880 over the same change [A] (g2 is
+        # far less sensitive to the background model than rho is, since
+        # g2 depends on the cascade dynamics rather than the signal-to-
+        # background ratio directly).
         finite_pulse_g2_dot = float("nan")
         finite_pulse_mean_counts = float("nan")
         finite_pulse_mean_counts_x = float("nan")
@@ -1333,7 +1389,6 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 finite_pulse_rates = dict(r_ns=r_ns_fp, gamma_X_ns=gamma_X_ns_fp,
                                           gamma_XX_ns=2.0 * gamma_X_ns_fp, k_X=k_X_fp, k_XX=k_XX_fp,
                                           tau_on_ns=tau_pulse_ns_val, tau_dark_ns=tau_dark_ns_fp)
-                finite_pulse_gate_ns_used = gate_fp
                 finite_pulse_converged = bool(pc["converged"])
                 # finding 7 (Opus review): an unconverged periodic steady
                 # state (or the mean_counts underflow pulse_g2 also reports
@@ -1341,7 +1396,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 # meaningless -- nan g2_dot/rho and mark the row invalid the
                 # same way the early-return operating points above do,
                 # rather than reporting a number from a bad fixed point.
+                # pr-pkg4-fix3 item 2 (Opus review): finite_pulse_gate_ns_used
+                # is assigned ONLY here, after the convergence test succeeds,
+                # so it stays NaN in the else branch below -- otherwise the
+                # "finite_pulse_waveform" provenance fallback ("requested;
+                # operating point invalid (<reason>)") never fires for the
+                # unconverged case, since np.isfinite(gate_ns_used) would
+                # already be True from a value set before this check ran.
                 if finite_pulse_converged and np.isfinite(finite_pulse_mean_counts):
+                    finite_pulse_gate_ns_used = gate_fp
                     finite_pulse_g2_dot = pc["g2"]
                     g2_dot = finite_pulse_g2_dot
                     n_bg = (injection.background.rate_bg_window * win_scale
@@ -1807,7 +1870,10 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             "finite_pulse_waveform": {
                 "tag": "A",
                 "note": (f"rectangular pump waveform; gate-restricted counting/rho at "
-                         f"gate_ns={op['finite_pulse_gate_ns_used']:g}"
+                         f"gate_ns={op['finite_pulse_gate_ns_used']:g}; background "
+                         f"afterglow past the pulse end is neglected (one-sided, "
+                         f"optimistic) so rho_pulsed is an upper bound -- see "
+                         f"DriveBlock.gate_ns"
                          if d.drive.finite_pulse and np.isfinite(op["finite_pulse_gate_ns_used"])
                          else (f"requested; operating point invalid "
                                f"({op.get('invalid_reason', 'finite-pulse block did not run')})"

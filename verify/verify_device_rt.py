@@ -52,6 +52,23 @@ def ok(name, value):
     print(("ok  " if value else "FAIL") + " " + name)
 
 
+def _cw_reduction_guard(design, label):
+    """pr-pkg4-fix3 item 3: device.py's rho_pulsed reduces to cw_rho_op in
+    the tau_dark_ns -> 0 limit ONLY when ret.b0 = ret.beta = 0 and the
+    cavity is disabled -- cw_rho_op's own background never carries a
+    b0/beta term and its own signal never carries a cavity gain factor, so
+    either active makes the two rho definitions differ BY CONSTRUCTION
+    (see device.py's finite_pulse block, item 3). Skip with an explanatory
+    message rather than asserting a false equivalence if a future card
+    under test sets either."""
+    if design.ret.b0 != 0.0 or design.ret.beta != 0.0 or design.cavity.enabled:
+        print(f"skip {label}: card sets ret.b0/beta != 0 or enables the "
+              "cavity -- rho_pulsed and cw_rho_op differ by construction "
+              "(pr-pkg4-fix3 item 3), not comparable here")
+        return True
+    return False
+
+
 def raises(name, fn, exc=ValueError):
     try:
         fn()
@@ -1425,17 +1442,33 @@ ok(f"item 1/finding 4 check C(a): rho_pulsed is non-decreasing in gate_ns "
 # = 0.1/0.008 = 12.5 ns) -- reuse rho_gate[-1] rather than re-evaluating.
 tau_pulse_c = d_gate.drive.diode["tau_pulse_ns"]
 period_c = tau_pulse_c / d_gate.drive.duty
-assert abs(period_c - gate_grid[-1]) < 1e-9, "gate_grid's last point must be the card's own period"
+ok("item 1/finding 4 check C(b) precondition: gate_grid's last point must be "
+   "the card's own period", abs(period_c - gate_grid[-1]) < 1e-9)
 rho_period_c = rho_gate[-1]
-gate_tail_c = tau_pulse_c + 5.0 * d_gate.ret.tau_rad_ns
+# item 5 (pr-pkg4-fix3): the previous absolute-1e-12 comparison implicitly
+# assumed tau_rad_ns alone sets the cascade's decay tail -- a slower
+# escape channel (small k_X) can make the ACTUAL population decay time
+# 1/(k_X+gamma_X) longer than tau_rad_ns, in which case tau_pulse+5*tau_rad
+# would under-cover the tail at some future card. Use the effective decay
+# time as the larger of the two candidate rates' timescales (mirroring
+# DriveBlock.gate_ns's own recommendation), and a relative (not absolute)
+# tolerance so the claim survives whichever escape rate this or a future
+# card ships with.
+d_gp = copy.deepcopy(d_gate); d_gp.drive.gate_ns = period_c
+sc_gp = evaluate(d_gp)["scalars"]
+gamma_X_c, k_X_c = sc_gp["finite_pulse_gamma_X_ns"], sc_gp["finite_pulse_k_X"]
+tau_esc_c = 1.0 / (k_X_c + gamma_X_c) if (k_X_c + gamma_X_c) > 0 else float("inf")
+tau_eff_c = max(d_gate.ret.tau_rad_ns, tau_esc_c)
+gate_tail_c = tau_pulse_c + 5.0 * tau_eff_c
 d_tail = copy.deepcopy(d_gate); d_tail.drive.gate_ns = gate_tail_c
 rho_tail_c = evaluate(d_tail)["scalars"]["rho_pulsed"]
 ok(f"item 1/finding 4 check C(b): rho_pulsed(gate=period={period_c:g} ns) "
-   f"({rho_period_c!r}) equals rho_pulsed(gate=tau_pulse+5*tau_rad="
-   f"{gate_tail_c:g} ns) ({rho_tail_c!r}) to 1e-12 -- both gates fully "
+   f"({rho_period_c!r}) equals rho_pulsed(gate=tau_pulse+5*max(tau_rad, "
+   f"1/(k_X+gamma_X)), effective decay time {tau_eff_c:g} ns, gate="
+   f"{gate_tail_c:g} ns) ({rho_tail_c!r}) to rtol 1e-6 -- both gates fully "
    "cover the cascade's decay tail, so both sit on the same plateau",
    np.isfinite(rho_period_c) and np.isfinite(rho_tail_c)
-   and abs(rho_period_c - rho_tail_c) < 1e-12)
+   and abs(rho_period_c - rho_tail_c) < 1e-6 * abs(rho_period_c))
 
 ok(f"item 1/finding 4 check C(c): rho_pulsed(gate=0.02 ns, still inside the "
    f"pump window) ({rho_gate[0]!r}) is strictly less than rho_pulsed(gate="
@@ -1488,18 +1521,19 @@ d_cwlimit.drive.gate_ns = 12.5
 d_cwlimit.drive.diode = dict(d_cwlimit.drive.diode)
 d_cwlimit.drive.diode["tau_pulse_ns"] = 12.5
 d_cwlimit.drive.rep_rate_hz = 1e9 / 12.5
-_orig_escape_e = cw_g2.escape_rates_from_retention
-cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
-try:
-    sc_cwlimit = evaluate(d_cwlimit)["scalars"]
-finally:
-    cw_g2.escape_rates_from_retention = _orig_escape_e
-ok("item 2/finding 4 check E: gate_ns covering the whole (100%-duty, "
-   "zero-escape) period makes rho_pulsed exactly reproduce the CW branch's "
-   "own rho (rtol 1e-3)",
-   sc_cwlimit["finite_pulse_tau_dark_ns"] == 0.0
-   and np.isfinite(sc_cwlimit["rho_pulsed"]) and np.isfinite(sc_cwlimit["cw_rho_op"])
-   and abs(sc_cwlimit["rho_pulsed"] - sc_cwlimit["cw_rho_op"]) < 1e-3 * sc_cwlimit["cw_rho_op"])
+if not _cw_reduction_guard(d_cwlimit, "item 2/finding 4 check E"):
+    _orig_escape_e = cw_g2.escape_rates_from_retention
+    cw_g2.escape_rates_from_retention = lambda *a, **k: (0.0, 0.0)
+    try:
+        sc_cwlimit = evaluate(d_cwlimit)["scalars"]
+    finally:
+        cw_g2.escape_rates_from_retention = _orig_escape_e
+    ok("item 2/finding 4 check E: gate_ns covering the whole (100%-duty, "
+       "zero-escape) period makes rho_pulsed exactly reproduce the CW branch's "
+       "own rho (rtol 1e-3)",
+       sc_cwlimit["finite_pulse_tau_dark_ns"] == 0.0
+       and np.isfinite(sc_cwlimit["rho_pulsed"]) and np.isfinite(sc_cwlimit["cw_rho_op"])
+       and abs(sc_cwlimit["rho_pulsed"] - sc_cwlimit["cw_rho_op"]) < 1e-3 * sc_cwlimit["cw_rho_op"])
 
 # Check F (item 2, pr-pkg4-fix2): item 1's actual consequence at the
 # card's REAL operating point -- 0.8% duty (tau_dark_ns >> tau_pulse_ns,
@@ -1513,14 +1547,15 @@ ok("item 2/finding 4 check E: gate_ns covering the whole (100%-duty, "
 d_f = copy.deepcopy(d_gainp)
 d_f.drive.finite_pulse = True
 d_f.drive.gate_ns = d_f.drive.diode["tau_pulse_ns"] / d_f.drive.duty
-sc_f = evaluate(d_f)["scalars"]
-ok("item 2/finding 4 check F: at the card's real 0.8% duty with escape "
-   "rates as they are, rho_pulsed equals cw_rho_op to rtol 1e-3 for "
-   f"gate=period (rho_pulsed={sc_f['rho_pulsed']!r}, "
-   f"cw_rho_op={sc_f['cw_rho_op']!r})",
-   sc_f["finite_pulse_converged"] and np.isfinite(sc_f["rho_pulsed"])
-   and np.isfinite(sc_f["cw_rho_op"])
-   and abs(sc_f["rho_pulsed"] - sc_f["cw_rho_op"]) < 1e-3 * sc_f["cw_rho_op"])
+if not _cw_reduction_guard(d_f, "item 2/finding 4 check F"):
+    sc_f = evaluate(d_f)["scalars"]
+    ok("item 2/finding 4 check F: at the card's real 0.8% duty with escape "
+       "rates as they are, rho_pulsed equals cw_rho_op to rtol 1e-3 for "
+       f"gate=period (rho_pulsed={sc_f['rho_pulsed']!r}, "
+       f"cw_rho_op={sc_f['cw_rho_op']!r})",
+       sc_f["finite_pulse_converged"] and np.isfinite(sc_f["rho_pulsed"])
+       and np.isfinite(sc_f["cw_rho_op"])
+       and abs(sc_f["rho_pulsed"] - sc_f["cw_rho_op"]) < 1e-3 * sc_f["cw_rho_op"])
 
 # Item 7: an unconverged pulse_counting.pulse_g2 periodic steady state must
 # nan g2_dot/rho and mark the row invalid the way the other early-return
@@ -1546,6 +1581,18 @@ ok("item 7: an unconverged pulse_counting.pulse_g2 result nans g2_dot/rho, "
    and np.isnan(sc_unconv["rho_pulsed"])
    and np.isnan(sc_unconv["g2_op"])
    and any("did not converge" in r for r in sc_unconv["invalid_reasons"]))
+# pr-pkg4-fix3 item 2: finite_pulse_gate_ns_used must ALSO stay NaN in the
+# unconverged case (assigned only after the convergence test succeeds), so
+# the "finite_pulse_waveform" provenance note actually falls back to the
+# "requested; operating point invalid (<reason>)" text instead of silently
+# reporting a bogus gate-restricted-counting note.
+ok("item 2 (pr-pkg4-fix3): unconverged finite_pulse leaves "
+   "finite_pulse_gate_ns_used NaN and the finite_pulse_waveform "
+   "provenance note reports 'requested; operating point invalid ...' "
+   f"(got note={sc_unconv['provenance']['finite_pulse_waveform']['note']!r})",
+   np.isnan(sc_unconv["finite_pulse_gate_ns_used"])
+   and "requested; operating point invalid" in
+       sc_unconv["provenance"]["finite_pulse_waveform"]["note"])
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)

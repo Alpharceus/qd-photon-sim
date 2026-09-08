@@ -1434,10 +1434,10 @@ with tempfile.TemporaryDirectory() as td:
 
     # Item 1: the background-assumption citation is generated FROM the ledger
     # anchor (reischle08-b-res-80k), never the hardcoded/drifted "Appl. Phys.
-    # Lett. 92, 233113 (2008)" string.
-    ok("full run: verdict.md never cites the drifted 'Appl. Phys. Lett. 92, "
-       "233113 (2008)' background-assumption source",
-       "Appl. Phys. Lett. 92" not in md_text_full)
+    # Lett. 92, 233113 (2008)" string.  # citation-guard: documents the wrong string
+    ok("full run: verdict.md never cites the drifted 'Appl. Phys. Lett. 92, "  # citation-guard: documents the wrong string
+       "233113 (2008)' background-assumption source",  # citation-guard: documents the wrong string
+       "Appl. Phys. Lett. 92" not in md_text_full)  # citation-guard: documents the wrong string
     ok("full run: verdict.md's background-assumption paragraph cites the ledger anchor's "
        "real source (Optics Express 16, 12771 (2008), DOI 10.1364/OE.16.012771)",
        "12771" in md_text_full and "10.1364/OE.16.012771" in md_text_full

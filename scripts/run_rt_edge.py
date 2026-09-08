@@ -2051,7 +2051,7 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         "convention cancels that sensitivity out by construction.")
     lines.append("")
     # Council review round 6, item 1: the citation below used to be a
-    # hardcoded string ("Reischle et al., Appl. Phys. Lett. 92, 233113
+    # hardcoded string ("Reischle et al., Appl. Phys. Lett. 92, 233113  # citation-guard: documents the wrong string
     # (2008)") that had drifted from the actual source of the rho ~ 0.88
     # residual-background anchor (Optics Express 16, 12771 (2008), DOI
     # 10.1364/OE.16.012771). It is now generated FROM the ledger anchor
