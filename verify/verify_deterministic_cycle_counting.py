@@ -62,7 +62,13 @@ def _legacy_cases():
     }
 
 
-def _capture_legacy():
+def _card_cases():
+    """Evaluate both shipped InP cards under both tau_cap density conventions.
+
+    Raw (non-canonical) dict, shared by the capture path and the live
+    regression comparison so both go through the same fsim_core.device.evaluate
+    calls in the same order.
+    """
     cards = {}
     for name in ("edge-inp-gainp-design.yaml", "edge-inp-gaasp-design.yaml"):
         design = DeviceDesign.load(ROOT / "cards" / name)
@@ -70,12 +76,26 @@ def _capture_legacy():
         for density_mode in (False, True):
             design.ret.tau_cap_scales_with_density = density_mode
             cards[f"{name}:tau_cap_density={density_mode}"] = evaluate(design)
+    return cards
+
+
+def _capture_legacy(force=False):
+    current_hash = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
+    if BASELINE.exists() and not force:
+        old = json.loads(BASELINE.read_text(encoding="utf-8"))
+        old_hash = old.get("source_sha256")
+        if old_hash != current_hash:
+            print("refusing to overwrite pre-edit baseline: recorded source_sha256 "
+                  f"{old_hash} does not match current fsim_core/pulse_counting.py hash "
+                  f"{current_hash}; pass --force-recapture to override")
+            return 1
     payload = {"purpose": "pre-edit bitwise regression capture; not a literature oracle",
-               "source_sha256": hashlib.sha256(SOURCE.read_bytes()).hexdigest(),
-               "pulse_g2": _canonical(_legacy_cases()), "cards": _canonical(cards)}
+               "source_sha256": current_hash,
+               "pulse_g2": _canonical(_legacy_cases()), "cards": _canonical(_card_cases())}
     BASELINE.parent.mkdir(exist_ok=True)
     BASELINE.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     print("captured deterministic-cycle legacy baseline")
+    return 0
 
 
 def _independent(case):
@@ -115,10 +135,12 @@ def _close(a, b):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--capture-legacy", action="store_true")
+    parser.add_argument("--force-recapture", action="store_true",
+                         help="overwrite the baseline even if the recorded pre-edit "
+                              "source_sha256 no longer matches fsim_core/pulse_counting.py")
     args = parser.parse_args()
     if args.capture_legacy:
-        _capture_legacy()
-        return 0
+        return _capture_legacy(force=args.force_recapture)
     checks = []
     def ok(label, condition):
         checks.append(bool(condition)); print(("PASS" if condition else "FAIL") + " " + label)
@@ -132,14 +154,26 @@ def main():
            _close(got["mean_counts"], float(ref[3:6].sum())) and
            _close(got["mean_factorial2"], float(ref[6:9].sum())))
 
-    # Source transcription, explicitly abstract-only rather than a performance target.
-    ok("source transcription Deshpande APL 2014 abstract-only tau=1.3 ns T=300 K rep=200 MHz",
-       1.3 > 0 and 300.0 == 300.0 and 1.0 / 5.0 == 0.2)
+    # Source transcription, explicitly abstract-only rather than a performance target:
+    # the literal published citation and numbers must appear verbatim in the module
+    # source (fsim_core/pulse_counting.py), not just be re-asserted here.
+    source_text = SOURCE.read_text(encoding="utf-8")
+    ok("source transcription Deshpande APL 2014 abstract-only tau=1.3 ns T=300 K",
+       "Applied Physics Letters 105, 141109 (2014)" in source_text and
+       "10.1063/1.4897640" in source_text and
+       "tau=1.3 +/- 0.3 ns" in source_text and
+       "300 K" in source_text and
+       "[V abstract-only]" in source_text)
     gx = 1.0 / 1.3
     iso = pulse_counting.deterministic_cycle_g2(gx, 2 * gx, 0, 0, 0.7, 0.0, 100.0, gate_ns=0.7)
     target = 0.7 * gx / gx * (1 - math.exp(-gx * 0.7))
     ok("numerical verification isolated one-X Bernoulli limit", _close(iso["mean_counts"], target)
        and iso["mean_factorial2"] < 1e-12)
+    kx = 0.05
+    iso_esc = pulse_counting.deterministic_cycle_g2(gx, 2 * gx, kx, 0, 0.7, 0.0, 100.0, gate_ns=0.7)
+    target_esc = 0.7 * gx / (gx + kx) * (1 - math.exp(-(gx + kx) * 0.7))
+    ok("numerical verification isolated one-X Bernoulli limit with escape",
+       _close(iso_esc["mean_counts"], target_esc) and iso_esc["mean_factorial2"] < 1e-12)
     base = pulse_counting.deterministic_cycle_g2(1, 2, .1, .2, 1, .3, 6, eta_load=.6)
     loss = pulse_counting.deterministic_cycle_g2(1, 2, .1, .2, .4, .12, 6, eta_load=.6)
     thin = pulse_counting.deterministic_cycle_g2(1, 2, .1, .2, .5, .15, 6, eta_load=.6)
@@ -168,12 +202,11 @@ def main():
     else:
         old = json.loads(BASELINE.read_text(encoding="utf-8"))
         current = {"pulse_g2": _canonical(_legacy_cases())}
-        # The capture above was made by evaluate() on both cards and both
-        # density conventions before this module changed.  These card paths
-        # do not call deterministic_cycle_g2, so their recorded snapshots
-        # remain the exact regression evidence while this verifier stays
-        # import-side-effect-free and fast.
-        current["cards"] = old["cards"]
+        # Genuinely re-evaluate both cards through fsim_core.device.evaluate
+        # (not just re-read the stored snapshot) so the "cards" half of the
+        # comparison below is live evidence, not a comparison of the baseline
+        # against itself.
+        current["cards"] = _canonical(_card_cases())
         ok("regression capture legacy rectangular pulse and card outputs bit-identical",
            current["pulse_g2"] == old["pulse_g2"] and current["cards"] == old["cards"])
     print(f"{sum(checks)}/{len(checks)} deterministic_cycle_counting checks passed")

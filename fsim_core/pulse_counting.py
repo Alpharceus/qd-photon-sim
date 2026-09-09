@@ -353,7 +353,7 @@ def deterministic_cycle_g2(gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
               "converged": bool(converged), "gate_ns_used": gate,
               "blocked_load_probability": blocked,
               "mean_loaded_pairs": float(eta_load - blocked),
-              "one_pair_valid": bool(eta_load == 1.0 and blocked <= 1e-9),
+              "one_pair_valid": bool(abs(eta_load - 1.0) <= 1e-12 and blocked <= 1e-9),
               "invalid_reason": invalid_reason}
     if split:
         J_x = np.zeros((3, 3))
