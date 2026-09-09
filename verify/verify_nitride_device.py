@@ -463,6 +463,34 @@ def check_background_variants():
       s_gate["gate_ns_used"] == 0.02)
 
 
+def check_reservoir_energy_and_acceptance():
+    """Opus results review 2026-09-09: reservoir energy is material-owned,
+    not the QCSE-shifted dot line, and its flat-spectrum cavity acceptance is
+    evaluated around that reservoir energy."""
+    d_lo = design("rectangular"); d_lo.nitride["dot"]["height_nm"] = 2.
+    d_hi = design("rectangular"); d_hi.nitride["dot"]["height_nm"] = 5.
+    # Same composition and temperature; this direct material-continuum
+    # calculation is deliberately independent of either dot's E_X result.
+    e_lo = devmod._nitride_reservoir_energy_eV(d_lo.nitride["dot"], 300., {})
+    e_hi = devmod._nitride_reservoir_energy_eV(d_hi.nitride["dot"], 300., {})
+    ok("reservoir energy is invariant when only dot height changes", e_lo == e_hi)
+
+    captured = []
+    original = devmod._nitride_flat_background_acceptance
+    def spy(kappa, width, dx, detuning, reservoir_offset=0.):
+        captured.append(reservoir_offset)
+        return original(kappa, width, dx, detuning, reservoir_offset)
+    devmod._nitride_flat_background_acceptance = spy
+    try:
+        s = evaluate(d_lo, [300.])["scalars"]
+    finally:
+        devmod._nitride_flat_background_acceptance = original
+    expected_offset = (devmod._nitride_reservoir_energy_eV(
+        d_lo.nitride["dot"], s["T_j"], {}) - s["E_X_eV"]) * 1e3
+    ok("flat-spectrum background acceptance is evaluated at reservoir energy",
+      len(captured) == 1 and math.isclose(captured[0], expected_offset, rel_tol=1e-12))
+
+
 def check_purcell_invariance():
     """AC3: at fixed T/geometry/field, Q/purcell_enabled changes
     gamma_X/gamma_XX but k_X/k_XX (bare, from piece 2, no Purcell input)
@@ -603,6 +631,7 @@ def main():
     check_yaml_round_trip()
     check_malformed_opt_ins()
     check_background_variants()
+    check_reservoir_energy_and_acceptance()
     check_purcell_invariance()
     check_analytic_limits_and_citations()
     check_no_mutation_and_repeatability()

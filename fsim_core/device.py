@@ -48,7 +48,7 @@ from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
 from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
-from . import nitride_levels, nitride_transport, nitride_cavity
+from . import nitride_levels, nitride_transport, nitride_cavity, nitride_materials
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -840,7 +840,8 @@ def _transport_options(drive: DriveBlock, w_meV: float) -> dict:
                 eta_total=float(raw.get("eta_total", 0.01)))
 
 
-def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV):
+def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV,
+                                        reservoir_offset_meV=0.0):
     """Average (flat-spectrum) cavity+slit transmission across the SAME
     collection window the X line is filtered through.
 
@@ -850,15 +851,44 @@ def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV
     second window position). A flat/broadband continuum crossing that same
     window is filtered by the cavity+slit's spectral acceptance function
     averaged (not Lorentzian-line-weighted like spectral.epsilon2's t_X)
-    across the window -- spec: "not t_X" [DR extension of spectral.py's
+    across the reservoir-centred window -- spec: "not t_X" [DR extension of spectral.py's
     transmission2/combined_transmission kernel, flat-weighted instead of
     line-shape-weighted].
     """
     half = w_meV / 2.0
     off = dx_w_meV - detuning_meV  # cavity center, in slit-relative meV (spectral.transmission2 convention)
     val, _ = quad(lambda x: (kappa_meV / 2.0) ** 2 / ((x - off) ** 2 + (kappa_meV / 2.0) ** 2),
-                 -half, half, limit=200)
+                 reservoir_offset_meV-half, reservoir_offset_meV+half, limit=200)
     return val / w_meV
+
+
+def _nitride_reservoir_energy_eV(dot_kw, T_K, background):
+    """Reservoir emission energy independent of the confined dot line.
+
+    An explicit ``reservoir_energy_eV`` is an opt-in card override [A].
+    Otherwise a nonzero InGaN wetting layer uses its strained material
+    continuum edge from nitride_materials.band_edges; a zero-thickness WL
+    uses the GaN barrier Varshni edge.  A 25 meV localization/Urbach
+    downshift [A] is applied to the derived continuum, a conservative class
+    offset rather than a dot-QCSE-dependent line.  band_edges carries the
+    Rinke et al., PRB 77, 075202 (2008) strain and Tsai & Bayram, ACS Omega
+    5, 3917 (2020) band-edge provenance [V].
+    """
+    if "reservoir_energy_eV" in background:
+        value = float(background["reservoir_energy_eV"])
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError("invalid nitride.background.reservoir_energy_eV")
+        return value
+    wl_nm = float(dot_kw.get("wl_thickness_nm", 0.0))
+    gan = nitride_materials.binary("GaN")
+    if wl_nm > 0:
+        mat = nitride_materials.ingaN(float(dot_kw["x_in"]))
+        edges = nitride_materials.band_edges(mat, T_K, substrate=gan,
+            strain_fraction=float(dot_kw.get("strain_fraction", 1.0)),
+            strain_c_fraction=float(dot_kw.get("strain_c_fraction", .7)))
+    else:
+        edges = nitride_materials.band_edges(gan, T_K, substrate=gan)
+    return float(edges["Ec_eV"] - edges["Ev_eV"] - .025)  # [A] 25 meV localization/Urbach offset
 
 
 def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
@@ -883,7 +913,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     separate from the legacy cubic-material transport path.
     """
     n = dict(d.nitride)
-    allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns"}
+    allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns", "background"}
     extra = set(n) - allowed
     if extra: raise ValueError("unknown nitride keys: " + ", ".join(sorted(extra)))
     if d.drive.mode != "EL-transport" or d.drive.diode.get("preset") != "nitride-planar":
@@ -952,6 +982,9 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             raise ValueError(f"invalid dot.{key}: not numeric ({val!r})") from exc
         if not finite: raise ValueError("invalid dot." + key)
     eta_bg = float(n.get("eta_background", .1)); bg_tau = float(n.get("background_tau_ns", 0.0))
+    bg_kw = dict(n.get("background", {}))
+    if set(bg_kw) - {"reservoir_energy_eV"}:
+        raise ValueError("unknown nitride.background keys")
     if not 0 <= eta_bg <= 1 or bg_tau < 0: raise ValueError("invalid nitride background settings")
     if not 0 <= d.drive.eta_load <= 1: raise ValueError("drive.eta_load must be in [0, 1]")
     # cw_pump_ratio (X->XX secondary pump) is forwarded into pulse_counting.
@@ -1064,8 +1097,11 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             gam = float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0,d.dot.a_ac,d.dot.E_LO,d.dot.gamma300)))
             w_val = gam if d.filter.auto_w else d.filter.w  # SAME collection window for cavity accept. and transport bg.
             cr = nitride_cavity.response(cav,T_K=Tj,E_X_eV=lv.E_X_eV,E_X_track_eV=track0.E_X_eV,gamma_X_meV=gam,gamma_XX_meV=gam,delta_xx_meV=d.dot.delta_xx,gamma_X0_ns=rr["gamma_X0_ns"],gamma_XX0_ns=rr["gamma_XX0_ns"],w_meV=w_val,dx_w_meV=d.filter.dx)
-            # dE_pair_meV is not yet populated by nitride_levels (always None);
-            # the 100 meV floor matches device.py's own legacy dE_WL_meV default [A].
+            # The reservoir is a material continuum, not E_X plus a fixed
+            # offset: it must not follow dot-height QCSE.  See
+            # _nitride_reservoir_energy_eV for the [V]/[A] convention.
+            reservoir_energy_eV = _nitride_reservoir_energy_eV(dot_kw, Tj, bg_kw)
+            reservoir_offset_meV = (reservoir_energy_eV-lv.E_X_eV)*1e3
             # tau_rad_ns is the overlap-SCALED radiative lifetime of this
             # actual (biased) dot state -- tau_rad0_ns/overlap_sq, i.e.
             # 1/gamma_X0_ns -- not the bare reference tau_rad0_ns (which
@@ -1074,7 +1110,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             # radiative lifetime consistent between the two arguments (Opus
             # fix-round finding: "mixing two radiative lifetimes").
             tau_rad_resolved_ns = tau_rad0_ns / lv.overlap_sq
-            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(lv.dE_pair_meV or 100.,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad_resolved_ns,E_X_eV=lv.E_X_eV)
+            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(reservoir_offset_meV,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad_resolved_ns,E_X_eV=lv.E_X_eV)
             r_dot_val, mu_val, power_val = inj.loading.r_dot, inj.mu, duty*inj.P_junction_W
             if d.drive.cycle_loading == "rectangular":
                 cnt = pulse_counting.pulse_g2(inj.loading.r_dot/1e9,cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],tau_on,period-tau_on,pump_ratio=d.drive.cw_pump_ratio,gate_ns=d.drive.gate_ns,split=True)
@@ -1090,7 +1126,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             # integrated over the injection window plus optional exponential
             # afterglow, then filtered by the cavity/slit's flat-spectrum
             # acceptance (not t_X, spec) and collected once via eta_background [A].
-            bg_accept = _nitride_flat_background_acceptance(cr["kappa_meV"], w_val, d.filter.dx, cr["detuning_meV"])
+            bg_accept = _nitride_flat_background_acceptance(cr["kappa_meV"], w_val, d.filter.dx, cr["detuning_meV"], reservoir_offset_meV)
             bg_counts=inj.background.rate_bg_window*1e-9*bg_window
             if bg_tau>0 and gate>tau_on: bg_counts += inj.background.rate_bg_window*1e-9*bg_tau*(1-np.exp(-(gate-tau_on)/bg_tau))
             bg_counts *= eta_bg*bg_accept

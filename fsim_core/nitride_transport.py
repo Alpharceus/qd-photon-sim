@@ -137,11 +137,21 @@ class NitrideDiode:
         if not math.isfinite(n) or n<=0: raise ValueError("n_dot_cm2 must be positive")
         return 1/(1+self.tau_cap0_ps*1e-12*1e10/n/(self.tau_matrix_ns*1e-9))
     def dot_loading(self,I_uA,T=None,n_dot_cm2=1e10,aperture_um2=.785,tau_pulse_ns=None,f_capture=None,tau_rad_ns=1.,leakage=None,E_X_eV=None):
+        """Per-dot loading in the optically selected aperture.
+
+        The electrical supply is first apportioned by aperture_um2/area_um2,
+        then shared across max(N_dots, 1).  This mirrors
+        transport.Diode.dot_loading's max(N_dots, 1) fractional-occupancy
+        convention, while additionally respecting this planar diode's mesa
+        current geometry [DR].  Thus a fractional expected dot cannot receive
+        more than the aperture's share of the mesa current.
+        """
         if not math.isfinite(I_uA) or I_uA<0 or aperture_um2<=0 or tau_rad_ns<=0: raise ValueError("invalid current or geometry")
         T=self._T(T); lk=leakage or self.eta_inj(T); fq=self.f_qd(n_dot_cm2) if f_capture is None else f_capture; nd=n_dot_cm2*aperture_um2*1e-8; ne=max(nd,1.)
         vj=self.vj_of_j(I_uA*1e-6/self.area_cm2,T) if E_X_eV is not None else None; qfl=1. if E_X_eV is None else qfl_suppression(E_X_eV,vj,KB_EV*T)
-        supply=lk.eta_inj*I_uA*1e-6/Q_SI; rd=fq*supply*qfl/ne; mu=None if tau_pulse_ns is None else rd*tau_pulse_ns*1e-9
-        return DotLoading(I_uA,T,lk.eta_inj,fq,nd,rd,mu,rd*tau_rad_ns*1e-9,rd*tau_rad_ns*1e-9>1,fq*lk.eta_inj*qfl/ne,qfl,vj,fq*supply*qfl,(1-fq*qfl)*supply)
+        aperture_fraction=min(aperture_um2/self.area_um2,1.)
+        supply=lk.eta_inj*I_uA*1e-6/Q_SI*aperture_fraction; rd=fq*supply*qfl/ne; mu=None if tau_pulse_ns is None else rd*tau_pulse_ns*1e-9
+        return DotLoading(I_uA,T,lk.eta_inj,fq,nd,rd,mu,rd*tau_rad_ns*1e-9,rd*tau_rad_ns*1e-9>1,fq*lk.eta_inj*qfl*aperture_fraction/ne,qfl,vj,fq*supply*qfl,(1-fq*qfl)*supply)
     def current_for_mu(self,mu_target,T,n_dot_cm2,aperture_um2,tau_pulse_ns,E_X_eV=None):
         if mu_target<0 or tau_pulse_ns<=0: raise ValueError("invalid loading target")
         if E_X_eV is not None: raise ValueError("sub-turn-on inverse has no closed form")

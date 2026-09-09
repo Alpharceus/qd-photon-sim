@@ -34,6 +34,17 @@ check("numerical current conservation",r.loading.r_captured+r.loading.r_matrix<=
 small=d.dot_loading(1.,300.,1e10,.1,1.).r_dot; large=d.dot_loading(1.,300.,1e10,10.,1.).r_dot
 check("numerical aperture scaling",large<small)
 
+# Opus results review 2026-09-09: the mesa current must be partitioned into
+# the 0.0019635 um2 selected aperture BEFORE a fractional expected dot is
+# protected by max(N_dots, 1).  The old formula omitted aperture/mesa and
+# gave about 0.99 I/e to this dot; this independent upper bound catches it.
+ap_review=0.0019634954084936207; I_review=.2; tau_review=.1
+ld_review=d.dot_loading(I_review,300.,1e10,ap_review,tau_review)
+nd_review=1e10*ap_review*1e-8
+r_bound=(I_review*1e-6/Q_SI)*(ap_review/d.area_um2)/max(nd_review,1.)
+check("aperture partition limits fractional-dot supply",ld_review.r_dot<=r_bound*(1+1e-12))
+check("aperture partition makes 100 ps resolved mu order unity or below",ld_review.mu<=1.)
+
 # The strained-gap fix lowers the default x=0.15 electron leakage barrier;
 # these [DR] regression literals are independently frozen from the corrected
 # edge construction (Rinke 2008 volume shift + Tsai 2020 VBO).  The valence
