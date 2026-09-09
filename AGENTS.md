@@ -14,3 +14,7 @@ F-series quantum-dot single-photon-source simulator (Python 3, numpy/scipy). Bra
 ```
 python verify/verify_fsim.py && python verify/audit_physics.py && python verify/verify_materials.py && python verify/verify_cw_g2.py
 ```
+
+## Shell note for codex workers (2026-09-09)
+
+On this machine the `exec_command` / unified-exec tool cannot start PowerShell inside the codex sandbox: every attempt fails with `CreateProcessAsUserW failed: -1073283067` (it resolves `pwsh.exe` to the MSIX package path, which the sandbox token cannot execute). Do NOT use `exec_command` or any PowerShell-based tool. Use the plain `shell` tool with cmd.exe for everything, e.g. `cmd /c type .workers\specsoo.md`, `cmd /c python verifyerify_x.py`, `cmd /c git diff 0871997 -- path`. If a command fails with a process-creation error, switch to the `shell` tool with cmd.exe and continue; never stop the task because of it.
