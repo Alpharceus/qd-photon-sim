@@ -247,3 +247,119 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
         result["mean_counts_xx"] = mean_counts - result["mean_counts_x"]
 
     return result
+
+
+# ---------------------------------------------------------------- deterministic electrical cycle
+
+def _deterministic_load_map(eta_load):
+    """Classical instantaneous one-pair load map in (G, X, XX) order.
+
+    A delivered pair maps G->X and X->XX; a pair presented to XX is blocked.
+    eta_load is a Bernoulli missed-delivery sensitivity [A], not the F8
+    Poisson/moment-matched loading model.  The cap-2 convention transfers
+    from Reischle et al., Optics Express 16, 12771 (2008) [DR].
+    """
+    delivered = np.array([[0.0, 0.0, 0.0],
+                          [1.0, 0.0, 0.0],
+                          [0.0, 1.0, 1.0]])
+    return (1.0 - eta_load) * np.eye(3) + eta_load * delivered
+
+
+def _deterministic_periodic_before_load(M_off, load_map, period_ns):
+    """Fixed point immediately before the next load: exp(M_off T) L p."""
+    Phi = expm(M_off * period_ns) @ load_map
+    p = np.array([1.0, 0.0, 0.0])
+    converged = False
+    for _ in range(_MAX_ITER):
+        p_next = Phi @ p
+        if np.max(np.abs(p_next - p)) < _TOL:
+            p = p_next
+            converged = True
+            break
+        p = p_next
+    return p, converged
+
+
+def _deterministic_propagate(M_off, J, p_after_load, period_ns, gate_ns):
+    """Propagate one dark cycle with J active only in its counting gate."""
+    Z = np.zeros((3, 3))
+    v = np.zeros(9)
+    v[:3] = p_after_load
+    if gate_ns > 0.0:
+        v = expm(_augmented(M_off, J) * gate_ns) @ v
+    remainder = period_ns - gate_ns
+    if remainder > 0.0:
+        v = expm(_augmented(M_off, Z) * remainder) @ v
+    return v[:3], v[3:6], v[6:9]
+
+
+def deterministic_cycle_g2(gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
+                           period_ns, *, eta_load=1.0, gate_ns=None,
+                           split=False) -> dict:
+    """Exact filtered factorial moments for one deterministic electrical load.
+
+    At t=0 a single e-h pair is attempted, then pump r=0 for the entire
+    cycle.  Occupancy is retained between cycles, so a residual X can be
+    promoted to XX and emit a cascade; this is not a reset-to-ground model.
+    The moment hierarchy follows Hanschke et al., npj Quantum Information 4,
+    43 (2018) [DR transfer].  The externally specified 300 K lifetime anchor
+    is Deshpande et al., Applied Physics Letters 105, 141109 (2014), DOI
+    10.1063/1.4897640, abstract tau=1.3 +/- 0.3 ns [V abstract-only].
+
+    Rates use 1/ns and times ns.  This idealized model excludes hardware
+    feasibility, co-tunnelling, timing jitter, reservoir recapture, and extra
+    pairs beyond eta_load [A].
+    """
+    values = (gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX, period_ns,
+              eta_load)
+    if not all(np.isfinite(x) for x in values):
+        raise ValueError("deterministic_cycle_g2 inputs must be finite")
+    if any(x < 0.0 for x in (gamma_X_ns, gamma_XX_ns, k_X, k_XX)):
+        raise ValueError("rates must be nonnegative")
+    if not (0.0 <= t_X <= 1.0 and 0.0 <= t_XX <= 1.0 and
+            0.0 <= eta_load <= 1.0):
+        raise ValueError("transmissions and eta_load must lie in [0, 1]")
+    if period_ns <= 0.0:
+        raise ValueError("period_ns must be positive")
+    if gate_ns is None:
+        gate = period_ns
+    else:
+        if not np.isfinite(gate_ns) or gate_ns <= 0.0:
+            raise ValueError("gate_ns must be finite and positive")
+        gate = min(float(gate_ns), period_ns)
+
+    M_off = cw_g2.generator(0.0, gamma_X_ns, gamma_XX_ns, k_X, k_XX)
+    load_map = _deterministic_load_map(float(eta_load))
+    p_before, converged = _deterministic_periodic_before_load(M_off, load_map,
+                                                                float(period_ns))
+    p_after = load_map @ p_before
+    J = np.zeros((3, 3))
+    J[0, 1] = t_X * gamma_X_ns
+    J[1, 2] = t_XX * gamma_XX_ns
+    p_period, m1, m2 = _deterministic_propagate(M_off, J, p_after,
+                                                 float(period_ns), gate)
+    mean = float(np.sum(m1))
+    factorial2 = float(np.sum(m2))
+    invalid_reason = None
+    if mean < 1e-300:
+        g2 = float("nan")
+        invalid_reason = "no_detected_radiative_photons"
+    else:
+        g2 = float(factorial2 / mean ** 2)
+    blocked = float(eta_load * p_before[2])
+    result = {"p_before_load": p_before, "p_after_load": p_after,
+              "p_period": p_period, "mean_counts": mean,
+              "mean_factorial2": factorial2, "g2": g2,
+              "converged": bool(converged), "gate_ns_used": gate,
+              "blocked_load_probability": blocked,
+              "mean_loaded_pairs": float(eta_load - blocked),
+              "one_pair_valid": bool(eta_load == 1.0 and blocked <= 1e-9),
+              "invalid_reason": invalid_reason}
+    if split:
+        J_x = np.zeros((3, 3))
+        J_x[0, 1] = J[0, 1]
+        _, m1_x, _ = _deterministic_propagate(M_off, J_x, p_after,
+                                               float(period_ns), gate)
+        result["mean_counts_x"] = float(np.sum(m1_x))
+        result["mean_counts_xx"] = mean - result["mean_counts_x"]
+    return result
