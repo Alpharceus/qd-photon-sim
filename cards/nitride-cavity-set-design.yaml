@@ -131,7 +131,7 @@ design:
       height_nm: 3.0
       radius_nm: 10.0
       x_in: 0.25
-      wl_thickness_nm: 0.5
+      wl_thickness_nm: 0.0
       strain_fraction: 1.0
       screening_fraction: 0.0
       external_field_kVcm: 0.0
@@ -348,7 +348,7 @@ design:
           own 12 nm undoped-GaN spacer geometry (p.2, Fig. 2 caption:
           "3 nm In0.15Ga0.85N QW between 12 nm uid-GaN spacers") but built
           from THIS card's own reservoir thickness instead of Zhang's 3 nm
-          QW: d_i_nm = nitride.dot.wl_thickness_nm (0.5 nm) + 2 x 12 nm
+          QW: d_i_nm = drive.diode.wl_thickness_nm (0.5 nm) + 2 x 12 nm
           spacers = 24.5 nm. An adapted-geometry assumption, not a
           transcribed Zhang 2016 d_i value.
       drive.diode.x_in:
@@ -366,7 +366,7 @@ design:
         unit: nm
         tag: A
         source: >
-          Set equal to nitride.dot.wl_thickness_nm (0.5 nm) per this
+          Kept at 0.5 nm as the SRH reservoir thickness (nitride.dot.wl_thickness_nm is 0 because the confinement solver has no wetting-layer model) per this
           contract's rule that the transport diode's reservoir thickness
           must stay consistent with the confinement dot's own wetting
           layer; see nitride.dot.wl_thickness_nm for its own [A] source.
@@ -699,10 +699,10 @@ design:
         anchor_id: deshpande2013-x-in
         note: "See design.provenance.ranges['nitride.dot.x_in'] for the headline grid axis [0.15, 0.25, 0.40]."
       nitride.dot.wl_thickness_nm:
-        value: 0.5
+        value: 0.0
         unit: nm
         tag: A
-        source: "[A] Wetting-layer thickness design choice for the confinement reservoir model; no InGaN wetting-layer thickness for this specific alloy fraction is separately reported in the digest."
+        source: "[A] Set to 0: the confinement solver (fsim_core.nitride_levels, commit 59014bc) has no wetting-layer continuum model and rejects a nonzero value as unsupported; the diode keeps drive.diode.wl_thickness_nm = 0.5 nm as its SRH reservoir thickness only."
       nitride.dot.strain_fraction:
         value: 1.0
         unit: dimensionless
