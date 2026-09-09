@@ -24,18 +24,22 @@ from pathlib import Path
 
 import numpy as np
 import yaml
+from scipy.integrate import quad
 
 from .cavity import purcell_eff, tracking_detuning
 from .integrator import g2_from, retention
-from .drive_mech import mech_from_card
+from .drive_mech import mech_from_card, mech_set, set_feasibility
 from .loading import (
     BackgroundChannel,
+    E_SI,
+    KB_SI,
     aperture_g2,
     b_injection,
     f1b_g2,
     f8_g2,
     f8b_thin_fano,
     gamma_eff,
+    island_radius_nm,
     loading_probs,
     n_window_competitors,
 )
@@ -44,6 +48,7 @@ from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
 from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
+from . import nitride_levels, nitride_transport, nitride_cavity
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -327,6 +332,11 @@ class DriveBlock:
                                   # carry its own provenance note for the
                                   # anchor [E/A] -- device.py does not invent
                                   # a value here, only the mechanism.
+    # Nitride-only full-cycle loading controls.  They are deliberately
+    # independent of loading_model/F8, which remains a legacy Poisson model.
+    cycle_loading: str = "rectangular"
+    eta_load: float = 1.0
+    set_params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -480,6 +490,10 @@ class DeviceDesign:
     filter: FilterBlock = field(default_factory=FilterBlock)
     aperture: ApertureBlock = field(default_factory=ApertureBlock)
     emission: EmissionBlock = field(default_factory=EmissionBlock)
+    platform: str = "legacy"
+    # Planar InGaN/GaN inputs.  These are all explicit card inputs on the
+    # nitride tier; defaults are only inert schema defaults [A].
+    nitride: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)  # persisted card-side evidence notes
 
     # ---- YAML round-trip (same reproducibility rule as the cards)
@@ -534,6 +548,29 @@ class DeviceDesign:
             raise ValueError(f"unknown drive.loading_model {loading_model!r}")
         if drive_kw.get("gate_ns") is not None and drive_kw["gate_ns"] <= 0:
             raise ValueError(f"drive.gate_ns must be > 0 if set (got {drive_kw['gate_ns']!r})")
+        # Nitride opt-in (spec: "Add DeviceDesign.platform ... reject unknown
+        # values"): validate the platform string itself, and require the
+        # dot's InP-shaped shared fields (gamma0/a_ac/E_LO/gamma300/r_xx/
+        # delta_xx) to be EXPLICITLY present in the card's own YAML mapping
+        # -- DotBlock's class defaults are InP class numbers [V]/[A] (e.g.
+        # E_LO=43 meV, the InP LO phonon), so a nitride card that leaves any
+        # of these unset would silently inherit a wrong-material default
+        # with no error. This presence check is only possible here, against
+        # the raw YAML dict, before DotBlock's own dataclass defaults fill
+        # in; evaluate() cannot re-derive "was this explicit" from an
+        # already-built in-memory design, so it only checks finiteness
+        # there (see _evaluate_nitride) [A, conservative reading of "require
+        # explicit ... on cards"].
+        platform = d.get("platform", "legacy")
+        if platform not in ("legacy", "ingan_gan_planar"):
+            raise ValueError(f"unknown platform {platform!r}")
+        if platform == "ingan_gan_planar":
+            dot_raw = d.get("dot", {})
+            required_dot_fields = ("gamma0", "a_ac", "E_LO", "gamma300", "r_xx", "delta_xx")
+            missing = [k for k in required_dot_fields if k not in dot_raw]
+            if missing:
+                raise ValueError("ingan_gan_planar cards must set dot." +
+                                 ", dot.".join(missing) + " explicitly")
         return DeviceDesign(
             name=d.get("name", "my-device"),
             dot=DotBlock(**d["dot"]), ret=RetentionBlock(**ret_kw),
@@ -541,6 +578,7 @@ class DeviceDesign:
             cavity=CavityBlock(**d["cavity"]), filter=FilterBlock(**d["filter"]),
             aperture=ApertureBlock(**aperture_kw),
             emission=EmissionBlock(**d.get("emission", {})),
+            platform=platform, nitride=dict(d.get("nitride", {})),
             provenance=dict(d.get("provenance", {})),
         )
 
@@ -802,9 +840,215 @@ def _transport_options(drive: DriveBlock, w_meV: float) -> dict:
                 eta_total=float(raw.get("eta_total", 0.01)))
 
 
+def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV):
+    """Average (flat-spectrum) cavity+slit transmission across the SAME
+    collection window the X line is filtered through.
+
+    transport.xi_window's own window is "centred dE_WL below the [matrix/WL]
+    peak" -- i.e. it IS the X-line collection window itself (dE_WL_meV is
+    only the energy distance used inside the Urbach exponential, not a
+    second window position). A flat/broadband continuum crossing that same
+    window is filtered by the cavity+slit's spectral acceptance function
+    averaged (not Lorentzian-line-weighted like spectral.epsilon2's t_X)
+    across the window -- spec: "not t_X" [DR extension of spectral.py's
+    transmission2/combined_transmission kernel, flat-weighted instead of
+    line-shape-weighted].
+    """
+    half = w_meV / 2.0
+    off = dx_w_meV - detuning_meV  # cavity center, in slit-relative meV (spectral.transmission2 convention)
+    val, _ = quad(lambda x: (kappa_meV / 2.0) ** 2 / ((x - off) ** 2 + (kappa_meV / 2.0) ** 2),
+                 -half, half, limit=200)
+    return val / w_meV
+
+
+def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
+    """Opt-in planar InGaN/GaN cycle evaluator.
+
+    The junction field is a lumped intrinsic-region estimate, signed opposite
+    +c for a positive p-i-n forward bias [A].  It is intentionally separate
+    from the legacy cubic-material transport path.
+    """
+    n = dict(d.nitride)
+    allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns"}
+    extra = set(n) - allowed
+    if extra: raise ValueError("unknown nitride keys: " + ", ".join(sorted(extra)))
+    if d.drive.mode != "EL-transport" or d.drive.diode.get("preset") != "nitride-planar":
+        raise ValueError("ingan_gan_planar requires EL-transport and diode.preset='nitride-planar'")
+    if not d.drive.finite_pulse or d.drive.mechanism:
+        raise ValueError("ingan_gan_planar requires finite_pulse=True and empty mechanism")
+    if d.drive.cycle_loading not in ("rectangular", "deterministic_pair"):
+        raise ValueError("unknown cycle_loading")
+    if d.dot.linewidth != "anchored" or d.dot.lineshape != "lorentzian" or d.ret.mode != "nitride_confinement":
+        raise ValueError("nitride requires anchored lorentzian and ret.mode='nitride_confinement'")
+    if d.emission.type != "vertical_cavity" or not d.cavity.enabled or d.cavity.type != "nitride_planar":
+        raise ValueError("nitride requires enabled nitride_planar vertical_cavity")
+    if d.ret.system or d.ret.preset: raise ValueError("nitride does not use legacy ret.system/preset")
+    # Legacy cavity.F_P/G would ambiguously compete with nitride.cavity's own
+    # Q/mode-volume/eta_out model; reject a card that overrides them away
+    # from their inert class defaults instead of silently ignoring them.
+    if d.cavity.F_P != CavityBlock.F_P or d.cavity.G != CavityBlock.G:
+        raise ValueError("nitride does not use legacy cavity.F_P/G; nitride.cavity owns Q/V/collection")
+    dot_kw = dict(n.get("dot", {})); cav_kw = dict(n.get("cavity", {}))
+    required_dot = {"height_nm", "radius_nm", "x_in"}
+    if not required_dot <= set(dot_kw): raise ValueError("nitride.dot requires height_nm, radius_nm, x_in")
+    system0 = nitride_levels.NitrideDotSystem(**dot_kw)
+    cav = nitride_cavity.NitrideCavityParams(**cav_kw)
+    tau_on = float(d.drive.diode.get("tau_pulse_ns", 0.0)); rep = float(d.drive.rep_rate_hz)
+    if tau_on <= 0 or rep <= 0: raise ValueError("nitride requires positive explicit pulse width and rep_rate_hz")
+    period = 1e9 / rep
+    if tau_on > period: raise ValueError("pulse width exceeds period")
+    # Card-configuration validation (malformed opt-in -> raise unconditionally,
+    # same as every other check in this block); deliberately NOT inside the
+    # per-T try/except below, which is reserved for physically invalid
+    # operating points (unbound dot, thermal runaway), not malformed cards.
+    if d.drive.cycle_loading == "deterministic_pair":
+        sp0 = dict(d.drive.set_params)
+        if not ({"eps_r", "R_T_ohm", "ec_margin"} <= set(sp0)
+               and ("radius_nm" in sp0 or "C_sigma_F" in sp0)):
+            raise ValueError("SET requires explicit island and feasibility inputs")
+    duty = tau_on * rep * 1e-9  # electrical pulse duty cycle (spec worked example: 0.1 ns @ 8e7 Hz -> 0.008)
+    density = d.drive.n_dot_cm2 if d.drive.n_dot_cm2 > 0 else d.aperture.density_cm2
+    if density is None or density <= 0: raise ValueError("nitride requires explicit positive dot density")
+    tau_cap = d.ret.tau_cap_ps
+    if tau_cap is None or tau_cap <= 0: raise ValueError("nitride requires explicit positive capture time")
+    for key in ("gamma0", "a_ac", "E_LO", "gamma300", "r_xx", "delta_xx"):
+        if not np.isfinite(getattr(d.dot, key)): raise ValueError("invalid dot." + key)
+    eta_bg = float(n.get("eta_background", .1)); bg_tau = float(n.get("background_tau_ns", 0.0))
+    if not 0 <= eta_bg <= 1 or bg_tau < 0: raise ValueError("invalid nitride background settings")
+    tau_rad0_ns = float(n.get("tau_rad0_ns", 1.0))  # [A brief default]; e.g. Deshpande et al.,
+    # APL 105, 141109 (2014), DOI 10.1063/1.4897640, abstract 300 K tau=1.3+/-0.3 ns [V abstract-only]
+    diode_kw = dict(d.drive.diode); diode_kw.pop("preset", None); diode_kw.pop("tau_pulse_ns", None)
+    diode = nitride_transport.planar_pin(**diode_kw)
+    st, a = _stack(d.thermal), .5*d.thermal.mesa_diameter_um*1e-6
+    aperture = float(np.pi*(d.aperture.diameter_um/2)**2)
+    ts = np.asarray(T_grid if T_grid is not None else [d.thermal.T_hs], dtype=float)
+    # Cavity-tracking reference: the SAME dot at T_track, evaluated at the
+    # card-supplied baseline bias (system0's own external_field_kVcm, 0
+    # unless the card sets one) -- a single fixed design anchor, not
+    # recomputed per operating-point bias [A, conservative reading of "same
+    # stated bias-control convention": the per-row bias delta below is
+    # applied on top of the SAME dot/anchor, never a second, independently
+    # biased reference].
+    track0 = nitride_levels.levels(system0, cav.T_track)
+    # The whole-period gate, resolved once (T-independent); used as the
+    # reported gate_ns_used on an invalid row too (a requested experimental
+    # setting, not a derived physics result).
+    requested_gate = min(d.drive.gate_ns if d.drive.gate_ns is not None else period, period)
+    rows=[]
+    for ths in ts:
+        Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, ths), a, st, ths)
+        converged = np.isfinite(Tj)
+        reasons=[]
+        if not converged: reasons.append("thermal runaway")
+        va = vj = gam = np.nan
+        rr = dict(gamma_X0_ns=np.nan, gamma_XX0_ns=np.nan, k_X_ns=np.nan, k_XX_ns=np.nan,
+                 E_a_meV=np.nan, S0=np.nan, tau_cap_ps_used=np.nan, valid=False)
+        cr = dict(gamma_X_ns=np.nan, gamma_XX_ns=np.nan, t_X=np.nan, t_XX=np.nan,
+                 eta_out=cav.eta_out, kappa_meV=np.nan, detuning_meV=np.nan,
+                 Fp_add=np.nan, F_eff_X=np.nan, F_eff_XX=np.nan)
+        cnt = dict(mean_counts=np.nan, g2=np.nan, gate_ns_used=requested_gate, converged=False)
+        r_dot_val = mu_val = power_val = np.nan
+        signal = sx = sxx = bg_counts = np.nan
+        rho = g2 = np.nan
+        one_pair = False; blocked = np.nan
+        feas = {}; priced_fp = np.nan
+        supplied = d.drive.I_uA*1e-6*tau_on*1e-9/E_SI >= 1
+        # Positive forward junction voltage adds a fixed, -c-directed field
+        # term in this documented lumped convention [A] -- never a magnitude
+        # ("do not blindly subtract |field|"); the intrinsic (unbiased)
+        # field can itself be signed either way.  V/d_i[cm] -> kV/cm needs an
+        # extra /1000 on top of the nm->cm 1e-7, i.e. divide by d_i_nm*1e-4.
+        # nitride_levels.levels() never raises (bad geometry/T both resolve
+        # to its own _invalid() return), so this unbiased-at-ths call is
+        # always a safe NitrideLevels placeholder -- never system0 itself
+        # (a NitrideDotSystem, which has none of NitrideLevels' attributes).
+        lv = nitride_levels.levels(system0, ths)
+        try:
+            if not converged:
+                raise ValueError("thermal runaway: T_j did not converge")
+            va, vj = diode.v_of_i(max(d.drive.I_uA,0)*1e-6, Tj)
+            dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": -vj/(diode.d_i_nm*1e-4)})
+            lv = nitride_levels.levels(dsys, Tj)
+            if not lv.valid:
+                raise ValueError("unbound dot: " + "; ".join(lv.invalid_reasons))
+            rr = nitride_levels.rates(lv, Tj, tau_rad0_ns=tau_rad0_ns, n_dot_cm2=density, tau_cap_ps=tau_cap, channel=d.ret.channel, k_nr_ns=float(n.get("k_nr_ns",0.0)))
+            if not rr["valid"]:
+                raise ValueError("invalid escape rates: " + "; ".join(rr["invalid_reasons"]))
+            gam = float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0,d.dot.a_ac,d.dot.E_LO,d.dot.gamma300)))
+            w_val = gam if d.filter.auto_w else d.filter.w  # SAME collection window for cavity accept. and transport bg.
+            cr = nitride_cavity.response(cav,T_K=Tj,E_X_eV=lv.E_X_eV,E_X_track_eV=track0.E_X_eV,gamma_X_meV=gam,gamma_XX_meV=gam,delta_xx_meV=d.dot.delta_xx,gamma_X0_ns=rr["gamma_X0_ns"],gamma_XX0_ns=rr["gamma_XX0_ns"],w_meV=w_val,dx_w_meV=d.filter.dx)
+            # dE_pair_meV is not yet populated by nitride_levels (always None);
+            # the 100 meV floor matches device.py's own legacy dE_WL_meV default [A].
+            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(lv.dE_pair_meV or 100.,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad0_ns,E_X_eV=lv.E_X_eV)
+            r_dot_val, mu_val, power_val = inj.loading.r_dot, inj.mu, duty*inj.P_junction_W
+            if d.drive.cycle_loading == "rectangular":
+                cnt = pulse_counting.pulse_g2(inj.loading.r_dot/1e9,cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],tau_on,period-tau_on,gate_ns=d.drive.gate_ns,split=True)
+                cnt["gate_ns_used"] = requested_gate
+            else:
+                cnt = pulse_counting.deterministic_cycle_g2(cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],period,eta_load=d.drive.eta_load,gate_ns=d.drive.gate_ns,split=True)
+                one_pair=cnt["one_pair_valid"]; blocked=cnt["blocked_load_probability"]
+            gate=cnt.get("gate_ns_used",period); bg_window=min(gate,tau_on)
+            # Reservoir RATE (photons/s, transport.Background.rate_bg_window --
+            # NOT rate_x, which is the dot's own X-channel normalization) is
+            # integrated over the injection window plus optional exponential
+            # afterglow, then filtered by the cavity/slit's flat-spectrum
+            # acceptance (not t_X, spec) and collected once via eta_background [A].
+            bg_accept = _nitride_flat_background_acceptance(cr["kappa_meV"], w_val, d.filter.dx, cr["detuning_meV"])
+            bg_counts=inj.background.rate_bg_window*1e-9*bg_window
+            if bg_tau>0 and gate>tau_on: bg_counts += inj.background.rate_bg_window*1e-9*bg_tau*(1-np.exp(-(gate-tau_on)/bg_tau))
+            bg_counts *= eta_bg*bg_accept
+            signal=cr["eta_out"]*cnt["mean_counts"]; sx=cr["eta_out"]*cnt.get("mean_counts_x",np.nan); sxx=cr["eta_out"]*cnt.get("mean_counts_xx",np.nan)
+            rho=signal/(signal+bg_counts) if signal+bg_counts>0 else np.nan
+            g2=1-rho*rho*(1-cnt["g2"]) if np.isfinite(rho) and np.isfinite(cnt["g2"]) else np.nan
+            if d.drive.cycle_loading == "deterministic_pair":
+                # sp0 (validated as complete above, outside the loop) plus
+                # the resolved cycle rate for this row.
+                sp=dict(sp0); sp["f_cycle_Hz"]=rep
+                feas=set_feasibility(Tj,**sp)
+                # ALWAYS priced against the SAME turnstile mechanism (spec); read
+                # the delivered F_p back from the mechanism interface rather than
+                # re-deriving the feasible/infeasible branch a second time here.
+                mech_iface = mech_set("turnstile",Tj,eps_cycle=0.0,**sp)
+                priced_fp = float(mech_iface.F_p)
+                # Max island radius still satisfying the charging-energy screen
+                # (E_C >= ec_margin*kT), inverted through the SAME e^2/C and
+                # isolated-sphere convention (loading.island_radius_nm) that
+                # set_feasibility itself uses -- not e^2/(2C).
+                C_sigma_max = E_SI**2 / (sp["ec_margin"] * KB_SI * Tj)
+                feas["radius_max_nm"] = float(island_radius_nm(C_sigma_max, sp["eps_r"]))
+        except ValueError as exc:
+            if str(exc) not in reasons: reasons.append(str(exc))
+        # Unbound dot, non-converged thermal/counting solution or impossible
+        # field is an explicit invalid row (never a silent InP-class
+        # fallback): gate on convergence explicitly, not only on whatever
+        # happened to still be finite downstream.
+        valid=bool(converged and lv.valid and rr["valid"] and cnt.get("converged",True) and np.isfinite(g2))
+        if not valid and not reasons: reasons.append("invalid row")
+        rows.append(dict(T_hs=ths,T_j=Tj,g2=g2,rho=rho,lv=lv,rr=rr,cr=cr,
+                         r_dot=r_dot_val,mu=mu_val,power=power_val,
+                         cnt=cnt,signal=signal,sx=sx,sxx=sxx,bg=bg_counts,valid=valid,reasons=reasons,
+                         feas=feas,priced_fp=priced_fp,supplied=supplied,one_pair=one_pair,blocked=blocked,vj=vj,gam=gam))
+    keys={"g2":lambda r:r["g2"],"rho2":lambda r:r["rho"]**2,"Tj":lambda r:r["T_j"],"gamma":lambda r:r["gam"],"eps":lambda r:r["cr"]["t_XX"]/r["cr"]["t_X"],"signal_flux":lambda r:r["signal"]*rep}
+    curves={k:np.array([f(r) for r in rows]) for k,f in keys.items()}; op=rows[int(np.argmin(abs(ts-d.thermal.T_hs)))]
+    x=op; c=x["cr"]; rr=x["rr"]; lv=x["lv"]; feas=x["feas"]
+    scalars={"platform":"ingan_gan_planar","cycle_loading":d.drive.cycle_loading,"T_hs":x["T_hs"],"T_j":x["T_j"],"g2_op":x["g2"],"rho_pulsed":x["rho"],"collected_flux_pulsed_s":x["signal"]*rep,"collected_flux_x_s":x["sx"]*rep,"collected_flux_xx_s":x["sxx"]*rep,"background_flux_s":x["bg"]*rep,"total_detected_flux_s":(x["signal"]+x["bg"])*rep,"mean_counts":x["cnt"]["mean_counts"],"mean_counts_x":x["cnt"].get("mean_counts_x",np.nan),"mean_counts_xx":x["cnt"].get("mean_counts_xx",np.nan),"E_X_eV":lv.E_X_eV,"lambda_nm":lv.lambda_nm,"field_kVcm":lv.field_kVcm,"overlap_sq":lv.overlap_sq,"electron_bound":lv.electron_bound,"hole_bound":lv.hole_bound,"E_a_meV":rr["E_a_meV"],"k_X_ns":rr["k_X_ns"],"k_XX_ns":rr["k_XX_ns"],"gamma_X0_ns":rr["gamma_X0_ns"],"gamma_XX0_ns":rr["gamma_XX0_ns"],"gamma_X_ns":c["gamma_X_ns"],"gamma_XX_ns":c["gamma_XX_ns"],"S_X":c["gamma_X_ns"]/(c["gamma_X_ns"]+rr["k_X_ns"]),"S_XX":c["gamma_XX_ns"]/(c["gamma_XX_ns"]+rr["k_XX_ns"]),"Q":cav.Q,"kappa_meV":c["kappa_meV"],"detuning_meV":c["detuning_meV"],"Fp_add":c["Fp_add"],"F_eff_X":c["F_eff_X"],"F_eff_XX":c["F_eff_XX"],"eta_out":c["eta_out"],"gate_ns_used":x["cnt"]["gate_ns_used"],"rep_rate_hz":rep,"r_dot_s":x["r_dot"],"mu_resolved":x["mu"],"n_dot_cm2_used":density,"tau_cap_ps_used":rr["tau_cap_ps_used"],"I_pair_pA":E_SI*rep*1e12,"transport_current_uA":d.drive.I_uA,"V_j":x["vj"],"power_W":x["power"],"counting_converged":x["cnt"].get("converged",True),"blocked_load_probability":x["blocked"],"one_pair_valid":x["one_pair"],"set_feasible":feas.get("feasible",False),"set_priced_F_p":x["priced_fp"],"set_E_C_meV":feas.get("E_C_meV",np.nan),"set_EC_over_kT":feas.get("EC_over_kT",np.nan),"set_radius_nm":feas.get("radius_nm",np.nan),"set_radius_max_nm":feas.get("radius_max_nm",np.nan),"set_C_sigma_F":feas.get("C_sigma_F",np.nan),"set_R_T_over_RQ":feas.get("R_T_over_RQ",np.nan),"set_f_max_Hz":feas.get("f_max_Hz",np.nan),"pair_supply_possible":x["supplied"],"ideal_load_F_p":0.0 if d.drive.cycle_loading=="deterministic_pair" else np.nan,"valid":x["valid"],"invalid_reasons":x["reasons"],"provenance":{"nitride":"[A/E/DR] planar integration; cavity/transport inputs retain module provenance"}}
+    scalars["device_pass"]=bool(scalars["valid"] and scalars["g2_op"]<.5 and scalars["collected_flux_pulsed_s"]>=1000 and (d.drive.cycle_loading!="deterministic_pair" or (scalars["one_pair_valid"] and scalars["set_feasible"] and scalars["pair_supply_possible"])))
+    return {"curves":curves,"scalars":scalars}
+
+
 def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     """Run the full chain. Returns {'curves': {...}, 'scalars': {...}}."""
     d = design
+    if d.platform == "ingan_gan_planar":
+        return _evaluate_nitride(d, T_grid)
+    if d.platform != "legacy":
+        raise ValueError(f"unknown platform {d.platform!r}")
+    # cycle_loading's "deterministic_pair" opt-in is nitride-only (spec);
+    # a legacy design never reads drive.cycle_loading below, so silently
+    # accepting a non-default value here would be misleading, not merely
+    # inert -- every legacy card leaves this at its "rectangular" default.
+    if d.drive.cycle_loading != "rectangular":
+        raise ValueError("drive.cycle_loading is nitride-only (platform='ingan_gan_planar')")
     if d.drive.mode == "PL" and d.drive.diode:
         raise ValueError("drive.mode='PL' cannot be used with a non-empty diode")
     if d.drive.mode == "EL-transport" and d.drive.dg_inj:

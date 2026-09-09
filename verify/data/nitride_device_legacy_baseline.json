@@ -1,0 +1,3041 @@
+{
+ "card_sha256": {
+  "cards/edge-inp-gaasp-design.yaml": "f875d37bb09dfaab193b993fa9a46cc71083dba5e31cefa148f486d99027b1b0",
+  "cards/edge-inp-gainp-design.yaml": "84f7df390b1623dc42f25d206758639e6dbee8da8ef062464efea0292cdd61c5"
+ },
+ "cases": {
+  "default_legacy": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2e9919c760c4ap+8"
+    ],
+    "eps": [
+     "0x1.08b0b65009120p+0"
+    ],
+    "g2": [
+     "0x1.e670b430ee38ap-1"
+    ],
+    "gamma": [
+     "0x1.60181963e1877p+3"
+    ],
+    "rho2": [
+     "0x1.e0c921385ff03p-3"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.8325d14496d96p+0",
+    "P_junction_W": "0x1.3ec460ed80a17p-16",
+    "S_resolved": "0x1.99683cb61efedp-7",
+    "T_c": "nan",
+    "T_j_op": "0x1.2e9919c760c4ap+8",
+    "T_j_transport": "nan",
+    "V_applied": "0x1.e666666666666p+0",
+    "V_bi": "nan",
+    "V_j": "0x1.e666666666666p+0",
+    "V_j_op": "0x1.e666666666666p+0",
+    "aperture_compose": false,
+    "aperture_g2_penalty": "0x1.1400000000000p-1",
+    "aperture_lambda_op": "nan",
+    "b_e_resolved": "0x1.c507ca421b909p-12",
+    "background.rate_bg_window": "nan",
+    "background.rate_x": "nan",
+    "brightness_per_pulse": "0x1.92e9a0720d3ecp-3",
+    "collected_flux_pulsed_s": "nan",
+    "cw_gamma_X_ns": "nan",
+    "cw_r_ns": "nan",
+    "cw_rho_op": "nan",
+    "dT_J": "0x1.4c8ce3b062500p+1",
+    "drive_source": "EL",
+    "duty_resolved": "0x1.0000000000000p+0",
+    "edge_A_mode_um2": "nan",
+    "edge_Gamma_dot": "nan",
+    "edge_T_facet": "nan",
+    "edge_beta": "nan",
+    "edge_eta_NA": "nan",
+    "edge_eta_prop": "nan",
+    "edge_eta_total": "nan",
+    "edge_lambda_nm": "nan",
+    "edge_n_eff": "nan",
+    "edge_n_g": "nan",
+    "emission_type": "none",
+    "eps_op": "0x1.08b0b65009120p+0",
+    "eta_capture_resolved": "0x1.0000000000000p+0",
+    "eta_inj": "nan",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "nan",
+    "g2_cw0_raw": "nan",
+    "g2_op": "0x1.e670b430ee38ap-1",
+    "gamma_op": "0x1.60181963e1877p+3",
+    "injection.area_um2": "nan",
+    "injection.f_qfl_bg": "nan",
+    "invalid_reasons": [],
+    "linewidth_source": "class",
+    "loading.r_dot": "nan",
+    "mu_resolved": "0x1.0000000000000p-1",
+    "photon_budget": "nan",
+    "photon_budget.dot_nonradiative": "nan",
+    "photon_budget.dot_radiative": "nan",
+    "photon_budget.matrix_nonradiative": "nan",
+    "photon_budget.matrix_radiative": "nan",
+    "photon_budget.supply_active": "nan",
+    "provenance": {
+     "aperture": {
+      "note": "legacy informational aperture_g2_penalty only",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "A"
+     },
+     "b_res": {
+      "note": "not requested (0.0, legacy)",
+      "tag": "A"
+     },
+     "cw": {
+      "note": "not requested",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "legacy drive fields",
+      "tag": "A"
+     },
+     "emission": {
+      "note": "no edge collection (legacy)",
+      "tag": "A"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "arsenide class proxy",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "drive.mu",
+      "tag": "A"
+     },
+     "retention": {
+      "n_dot_cm2_used": "nan",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "A"
+     },
+     "tracking": {
+      "note": "legacy hard-coded GaAs Varshni",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "nan",
+    "retention_params_used": {
+     "b0": "0x1.a22d24f5e2f71p-7",
+     "beta": "0x1.a36e2eb8f5114p-14"
+    },
+    "retention_source": "proxy",
+    "rho_op": "0x1.f025bd212b7ffp-2",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "nan",
+    "track_material": "",
+    "track_material_effective": false,
+    "w_resolved": "0x1.60181963e1877p+3",
+    "xx_in_window": "0x1.08b0b65009120p-1"
+   }
+  },
+  "default_legacy_cavity": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2e9919c760c4ap+8"
+    ],
+    "eps": [
+     "0x1.4dcf9d6c1a4ecp-1"
+    ],
+    "g2": [
+     "0x1.567ca54b14fddp-1"
+    ],
+    "gamma": [
+     "0x1.60181963e1877p+3"
+    ],
+    "rho2": [
+     "0x1.8edbeb866cfb8p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "0x1.aa8fe5780144ep-1",
+    "N_w": "0x1.8325d14496d96p+0",
+    "P_junction_W": "0x1.3ec460ed80a17p-16",
+    "S_resolved": "0x1.99683cb61efedp-7",
+    "T_c": "nan",
+    "T_j_op": "0x1.2e9919c760c4ap+8",
+    "T_j_transport": "nan",
+    "V_applied": "0x1.e666666666666p+0",
+    "V_bi": "nan",
+    "V_j": "0x1.e666666666666p+0",
+    "V_j_op": "0x1.e666666666666p+0",
+    "aperture_compose": false,
+    "aperture_g2_penalty": "0x1.1400000000000p-1",
+    "aperture_lambda_op": "nan",
+    "b_e_resolved": "0x1.c507ca421b909p-12",
+    "background.rate_bg_window": "nan",
+    "background.rate_x": "nan",
+    "brightness_per_pulse": "0x1.e2cd514d3ff7cp-10",
+    "collected_flux_pulsed_s": "nan",
+    "cw_gamma_X_ns": "nan",
+    "cw_r_ns": "nan",
+    "cw_rho_op": "nan",
+    "dT_J": "0x1.4c8ce3b062500p+1",
+    "drive_source": "EL",
+    "duty_resolved": "0x1.0000000000000p+0",
+    "edge_A_mode_um2": "nan",
+    "edge_Gamma_dot": "nan",
+    "edge_T_facet": "nan",
+    "edge_beta": "nan",
+    "edge_eta_NA": "nan",
+    "edge_eta_prop": "nan",
+    "edge_eta_total": "nan",
+    "edge_lambda_nm": "nan",
+    "edge_n_eff": "nan",
+    "edge_n_g": "nan",
+    "emission_type": "none",
+    "eps_op": "0x1.4dcf9d6c1a4ecp-1",
+    "eta_capture_resolved": "0x1.0000000000000p+0",
+    "eta_inj": "nan",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "nan",
+    "g2_cw0_raw": "nan",
+    "g2_op": "0x1.567ca54b14fddp-1",
+    "gamma_op": "0x1.60181963e1877p+3",
+    "injection.area_um2": "nan",
+    "injection.f_qfl_bg": "nan",
+    "invalid_reasons": [],
+    "linewidth_source": "class",
+    "loading.r_dot": "nan",
+    "mu_resolved": "0x1.0000000000000p-1",
+    "photon_budget": "nan",
+    "photon_budget.dot_nonradiative": "nan",
+    "photon_budget.dot_radiative": "nan",
+    "photon_budget.matrix_nonradiative": "nan",
+    "photon_budget.matrix_radiative": "nan",
+    "photon_budget.supply_active": "nan",
+    "provenance": {
+     "aperture": {
+      "note": "legacy informational aperture_g2_penalty only",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "A"
+     },
+     "b_res": {
+      "note": "not requested (0.0, legacy)",
+      "tag": "A"
+     },
+     "cw": {
+      "note": "not requested",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "legacy drive fields",
+      "tag": "A"
+     },
+     "emission": {
+      "note": "no edge collection (legacy)",
+      "tag": "A"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "arsenide class proxy",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "drive.mu",
+      "tag": "A"
+     },
+     "retention": {
+      "n_dot_cm2_used": "nan",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "A"
+     },
+     "tracking": {
+      "note": "legacy hard-coded GaAs Varshni",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "nan",
+    "retention_params_used": {
+     "b0": "0x1.a22d24f5e2f71p-7",
+     "beta": "0x1.a36e2eb8f5114p-14"
+    },
+    "retention_source": "proxy",
+    "rho_op": "0x1.c3e7081a757cbp-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.32c2767b09d93p-11",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "nan",
+    "track_material": "",
+    "track_material_effective": false,
+    "w_resolved": "0x1.60181963e1877p+3",
+    "xx_in_window": "0x1.8fffbbfea5861p-12"
+   }
+  },
+  "edge-inp-gaasp-design_T230_fp0_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000334e8b37p+7"
+    ],
+    "eps": [
+     "0x1.d5060b7c5c414p-2"
+    ],
+    "g2": [
+     "0x1.9738940254b5cp-1"
+    ],
+    "g2_cw0": [
+     "0x1.3a59f3d560116p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fefb9fd65987cp-1"
+    ],
+    "gamma": [
+     "0x1.b7048e6ed5f1cp+2"
+    ],
+    "rho2": [
+     "0x1.782e0703af068p-2"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2e1b9d23bp-4",
+    "P_junction_W": "0x1.15e1411e87b4ep-27",
+    "S_resolved": "0x1.1f387778c317dp-13",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000334e8b37p+7",
+    "T_j_transport": "0x1.cc000334e8b37p+7",
+    "V_applied": "0x1.959a665bb0765p+0",
+    "V_bi": "0x1.e18db8507f9e4p+0",
+    "V_j": "0x1.959a620754281p+0",
+    "V_j_op": "0x1.959a620754281p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc56a87895e0p-6",
+    "b_e_resolved": "0x1.06eb8f9c02563p-2",
+    "background.rate_bg_window": "0x1.12b9d4428be7dp+15",
+    "background.rate_x": "0x1.0b7eb88d07848p+17",
+    "brightness_per_pulse": "0x1.25e19fa8e0fffp-20",
+    "collected_flux_pulsed_s": "0x1.5e5577e144c06p+6",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.3c1691b1894f7p+4",
+    "cw_rho_op": "0x1.b888a220799f7p-1",
+    "dT_J": "0x1.9a7459b800000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d5060b7c5c414p-2",
+    "eta_capture_resolved": "0x1.39fdbba48c79fp-1",
+    "eta_inj": "0x1.6e52b03ff938fp-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.3a59f3d560116p-1",
+    "g2_cw0_raw": "0x1.fefb9fd65987cp-1",
+    "g2_op": "0x1.9738940254b5cp-1",
+    "gamma_op": "0x1.b7048e6ed5f1cp+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.86a9fb42220cfp-5",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.26614a4579a00p+34",
+    "mu_resolved": "0x1.f9bdb5e8dbb26p+0",
+    "photon_budget": "0x1.fffffffffffffp-1",
+    "photon_budget.dot_nonradiative": "0x1.2656f805722e2p+34",
+    "photon_budget.dot_radiative": "0x1.4a4800ee3a058p+21",
+    "photon_budget.matrix_nonradiative": "0x1.61418c535ec02p+31",
+    "photon_budget.matrix_radiative": "0x1.3a01604a1b558p+28",
+    "photon_budget.supply_active": "0x1.577181510de55p+34",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.36535fbc79cf5p-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b7048e6ed5f1cp+2",
+    "xx_in_window": "0x1.d5060b7c5c414p-3"
+   }
+  },
+  "edge-inp-gaasp-design_T230_fp0_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000334e8b37p+7"
+    ],
+    "eps": [
+     "0x1.d5060b7c5c414p-2"
+    ],
+    "g2": [
+     "0x1.2a6db2a811aacp-1"
+    ],
+    "g2_cw0": [
+     "0x1.313c294066e64p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.e491298459830p-1"
+    ],
+    "gamma": [
+     "0x1.b7048e6ed5f1cp+2"
+    ],
+    "rho2": [
+     "0x1.7f626ddb6523dp-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2e1b9d23bp-4",
+    "P_junction_W": "0x1.15e1411e87b4ep-27",
+    "S_resolved": "0x1.de8975e55ef4fp-9",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000334e8b37p+7",
+    "T_j_transport": "0x1.cc000334e8b37p+7",
+    "V_applied": "0x1.959a665bb0765p+0",
+    "V_bi": "0x1.e18db8507f9e4p+0",
+    "V_j": "0x1.959a620754281p+0",
+    "V_j_op": "0x1.959a620754281p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc56a87895e0p-6",
+    "b_e_resolved": "0x1.3b9cc0ec311ecp-7",
+    "background.rate_bg_window": "0x1.12b9d4428be7dp+15",
+    "background.rate_x": "0x1.bdac19d4ff923p+21",
+    "brightness_per_pulse": "0x1.e9a26a4b5a351p-16",
+    "collected_flux_pulsed_s": "0x1.23d849183adc0p+11",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.3c1691b1894f7p+4",
+    "cw_rho_op": "0x1.c3e407f0f9c71p-1",
+    "dT_J": "0x1.9a7459b800000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d5060b7c5c414p-2",
+    "eta_capture_resolved": "0x1.39fdbba48c79fp-1",
+    "eta_inj": "0x1.6e52b03ff938fp-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.313c294066e64p-1",
+    "g2_cw0_raw": "0x1.e491298459830p-1",
+    "g2_op": "0x1.2a6db2a811aacp-1",
+    "gamma_op": "0x1.b7048e6ed5f1cp+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.86a9fb42220cfp-5",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.26614a4579a00p+34",
+    "mu_resolved": "0x1.f9bdb5e8dbb26p+0",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.254e266851474p+34",
+    "photon_budget.dot_radiative": "0x1.1323dd2858b8ap+26",
+    "photon_budget.matrix_nonradiative": "0x1.61418c535ec02p+31",
+    "photon_budget.matrix_radiative": "0x1.3a01604a1b558p+28",
+    "photon_budget.supply_active": "0x1.577181510de55p+34",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.bb0cabf19dcd3p-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b7048e6ed5f1cp+2",
+    "xx_in_window": "0x1.d5060b7c5c414p-3"
+   }
+  },
+  "edge-inp-gaasp-design_T230_fp1_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000334e8b37p+7"
+    ],
+    "eps": [
+     "0x1.d5060b7c5c414p-2"
+    ],
+    "g2": [
+     "0x1.ff759c51c0e15p-1"
+    ],
+    "g2_cw0": [
+     "0x1.3a59f3d560116p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fefb9fd65987cp-1"
+    ],
+    "gamma": [
+     "0x1.b7048e6ed5f1cp+2"
+    ],
+    "rho2": [
+     "0x1.7b0af378f9844p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2e1b9d23bp-4",
+    "P_junction_W": "0x1.15e1411e87b4ep-27",
+    "S_resolved": "0x1.1f387778c317dp-13",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000334e8b37p+7",
+    "T_j_transport": "0x1.cc000334e8b37p+7",
+    "V_applied": "0x1.959a665bb0765p+0",
+    "V_bi": "0x1.e18db8507f9e4p+0",
+    "V_j": "0x1.959a620754281p+0",
+    "V_j_op": "0x1.959a620754281p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc56a87895e0p-6",
+    "b_e_resolved": "0x1.06eb8f9c02563p-2",
+    "background.rate_bg_window": "0x1.12b9d4428be7dp+15",
+    "background.rate_x": "0x1.0b7eb88d07848p+17",
+    "brightness_per_pulse": "0x1.508949ac049fdp-19",
+    "collected_flux_pulsed_s": "0x1.912eb8e7e4bf2p+7",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.3c1691b1894f7p+4",
+    "cw_rho_op": "0x1.b888a220799f7p-1",
+    "dT_J": "0x1.9a7459b800000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d5060b7c5c414p-2",
+    "eta_capture_resolved": "0x1.39fdbba48c79fp-1",
+    "eta_inj": "0x1.6e52b03ff938fp-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.ff3dbf02a8e58p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.c8489cac64098p+12",
+    "finite_pulse_k_XX": "0x1.c8489cac64098p+13",
+    "finite_pulse_mean_counts": "0x1.1b4b4890c5c32p-13",
+    "finite_pulse_mean_counts_x": "0x1.1af1a423af35cp-13",
+    "finite_pulse_r_ns": "0x1.3c1691b1894f7p+4",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.3a59f3d560116p-1",
+    "g2_cw0_raw": "0x1.fefb9fd65987cp-1",
+    "g2_op": "0x1.ff759c51c0e15p-1",
+    "gamma_op": "0x1.b7048e6ed5f1cp+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.86a9fb42220cfp-5",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.26614a4579a00p+34",
+    "mu_resolved": "0x1.f9bdb5e8dbb26p+0",
+    "photon_budget": "0x1.fffffffffffffp-1",
+    "photon_budget.dot_nonradiative": "0x1.2656f805722e2p+34",
+    "photon_budget.dot_radiative": "0x1.4a4800ee3a058p+21",
+    "photon_budget.matrix_nonradiative": "0x1.61418c535ec02p+31",
+    "photon_budget.matrix_radiative": "0x1.3a01604a1b558p+28",
+    "photon_budget.supply_active": "0x1.577181510de55p+34",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.b8889daf22dbbp-1",
+    "rho_pulsed": "0x1.b8889daf22dbbp-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b7048e6ed5f1cp+2",
+    "xx_in_window": "0x1.d5060b7c5c414p-3"
+   }
+  },
+  "edge-inp-gaasp-design_T230_fp1_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000334e8b37p+7"
+    ],
+    "eps": [
+     "0x1.d5060b7c5c414p-2"
+    ],
+    "g2": [
+     "0x1.f189f71c31772p-1"
+    ],
+    "g2_cw0": [
+     "0x1.313c294066e64p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.e491298459830p-1"
+    ],
+    "gamma": [
+     "0x1.b7048e6ed5f1cp+2"
+    ],
+    "rho2": [
+     "0x1.8eba28d501996p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2e1b9d23bp-4",
+    "P_junction_W": "0x1.15e1411e87b4ep-27",
+    "S_resolved": "0x1.de8975e55ef4fp-9",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000334e8b37p+7",
+    "T_j_transport": "0x1.cc000334e8b37p+7",
+    "V_applied": "0x1.959a665bb0765p+0",
+    "V_bi": "0x1.e18db8507f9e4p+0",
+    "V_j": "0x1.959a620754281p+0",
+    "V_j_op": "0x1.959a620754281p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc56a87895e0p-6",
+    "b_e_resolved": "0x1.3b9cc0ec311ecp-7",
+    "background.rate_bg_window": "0x1.12b9d4428be7dp+15",
+    "background.rate_x": "0x1.bdac19d4ff923p+21",
+    "brightness_per_pulse": "0x1.0e4403dce0ef5p-14",
+    "collected_flux_pulsed_s": "0x1.422e8a8ed5d09p+12",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.3c1691b1894f7p+4",
+    "cw_rho_op": "0x1.c3e407f0f9c71p-1",
+    "dT_J": "0x1.9a7459b800000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d5060b7c5c414p-2",
+    "eta_capture_resolved": "0x1.39fdbba48c79fp-1",
+    "eta_inj": "0x1.6e52b03ff938fp-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.ecb414df5716cp-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.10e6ca189d250p+8",
+    "finite_pulse_k_XX": "0x1.10e6ca189d250p+9",
+    "finite_pulse_mean_counts": "0x1.c7040d54f6b0ap-9",
+    "finite_pulse_mean_counts_x": "0x1.b8ff23ad6bb94p-9",
+    "finite_pulse_r_ns": "0x1.3c1691b1894f7p+4",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.313c294066e64p-1",
+    "g2_cw0_raw": "0x1.e491298459830p-1",
+    "g2_op": "0x1.f189f71c31772p-1",
+    "gamma_op": "0x1.b7048e6ed5f1cp+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.86a9fb42220cfp-5",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.26614a4579a00p+34",
+    "mu_resolved": "0x1.f9bdb5e8dbb26p+0",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.254e266851474p+34",
+    "photon_budget.dot_radiative": "0x1.1323dd2858b8ap+26",
+    "photon_budget.matrix_nonradiative": "0x1.61418c535ec02p+31",
+    "photon_budget.matrix_radiative": "0x1.3a01604a1b558p+28",
+    "photon_budget.supply_active": "0x1.577181510de55p+34",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.c3d3e7aa6020cp-1",
+    "rho_pulsed": "0x1.c3d3e7aa6020cp-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b7048e6ed5f1cp+2",
+    "xx_in_window": "0x1.d5060b7c5c414p-3"
+   }
+  },
+  "edge-inp-gaasp-design_T300_fp0_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0001b1fefd9p+8"
+    ],
+    "eps": [
+     "0x1.d02b128fdd4c6p-1"
+    ],
+    "g2": [
+     "0x1.f58907c29e6f0p-1"
+    ],
+    "g2_cw0": [
+     "0x1.f9164a88664cap-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fffdf3f9e4d92p-1"
+    ],
+    "gamma": [
+     "0x1.8000043f1181dp+3"
+    ],
+    "rho2": [
+     "0x1.3c569ba819a4bp-3"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f2bf5368d2p-4",
+    "P_junction_W": "0x1.004a5ff1f9eb9p-27",
+    "S_resolved": "0x1.022c71e46b58cp-15",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0001b1fefd9p+8",
+    "T_j_transport": "0x1.2c0001b1fefd9p+8",
+    "V_applied": "0x1.7658d56635833p+0",
+    "V_bi": "0x1.ca8d8db843bc6p+0",
+    "V_j": "0x1.7658d111d934fp+0",
+    "V_j_op": "0x1.7658d111d934fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b3f987217p-5",
+    "b_e_resolved": "0x1.68767d24c512fp-1",
+    "background.rate_bg_window": "0x1.528ebc72076c5p+14",
+    "background.rate_x": "0x1.e0e2c52e7c7b9p+14",
+    "brightness_per_pulse": "0x1.d2f945f123ac4p-26",
+    "collected_flux_pulsed_s": "0x1.16568912cb71bp+1",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.ffffff8dbaa03p-1",
+    "cw_rho_op": "0x1.9272f0a273b22p-2",
+    "dT_J": "0x1.b1fefd9000000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d02b128fdd4c6p-1",
+    "eta_capture_resolved": "0x1.fc9a6e3007191p-6",
+    "eta_inj": "0x1.59ee93d8082cap-2",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.f9164a88664cap-1",
+    "g2_cw0_raw": "0x1.fffdf3f9e4d92p-1",
+    "g2_op": "0x1.f58907c29e6f0p-1",
+    "gamma_op": "0x1.8000043f1181dp+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.25a114bc215aep-9",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.dcd64f9593ac1p+29",
+    "mu_resolved": "0x1.9999993e2ee6ap-4",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.dcd28dd0094f1p+29",
+    "photon_budget.dot_radiative": "0x1.e0e2c52e7c7b9p+14",
+    "photon_budget.matrix_nonradiative": "0x1.09123b3ca86ccp+33",
+    "photon_budget.matrix_radiative": "0x1.d73cdb1680c15p+29",
+    "photon_budget.supply_active": "0x1.44536de769b39p+33",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.9272f32ae5ec5p-2",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.8000043f1181dp+3",
+    "xx_in_window": "0x1.d02b128fdd4c6p-2"
+   }
+  },
+  "edge-inp-gaasp-design_T300_fp0_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0001b1fefd9p+8"
+    ],
+    "eps": [
+     "0x1.d02b128fdd4c6p-1"
+    ],
+    "g2": [
+     "0x1.cf73e4419a550p-1"
+    ],
+    "g2_cw0": [
+     "0x1.dfb01f23ae598p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fed4e82bef1dbp-1"
+    ],
+    "gamma": [
+     "0x1.8000043f1181dp+3"
+    ],
+    "rho2": [
+     "0x1.6ee25c58243ebp-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f2bf5368d2p-4",
+    "P_junction_W": "0x1.004a5ff1f9eb9p-27",
+    "S_resolved": "0x1.f94b7b3adc8d6p-11",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0001b1fefd9p+8",
+    "T_j_transport": "0x1.2c0001b1fefd9p+8",
+    "V_applied": "0x1.7658d56635833p+0",
+    "V_bi": "0x1.ca8d8db843bc6p+0",
+    "V_j": "0x1.7658d111d934fp+0",
+    "V_j_op": "0x1.7658d111d934fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b3f987217p-5",
+    "b_e_resolved": "0x1.7058e859fc0e0p-6",
+    "background.rate_bg_window": "0x1.528ebc72076c5p+14",
+    "background.rate_x": "0x1.d697ada7fe5d9p+19",
+    "brightness_per_pulse": "0x1.c8fa6a37afbabp-21",
+    "collected_flux_pulsed_s": "0x1.106156488213ap+6",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.ffffff8dbaa03p-1",
+    "cw_rho_op": "0x1.b173e7d3c31edp-1",
+    "dT_J": "0x1.b1fefd9000000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d02b128fdd4c6p-1",
+    "eta_capture_resolved": "0x1.fc9a6e3007191p-6",
+    "eta_inj": "0x1.59ee93d8082cap-2",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.dfb01f23ae598p-1",
+    "g2_cw0_raw": "0x1.fed4e82bef1dbp-1",
+    "g2_op": "0x1.cf73e4419a550p-1",
+    "gamma_op": "0x1.8000043f1181dp+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.25a114bc215aep-9",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.dcd64f9593ac1p+29",
+    "mu_resolved": "0x1.9999993e2ee6ap-4",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.dc60a9aa29ac8p+29",
+    "photon_budget.dot_radiative": "0x1.d697ada7fe5d9p+19",
+    "photon_budget.matrix_nonradiative": "0x1.09123b3ca86ccp+33",
+    "photon_budget.matrix_radiative": "0x1.d73cdb1680c15p+29",
+    "photon_budget.supply_active": "0x1.44536de769b39p+33",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.b1691b0f19330p-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.8000043f1181dp+3",
+    "xx_in_window": "0x1.d02b128fdd4c6p-2"
+   }
+  },
+  "edge-inp-gaasp-design_T300_fp1_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0001b1fefd9p+8"
+    ],
+    "eps": [
+     "0x1.d02b128fdd4c6p-1"
+    ],
+    "g2": [
+     "0x1.fffee937afa23p-1"
+    ],
+    "g2_cw0": [
+     "0x1.f9164a88664cap-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fffdf3f9e4d92p-1"
+    ],
+    "gamma": [
+     "0x1.8000043f1181dp+3"
+    ],
+    "rho2": [
+     "0x1.3c5697ad03e79p-3"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f2bf5368d2p-4",
+    "P_junction_W": "0x1.004a5ff1f9eb9p-27",
+    "S_resolved": "0x1.022c71e46b58cp-15",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0001b1fefd9p+8",
+    "T_j_transport": "0x1.2c0001b1fefd9p+8",
+    "V_applied": "0x1.7658d56635833p+0",
+    "V_bi": "0x1.ca8d8db843bc6p+0",
+    "V_j": "0x1.7658d111d934fp+0",
+    "V_j_op": "0x1.7658d111d934fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b3f987217p-5",
+    "b_e_resolved": "0x1.68767d24c512fp-1",
+    "background.rate_bg_window": "0x1.528ebc72076c5p+14",
+    "background.rate_x": "0x1.e0e2c52e7c7b9p+14",
+    "brightness_per_pulse": "0x1.eab5c7b63cdc2p-26",
+    "collected_flux_pulsed_s": "0x1.247c6a721cc57p+1",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.ffffff8dbaa03p-1",
+    "cw_rho_op": "0x1.9272f0a273b22p-2",
+    "dT_J": "0x1.b1fefd9000000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d02b128fdd4c6p-1",
+    "eta_capture_resolved": "0x1.fc9a6e3007191p-6",
+    "eta_inj": "0x1.59ee93d8082cap-2",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.fff8769622be2p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.fbac7ad75014dp+14",
+    "finite_pulse_k_XX": "0x1.fbac7ad75014dp+15",
+    "finite_pulse_mean_counts": "0x1.9d139b3ec084cp-20",
+    "finite_pulse_mean_counts_x": "0x1.9d10a82aa4e0fp-20",
+    "finite_pulse_r_ns": "0x1.ffffff8dbaa03p-1",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.f9164a88664cap-1",
+    "g2_cw0_raw": "0x1.fffdf3f9e4d92p-1",
+    "g2_op": "0x1.fffee937afa23p-1",
+    "gamma_op": "0x1.8000043f1181dp+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.25a114bc215aep-9",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.dcd64f9593ac1p+29",
+    "mu_resolved": "0x1.9999993e2ee6ap-4",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.dcd28dd0094f1p+29",
+    "photon_budget.dot_radiative": "0x1.e0e2c52e7c7b9p+14",
+    "photon_budget.matrix_nonradiative": "0x1.09123b3ca86ccp+33",
+    "photon_budget.matrix_radiative": "0x1.d73cdb1680c15p+29",
+    "photon_budget.supply_active": "0x1.44536de769b39p+33",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.9272f0a2a715fp-2",
+    "rho_pulsed": "0x1.9272f0a2a715fp-2",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.8000043f1181dp+3",
+    "xx_in_window": "0x1.d02b128fdd4c6p-2"
+   }
+  },
+  "edge-inp-gaasp-design_T300_fp1_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0001b1fefd9p+8"
+    ],
+    "eps": [
+     "0x1.d02b128fdd4c6p-1"
+    ],
+    "g2": [
+     "0x1.ff6209b1f464fp-1"
+    ],
+    "g2_cw0": [
+     "0x1.dfb01f23ae598p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.fed4e82bef1dbp-1"
+    ],
+    "gamma": [
+     "0x1.8000043f1181dp+3"
+    ],
+    "rho2": [
+     "0x1.6ef47840df8d0p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f2bf5368d2p-4",
+    "P_junction_W": "0x1.004a5ff1f9eb9p-27",
+    "S_resolved": "0x1.f94b7b3adc8d6p-11",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0001b1fefd9p+8",
+    "T_j_transport": "0x1.2c0001b1fefd9p+8",
+    "V_applied": "0x1.7658d56635833p+0",
+    "V_bi": "0x1.ca8d8db843bc6p+0",
+    "V_j": "0x1.7658d111d934fp+0",
+    "V_j_op": "0x1.7658d111d934fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b3f987217p-5",
+    "b_e_resolved": "0x1.7058e859fc0e0p-6",
+    "background.rate_bg_window": "0x1.528ebc72076c5p+14",
+    "background.rate_x": "0x1.d697ada7fe5d9p+19",
+    "brightness_per_pulse": "0x1.e02a334ff4bffp-21",
+    "collected_flux_pulsed_s": "0x1.1e335746a3d35p+6",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.ffffff8dbaa03p-1",
+    "cw_rho_op": "0x1.b173e7d3c31edp-1",
+    "dT_J": "0x1.b1fefd9000000p-16",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.1c29ce9901354p-1",
+    "edge_Gamma_dot": "0x1.f0b0d138a54fap-7",
+    "edge_T_facet": "0x1.74f89dc64bd0ep-1",
+    "edge_beta": "0x1.d5e03c2b318c7p-6",
+    "edge_eta_NA": "0x1.a4f9740c83edap-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.301cd0fc1db67p-6",
+    "edge_lambda_nm": "0x1.97d999999999ap+9",
+    "edge_n_eff": "0x1.968db4e20064dp+1",
+    "edge_n_g": "0x1.fea1ea18015dbp+1",
+    "emission_type": "edge",
+    "eps_op": "0x1.d02b128fdd4c6p-1",
+    "eta_capture_resolved": "0x1.fc9a6e3007191p-6",
+    "eta_inj": "0x1.59ee93d8082cap-2",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.ff14641be71e9p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.0325a5f2434ffp+10",
+    "finite_pulse_k_XX": "0x1.0325a5f2434ffp+11",
+    "finite_pulse_mean_counts": "0x1.94331e1bd7962p-15",
+    "finite_pulse_mean_counts_x": "0x1.93d9a82494d58p-15",
+    "finite_pulse_r_ns": "0x1.ffffff8dbaa03p-1",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.dfb01f23ae598p-1",
+    "g2_cw0_raw": "0x1.fed4e82bef1dbp-1",
+    "g2_op": "0x1.ff6209b1f464fp-1",
+    "gamma_op": "0x1.8000043f1181dp+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.25a114bc215aep-9",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.dcd64f9593ac1p+29",
+    "mu_resolved": "0x1.9999993e2ee6ap-4",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.dc60a9aa29ac8p+29",
+    "photon_budget.dot_radiative": "0x1.d697ada7fe5d9p+19",
+    "photon_budget.matrix_nonradiative": "0x1.09123b3ca86ccp+33",
+    "photon_budget.matrix_radiative": "0x1.d73cdb1680c15p+29",
+    "photon_budget.supply_active": "0x1.44536de769b39p+33",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.b173cd30ff970p-1",
+    "rho_pulsed": "0x1.b173cd30ff970p-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "dot",
+    "track_material_effective": false,
+    "w_resolved": "0x1.8000043f1181dp+3",
+    "xx_in_window": "0x1.d02b128fdd4c6p-2"
+   }
+  },
+  "edge-inp-gainp-design_T230_fp0_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000085ab239p+7"
+    ],
+    "eps": [
+     "0x1.e5d973b8d1eadp-3"
+    ],
+    "g2": [
+     "0x1.4d32406f7efc2p-1"
+    ],
+    "g2_cw0": [
+     "0x1.ef7950d6abd36p-2"
+    ],
+    "g2_cw0_raw": [
+     "0x1.f9538483db952p-1"
+    ],
+    "gamma": [
+     "0x1.b70488a2a268ap+2"
+    ],
+    "rho2": [
+     "0x1.ef440927671dfp-2"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2a9c5d5c1p-4",
+    "P_junction_W": "0x1.dfe09f2e7805ap-30",
+    "S_resolved": "0x1.61601530f1016p-10",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000085ab239p+7",
+    "T_j_transport": "0x1.cc000085ab239p+7",
+    "V_applied": "0x1.bbf62109166d0p+0",
+    "V_bi": "0x1.174a0bdf89fa9p+1",
+    "V_j": "0x1.bbf6202e72b31p+0",
+    "V_j_op": "0x1.bbf6202e72b31p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc566553cd4ep-6",
+    "b_e_resolved": "0x1.34c7ce6708244p-3",
+    "background.rate_bg_window": "0x1.8cf5a434ef865p+17",
+    "background.rate_x": "0x1.491b3e135ed3ap+20",
+    "brightness_per_pulse": "0x1.67c8a2f927186p-18",
+    "collected_flux_pulsed_s": "0x1.ace5486f7d5fdp+8",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5c7d12dff8488p+2",
+    "cw_rho_op": "0x1.ad98b251badcdp-1",
+    "dT_J": "0x1.0b56472000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.e5d973b8d1eadp-3",
+    "eta_capture_resolved": "0x1.b6b8fef62ccf0p-1",
+    "eta_inj": "0x1.ffd7d41f3446ep-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.ef7950d6abd36p-2",
+    "g2_cw0_raw": "0x1.f9538483db952p-1",
+    "g2_op": "0x1.4d32406f7efc2p-1",
+    "gamma_op": "0x1.b70488a2a268ap+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.0000000000000p+0",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.448e2646a7633p+32",
+    "mu_resolved": "0x1.16ca757ff9d3bp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.441e25d1ea840p+32",
+    "photon_budget.dot_radiative": "0x1.c001d2f37ca51p+22",
+    "photon_budget.matrix_nonradiative": "0x1.8577612195aa6p+29",
+    "photon_budget.matrix_radiative": "0x1.5a3139e4f6d06p+26",
+    "photon_budget.supply_active": "0x1.7aa5d7526df3cp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.6412b52307eb4p-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b70488a2a268ap+2",
+    "xx_in_window": "0x1.e5d973b8d1eadp-4"
+   }
+  },
+  "edge-inp-gainp-design_T230_fp0_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000085ab239p+7"
+    ],
+    "eps": [
+     "0x1.e5d973b8d1eadp-3"
+    ],
+    "g2": [
+     "0x1.df0902dd4ab6ep-2"
+    ],
+    "g2_cw0": [
+     "0x1.c4a1eebaecbfcp-2"
+    ],
+    "g2_cw0_raw": [
+     "0x1.bb6b939329f60p-1"
+    ],
+    "gamma": [
+     "0x1.b70488a2a268ap+2"
+    ],
+    "rho2": [
+     "0x1.795f5c9a1e5f8p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2a9c5d5c1p-4",
+    "P_junction_W": "0x1.dfe09f2e7805ap-30",
+    "S_resolved": "0x1.d478e907e9e9bp-7",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000085ab239p+7",
+    "T_j_transport": "0x1.cc000085ab239p+7",
+    "V_applied": "0x1.bbf62109166d0p+0",
+    "V_bi": "0x1.174a0bdf89fa9p+1",
+    "V_j": "0x1.bbf6202e72b31p+0",
+    "V_j_op": "0x1.bbf6202e72b31p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc566553cd4ep-6",
+    "b_e_resolved": "0x1.d1d5c4e57c853p-7",
+    "background.rate_bg_window": "0x1.8cf5a434ef865p+17",
+    "background.rate_x": "0x1.b44c8061a62f3p+23",
+    "brightness_per_pulse": "0x1.dcf7ce043c137p-15",
+    "collected_flux_pulsed_s": "0x1.1c4b8a012128dp+12",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5c7d12dff8488p+2",
+    "cw_rho_op": "0x1.c158b2e55c47ap-1",
+    "dT_J": "0x1.0b56472000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.e5d973b8d1eadp-3",
+    "eta_capture_resolved": "0x1.b6b8fef62ccf0p-1",
+    "eta_inj": "0x1.ffd7d41f3446ep-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.c4a1eebaecbfcp-2",
+    "g2_cw0_raw": "0x1.bb6b939329f60p-1",
+    "g2_op": "0x1.df0902dd4ab6ep-2",
+    "gamma_op": "0x1.b70488a2a268ap+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.0000000000000p+0",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.448e2646a7633p+32",
+    "mu_resolved": "0x1.16ca757ff9d3bp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.3fea4bf6925a6p+32",
+    "photon_budget.dot_radiative": "0x1.28f6940542336p+26",
+    "photon_budget.matrix_nonradiative": "0x1.8577612195aa6p+29",
+    "photon_budget.matrix_radiative": "0x1.5a3139e4f6d06p+26",
+    "photon_budget.supply_active": "0x1.7aa5d7526df3cp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.b78fdd1d957dfp-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b70488a2a268ap+2",
+    "xx_in_window": "0x1.e5d973b8d1eadp-4"
+   }
+  },
+  "edge-inp-gainp-design_T230_fp1_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000085ab239p+7"
+    ],
+    "eps": [
+     "0x1.e5d973b8d1eadp-3"
+    ],
+    "g2": [
+     "0x1.f8fc235d5cbb2p-1"
+    ],
+    "g2_cw0": [
+     "0x1.ef7950d6abd36p-2"
+    ],
+    "g2_cw0_raw": [
+     "0x1.f9538483db952p-1"
+    ],
+    "gamma": [
+     "0x1.b70488a2a268ap+2"
+    ],
+    "rho2": [
+     "0x1.6874b85c5cdbap-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2a9c5d5c1p-4",
+    "P_junction_W": "0x1.dfe09f2e7805ap-30",
+    "S_resolved": "0x1.61601530f1016p-10",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000085ab239p+7",
+    "T_j_transport": "0x1.cc000085ab239p+7",
+    "V_applied": "0x1.bbf62109166d0p+0",
+    "V_bi": "0x1.174a0bdf89fa9p+1",
+    "V_j": "0x1.bbf6202e72b31p+0",
+    "V_j_op": "0x1.bbf6202e72b31p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc566553cd4ep-6",
+    "b_e_resolved": "0x1.34c7ce6708244p-3",
+    "background.rate_bg_window": "0x1.8cf5a434ef865p+17",
+    "background.rate_x": "0x1.491b3e135ed3ap+20",
+    "brightness_per_pulse": "0x1.d0033560df0c9p-18",
+    "collected_flux_pulsed_s": "0x1.1492b19465e28p+9",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5c7d12dff8488p+2",
+    "cw_rho_op": "0x1.ad98b251badcdp-1",
+    "dT_J": "0x1.0b56472000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.e5d973b8d1eadp-3",
+    "eta_capture_resolved": "0x1.b6b8fef62ccf0p-1",
+    "eta_inj": "0x1.ffd7d41f3446ep-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.f5a534e491eb1p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.726a16da84c95p+9",
+    "finite_pulse_k_XX": "0x1.726a16da84c95p+10",
+    "finite_pulse_mean_counts": "0x1.7eb707a854b5ap-12",
+    "finite_pulse_mean_counts_x": "0x1.7e0f057b6b59bp-12",
+    "finite_pulse_r_ns": "0x1.5c7d12dff8488p+2",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.ef7950d6abd36p-2",
+    "g2_cw0_raw": "0x1.f9538483db952p-1",
+    "g2_op": "0x1.f8fc235d5cbb2p-1",
+    "gamma_op": "0x1.b70488a2a268ap+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.0000000000000p+0",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.448e2646a7633p+32",
+    "mu_resolved": "0x1.16ca757ff9d3bp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.441e25d1ea840p+32",
+    "photon_budget.dot_radiative": "0x1.c001d2f37ca51p+22",
+    "photon_budget.matrix_nonradiative": "0x1.8577612195aa6p+29",
+    "photon_budget.matrix_radiative": "0x1.5a3139e4f6d06p+26",
+    "photon_budget.supply_active": "0x1.7aa5d7526df3cp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.ad98ca2765d51p-1",
+    "rho_pulsed": "0x1.ad98ca2765d51p-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b70488a2a268ap+2",
+    "xx_in_window": "0x1.e5d973b8d1eadp-4"
+   }
+  },
+  "edge-inp-gainp-design_T230_fp1_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.cc00000000000p+7"
+    ],
+    "Tj": [
+     "0x1.cc000085ab239p+7"
+    ],
+    "eps": [
+     "0x1.e5d973b8d1eadp-3"
+    ],
+    "g2": [
+     "0x1.bb239856af3a7p-1"
+    ],
+    "g2_cw0": [
+     "0x1.c4a1eebaecbfcp-2"
+    ],
+    "g2_cw0_raw": [
+     "0x1.bb6b939329f60p-1"
+    ],
+    "gamma": [
+     "0x1.b70488a2a268ap+2"
+    ],
+    "rho2": [
+     "0x1.8a253c8f94522p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.08cf2a9c5d5c1p-4",
+    "P_junction_W": "0x1.dfe09f2e7805ap-30",
+    "S_resolved": "0x1.d478e907e9e9bp-7",
+    "T_c": "nan",
+    "T_j_op": "0x1.cc000085ab239p+7",
+    "T_j_transport": "0x1.cc000085ab239p+7",
+    "V_applied": "0x1.bbf62109166d0p+0",
+    "V_bi": "0x1.174a0bdf89fa9p+1",
+    "V_j": "0x1.bbf6202e72b31p+0",
+    "V_j_op": "0x1.bbf6202e72b31p+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.3dc566553cd4ep-6",
+    "b_e_resolved": "0x1.d1d5c4e57c853p-7",
+    "background.rate_bg_window": "0x1.8cf5a434ef865p+17",
+    "background.rate_x": "0x1.b44c8061a62f3p+23",
+    "brightness_per_pulse": "0x1.25edd386d9fe7p-14",
+    "collected_flux_pulsed_s": "0x1.5e6403d1d86c6p+12",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5c7d12dff8488p+2",
+    "cw_rho_op": "0x1.c158b2e55c47ap-1",
+    "dT_J": "0x1.0b56472000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.e5d973b8d1eadp-3",
+    "eta_capture_resolved": "0x1.b6b8fef62ccf0p-1",
+    "eta_inj": "0x1.ffd7d41f3446ep-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.a30b9466c3317p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.13c93856dd75ap+6",
+    "finite_pulse_k_XX": "0x1.13c93856dd75ap+7",
+    "finite_pulse_mean_counts": "0x1.e4dcade62fd56p-9",
+    "finite_pulse_mean_counts_x": "0x1.dd5719f093397p-9",
+    "finite_pulse_r_ns": "0x1.5c7d12dff8488p+2",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.c4a1eebaecbfcp-2",
+    "g2_cw0_raw": "0x1.bb6b939329f60p-1",
+    "g2_op": "0x1.bb239856af3a7p-1",
+    "gamma_op": "0x1.b70488a2a268ap+2",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.0000000000000p+0",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.448e2646a7633p+32",
+    "mu_resolved": "0x1.16ca757ff9d3bp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.3fea4bf6925a6p+32",
+    "photon_budget.dot_radiative": "0x1.28f6940542336p+26",
+    "photon_budget.matrix_nonradiative": "0x1.8577612195aa6p+29",
+    "photon_budget.matrix_radiative": "0x1.5a3139e4f6d06p+26",
+    "photon_budget.supply_active": "0x1.7aa5d7526df3cp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.c1396bd416754p-1",
+    "rho_pulsed": "0x1.c1396bd416754p-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.b70488a2a268ap+2",
+    "xx_in_window": "0x1.e5d973b8d1eadp-4"
+   }
+  },
+  "edge-inp-gainp-design_T300_fp0_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0000472d641p+8"
+    ],
+    "eps": [
+     "0x1.4d48029a77998p-1"
+    ],
+    "g2": [
+     "0x1.8c195e92bb050p-1"
+    ],
+    "g2_cw0": [
+     "0x1.865c5d8450ca0p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.ff92654b06cb5p-1"
+    ],
+    "gamma": [
+     "0x1.800000b248bb6p+3"
+    ],
+    "rho2": [
+     "0x1.20137cdf5149bp-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f27ace1ae5p-4",
+    "P_junction_W": "0x1.bd3cd00302dd7p-30",
+    "S_resolved": "0x1.88cb9c91fc6aap-13",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0000472d641p+8",
+    "T_j_transport": "0x1.2c0000472d641p+8",
+    "V_applied": "0x1.9c315dc65681ep+0",
+    "V_bi": "0x1.0d5c44cb23cedp+1",
+    "V_j": "0x1.9c315cebb2c7fp+0",
+    "V_j_op": "0x1.9c315cebb2c7fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b167ba9bcp-5",
+    "b_e_resolved": "0x1.93087af30726ap-4",
+    "background.rate_bg_window": "0x1.1ff69fe84f116p+14",
+    "background.rate_x": "0x1.6dd1b609fa266p+17",
+    "brightness_per_pulse": "0x1.8dcc1213d90b5p-21",
+    "collected_flux_pulsed_s": "0x1.da360e68d3139p+5",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5a093847f944fp+2",
+    "cw_rho_op": "0x1.b49af209a860dp-1",
+    "dT_J": "0x1.1cb5904000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.4d48029a77998p-1",
+    "eta_capture_resolved": "0x1.b3a2926deea20p-1",
+    "eta_inj": "0x1.fc3daad59667bp-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.865c5d8450ca0p-1",
+    "g2_cw0_raw": "0x1.ff92654b06cb5p-1",
+    "g2_op": "0x1.8c195e92bb050p-1",
+    "gamma_op": "0x1.800000b248bb6p+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.565e632741a9cp-6",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.42456a3ee09e8p+32",
+    "mu_resolved": "0x1.14d42d066103fp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.4235f669f9f1ap+32",
+    "photon_budget.dot_radiative": "0x1.ee7a9cd59ba0ep+19",
+    "photon_budget.matrix_nonradiative": "0x1.82b9b2b1da57fp+29",
+    "photon_budget.matrix_radiative": "0x1.57c1826533dc7p+26",
+    "photon_budget.supply_active": "0x1.77fba69eb0b8fp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.800cfdb1f4d3cp-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.800000b248bb6p+3",
+    "xx_in_window": "0x1.4d48029a77998p-2"
+   }
+  },
+  "edge-inp-gainp-design_T300_fp0_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0000472d641p+8"
+    ],
+    "eps": [
+     "0x1.4d48029a77998p-1"
+    ],
+    "g2": [
+     "0x1.62b2a787c6fdcp-1"
+    ],
+    "g2_cw0": [
+     "0x1.7c9fc46f3e96cp-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.f4b2d814e4b01p-1"
+    ],
+    "gamma": [
+     "0x1.800000b248bb6p+3"
+    ],
+    "rho2": [
+     "0x1.86faffe2c274fp-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f27ace1ae5p-4",
+    "P_junction_W": "0x1.bd3cd00302dd7p-30",
+    "S_resolved": "0x1.2e9bf635d66dap-8",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0000472d641p+8",
+    "T_j_transport": "0x1.2c0000472d641p+8",
+    "V_applied": "0x1.9c315dc65681ep+0",
+    "V_bi": "0x1.0d5c44cb23cedp+1",
+    "V_j": "0x1.9c315cebb2c7fp+0",
+    "V_j_op": "0x1.9c315cebb2c7fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b167ba9bcp-5",
+    "b_e_resolved": "0x1.0592ffb822073p-8",
+    "background.rate_bg_window": "0x1.1ff69fe84f116p+14",
+    "background.rate_x": "0x1.19d3a95e5452fp+22",
+    "brightness_per_pulse": "0x1.32766d24fd401p-16",
+    "collected_flux_pulsed_s": "0x1.6d54f6da4139cp+10",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5a093847f944fp+2",
+    "cw_rho_op": "0x1.c2d58d7e2f97ep-1",
+    "dT_J": "0x1.1cb5904000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.4d48029a77998p-1",
+    "eta_capture_resolved": "0x1.b3a2926deea20p-1",
+    "eta_inj": "0x1.fc3daad59667bp-1",
+    "finite_pulse_converged": false,
+    "finite_pulse_g2_dot": "nan",
+    "finite_pulse_gamma_XX_ns": "nan",
+    "finite_pulse_gamma_X_ns": "nan",
+    "finite_pulse_gate_ns_used": "nan",
+    "finite_pulse_k_X": "nan",
+    "finite_pulse_k_XX": "nan",
+    "finite_pulse_mean_counts": "nan",
+    "finite_pulse_mean_counts_x": "nan",
+    "finite_pulse_r_ns": "nan",
+    "finite_pulse_tau_dark_ns": "nan",
+    "finite_pulse_tau_on_ns": "nan",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.7c9fc46f3e96cp-1",
+    "g2_cw0_raw": "0x1.f4b2d814e4b01p-1",
+    "g2_op": "0x1.62b2a787c6fdcp-1",
+    "gamma_op": "0x1.800000b248bb6p+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.565e632741a9cp-6",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.42456a3ee09e8p+32",
+    "mu_resolved": "0x1.14d42d066103fp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.40c8780590a31p+32",
+    "photon_budget.dot_radiative": "0x1.7cf2394ffb747p+24",
+    "photon_budget.matrix_nonradiative": "0x1.82b9b2b1da57fp+29",
+    "photon_budget.matrix_radiative": "0x1.57c1826533dc7p+26",
+    "photon_budget.supply_active": "0x1.77fba69eb0b8fp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "finite_pulse_waveform": {
+      "note": "not requested (legacy static loading)",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.bf6ac28164ca3p-1",
+    "rho_pulsed": "nan",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.800000b248bb6p+3",
+    "xx_in_window": "0x1.4d48029a77998p-2"
+   }
+  },
+  "edge-inp-gainp-design_T300_fp1_scale0": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0000472d641p+8"
+    ],
+    "eps": [
+     "0x1.4d48029a77998p-1"
+    ],
+    "g2": [
+     "0x1.ff8b8d5f77db7p-1"
+    ],
+    "g2_cw0": [
+     "0x1.865c5d8450ca0p-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.ff92654b06cb5p-1"
+    ],
+    "gamma": [
+     "0x1.800000b248bb6p+3"
+    ],
+    "rho2": [
+     "0x1.74500d1d67098p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f27ace1ae5p-4",
+    "P_junction_W": "0x1.bd3cd00302dd7p-30",
+    "S_resolved": "0x1.88cb9c91fc6aap-13",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0000472d641p+8",
+    "T_j_transport": "0x1.2c0000472d641p+8",
+    "V_applied": "0x1.9c315dc65681ep+0",
+    "V_bi": "0x1.0d5c44cb23cedp+1",
+    "V_j": "0x1.9c315cebb2c7fp+0",
+    "V_j_op": "0x1.9c315cebb2c7fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b167ba9bcp-5",
+    "b_e_resolved": "0x1.93087af30726ap-4",
+    "background.rate_bg_window": "0x1.1ff69fe84f116p+14",
+    "background.rate_x": "0x1.6dd1b609fa266p+17",
+    "brightness_per_pulse": "0x1.01666971de359p-20",
+    "collected_flux_pulsed_s": "0x1.32d842a132c1dp+6",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5a093847f944fp+2",
+    "cw_rho_op": "0x1.b49af209a860dp-1",
+    "dT_J": "0x1.1cb5904000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.4d48029a77998p-1",
+    "eta_capture_resolved": "0x1.b3a2926deea20p-1",
+    "eta_inj": "0x1.fc3daad59667bp-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.ff54cfb76affcp-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.4da0b75e71ccbp+12",
+    "finite_pulse_k_XX": "0x1.4da0b75e71ccbp+13",
+    "finite_pulse_mean_counts": "0x1.a89ab0a343548p-15",
+    "finite_pulse_mean_counts_x": "0x1.a853378462d8bp-15",
+    "finite_pulse_r_ns": "0x1.5a093847f944fp+2",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": false,
+    "g2_cw0": "0x1.865c5d8450ca0p-1",
+    "g2_cw0_raw": "0x1.ff92654b06cb5p-1",
+    "g2_op": "0x1.ff8b8d5f77db7p-1",
+    "gamma_op": "0x1.800000b248bb6p+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.565e632741a9cp-6",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.42456a3ee09e8p+32",
+    "mu_resolved": "0x1.14d42d066103fp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.4235f669f9f1ap+32",
+    "photon_budget.dot_radiative": "0x1.ee7a9cd59ba0ep+19",
+    "photon_budget.matrix_nonradiative": "0x1.82b9b2b1da57fp+29",
+    "photon_budget.matrix_radiative": "0x1.57c1826533dc7p+26",
+    "photon_budget.supply_active": "0x1.77fba69eb0b8fp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.b49aee85915cap-1",
+    "rho_pulsed": "0x1.b49aee85915cap-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.800000b248bb6p+3",
+    "xx_in_window": "0x1.4d48029a77998p-2"
+   }
+  },
+  "edge-inp-gainp-design_T300_fp1_scale1": {
+   "curves": {
+    "T_hs": [
+     "0x1.2c00000000000p+8"
+    ],
+    "Tj": [
+     "0x1.2c0000472d641p+8"
+    ],
+    "eps": [
+     "0x1.4d48029a77998p-1"
+    ],
+    "g2": [
+     "0x1.f466205233f49p-1"
+    ],
+    "g2_cw0": [
+     "0x1.7c9fc46f3e96cp-1"
+    ],
+    "g2_cw0_raw": [
+     "0x1.f4b2d814e4b01p-1"
+    ],
+    "gamma": [
+     "0x1.800000b248bb6p+3"
+    ],
+    "rho2": [
+     "0x1.8ce7e644ca953p-1"
+    ]
+   },
+   "scalars": {
+    "F_eff": "nan",
+    "N_w": "0x1.cf3f27ace1ae5p-4",
+    "P_junction_W": "0x1.bd3cd00302dd7p-30",
+    "S_resolved": "0x1.2e9bf635d66dap-8",
+    "T_c": "nan",
+    "T_j_op": "0x1.2c0000472d641p+8",
+    "T_j_transport": "0x1.2c0000472d641p+8",
+    "V_applied": "0x1.9c315dc65681ep+0",
+    "V_bi": "0x1.0d5c44cb23cedp+1",
+    "V_j": "0x1.9c315cebb2c7fp+0",
+    "V_j_op": "0x1.9c315cebb2c7fp+0",
+    "aperture_compose": true,
+    "aperture_g2_penalty": "0x0.0p+0",
+    "aperture_lambda_op": "0x1.15f2b167ba9bcp-5",
+    "b_e_resolved": "0x1.0592ffb822073p-8",
+    "background.rate_bg_window": "0x1.1ff69fe84f116p+14",
+    "background.rate_x": "0x1.19d3a95e5452fp+22",
+    "brightness_per_pulse": "0x1.89692f04ed736p-16",
+    "collected_flux_pulsed_s": "0x1.d4fb788222c42p+10",
+    "cw_gamma_X_ns": "0x1.0000000000000p+0",
+    "cw_r_ns": "0x1.5a093847f944fp+2",
+    "cw_rho_op": "0x1.c2d58d7e2f97ep-1",
+    "dT_J": "0x1.1cb5904000000p-18",
+    "drive_source": "EL-transport",
+    "duty_resolved": "0x1.0624dd2f1a9fcp-7",
+    "edge_A_mode_um2": "0x1.0258a43f94fd8p-1",
+    "edge_Gamma_dot": "0x1.8d86c905ad4aap-8",
+    "edge_T_facet": "0x1.706cf56821576p-1",
+    "edge_beta": "0x1.e68f9ed0b1182p-6",
+    "edge_eta_NA": "0x1.a0956e7879cc5p-1",
+    "edge_eta_prop": "0x1.c3d6a24ed8222p-1",
+    "edge_eta_total": "0x1.36615f7d39d87p-6",
+    "edge_lambda_nm": "0x1.8100000000000p+9",
+    "edge_n_eff": "0x1.a027aa4e7b87ep+1",
+    "edge_n_g": "0x1.16e4cc72d124cp+2",
+    "emission_type": "edge",
+    "eps_op": "0x1.4d48029a77998p-1",
+    "eta_capture_resolved": "0x1.b3a2926deea20p-1",
+    "eta_inj": "0x1.fc3daad59667bp-1",
+    "finite_pulse_converged": true,
+    "finite_pulse_g2_dot": "0x1.f0008bcc82454p-1",
+    "finite_pulse_gamma_XX_ns": "0x1.0000000000000p+1",
+    "finite_pulse_gamma_X_ns": "0x1.0000000000000p+0",
+    "finite_pulse_gate_ns_used": "0x1.9000000000001p+3",
+    "finite_pulse_k_X": "0x1.af23b46458c16p+7",
+    "finite_pulse_k_XX": "0x1.af23b46458c16p+8",
+    "finite_pulse_mean_counts": "0x1.447bacb244a1ep-10",
+    "finite_pulse_mean_counts_x": "0x1.3f88662c12e38p-10",
+    "finite_pulse_r_ns": "0x1.5a093847f944fp+2",
+    "finite_pulse_tau_dark_ns": "0x1.8cccccccccccep+3",
+    "finite_pulse_tau_on_ns": "0x1.999999999999ap-4",
+    "flux_measurable": true,
+    "g2_cw0": "0x1.7c9fc46f3e96cp-1",
+    "g2_cw0_raw": "0x1.f4b2d814e4b01p-1",
+    "g2_op": "0x1.f466205233f49p-1",
+    "gamma_op": "0x1.800000b248bb6p+3",
+    "injection.area_um2": "0x1.015bf9217271ap-3",
+    "injection.f_qfl_bg": "0x1.565e632741a9cp-6",
+    "invalid_reasons": [],
+    "linewidth_source": "anchored",
+    "loading.r_dot": "0x1.42456a3ee09e8p+32",
+    "mu_resolved": "0x1.14d42d066103fp-1",
+    "photon_budget": "0x1.0000000000000p+0",
+    "photon_budget.dot_nonradiative": "0x1.40c8780590a31p+32",
+    "photon_budget.dot_radiative": "0x1.7cf2394ffb747p+24",
+    "photon_budget.matrix_nonradiative": "0x1.82b9b2b1da57fp+29",
+    "photon_budget.matrix_radiative": "0x1.57c1826533dc7p+26",
+    "photon_budget.supply_active": "0x1.77fba69eb0b8fp+32",
+    "provenance": {
+     "aperture": {
+      "note": "continuous Poisson competitor-bath composition",
+      "tag": "A"
+     },
+     "b_e_resolved": {
+      "note": "in-window background per collected X photon",
+      "tag": "E"
+     },
+     "b_res": {
+      "note": "residual background channel, applied once in the pulsed and CW rho -- value and anchor must come from the card's own provenance",
+      "tag": "E"
+     },
+     "cw": {
+      "note": "cw_g2 rate-equation model, transport-derived pump rate",
+      "tag": "A"
+     },
+     "drive": {
+      "note": "transport Diode injection result",
+      "tag": "E"
+     },
+     "emission": {
+      "note": "waveguide.edge_emission on the shared inline stack",
+      "tag": "E"
+     },
+     "filter_window": {
+      "note": "auto_w sets the collection window to the full linewidth Gamma(T_j) (F-series operating convention); auto_w_scale=1 scales it (1.0 = legacy)",
+      "tag": "A"
+     },
+     "finite_pulse_hierarchy": {
+      "note": "pulse_counting factorial-moment hierarchy, exact on the existing cw_g2 generator (Hanschke et al., npj Quantum Inf. 4, 43 (2018))",
+      "tag": "DR"
+     },
+     "finite_pulse_waveform": {
+      "note": "rectangular pump waveform; gate-restricted counting/rho at gate_ns=12.5; background afterglow past the pulse end is neglected (one-sided, optimistic) so rho_pulsed is an upper bound -- see DriveBlock.gate_ns",
+      "tag": "A"
+     },
+     "linewidth": {
+      "note": "anchored linewidth model",
+      "tag": "A"
+     },
+     "mu_resolved": {
+      "note": "transport dot loading",
+      "tag": "E"
+     },
+     "retention": {
+      "n_dot_cm2_used": "0x1.1e1a300000000p+28",
+      "note": "class-proxy Arrhenius fit [A]",
+      "tag": "E"
+     },
+     "tracking": {
+      "note": "track_material set but inert (cavity disabled, hold_window false)",
+      "tag": "A"
+     }
+    },
+    "rep_rate_hz": "0x1.312cfffffffffp+26",
+    "retention_params_used": {
+     "b0": "0x0.0p+0",
+     "beta": "0x0.0p+0"
+    },
+    "retention_source": "confinement",
+    "rho_op": "0x1.c2cb6ce926fcep-1",
+    "rho_pulsed": "0x1.c2cb6ce926fcep-1",
+    "runaway": false,
+    "t_x_op": "0x1.0000000000000p-1",
+    "tag_chain": "[A]",
+    "tau_pulse_ns": "0x1.999999999999ap-4",
+    "track_material": "matrix",
+    "track_material_effective": false,
+    "w_resolved": "0x1.800000b248bb6p+3",
+    "xx_in_window": "0x1.4d48029a77998p-2"
+   }
+  }
+ },
+ "legacy_commit": "6246fb94feb47309b9eb75d1d1c8763586f58da7",
+ "legacy_device_py_blob": "edf044ac604214d1982632b3e4bc7f916cfcb04f",
+ "note": "Legacy (pre-nitride-integration) bit-identical baseline: float.hex/array captures from the committed evaluator at LEGACY_COMMIT, for the InP cards (both retention density conventions, both loading regimes, 230/300 K) plus a default and a cavity-enabled legacy design. Never update this fixture from a modified device.py."
+}
