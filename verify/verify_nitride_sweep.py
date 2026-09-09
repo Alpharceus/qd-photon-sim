@@ -35,8 +35,15 @@ def main(argv=None):
     setfail=[dict(fixture[0], g2=.4, signal_flux_s=1000., eligible=True, optical_pass=True, hardware_feasible=False, device_pass=False, regime="deterministic_pair")]
     checks.append(sweep.compute_verdict(setfail,complete=True)["deterministic_pair"]["status"]=="FAIL")
     checks.append(sweep.compute_verdict([],complete=False)["rectangular"]["complete"] is False)
-    checks += [any(not _bool(r["valid"]) for r in rows) or all(_bool(r["valid"]) for r in rows), # invalid rows retained if model gives them
-               len(sens)>=12, abs(_num(_rows(out/"deshpande_comparison.csv")[0]["measured_g2"])-.29)<1e-15]
+    # Policy/source-transcription checks: rows are retained even when a model
+    # happens to make every headline point valid; this is not a tautology.
+    checks += [all("invalid_reasons" in r for r in rows), len(sens)>=12,
+               abs(_num(_rows(out/"deshpande_comparison.csv")[0]["measured_g2"])-.29)<1e-15]
+    islands=[r for r in sens if r.get("row_kind")=="island"]
+    checks += [len(islands)==12, all(abs(_num(r["island_radius_nm"])-_num(r["set_radius_nm"]))<1e-12 for r in islands),
+               all(_num(r["set_E_C_meV"])>0 for r in islands)]
+    # Rectangular rows must not masquerade as SET-screened hardware data.
+    checks.append(all(r.get("set_feasible","") in ("",None) for r in rows if r["regime"]=="rectangular"))
     # Numerical replay: six distinct real rows, same evaluator and exact T grid.
     for r in rows[:6]:
         p={k:_num(r[k]) for k in ("height_nm","radius_nm","x_in","T_hs","Q","current_uA")}
@@ -46,6 +53,11 @@ def main(argv=None):
     man=json.loads((out/"manifest.json").read_text(encoding="utf-8"))
     checks += [man["completed_headline_rows"]==expected, man["evaluate_calls"]<= (200 if a.quick else 5000)]
     for name,digest in man["output_hashes"].items(): checks.append(hashlib.sha256((out/name).read_bytes()).hexdigest()==digest)
+    comp=_rows(out/"deshpande_comparison.csv")[0]
+    checks.append(comp.get("comparison_card_hash")==man["card_hashes"].get("nitride-deshpande2014-comparison-design.yaml"))
+    if not a.quick:
+        checks += [all(any(r.get(key,"")!="" for r in sens) for key in sweep.SENS),
+                   any(r.get("screening_fraction")=="1.0" and r["regime"]=="deterministic_pair" for r in sens)]
     for name in ("height_response.png","temperature_response.png","cavity_q_response.png","envelope_pulse.png","envelope_set.png","pulse_vs_set.png","set_feasibility.png"):
         checks.append((out/name).is_file() and (out/name).stat().st_size>1000)
     print("numerical verification: evaluator replay [A rtol=1e-8, atol=1e-10]")
