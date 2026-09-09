@@ -1,0 +1,628 @@
+# Evidence ledger for the planar InGaN/GaN cavity design cards (piece 6,
+# nitride-cards-contract). Read by verify/verify_nitride_cards.py.
+#
+# Schema (docs/nitride_cavity_contract.md "Evidence status"): top-level
+# `anchors` is a MAPPING keyed by anchor id. Each entry:
+#   citation, doi_or_url, location, evidence_status, tag, platform,
+#   excitation, observable, value, unit, tolerance, transfer_notes
+# `evidence_status` in {full_text, abstract_only, figure_reading, estimate,
+# missing}; a missing numerical value is `null`. `tag` is the measurement's
+# own [V]/[DR]/[E]/[A] tag (the transfer of that measurement INTO a card
+# field, e.g. nanowire->planar or GaN->InGaN, carries its own, separate tag
+# on the card's provenance.sources entry -- never conflate the two: a
+# verified off-platform measurement transferred onto this planar design is
+# [E] or [A] in the card, never [V] there, even though the anchor itself is
+# tagged [V] here). `tolerance` always names what the number means: a
+# reported paper uncertainty, or (for a bare transcription/read with no
+# stated paper error bar) an explicit zero/read tolerance, never left
+# ambiguous. `doi_or_url` uses only identifiers actually printed in
+# ../_goal/nitride_digests.md (a DOI where the digest states one, else the
+# arXiv id/OSTI id/PMC id the digest gives) -- never a fabricated DOI.
+#
+# Source digest: ../_goal/nitride_digests.md (compiled 2026-09-09). No newly
+# available primary text for Deshpande 2014 was found beyond its abstract at
+# compilation time; the three deshpande2014-*-missing entries below record
+# that gap explicitly rather than inventing a number.
+
+anchors:
+
+  # ---------------------------------------------------------------- band parameters
+  bernardini1997-gan-polarization:
+    citation: "Bernardini, Fiorentini, Vanderbilt, Phys. Rev. B 56, R10024 (1997)"
+    doi_or_url: "arXiv:cond-mat/9705105"
+    location: "Table II"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_LDA
+    excitation: none
+    observable: spontaneous_polarization_P_sp
+    value: -0.029
+    unit: C/m2
+    tolerance: {value: 0.0, meaning: "point DFT value as tabulated; no reported experimental uncertainty"}
+    transfer_notes: >
+      Background polarization constant consumed internally by
+      fsim_core/nitride_materials.py and fsim_core/nitride_levels.py's field
+      solve (out of scope for this piece, already cited there per
+      verify_nitride_device.py's own citation check); not a card-set
+      numeric field. Supports the internal polarization-field physics
+      behind nitride.dot.strain_fraction/screening_fraction/
+      strain_c_fraction (all card [A]/design choices, see card provenance).
+
+  rinke2008-gan-electron-mass:
+    citation: "Rinke, Winkelnkemper, Qteish, Bimberg, Neugebauer, Scheffler, Phys. Rev. B 77, 075202 (2008)"
+    doi_or_url: "arXiv:0801.0421"
+    location: "Table V"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_G0W0
+    excitation: none
+    observable: electron_effective_mass_perp
+    value: 0.186
+    unit: m0
+    tolerance: {value: 0.0, meaning: "point G0W0-recommended value; no reported uncertainty"}
+    transfer_notes: >
+      Background band-structure constant consumed internally by
+      nitride_materials.py/nitride_levels.py (out of scope for this piece);
+      not a card-set field.
+
+  wu2003-ingan-bowing:
+    citation: "Wu et al., 'Universal bandgap bowing in group III nitride alloys', LBNL/OSTI 835986 (~2003)"
+    doi_or_url: "OSTI 835986"
+    location: "p.1-3"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_bulk
+    excitation: none
+    observable: bandgap_bowing_parameter_b
+    value: 1.43
+    unit: eV
+    tolerance: {value: 0.03, meaning: "the same source also quotes a rounded 1.4 eV full-range fit; +/-0.03 eV spans both reported figures"}
+    transfer_notes: >
+      Background InGaN alloy bowing constant consumed internally by
+      nitride_materials.ingaN() (out of scope for this piece); not a
+      card-set field. Backs the In-content interpolation used at
+      nitride.dot.x_in=0.25 (headline cards) and 0.40 (comparison card),
+      both card [A]/[V] design choices in their own right.
+
+  tsai2020-inn-gan-vbo:
+    citation: "Tsai & Bayram, ACS Omega 5, 3917 (2020), PMC7057329"
+    doi_or_url: "PMC7057329"
+    location: "Table 2, text p.3"
+    evidence_status: full_text
+    tag: V
+    platform: InN_GaN_heterojunction_HSE06
+    excitation: none
+    observable: valence_band_offset_InN_above_GaN
+    value: 1.15
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point HSE06 hybrid-DFT value; no reported uncertainty"}
+    transfer_notes: >
+      Directly consumed, unmodified, as nitride.dot.vbo_InN_GaN_eV=1.15 on
+      all three cards [V]; a further alloy-interpolation transfer to
+      In(0.25/0.40)Ga(1-x)N inside nitride_levels.py (out of scope for this
+      piece) is [A], beyond this ledger entry.
+
+  # ---------------------------------------------------------------- Deshpande 2013 (nanowire, 10 K)
+  deshpande2013-dot-thickness:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p.2, Fig. 1d"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical_CW
+    observable: dot_thickness
+    value: 2.0
+    unit: nm
+    tolerance: {value: 0.0, meaning: "STEM+EDX In-peak FWHM read; no reported error bar"}
+    transfer_notes: >
+      Nanowire dot-in-wire geometry. Not copied onto the headline planar
+      cards' nitride.dot.height_nm=3.0 nm (an independently stated [A]
+      design value). Motivates the Deshpande-2014-comparison card's
+      height_nm=2.0 nm placeholder as an explicit [A] transfer from THIS
+      2013 measurement (the comparison paper's own 2014 geometry is
+      unpublished in the retrieved abstract -- see
+      deshpande2014-geometry-missing), never presented as a verified 2014
+      value.
+
+  deshpande2013-dot-diameter:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p.2, Fig. 1c"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical_CW
+    observable: dot_diameter
+    value: 25.0
+    unit: nm
+    tolerance: {value: 5.0, meaning: "reported +/- 5 nm spread"}
+    transfer_notes: >
+      Motivates the Deshpande-2014-comparison card's radius_nm=12.5 nm
+      placeholder (= 25/2, this 2013 diameter) as an explicit [A] transfer,
+      not a verified 2014 value (see deshpande2013-dot-thickness).
+
+  deshpande2013-x-in:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p.2 (single-wire EDX)"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical_CW
+    observable: In_content_x_in
+    value: 0.25
+    unit: dimensionless
+    tolerance: {value: 0.0, meaning: "single-wire EDX point value; the paper's own ensemble EDX reads 0.23, not independently re-tabulated here"}
+    transfer_notes: >
+      Directly reused, unmodified, as the headline cards' nitride.dot.x_in
+      =0.25 [V]; the platform transfer (nanowire dot-in-wire growth to a
+      planar reservoir design) is [E], not the 0.25 composition figure
+      itself.
+
+  deshpande2013-varshni-alpha:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "Fig. 2b caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: cathodoluminescence
+    observable: varshni_alpha
+    value: 8.3e-4
+    unit: eV/K
+    tolerance: {value: 0.4e-4, meaning: "reported +/- 0.4e-4 eV/K"}
+    transfer_notes: >
+      Ensemble Varshni fit; informational context only, not consumed by any
+      card field (nitride_levels.py uses its own internal band-parameter
+      Varshni set, out of scope for this piece).
+
+  deshpande2013-varshni-beta:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "Fig. 2b caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: cathodoluminescence
+    observable: varshni_beta
+    value: 825
+    unit: K
+    tolerance: {value: 16.7, meaning: "reported +/- 16.7 K"}
+    transfer_notes: "Same context-only status as deshpande2013-varshni-alpha."
+
+  deshpande2013-xx-splitting:
+    citation: "Deshpande, Heo, Das, Bhattacharya, Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p.2-3, Fig. 3c"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical_CW
+    observable: XX_X_energy_splitting_signed
+    value: -10.0
+    unit: meV
+    tolerance: {value: 0.0, meaning: "single-dot EL line-position read (X 436.56 nm, XX 435.03 nm); no reported error bar; sign is explicit (XX above X = antibinding)"}
+    transfer_notes: >
+      Directly reused, unmodified in sign and magnitude, as dot.delta_xx=
+      -10.0 meV [V nanowire, E planar transfer] on both headline cards:
+      measured in a 10 K nanowire dot-in-wire device; the transfer to a 300
+      K planar design of similar In content is [E] (platform and
+      temperature), not the -10 meV number itself. Also cited (unmodified)
+      by fsim_core/nitride_levels.py's own module constant
+      DESHPANDE2013_XX_ANTIBIND_MEV (out of scope for this piece).
+
+  # ---------------------------------------------------------------- Deshpande 2014 (nanowire, 300 K, abstract only)
+  deshpande2014-x-in:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: In_content_x_in
+    value: 0.40
+    unit: dimensionless
+    tolerance: {value: 0.0, meaning: "abstract point value, no reported uncertainty"}
+    transfer_notes: >
+      Directly reused as the comparison card's nitride.dot.x_in=0.40 [V];
+      the nanowire->planar platform transfer is [E], not the composition
+      figure itself.
+
+  deshpande2014-temperature:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: measurement_temperature
+    value: 300.0
+    unit: K
+    tolerance: {value: 0.0, meaning: "abstract states room temperature (300 K) explicitly"}
+    transfer_notes: >
+      Directly reused as the comparison card's thermal.T_hs=300 K target
+      (the junction temperature T_j is separately self-consistently solved
+      from the drive power, not pinned to 300 K).
+
+  deshpande2014-g2:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: g2_zero_delay
+    value: 0.29
+    unit: "g2(0)"
+    tolerance: {value: 0.0, meaning: "abstract point value; raw-vs-background-corrected status is NOT stated in the abstract -- see transfer_notes"}
+    transfer_notes: >
+      Comparison target only (docs/nitride_cavity_contract.md 'Deshpande
+      comparison'); NOT a gating acceptance value for the headline design
+      cards. The comparison card's own evaluated g2 is a model output, not
+      fitted to this number, and this anchor's raw/corrected ambiguity is
+      never resolved by assumption.
+
+  deshpande2014-lifetime:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: recombination_lifetime
+    value: 1.3
+    unit: ns
+    tolerance: {value: 0.3, meaning: "reported +/- 0.3 ns"}
+    transfer_notes: >
+      Motivates, but is NOT copied as, the headline cards' own
+      nitride.tau_rad0_ns=1.0 ns [A] (deliberately a field-free assumption
+      distinct from this 1.3 ns measured RT value -- see card provenance).
+      Already cited unmodified as fsim_core/nitride_levels.py's module
+      constant TAU_RAD0_DEFAULT_NS=1.3 ns and in
+      fsim_core/pulse_counting.py's docstring (both out of scope for this
+      piece, per verify_nitride_device.py's own citation check).
+
+  deshpande2014-max-rep-rate:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: max_excitation_repetition_rate
+    value: 2.0e+8
+    unit: Hz
+    tolerance: {value: 0.0, meaning: "abstract point value, no reported uncertainty; this is the reported MAXIMUM supported excitation rate, not necessarily the rate at which g2=0.29 was measured -- see deshpande2014-g2-measurement-rate-missing"}
+    transfer_notes: >
+      Directly reused as the comparison card's drive.rep_rate_hz=2.0e8 Hz.
+      Verifies only the maximum rate stated in the abstract.
+
+  deshpande2014-geometry-missing:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract (not stated)"
+    evidence_status: missing
+    tag: A
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: dot_height_and_radius
+    value: null
+    unit: nm
+    tolerance: {value: null, meaning: "not applicable: value is unmeasured/unpublished in the retrieved abstract"}
+    transfer_notes: >
+      Dot size for the 2014 device is not given in the abstract; no primary
+      full text was retrieved (2026-09-09 digest compilation; AIP
+      paywalled). The comparison card uses explicit [A] placeholders
+      height_nm=2.0/radius_nm=12.5, motivated only by the 2013 dot-in-wire
+      family (deshpande2013-dot-thickness/-dot-diameter), never presented
+      as a 2014 measurement.
+
+  deshpande2014-waveform-missing:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract (not stated)"
+    evidence_status: missing
+    tag: A
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: drive_pulse_shape_and_amplitude
+    value: null
+    unit: "n/a"
+    tolerance: {value: null, meaning: "not applicable: value is unmeasured/unpublished in the retrieved abstract"}
+    transfer_notes: >
+      Drive waveform/pulse shape/amplitude of the 2014 device is not given
+      in the abstract. The comparison card uses explicit [A] placeholders
+      (diode.tau_pulse_ns=0.1, I_uA=0.02 -- the same design values as the
+      headline pulse card), never presented as a transcribed 2014 drive
+      condition.
+
+  deshpande2014-count-rate-missing:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract (not stated)"
+    evidence_status: missing
+    tag: A
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: measured_count_rate
+    value: null
+    unit: "s^-1"
+    tolerance: {value: null, meaning: "not applicable: value is unmeasured/unpublished in the retrieved abstract"}
+    transfer_notes: >
+      Collected/detected count rate of the 2014 device is not given in the
+      abstract. The comparison card's own evaluated collected_flux_pulsed_s
+      is a MODEL output at an assumed-geometry transfer; it is never
+      presented as this missing published number, and no measured count
+      rate is invented (0 is not a substitute for "unavailable").
+
+  deshpande2014-g2-measurement-rate-missing:
+    citation: "Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract (not stated)"
+    evidence_status: missing
+    tag: A
+    platform: InGaN_nanowire_dot_in_wire
+    excitation: electrical
+    observable: g2_measurement_repetition_rate
+    value: null
+    unit: Hz
+    tolerance: {value: null, meaning: "not applicable: value is unmeasured/unpublished in the retrieved abstract"}
+    transfer_notes: >
+      The abstract states only the maximum supported excitation repetition
+      rate (200 MHz, deshpande2014-max-rep-rate); it does not state the
+      repetition rate at which the g2(0)=0.29 measurement itself was taken.
+      The comparison card evaluates at 200 MHz (the verified maximum),
+      explicitly labelled an assumed-geometry transfer at the reported
+      maximum rate, never presented as a reproduction of the actual g2
+      measurement condition.
+
+  # ---------------------------------------------------------------- InGaN/GaN cavity Q (Taylor 2010)
+  taylor2010-cavity-q:
+    citation: "Taylor, Jarjour, Collins, Holmes, Oliver, Kappers, Humphreys, Nanoscale Res. Lett. 5, 608 (2010)"
+    doi_or_url: "10.1007/s11671-009-9514-4"
+    location: "Micro-reflectance section, Fig. 2"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QD_planar_microcavity
+    excitation: optical_two_photon_814nm
+    observable: cavity_Q
+    value: 167
+    unit: dimensionless
+    tolerance: {value: 0.0, meaning: "single best-spot Lorentzian-fit point value; the same paper also reports a 3-8-period-top DBR range of 40-180, not independently re-tabulated here"}
+    transfer_notes: >
+      The published measured InGaN-cavity Q ceiling. The headline cards use
+      nitride.cavity.Q=2000 [A], well above this measured ceiling -- see
+      card provenance and docs/nitride_cavity_contract.md 'Known
+      limitations'. Reused unmodified (device transfer only, no numeric
+      change) as the piece-7 sensitivity reference nitride.cavity.Q=167,
+      purcell_enabled=false (nitride-sweep-results.md).
+
+  taylor2010-no-purcell-observed:
+    citation: "Taylor, Jarjour, Collins, Holmes, Oliver, Kappers, Humphreys, Nanoscale Res. Lett. 5, 608 (2010)"
+    doi_or_url: "10.1007/s11671-009-9514-4"
+    location: "Micro-PL section"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QD_planar_microcavity
+    excitation: optical_two_photon_814nm
+    observable: "observed_purcell_enhancement (0=no enhancement resolved, 1=observed)"
+    value: 0
+    unit: boolean
+    tolerance: {value: 0.0, meaning: "qualitative paper finding (single-exponential lifetime at Q~50-170), not a fitted number"}
+    transfer_notes: >
+      "No Purcell effect observed" at the paper's own Q~50-170. The
+      headline cards set nitride.cavity.purcell_enabled=true [A] as an
+      explicit assumption this paper does not support at their much lower
+      measured Q -- flagged in docs/nitride_cavity_contract.md 'Known
+      limitations'.
+
+  # ---------------------------------------------------------------- Zhang 2016 (planar electrical, optical-only linewidth not verified)
+  zhang2016-qw-thickness:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "p.2, Fig. 2 caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: active_layer_thickness
+    value: 3.0
+    unit: nm
+    tolerance: {value: 0.0, meaning: "stated growth thickness, no reported uncertainty"}
+    transfer_notes: >
+      Zhang 2016's own In0.15Ga0.85N QW thickness; NOT copied onto the
+      headline cards' nitride.dot.height_nm=3.0 nm (a coincidentally equal
+      but independently stated design value) or drive.diode.
+      wl_thickness_nm=0.5 nm (which instead matches nitride.dot.
+      wl_thickness_nm, per the 'x_in/wl_thickness consistent with
+      nitride.dot reservoir' instruction). Included for context only.
+
+  zhang2016-x-in:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "p.2, Fig. 2 caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: In_content_x_in
+    value: 0.15
+    unit: dimensionless
+    tolerance: {value: 0.0, meaning: "stated growth composition"}
+    transfer_notes: >
+      Zhang 2016's own In content; distinct from the headline cards'
+      nitride.dot.x_in=0.25 (transferred from Deshpande 2013, see
+      deshpande2013-x-in) -- context only, not itself transferred onto any
+      card composition field.
+
+  zhang2016-doping-na:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "p.2, Fig. 2 caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: acceptor_doping_p_GaN
+    value: 1.0e+17
+    unit: "cm^-3"
+    tolerance: {value: 0.0, meaning: "stated growth target, no reported measured-doping uncertainty"}
+    transfer_notes: >
+      Directly reused, unmodified, as drive.diode.N_A=1.0e17 cm^-3 on both
+      headline cards [V Zhang 2016 source, E planar transfer]: Zhang 2016's
+      own device is itself planar InGaN/GaN (unlike Deshpande's nanowire),
+      so the platform transfer is minor; the transfer from their QW active
+      region to this design's dot-in-reservoir transport model is the [E]
+      step.
+
+  zhang2016-doping-nd:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "p.2, Fig. 2 caption"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: donor_doping_n_GaN
+    value: 1.0e+18
+    unit: "cm^-3"
+    tolerance: {value: 0.0, meaning: "stated growth target"}
+    transfer_notes: >
+      Directly reused, unmodified, as drive.diode.N_D=1.0e18 cm^-3 on both
+      headline cards [V Zhang 2016 source, E planar transfer]; same
+      transfer basis as zhang2016-doping-na.
+
+  zhang2016-g2-raw:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "Fig. 3d"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: g2_zero_delay_raw
+    value: 0.42
+    unit: "g2(0)"
+    tolerance: {value: 0.0, meaning: "reported DC-EL raw dip value, no stated error bar"}
+    transfer_notes: >
+      Context/background evidence only (planar InGaN/GaN electrical
+      single-photon precedent); not a numeric input to any headline card
+      field. Distinct from zhang2016-g2-corrected -- raw and dark-count-
+      corrected values must never be conflated.
+
+  zhang2016-g2-corrected:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "Fig. 3d"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QW_planar_nanopillar_diode
+    excitation: electrical_DC
+    observable: g2_zero_delay_corrected
+    value: 0.38
+    unit: "g2(0)"
+    tolerance: {value: 0.0, meaning: "reported dark-count-corrected value, no stated error bar"}
+    transfer_notes: >
+      Context/background evidence only; distinct from zhang2016-g2-raw --
+      raw and corrected must never be conflated.
+
+  # ---------------------------------------------------------------- Seguin 2006 (GaN LO phonon)
+  seguin2006-gan-lo-phonon:
+    citation: "Seguin, Rodt, Strittmatter, Reissmann, Bartel, Hoffmann, Bimberg, Hahn, Gerthsen, arXiv:cond-mat/0610425 (2006), 'Multi-excitonic complexes in single InGaN quantum dots'"
+    doi_or_url: "arXiv:cond-mat/0610425"
+    location: "main text (LO phonon value)"
+    evidence_status: full_text
+    tag: V
+    platform: InGaN_QD_planar_MOCVD
+    excitation: cathodoluminescence
+    observable: LO_phonon_energy_GaN
+    value: 91.5
+    unit: meV
+    tolerance: {value: 0.0, meaning: "GaN bulk LO-phonon literature value as quoted, no reported uncertainty"}
+    transfer_notes: >
+      Directly reused, unmodified, as dot.E_LO=91.5 meV [V GaN source, E
+      alloy transfer] on all three cards: this is the pure-GaN LO phonon;
+      using it for the In-alloyed dot's own phonon coupling is an [E] alloy
+      transfer, not a measurement of the InGaN dot itself.
+
+  # ---------------------------------------------------------------- external-context anchors (not transferred onto any card field)
+  kako2006-max-triggered-temperature:
+    citation: "Kako, Santori, Hoshino, Goetzinger, Yamamoto, Arakawa, Nature Mater. 5, 887 (2006)"
+    doi_or_url: "10.1038/nmat1763"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: GaN_QD_in_AlN_epitaxial
+    excitation: optical_pulsed_triggered
+    observable: max_triggered_single_photon_temperature
+    value: 200
+    unit: K
+    tolerance: {value: 0.0, meaning: "abstract point value ('operating at 200 K'), no reported uncertainty"}
+    transfer_notes: >
+      External-context anchor only (docs/nitride_cavity_contract.md
+      'Evidence status'): a different material system (GaN/AlN, not
+      InGaN/GaN) and pumping scheme (optical, not electrical) from the
+      headline InGaN/GaN electrical cards; not transferred onto any card
+      field.
+
+  holmes2014-g2-300k:
+    citation: "Holmes, Choi, Kako, Arita, Arakawa, Nano Lett. 14, 982 (2014)"
+    doi_or_url: "10.1021/nl404400d"
+    location: "abstract"
+    evidence_status: abstract_only
+    tag: V
+    platform: GaN_QD_in_AlGaN_nanowire
+    excitation: optical_pulsed_triggered
+    observable: g2_zero_delay
+    value: 0.13
+    unit: "g2(0)"
+    tolerance: {value: 0.0, meaning: "abstract point value, no reported uncertainty"}
+    transfer_notes: >
+      External-context anchor only: GaN/AlGaN nanowire dot under optical
+      triggered excitation, not the headline InGaN/GaN planar electrical
+      platform; neither their material nor their pumping scheme is
+      transferred onto any card field.
+
+  tamariz2020-g2-300k:
+    citation: "Tamariz, Callsen, Stachurski, Shojiki, Butte, Grandjean, ACS Photonics 7, 1515 (2020)"
+    doi_or_url: "arXiv:2001.09805"
+    location: "abstract, p.6"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_QD_on_Si_AlN_cap
+    excitation: optical_CW_266_244nm
+    observable: g2_zero_delay
+    value: 0.17
+    unit: "g2(0)"
+    tolerance: {value: 0.08, meaning: "reported +/- 0.08 for the best dot; ensemble average over several dots is 0.23, not independently re-tabulated here"}
+    transfer_notes: >
+      External-context anchor only (docs/nitride_cavity_contract.md
+      'Evidence status'): GaN/AlN dot under CW optical pumping, not the
+      headline InGaN/GaN planar electrical platform; neither their material
+      nor their optical pumping is transferred onto any card field.
+
+  tamariz2020-linewidth-300k:
+    citation: "Tamariz, Callsen, Stachurski, Shojiki, Butte, Grandjean, ACS Photonics 7, 1515 (2020)"
+    doi_or_url: "arXiv:2001.09805"
+    location: "Fig. 3a"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_QD_on_Si_AlN_cap
+    excitation: optical_CW_266_244nm
+    observable: emission_linewidth_300K
+    value: 55
+    unit: meV
+    tolerance: {value: 7, meaning: "reported +/- 7 meV, average over 112 lines"}
+    transfer_notes: >
+      External-context anchor (different material system, GaN/AlN, and
+      optical pumping): informs the plausibility range for dot.gamma300 but
+      is NOT the source of the headline cards' own dot.gamma300=35 meV [A]
+      value, which is not fitted to this or any single reported number --
+      see card provenance. Do not claim the assumed gamma300 model was fit
+      to this or to Wang et al.'s 220 K InGaN linewidth data.
