@@ -247,23 +247,73 @@ def check_wiring():
 
 
 def check_signed_binding():
-    """bullet 64: forward bias reduces the field vs. the unbiased dot; the
-    resolved E_X_eV is not the T_track anchor's own energy (the field is
-    actually threading through, not silently ignored)."""
+    """Opus fix-round required bullet 1: the bias field passed to
+    nitride_levels must be the diode's OWN depletion(vj, Tj).F_kVcm (never a
+    lumped -vj/d_i estimate), pinned exactly at the fixture point, and it
+    must decrease with forward bias. Also: the resolved E_X_eV is not the
+    T_track anchor's own energy (the field is actually threading through,
+    not silently ignored)."""
     d = design("rectangular"); s = evaluate(d, [300.])["scalars"]
     unbiased = nitride_levels.levels(
         nitride_levels.NitrideDotSystem(**d.nitride["dot"]), s["T_j"])
     ok("field_kVcm != unbiased polarization field (bias resolved and applied)",
       abs(s["field_kVcm"] - unbiased.field_kVcm) > 1e-6)
-    # bullet 64 explicitly forbids a magnitude ("do not blindly subtract
-    # |field|") convention: forward bias adds a FIXED, -c-directed term on
-    # top of whatever the unbiased intrinsic field already is -- so check
-    # the signed delta, not |field| before/after (which can legitimately
-    # grow more negative when the intrinsic field is already -c-directed,
-    # as it is at this fixture's near-fully-screened screening_fraction).
-    ok("forward bias adds a -c-directed (negative) field term (bullet 64 sign convention)",
-      s["field_kVcm"] - unbiased.field_kVcm < 0)
     ok("V_j is forward (positive) at a forward-driven current", s["V_j"] > 0)
+
+    # Independent diode, built from the SAME card fields evaluate() used.
+    diode = nitride_transport.planar_pin(**{k: v for k, v in d.drive.diode.items()
+                                            if k not in ("preset", "tau_pulse_ns")})
+    _, vj = diode.v_of_i(d.drive.I_uA * 1e-6, s["T_j"])
+    dep = diode.depletion(vj, s["T_j"])
+    ok("independently resolved V_j matches evaluate()'s", abs(vj - s["V_j"]) < 1e-9)
+    ok("field_kVcm at the fixture point == unbiased polarization field + "
+      "diode.depletion(vj, Tj).F_kVcm (pinned to the diode's own value, bullet 1)",
+      abs(s["field_kVcm"] - (unbiased.field_kVcm + dep.F_kVcm)) < 1e-6)
+
+    # Forward bias reduces the depletion field (V_bi - V_j shrinking): a
+    # higher supplied current resolves a higher V_j, so depletion()'s own
+    # F_kVcm must shrink -- independent of nitride_levels, screening, or
+    # this design's own dot geometry (Opus finding 1: the old -vj/d_i
+    # estimate grew the WRONG way with forward bias).
+    _, vj_hi = diode.v_of_i(d.drive.I_uA * 10 * 1e-6, s["T_j"])
+    dep_hi = diode.depletion(vj_hi, s["T_j"])
+    ok("V_j increases with forward current", vj_hi > vj)
+    ok("diode.depletion().F_kVcm decreases with forward bias (bullet 1 sign convention)",
+      dep_hi.F_kVcm < dep.F_kVcm)
+
+
+def check_cavity_tracking_anchor():
+    """Opus fix-round required bullet 2: the cavity tracking anchor must be
+    evaluated at the SAME bias state (same supplied current) as the
+    operating point, so a card tracked at T_track shows |detuning| < ~1 meV
+    at T_j == T_track (this fixture's own T_hs == nitride.cavity.T_track ==
+    300 K, and self-heating at duty=0.008 leaves T_j within a few K of
+    that)."""
+    d = design("rectangular"); s = evaluate(d, [300.])["scalars"]
+    ok("T_j lands within a few K of T_track for the on-resonance check",
+      abs(s["T_j"] - d.nitride["cavity"]["T_track"]) < 5.0)
+    ok("|detuning_meV| < ~1 meV when T_j is close to T_track (bullet 2)",
+      abs(s["detuning_meV"]) < 1.0)
+
+
+def check_invalid_row_reasons():
+    """Opus fix-round required bullet 3: an invalid row carries NaN for
+    every physics scalar not evaluated at the operating point (never a
+    plausible-looking placeholder from some other state), plus one specific
+    reason string -- never the literal ['invalid row'], never a duplicate."""
+    d = design("rectangular"); d.drive.I_uA = 1.0e7  # forces thermal runaway
+    s = evaluate(d, [300.])["scalars"]
+    ok("forced-runaway row is invalid", s["valid"] is False)
+    ok("invalid_reasons is non-empty and not the generic ['invalid row'] placeholder",
+      len(s["invalid_reasons"]) > 0 and list(s["invalid_reasons"]) != ["invalid row"])
+    ok("invalid_reasons carries no duplicate entries",
+      len(s["invalid_reasons"]) == len(set(s["invalid_reasons"])))
+    ok("invalid row: E_X_eV is NaN (never a plausible unbiased placeholder)",
+      not math.isfinite(s["E_X_eV"]))
+    ok("invalid row: field_kVcm is NaN", not math.isfinite(s["field_kVcm"]))
+    ok("invalid row: overlap_sq is NaN", not math.isfinite(s["overlap_sq"]))
+    ok("invalid row: electron_bound/hole_bound are False, not a stale bound placeholder",
+      s["electron_bound"] is False and s["hole_bound"] is False)
 
 
 def check_both_loading_regimes():
@@ -340,6 +390,21 @@ def check_malformed_opt_ins():
     ok("rejects bad platform value", raises(lambda d: setattr(d, "platform", "bogus")))
     ok("rejects legacy-platform deterministic_pair",
       raises(lambda d: (setattr(d, "platform", "legacy"), setattr(d.drive, "cycle_loading", "deterministic_pair"))))
+
+    # Opus fix-round required bullet: malformed nitride inputs must raise
+    # this module's ValueError contract, not a bare TypeError.
+    ok("rejects unknown drive.diode key",
+      raises(lambda d: d.drive.diode.__setitem__("bogus_diode_key", 1.0)))
+    ok("rejects a non-numeric nitride.dot field (YAML 1.1 unsigned-exponent string)",
+      raises(lambda d: d.nitride["dot"].__setitem__("radius_nm", "1e10")))
+    ok("rejects drive.eta_load outside [0, 1]",
+      raises(lambda d: setattr(d.drive, "eta_load", 1.5)))
+    ok("rejects drive.cw_pump_ratio override on deterministic_pair loading",
+      raises(lambda d: (setattr(d, "drive", d.drive),
+                        setattr(d.drive, "cycle_loading", "deterministic_pair"),
+                        d.drive.set_params.update({"radius_nm": 20., "eps_r": 13.,
+                                                    "R_T_ohm": 1e6, "ec_margin": 10.}),
+                        setattr(d.drive, "cw_pump_ratio", 2.0))))
 
     def set_missing():
         dd = set_design(); dd.drive.set_params = {}
@@ -424,11 +489,14 @@ def check_analytic_limits_and_citations():
 
     # Recompute the bare rates and the cavity response DIRECTLY from piece 2
     # / piece 4, at the SAME resolved T_j/field, and require device.py to
-    # have forwarded them unmodified (not re-derived its own copy).
+    # have forwarded them unmodified (not re-derived its own copy). Field:
+    # the diode's own depletion(vj, Tj).F_kVcm (bullet 1), not a re-derived
+    # -vj/d_i estimate.
+    diode = nitride_transport.planar_pin(**{k: v for k, v in d.drive.diode.items()
+                                            if k not in ("preset", "tau_pulse_ns")})
+    dep = diode.depletion(s["V_j"], s["T_j"])
     system = nitride_levels.NitrideDotSystem(
-        **{**d.nitride["dot"], "external_field_kVcm": -s["V_j"] / (
-            nitride_transport.planar_pin(**{k: v for k, v in d.drive.diode.items()
-                                            if k not in ("preset", "tau_pulse_ns")}).d_i_nm * 1e-4)})
+        **{**d.nitride["dot"], "external_field_kVcm": dep.F_kVcm})
     lv = nitride_levels.levels(system, s["T_j"])
     rr = nitride_levels.rates(lv, s["T_j"], tau_rad0_ns=d.nitride["tau_rad0_ns"],
                               n_dot_cm2=d.drive.n_dot_cm2, tau_cap_ps=d.ret.tau_cap_ps,
@@ -529,6 +597,8 @@ def main():
     check_legacy_regression()
     check_wiring()
     check_signed_binding()
+    check_cavity_tracking_anchor()
+    check_invalid_row_reasons()
     check_both_loading_regimes()
     check_yaml_round_trip()
     check_malformed_opt_ins()

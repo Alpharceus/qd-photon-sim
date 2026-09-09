@@ -864,9 +864,23 @@ def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV
 def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     """Opt-in planar InGaN/GaN cycle evaluator.
 
-    The junction field is a lumped intrinsic-region estimate, signed opposite
-    +c for a positive p-i-n forward bias [A].  It is intentionally separate
-    from the legacy cubic-material transport path.
+    Bias field [Opus fix-round, 2026-09-09]: the field passed to
+    nitride_levels as ``external_field_kVcm`` is the diode's OWN
+    depletion(vj, Tj).F_kVcm -- the physical p-i-n depletion field, which
+    shrinks toward 0 as V_j -> V_bi (forward bias reduces the depletion
+    field; never a lumped -vj/d_i estimate, which ignores V_bi entirely and
+    grows in the wrong direction with forward bias). Sign convention: this
+    diode field is added DIRECTLY (same sign, no extra negation) to
+    nitride_levels' own intrinsic polarization field, which follows the
+    +c-positive convention documented in nitride_materials.py's module
+    docstring (fsim_core/nitride_materials.py `polarization_field`). Whether
+    that addition reinforces or partially cancels the intrinsic QCSE field
+    depends on the (unmodeled) relative orientation of the p-i-n stack's
+    growth axis vs. the dot's own polarization axis -- this direct-addition
+    convention is the documented [A] lumped choice; the rejected
+    alternative (always negating depletion().F_kVcm to force screening) is
+    recorded under this spec's fix-round decisions. It is intentionally
+    separate from the legacy cubic-material transport path.
     """
     n = dict(d.nitride)
     allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns"}
@@ -891,8 +905,27 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     dot_kw = dict(n.get("dot", {})); cav_kw = dict(n.get("cavity", {}))
     required_dot = {"height_nm", "radius_nm", "x_in"}
     if not required_dot <= set(dot_kw): raise ValueError("nitride.dot requires height_nm, radius_nm, x_in")
-    system0 = nitride_levels.NitrideDotSystem(**dot_kw)
-    cav = nitride_cavity.NitrideCavityParams(**cav_kw)
+    # PyYAML's YAML 1.1 float resolver does not recognize an unsigned
+    # exponent (e.g. "3.0e8" vs "3.0e+8") as a float, so a card written that
+    # way reads a dot_kw value back as a str. NitrideDotSystem itself has no
+    # __post_init__ validation (nitride_levels._validate only runs later, at
+    # evaluation time), so an unvalidated str would otherwise reach
+    # math.isfinite() deep inside nitride_levels.levels() and raise
+    # TypeError instead of this module's ValueError contract (Opus fix-round
+    # finding: "malformed nitride inputs escape the ValueError card-schema
+    # contract"). Reject it here, at construction, with the offending key
+    # named.
+    for _k, _v in dot_kw.items():
+        if isinstance(_v, bool) or not isinstance(_v, (int, float)) or not np.isfinite(_v):
+            raise ValueError(f"invalid nitride.dot.{_k}: must be a finite number (got {_v!r})")
+    try:
+        system0 = nitride_levels.NitrideDotSystem(**dot_kw)
+    except TypeError as exc:
+        raise ValueError("invalid nitride.dot field(s): " + str(exc)) from exc
+    try:
+        cav = nitride_cavity.NitrideCavityParams(**cav_kw)
+    except TypeError as exc:
+        raise ValueError("invalid nitride.cavity field(s): " + str(exc)) from exc
     tau_on = float(d.drive.diode.get("tau_pulse_ns", 0.0)); rep = float(d.drive.rep_rate_hz)
     if tau_on <= 0 or rep <= 0: raise ValueError("nitride requires positive explicit pulse width and rep_rate_hz")
     period = 1e9 / rep
@@ -912,34 +945,76 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     tau_cap = d.ret.tau_cap_ps
     if tau_cap is None or tau_cap <= 0: raise ValueError("nitride requires explicit positive capture time")
     for key in ("gamma0", "a_ac", "E_LO", "gamma300", "r_xx", "delta_xx"):
-        if not np.isfinite(getattr(d.dot, key)): raise ValueError("invalid dot." + key)
+        val = getattr(d.dot, key)
+        try:
+            finite = np.isfinite(val)
+        except TypeError as exc:
+            raise ValueError(f"invalid dot.{key}: not numeric ({val!r})") from exc
+        if not finite: raise ValueError("invalid dot." + key)
     eta_bg = float(n.get("eta_background", .1)); bg_tau = float(n.get("background_tau_ns", 0.0))
     if not 0 <= eta_bg <= 1 or bg_tau < 0: raise ValueError("invalid nitride background settings")
+    if not 0 <= d.drive.eta_load <= 1: raise ValueError("drive.eta_load must be in [0, 1]")
+    # cw_pump_ratio (X->XX secondary pump) is forwarded into pulse_counting.
+    # pulse_g2 for the rectangular Poisson pump below; deterministic_pair has
+    # no continuous pump to apply it to, so a non-default value there is an
+    # ambiguous competing override, rejected the same way the other
+    # legacy-overlap fields above are -- never silently dropped (Opus
+    # fix-round finding: "cw_pump_ratio silently dropped on the nitride
+    # branch").
+    if d.drive.cycle_loading == "deterministic_pair" and d.drive.cw_pump_ratio != DriveBlock.cw_pump_ratio:
+        raise ValueError("drive.cw_pump_ratio is not applicable to deterministic_pair loading")
     tau_rad0_ns = float(n.get("tau_rad0_ns", 1.0))  # [A brief default]; e.g. Deshpande et al.,
     # APL 105, 141109 (2014), DOI 10.1063/1.4897640, abstract 300 K tau=1.3+/-0.3 ns [V abstract-only]
     diode_kw = dict(d.drive.diode); diode_kw.pop("preset", None); diode_kw.pop("tau_pulse_ns", None)
-    diode = nitride_transport.planar_pin(**diode_kw)
+    try:
+        diode = nitride_transport.planar_pin(**diode_kw)
+    except TypeError as exc:
+        raise ValueError("invalid drive.diode field(s): " + str(exc)) from exc
     st, a = _stack(d.thermal), .5*d.thermal.mesa_diameter_um*1e-6
     aperture = float(np.pi*(d.aperture.diameter_um/2)**2)
     ts = np.asarray(T_grid if T_grid is not None else [d.thermal.T_hs], dtype=float)
-    # Cavity-tracking reference: the SAME dot at T_track, evaluated at the
-    # card-supplied baseline bias (system0's own external_field_kVcm, 0
-    # unless the card sets one) -- a single fixed design anchor, not
-    # recomputed per operating-point bias [A, conservative reading of "same
-    # stated bias-control convention": the per-row bias delta below is
-    # applied on top of the SAME dot/anchor, never a second, independently
-    # biased reference].
-    track0 = nitride_levels.levels(system0, cav.T_track)
+    # Cavity-tracking reference: the SAME dot, at the SAME supplied current
+    # (the design's own bias state), evaluated at T_track instead of the
+    # per-row Tj -- a single fixed design anchor, not recomputed per
+    # operating-point Tj [A, conservative reading of "same stated
+    # bias-control convention"]. Opus fix-round finding 2: the previous
+    # version anchored on the UNBIASED dot (system0, external_field_kVcm as
+    # given by the card, normally 0) while the operating-point E_X used the
+    # bias-resolved dot below, so the two differed by the full Stark shift
+    # at every T -- never on-resonance even when T_j == T_track. Resolving
+    # vj at T_track through the SAME diode.v_of_i/depletion() path used for
+    # the operating point makes the two calls agree on the bias field (and
+    # hence ~zero detuning) whenever a row's T_j lands on T_track.
+    _va_track, _vj_track = diode.v_of_i(max(d.drive.I_uA, 0) * 1e-6, cav.T_track)
+    _dep_track = diode.depletion(_vj_track, cav.T_track)
+    _track_dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": _dep_track.F_kVcm})
+    track0 = nitride_levels.levels(_track_dsys, cav.T_track)
     # The whole-period gate, resolved once (T-independent); used as the
     # reported gate_ns_used on an invalid row too (a requested experimental
     # setting, not a derived physics result).
     requested_gate = min(d.drive.gate_ns if d.drive.gate_ns is not None else period, period)
     rows=[]
     for ths in ts:
+        # Electro-thermal self-consistency: diode.junction_power(I_uA, T)
+        # depends on T (through v_of_i's own T-dependence), so a one-shot
+        # T_j = t_junction(power-at-heat-sink-T, ...) is not self-consistent
+        # (Opus fix-round finding: "no self-consistency loop and no
+        # convergence flag, unlike the legacy path"). Mirror the legacy
+        # transport self-heating loop exactly: up to 12 fixed-point
+        # iterations, 1e-10 K tolerance, explicit convergence flag -- so the
+        # power_W reported below (from the SAME diode.junction_power call,
+        # default eta_total) is the one actually used to solve T_j, not a
+        # stale heat-sink-T estimate.
         Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, ths), a, st, ths)
-        converged = np.isfinite(Tj)
+        converged = False
+        for _ in range(12):
+            if not np.isfinite(Tj):
+                break
+            next_Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, Tj), a, st, ths)
+            if abs(next_Tj - Tj) < 1e-10:
+                Tj = next_Tj; converged = True; break
+            Tj = next_Tj
         reasons=[]
-        if not converged: reasons.append("thermal runaway")
         va = vj = gam = np.nan
         rr = dict(gamma_X0_ns=np.nan, gamma_XX0_ns=np.nan, k_X_ns=np.nan, k_XX_ns=np.nan,
                  E_a_meV=np.nan, S0=np.nan, tau_cap_ps_used=np.nan, valid=False)
@@ -953,21 +1028,33 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         one_pair = False; blocked = np.nan
         feas = {}; priced_fp = np.nan
         supplied = d.drive.I_uA*1e-6*tau_on*1e-9/E_SI >= 1
-        # Positive forward junction voltage adds a fixed, -c-directed field
-        # term in this documented lumped convention [A] -- never a magnitude
-        # ("do not blindly subtract |field|"); the intrinsic (unbiased)
-        # field can itself be signed either way.  V/d_i[cm] -> kV/cm needs an
-        # extra /1000 on top of the nm->cm 1e-7, i.e. divide by d_i_nm*1e-4.
-        # nitride_levels.levels() never raises (bad geometry/T both resolve
-        # to its own _invalid() return), so this unbiased-at-ths call is
-        # always a safe NitrideLevels placeholder -- never system0 itself
-        # (a NitrideDotSystem, which has none of NitrideLevels' attributes).
-        lv = nitride_levels.levels(system0, ths)
+        # Invalid-row placeholder: an ALL-NaN NitrideLevels, never a real
+        # evaluation of some other (e.g. unbiased, heat-sink-T) state (Opus
+        # fix-round finding 3: a thermal-runaway row was reporting finite,
+        # "plausible" E_X_eV/field_kVcm/overlap_sq/electron_bound=hole_bound
+        # =True for a state that was never the operating point). Overwritten
+        # below with the REAL bias-resolved levels only once the operating
+        # point is actually reached.
+        lv = nitride_levels.NitrideLevels(
+            E_X_eV=np.nan, lambda_nm=np.nan, electron_bound=False, hole_bound=False,
+            overlap_sq=np.nan, field_kVcm=np.nan, E_e_meV=np.nan, E_h_meV=np.nan,
+            dE_e_meV=np.nan, dE_h_meV=np.nan, dE_pair_meV=None,
+            sp_split_e_meV=np.nan, sp_split_h_meV=np.nan,
+            m_e_matrix_xy=np.nan, m_h_matrix_xy=np.nan, valid=False,
+            invalid_reasons=("not evaluated: operating point not reached",),
+            provenance="[A] placeholder, row not evaluated at operating point")
         try:
             if not converged:
-                raise ValueError("thermal runaway: T_j did not converge")
+                raise ValueError("transport self-heating did not converge")
             va, vj = diode.v_of_i(max(d.drive.I_uA,0)*1e-6, Tj)
-            dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": -vj/(diode.d_i_nm*1e-4)})
+            # Bias field: the diode's OWN depletion(vj, Tj).F_kVcm (physical
+            # p-i-n depletion field, shrinks toward 0 as V_j -> V_bi), added
+            # directly to nitride_levels' intrinsic polarization field --
+            # see this function's docstring for the sign convention. Never
+            # the lumped -vj/d_i estimate (ignores V_bi, grows the wrong way
+            # with forward bias).
+            dep = diode.depletion(vj, Tj)
+            dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": dep.F_kVcm})
             lv = nitride_levels.levels(dsys, Tj)
             if not lv.valid:
                 raise ValueError("unbound dot: " + "; ".join(lv.invalid_reasons))
@@ -979,14 +1066,24 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             cr = nitride_cavity.response(cav,T_K=Tj,E_X_eV=lv.E_X_eV,E_X_track_eV=track0.E_X_eV,gamma_X_meV=gam,gamma_XX_meV=gam,delta_xx_meV=d.dot.delta_xx,gamma_X0_ns=rr["gamma_X0_ns"],gamma_XX0_ns=rr["gamma_XX0_ns"],w_meV=w_val,dx_w_meV=d.filter.dx)
             # dE_pair_meV is not yet populated by nitride_levels (always None);
             # the 100 meV floor matches device.py's own legacy dE_WL_meV default [A].
-            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(lv.dE_pair_meV or 100.,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad0_ns,E_X_eV=lv.E_X_eV)
+            # tau_rad_ns is the overlap-SCALED radiative lifetime of this
+            # actual (biased) dot state -- tau_rad0_ns/overlap_sq, i.e.
+            # 1/gamma_X0_ns -- not the bare reference tau_rad0_ns (which
+            # implicitly assumes overlap_sq=1); S_dot=rr["S0"] already uses
+            # the same gamma_X0_ns internally, so this keeps the ONE
+            # radiative lifetime consistent between the two arguments (Opus
+            # fix-round finding: "mixing two radiative lifetimes").
+            tau_rad_resolved_ns = tau_rad0_ns / lv.overlap_sq
+            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(lv.dE_pair_meV or 100.,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad_resolved_ns,E_X_eV=lv.E_X_eV)
             r_dot_val, mu_val, power_val = inj.loading.r_dot, inj.mu, duty*inj.P_junction_W
             if d.drive.cycle_loading == "rectangular":
-                cnt = pulse_counting.pulse_g2(inj.loading.r_dot/1e9,cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],tau_on,period-tau_on,gate_ns=d.drive.gate_ns,split=True)
+                cnt = pulse_counting.pulse_g2(inj.loading.r_dot/1e9,cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],tau_on,period-tau_on,pump_ratio=d.drive.cw_pump_ratio,gate_ns=d.drive.gate_ns,split=True)
                 cnt["gate_ns_used"] = requested_gate
             else:
                 cnt = pulse_counting.deterministic_cycle_g2(cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],period,eta_load=d.drive.eta_load,gate_ns=d.drive.gate_ns,split=True)
                 one_pair=cnt["one_pair_valid"]; blocked=cnt["blocked_load_probability"]
+            if not cnt.get("converged", True):
+                raise ValueError("photon counting did not converge")
             gate=cnt.get("gate_ns_used",period); bg_window=min(gate,tau_on)
             # Reservoir RATE (photons/s, transport.Background.rate_bg_window --
             # NOT rate_x, which is the dot's own X-channel normalization) is
@@ -1000,6 +1097,8 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             signal=cr["eta_out"]*cnt["mean_counts"]; sx=cr["eta_out"]*cnt.get("mean_counts_x",np.nan); sxx=cr["eta_out"]*cnt.get("mean_counts_xx",np.nan)
             rho=signal/(signal+bg_counts) if signal+bg_counts>0 else np.nan
             g2=1-rho*rho*(1-cnt["g2"]) if np.isfinite(rho) and np.isfinite(cnt["g2"]) else np.nan
+            if not np.isfinite(g2):
+                raise ValueError("non-finite g2 at operating point (zero collected signal+background or non-finite counting result)")
             if d.drive.cycle_loading == "deterministic_pair":
                 # sp0 (validated as complete above, outside the loop) plus
                 # the resolved cycle rate for this row.
@@ -1021,9 +1120,15 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         # Unbound dot, non-converged thermal/counting solution or impossible
         # field is an explicit invalid row (never a silent InP-class
         # fallback): gate on convergence explicitly, not only on whatever
-        # happened to still be finite downstream.
+        # happened to still be finite downstream. Every branch above that can
+        # make `valid` False also raises with its own specific reason, so
+        # this generic fallback (deliberately NOT the literal ['invalid
+        # row'] the Opus fix-round flagged) should be unreachable; it stays
+        # as a defensive net that names itself as such rather than
+        # pretending to be a diagnosed physical cause.
         valid=bool(converged and lv.valid and rr["valid"] and cnt.get("converged",True) and np.isfinite(g2))
-        if not valid and not reasons: reasons.append("invalid row")
+        if not valid and not reasons:
+            reasons.append("invalid row: cause not captured by an explicit check (internal inconsistency)")
         rows.append(dict(T_hs=ths,T_j=Tj,g2=g2,rho=rho,lv=lv,rr=rr,cr=cr,
                          r_dot=r_dot_val,mu=mu_val,power=power_val,
                          cnt=cnt,signal=signal,sx=sx,sxx=sxx,bg=bg_counts,valid=valid,reasons=reasons,
