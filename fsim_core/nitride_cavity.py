@@ -16,8 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite, pi
 
-from .dbr import dbr_reflectivity, quarter_wave_stack, wavelength_nm
-from .spectral import epsilon2
+from .dbr import dbr_reflectivity, power_RT, quarter_wave_stack
+from .spectral import cavity_transmission, epsilon2
 
 
 class NitrideCavityParameterError(ValueError):
@@ -81,31 +81,54 @@ def varshni_shift_eV(T_K, alpha_eV_K=8.3e-4, beta_K=825.0):
     return -alpha * T * T / (T + beta)
 
 
-def dbr_diagnostic(lambda_nm, *, n_high=2.1, n_low=1.46, pairs=10):
+def dbr_diagnostic(lambda_nm, *, n_high=2.1, n_low=1.46, pairs=10, n_in=1.0,
+                   n_out=1.0):
     """Ideal lossless quarter-wave DBR diagnostic, not manufacturing evidence.
 
     The SiO2/Ta2O5-like numeric indices and ten pairs are exploratory [E/A].
     The transfer-matrix calculation follows Born and Wolf, *Principles of
     Optics*, ch. 1.6 [DR]; it excludes absorption, sidewalls, contacts,
     cracks, electrical access, collection, and 3-D mode volume.
+
+    ``n_in``/``n_out`` default to free space on both sides; they are NOT a
+    GaN-substrate assumption.  A real substrate (n_out ~ 2.4 for GaN) must be
+    supplied explicitly by the caller -- the module carries no default for
+    it, and the free-space default understates R relative to a GaN-backed
+    stack (e.g. R=0.99722 free space vs R=0.99884 with n_out=2.4 at the same
+    10-pair 2.1/1.46 design [E], since the higher-index exit medium raises
+    the admittance contrast the stack presents).  ``transmittance`` is the
+    transfer-matrix power T from ``dbr.power_RT`` on this same stack, not a
+    lossless-medium ``1-R`` shortcut.
     """
     lam = _finite_positive("lambda_nm", lambda_nm)
     nh, nl = _finite_positive("n_high", n_high), _finite_positive("n_low", n_low)
+    n_in = _finite_positive("n_in", n_in)
+    n_out = _finite_positive("n_out", n_out)
     if nh <= nl:
         raise NitrideCavityParameterError("n_high must exceed n_low")
     if not isinstance(pairs, int) or pairs <= 0:
         raise NitrideCavityParameterError("pairs must be a positive integer")
-    stack = dbr_reflectivity(nh, nl, pairs, lam)
+    stack = dbr_reflectivity(nh, nl, pairs, lam, n_in=n_in, n_out=n_out)
     R = float(stack["R_at_lambda0"])
     layers = quarter_wave_stack(nh, nl, pairs, lam)
+    _, T = power_RT(layers, lam, n_in, n_out)
     return {
         "reflectance": R,
-        "transmittance": 1.0 - R,
+        "transmittance": float(T),
         "d_high_nm": float(layers[0].d_nm),
         "d_low_nm": float(layers[1].d_nm),
         "stopband_nm": tuple(float(x) for x in stack["stopband_analytic_nm"]),
         "provenance": "[DR] Born and Wolf, Principles of Optics, ch. 1.6; indices/pairs [E/A]",
     }
+
+
+def _line_overlap(line_detuning_meV, gamma_meV, kappa_meV):
+    """Broadened single-line spectral overlap O_i, delegating to
+    ``spectral.cavity_transmission`` (the peak-normalized Lorentzian-cavity
+    kernel) instead of retyping its algebra: at line_detuning=0 this is
+    kappa/(kappa+gamma), matching the on-resonance overlap in
+    ``cavity.purcell_eff`` [DR within the analytic model]."""
+    return cavity_transmission(line_detuning_meV, gamma_meV, kappa_meV)
 
 
 def response(params, *, T_K, E_X_eV, E_X_track_eV, gamma_X_meV,
@@ -116,6 +139,19 @@ def response(params, *, T_K, E_X_eV, E_X_track_eV, gamma_X_meV,
     Positive detuning is emitter above cavity.  E_XX=E_X-delta_xx, so an
     antibinding (negative) delta_xx retains its physical sign.  Line rates
     are enhanced once; t_X/t_XX contain exactly one slit/cavity acceptance.
+
+    ``purcell_enabled=False`` zeroes only the ADDED Purcell channel
+    (Fp_add=0, F_eff_*=1); the cavity's own Lorentzian spectral acceptance
+    still narrows t_X/t_XX via epsilon2's kappa argument.  This flag is
+    "cavity without added Purcell", not a no-cavity baseline -- collection
+    stays cavity-filtered either way.
+
+    Every out-of-domain input (non-finite, non-positive energy/Q/volume,
+    an out-of-range efficiency, or a non-positive tracked cavity energy)
+    raises a named error above rather than being reported through
+    ``valid``/``invalid_reasons``; those two fields are therefore always
+    ``True``/``[]`` in a dict this function returns -- a construction that
+    only completes once every input has already been validated.
     """
     if not isinstance(params, NitrideCavityParams):
         raise NitrideCavityParameterError("params must be NitrideCavityParams")
@@ -144,12 +180,8 @@ def response(params, *, T_K, E_X_eV, E_X_track_eV, gamma_X_meV,
     fp = ((3.0 / (4.0 * pi * pi)) * params.Q / params.mode_volume_norm
           * params.spatial_overlap) if params.purcell_enabled else 0.0
 
-    def overlap(line_detuning, gamma):
-        width = kappa + gamma
-        return kappa / width / (1.0 + 4.0 * line_detuning**2 / width**2)
-
-    fx = 1.0 + fp * overlap(detuning, gx)
-    fxx = 1.0 + fp * overlap(detuning_xx, gxx)
+    fx = 1.0 + fp * _line_overlap(detuning, gx, kappa)
+    fxx = 1.0 + fp * _line_overlap(detuning_xx, gxx, kappa)
     accepted = epsilon2(dx, gx, gxx, w=w_meV, kappa=kappa,
                         dx_w=dxw, dx_c=detuning)
     return {
