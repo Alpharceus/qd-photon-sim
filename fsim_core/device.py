@@ -873,6 +873,20 @@ def _nitride_reservoir_energy_eV(dot_kw, T_K, background):
     offset rather than a dot-QCSE-dependent line.  band_edges carries the
     Rinke et al., PRB 77, 075202 (2008) strain and Tsai & Bayram, ACS Omega
     5, 3917 (2020) band-edge provenance [V].
+
+    Documented disagreement (Opus re-review, 2026-09-09, low finding):
+    this function reads the material continuum from nitride.dot's OWN
+    wl_thickness_nm (0.0 on the shipped headline cards -> GaN barrier
+    edge, ~3.41 eV at 300 K), while the diode's SRH background
+    (nitride_transport.evaluate_injection) lives in drive.diode's
+    separate 0.5-nm InGaN layer (edge ~2.37-3.02 eV over the swept x_in
+    range). These two "reservoir" concepts are independently configured
+    and currently disagree about which material hosts the background
+    carriers; there is no numerical consequence today because this
+    function's return value feeds only the flat-spectrum cavity/slit
+    ACCEPTANCE of the SRH rate (a spectral filter), never the SRH rate
+    itself. Left as a known modeling inconsistency rather than silently
+    reconciled -- see out/nitride_cavity/results.md's Limitations section.
     """
     if "reservoir_energy_eV" in background:
         value = float(background["reservoir_energy_eV"])
@@ -1091,7 +1105,11 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             lv = nitride_levels.levels(dsys, Tj)
             if not lv.valid:
                 raise ValueError("unbound dot: " + "; ".join(lv.invalid_reasons))
-            rr = nitride_levels.rates(lv, Tj, tau_rad0_ns=tau_rad0_ns, n_dot_cm2=density, tau_cap_ps=tau_cap, channel=d.ret.channel, k_nr_ns=float(n.get("k_nr_ns",0.0)))
+            # Fix round 2 (2026-09-09, Opus re-review): ret.tau_cap_scales_with_density
+            # was accepted by the card schema but never forwarded here, so the
+            # axis was inert on the nitride branch (nitride_levels.rates
+            # defaults to False regardless of the card). Forward it explicitly.
+            rr = nitride_levels.rates(lv, Tj, tau_rad0_ns=tau_rad0_ns, n_dot_cm2=density, tau_cap_ps=tau_cap, tau_cap_scales_with_density=d.ret.tau_cap_scales_with_density, channel=d.ret.channel, k_nr_ns=float(n.get("k_nr_ns",0.0)))
             if not rr["valid"]:
                 raise ValueError("invalid escape rates: " + "; ".join(rr["invalid_reasons"]))
             gam = float(gamma_anchor(Tj, LinewidthParams(d.dot.gamma0,d.dot.a_ac,d.dot.E_LO,d.dot.gamma300)))
@@ -1131,6 +1149,14 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             if bg_tau>0 and gate>tau_on: bg_counts += inj.background.rate_bg_window*1e-9*bg_tau*(1-np.exp(-(gate-tau_on)/bg_tau))
             bg_counts *= eta_bg*bg_accept
             signal=cr["eta_out"]*cnt["mean_counts"]; sx=cr["eta_out"]*cnt.get("mean_counts_x",np.nan); sxx=cr["eta_out"]*cnt.get("mean_counts_xx",np.nan)
+            # Fix round 2 (2026-09-09, Opus re-review): drive.b_res was read
+            # only on the legacy transport path (this module's "item 8"
+            # comments below evaluate()), leaving it inert here. Same "per
+            # collected X photon" residual-background convention as the
+            # legacy branch: b_res*n_X in absolute count units, added
+            # directly to bg_counts -- sx is already the eta_out-collected X
+            # count, so no further G/S conversion factor applies.
+            if np.isfinite(sx): bg_counts += d.drive.b_res*sx
             rho=signal/(signal+bg_counts) if signal+bg_counts>0 else np.nan
             g2=1-rho*rho*(1-cnt["g2"]) if np.isfinite(rho) and np.isfinite(cnt["g2"]) else np.nan
             if not np.isfinite(g2):

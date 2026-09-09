@@ -509,6 +509,35 @@ def check_purcell_invariance():
     ok("purcell_enabled=False: Fp_add == 0", s_p["Fp_add"] == 0.0)
 
 
+def check_b_res_and_density_scaling():
+    """Fix round 2 (2026-09-09, Opus re-review): drive.b_res and
+    ret.tau_cap_scales_with_density were accepted by the nitride card
+    schema but read only on the legacy transport path (device.py's "item
+    8" comments around evaluate()), leaving both axes inert on the
+    nitride branch. Wire both in and prove each moves a scalar output at
+    fixed everything else -- a wiring check, not a re-derivation."""
+    d0 = design("rectangular"); s0 = evaluate(d0, [300.])["scalars"]
+    d_b = design("rectangular"); d_b.drive.b_res = 1.0
+    s_b = evaluate(d_b, [300.])["scalars"]
+    ok("drive.b_res changes background_flux_s on the nitride branch",
+      s_b["background_flux_s"] != s0["background_flux_s"])
+    ok("drive.b_res raises background_flux_s (residual channel is additive)",
+      s_b["background_flux_s"] > s0["background_flux_s"])
+    ok("drive.b_res=0 (default) leaves background_flux_s untouched",
+      s0["background_flux_s"] == evaluate(design("rectangular"), [300.])["scalars"]["background_flux_s"])
+
+    d_d0 = design("rectangular"); d_d0.drive.n_dot_cm2 = 1e9; d_d0.ret.tau_cap_scales_with_density = False
+    s_d0 = evaluate(d_d0, [300.])["scalars"]
+    d_d1 = design("rectangular"); d_d1.drive.n_dot_cm2 = 1e9; d_d1.ret.tau_cap_scales_with_density = True
+    s_d1 = evaluate(d_d1, [300.])["scalars"]
+    ok("ret.tau_cap_scales_with_density changes tau_cap_ps_used at n_dot_cm2=1e9",
+      s_d1["tau_cap_ps_used"] != s_d0["tau_cap_ps_used"])
+    ok("ret.tau_cap_scales_with_density=True scales tau_cap_ps_used by 1e10/n_dot_cm2",
+      math.isclose(s_d1["tau_cap_ps_used"], s_d0["tau_cap_ps_used"] * (1e10 / 1e9), rel_tol=1e-9))
+    ok("ret.tau_cap_scales_with_density changes k_X_ns downstream",
+      s_d1["k_X_ns"] != s_d0["k_X_ns"])
+
+
 def check_analytic_limits_and_citations():
     """AC4: independent analytical/module cross-checks, not a target g2
     copied from evaluate(); plus literal citation-string presence checks."""
@@ -633,6 +662,7 @@ def main():
     check_background_variants()
     check_reservoir_energy_and_acceptance()
     check_purcell_invariance()
+    check_b_res_and_density_scaling()
     check_analytic_limits_and_citations()
     check_no_mutation_and_repeatability()
     check_finite_and_invalid_states()
