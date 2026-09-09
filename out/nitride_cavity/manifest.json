@@ -1,0 +1,78 @@
+{
+  "axes": {
+    "Q": [
+      500.0,
+      2000.0,
+      10000.0
+    ],
+    "T_hs": [
+      230.0,
+      250.0,
+      273.0,
+      300.0
+    ],
+    "current_uA": [
+      0.002,
+      0.02,
+      0.2
+    ],
+    "height_nm": [
+      1.0,
+      2.0,
+      3.0,
+      4.0,
+      5.0
+    ],
+    "radius_nm": [
+      5.0,
+      10.0,
+      15.0
+    ],
+    "regime": [
+      "rectangular",
+      "deterministic_pair"
+    ],
+    "x_in": [
+      0.15,
+      0.25,
+      0.4
+    ]
+  },
+  "card_hashes": {
+    "nitride-cavity-pulse-design.yaml": "4a485480b44950ade4cf2ca57e60a1fb7e0c976fc218a8cdcd358c545c51c75f",
+    "nitride-cavity-set-design.yaml": "fcfe392039c4c5f7afbce970c759eb2cbc19907ee39afe6bda38e183ee97b044",
+    "nitride-deshpande2014-comparison-design.yaml": "a25de2b0c50677a0a5f005eb0b0ddc4687ec42b6e587301016d17003df60a411"
+  },
+  "complete": true,
+  "completed_headline_rows": 3240,
+  "evaluate_calls": 3252,
+  "output_hashes": {
+    "cavity_q_response.png": "951e3714ee2e886ed283306d1ba373587a25a2037617c3ff46865f7be5bc8366",
+    "deshpande_comparison.csv": "1043b75cc4b6b18d9145f6dfe4b2037701c8dd4a3c61b5e42467ecfbcf10487f",
+    "envelope_pulse.png": "d83df8f876dc3b21ff2076359cfd6092c5867a990f38b94902b060df9baf923d",
+    "envelope_set.png": "aca4d0d3924bc2e1a5191660edc13b1f7712f5b8c16857c4144f8fae8a2e132a",
+    "height_response.png": "882f4c524f12e0f02d7f479bd703afa58a2aceff71f11bc7d27e8adaeba80351",
+    "pulse_vs_set.png": "4d06afed027c114354b37c11fb891af2242846e0dfd70f699419ace39810899e",
+    "results.md": "e6b8ad70565b071d4b35415372797654926e26b11a760e7cc7a8390b10689f33",
+    "sensitivities.csv": "f0b0e22926b2842d3dddbbd619c7114b857de429a8c55153e2e40e7ceffcffcd",
+    "set_feasibility.png": "27210dc4d523b83eff6b69d7c6bd26854386826c235e95bff477cf98a08fbd7a",
+    "sweep.csv": "3e53c4d859ed5c64f3276a3f7bba4ddbfd013011ff073f79f7cd9effff31ce30",
+    "temperature_response.png": "5665939899ec22065fc4fa6edef0a8111280af03a66f784b8be4bf21b50c7c37"
+  },
+  "plot_row_mapping": {
+    "cavity_q_response.png": "sweep.csv fixed-reference rows",
+    "envelope_pulse.png": "sweep.csv rectangular",
+    "envelope_set.png": "sweep.csv deterministic_pair",
+    "height_response.png": "sweep.csv fixed-reference rows",
+    "pulse_vs_set.png": "sweep.csv fixed-reference rows",
+    "set_feasibility.png": "sensitivities.csv island rows",
+    "temperature_response.png": "sweep.csv fixed-reference rows"
+  },
+  "quick": false,
+  "requested_headline_rows": 3240,
+  "resolved_out_dir": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\out\\nitride_cavity",
+  "runtime_s": 206.4309320449829,
+  "versions": {
+    "python": "3.12.10"
+  }
+}
