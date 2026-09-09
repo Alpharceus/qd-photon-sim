@@ -18,18 +18,18 @@ class NitrideMaterial:
     Eg0_eV: float; alpha_eVK: float; beta_K: float; aV_eV: float
 
 # Bernardini, Fiorentini & Vanderbilt, PRB 56, R10024 (1997), Table II [V]
-# (Psp, e31, e33) and p.38 [V] (eps_r: a single internally-consistent static
-# dielectric-constant family used with the SAME polarization formula below --
-# NOT Ioffe's mixed perpendicular/parallel/static set, which mismatches the
-# along-c polarization screening by about 10%).
+# (Psp, e31, e33).  Static eps_r = 10.28/14.61/10.31 for GaN/InN/AlN is
+# Bernardini & Fiorentini, phys. stat. sol. (b) 216, 391 (1999), Sec. III [V]:
+# one internally-consistent dielectric family used with the SAME polarization
+# formula below, not Ioffe's mixed perpendicular/parallel/static set.
 # Rinke et al., PRB 77, 075202 (2008), Table V and Sec. IV.B [V] (masses).
 # Lattice and elastic constants: Ioffe NSM summary [V]; InN elastic choice is
 # the Sheleg family [E].  Varshni pairs: Vurgaftman & Meyer, JAP 94, 3675
 # (2003) framework [E] pending primary-text confirmation.
 _B = {
- "GaN": NitrideMaterial("GaN",0.,3.189,5.186,106.,398.,-.49,.73,-.029,10.28,.209,.186,1.88,.33,"[V] Bernardini PRB 1997 Table II + p.38 eps_r; Rinke PRB 2008 Table V/Sec IV.B masses",3.51,9.09e-4,830.,-7.6),
- "InN": NitrideMaterial("InN",1.,3.545,5.703,121.,182.,-.57,.97,-.032,14.61,.068,.065,1.63,1.63,"[V/E] Bernardini PRB 1997 Table II + p.38 eps_r; Rinke PRB 2008 electron masses [V]; Ioffe NSM hole mass 1.63 applied isotropically [E]",.78,2.45e-4,624.,-4.2),
- "AlN": NitrideMaterial("AlN",0.,3.112,4.982,99.,389.,-.60,1.46,-.081,10.31,.329,.322,3.53,10.4,"[V] Bernardini PRB 1997 Table II + p.38 eps_r; Rinke PRB 2008 electron masses; Ioffe NSM hole masses 3.53/10.4",6.25,1.799e-3,1462.,-9.8),
+ "GaN": NitrideMaterial("GaN",0.,3.189,5.186,106.,398.,-.49,.73,-.029,10.28,.209,.186,1.88,.33,"[V] Bernardini PRB 1997 Table II polarization; Bernardini & Fiorentini pss(b) 1999 Sec. III eps_r; Rinke PRB 2008 Table V/Sec IV.B masses",3.51,9.09e-4,830.,-7.6),
+ "InN": NitrideMaterial("InN",1.,3.545,5.703,121.,182.,-.57,.97,-.032,14.61,.068,.065,1.63,1.63,"[V] Bernardini PRB 1997 Table II polarization; Bernardini & Fiorentini pss(b) 1999 Sec. III eps_r; Rinke PRB 2008 electron masses [V]; Ioffe NSM hole mass 1.63 applied isotropically [E]",.78,2.45e-4,624.,-4.2),
+ "AlN": NitrideMaterial("AlN",0.,3.112,4.982,99.,389.,-.60,1.46,-.081,10.31,.329,.322,3.53,10.4,"[V] Bernardini PRB 1997 Table II polarization; Bernardini & Fiorentini pss(b) 1999 Sec. III eps_r; Rinke PRB 2008 electron masses; Ioffe NSM hole masses 3.53/10.4",6.25,1.799e-3,1462.,-9.8),
 }
 
 # Tsai & Bayram, ACS Omega 5, 3917 (2020), Table 2 [V]: AlN valence 0.30 eV
@@ -70,7 +70,12 @@ def band_edges(material, T_K, *, substrate=None, strain_fraction=1., vbo_InN_GaN
     # its own Tsai & Bayram Table 2 literal [V] instead (see _VBO_ALN_EV).
     ev0 = _VBO_ALN_EV if material.name == "AlN" else material.x_in*vbo_InN_GaN_eV
     ev=ev0-(1-strain_c_fraction)*dEg # VBO Tsai & Bayram ACS Omega 2020 Table 2 [V]; partition [A]
-    return dict(Ec_eV=ev+bandgap(material,T_K)+strain_c_fraction*dEg,Ev_eV=ev,eps_parallel=ep,eps_zz=ez,P_total_Cm2=p,provenance="[V] B97 polarization; [V] Rinke 2008 volume deformation; [V] Tsai 2020 VBO endpoints; [A] 0.7 conduction partition, linear alloy VBO transfer, no thermal expansion")
+    # Both strained edges are constructed from the same unshifted reference.
+    # Therefore Ec-Ev = Eg+dEg for every partition, as required by the volume
+    # deformation potential; using `ev` here would apply the valence share to
+    # Ec a second time. [DR] Rinke et al., PRB 77, 075202 (2008), Table IV.
+    ec=ev0+bandgap(material,T_K)+strain_c_fraction*dEg
+    return dict(Ec_eV=ec,Ev_eV=ev,eps_parallel=ep,eps_zz=ez,P_total_Cm2=p,provenance="[V] B97 polarization; [V] Rinke 2008 volume deformation; [V] Tsai 2020 VBO endpoints; [A] 0.7 conduction partition, linear alloy VBO transfer, no thermal expansion")
 
 def polarization_field(dot,matrix,T_K,*,strain_fraction=1.,screening_fraction=0.,external_field_kVcm=0.):
     if not 0 <= screening_fraction <= 1: raise ValueError("screening_fraction must be in [0, 1]")

@@ -36,7 +36,7 @@ NITRIDE_ASSUMPTIONS_E = {
     "tau_SRH_ns": "1.0 -- SRH lifetime, quality dependent [E], same class as transport.py",
     "tau_cap0_ps / tau_matrix_ns": "10 / 1.0 -- dot capture time at 1e10 cm^-2 and matrix/WL lifetime [E]; no nitride-specific capture-time measurement in the digest",
     "eta_rad_matrix": "0.1 -- radiative efficiency of matrix/WL recombination [E], same default as transport.py",
-    "eps_r (diode i-region)": "10.28 -- Bernardini PRB 1997 p.38 GaN static dielectric constant [V], used for the (GaN-dominated) 27 nm i-region rather than a doping- or QW-weighted average [A]",
+    "eps_r (diode i-region)": "10.28 -- Bernardini & Fiorentini, pss(b) 216, 391 (1999), Sec. III GaN static dielectric constant [V], used for the (GaN-dominated) 27 nm i-region rather than a doping- or QW-weighted average [A]",
     "_LEAK_PREF_E / _LEAK_PREF_H": "1.0 / 1.0 -- order-unity thermionic-leakage prefactors [E]; barrier energies come from nitride_materials.band_edges (T, x_in dependent), not literal constants",
     "doping dependence of eta_inj": "omitted [A] -- barrier-limited compact model, no cladding diffusion data",
 }

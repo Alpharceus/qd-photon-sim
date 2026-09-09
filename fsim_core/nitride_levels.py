@@ -6,25 +6,21 @@ treatment [A].  Consequently a bound state in a tilted well may still
 tunnel; Arrhenius retention is optimistic in that situation.  Material
 response is supplied by :mod:`nitride_materials`.
 
-FIELD GEOMETRY [fix round 2, 2026-09-09]. A single InGaN dot embedded in
-thick GaN carries polarization SHEET CHARGES only at its own two z
-interfaces.  Those sheet charges are equal and opposite (a dipole layer):
-by Gauss's law the field they produce is confined to the region BETWEEN
-them (inside the dot) and is exactly zero outside, so the exterior GaN
-band edges are FLAT and EQUAL on both sides (the model's documented
-"thick GaN reservoir" boundary condition below pins the far bands rather
-than letting an isolated dipole's own capacitor-like plateau offset stand,
-which is the semiconductor-reservoir-screening picture, not vacuum
-electrostatics).  `_z_state` therefore applies field (the caller's
-polarization field, PLUS `external_field_kVcm` if supplied -- see its
-docstring) only to |z| <= height/2 and holds the exterior flat at the
-barrier level, the SAME value on both sides.  The previous version instead
-held the tilt's boundary value into the exterior, so the two exterior
-plateaus differed by the full interior voltage drop, fabricating a large,
-artificial reduction of the barrier on one side -- not a physical
-depletion effect, a modelling bug -- which is why almost every unscreened
-dot came back 'hole unbound'.  `screening_fraction` remains an explicit
-[A] parameter on top of this fix.
+FIELD GEOMETRY.  Fixed-displacement polarization produces a uniform field
+inside an isolated dot and zero field outside it, but electrostatic potential
+remains continuous: the exterior on each side is held at the value reached at
+that face.  The two flat plateaus therefore differ by F*h in the unscreened
+parallel-plate limit [DR], Bernardini & Fiorentini, phys. stat. sol. (b) 216,
+391 (1999), Eqs. 7-8 [V].  Escape is judged against the lower plateau on the
+side toward which each carrier drifts.  `screening_fraction` is an explicit
+[A] parameter and its default remains zero.  That unscreened isolated-dot
+limit is a pessimistic confinement bound: electrically injected structures
+can partially screen the polarization field, as indicated by the <2 meV
+current shift in Deshpande et al., Nat. Commun. 4, 1675 (2013), p.5 [V], and
+the bias-dependent QCSE in Zhang et al., APL 108, 153102 (2016), Fig. 5 [V].
+
+No wetting-layer continuum is implemented.  A nonzero `wl_thickness_nm` is
+rejected rather than acting as a silent reservoir parameter [A].
 """
 from dataclasses import dataclass
 from functools import lru_cache
@@ -41,6 +37,7 @@ _M0 = 9.1093837015e-31 # kg [V] CODATA 2018
 _KB_SI = 1.380649e-23 # J K-1 [V] SI 2019
 _HC_EV_NM = 1239.841984 # h c [V] CODATA 2018, eV nm
 _E2_4PIEPS0_EV_NM = 1.439964 # e^2/(4 pi eps0) [DR] CODATA 2018, eV nm
+TAIL_CONVERGENCE_TOL_MEV = 1e-3 # [E] padding-doubling bound-state convergence threshold
 
 # Source-transcription targets: named module constants (compared, in the
 # verifier, to INDEPENDENTLY typed literals so the check is a real
@@ -67,7 +64,7 @@ TAU_RAD0_DEFAULT_NS = 1.3              # [E] Deshpande et al., APL 105, 141109 (
 @dataclass(frozen=True)
 class NitrideDotSystem:
     height_nm: float = 3.0; radius_nm: float = 10.0; x_in: float = .25
-    wl_thickness_nm: float = .5; strain_fraction: float = 1.0
+    wl_thickness_nm: float = 0.0; strain_fraction: float = 1.0
     screening_fraction: float = 0.0; external_field_kVcm: float = 0.0
     vbo_InN_GaN_eV: float = 1.15; strain_c_fraction: float = .7
 
@@ -78,6 +75,14 @@ class NitrideLevels:
     dE_e_meV: float; dE_h_meV: float; dE_pair_meV: object
     sp_split_e_meV: float; sp_split_h_meV: float; m_e_matrix_xy: float
     m_h_matrix_xy: float; valid: bool; invalid_reasons: tuple; provenance: str
+    electron_in_dot_probability: float = float('nan')
+    hole_in_dot_probability: float = float('nan')
+    electron_padding_delta_meV: float = float('nan')
+    hole_padding_delta_meV: float = float('nan')
+    electron_exterior_left_eV: float = float('nan')
+    electron_exterior_right_eV: float = float('nan')
+    hole_exterior_left_eV: float = float('nan')
+    hole_exterior_right_eV: float = float('nan')
 
 def _validate(s):
     bad=[]
@@ -112,31 +117,31 @@ def _z_grid(half, pad, target_n):
     idx = np.arange(-(n_half + n_pad), n_half + n_pad + 1)
     return idx * dz, dz, n_half
 
+def _z_potential(height, barrier, field, sign, z):
+    """Continuous tilted-well potential in eV on coordinates `z` in nm.
+
+    The electrostatic term is linear inside the dot and is clipped to its
+    interface value outside.  Thus the field vanishes in each exterior while
+    the face potentials retain the F*h offset. [DR] Bernardini & Fiorentini,
+    pss(b) 216, 391 (1999), Eqs. 7-8, isolated-slab parallel-plate limit.
+    """
+    half = height / 2.
+    z = np.asarray(z, dtype=float)
+    inside = np.abs(z) <= half + 1e-12
+    tilt = sign * field * 1e-4 * np.clip(z, -half, half)
+    return np.where(inside, 0., barrier) + tilt
+
+
 def _z_state(height, barrier, md, mb, field, sign, n=1201, pad=45.):
     """BDD finite-volume state; field is kV/cm, sign is carrier charge sign.
 
-    `field` tilts the potential ONLY inside the dot (|z| <= height/2); the
-    exterior plateau is flat AND EQUAL on both sides (the model's own
-    "thick GaN reservoir" assumption pins the far bands, exactly as a
-    dipole layer of polarization sheet charge at the two dot interfaces
-    produces a field confined between them and none outside). The
-    previous version instead HELD the tilt's boundary value into the
-    exterior, so the two exterior plateaus differed by the full interior
-    voltage drop -- that fabricated a large, artificial reduction of the
-    barrier seen by the carrier on one side, which is why every unscreened
-    (default screening_fraction=0) dot came back 'hole unbound'. `field`
-    is the caller's COMBINED internal-polarization + external-depletion
-    field (see NitrideDotSystem.external_field_kVcm): both are folded into
-    this same interior-confined tilt rather than the external contribution
-    being extended into the exterior reservoir, because the exterior
-    padding (`pad`/`exterior_nm`) is a NUMERICAL convergence control, not a
-    physical depletion width -- letting any field ramp through it would
-    make results depend on the padding choice. This is a documented [A]
-    simplification: the true external depletion field would, in principle,
-    also weakly tilt the exterior bands over the diode's actual (much
-    longer) intrinsic-region length, which this nm-scale dot solver does
-    not model. BenDaniel & Duke, PR 152, 683 (1966) [V] supplies the
-    flux-matching boundary condition (mass-weighted hopping).
+    `field` tilts the potential inside the dot; each exterior is flat at the
+    adjacent face value, so V is electrostatically continuous apart from the
+    material band offset itself.  The exterior padding is only a numerical
+    convergence control.  The external-field contribution is folded into
+    the same clipped potential [A]; modeling a diode-scale depletion ramp is
+    outside this nm-scale solver.  BenDaniel & Duke, PR 152, 683 (1966) [V]
+    supplies the flux-matching boundary condition (mass-weighted hopping).
     """
     half = height / 2.
     z, dz, n_half = _z_grid(half, pad, n)
@@ -144,10 +149,8 @@ def _z_state(height, barrier, md, mb, field, sign, n=1201, pad=45.):
     node_idx = np.round(z / dz).astype(int)
     inside = np.abs(node_idx) <= n_half
     mass = np.where(inside, md, mb)
-    # e*(kV/cm)*(nm) = 1e-4 eV; sign gives opposite electron/hole tilt;
-    # zero outside |z|<=half -> flat, equal exterior plateaus both sides.
-    tilt = sign * field * 1e-4 * np.where(inside, z, 0.0)
-    V = np.where(inside, 0., barrier) + tilt
+    # e*(kV/cm)*(nm) = 1e-4 eV; sign gives opposite electron/hole tilt.
+    V = _z_potential(height, barrier, field, sign, z)
     invface=2/(mass[:-1]+mass[1:]); a=_HBAR2_2M0*invface/dz**2
     diag=np.empty(n_pts-2); off=-a[1:-1]
     diag[:] = a[:-1]+a[1:]+V[1:-1]
@@ -200,11 +203,20 @@ def _levels_cached(s,T_K,n,pad):
     if bad: return _invalid(s,bad,F)
     ee,ee1,ce,le,ze,pe=_z_state(s.height_nm,Ve,d.me_z,m.me_z,F,-1,n,pad)
     eh,eh1,ch,lh,zh,ph=_z_state(s.height_nm,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
+    # A true discrete state has an exponentially decaying exterior tail, so
+    # its eigenenergy is insensitive to doubling an already-large padding.
+    # This replaces the arbitrary in-dot-probability > 0.5 validity gate [E].
+    ee_pad,_,_,_,_,_=_z_state(s.height_nm,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
+    eh_pad,_,_,_,_,_=_z_state(s.height_nm,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
+    de_pad=abs(ee_pad-ee)*1000.
+    dh_pad=abs(eh_pad-eh)*1000.
     re,rpe,ok_e,pb_e,rms_e=_radial(ce-ee,s.radius_nm,d.me_xy,m.me_xy)
     rh,rph,ok_h,pb_h,rms_h=_radial(ch-eh,s.radius_nm,d.mh_xy,m.mh_xy)
     eb=ee+(re if ok_e else float('nan')); hb=eh+(rh if ok_h else float('nan'))
-    if not (le>.50 and ok_e and eb<ce): bad.append('electron unbound or laterally exhausted offset')
-    if not (lh>.50 and ok_h and hb<ch): bad.append('hole unbound or laterally exhausted offset')
+    if not (ok_e and eb<ce and de_pad<=TAIL_CONVERGENCE_TOL_MEV):
+        bad.append('electron unbound, padding-unconverged, or laterally exhausted offset')
+    if not (ok_h and hb<ch and dh_pad<=TAIL_CONVERGENCE_TOL_MEV):
+        bad.append('hole unbound, padding-unconverged, or laterally exhausted offset')
     if bad: return _invalid(s,bad,F)
     # Envelopes are separable; normalized radial ground envelopes cancel in
     # overlap ratio under the common-disk approximation [E].
@@ -223,6 +235,11 @@ def _levels_cached(s,T_K,n,pad):
     rg_h = (rph-rh) if (ok_h and math.isfinite(rph)) else float('inf')
     sp_h = min(zg_h,rg_h)
     valid=True
+    half=s.height_nm/2.
+    eleft=float(_z_potential(s.height_nm,Ve,F,-1,np.array([-half-1.]))[0])
+    eright=float(_z_potential(s.height_nm,Ve,F,-1,np.array([half+1.]))[0])
+    hleft=float(_z_potential(s.height_nm,Vh,F,+1,np.array([-half-1.]))[0])
+    hright=float(_z_potential(s.height_nm,Vh,F,+1,np.array([half+1.]))[0])
     return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,
                           eb*1000,hb*1000,(ce-eb)*1000,(ch-hb)*1000,None,
                           sp_e*1000 if math.isfinite(sp_e) else float('nan'),
@@ -230,11 +247,13 @@ def _levels_cached(s,T_K,n,pad):
                           m.me_xy,m.mh_xy,valid,tuple(bad),
                           '[V] Rinke et al., PRB 77, 075202 (2008), Table V; '
                           '[V] Bernardini et al., PRB 56, R10024 (1997); '
+                          '[V/DR] Bernardini & Fiorentini, pss(b) 216, 391 (1999), '
+                          'Eqs. 7-8, continuous isolated-slab field geometry; '
                           '[V] BenDaniel & Duke, PR 152, 683 (1966); '
                           '[E] separable disk, finite-barrier radial confinement, and screened '
                           'Gaussian-envelope Coulomb approximation; '
-                          '[A] thick GaN reservoirs (flat exterior band edges outside the dot), '
-                          'real-energy retention')
+                          '[A] partial screening parameter and real-energy retention',
+                          le,lh,de_pad,dh_pad,eleft,eright,hleft,hright)
 
 def _invalid(s,reasons,F=0.):
     return NitrideLevels(float('nan'),float('nan'),False,False,0.,F,float('nan'),float('nan'),float('nan'),float('nan'),None,float('nan'),float('nan'),float('nan'),float('nan'),False,tuple(reasons),'[A] invalid geometry/offset rejected before model evaluation')
@@ -242,6 +261,8 @@ def _invalid(s,reasons,F=0.):
 def levels(system, T_K=300.0, *, z_points=1201, exterior_nm=45.0):
     """Return immutable cached levels. Numerical controls are cache keys."""
     if not isinstance(system,NitrideDotSystem): raise TypeError('system must be NitrideDotSystem')
+    if math.isfinite(system.wl_thickness_nm) and system.wl_thickness_nm>0:
+        raise ValueError('nonzero wl_thickness_nm is unsupported: no wetting-layer continuum is implemented')
     return _levels_cached(system,float(T_K),int(z_points),float(exterior_nm))
 
 def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.,tau_cap_scales_with_density=False,channel='min',k_nr_ns=0.):

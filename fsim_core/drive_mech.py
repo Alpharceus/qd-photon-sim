@@ -98,17 +98,28 @@ def fano_regulated(F_p0, f_reg_Hz, f_sample_Hz):
 # ------------------------------------------------------------- SET family pricing (M-4)
 
 def set_feasibility(T_K, C_sigma_F=None, radius_nm=None, eps_r=13.0,
-                    R_T_ohm=1e6, ec_margin=10.0, f_cycle_Hz=None):
+                    R_T_ohm=1e6, ec_margin=10.0, f_cycle_Hz=None,
+                    weak_tunneling_margin=10.0):
     """Price a Coulomb-blockade element (M-4a metallic / M-4b gated island /
     M-4c turnstile junction) at temperature T_K. Returns a verdict dict, not
     a design. Conventions: E_C = e^2/C_sigma (matches F9's granularity wall;
     the e^2/2C convention would halve E_C -- margin absorbs it).
 
-    Feasibility requires BOTH:
+    The legacy feasibility verdict requires BOTH:
       * E_C >= ec_margin * kT  (charge quantization vs thermal smearing)
       * R_T >= R_Q             (charge localization on the island)
     Max turnstile cycle rate is RC-limited: f_max ~ 1/(10 R_T C_sigma) [E],
-    giving I_max = e f_max for one carrier per cycle."""
+    giving I_max = e f_max for one carrier per cycle.
+
+    `weak_tunneling_ok` is an additive, stricter diagnostic requiring
+    R_T >= weak_tunneling_margin*R_Q, with margin 10 [E].  It deliberately
+    does not alter the legacy `feasible` value.  These E_C and RC checks are
+    an orthodox charge-blockade screen, not proof of deterministic InGaN
+    electron-hole pair loading; that also requires gate-dependent addition
+    barriers and loading/unloading rates.  Pekola et al., Rev. Mod. Phys. 85,
+    1421 (2013), Sec. II.B and Eq. 8 [V]."""
+    if not np.isfinite(weak_tunneling_margin) or weak_tunneling_margin <= 0:
+        raise ValueError("weak_tunneling_margin must be positive and finite")
     if C_sigma_F is None:
         if radius_nm is None:
             raise ValueError("give C_sigma_F or radius_nm")
@@ -119,17 +130,26 @@ def set_feasibility(T_K, C_sigma_F=None, radius_nm=None, eps_r=13.0,
     ec_over_kt = E_C_J / kT_J
     f_max = 1.0 / (10.0 * R_T_ohm * C_sigma_F)
     f_cyc = f_cycle_Hz if f_cycle_Hz is not None else f_max
+    r_ratio = float(R_T_ohm / R_Q_OHM)
     return {
         "C_sigma_F": float(C_sigma_F),
         "radius_nm": float(island_radius_nm(C_sigma_F, eps_r)),
         "E_C_meV": float(E_C_J / E_SI * 1e3),
         "EC_over_kT": float(ec_over_kt),
-        "R_T_over_RQ": float(R_T_ohm / R_Q_OHM),
+        "R_T_over_RQ": r_ratio,
+        "R_T_over_R_Q": r_ratio,
+        "weak_tunneling_margin": float(weak_tunneling_margin),
+        "weak_tunneling_ok": bool(r_ratio >= weak_tunneling_margin),
         "f_max_Hz": float(f_max),
         "I_max_pA": float(E_SI * f_max * 1e12),
         "N_granularity": float(granularity_N(C_sigma_F, T_K)),
         "feasible": bool(ec_over_kt >= ec_margin and R_T_ohm >= R_Q_OHM
                          and f_cyc <= f_max),
+        "notes": ("Orthodox charge-blockade/RC screen only; E_C >= 10 kT "
+                  "and RC feasibility do not prove deterministic InGaN "
+                  "electron-hole pair loading. [V] Pekola et al., Rev. "
+                  "Mod. Phys. 85, 1421 (2013), Sec. II.B and Eq. 8; "
+                  "weak-tunneling margin 10 [E]."),
     }
 
 

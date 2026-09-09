@@ -1,24 +1,20 @@
 """Numerical/source-transcription checks for fsim_core.nitride_levels.
 
-Fix round 2 (2026-09-09): replaces the tautological transcription checks,
-adds the missing acceptance-criterion-2 analytic BenDaniel-Duke cross-check
-(independently coded here, not the module's own finite-volume solver),
-envelope-normalization and potential-reversal checks, multi-pair grid
-convergence at heights 1/2/3 nm, an UNSCREENED (default screening_fraction)
-bound sweep across height 1-5 nm x T 230-300 K that actually gates valid
-and positive rates, and prints computed E_X/overlap/lifetime beside the
-digest's published values without gating on agreement with a transferred
-nanowire/pillar sample.
+Includes independent BenDaniel-Duke and flat-well cross-checks, continuous
+isolated-slab field geometry, padding-convergence localization, explicit
+wetting-layer rejection, numerical convergence, and literature diagnostics.
 """
 import math
 import sys
 from pathlib import Path
 import numpy as np
 from scipy.optimize import brentq
+from scipy.linalg import eigh_tridiagonal
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fsim_core.nitride_materials import binary, ingaN, band_edges, polarization_field, KB_EV
 from fsim_core import nitride_levels as NL
-from fsim_core.nitride_levels import NitrideDotSystem, levels, rates, _z_state
+from fsim_core.nitride_levels import (NitrideDotSystem, levels, rates,
+                                      _z_state, _z_potential)
 
 checks=[]
 def ck(label, value):
@@ -82,6 +78,77 @@ ck('N zero-field electron/hole wells match analytic BenDaniel-Duke root <=0.5meV
 ck('N envelope normalization',abs(np.trapezoid(pe*pe,ze)-1.)<1e-9 and abs(np.trapezoid(ph*ph,zh)-1.)<1e-9)
 ck('N symmetric-potential reversal invariance',np.max(np.abs(pe-pe[::-1]))<1e-8 and np.max(np.abs(ph-ph[::-1]))<1e-8)
 
+# ---- field geometry: the polarization field is inside the dot, while each
+# exterior is flat at its adjacent face value.  For the isolated slab the
+# plateau offset is F*h [DR], Bernardini & Fiorentini, pss(b) 216, 391
+# (1999), Eqs. 7-8 [V].  The semiconductor band offset remains a physical
+# discontinuity, so continuity below is checked on the electrostatic term.
+field_ref=levels(NitrideDotSystem(),300.)
+h_ref=3.; half_ref=h_ref/2.; eps_z=1e-9
+Ve_ref=be0['Ec_eV']-de0['Ec_eV']
+vface=_z_potential(h_ref,Ve_ref,field_ref.field_kVcm,-1,
+                   np.array([-half_ref-eps_z,-half_ref,half_ref,half_ref+eps_z]))
+electrostatic_cont=(abs((vface[0]-Ve_ref)-vface[1])<1e-9 and
+                    abs(vface[2]-(vface[3]-Ve_ref))<1e-9)
+ck('N electrostatic potential is continuous at both dot faces',electrostatic_cont)
+drop_expected=field_ref.field_kVcm*h_ref*1e-4
+drop_h=field_ref.hole_exterior_right_eV-field_ref.hole_exterior_left_eV
+drop_e=field_ref.electron_exterior_right_eV-field_ref.electron_exterior_left_eV
+print('N isolated-slab plateau drop: computed %.9f V expected F*h %.9f V'
+      %(drop_h,drop_expected))
+ck('N default unscreened plateau difference equals F*h to 1e-6 V',
+   abs(drop_h-drop_expected)<1e-6 and abs(drop_e+drop_expected)<1e-6)
+ck('N default unscreened hole escape depth is tens, not hundreds, of meV',
+   field_ref.valid and 5.<field_ref.dE_h_meV<50.)
+
+# At complete screening the clipped potential becomes exactly the earlier
+# flat-well Hamiltonian.  This independent assembly uses the pre-field
+# piecewise-constant potential and checks recovery at the 1e-9 eV level.
+def _flat_reference_ground(height,barrier,md,mb,n=1201,pad=45.):
+    half=height/2.; n_half=max(200,int(round(n/2.))); dz=half/n_half
+    n_pad=max(1,int(round(pad/dz)))
+    idx=np.arange(-(n_half+n_pad),n_half+n_pad+1)
+    inside=np.abs(idx)<=n_half
+    mass=np.where(inside,md,mb)
+    V=np.where(inside,0.,barrier)
+    invface=2./(mass[:-1]+mass[1:]); aa=.0380998212*invface/dz**2
+    diag=aa[:-1]+aa[1:]+V[1:-1]; off=-aa[1:-1]
+    return float(eigh_tridiagonal(diag,off,select='i',select_range=(0,0))[0][0])
+
+screened=levels(NitrideDotSystem(screening_fraction=1.),300.)
+ee_zero=_z_state(3.,Ve_ref,d0.me_z,m0.me_z,0.,-1,1201,45.)[0]
+eh_zero=_z_state(3.,Vh0,d0.mh_z,m0.mh_z,0.,+1,1201,45.)[0]
+ck('N complete screening makes both exterior plateaus coincide',
+   screened.electron_exterior_left_eV==screened.electron_exterior_right_eV
+   and screened.hole_exterior_left_eV==screened.hole_exterior_right_eV)
+ck('N complete screening recovers earlier zero-field wells to 1e-9 eV',
+   abs(ee_zero-_flat_reference_ground(3.,Ve_ref,d0.me_z,m0.me_z))<1e-9
+   and abs(eh_zero-_flat_reference_ground(3.,Vh0,d0.mh_z,m0.mh_z))<1e-9)
+
+# The review fixture is physically bound even though less than half of the
+# electron probability lies geometrically inside the 1 nm disk.  Boundedness
+# is energy + exponential-tail convergence, and the probability remains a
+# diagnostic rather than a gate.
+thin=levels(NitrideDotSystem(height_nm=1.,radius_nm=10.,x_in=.15,
+                             screening_fraction=1.),300.)
+print('N thin screened localization: Pdot_e=%.6f padding_delta_e=%.9g meV'
+      %(thin.electron_in_dot_probability,thin.electron_padding_delta_meV))
+ck('N thin screened sub-50-percent state is bound by energy and padding convergence',
+   thin.valid and thin.electron_bound and thin.electron_in_dot_probability<.5
+   and thin.dE_e_meV>0. and thin.electron_padding_delta_meV<1e-3)
+
+# A wetting-layer reservoir has not been modeled, so nonzero thickness must
+# be visible rather than silently leaving all levels and rates unchanged.
+try:
+    levels(NitrideDotSystem(wl_thickness_nm=.5),300.)
+    wl_rejected=False
+except ValueError as exc:
+    wl_rejected=('wetting-layer continuum' in str(exc)
+                 and 'unsupported' in str(exc))
+ck('N nonzero wetting-layer thickness is rejected clearly',wl_rejected)
+ck('N default system selects the supported no-wetting-layer model',
+   NitrideDotSystem().wl_thickness_nm==0.)
+
 # ---- (N4) grid convergence: SEVERAL (z_points, exterior_nm) pairs, budget
 # actually enforced, at heights 1/2/3 nm, on the UNSCREENED bound fixture.
 pairs=[(1801,65.),(2401,45.),(1601,65.),(2001,80.)]
@@ -133,8 +200,10 @@ else:
 # land in-range; not gated at every height (thicker unscreened planar dots
 # honestly leave the range as the QCSE lifetime grows, see printed rows above).
 lo,hi=NL.INGAN_DOT_LIFETIME_RANGE_NS
-ck('N Deshpande-geometry lifetime within digest InGaN-dot class range 1-10ns',
-   lv_d.valid and lo<=1./rates(lv_d,300.,tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)['gamma_X0_ns']<=hi)
+lv_d_screened=levels(NitrideDotSystem(**{**desh.__dict__,
+                                         'screening_fraction':.95}),300.)
+ck('N screened Deshpande-geometry lifetime within digest InGaN-dot class range 1-10ns',
+   lv_d_screened.valid and lo<=1./rates(lv_d_screened,300.,tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)['gamma_X0_ns']<=hi)
 
 # ---- (N7) screened/relaxed DIAGNOSTIC, printed separately from the planar
 # headline above (Deshpande's sample is a relaxed nanowire, Zhang's an

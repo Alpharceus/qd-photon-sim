@@ -3,9 +3,10 @@ import math
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fsim_core.nitride_transport import planar_pin, evaluate_injection
+from fsim_core.nitride_transport import planar_pin, evaluate_injection, NITRIDE_ASSUMPTIONS_E
 from fsim_core.nitride_materials import KB_EV, EPS0_SI
 from fsim_core.transport import Q_SI, qfl_suppression, xi_window
+from fsim_core.drive_mech import R_Q_OHM, set_feasibility
 
 c=[]
 def check(label, value):
@@ -16,6 +17,9 @@ d=planar_pin()
 # p.2 and Fig.2 [V].  Planar transfer is [E], so this is not device validation.
 check("source transcription Zhang doping",d.N_A==1e17 and d.N_D==1e18)
 check("source transcription Zhang active and spacers",d.d_active_nm==3 and d.d_i_nm==27)
+check("source attribution Bernardini-Fiorentini 1999 dielectric constants",
+      "Bernardini & Fiorentini" in NITRIDE_ASSUMPTIONS_E["eps_r (diode i-region)"]
+      and "1999" in NITRIDE_ASSUMPTIONS_E["eps_r (diode i-region)"])
 # Numerical verification: analytic log-domain Shockley inverse [E/A].
 for T in (230.,250.,273.,300.):
     I=1e-6; va,vj=d.v_of_i(I,T); back=d.j_of_vj(vj,T)*d.area_cm2
@@ -29,6 +33,16 @@ check("numerical mu units",abs(r.mu-r.loading.r_dot*2e-9)<1e-15)
 check("numerical current conservation",r.loading.r_captured+r.loading.r_matrix<=1e-6/Q_SI*(1+1e-12))
 small=d.dot_loading(1.,300.,1e10,.1,1.).r_dot; large=d.dot_loading(1.,300.,1e10,10.,1.).r_dot
 check("numerical aperture scaling",large<small)
+
+# The strained-gap fix lowers the default x=0.15 electron leakage barrier;
+# these [DR] regression literals are independently frozen from the corrected
+# edge construction (Rinke 2008 volume shift + Tsai 2020 VBO).  The valence
+# barrier is unchanged because only Ec had reused the shifted Ev reference.
+lk_gap=d.eta_inj(300.)
+check("numerical corrected x=0.15 conduction transport barrier",
+      abs(lk_gap.dE_c_eff_eV-0.29430835927037746)<1e-12)
+check("numerical x=0.15 valence transport barrier remains consistent",
+      abs(lk_gap.dE_v_eff_eV-0.12318373956523015)<1e-12)
 
 # --- Regression checks for the Opus review findings on commit b91a3a5 ---
 
@@ -78,6 +92,20 @@ check("numerical dV_active_mV unit check vs hand-computed field",math.isclose(de
 # Sanity bound on the unit bug itself: an mV drop across a 3 nm layer at a
 # kV/cm-scale field cannot be anywhere near 1e6 mV (~1e3 V).
 check("numerical dV_active_mV is a physically sane millivolt-scale number",0.<=dep_actual.dV_active_mV<1e4)
+
+# Additive SET diagnostic: preserve the legacy verdict at R_T=R_Q while
+# exposing that this point does not meet the default factor-10 weak-tunneling
+# screen [E].  Pekola et al., RMP 85, 1421 (2013), Sec. II.B/Eq. 8 [V].
+set_edge=set_feasibility(300.,radius_nm=.4,eps_r=11.3625,
+                         R_T_ohm=R_Q_OHM,f_cycle_Hz=8e7)
+check("numerical SET legacy feasible verdict remains unchanged",
+      set_edge["feasible"] and set_edge["R_T_over_RQ"]==1.)
+check("numerical SET weak-tunneling factor-10 diagnostic",
+      set_edge["R_T_over_R_Q"]==1. and not set_edge["weak_tunneling_ok"]
+      and set_edge["weak_tunneling_margin"]==10.)
+check("SET notes qualify orthodox screen versus pair-loading proof",
+      "not prove deterministic InGaN electron-hole pair loading" in set_edge["notes"]
+      and "Pekola" in set_edge["notes"])
 
 print("non-gating model comparison: computed 10 A/cm2 turn-on %.3f V; Zhang 2016 reports approximately 4 V" % d.vj_of_j(10.,300.))
 print(f"{sum(c)}/{len(c)} nitride transport checks passed")

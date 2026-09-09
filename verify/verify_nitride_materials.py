@@ -22,10 +22,10 @@ g,i,a=binary("GaN"),binary("InN"),binary("AlN")
 check("source transcription B97 GaN", abs(g.Psp_Cm2-(-.029))<=1e-12 and abs(g.e31_Cm2+.49)<=1e-12 and abs(g.e33_Cm2-.73)<=1e-12)
 check("source transcription B97 InN", abs(i.Psp_Cm2+.032)<=1e-12 and abs(i.e31_Cm2+.57)<=1e-12 and abs(i.e33_Cm2-.97)<=1e-12)
 check("source transcription B97 AlN", abs(a.Psp_Cm2+.081)<=1e-12 and abs(a.e31_Cm2+.60)<=1e-12 and abs(a.e33_Cm2-1.46)<=1e-12)
-# Source transcription: Bernardini PRB 1997, p.38 [V] -- one consistent
-# static dielectric-constant family, used with the SAME along-c polarization
-# formula (not a mix of Ioffe's perpendicular/parallel/static values).
-check("source transcription B97 eps_r", abs(g.eps_r-10.28)<=1e-12 and abs(i.eps_r-14.61)<=1e-12 and abs(a.eps_r-10.31)<=1e-12)
+# Source transcription: Bernardini & Fiorentini, phys. stat. sol. (b) 216,
+# 391 (1999), Sec. III [V] -- one consistent static dielectric-constant
+# family, used with the SAME along-c polarization formula.
+check("source transcription Bernardini-Fiorentini 1999 eps_r", abs(g.eps_r-10.28)<=1e-12 and abs(i.eps_r-14.61)<=1e-12 and abs(a.eps_r-10.31)<=1e-12)
 # Numerical verification: Rinke et al., PRB 77, 075202 (2008), Table V and
 # Sec. IV.B [V] -- electron masses (all three binaries) and GaN's A-band
 # hole masses.
@@ -74,6 +74,26 @@ P_dot_hand=psp_hand+2*e31_hand*ep_hand+e33_hand*ez_hand
 eps_r_hand=(1-x)*g.eps_r+x*i.eps_r
 F_hand=(g.Psp_Cm2-P_dot_hand)/(EPS0_SI*eps_r_hand)*1e-5
 check("numerical polarization field magnitude vs hand-computed B97 formula", math.isclose(polarization_field(mid,g,300), F_hand, rel_tol=1e-9))
+
+# Regression for the strained-gap construction.  Independently reconstruct
+# the Rinke volume deformation shift from the x=0.25 VCA inputs [V]/[DR]; the
+# conduction/valence partition [A] may move each edge but cannot change their
+# separation.  Rinke et al., PRB 77, 075202 (2008), Table IV [V].
+x_gap=.25; dot_gap=ingaN(x_gap); T_gap=300.
+ep_gap=(g.a_A-dot_gap.a_A)/dot_gap.a_A
+ez_gap=-2.*dot_gap.C13_GPa/dot_gap.C33_GPa*ep_gap
+dEg_gap=dot_gap.aV_eV*(2.*ep_gap+ez_gap)
+expected_gap=bandgap(dot_gap,T_gap)+dEg_gap
+check("numerical x=0.25 volume-strain shift is 249.6 meV class",
+      abs(dEg_gap*1000.-249.5950584942605)<1e-6)
+partition_gaps=[]
+for f_c in (0.,.2,.7,1.):
+    edges=band_edges(dot_gap,T_gap,substrate=g,strain_c_fraction=f_c)
+    partition_gaps.append(edges["Ec_eV"]-edges["Ev_eV"])
+check("numerical strained gap equals unstrained gap plus volume shift",
+      all(abs(q-expected_gap)<1e-6 for q in partition_gaps))
+check("numerical strained gap is partition-independent",
+      max(partition_gaps)-min(partition_gaps)<1e-12)
 
 try: ingaN(1.01); good=False
 except ValueError: good=True
