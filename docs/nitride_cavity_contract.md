@@ -115,10 +115,11 @@ headline cards set `N_A=1e17`, `N_D=1e18 cm^-3` `[V Zhang 2016 source, E
 planar transfer]` (Zhang et al., APL 108, 153102 (2016), their own p-GaN/
 n-GaN doping), `d_i_nm=24.5` `[A adapted Zhang geometry]` (their 12 nm
 undoped-GaN spacers either side of THIS card's own `nitride.dot.
-wl_thickness_nm` reservoir, not their 3 nm QW), and `x_in`/`wl_thickness_nm`
-set EQUAL to `nitride.dot.x_in`/`wl_thickness_nm` (the transport active
-composition/reservoir stays consistent with the confinement dot's own
-reservoir). All remaining `NitrideDiode` fields (`d_active_nm`, `area_um2`,
+wl_thickness_nm` reservoir, not their 3 nm QW), `x_in` set EQUAL to
+`nitride.dot.x_in`, and `drive.diode.wl_thickness_nm` = 0.5 nm kept as the
+diode's SRH reservoir thickness only (since commit 59014bc the confinement
+solver has no wetting-layer model and `nitride.dot.wl_thickness_nm` is 0;
+the two fields are therefore NOT equal, by design). All remaining `NitrideDiode` fields (`d_active_nm`, `area_um2`,
 `R_s_ohm`, `n_ideality`, `tau_SRH_ns`, `tau_cap0_ps`, `tau_matrix_ns`,
 `eps_r`, `f_Rs_local`) are left at their module class defaults; the
 resolved values are recorded in each card's `design.provenance.
