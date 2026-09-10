@@ -547,6 +547,22 @@ for _card_path in (ROOT / "cards" / "nitride-qw-fluctuation-pulse-design.yaml",
        % _card_path.name,
        "reservoir_kind='gan_barrier'" in _card_flat and 'screening_fraction=0.0) BOTH' in _card_flat)
 
+# Astra review fixtures: selected plateau masses enter the bulk-channel DOS
+# prefactor, and radial p states must lie below that same selected continuum.
+_chan_rates = rates(chan_lv, 300., tau_rad0_ns=1.3, n_dot_cm2=1e10, tau_cap_ps=10.)
+_chan_mass = chan_lv.escape_e_matrix_xy if chan_lv.dE_e_meV <= chan_lv.dE_h_meV else chan_lv.escape_h_matrix_xy
+_chan_prefactor = (1000./10.) * (_chan_mass * _M0_SI * _KB_SI * 300. /
+    (math.pi * _HBAR_SI**2) / 1e4 / 1e10)
+ck('Astra GaN escape channel exposes GaN reservoir masses for detailed balance',
+   chan_lv.escape_h_matrix_xy == m_q.mh_xy and chan_lv.escape_h_matrix_xy != d_q.mh_xy)
+ck('Astra detailed-balance prefactor uses the selected escape-channel mass',
+   _chan_rates['valid'] and abs(_chan_rates['escape_prefactor_ns']-_chan_prefactor) < 1e-9*max(1.,_chan_prefactor))
+_radial_fixture = levels(NitrideDotSystem(geometry_type='qw_fluctuation', height_nm=3.5,
+    radius_nm=5., wl_thickness_nm=3., screening_fraction=0.), 300.)
+ck('Astra radial excited states above selected escape thresholds are rejected',
+   _radial_fixture.valid and math.isnan(_radial_fixture.sp_split_e_meV)
+   and math.isnan(_radial_fixture.sp_split_h_meV))
+
 print('%d/%d nitride_geometry checks passed'%(sum(ok for _,ok in checks),len(checks)))
 for name,ok in checks:
     if not ok: print('FAIL '+name)

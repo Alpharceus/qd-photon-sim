@@ -106,6 +106,12 @@ ok('invalid coverage reported', inc[0]['identification_status']=='incomplete_mod
 narrow=screening_compatibility(fixture((-10.,)), slope_range_meV_per_V=(-10.,-10.), voltage_window_V=(0.,1.5))
 ok('narrow window is incomplete, not fit', narrow[0]['identification_status']=='incomplete_model_coverage' and narrow[0]['compatible'] is False)
 
+short_trace=[{'row_id':i, 'V_j':v, 'E_X_eV':1.5-.010*v,
+              'spectroscopy_valid':True} for i,v in enumerate((.45,.50,.55))]
+short_result=screening_compatibility(short_trace, slope_range_meV_per_V=(-11.,-9.), voltage_window_V=(.25,.75))
+ok('requested voltage window outside valid trace coverage is incomplete',
+   short_result[0]['compatible'] is False and short_result[0]['identification_status']=='incomplete_model_coverage')
+
 # AC5: bare-vs-cavity dispatch, window containing only ONE of the two
 # lifetime values (mutation: swapping the bare/cavity key selection).
 bc_rows=fixture((-10.,))

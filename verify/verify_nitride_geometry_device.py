@@ -166,8 +166,8 @@ from fsim_core.nitride_stark import resolve_bias as _resolve_bias_direct
 _qw_dotkw=dict(_qw_card(1.0).nitride["dot"])
 _qw_bias=_resolve_bias_direct(_qw_diode,T_j_K=qw_rows[1.0]["T_j"],current_uA=base.drive.I_uA,field_polarity=1,external_field_kVcm=0.0)
 _qw_lv=nitride_levels.levels(nitride_levels.NitrideDotSystem(**{**_qw_dotkw,"external_field_kVcm":_qw_bias["applied_field_kVcm"]}),qw_rows[1.0]["T_j"])
-check("QW reservoir_energy_eV agrees with an independent nitride_levels.levels() call",
-      close(qw_rows[1.0]["reservoir_energy_eV"],_qw_lv.reservoir_energy_eV))
+check("QW optical_reservoir_energy_eV agrees with an independent nitride_levels.levels() call",
+      close(qw_rows[1.0]["optical_reservoir_energy_eV"],_qw_lv.optical_reservoir_energy_eV))
 check("QW reservoir moves with w (surrounding-well thickness), not w-independent",
       len({round(r["reservoir_energy_eV"],6) for r in qw_rows.values()})==4 and
       qw_rows[1.0]["reservoir_energy_eV"]>qw_rows[1.5]["reservoir_energy_eV"]>qw_rows[2.0]["reservoir_energy_eV"]>qw_rows[2.5]["reservoir_energy_eV"])
@@ -175,8 +175,14 @@ check("QW transport/background observable (reservoir_offset_meV) responds to w",
       len({round(r["reservoir_offset_meV"],3) for r in qw_rows.values()})==4)
 qw_h1=evaluate(_qw_card(1.0,height=3.5),[300.])["scalars"]; qw_h2=evaluate(_qw_card(1.0,height=5.0),[300.])["scalars"]
 check("fixed w: changing fluctuation height moves the local dot energy E_X",qw_h1["E_X_eV"]!=qw_h2["E_X_eV"])
-check("fixed w: changing fluctuation height leaves the surrounding-QW reservoir unmoved",
-      close(qw_h1["reservoir_energy_eV"],qw_h2["reservoir_energy_eV"]))
+check("fixed w: changing fluctuation height leaves the surrounding-QW optical reservoir unmoved",
+      close(qw_h1["optical_reservoir_energy_eV"],qw_h2["optical_reservoir_energy_eV"]))
+_escape_fixture = nitride_levels.levels(nitride_levels.NitrideDotSystem(
+    geometry_type="qw_fluctuation", height_nm=3.5, radius_nm=20.,
+    wl_thickness_nm=3., screening_fraction=0.), 300.)
+check("QW optical reservoir is distinct from the selected escape-edge sum",
+      _escape_fixture.valid and not close(_escape_fixture.optical_reservoir_energy_eV,
+      _escape_fixture.reservoir_energy_eV))
 _expected_iso=device_mod._nitride_reservoir_energy_eV(base.nitride["dot"],s0["T_j"],base.nitride.get("background",{}))
 check("isolated-dot card reservoir behavior is unchanged (still the bulk-edge helper)",
       close(s0["reservoir_energy_eV"],_expected_iso) and s0["reservoir_kind"]=="gan_barrier")
@@ -191,8 +197,8 @@ finally:
     device_mod._nitride_reservoir_energy_eV=_real_reservoir_helper
 check("mutation caught: replacing the bulk reservoir helper with a constant changes an isolated-dot row",
       s_iso_patched["reservoir_energy_eV"]==3.0 and s0["reservoir_energy_eV"]!=3.0)
-check("QW row stays decoupled from the (mutated) bulk helper: reservoir_energy_eV is unaffected",
-      close(s_qw_patched["reservoir_energy_eV"],qw_rows[1.0]["reservoir_energy_eV"]))
+check("QW row stays decoupled from the (mutated) bulk helper: optical reservoir is unaffected",
+      close(s_qw_patched["optical_reservoir_energy_eV"],qw_rows[1.0]["optical_reservoir_energy_eV"]))
 
 # --- Acceptance 3 / Required: V_j=0 point and a near-flat-band point, marker present ---
 _diode0=nitride_transport.planar_pin(**{k:v for k,v in base.drive.diode.items() if k not in ("preset","tau_pulse_ns")})

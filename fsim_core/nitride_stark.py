@@ -121,7 +121,7 @@ def screening_compatibility(rows, *, slope_range_meV_per_V, voltage_window_V, li
         for bid,branch in enumerate(branches):
             win=[q for q in branch if vlo<=float(_vkey(q[1])[0])<=vhi]
             if len(win)<3: continue
-            _,key=_vkey(win[0][1]); slope,rms=_fit(win,key); coverage=True; lifeval=None; lifeok=True
+            _,key=_vkey(win[0][1]); slope,rms=_fit(win,key); coverage=(float(_vkey(branch[0][1])[0]) <= vlo and float(_vkey(branch[-1][1])[0]) >= vhi); lifeval=None; lifeok=True
             if lifetime_range_ns is not None:
                 lk="tau_rad_bare_ns" if lifetime_range_ns["kind"]=="bare" else "tau_rad_cavity_ns"; hits=[r for _,r in branch if float(_vkey(r)[0])==float(lifetime_range_ns["voltage_V"])]
                 if not hits or not _finite(hits[0].get(lk)): coverage=False; lifeok=False

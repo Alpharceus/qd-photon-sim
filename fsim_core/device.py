@@ -1231,14 +1231,14 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             # fluctuation cards are surrounded by the SAME InGaN quantum
             # well the fluctuation sits in, so their reservoir is the
             # levels object's own w-dependent surrounding-QW continuum edge
-            # (lv.reservoir_energy_eV, solved from nitride.dot.wl_thickness_nm
+            # (lv.optical_reservoir_energy_eV, solved from nitride.dot.wl_thickness_nm
             # by nitride_levels._qw_levels), never the isolated-dot bulk
             # GaN-barrier/unstrained-WL edge from _nitride_reservoir_energy_eV,
             # which is w-independent and disagreed with the real w-dependent
             # continuum by up to several hundred meV (Opus fix-round finding).
             # Isolated-dot cards keep the existing bulk-edge helper unchanged.
             if system0.geometry_type == "qw_fluctuation":
-                reservoir_energy_eV = float(lv.reservoir_energy_eV)
+                reservoir_energy_eV = float(lv.optical_reservoir_energy_eV)
             else:
                 reservoir_energy_eV = _nitride_reservoir_energy_eV(dot_kw, Tj, bg_kw)
             reservoir_offset_meV = (reservoir_energy_eV-lv.E_X_eV)*1e3
@@ -1348,7 +1348,8 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         "flat_band": bool(x["bias"]["flat_band"]) if x["bias"] else False,
         "depletion_regime": x["bias"]["depletion_regime"] if x["bias"] else None,
         "reservoir_energy_eV": x["reservoir_energy_eV"], "reservoir_offset_meV": x["reservoir_offset_meV"],
-        "reservoir_kind": lv.reservoir_kind, "geometry_type": system0.geometry_type,
+        "optical_reservoir_energy_eV": x["reservoir_energy_eV"],
+        "optical_reservoir_kind": lv.optical_reservoir_kind, "reservoir_kind": lv.reservoir_kind, "geometry_type": system0.geometry_type,
         "effective_height_nm": lv.effective_height_nm, "effective_radius_nm": lv.effective_radius_nm,
         "cavity_reference_V_j_V": _track_bias["V_j"], "cavity_reference_transition_eV": track0.E_X_eV,
         "cavity_reference_convention": "fixed_junction_voltage" if cavity_reference_V is not None or bias_mode == "junction_voltage" else "current_controlled",

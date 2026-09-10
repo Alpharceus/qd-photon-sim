@@ -151,6 +151,14 @@ class NitrideDotSystem:
 
 @dataclass(frozen=True)
 class NitrideLevels:
+    """Resolved nitride levels and reservoirs.
+
+    ``reservoir_*`` fields describe the selected per-carrier escape channels.
+    ``optical_reservoir_energy_eV``/``optical_reservoir_kind`` instead describe
+    the continuum used for flat optical-background acceptance: the surrounding
+    InGaN QW ground subbands for QW fluctuations, or GaN minus 25 meV [A] for
+    isolated dots.  The escape-rate DOS is a bulk-channel approximation [A].
+    """
     E_X_eV: float; lambda_nm: float; electron_bound: bool; hole_bound: bool
     overlap_sq: float; field_kVcm: float; E_e_meV: float; E_h_meV: float
     dE_e_meV: float; dE_h_meV: float; dE_pair_meV: object
@@ -177,6 +185,10 @@ class NitrideLevels:
     physical_height_nm: float = float('nan')
     physical_radius_nm: float = float('nan')
     aspect_ratio: float = float('nan')
+    optical_reservoir_energy_eV: float = float('nan')
+    optical_reservoir_kind: str = 'gan_barrier'
+    escape_e_matrix_xy: float = float('nan')
+    escape_h_matrix_xy: float = float('nan')
 
 def _validate(s):
     bad=[]
@@ -372,8 +384,8 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
     # admitted a z-excited state above the branch's own selected continuum,
     # e.g. sp_split_e_meV=88.69 meV reported for a state 33 meV above the
     # surrounding-well edge at h=7, R=5, w=3.5, screening=1).
-    zg_e=(ee1-ee) if (math.isfinite(ee1) and ee1<eth) else float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
-    zg_h=(eh1-eh) if (math.isfinite(eh1) and eh1<hth) else float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
+    zg_e=(ee1-ee) if (math.isfinite(ee1) and ee1<eth) else float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe) and ee+rpe<eth) else float('inf')
+    zg_h=(eh1-eh) if (math.isfinite(eh1) and eh1<hth) else float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph) and eh+rph<hth) else float('inf')
     eleft=float(_z_potential(h_eff,Ve,F,-1,np.array([-h_eff/2.-1.]))[0]); eright=float(_z_potential(h_eff,Ve,F,-1,np.array([h_eff/2.+1.]))[0])
     hleft=float(_z_potential(h_eff,Vh,F,+1,np.array([-h_eff/2.-1.]))[0]); hright=float(_z_potential(h_eff,Vh,F,+1,np.array([h_eff/2.+1.]))[0])
     # reservoir_kind/reservoir_energy_eV (Opus fix-round finding 4, refined by
@@ -400,6 +412,11 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
     elif e_is_qw or h_is_qw: reservoir_kind = 'mixed'
     else: reservoir_kind = 'gan_barrier'
     reservoir_energy_eV = (de['Ec_eV']-de['Ev_eV'])+eth+hth
+    # The optical acceptance sees the QW e-h continuum, irrespective of
+    # which lower per-carrier escape plateaux control retention. [A]
+    optical_reservoir_energy_eV = (de['Ec_eV']-de['Ev_eV'])+er+hr
+    escape_e_mass = d_exy if e_is_qw else m_exy
+    escape_h_mass = d_hxy if h_is_qw else m_hxy
     return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,ebe*1000.,hbe*1000.,ede,hde,None,
         min(zg_e,rg_e)*1000. if math.isfinite(min(zg_e,rg_e)) else float('nan'),min(zg_h,rg_h)*1000. if math.isfinite(min(zg_h,rg_h)) else float('nan'),
         d_exy,d_hxy,True,(),'[V] BenDaniel & Duke, PR 152, 683 (1966); [A] same-composition adiabatic local-column QW fluctuation, both columns centered on the same z=0 midplane; lateral interface electrostatics neglected',
@@ -408,7 +425,9 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
         'numerical padding/discretization reported separately; lateral interface electrostatics, shape and nonpolar strain/valence systematic error UNQUANTIFIED; '
         'symmetric-fluctuation placement assumption: in the unscreened tilted limit the reported lateral depth collapses to the mass-independent geometric '
         'estimate |F|*(H-w)/2 rather than a quantum-confinement difference (see module docstring); ' + _GRID_NOTE,
-        orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
+        orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm),
+        optical_reservoir_energy_eV=optical_reservoir_energy_eV, optical_reservoir_kind='ingan_qw',
+        escape_e_matrix_xy=escape_e_mass, escape_h_matrix_xy=escape_h_mass)
 
 @lru_cache(maxsize=256)
 def _levels_cached(s,T_K,n,pad):
@@ -500,7 +519,10 @@ def _levels_cached(s,T_K,n,pad):
                           'gan_barrier',(be['Ec_eV']-be['Ev_eV'])-.025,0.,0.,h_eff,r_eff,volume,
                           geometry_label+'; [A] effective field length used consistently',
                           'numerical padding/discretization reported separately; shape and nonpolar strain/valence systematic error UNQUANTIFIED; effective-height spread is sensitivity only; ' + _GRID_NOTE,
-                          orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
+                          orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm),
+                          optical_reservoir_energy_eV=(be['Ec_eV']-be['Ev_eV'])-.025,
+                          optical_reservoir_kind='gan_barrier', escape_e_matrix_xy=m_exy,
+                          escape_h_matrix_xy=m_hxy)
 
 def _invalid(s,reasons,F=0.):
     return NitrideLevels(float('nan'),float('nan'),False,False,0.,F,float('nan'),float('nan'),float('nan'),float('nan'),None,float('nan'),float('nan'),float('nan'),float('nan'),False,tuple(reasons),'[A] invalid geometry/offset rejected before model evaluation')
@@ -517,8 +539,10 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
 
     tau_rad0_ns default is TAU_RAD0_DEFAULT_NS [E], see module docstring
     constants; callers (fsim_core.device) always pass an explicit value.
-    QW fluctuations use the surrounding InGaN well in-plane masses in N2D;
-    pair channels remain unsupported [A]."""
+    The N2D prefactor is a bulk-channel DOS approximation [A]: for QW rows
+    it uses the in-plane mass of each carrier's selected escape channel
+    (surrounding InGaN well or GaN plateau), not necessarily the dot mass.
+    Pair channels remain unsupported [A]."""
     bad=list(lv.invalid_reasons)
     if not lv.valid: bad.append('levels are invalid')
     # Opus fix-round finding 3: an overlap below the numerical noise floor
@@ -531,7 +555,9 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
     if channel in ('pair','pair_half'): bad.append('pair channel requires a bound wetting-layer continuum')
     if bad: return dict(gamma_X0_ns=float('nan'),gamma_XX0_ns=float('nan'),k_X_ns=float('nan'),k_XX_ns=float('nan'),escape_prefactor_ns=float('nan'),E_a_meV=float('nan'),S0=float('nan'),tau_cap_ps_used=float('nan'),valid=False,invalid_reasons=tuple(bad),provenance='[A] invalid rate request')
     tc=tau_cap_ps*(1e10/n_dot_cm2) if tau_cap_scales_with_density else tau_cap_ps
-    choices={'electron':(lv.dE_e_meV,lv.m_e_matrix_xy),'hole':(lv.dE_h_meV,lv.m_h_matrix_xy)}
+    e_mass = lv.escape_e_matrix_xy if math.isfinite(lv.escape_e_matrix_xy) else lv.m_e_matrix_xy
+    h_mass = lv.escape_h_matrix_xy if math.isfinite(lv.escape_h_matrix_xy) else lv.m_h_matrix_xy
+    choices={'electron':(lv.dE_e_meV,e_mass),'hole':(lv.dE_h_meV,h_mass)}
     name=min(choices,key=lambda q:choices[q][0]) if channel=='min' else channel
     ea,mass=choices[name]
     if ea<0: return dict(gamma_X0_ns=float('nan'),gamma_XX0_ns=float('nan'),k_X_ns=float('nan'),k_XX_ns=float('nan'),escape_prefactor_ns=float('nan'),E_a_meV=ea,S0=float('nan'),tau_cap_ps_used=tc,valid=False,invalid_reasons=('negative escape barrier',),provenance='[A] negative barrier is not floored')
