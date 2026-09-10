@@ -65,18 +65,19 @@ def stark_derivatives(rows, *, voltage_key="V_j", energy_key="E_X_eV", valid_key
     ans=[]
     for i,row in enumerate(rows):
         r=dict(row); r.update(dE_X_dV_meV_per_V=float("nan"),derivative_valid=False,derivative_row_ids=[],derivative_policy="adjacent_three_point_nonuniform")
-        own=bool(row.get(valid_key,False)) and _finite(row.get(energy_key)) and _finite(row.get(voltage_key))
-        ix=(0,1,2) if i==0 else (len(rows)-3,len(rows)-2,len(rows)-1) if i==len(rows)-1 else (i-1,i,i+1)
-        chosen=[rows[j] for j in ix]
-        good=own and len(rows)>=3 and all(bool(q.get(valid_key,False)) and _finite(q.get(energy_key)) and _finite(q.get(voltage_key)) for q in chosen)
-        if good and len({_marker(q) for q in chosen})==1:
-            x=[float(q[voltage_key]) for q in chosen]; y=[float(q[energy_key]) for q in chosen]
-            r.update(dE_X_dV_meV_per_V=1000*_d3(x,y,ix.index(i)),derivative_valid=True,derivative_row_ids=[_rid(rows[j],j) for j in ix])
+        if len(rows)>=3:
+            own=bool(row.get(valid_key,False)) and _finite(row.get(energy_key)) and _finite(row.get(voltage_key))
+            ix=(0,1,2) if i==0 else (len(rows)-3,len(rows)-2,len(rows)-1) if i==len(rows)-1 else (i-1,i,i+1)
+            chosen=[rows[j] for j in ix]
+            good=own and all(bool(q.get(valid_key,False)) and _finite(q.get(energy_key)) and _finite(q.get(voltage_key)) for q in chosen)
+            if good and len({_marker(q) for q in chosen})==1:
+                x=[float(q[voltage_key]) for q in chosen]; y=[float(q[energy_key]) for q in chosen]
+                r.update(dE_X_dV_meV_per_V=1000*_d3(x,y,ix.index(i)),derivative_valid=True,derivative_row_ids=[_rid(rows[j],j) for j in ix])
         ans.append(r)
     return ans
 
 # Explicit fixed-input whitelist: outputs never create separate one-row traces.
-_TRACE_KEYS=("geometry","orientation","shape","composition","surrounding_well","regime","temperature_mode","controlled_temperature","field_polarity","applied_static_field_kVcm","external_field_kVcm","T_hs","cavity_reference_V_j_V","cavity_reference_settings","height_nm","radius_nm","x_in","strain_fraction","strain_c_fraction","wl_thickness_nm")
+_TRACE_KEYS=("geometry","orientation","shape","composition","surrounding_well","regime","temperature_mode","controlled_temperature","field_polarity","applied_static_field_kVcm","external_field_kVcm","T_hs","cavity_reference_V_j_V","cavity_reference_settings","height_nm","radius_nm","x_in","strain_fraction","strain_c_fraction","wl_thickness_nm","top_radius_fraction","geometry_type","shape_height_fraction","polarization_factor","vbo_InN_GaN_eV")
 def _freeze(x):
     if isinstance(x,dict): return tuple(sorted((k,_freeze(v)) for k,v in x.items()))
     if isinstance(x,(list,tuple)): return tuple(_freeze(v) for v in x)
@@ -131,7 +132,11 @@ def screening_compatibility(rows, *, slope_range_meV_per_V, voltage_window_V, li
     bybranch={}
     for r in result: bybranch.setdefault((r["group"],r["branch_id"]),[]).append(r)
     for members in bybranch.values():
-        usable=[r for r in members if _finite(r["fitted_slope_meV_per_V"])]
-        if len(usable)>=2 and len({round(r["fitted_slope_meV_per_V"],12) for r in usable})==1 and len({(r["compatible"],r["identification_status"]) for r in usable})==1:
-            for r in usable: r["compatible"]=None; r["identification_status"]="screening_unidentifiable"
+        # Unidentifiable only applies to hypotheses the measurement would
+        # otherwise ACCEPT (slope+lifetime match): a hypothesis the window
+        # already excludes stays compatible=False/"incompatible", and a
+        # hypothesis missing lifetime coverage stays "incomplete_model_coverage".
+        matched=[r for r in members if r["identification_status"]=="compatible"]
+        if len(matched)>=2 and len({round(r["fitted_slope_meV_per_V"],12) for r in matched})==1:
+            for r in matched: r["compatible"]=None; r["identification_status"]="screening_unidentifiable"
     return result
