@@ -11,7 +11,7 @@ with crafted boundary values that the sweep's actual data would not by
 itself exercise (g2 exactly at the gate, flux exactly at the floor).
 """
 from __future__ import annotations
-import argparse, csv, hashlib, json, math, sys
+import argparse, csv, hashlib, json, math, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import run_nitride_geometry_stark as s
@@ -22,6 +22,21 @@ ZHANG_SLOPE_MEV_PER_V_INDEPENDENT = -10.0  # [V] Zhang et al., APL 108, 153102 (
 WANG_HEIGHT_NM_INDEPENDENT = 7.0            # [V] Wang et al., Sci. Rep. 7, 12089 (2017), uncapped AFM
 WANG_DIAMETER_NM_INDEPENDENT = 35.0         # [V] ibid.
 WANG_TEMPERATURE_K_INDEPENDENT = 220.0      # [V] ibid.
+
+# Frozen core-grid axes, transcribed independently from docs/nitride_geometry_
+# stark_contract.md ("7 heights x 5 radii x 4 orientations x 4 T_hs x 3
+# screening x 2 regimes = 3,360 rows"), NOT imported from the run module's own
+# CORE_H/CORE_R/ORI/TS/SCR/REG constants (Opus fix-round medium finding: grid
+# membership was checked only against the module's own builders, so e.g.
+# SCR=(0,0.5,0.9) in the module would still pass). The module's constants are
+# asserted equal to these literals below, and the CSV's own axis coverage is
+# asserted a subset of them independently of build_core().
+CONTRACT_HEIGHTS_NM = (1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0)
+CONTRACT_RADII_NM = (5.0, 10.0, 15.0, 20.0, 30.0)
+CONTRACT_ORIENTATIONS = ("c_plane", "semipolar_11_22", "m_plane", "a_plane")
+CONTRACT_T_HS_K = (230.0, 250.0, 273.0, 300.0)
+CONTRACT_SCREENING = (0.0, 0.5, 1.0)
+CONTRACT_REGIMES = ("rectangular", "deterministic_pair")
 
 
 def rows(p):
@@ -65,6 +80,30 @@ def check_grid(core, geo, bias, cur, sens, comp, man, quick, checks, detail):
     checks.append(("every core row carries card_hash/cache_identity/invalid_reasons", all(x.get("card_hash") and x.get("cache_identity") and "invalid_reasons" in x for x in core)))
     checks.append(("every stark_bias row carries spectroscopy_valid and V_j", all("spectroscopy_valid" in x and "V_j" in x for x in bias) if bias else True))
     checks.append(("manifest core/shape/qw/stark full-contract counts recorded", man.get("full_contract_rows") == {"core": 3360, "shape": 864, "qw": 288, "stark": 3120, "total_before_caching": 7632}))
+    # Tie the module's own grid constants to the frozen contract literals
+    # (Opus fix-round medium finding) -- independent of build_core(), so a
+    # mutated CORE_H/CORE_R/ORI/TS/SCR/REG is actually caught.
+    checks.append(("module CORE_H matches the frozen contract heights", tuple(s.CORE_H) == CONTRACT_HEIGHTS_NM))
+    checks.append(("module CORE_R matches the frozen contract radii", tuple(s.CORE_R) == CONTRACT_RADII_NM))
+    checks.append(("module ORI matches the frozen contract orientations", tuple(s.ORI) == CONTRACT_ORIENTATIONS))
+    checks.append(("module TS matches the frozen contract T_hs", tuple(s.TS) == CONTRACT_T_HS_K))
+    checks.append(("module SCR matches the frozen contract screening fractions", tuple(round(v, 6) for v in s.SCR) == tuple(round(v, 6) for v in CONTRACT_SCREENING)))
+    checks.append(("module REG matches the frozen contract regimes", tuple(s.REG) == CONTRACT_REGIMES))
+    # The CSV's own axis coverage (quick or full) must be a SUBSET of the
+    # frozen contract literals, checked directly against the CSV, not against
+    # whatever the module's constants happen to say.
+    checks.append(("core heights present are all within the frozen contract literal set",
+                    {round(f(r["height_nm"]), 6) for r in core} <= {round(v, 6) for v in CONTRACT_HEIGHTS_NM}))
+    checks.append(("core radii present are all within the frozen contract literal set",
+                    {round(f(r["radius_nm"]), 6) for r in core} <= {round(v, 6) for v in CONTRACT_RADII_NM}))
+    checks.append(("core orientations present are all within the frozen contract literal set",
+                    {r["orientation"] for r in core} <= set(CONTRACT_ORIENTATIONS)))
+    checks.append(("core T_hs present are all within the frozen contract literal set",
+                    {round(f(r["T_hs"]), 6) for r in core} <= {round(v, 6) for v in CONTRACT_T_HS_K}))
+    checks.append(("core screening_fraction present are all within the frozen contract literal set",
+                    {round(f(r["screening_fraction"]), 6) for r in core} <= {round(v, 6) for v in CONTRACT_SCREENING}))
+    checks.append(("core regimes present are all within the frozen contract literal set",
+                    {r["regime"] for r in core} <= set(CONTRACT_REGIMES)))
 
 
 def check_caps(man, a, checks):
@@ -79,7 +118,7 @@ def check_caps(man, a, checks):
                         (not man["complete"]) or (man["requested_rows"]["core"] == 3360 and man["requested_rows"]["stark_bias"] + man["requested_rows"]["stark_current"] == 3120)))
 
 
-def check_replay(core, geo, bias, cur, checks):
+def check_replay(core, geo, bias, cur, checks, quick):
     """rtol=1e-8/atol=1e-10 replay across: valid + invalid diagnostic, both
     regimes, c-plane + a-plane, a shape alternative, a QW card, nondefault
     polarity, and a temperature-shifted current point."""
@@ -93,14 +132,25 @@ def check_replay(core, geo, bias, cur, checks):
     samples["shape_alt"] = next((x for x in geo if x["row_kind"] == "shape" and x.get("shape") in ("lens", "truncated_cone")), None)
     samples["qw_card"] = next((x for x in geo if x["row_kind"] == "qw"), None)
     samples["nondefault_polarity"] = next((x for x in bias if x.get("polarity") == "-1"), None)
-    by_temp = {}
-    for x in cur:
-        by_temp.setdefault(x.get("T_hs"), []).append(x)
-    samples["temperature_shifted_current"] = next((x for xs in by_temp.values() for x in xs if x.get("T_hs") != "300.0"), None) or (cur[0] if cur else None)
+    # Opus fix-round finding: the previous fallback to cur[0] (itself always
+    # T_hs=300.0) made this check pass without ever being exercised. Quick
+    # mode's own Stark current grid is deliberately fixed at T_hs=300 K
+    # (spec: "Reduce Stark to ... fixed/current heat-sink temperature 300
+    # K"), so no shifted-T sample CAN exist there -- explicitly marked N/A
+    # rather than silently faked. Full mode has no such excuse: a missing
+    # sample there is a real failure, not a fallback.
+    if quick:
+        samples["temperature_shifted_current"] = None
+    else:
+        samples["temperature_shifted_current"] = next((x for x in cur if x.get("T_hs") != "300.0"), None)
 
     for name, sample in samples.items():
         if sample is None:
-            checks.append((f"replay sample available: {name}", False)); continue
+            if name == "temperature_shifted_current" and quick:
+                checks.append((f"replay sample available: {name} (not applicable in quick mode: Stark current T_hs is fixed at 300 K by spec)", True))
+            else:
+                checks.append((f"replay sample available: {name}", False))
+            continue
         try:
             p = json.loads(sample["cache_identity"])
         except (KeyError, json.JSONDecodeError):
@@ -151,10 +201,23 @@ def check_oat_sensitivities(sens, core, checks, detail):
             # (not merely small) across both values, showing the observed
             # background here comes entirely from the unrelated b_res
             # channel and the bg_tau-dependent term contributes exactly
-            # zero -- not a bug in this sweep or in device.py.
+            # zero -- not a bug in this sweep or in device.py. Opus
+            # fix-round finding: checking background_flux_s alone could pass
+            # by coincidence (e.g. if that single field were broken/blank
+            # for an unrelated reason) with moved=True on both branches; ALL
+            # THREE of background_flux_s, g2 and signal_flux_s must be
+            # finite AND identical across the axis values for the null to
+            # be accepted, so a genuine (buggy) movement in any one of them
+            # now fails this check.
             bgflux = [f(r.get("background_flux_s")) for r in group]
-            moved = len({round(v, 12) for v in bgflux if isfin(v)}) == 1 and len(bgflux) == len(group)
-            detail.append(f"background_tau_ns null-movement accepted conditionally (background_flux_s identical across values: {bgflux})")
+            g2s = [f(r.get("g2")) for r in group]
+            fluxes = [f(r.get("signal_flux_s")) for r in group]
+            def _all_identical(vals):
+                return len(vals) > 0 and all(isfin(v) for v in vals) and len({round(v, 12) for v in vals}) == 1
+            moved = _all_identical(bgflux) and _all_identical(g2s) and _all_identical(fluxes)
+            detail.append(f"background_tau_ns null-movement accepted conditionally only because "
+                           f"background_flux_s/g2/signal_flux_s are ALL identical across values "
+                           f"(bg={bgflux}, g2={g2s}, flux={fluxes})")
         checks.append((f"OAT axis moves a relevant observable: {axis}", moved))
     # Explicit expected null cases (spec): nonpolar screening_fraction, and
     # m/a orientation identity -- read directly off the core grid, not the
@@ -219,16 +282,30 @@ def check_plots(out, man, core, geo, bias, checks):
 
 
 def check_mutation_fixtures(checks):
-    checks.append(("g2 exactly at gate (0.5) is rejected", s.eligible(True, 0.5, 2000.) is False))
-    checks.append(("g2 just under gate (0.4999) with sufficient flux is accepted", s.eligible(True, 0.4999, 2000.) is True))
-    checks.append(("flux exactly at floor (1000) is included", s.eligible(True, 0.1, 1000.) is True))
-    checks.append(("flux just under floor (999.999) is rejected", s.eligible(True, 0.1, 999.999) is False))
-    checks.append(("invalid row is never eligible regardless of g2/flux", s.eligible(False, 0.01, 1e9) is False))
-    checks.append(("NaN g2 is never eligible", s.eligible(True, float("nan"), 2000.) is False))
-    checks.append(("rectangular regime never requires hardware qualification", s.hardware_qualified(True, "rectangular", False) is True))
-    checks.append(("SET regime with set_feasible=False is never hardware-qualified (no combining extrema across rows)", s.hardware_qualified(True, "deterministic_pair", False) is False))
-    checks.append(("SET regime with set_feasible=True and eligible is hardware-qualified", s.hardware_qualified(True, "deterministic_pair", True) is True))
-    checks.append(("hardware qualification never rescues an ineligible row", s.hardware_qualified(False, "deterministic_pair", True) is False))
+    # eligible(): flux-floor gate ONLY (matches run_nitride_cavity.py's
+    # `eligible` exactly -- Opus fix-round finding: g2<0.5 must NOT be
+    # folded in here, or this column is not comparable with round 1).
+    checks.append(("eligible: g2 at/above the optical gate (0.5) is STILL eligible (flux-only gate)", s.eligible(True, 0.5, 2000.) is True))
+    checks.append(("eligible: flux exactly at floor (1000) is included", s.eligible(True, 0.1, 1000.) is True))
+    checks.append(("eligible: flux just under floor (999.999) is rejected", s.eligible(True, 0.1, 999.999) is False))
+    checks.append(("eligible: invalid row is never eligible regardless of g2/flux", s.eligible(False, 0.01, 1e9) is False))
+    checks.append(("eligible: NaN g2 is never eligible", s.eligible(True, float("nan"), 2000.) is False))
+    # optical_pass(): adds g2<0.5 and, for SET, one_pair_valid.
+    checks.append(("optical_pass: g2 exactly at gate (0.5) is rejected", s.optical_pass(True, 0.5, "rectangular", True) is False))
+    checks.append(("optical_pass: g2 just under gate (0.4999) is accepted (rectangular)", s.optical_pass(True, 0.4999, "rectangular", True) is True))
+    checks.append(("optical_pass: an ineligible row is never optical_pass regardless of g2", s.optical_pass(False, 0.01, "rectangular", True) is False))
+    checks.append(("optical_pass: SET regime with one_pair_valid=False is rejected even with good g2", s.optical_pass(True, 0.1, "deterministic_pair", False) is False))
+    checks.append(("optical_pass: SET regime with one_pair_valid=True and good g2 is accepted", s.optical_pass(True, 0.1, "deterministic_pair", True) is True))
+    checks.append(("optical_pass: rectangular regime never requires one_pair_valid", s.optical_pass(True, 0.1, "rectangular", False) is True))
+    # hardware_qualified(): adds, for SET, hardware_feasible (=set_feasible
+    # AND pair_supply_possible) -- matches run_nitride_cavity.py's
+    # device_pass exactly (Opus fix-round finding: the previous
+    # hardware_qualified dropped one_pair_valid entirely by taking `elig`
+    # instead of `opt_pass`, so it was not comparable with round 1).
+    checks.append(("hardware_qualified: rectangular regime never requires hardware qualification", s.hardware_qualified(True, "rectangular", False) is True))
+    checks.append(("hardware_qualified: SET regime with hardware_feasible=False is never hardware-qualified (no combining extrema across rows)", s.hardware_qualified(True, "deterministic_pair", False) is False))
+    checks.append(("hardware_qualified: SET regime with hardware_feasible=True and optical_pass is hardware-qualified", s.hardware_qualified(True, "deterministic_pair", True) is True))
+    checks.append(("hardware_qualified: hardware qualification never rescues a non-optical_pass row", s.hardware_qualified(False, "deterministic_pair", True) is False))
 
 
 def check_literature(lit_csv, comp, checks):
@@ -247,7 +324,14 @@ def check_literature(lit_csv, comp, checks):
     checks.append(("no nonpolar compatibility row claims compatible=True", len(nonpolar_claims) == 0))
 
 
-def check_results_md(text, checks):
+VERDICT_RE = re.compile(
+    r"^VERDICT: idealized_status=(?P<ideal>\S+) family=(?P<family>\S+) regime=(?P<regime>\S+) "
+    r"screening=(?P<screening>\S+) complete=(?P<complete>\S+) eligible=(?P<eligible>\d+) "
+    r"paired_optical_pass=(?P<opt>\d+) hardware_qualified=(?P<hw>\d+) coverage=(?P<covn>\d+)/(?P<covd>\d+) "
+    r"invalid=(?P<invalid>\d+) flux_floor=1000/s$")
+_SCR_FOR_LABEL = {"unscreened_lower": 0.0, "screened_upper": 1.0}
+
+def check_results_md(text, core, checks):
     checks.append(("results.md contains VERDICT lines", "VERDICT:" in text))
     verdicts = [ln for ln in text.splitlines() if ln.startswith("VERDICT:")]
     checks.append(("exactly 8 headline VERDICT lines (c-plane + a-plane x 2 regimes x 2 bounds)", len(verdicts) == 8))
@@ -259,6 +343,39 @@ def check_results_md(text, checks):
     checks.append(("semipolar/m-plane kept out of headline VERDICT lines", not any("family=semipolar" in v or "family=m_plane" in v for v in verdicts)))
     checks.append(("results.md documents screening_unidentifiable for nonpolar orientation", "screening_unidentifiable" in text))
     checks.append(("results.md states the illustrative interval is not measured", "illustrative" in text and "never a measured interval" in text))
+
+    # Independent recomputation from sweep.csv (Opus fix-round high finding):
+    # check_results_md previously only pattern-matched the VERDICT lines and
+    # never recomputed eligible/paired_optical_pass/hardware_qualified/
+    # invalid from the CSV, so a rewritten headline line (e.g. eligible=8
+    # with true value 0) still passed. Every count is now recomputed here,
+    # via the run module's own pure eligible/optical_pass/hardware_qualified
+    # functions applied to the ACTUAL CSV rows, and compared against the
+    # line's own numbers -- a mutated line fails.
+    for v in verdicts:
+        m = VERDICT_RE.match(v)
+        if not m:
+            checks.append((f"VERDICT line parses in the documented field order: {v[:70]}", False)); continue
+        fam, reg, scr_label = m["family"], m["regime"], m["screening"]
+        scr = _SCR_FOR_LABEL.get(scr_label)
+        if scr is None:
+            checks.append((f"VERDICT line's screening label is recognized: {v[:70]}", False)); continue
+        rs = [r for r in core if r["orientation"] == fam and r["regime"] == reg and close_nan_safe(r["screening_fraction"], scr)]
+        n_elig = n_opt = n_hw = n_invalid = 0
+        for r in rs:
+            valid = r["valid"] == "True"
+            g2v = f(r["g2"]); fluxv = f(r["signal_flux_s"])
+            one_pair = r.get("one_pair_valid") == "True"
+            hw_feasible = r.get("hardware_feasible") == "True"
+            elig = s.eligible(valid, g2v, fluxv)
+            opt = s.optical_pass(elig, g2v, reg, one_pair)
+            hw = s.hardware_qualified(opt, reg, hw_feasible)
+            n_elig += elig; n_opt += opt; n_hw += hw
+            if not valid: n_invalid += 1
+        ok = (int(m["eligible"]) == n_elig and int(m["opt"]) == n_opt and int(m["hw"]) == n_hw
+              and int(m["invalid"]) == n_invalid and int(m["covn"]) == len(rs) and int(m["covd"]) == len(rs))
+        checks.append((f"VERDICT counts recomputed from sweep.csv match the line ({fam}/{reg}/{scr_label}): "
+                        f"eligible={n_elig} opt={n_opt} hw={n_hw} invalid={n_invalid} n={len(rs)}", ok))
 
 
 def main(argv=None):
@@ -277,13 +394,13 @@ def main(argv=None):
     checks = []; detail = []
     check_grid(core, geo, bias, cur, sens, comp, man, a.quick, checks, detail)
     check_caps(man, a, checks)
-    check_replay(core, geo, bias, cur, checks)
+    check_replay(core, geo, bias, cur, checks, a.quick)
     check_oat_sensitivities(sens, core, checks, detail)
     check_convergence(man, checks)
     check_plots(out, man, core, geo, bias, checks)
     check_mutation_fixtures(checks)
     check_literature(lit_csv, comp, checks)
-    check_results_md(text, checks)
+    check_results_md(text, core, checks)
 
     passed = sum(1 for _, ok in checks if ok)
     total = len(checks)
