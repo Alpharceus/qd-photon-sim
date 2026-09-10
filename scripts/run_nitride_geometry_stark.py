@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT))
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 import fsim_core.device as device
-from fsim_core.nitride_stark import screening_compatibility, stark_derivatives, ZHANG2016_SLOPE_MEV_PER_V, ZHANG2016_COMPARISON
+from fsim_core.nitride_stark import screening_compatibility, stark_derivatives, ZHANG2016_SLOPE_MEV_PER_V, ZHANG2016_COMPARISON, _TRACE_KEYS
 
 REG = ("rectangular", "deterministic_pair")
 ORI = ("c_plane", "semipolar_11_22", "m_plane", "a_plane")
@@ -207,6 +207,17 @@ def _row(rid, kind, p, counter, cache):
     row = {"row_id": rid, "row_kind": kind, "card_file": card,
            "card_hash": hashlib.sha256((ROOT / "cards" / card).read_bytes()).hexdigest(),
            "cache_hit": hit, "cache_identity": ident, **p}
+    # Fix round 2 (2026-09-09): fsim_core/device.py deliberately reports
+    # scalars["T_hs"] as the CARD's own fixed heat-sink setting when
+    # bias_mode=='junction_voltage' (T_j is the swept control variable
+    # there, not T_hs -- see device.py's own "T_hs (Opus fix-round finding)"
+    # comment), so the s.items() merge below overwrites p["T_hs"] with a
+    # value that is IDENTICAL across every T_j in a Stark bias trace. Every
+    # trace-grouping consumer (attach_derivatives, plot_stark,
+    # screening_compatibility via build_compatibility, refinement-check
+    # matching) must key on this uncorrupted sweep-requested value instead,
+    # never on row["T_hs"] after the merge below.
+    row["T_hs_requested"] = p.get("T_hs")
     for k, v in s.items(): row[k] = _primitive(v)
     row["E_X_eV"] = s.get("E_X_eV"); row["g2"] = s.get("g2_op"); row["signal_flux_s"] = s.get("collected_flux_pulsed_s")
     row["valid"] = bool(s.get("valid")); row["spectroscopy_valid"] = bool(s.get("spectroscopy_valid", s.get("valid")))
@@ -357,7 +368,7 @@ def _deshpande_row(rid, counter, cache):
         cache[ident] = s; counter["evaluate_calls"] += 1
     row = {"row_id": rid, "row_kind": "literature_aux", "card_file": path.name,
            "card_hash": hashlib.sha256(path.read_bytes()).hexdigest(), "cache_hit": hit,
-           "cache_identity": ident, "T_hs": 300., "regime": "rectangular", "orientation": "c_plane",
+           "cache_identity": ident, "T_hs": 300., "T_hs_requested": 300., "regime": "rectangular", "orientation": "c_plane",
            "literature_source": "Deshpande et al., APL 105, 141109 (2014)",
            "literature_note": "abstract-only [V]; CONDITIONS INCOMPLETE", "measured_g2": .29}
     for k, v in s.items(): row[k] = _primitive(v)
@@ -374,15 +385,85 @@ def _deshpande_row(rid, counter, cache):
     return row
 
 # ----------------------------------------------------------- Stark derivative wiring
+def _gkey_like(r):
+    """Mirrors nitride_stark._gkey exactly: nitride_stark's own _TRACE_KEYS
+    whitelist (the geometry/shape/composition/field fields it groups
+    stark_derivatives and screening_compatibility traces on). Deliberately
+    does NOT include screening_fraction -- nitride_stark's own
+    screening_compatibility adds that as a SEPARATE key via its private
+    _screen(r), precisely because a screening hypothesis is a separate
+    dimension from a trace's fixed geometry/field identity, not part of it.
+
+    Two fields need a fallback because the RAW pre-evaluate() row/param dict
+    and the post-evaluate() row dict spell them differently:
+      - "T_hs": evaluate() deliberately reports the CARD's own fixed
+        heat-sink setting for bias_mode=='junction_voltage' rows (T_j is the
+        swept control variable there), identical across every T_j in a
+        trace (Fix round 2 crash: grouping on that field alone silently
+        merged every T_j in the sweep into one trace, feeding
+        stark_derivatives duplicate voltages). T_hs_requested (set in
+        _row()) is the uncorrupted sweep value and is used whenever present;
+        pre-evaluate() param dicts have no T_hs_requested key at all, so the
+        fallback to "T_hs" there reads the (already correct, unresolved)
+        sweep value directly.
+      - "field_polarity": only evaluate()'s scalars use this name; the
+        pre-evaluate() param/build_stark dicts call it "polarity".
+    """
+    parts = []
+    for k in _TRACE_KEYS:
+        if k == "T_hs":
+            if "T_hs_requested" in r or "T_hs" in r:
+                parts.append((k, r.get("T_hs_requested", r.get("T_hs"))))
+        elif k == "field_polarity":
+            if "field_polarity" in r or "polarity" in r:
+                parts.append((k, r.get("field_polarity", r.get("polarity"))))
+        elif k in r:
+            parts.append((k, r[k]))
+    return tuple(parts)
+
+def _screen_like(r):
+    """Mirrors nitride_stark._screen exactly."""
+    return r.get("screening_fraction", r.get("screening"))
+
+def _derivative_group_key(r):
+    """_gkey_like plus screening_fraction (a real, physically-distinct trace
+    coordinate that _TRACE_KEYS omits -- see _gkey_like's docstring; the
+    PREVIOUS 7-field grouping this replaces DID include it explicitly, so
+    omitting it here would silently re-merge all 3 screening hypotheses into
+    one trace) plus bias_mode, which nitride_stark has no concept of at all
+    -- required so a bias-mode and current-mode row can never share a trace
+    even if every other coordinate matches."""
+    return _gkey_like(r) + (("screening_fraction", _screen_like(r)), ("bias_mode", r.get("bias_mode")))
+
 def attach_derivatives(pool, key="V_j"):
+    """Group by _derivative_group_key (Fix round 2: the previous 7-field key
+    used evaluate()'s reported "T_hs", which fsim_core/device.py
+    deliberately holds fixed at the card's own heat-sink setting for
+    bias_mode=='junction_voltage' rows -- see _gkey_like's docstring). Any
+    trace that still has non-distinct or non-increasing valid voltages (or
+    otherwise fails) is degraded to derivative_valid=False with a recorded
+    reason instead of aborting the whole run; failures are returned for the
+    manifest, never raised past this function."""
+    failures = []
     groups = {}
     for r in pool:
-        groups.setdefault(tuple(r.get(k) for k in ("height_nm", "orientation", "screening_fraction", "regime", "T_hs", "polarity", "bias_mode")), []).append(r)
-    for rr in groups.values():
+        groups.setdefault(_derivative_group_key(r), []).append(r)
+    for gkey, rr in groups.items():
         rr.sort(key=lambda x: float(x.get(key)) if isinstance(x.get(key), (int, float)) else -1e18)
-        ds = stark_derivatives(rr, voltage_key=key)
+        trace_id = "|".join("%s=%s" % (k, v) for k, v in gkey)
+        try:
+            ds = stark_derivatives(rr, voltage_key=key)
+        except (ValueError, ArithmeticError) as exc:
+            reason = "non_monotonic_trace" if "increasing" in str(exc) else str(exc)
+            failures.append({"trace_id": trace_id, "row_ids": [r.get("row_id") for r in rr], "reason": reason})
+            for r in rr:
+                r.update(dE_X_dV_meV_per_V=float("nan"), derivative_valid=False, derivative_row_ids=[],
+                          derivative_policy="adjacent_three_point_nonuniform", derivative_invalid_reason=reason)
+            continue
         for r, dv in zip(rr, ds):
             r.update({k: dv[k] for k in ("dE_X_dV_meV_per_V", "derivative_valid", "derivative_row_ids", "derivative_policy")})
+            r["derivative_invalid_reason"] = None if dv["derivative_valid"] else "invalid_point_or_group"
+    return failures
 
 # ----------------------------------------------------------- convergence refinement
 def run_refinement_checks(specs, bias_rows, counter, cache, rid_start, half_step):
@@ -397,8 +478,14 @@ def run_refinement_checks(specs, bias_rows, counter, cache, rid_start, half_step
     checks = []; rid = rid_start; probe_rows = []
     for spec in specs:
         target_v = spec["target_V"]
+        # T_hs matches against T_hs_requested, not the row's own "T_hs"
+        # (Fix round 2: evaluate() reports the card's fixed heat-sink
+        # setting there for bias_mode=='junction_voltage' rows, so matching
+        # on "T_hs" directly would silently find zero rows for any spec
+        # T_hs that differs from the card default -- see _gkey_like/_derivative_group_key).
         group = [r for r in bias_rows if all(r.get(k) == spec[k] for k in
-                 ("height_nm", "orientation", "screening_fraction", "regime", "T_hs", "polarity"))
+                 ("height_nm", "orientation", "screening_fraction", "regime", "polarity"))
+                 and r.get("T_hs_requested") == spec["T_hs"]
                  and r.get("bias_mode") == "junction_voltage"]
         group = [r for r in group if r.get("derivative_valid") is True]
         if not group:
@@ -438,7 +525,30 @@ def run_refinement_checks(specs, bias_rows, counter, cache, rid_start, half_step
 
 # ----------------------------------------------------------- screening compatibility
 def build_compatibility(bias_rows, slope_range, bias_window, slope_user_supplied, rid_start):
-    compat = screening_compatibility(bias_rows, slope_range_meV_per_V=slope_range, voltage_window_V=tuple(bias_window))
+    """screening_compatibility groups internally on nitride_stark's own
+    (_gkey(r), _screen(r)) -- _gkey uses _TRACE_KEYS, which includes the
+    literal "T_hs" field, corrupted (see _gkey_like) for bias_mode==
+    'junction_voltage' rows. Feed it rows whose "T_hs" has been repaired to
+    the uncorrupted sweep value first, and call it once PER trace partition
+    (using (_gkey_like(r), _screen_like(r)), an EXACT reproduction of
+    nitride_stark's own internal grouping) so one trace's failure cannot
+    abort every other trace's compatibility fit -- required alongside the
+    attach_derivatives fix ('any per-trace exception in derivatives,
+    compatibility or plotting must be caught ... and never abort the
+    sweep')."""
+    fixed_rows = [dict(r, T_hs=r.get("T_hs_requested", r.get("T_hs"))) for r in bias_rows]
+    partitions = {}
+    for r in fixed_rows:
+        pkey = (_gkey_like(r), _screen_like(r))
+        partitions.setdefault(pkey, []).append(r)
+    compat = []; compat_failures = []
+    for pkey, part_rows in partitions.items():
+        gk, scr = pkey
+        trace_id = "|".join("%s=%s" % (k, v) for k, v in gk) + "|screening_fraction=%s" % (scr,)
+        try:
+            compat += screening_compatibility(part_rows, slope_range_meV_per_V=slope_range, voltage_window_V=tuple(bias_window))
+        except (ValueError, ArithmeticError) as exc:
+            compat_failures.append({"trace_id": trace_id, "row_ids": [r.get("row_id") for r in part_rows], "reason": str(exc)})
     out = []; rid = rid_start
     for x in compat:
         rid += 1
@@ -464,7 +574,7 @@ def build_compatibility(bias_rows, slope_range, bias_window, slope_user_supplied
             x["nuisance_sensitivity"] = "nonpolar_orientation_zero_polarization_factor"
         for k, v in x.items(): row[k] = _primitive(v)
         out.append(row)
-    return out, rid
+    return out, rid, compat_failures
 
 # -------------------------------------------------------------------- plots
 def _finite_num(v):
@@ -505,49 +615,67 @@ def _panel_plot(out, name, entries, xlabel, ylabel, suptitle, xlog=False, ylog=F
     fig.savefig(out / name, dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
-def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime")):
+def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime"), fail_log=None):
     groups = {}
     for r in rows:
         if _finite_num(r.get(x)) and _finite_num(r.get(y)):
             groups.setdefault(tuple(r.get(k) for k in group_keys), []).append(r)
     entries = []
     for key, rr in sorted(groups.items(), key=lambda kv: str(kv[0])):
-        rr = sorted(rr, key=lambda z: float(z[x]))
-        lab = "/".join(str(k) for k in key)
-        xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
-        entries.append((lab, xv, yv, [z["row_id"] for z in rr], "o-"))
+        try:
+            rr = sorted(rr, key=lambda z: float(z[x]))
+            lab = "/".join(str(k) for k in key)
+            xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
+            entries.append((lab, xv, yv, [z["row_id"] for z in rr], "o-"))
+        except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+            if fail_log is not None:
+                fail_log.append({"trace_id": "%s|%s" % (name, "|".join(str(k) for k in key)), "reason": str(exc)})
     return _panel_plot(out, name, entries, x, y, title)
 
-def plot_stark(out, name, rows, x, y, title, ylog=False, zhang_anchor=False):
+def plot_stark(out, name, rows, x, y, title, ylog=False, zhang_anchor=False, fail_log=None):
     """E_X/tau/overlap vs V_j or current. Grouped by the FULL coordinate set
-    (orientation, height, regime, T_hs, polarity, screening) -- one trace
-    per group, never merged (Opus fix-round high finding: the previous
-    (orientation, screening, height, regime) grouping silently averaged
-    opposite-polarity and multi-T_hs rows into one sawtooth trace). Screening
-    0/0.5/1 use the same line-style/legend convention as the rest of the
-    nitride pieces. Current traces (x=='current_uA') use a log x-axis."""
+    (orientation, height, regime, T_hs_requested, polarity, screening) --
+    one trace per group, never merged (Opus fix-round high finding: the
+    previous (orientation, screening, height, regime) grouping silently
+    averaged opposite-polarity and multi-T_hs rows into one sawtooth trace).
+    T_hs_requested, not the row's own "T_hs" field, is used for grouping and
+    the label (Fix round 2: evaluate() reports the CARD's fixed heat-sink
+    setting as "T_hs" for bias_mode=='junction_voltage' rows -- identical
+    across every T_j in the sweep -- so grouping on it directly would merge
+    every requested temperature back into one trace, the same bug that
+    crashed attach_derivatives; see _gkey_like/_derivative_group_key). Screening 0/0.5/1 use
+    the same line-style/legend convention as the rest of the nitride pieces.
+    Current traces (x=='current_uA') use a log x-axis. A single group's
+    entry construction failing is caught and logged to fail_log (trace_id,
+    reason) rather than aborting the whole figure (spec: 'any per-trace
+    exception in ... plotting must be caught ... and never abort the
+    sweep')."""
     label_for_s = {0.: "unscreened lower bound", .5: "midpoint 0.5", 1.: "screened upper bound"}
     style_for_s = {0.: "-o", .5: "--o", 1.: ":o"}
     groups = {}
     for r in rows:
         if _finite_num(r.get(x)) and _finite_num(r.get(y)):
-            key = (r.get("orientation"), r.get("height_nm"), r.get("regime"), r.get("T_hs"),
-                   r.get("polarity"), r.get("screening_fraction"))
+            key = (r.get("orientation"), r.get("height_nm"), r.get("regime"),
+                   r.get("T_hs_requested", r.get("T_hs")), r.get("polarity"), r.get("screening_fraction"))
             groups.setdefault(key, []).append(r)
     entries = []; zhang_entry = None
     for key, rr in sorted(groups.items(), key=lambda kv: str(kv[0])):
-        o, h, reg, t, pol, s = key
-        rr = sorted(rr, key=lambda z: float(z[x]))
-        xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
-        lab = f"{o} h={h:g}nm {reg} T={t:g}K pol={pol:g} ({label_for_s.get(s, s)})"
-        entries.append((lab, xv, yv, [z["row_id"] for z in rr], style_for_s.get(s, "-.o")))
-        if zhang_anchor and zhang_entry is None and o == "c_plane" and s == 0. and reg == "rectangular" and pol == 1 and len(xv) >= 2:
-            # Zhang guide anchored to this actual model row (not an invented
-            # dataset); no row_ids of its own (it is a drawn annotation, not
-            # a saved evaluate() trace).
-            x0, y0 = xv[0], yv[0]
-            zhang_entry = ("Zhang 2016 -10 meV/V guide (non-gating)",
-                            [x0, x0 + 2.0], [y0, y0 + 2.0 * ZHANG2016_SLOPE_MEV_PER_V / 1000.], [], "k--")
+        try:
+            o, h, reg, t, pol, s = key
+            rr = sorted(rr, key=lambda z: float(z[x]))
+            xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
+            lab = f"{o} h={h:g}nm {reg} T={t:g}K pol={pol:g} ({label_for_s.get(s, s)})"
+            entries.append((lab, xv, yv, [z["row_id"] for z in rr], style_for_s.get(s, "-.o")))
+            if zhang_anchor and zhang_entry is None and o == "c_plane" and s == 0. and reg == "rectangular" and pol == 1 and len(xv) >= 2:
+                # Zhang guide anchored to this actual model row (not an
+                # invented dataset); no row_ids of its own (it is a drawn
+                # annotation, not a saved evaluate() trace).
+                x0, y0 = xv[0], yv[0]
+                zhang_entry = ("Zhang 2016 -10 meV/V guide (non-gating)",
+                                [x0, x0 + 2.0], [y0, y0 + 2.0 * ZHANG2016_SLOPE_MEV_PER_V / 1000.], [], "k--")
+        except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+            if fail_log is not None:
+                fail_log.append({"trace_id": "%s|%s" % (name, "|".join(str(k) for k in key)), "reason": str(exc)})
     if zhang_entry is not None: entries.append(zhang_entry)
     return _panel_plot(out, name, entries, x, y, title, xlog=(x == "current_uA"), ylog=ylog)
 
@@ -636,6 +764,24 @@ def plot_set_island(out, sens_rows):
     _leg(ax); fig.tight_layout(); fig.savefig(out / "set_feasibility.png", dpi=125); plt.close(fig)
     contract["E_C_over_kT"] = {"row_ids": [r["row_id"] for r in rr], "x": xs, "y": [float(y) if _finite_num(y) else float("nan") for y in ys]}
     return contract
+
+def _safe_plot(name, outer_fail_log, fn, *args, **kwargs):
+    """Call one top-level plot_*() figure and never let it abort the sweep
+    (spec: 'any per-trace exception in derivatives, compatibility or
+    plotting must be caught, logged in the manifest with the trace id and
+    reason, and never abort the sweep -- outputs must still be written').
+    plot_axis_response/plot_stark already isolate failures per trace-group
+    internally (via their own fail_log keyword, passed through **kwargs
+    when present -- named outer_fail_log here specifically so it never
+    collides with that inner kwarg); this outer catch is the backstop for
+    whole-figure failures (e.g. an empty input list, a matplotlib error)
+    that a per-group catch cannot localize. On failure the figure is simply
+    omitted from plots{} (never a partially-built or misleading artifact)."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001 -- must never propagate past here
+        outer_fail_log.append({"trace_id": name, "reason": "%s: %s" % (type(exc).__name__, exc)})
+        return None
 
 # ---------------------------------------------------------------- results.md
 def _results_md(core, geo, bias, current, comp, refinement_checks, complete, runtime_s, evaluate_calls):
@@ -829,8 +975,14 @@ def main(argv=None):
     add_all(current, "stark_current", current_p)
     add_all(sens, "sensitivity", sens_p)
 
-    if bias: attach_derivatives(bias, "V_j")
-    if current: attach_derivatives(current, "V_j")
+    # Fix round 2: any per-trace exception in derivatives, compatibility or
+    # plotting is caught and logged to the manifest (trace_id, reason) --
+    # never raised past this function -- so one bad trace (e.g. duplicate/
+    # non-increasing voltages) cannot abort the whole sweep and leave no
+    # artifacts written.
+    derivative_trace_failures = []
+    if bias: derivative_trace_failures += attach_derivatives(bias, "V_j")
+    if current: derivative_trace_failures += attach_derivatives(current, "V_j")
 
     # Half of the ACTUAL V_j trace step used to build `bias` in this mode
     # (0.1 V for the full 0.2 V grid, 0.25 V for the quick 0.5 V grid) --
@@ -841,9 +993,9 @@ def main(argv=None):
         refinement_checks, rid, probe_rows = run_refinement_checks(refinement_specs, bias, counter, cache, rid, stark_v_half_step)
 
     slope_range = tuple(a.slope_range) if a.slope_range else (-12., -8.)
-    comp = []
+    comp = []; compatibility_trace_failures = []
     if bias:
-        comp, rid = build_compatibility(bias, slope_range, a.bias_window, a.slope_range is not None, rid)
+        comp, rid, compatibility_trace_failures = build_compatibility(bias, slope_range, a.bias_window, a.slope_range is not None, rid)
 
     _write(out / "sweep.csv", core)
     _write(out / "geometry_supplement.csv", geo)
@@ -867,6 +1019,12 @@ def main(argv=None):
     _write(out / "literature_comparisons.csv", lit_csv)
 
     plots = {}
+    # Fix round 2: a per-trace-group failure inside plot_axis_response/
+    # plot_stark is caught and logged there (fail_log=plot_trace_failures);
+    # _safe_plot is the outer backstop for a whole-figure failure. Either
+    # way the sweep continues and every other artifact (CSVs, results.md,
+    # manifest.json) is still written.
+    plot_trace_failures = []
     # A fixed representative slice (radius=5nm, height=1nm) is used for the
     # "other axis" of these response plots -- both values are guaranteed
     # present in the reduced --quick core grid (H=[1,7], R=[5,30]) as well
@@ -879,27 +1037,37 @@ def main(argv=None):
     # there, not a grouping key) -- panel-splitting (in plot_axis_response/
     # _panel_plot) now shows every orientation/screening/regime group
     # instead of truncating to the first 14 by sort key.
-    plots["height_response.png"] = plot_axis_response(out, "height_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["radius_nm"] == 5.], "height_nm", "E_X_eV", "height response (r=5nm)", group_keys=("orientation", "screening_fraction", "regime", "T_hs"))
-    plots["radius_response.png"] = plot_axis_response(out, "radius_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["height_nm"] == 1.], "radius_nm", "E_X_eV", "radius response (h=1nm)", group_keys=("orientation", "screening_fraction", "regime", "T_hs"))
-    plots["temperature_response.png"] = plot_axis_response(out, "temperature_response.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "g2", "temperature response (g2)")
-    plots["orientation_flux.png"] = plot_axis_response(out, "orientation_flux.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "signal_flux_s", "orientation flux comparison")
-    plots["shape_comparison.png"] = plot_axis_response(out, "shape_comparison.png", [r for r in geo if r["row_kind"] == "shape"], "height_nm", "E_X_eV", "shape mapping sensitivity", group_keys=("shape", "orientation", "screening_fraction"))
-    plots["qw_response.png"] = plot_axis_response(out, "qw_response.png", [r for r in geo if r["row_kind"] == "qw"], "wl_thickness_nm", "E_X_eV", "QW thickness response", group_keys=("orientation", "screening_fraction"))
-    plots["pulse_vs_set.png"] = plot_pulse_vs_set(out, core)
-    # Envelopes cover c-plane AND a-plane (Opus fix-round medium finding: both
-    # envelope figures previously filtered to orientation=="c_plane" only).
-    plots["envelope_pulse.png"] = plot_envelope(out, "envelope_pulse.png", [r for r in core if r["regime"] == "rectangular" and r["radius_nm"] == 5. and r["orientation"] in ("c_plane", "a_plane")], "pulse regime, r=5nm")
-    plots["envelope_set.png"] = plot_envelope(out, "envelope_set.png", [r for r in core if r["regime"] == "deterministic_pair" and r["radius_nm"] == 5. and r["orientation"] in ("c_plane", "a_plane")], "SET regime, r=5nm")
+    figs = [
+        ("height_response.png", plot_axis_response, (out, "height_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["radius_nm"] == 5.], "height_nm", "E_X_eV", "height response (r=5nm)"), dict(group_keys=("orientation", "screening_fraction", "regime", "T_hs"), fail_log=plot_trace_failures)),
+        ("radius_response.png", plot_axis_response, (out, "radius_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["height_nm"] == 1.], "radius_nm", "E_X_eV", "radius response (h=1nm)"), dict(group_keys=("orientation", "screening_fraction", "regime", "T_hs"), fail_log=plot_trace_failures)),
+        ("temperature_response.png", plot_axis_response, (out, "temperature_response.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "g2", "temperature response (g2)"), dict(fail_log=plot_trace_failures)),
+        ("orientation_flux.png", plot_axis_response, (out, "orientation_flux.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "signal_flux_s", "orientation flux comparison"), dict(fail_log=plot_trace_failures)),
+        ("shape_comparison.png", plot_axis_response, (out, "shape_comparison.png", [r for r in geo if r["row_kind"] == "shape"], "height_nm", "E_X_eV", "shape mapping sensitivity"), dict(group_keys=("shape", "orientation", "screening_fraction"), fail_log=plot_trace_failures)),
+        ("qw_response.png", plot_axis_response, (out, "qw_response.png", [r for r in geo if r["row_kind"] == "qw"], "wl_thickness_nm", "E_X_eV", "QW thickness response"), dict(group_keys=("orientation", "screening_fraction"), fail_log=plot_trace_failures)),
+        ("pulse_vs_set.png", plot_pulse_vs_set, (out, core), {}),
+        # Envelopes cover c-plane AND a-plane (Opus fix-round medium finding:
+        # both envelope figures previously filtered to orientation=="c_plane" only).
+        ("envelope_pulse.png", plot_envelope, (out, "envelope_pulse.png", [r for r in core if r["regime"] == "rectangular" and r["radius_nm"] == 5. and r["orientation"] in ("c_plane", "a_plane")], "pulse regime, r=5nm"), {}),
+        ("envelope_set.png", plot_envelope, (out, "envelope_set.png", [r for r in core if r["regime"] == "deterministic_pair" and r["radius_nm"] == 5. and r["orientation"] in ("c_plane", "a_plane")], "SET regime, r=5nm"), {}),
+    ]
     if sens:
-        plots["set_feasibility.png"] = plot_set_island(out, sens)
+        figs.append(("set_feasibility.png", plot_set_island, (out, sens), {}))
     if bias:
-        plots["stark_energy_bias.png"] = plot_stark(out, "stark_energy_bias.png", bias, "V_j", "E_X_eV", "E_X(V_j)", zhang_anchor=True)
-        plots["stark_tau_bias.png"] = plot_stark(out, "stark_tau_bias.png", bias, "V_j", "tau_rad_bare_ns", "bare tau_rad(V_j)")
-        plots["stark_tau_cavity_bias.png"] = plot_stark(out, "stark_tau_cavity_bias.png", bias, "V_j", "tau_rad_cavity_ns", "cavity tau_rad(V_j)")
-        plots["stark_overlap_bias.png"] = plot_stark(out, "stark_overlap_bias.png", bias, "V_j", "overlap_sq", "overlap(V_j)")
+        figs += [
+            ("stark_energy_bias.png", plot_stark, (out, "stark_energy_bias.png", bias, "V_j", "E_X_eV", "E_X(V_j)"), dict(zhang_anchor=True, fail_log=plot_trace_failures)),
+            ("stark_tau_bias.png", plot_stark, (out, "stark_tau_bias.png", bias, "V_j", "tau_rad_bare_ns", "bare tau_rad(V_j)"), dict(fail_log=plot_trace_failures)),
+            ("stark_tau_cavity_bias.png", plot_stark, (out, "stark_tau_cavity_bias.png", bias, "V_j", "tau_rad_cavity_ns", "cavity tau_rad(V_j)"), dict(fail_log=plot_trace_failures)),
+            ("stark_overlap_bias.png", plot_stark, (out, "stark_overlap_bias.png", bias, "V_j", "overlap_sq", "overlap(V_j)"), dict(fail_log=plot_trace_failures)),
+        ]
     if current:
-        plots["stark_energy_current.png"] = plot_stark(out, "stark_energy_current.png", current, "current_uA", "E_X_eV", "E_X(I), self-consistent T_j (heating)")
-        plots["stark_tau_current.png"] = plot_stark(out, "stark_tau_current.png", current, "current_uA", "tau_rad_bare_ns", "tau_rad(I), self-consistent T_j (heating)", ylog=False)
+        figs += [
+            ("stark_energy_current.png", plot_stark, (out, "stark_energy_current.png", current, "current_uA", "E_X_eV", "E_X(I), self-consistent T_j (heating)"), dict(fail_log=plot_trace_failures)),
+            ("stark_tau_current.png", plot_stark, (out, "stark_tau_current.png", current, "current_uA", "tau_rad_bare_ns", "tau_rad(I), self-consistent T_j (heating)"), dict(ylog=False, fail_log=plot_trace_failures)),
+        ]
+    for fig_name, fn, args, kwargs in figs:
+        result = _safe_plot(fig_name, plot_trace_failures, fn, *args, **kwargs)
+        if result is not None:
+            plots[fig_name] = result
 
     complete = (not a.quick) and counter["evaluate_calls"] <= a.max_evaluations and (time.time() - t0) < 1800
     runtime_s = time.time() - t0
@@ -950,6 +1118,13 @@ def main(argv=None):
         "numeric_convergence_policy": "derivative refinement: halved voltage step must agree to <=0.5 meV/V absolute or <=5% relative [A convergence criteria]",
         "convergence_checks": refinement_checks,
         "slope_interval": {"range_meV_per_V": list(slope_range), "kind": "user_supplied" if a.slope_range else "illustrative_not_measured", "bias_window_V": list(a.bias_window)},
+        # Fix round 2: per-trace failures in derivatives, compatibility and
+        # plotting are caught and recorded here (trace_id, reason, and the
+        # affected row_ids where applicable) rather than aborting the sweep;
+        # each key is always a list (possibly empty).
+        "derivative_trace_failures": derivative_trace_failures,
+        "compatibility_trace_failures": compatibility_trace_failures,
+        "plot_trace_failures": plot_trace_failures,
         "plot_row_mapping": plots,
         "output_hashes": hashes,
         "card_hashes": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "cards").glob("nitride-*.yaml")},

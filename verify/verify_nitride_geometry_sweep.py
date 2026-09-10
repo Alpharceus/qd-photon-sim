@@ -240,6 +240,104 @@ def check_oat_sensitivities(sens, core, checks, detail):
     checks.append(("expected null case: m-plane/a-plane E_X_eV coincide (model limitation)", identity_ok and len(matched) > 0))
 
 
+def _synthetic_bias_rows(bias_p, corrupt_t_hs=True):
+    """Build synthetic (never evaluate()-derived) Stark bias rows that
+    reproduce fsim_core/device.py's own reporting convention for
+    bias_mode=='junction_voltage' rows: scalars["T_hs"] is the CARD's fixed
+    heat-sink setting -- identical across every T_j in the sweep -- while
+    T_hs_requested (set by run_nitride_geometry_stark._row()) carries the
+    real, uncorrupted sweep value. E_X_eV is a smooth, strictly monotone
+    function of V_j and T_hs_requested so stark_derivatives has a
+    well-posed trace to differentiate whenever the grouping is correct."""
+    out = []
+    for i, p in enumerate(bias_p):
+        out.append({
+            "row_id": "SYN%05d" % i,
+            "height_nm": p["height_nm"], "radius_nm": p["radius_nm"],
+            "orientation": p["orientation"], "screening_fraction": p["screening_fraction"],
+            "regime": p["regime"], "x_in": p.get("x_in"),
+            "geometry_type": p.get("geometry_type"), "shape": p.get("shape"),
+            "top_radius_fraction": p.get("top_radius_fraction"),
+            "field_polarity": p["polarity"], "bias_mode": p["bias_mode"],
+            "T_hs": (300.0 if corrupt_t_hs else p["T_hs"]),
+            "T_hs_requested": p["T_hs"],
+            "V_j": p["V_j"],
+            "E_X_eV": 2.2 - 0.01 * p["V_j"] - 1e-4 * p["T_hs"],
+            "spectroscopy_valid": True,
+        })
+    return out
+
+
+def check_derivative_trace_grouping(checks, detail):
+    """Fix round 2: reproduce, without ever calling evaluate(), the exact
+    condition that crashed attach_derivatives at scripts/run_nitride_
+    geometry_stark.py:383 -> fsim_core/nitride_stark.py:64 after 787 s in
+    the full run (ValueError: 'trace valid voltages must be strictly
+    increasing and distinct'). Every planned full-mode Stark bias trace
+    must group to distinct, strictly increasing V_j on its own (a sanity
+    check on the plan itself, independent of evaluate()'s T_hs-corruption
+    quirk), and attach_derivatives must run the full-mode plan AS
+    evaluate() actually reports it (T_hs corruption reproduced) end to end
+    without raising and without any trace failure."""
+    bias_p, _ = s.build_stark(False)
+    groups = {}
+    for p in bias_p:
+        groups.setdefault(s._derivative_group_key(p), []).append(p)
+    checks.append(("full-mode Stark bias plan forms exactly 120 independent trace groups "
+                    "(height x orientation x screening x regime x T_hs x polarity)", len(groups) == 120))
+    all_distinct_increasing = True
+    for plist in groups.values():
+        vjs = sorted(pp["V_j"] for pp in plist)
+        if len(vjs) != 17 or len(set(vjs)) != len(vjs) or any(vjs[i + 1] <= vjs[i] for i in range(len(vjs) - 1)):
+            all_distinct_increasing = False
+    checks.append(("every planned full-mode Stark bias trace has exactly 17 distinct, strictly increasing V_j (no evaluation)",
+                    all_distinct_increasing))
+
+    synth = _synthetic_bias_rows(bias_p, corrupt_t_hs=True)
+    failures = s.attach_derivatives(synth, "V_j")
+    checks.append(("attach_derivatives runs the full-mode synthetic plan (T_hs corruption reproduced) "
+                    "without raising and reports zero trace failures", failures == []))
+    n_resolved = sum(1 for r in synth if r.get("derivative_valid"))
+    checks.append(("synthetic full-mode plan yields resolved (non-NaN) derivatives on interior points", n_resolved > 0))
+    detail.append("synthetic full-mode Stark bias plan: %d groups, %d/%d rows derivative_valid, %d attach_derivatives failures"
+                   % (len(groups), n_resolved, len(synth), len(failures)))
+
+    # Negative control: a genuinely duplicated-voltage trace (two rows that
+    # really do share every trace coordinate including V_j) must degrade
+    # gracefully (derivative_valid=False, reason='non_monotonic_trace'),
+    # never raise past attach_derivatives.
+    dup = [dict(synth[0], row_id="DUP0", derivative_valid=None), dict(synth[0], row_id="DUP1", derivative_valid=None)]
+    dup_failures = s.attach_derivatives(dup, "V_j")
+    checks.append(("attach_derivatives degrades a genuinely duplicated-voltage trace instead of raising",
+                    len(dup_failures) == 1 and dup_failures[0]["reason"] == "non_monotonic_trace"
+                    and all(r.get("derivative_valid") is False for r in dup)
+                    and all(r.get("derivative_invalid_reason") == "non_monotonic_trace" for r in dup)))
+
+    # Confirms this reproduces the ACTUAL round-2 bug rather than a
+    # strawman: a naive key that groups on the row's own (corrupted) "T_hs"
+    # field directly (never falling back to T_hs_requested) DOES collide on
+    # this same synthetic data.
+    naive_groups = {}
+    for r in synth:
+        naive_groups.setdefault((r["height_nm"], r["orientation"], r["screening_fraction"], r["regime"],
+                                  r["T_hs"], r["field_polarity"], r["bias_mode"]), []).append(r)
+    naive_collides = any(len({rr["V_j"] for rr in grp}) < len(grp) for grp in naive_groups.values())
+    checks.append(("a naive T_hs-keyed grouping on the same synthetic data DOES collide "
+                    "(confirms the reproduced bug is real, not a strawman)", naive_collides))
+
+
+def check_failure_logging(man, checks):
+    """Fix round 2: 'any per-trace exception in derivatives, compatibility
+    or plotting must be caught, logged in the manifest with the trace id
+    and reason, and never abort the sweep'. Each list is always present,
+    possibly empty (the quick grid never triggers the underlying bug)."""
+    for key in ("derivative_trace_failures", "compatibility_trace_failures", "plot_trace_failures"):
+        val = man.get(key)
+        checks.append((f"manifest records {key} as a list", isinstance(val, list)))
+        checks.append((f"every entry in {key} carries a trace_id and reason",
+                        all(isinstance(x, dict) and "trace_id" in x and "reason" in x for x in val) if isinstance(val, list) else False))
+
+
 def check_convergence(man, checks):
     cc = man.get("convergence_checks", [])
     checks.append(("convergence_checks present", len(cc) > 0))
@@ -396,6 +494,8 @@ def main(argv=None):
     check_caps(man, a, checks)
     check_replay(core, geo, bias, cur, checks, a.quick)
     check_oat_sensitivities(sens, core, checks, detail)
+    check_derivative_trace_grouping(checks, detail)
+    check_failure_logging(man, checks)
     check_convergence(man, checks)
     check_plots(out, man, core, geo, bias, checks)
     check_mutation_fixtures(checks)
