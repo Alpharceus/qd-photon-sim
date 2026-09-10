@@ -1,0 +1,13 @@
+meta: {name: nitride-qw-fluctuation-set-design, role: device-design}
+design:
+  name: nitride-qw-fluctuation-set-design
+  platform: ingan_gan_planar
+  dot: {linewidth: anchored, lineshape: lorentzian, gamma0: 1.0, a_ac: 0.03, E_LO: 91.5, gamma300: 35.0, r_xx: 1.0, delta_xx: -10.0}
+  ret: {mode: nitride_confinement, channel: min, tau_cap_ps: 10.0, tau_cap_scales_with_density: false}
+  drive: {mode: EL-transport, finite_pulse: true, cycle_loading: deterministic_pair, rep_rate_hz: 8.0e7, I_uA: 0.02, cw: false, b_res: 0.1, diode: {preset: nitride-planar, tau_pulse_ns: 0.1, N_A: 1.0e17, N_D: 1.0e18, d_i_nm: 27.0, d_active_nm: 3.5, x_in: 0.25, wl_thickness_nm: 3.0}}
+  thermal: {T_hs: 300.0}
+  cavity: {enabled: true, type: nitride_planar}
+  emission: {type: vertical_cavity}
+  aperture: {density_cm2: 1.0e10, diameter_um: 0.05}
+  nitride: {dot: {height_nm: 3.5, radius_nm: 20.0, x_in: 0.25, wl_thickness_nm: 3.0, strain_fraction: 1.0, screening_fraction: 0.0, external_field_kVcm: 0.0, vbo_InN_GaN_eV: 1.15, strain_c_fraction: 0.7, orientation: c_plane, shape: disc, geometry_type: qw_fluctuation}, cavity: {Q: 2000.0, mode_volume_norm: 2.0, spatial_overlap: 1.0, eta_out: 0.1, T_track: 300.0, dEdT_cav_meV_K: -0.04, detuning_offset_meV: 0.0, purcell_enabled: true}, tau_rad0_ns: 1.0}
+  provenance: {tag: A, source: 'Same-composition QW fluctuation design; local-column approximation'}
