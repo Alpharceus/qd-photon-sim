@@ -49,6 +49,34 @@ from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
 from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
 from . import nitride_levels, nitride_transport, nitride_cavity, nitride_materials
+try:  # Piece 3 is deliberately an optional sibling during staged integration.
+    from .nitride_stark import resolve_bias
+except ImportError:  # pragma: no cover - exercised only before piece 3 lands.
+    def resolve_bias(diode, *, T_j_K, current_uA=None, junction_voltage_V=None,
+                     field_polarity=1, external_field_kVcm=0.0):
+        """Staged copy of piece 3's resolver; removed from use when available."""
+        out = {"T_j_K": T_j_K, "current_uA": current_uA, "V_j": junction_voltage_V,
+               "V_terminal": np.nan, "diode_field_kVcm": np.nan,
+               "applied_field_kVcm": np.nan, "bias_valid": False, "invalid_reasons": []}
+        if ((current_uA is None) == (junction_voltage_V is None) or
+                isinstance(field_polarity, bool) or field_polarity not in (-1, 1) or
+                not isinstance(T_j_K, (int, float)) or isinstance(T_j_K, bool) or not np.isfinite(T_j_K) or T_j_K <= 0):
+            out["invalid_reasons"].append("invalid bias controls")
+            return out
+        try:
+            if current_uA is not None:
+                terminal, vj = diode.v_of_i(float(current_uA) * 1e-6, T_j_K)
+                out.update(V_j=vj, V_terminal=terminal)
+            else:
+                current_A = diode.j_of_vj(float(junction_voltage_V), T_j_K) * diode.area_cm2
+                out.update(current_uA=current_A * 1e6, V_terminal=float(junction_voltage_V) + current_A * diode.R_s_ohm)
+            dep = diode.depletion(out["V_j"], T_j_K)
+            out.update(diode_field_kVcm=dep.F_kVcm,
+                       applied_field_kVcm=field_polarity * dep.F_kVcm + external_field_kVcm,
+                       bias_valid=all(np.isfinite(out[k]) for k in ("current_uA", "V_j", "V_terminal")))
+        except (ArithmeticError, ValueError, OverflowError) as exc:
+            out["invalid_reasons"].append(str(exc))
+        return out
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -927,7 +955,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     separate from the legacy cubic-material transport path.
     """
     n = dict(d.nitride)
-    allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns", "background"}
+    allowed = {"dot", "cavity", "k_nr_ns", "background_tau_ns", "eta_background", "tau_rad0_ns", "background", "bias"}
     extra = set(n) - allowed
     if extra: raise ValueError("unknown nitride keys: " + ", ".join(sorted(extra)))
     if d.drive.mode != "EL-transport" or d.drive.diode.get("preset") != "nitride-planar":
@@ -959,8 +987,14 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     # finding: "malformed nitride inputs escape the ValueError card-schema
     # contract"). Reject it here, at construction, with the offending key
     # named.
+    # Piece 2 adds string-valued geometry/orientation selectors and an
+    # optional polarization factor.  Numeric leaves remain finite scalars;
+    # NitrideDotSystem validates selector combinations at the solver boundary.
+    _dot_numeric = {"height_nm", "radius_nm", "x_in", "wl_thickness_nm",
+                    "strain_fraction", "screening_fraction", "external_field_kVcm",
+                    "vbo_InN_GaN_eV", "strain_c_fraction", "top_radius_fraction"}
     for _k, _v in dot_kw.items():
-        if isinstance(_v, bool) or not isinstance(_v, (int, float)) or not np.isfinite(_v):
+        if _k in _dot_numeric and (isinstance(_v, bool) or not isinstance(_v, (int, float)) or not np.isfinite(_v)):
             raise ValueError(f"invalid nitride.dot.{_k}: must be a finite number (got {_v!r})")
     try:
         system0 = nitride_levels.NitrideDotSystem(**dot_kw)
@@ -970,6 +1004,40 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         cav = nitride_cavity.NitrideCavityParams(**cav_kw)
     except TypeError as exc:
         raise ValueError("invalid nitride.cavity field(s): " + str(exc)) from exc
+    bias_kw = dict(n.get("bias", {}))
+    if set(bias_kw) - {"mode", "field_polarity", "V_j_V", "T_j_K", "cavity_reference_V_j_V"}:
+        raise ValueError("unknown nitride.bias keys")
+    bias_mode = bias_kw.get("mode", "current")
+    if bias_mode not in ("current", "junction_voltage"):
+        raise ValueError("nitride.bias.mode must be current or junction_voltage")
+    polarity = bias_kw.get("field_polarity", 1)
+    if isinstance(polarity, bool) or not isinstance(polarity, int) or polarity not in (-1, 1):
+        raise ValueError("nitride.bias.field_polarity must be integer +1 or -1")
+    def _bias_number(name):
+        value = bias_kw[name]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value):
+            raise ValueError("nitride.bias.%s must be finite numeric" % name)
+        return float(value)
+    if bias_mode == "current":
+        if "V_j_V" in bias_kw or "T_j_K" in bias_kw:
+            raise ValueError("current bias mode does not accept V_j_V or T_j_K")
+    else:
+        if "V_j_V" not in bias_kw or "T_j_K" not in bias_kw:
+            raise ValueError("junction_voltage bias mode requires V_j_V and T_j_K")
+        if _bias_number("V_j_V") < 0 or _bias_number("T_j_K") <= 0:
+            raise ValueError("junction_voltage requires V_j_V >= 0 and T_j_K > 0")
+    cavity_reference_V = bias_kw.get("cavity_reference_V_j_V")
+    if cavity_reference_V is not None and _bias_number("cavity_reference_V_j_V") < 0:
+        raise ValueError("nitride.bias.cavity_reference_V_j_V must be >= 0 if set")
+    if system0.geometry_type == "qw_fluctuation":
+        for _key in ("wl_thickness_nm", "x_in"):
+            _value = d.drive.diode.get(_key)
+            if isinstance(_value, bool) or not isinstance(_value, (int, float)) or _value != getattr(system0, _key):
+                raise ValueError("QW cards require drive.diode.%s == nitride.dot.%s" % (_key, _key))
+        if d.drive.diode.get("d_i_nm", 0) < system0.height_nm:
+            raise ValueError("QW cards require drive.diode.d_i_nm >= dot height")
+        if "reservoir_energy_eV" in dict(n.get("background", {})):
+            raise ValueError("QW cards cannot override the resolved reservoir energy")
     tau_on = float(d.drive.diode.get("tau_pulse_ns", 0.0)); rep = float(d.drive.rep_rate_hz)
     if tau_on <= 0 or rep <= 0: raise ValueError("nitride requires positive explicit pulse width and rep_rate_hz")
     period = 1e9 / rep
@@ -1019,7 +1087,15 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         raise ValueError("invalid drive.diode field(s): " + str(exc)) from exc
     st, a = _stack(d.thermal), .5*d.thermal.mesa_diameter_um*1e-6
     aperture = float(np.pi*(d.aperture.diameter_um/2)**2)
-    ts = np.asarray(T_grid if T_grid is not None else [d.thermal.T_hs], dtype=float)
+    if bias_mode == "junction_voltage":
+        fixed_T = _bias_number("T_j_K")
+        if T_grid is not None:
+            requested_ts = np.asarray(T_grid, dtype=float)
+            if requested_ts.size != 1 or requested_ts[0] != fixed_T:
+                raise ValueError("junction_voltage mode only accepts omitted or singleton T_grid=[T_j_K]")
+        ts = np.asarray([fixed_T], dtype=float)
+    else:
+        ts = np.asarray(T_grid if T_grid is not None else [d.thermal.T_hs], dtype=float)
     # Cavity-tracking reference: the SAME dot, at the SAME supplied current
     # (the design's own bias state), evaluated at T_track instead of the
     # per-row Tj -- a single fixed design anchor, not recomputed per
@@ -1032,9 +1108,17 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     # vj at T_track through the SAME diode.v_of_i/depletion() path used for
     # the operating point makes the two calls agree on the bias field (and
     # hence ~zero detuning) whenever a row's T_j lands on T_track.
-    _va_track, _vj_track = diode.v_of_i(max(d.drive.I_uA, 0) * 1e-6, cav.T_track)
-    _dep_track = diode.depletion(_vj_track, cav.T_track)
-    _track_dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": _dep_track.F_kVcm})
+    _track_v = cavity_reference_V
+    if _track_v is None and bias_mode == "junction_voltage":
+        _track_v = _bias_number("V_j_V")
+    _track_bias = resolve_bias(diode, T_j_K=cav.T_track,
+                               current_uA=d.drive.I_uA if _track_v is None else None,
+                               junction_voltage_V=_track_v, field_polarity=polarity,
+                               external_field_kVcm=system0.external_field_kVcm)
+    if not _track_bias["bias_valid"]:
+        raise ValueError("invalid cavity reference bias: " + "; ".join(_track_bias["invalid_reasons"]))
+    _track_dsys = nitride_levels.NitrideDotSystem(**{**dot_kw,
+        "external_field_kVcm": _track_bias["applied_field_kVcm"]})
     track0 = nitride_levels.levels(_track_dsys, cav.T_track)
     # The whole-period gate, resolved once (T-independent); used as the
     # reported gate_ns_used on an invalid row too (a requested experimental
@@ -1052,15 +1136,19 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         # power_W reported below (from the SAME diode.junction_power call,
         # default eta_total) is the one actually used to solve T_j, not a
         # stale heat-sink-T estimate.
-        Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, ths), a, st, ths)
-        converged = False
-        for _ in range(12):
-            if not np.isfinite(Tj):
-                break
-            next_Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, Tj), a, st, ths)
-            if abs(next_Tj - Tj) < 1e-10:
-                Tj = next_Tj; converged = True; break
-            Tj = next_Tj
+        if bias_mode == "junction_voltage":
+            Tj = _bias_number("T_j_K")
+            converged = True
+        else:
+            Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, ths), a, st, ths)
+            converged = False
+            for _ in range(12):
+                if not np.isfinite(Tj):
+                    break
+                next_Tj = t_junction(duty*diode.junction_power(d.drive.I_uA, Tj), a, st, ths)
+                if abs(next_Tj - Tj) < 1e-10:
+                    Tj = next_Tj; converged = True; break
+                Tj = next_Tj
         reasons=[]
         va = vj = gam = np.nan
         rr = dict(gamma_X0_ns=np.nan, gamma_XX0_ns=np.nan, k_X_ns=np.nan, k_XX_ns=np.nan,
@@ -1074,7 +1162,8 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         rho = g2 = np.nan
         one_pair = False; blocked = np.nan
         feas = {}; priced_fp = np.nan
-        supplied = d.drive.I_uA*1e-6*tau_on*1e-9/E_SI >= 1
+        supplied = False
+        bias = None
         # Invalid-row placeholder: an ALL-NaN NitrideLevels, never a real
         # evaluation of some other (e.g. unbiased, heat-sink-T) state (Opus
         # fix-round finding 3: a thermal-runaway row was reporting finite,
@@ -1093,15 +1182,24 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         try:
             if not converged:
                 raise ValueError("transport self-heating did not converge")
-            va, vj = diode.v_of_i(max(d.drive.I_uA,0)*1e-6, Tj)
+            bias = resolve_bias(diode, T_j_K=Tj,
+                                current_uA=d.drive.I_uA if bias_mode == "current" else None,
+                                junction_voltage_V=None if bias_mode == "current" else _bias_number("V_j_V"),
+                                field_polarity=polarity,
+                                external_field_kVcm=system0.external_field_kVcm)
+            if not bias["bias_valid"]:
+                raise ValueError("invalid bias: " + "; ".join(bias["invalid_reasons"]))
+            resolved_current_uA = bias["current_uA"]
+            va, vj = bias["V_terminal"], bias["V_j"]
+            supplied = resolved_current_uA*1e-6*tau_on*1e-9/E_SI >= 1
             # Bias field: the diode's OWN depletion(vj, Tj).F_kVcm (physical
             # p-i-n depletion field, shrinks toward 0 as V_j -> V_bi), added
             # directly to nitride_levels' intrinsic polarization field --
             # see this function's docstring for the sign convention. Never
             # the lumped -vj/d_i estimate (ignores V_bi, grows the wrong way
             # with forward bias).
-            dep = diode.depletion(vj, Tj)
-            dsys = nitride_levels.NitrideDotSystem(**{**dot_kw, "external_field_kVcm": dep.F_kVcm})
+            dsys = nitride_levels.NitrideDotSystem(**{**dot_kw,
+                "external_field_kVcm": bias["applied_field_kVcm"]})
             lv = nitride_levels.levels(dsys, Tj)
             if not lv.valid:
                 raise ValueError("unbound dot: " + "; ".join(lv.invalid_reasons))
@@ -1128,7 +1226,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             # radiative lifetime consistent between the two arguments (Opus
             # fix-round finding: "mixing two radiative lifetimes").
             tau_rad_resolved_ns = tau_rad0_ns / lv.overlap_sq
-            inj = nitride_transport.evaluate_injection(diode,d.drive.I_uA,Tj,density,aperture,tau_on,w_val, max(reservoir_offset_meV,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad_resolved_ns,E_X_eV=lv.E_X_eV)
+            inj = nitride_transport.evaluate_injection(diode,resolved_current_uA,Tj,density,aperture,tau_on,w_val, max(reservoir_offset_meV,1.),S_dot=rr["S0"],tau_rad_ns=tau_rad_resolved_ns,E_X_eV=lv.E_X_eV)
             r_dot_val, mu_val, power_val = inj.loading.r_dot, inj.mu, duty*inj.P_junction_W
             if d.drive.cycle_loading == "rectangular":
                 cnt = pulse_counting.pulse_g2(inj.loading.r_dot/1e9,cr["gamma_X_ns"],cr["gamma_XX_ns"],rr["k_X_ns"],rr["k_XX_ns"],cr["t_X"],cr["t_XX"],tau_on,period-tau_on,pump_ratio=d.drive.cw_pump_ratio,gate_ns=d.drive.gate_ns,split=True)
@@ -1194,12 +1292,31 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         rows.append(dict(T_hs=ths,T_j=Tj,g2=g2,rho=rho,lv=lv,rr=rr,cr=cr,
                          r_dot=r_dot_val,mu=mu_val,power=power_val,
                          cnt=cnt,signal=signal,sx=sx,sxx=sxx,bg=bg_counts,valid=valid,reasons=reasons,
-                         feas=feas,priced_fp=priced_fp,supplied=supplied,one_pair=one_pair,blocked=blocked,vj=vj,gam=gam))
+                         feas=feas,priced_fp=priced_fp,supplied=supplied,one_pair=one_pair,blocked=blocked,vj=vj,gam=gam,
+                         bias=bias, reservoir_energy_eV=locals().get("reservoir_energy_eV", np.nan),
+                         reservoir_offset_meV=locals().get("reservoir_offset_meV", np.nan)))
     keys={"g2":lambda r:r["g2"],"rho2":lambda r:r["rho"]**2,"Tj":lambda r:r["T_j"],"gamma":lambda r:r["gam"],"eps":lambda r:r["cr"]["t_XX"]/r["cr"]["t_X"],"signal_flux":lambda r:r["signal"]*rep}
     curves={k:np.array([f(r) for r in rows]) for k,f in keys.items()}; op=rows[int(np.argmin(abs(ts-d.thermal.T_hs)))]
     x=op; c=x["cr"]; rr=x["rr"]; lv=x["lv"]; feas=x["feas"]
-    scalars={"platform":"ingan_gan_planar","cycle_loading":d.drive.cycle_loading,"T_hs":x["T_hs"],"T_j":x["T_j"],"g2_op":x["g2"],"rho_pulsed":x["rho"],"collected_flux_pulsed_s":x["signal"]*rep,"collected_flux_x_s":x["sx"]*rep,"collected_flux_xx_s":x["sxx"]*rep,"background_flux_s":x["bg"]*rep,"total_detected_flux_s":(x["signal"]+x["bg"])*rep,"mean_counts":x["cnt"]["mean_counts"],"mean_counts_x":x["cnt"].get("mean_counts_x",np.nan),"mean_counts_xx":x["cnt"].get("mean_counts_xx",np.nan),"E_X_eV":lv.E_X_eV,"lambda_nm":lv.lambda_nm,"field_kVcm":lv.field_kVcm,"overlap_sq":lv.overlap_sq,"electron_bound":lv.electron_bound,"hole_bound":lv.hole_bound,"E_a_meV":rr["E_a_meV"],"k_X_ns":rr["k_X_ns"],"k_XX_ns":rr["k_XX_ns"],"gamma_X0_ns":rr["gamma_X0_ns"],"gamma_XX0_ns":rr["gamma_XX0_ns"],"gamma_X_ns":c["gamma_X_ns"],"gamma_XX_ns":c["gamma_XX_ns"],"S_X":c["gamma_X_ns"]/(c["gamma_X_ns"]+rr["k_X_ns"]),"S_XX":c["gamma_XX_ns"]/(c["gamma_XX_ns"]+rr["k_XX_ns"]),"Q":cav.Q,"kappa_meV":c["kappa_meV"],"detuning_meV":c["detuning_meV"],"Fp_add":c["Fp_add"],"F_eff_X":c["F_eff_X"],"F_eff_XX":c["F_eff_XX"],"eta_out":c["eta_out"],"gate_ns_used":x["cnt"]["gate_ns_used"],"rep_rate_hz":rep,"r_dot_s":x["r_dot"],"mu_resolved":x["mu"],"n_dot_cm2_used":density,"tau_cap_ps_used":rr["tau_cap_ps_used"],"I_pair_pA":E_SI*rep*1e12,"transport_current_uA":d.drive.I_uA,"V_j":x["vj"],"power_W":x["power"],"counting_converged":x["cnt"].get("converged",True),"blocked_load_probability":x["blocked"],"one_pair_valid":x["one_pair"],"set_feasible":feas.get("feasible",False),"set_priced_F_p":x["priced_fp"],"set_E_C_meV":feas.get("E_C_meV",np.nan),"set_EC_over_kT":feas.get("EC_over_kT",np.nan),"set_radius_nm":feas.get("radius_nm",np.nan),"set_radius_max_nm":feas.get("radius_max_nm",np.nan),"set_C_sigma_F":feas.get("C_sigma_F",np.nan),"set_R_T_over_RQ":feas.get("R_T_over_RQ",np.nan),"set_f_max_Hz":feas.get("f_max_Hz",np.nan),"pair_supply_possible":x["supplied"],"ideal_load_F_p":0.0 if d.drive.cycle_loading=="deterministic_pair" else np.nan,"valid":x["valid"],"invalid_reasons":x["reasons"],"provenance":{"nitride":"[A/E/DR] planar integration; cavity/transport inputs retain module provenance"}}
-    scalars["device_pass"]=bool(scalars["valid"] and scalars["g2_op"]<.5 and scalars["collected_flux_pulsed_s"]>=1000 and (d.drive.cycle_loading!="deterministic_pair" or (scalars["one_pair_valid"] and scalars["set_feasible"] and scalars["pair_supply_possible"])))
+    scalars={"platform":"ingan_gan_planar","cycle_loading":d.drive.cycle_loading,"T_hs":x["T_hs"],"T_j":x["T_j"],"g2_op":x["g2"],"rho_pulsed":x["rho"],"collected_flux_pulsed_s":x["signal"]*rep,"collected_flux_x_s":x["sx"]*rep,"collected_flux_xx_s":x["sxx"]*rep,"background_flux_s":x["bg"]*rep,"total_detected_flux_s":(x["signal"]+x["bg"])*rep,"mean_counts":x["cnt"]["mean_counts"],"mean_counts_x":x["cnt"].get("mean_counts_x",np.nan),"mean_counts_xx":x["cnt"].get("mean_counts_xx",np.nan),"E_X_eV":lv.E_X_eV,"lambda_nm":lv.lambda_nm,"field_kVcm":lv.field_kVcm,"overlap_sq":lv.overlap_sq,"electron_bound":lv.electron_bound,"hole_bound":lv.hole_bound,"E_a_meV":rr["E_a_meV"],"k_X_ns":rr["k_X_ns"],"k_XX_ns":rr["k_XX_ns"],"gamma_X0_ns":rr["gamma_X0_ns"],"gamma_XX0_ns":rr["gamma_XX0_ns"],"gamma_X_ns":c["gamma_X_ns"],"gamma_XX_ns":c["gamma_XX_ns"],"S_X":c["gamma_X_ns"]/(c["gamma_X_ns"]+rr["k_X_ns"]),"S_XX":c["gamma_XX_ns"]/(c["gamma_XX_ns"]+rr["k_XX_ns"]),"Q":cav.Q,"kappa_meV":c["kappa_meV"],"detuning_meV":c["detuning_meV"],"Fp_add":c["Fp_add"],"F_eff_X":c["F_eff_X"],"F_eff_XX":c["F_eff_XX"],"eta_out":c["eta_out"],"gate_ns_used":x["cnt"]["gate_ns_used"],"rep_rate_hz":rep,"r_dot_s":x["r_dot"],"mu_resolved":x["mu"],"n_dot_cm2_used":density,"tau_cap_ps_used":rr["tau_cap_ps_used"],"I_pair_pA":E_SI*rep*1e12,"transport_current_uA":d.drive.I_uA,"resolved_current_uA":x["bias"]["current_uA"] if x["bias"] else np.nan,"V_j":x["vj"],"V_terminal":x["bias"]["V_terminal"] if x["bias"] else np.nan,"power_W":x["power"],"counting_converged":x["cnt"].get("converged",True),"blocked_load_probability":x["blocked"],"one_pair_valid":x["one_pair"],"set_feasible":feas.get("feasible",False),"set_priced_F_p":x["priced_fp"],"set_E_C_meV":feas.get("E_C_meV",np.nan),"set_EC_over_kT":feas.get("EC_over_kT",np.nan),"set_radius_nm":feas.get("radius_nm",np.nan),"set_radius_max_nm":feas.get("radius_max_nm",np.nan),"set_C_sigma_F":feas.get("C_sigma_F",np.nan),"set_R_T_over_RQ":feas.get("R_T_over_RQ",np.nan),"set_f_max_Hz":feas.get("f_max_Hz",np.nan),"pair_supply_possible":x["supplied"],"ideal_load_F_p":0.0 if d.drive.cycle_loading=="deterministic_pair" else np.nan,"valid":x["valid"],"invalid_reasons":x["reasons"],"provenance":{"nitride":"[A/E/DR] planar integration; cavity/transport inputs retain module provenance"}}
+    spectroscopy_valid = bool(lv.valid and rr.get("valid", False) and np.isfinite(c["gamma_X_ns"]) and c["gamma_X_ns"] > 0)
+    scalars.update({
+        "tau_rad_bare_ns": (1.0 / rr["gamma_X0_ns"] if rr["gamma_X0_ns"] > 0 else np.inf),
+        "tau_rad_cavity_ns": (1.0 / c["gamma_X_ns"] if c["gamma_X_ns"] > 0 else np.inf),
+        "spectroscopy_valid": spectroscopy_valid,
+        "spectroscopy_invalid_reasons": [] if spectroscopy_valid else list(x["reasons"]),
+        "temperature_mode": "fixed_junction" if bias_mode == "junction_voltage" else "self_consistent",
+        "evaluation_kind": "stark_diagnostic" if bias_mode == "junction_voltage" else "source",
+        "field_polarity": polarity,
+        "diode_field_kVcm": x["bias"]["diode_field_kVcm"] if x["bias"] else np.nan,
+        "applied_field_kVcm": x["bias"]["applied_field_kVcm"] if x["bias"] else np.nan,
+        "reservoir_energy_eV": x["reservoir_energy_eV"], "reservoir_offset_meV": x["reservoir_offset_meV"],
+        "reservoir_kind": lv.reservoir_kind, "geometry_type": system0.geometry_type,
+        "effective_height_nm": lv.effective_height_nm, "effective_radius_nm": lv.effective_radius_nm,
+        "cavity_reference_V_j_V": _track_bias["V_j"], "cavity_reference_transition_eV": track0.E_X_eV,
+        "cavity_reference_convention": "fixed_junction_voltage" if cavity_reference_V is not None or bias_mode == "junction_voltage" else "current_controlled",
+    })
+    scalars["device_pass"]=bool(bias_mode == "current" and scalars["valid"] and scalars["g2_op"]<.5 and scalars["collected_flux_pulsed_s"]>=1000 and (d.drive.cycle_loading!="deterministic_pair" or (scalars["one_pair_valid"] and scalars["set_feasible"] and scalars["pair_supply_possible"])))
     return {"curves":curves,"scalars":scalars}
 
 
