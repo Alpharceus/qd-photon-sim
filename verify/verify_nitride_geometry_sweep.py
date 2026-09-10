@@ -19,6 +19,8 @@ from scripts import run_nitride_geometry_stark as s
 ZHANG_SLOPE_MEV_PER_V_INDEPENDENT = -10.0  # [V] Zhang et al., APL 108, 153102 (2016), Fig. 5;
 # transcribed independently here, not imported from fsim_core.nitride_stark or
 # the run script, so this is a real cross-check of the transcription.
+ZHANG_TEMPERATURE_K_INDEPENDENT = 10.0      # [V] ibid., Fig. 5 / device section.
+ZHANG_COMPOSITION_INDEPENDENT = "In0.15Ga0.85N"  # [V] ibid.
 WANG_HEIGHT_NM_INDEPENDENT = 7.0            # [V] Wang et al., Sci. Rep. 7, 12089 (2017), uncapped AFM
 WANG_DIAMETER_NM_INDEPENDENT = 35.0         # [V] ibid.
 WANG_TEMPERATURE_K_INDEPENDENT = 220.0      # [V] ibid.
@@ -426,6 +428,13 @@ def check_mutation_fixtures(checks):
 def check_literature(lit_csv, comp, checks):
     zhang_row = next((r for r in lit_csv if "Zhang" in r["source"]), None)
     checks.append(("Zhang slope transcription matches independent literal", zhang_row is not None and close_nan_safe(zhang_row.get("slope_meV_per_V"), ZHANG_SLOPE_MEV_PER_V_INDEPENDENT)))
+    # Hardening item 7: literature_comparisons.csv's Zhang row carries the
+    # measurement temperature and composition fields (10 K, In0.15Ga0.85N),
+    # checked against literals transcribed independently here.
+    checks.append(("Zhang row carries a temperature_K field matching the independent literal (10 K)",
+                    zhang_row is not None and close_nan_safe(zhang_row.get("temperature_K"), ZHANG_TEMPERATURE_K_INDEPENDENT)))
+    checks.append(("Zhang row carries a composition field matching the independent literal (In0.15Ga0.85N)",
+                    zhang_row is not None and zhang_row.get("composition") == ZHANG_COMPOSITION_INDEPENDENT))
     wang_row = next((r for r in lit_csv if "Wang" in r["source"] and r.get("kind") == "comparison_only"), None)
     checks.append(("Wang height/diameter/temperature transcription matches independent literal",
                     wang_row is not None and close_nan_safe(wang_row.get("height_nm"), WANG_HEIGHT_NM_INDEPENDENT)
@@ -595,24 +604,141 @@ def check_sensitivity_baselines_pass(sens, core, checks):
                     _baseline_passes("REF_pass_a_plane_SET")))
 
 
+RESPONSE_FIGS = ("height_response.png", "radius_response.png", "orientation_flux.png", "temperature_response.png")
+
 def check_panel_grouping(man, checks):
     """Fix round 3, item 6/8: no Stark figure's panel_index splits a
     screening triplet or polarity pair -- every contract entry sharing the
     same subtitle (the 'orientation h=..nm regime T=..K' super-group
-    prefix before ' | ' in its label) must carry the SAME panel_index."""
+    prefix before ' | ' in its label) must carry the SAME panel_index.
+    Hardening item 1: the same panel_index contract now applies to the four
+    grouped axis-response figures (height/radius/orientation/temperature),
+    which switched from the flat 8-per-panel _panel_plot chunker to the
+    grouped _panel_plot_grouped builder so their own screening triplets are
+    never split either."""
     mapping = man.get("plot_row_mapping", {})
     stark_figs = [n for n in mapping if n.startswith("stark_")]
+    response_figs = [n for n in RESPONSE_FIGS if n in mapping]
     checks.append(("at least one Stark figure is present to check panel grouping on", len(stark_figs) > 0))
+    checks.append(("all four grouped response figures (height/radius/orientation/temperature) are present "
+                    "to check panel grouping on (hardening item 1)", len(response_figs) == len(RESPONSE_FIGS)))
+    checks.append(("every grouped response figure's contract entries all carry a panel_index (grouped-panel "
+                    "builder, not the flat 8-per-panel chunker)",
+                    all(all("panel_index" in entry for entry in mapping[n].values()) for n in response_figs)))
     all_ok = True
-    for name in stark_figs:
+    for name in stark_figs + response_figs:
         by_subtitle = {}
         for label, entry in mapping[name].items():
             subtitle = label.split(" | ", 1)[0]
             by_subtitle.setdefault(subtitle, set()).add(entry.get("panel_index"))
         if any(len(idxs) > 1 for idxs in by_subtitle.values()):
             all_ok = False
-    checks.append(("every Stark figure's screening/polarity lines within one trace-identity super-group "
-                    "share a single panel_index (no split triplets/pairs)", all_ok))
+    checks.append(("every Stark figure and grouped response figure's screening/polarity lines within one "
+                    "trace-identity super-group share a single panel_index (no split triplets/pairs)", all_ok))
+
+
+def check_figure_axis_scale(man, checks):
+    """Hardening item 2: the manifest records the log/linear axis choice
+    actually used for each figure (scripts/run_nitride_geometry_stark.py's
+    _resolve_axis_scale, called from the SAME fn/args/kwargs that built the
+    figure). orientation_flux.png (signal_flux_s spans ~12 decades) and
+    stark_tau_current.png (tau_rad_bare_ns spans ~6 decades) must be
+    recorded as ylog=True; stark_tau_current.png's x axis (current_uA) must
+    be recorded as xlog=True."""
+    scale = man.get("figure_axis_scale", {})
+    checks.append(("manifest carries a non-empty figure_axis_scale", isinstance(scale, dict) and len(scale) > 0))
+    checks.append(("figure_axis_scale records orientation_flux.png ylog=True",
+                    scale.get("orientation_flux.png", {}).get("ylog") is True))
+    checks.append(("figure_axis_scale records stark_tau_current.png ylog=True",
+                    scale.get("stark_tau_current.png", {}).get("ylog") is True))
+    checks.append(("figure_axis_scale records stark_tau_current.png xlog=True (current axis)",
+                    scale.get("stark_tau_current.png", {}).get("xlog") is True))
+    checks.append(("figure_axis_scale records height_response.png/temperature_response.png ylog=False "
+                    "(E_X_eV/g2 are not log fields)",
+                    scale.get("height_response.png", {}).get("ylog") is False
+                    and scale.get("temperature_response.png", {}).get("ylog") is False))
+
+
+AXIS_REGIME_OVERRIDE = {"island_radius_nm": "regime", "semipolar_factor": "orientation", "tau_cap_density_convention": "n_dot"}
+
+def _note_for_row(text, rid):
+    """Find rid's OWN row in the 11-column OAT sensitivity table (axis,
+    value, regime, orientation, n_dot_cm2, T_hs K, g2, flux/s, optical_pass,
+    row_id, note) and return its note cell -- row_id must match the row_id
+    COLUMN exactly (index 9), not merely appear as a substring somewhere in
+    the line, since rid also appears as the last (row_id) column of the
+    unrelated 8-column SET hardware-feasibility table above it."""
+    for line in text.splitlines():
+        if not line.startswith("|") or rid not in line:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 11 and cells[9] == rid:
+            return cells[-1]
+    return None
+
+def check_oat_regime_orientation_columns(sens, text, checks):
+    """Hardening item 3: the OAT sensitivity tables carry regime/orientation/
+    n_dot_cm2 columns, and every row evaluated under a different regime,
+    orientation or density than its OWN baseline (island_radius_nm rows run
+    under deterministic_pair, semipolar_factor rows run under orientation=
+    semipolar_11_22, tau_cap_density_convention rows run at n_dot_cm2=1e9)
+    carries a note naming the deviation."""
+    sens_only = [r for r in sens if r.get("row_kind") == "sensitivity"]
+    checks.append(("sensitivities.csv carries a regime column on every sensitivity row",
+                    len(sens_only) > 0 and all("regime" in r for r in sens_only)))
+    checks.append(("sensitivities.csv carries an orientation column on every sensitivity row",
+                    len(sens_only) > 0 and all("orientation" in r for r in sens_only)))
+    checks.append(("sensitivities.csv carries an n_dot_cm2 column", len(sens_only) > 0 and "n_dot_cm2" in sens_only[0]))
+    baselines = sorted({r.get("sensitivity_baseline") for r in sens_only if r.get("sensitivity_baseline")})
+    checks.append(("at least one sensitivity baseline present", len(baselines) > 0))
+    for label in baselines:
+        idx = text.find(f"### {label}")
+        header_ok = False
+        if idx != -1:
+            snippet = text[idx: idx + 400]
+            header_ok = ("regime" in snippet and "orientation" in snippet and "n_dot_cm2" in snippet and "note" in snippet)
+        checks.append((f"results.md's OAT table header for {label} carries regime/orientation/n_dot_cm2/note columns", header_ok))
+    for axis, keyword in AXIS_REGIME_OVERRIDE.items():
+        rows_for_axis = [r for r in sens_only if r.get("sensitivity_axis") == axis]
+        checks.append((f"sensitivities.csv has rows for OAT axis {axis}", len(rows_for_axis) > 0))
+        found = False
+        for r in rows_for_axis:
+            note = _note_for_row(text, r.get("row_id", ""))
+            if note and keyword in note.lower():
+                found = True; break
+        checks.append((f"results.md's OAT table notes a {keyword} deviation for every axis-{axis} row's own baseline", found))
+
+
+BEST_FLUX_300K_RE = re.compile(r"^BEST_PASSING_FLUX_300K family=(?P<family>\S+) value=(?P<value>\S+) row_id=(?P<row_id>\S+)")
+
+def check_best_passing_flux_300k(text, core, checks):
+    """Hardening item 5: independently recompute the best flux among
+    optical_pass rows per family RESTRICTED to T_hs=300 (using the run
+    module's own pure eligible/optical_pass functions, never trusting the
+    row's own saved optical_pass column) and compare against the
+    machine-checkable BEST_PASSING_FLUX_300K line in results.md."""
+    lines_found = [ln for ln in text.splitlines() if ln.startswith("BEST_PASSING_FLUX_300K")]
+    checks.append(("results.md carries a BEST_PASSING_FLUX_300K line per family", len(lines_found) >= 1))
+    for fam in ("c_plane", "a_plane"):
+        m = next((BEST_FLUX_300K_RE.match(ln) for ln in lines_found if f"family={fam} " in ln), None)
+        cand = []
+        for r in core:
+            if r["orientation"] != fam: continue
+            if f(r.get("T_hs")) != 300.: continue
+            valid = r["valid"] == "True"; g2v = f(r["g2"]); fluxv = f(r["signal_flux_s"])
+            one_pair = r.get("one_pair_valid") == "True"
+            elig = s.eligible(valid, g2v, fluxv)
+            opt = s.optical_pass(elig, g2v, r["regime"], one_pair)
+            if opt and isfin(fluxv): cand.append((fluxv, r["row_id"]))
+        if not cand:
+            checks.append((f"BEST_PASSING_FLUX_300K family={fam} matches independent recomputation (no passing rows at 300 K)",
+                            m is not None and m["value"] == "none"))
+            continue
+        best_val, best_rid = max(cand, key=lambda z: z[0])
+        ok = (m is not None and m["family"] == fam and m["row_id"] == best_rid
+              and close_nan_safe(m["value"], best_val, rtol=1e-4, atol=1e-9))
+        checks.append((f"BEST_PASSING_FLUX_300K family={fam} row_id/value match independent max-over-optical_pass-"
+                        f"rows-at-300K recomputation (expected row {best_rid}, value {best_val:.6g})", ok))
 
 
 def check_invalid_completeness(text, man, checks):
@@ -650,7 +776,10 @@ def main(argv=None):
     check_convergence(man, checks)
     check_plots(out, man, core, geo, bias, checks)
     check_panel_grouping(man, checks)
+    check_figure_axis_scale(man, checks)
+    check_oat_regime_orientation_columns(sens, text, checks)
     check_best_passing_flux(text, core, checks)
+    check_best_passing_flux_300k(text, core, checks)
     check_distinct_hypotheses(text, comp, checks)
     check_nonpolar_slope_in_window(comp, man, checks)
     check_sensitivity_baselines_pass(sens, core, checks)

@@ -731,7 +731,7 @@ def _panel_plot(out, name, entries, xlabel, ylabel, suptitle, xlog=False, ylog=F
     fig.savefig(out / name, dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
-def _panel_plot_grouped(out, name, super_groups, xlabel, ylabel, suptitle, xlog=False, ylog=False):
+def _panel_plot_grouped(out, name, super_groups, xlabel, ylabel, suptitle, xlog=False, ylog=False, guide=None):
     """super_groups: ordered [(subtitle, [(label,xv,yv,rids,style), ...]), ...].
     ONE subplot per super-group -- a super-group's own lines are NEVER
     split across panels/subplots (fix round 3, item 6: 'panels never split
@@ -758,6 +758,8 @@ def _panel_plot_grouped(out, name, super_groups, xlabel, ylabel, suptitle, xlog=
             # (unscreened lower bound)" repeat across every super-group and
             # would silently collide/overwrite each other in a flat dict).
             contract[f"{subtitle} | {label}"] = {"row_ids": rids, "x": xv, "y": yv, "panel_index": i}
+        if guide is not None:
+            ax.axhline(guide[0], color="k", lw=.8, ls="--", label=guide[1])
         if xlog: ax.set_xscale("log")
         if ylog: ax.set_yscale("log")
         ax.set(xlabel=xlabel, ylabel=ylabel)
@@ -768,22 +770,54 @@ def _panel_plot_grouped(out, name, super_groups, xlabel, ylabel, suptitle, xlog=
     fig.savefig(out / name, dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
-def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime"), fail_log=None, guide=None):
+LOG_Y_FIELDS = ("tau_rad_bare_ns", "tau_rad_cavity_ns", "overlap_sq", "signal_flux_s")
+
+def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime"), fail_log=None, guide=None, ylog=None):
     groups = {}
+    groups_all = {}
     for r in rows:
+        groups_all.setdefault(tuple(r.get(k) for k in group_keys), []).append(r)
         if _finite_num(r.get(x)) and _finite_num(r.get(y)):
             groups.setdefault(tuple(r.get(k) for k in group_keys), []).append(r)
-    entries = []
+    # Keep the screening triplet together in one subplot.  This is also used
+    # by height/radius/orientation/temperature response figures, so a panel
+    # cannot accidentally split matched bounds or connect different fixed
+    # inputs into one artificial trace.
+    screen_i = group_keys.index("screening_fraction") if "screening_fraction" in group_keys else None
+    super_groups = {}
     for key, rr in sorted(groups.items(), key=lambda kv: str(kv[0])):
         try:
+            skey = tuple(v for i, v in enumerate(key) if i != screen_i) if screen_i is not None else key
+            label = ("/".join(str(v) for i, v in enumerate(key) if i != screen_i)
+                     if screen_i is not None else "/".join(str(v) for v in key))
+            sval = key[screen_i] if screen_i is not None else None
             rr = sorted(rr, key=lambda z: float(z[x]))
-            lab = "/".join(str(k) for k in key)
+            base_label = f"screening={sval:g}" if screen_i is not None else label
             xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
-            entries.append((lab, xv, yv, [z["row_id"] for z in rr], "o-"))
+            line = (base_label, xv, yv, [z["row_id"] for z in rr], "o-")
+            super_groups.setdefault(skey, []).append(line)
+            # Hardening item 8: a trace that stops early because higher-x
+            # rows exist but fail the validity gate (e.g. height_response's
+            # c_plane/screening=0 trace truncating at 5nm because the H=7/10
+            # rows are invalid) is marked explicitly instead of silently
+            # stopping -- a red 'x' overlaid on the LAST REAL plotted point
+            # (its own true row_id/x/y, never a fabricated coordinate) with a
+            # legend label naming which x-values were validity-rejected.
+            plotted_ids = {z["row_id"] for z in rr}
+            rejected = [rz for rz in groups_all.get(key, [])
+                        if rz.get("row_id") not in plotted_ids and rz.get("valid") is False]
+            if rejected:
+                rejected_x = sorted({float(rz.get(x)) for rz in rejected if _finite_num(rz.get(x))})
+                marker_label = f"{base_label} validity-rejected beyond {xv[-1]:g} (x={rejected_x})"
+                super_groups[skey].append((marker_label, [xv[-1]], [yv[-1]], [rr[-1]["row_id"]], "rx"))
         except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
             if fail_log is not None:
                 fail_log.append({"trace_id": "%s|%s" % (name, "|".join(str(k) for k in key)), "reason": str(exc)})
-    return _panel_plot(out, name, entries, x, y, title, guide=guide)
+    ordered = [("/".join(str(v) for v in key), lines)
+               for key, lines in sorted(super_groups.items(), key=lambda kv: str(kv[0]))]
+    if ylog is None:
+        ylog = y in LOG_Y_FIELDS
+    return _panel_plot_grouped(out, name, ordered, x, y, title, ylog=ylog, guide=guide)
 
 def plot_stark(out, name, rows, x, y, title, ylog=False, zhang_anchor=False, fail_log=None):
     """E_X/tau/overlap vs V_j or current. Fix round 3, item 6: panels never
@@ -923,8 +957,8 @@ def plot_pulse_vs_set(out, core_rows):
                 ax2.text(bar.get_x() + bar.get_width() / 2, UNDERFLOW_FLOOR, "underflow",
                           rotation=90, fontsize=5, va="bottom", ha="center")
         contract[lab] = ids
-    ax1.axhline(G2, color="k", lw=.8); ax1.set(xticks=list(xs), xticklabels=[f"{t:g}" for t in ts], xlabel="T_hs K", ylabel="g2", title="pulse vs SET: g2")
-    ax2.axhline(FLUX, color="gray", lw=.8, ls="--"); ax2.set_yscale("log"); ax2.set(xticks=list(xs), xticklabels=[f"{t:g}" for t in ts], xlabel="T_hs K", ylabel="flux /s (log)", title="pulse vs SET: flux\n('underflow' bars are display-floored, not a real value)")
+    ax1.axhline(G2, color="k", lw=.8); ax1.set(xticks=list(xs), xticklabels=[f"{t:g}" for t in ts], xlabel="T_hs K", ylabel="g2", title="pulse vs SET; fixed geometry c-plane H=1nm R=5nm: g2")
+    ax2.axhline(FLUX, color="gray", lw=.8, ls="--"); ax2.set_yscale("log"); ax2.set(xticks=list(xs), xticklabels=[f"{t:g}" for t in ts], xlabel="T_hs K", ylabel="flux /s (log)", title="pulse vs SET; fixed geometry c-plane H=1nm R=5nm: flux\n('underflow' bars are display-floored, not a real value)")
     _leg(ax1); _leg(ax2); fig.tight_layout(); fig.savefig(out / "pulse_vs_set.png", dpi=125); plt.close(fig)
     return contract
 
@@ -969,14 +1003,36 @@ def _safe_plot(name, outer_fail_log, fn, *args, **kwargs):
         outer_fail_log.append({"trace_id": name, "reason": "%s: %s" % (type(exc).__name__, exc)})
         return None
 
+def _resolve_axis_scale(fn, args, kwargs):
+    """Hardening item 2: record the log/linear axis actually used for a
+    figure in the manifest, derived from the SAME call (fn/args/kwargs) that
+    built it -- not a hand-typed duplicate list that could drift from the
+    plotting code. Mirrors plot_axis_response's/plot_stark's own xlog/ylog
+    predicates exactly. Returns None for figures this doesn't apply to
+    (pulse_vs_set/envelope/set_feasibility use bespoke multi-axis layouts)."""
+    if fn is plot_axis_response:
+        y = args[4]
+        ylog = kwargs.get("ylog")
+        if ylog is None: ylog = y in LOG_Y_FIELDS
+        return {"xlog": False, "ylog": bool(ylog)}
+    if fn is plot_stark:
+        x = args[3]
+        return {"xlog": (x == "current_uA"), "ylog": bool(kwargs.get("ylog", False))}
+    return None
+
 # ---------------------------------------------------------------- results.md
-def _best_passing_flux(core, family):
+def _best_passing_flux(core, family, t_hs=None):
     """Fix round 3, item 4: the best flux among rows that PASS the optical
     gate (optical_pass=True), never a diagnostic row (a Stark row at high
     V_j with no optical/hardware gating applied to it, as the previous
-    'maximum valid signal_flux_s' picked)."""
+    'maximum valid signal_flux_s' picked). Hardening item 5: `t_hs`, when
+    given, restricts the candidate pool to that heat-sink temperature (the
+    headline BEST_PASSING_FLUX above is unrestricted -- and lands at 230 K,
+    the cold edge, since flux is monotone in T_hs -- so a machine-checkable
+    300 K-specific line is reported separately)."""
     cand = [(float(r["signal_flux_s"]), r["row_id"], r.get("T_hs"), r.get("screening_fraction"), r.get("regime"))
-            for r in core if r.get("orientation") == family and r.get("optical_pass") and _finite_num(r.get("signal_flux_s"))]
+            for r in core if r.get("orientation") == family and r.get("optical_pass") and _finite_num(r.get("signal_flux_s"))
+            and (t_hs is None or float(r.get("T_hs")) == t_hs)]
     return max(cand, key=lambda z: z[0]) if cand else None
 
 def _hypothesis_key(gk):
@@ -1068,6 +1124,19 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
             mf, mf_rid, mf_t, mf_scr, mf_reg = best
             lines.append(f"BEST_PASSING_FLUX family={family} value={mf:.6g} row_id={mf_rid} "
                           f"T_hs={mf_t:g} screening={mf_scr:g} regime={mf_reg}")
+    # Hardening item 5: the unrestricted BEST_PASSING_FLUX lines above land
+    # at T_hs=230 K (the cold edge -- flux is monotone in T_hs, not a
+    # detuning artifact); a separate machine-checkable 300 K-specific line
+    # per family, so the 300 K number is available without re-deriving it
+    # from sweep.csv.
+    for family in ("c_plane", "a_plane"):
+        best300 = _best_passing_flux(core, family, t_hs=300.)
+        if best300 is None:
+            lines.append(f"BEST_PASSING_FLUX_300K family={family} value=none row_id=none")
+        else:
+            mf, mf_rid, mf_t, mf_scr, mf_reg = best300
+            lines.append(f"BEST_PASSING_FLUX_300K family={family} value={mf:.6g} row_id={mf_rid} "
+                          f"T_hs={mf_t:g} screening={mf_scr:g} regime={mf_reg}")
     lines.append("")
     if g2_opt:
         lines.append(f"Core-grid paired-optical-pass rows (g2<{G2:g}, flux>={FLUX:g}/s, plus "
@@ -1085,6 +1154,25 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
                       "geometry information in the SET regime; only the flux/eligibility gates discriminate "
                       "geometry there.")
     lines.append("")
+    # Hardening item 4: state plainly (not just via the cavity_tracking
+    # column) that every Stark trace row is cavity_tracking=fixed_300K BY
+    # DESIGN -- a fixed cavity reference is the correct convention for bias
+    # spectroscopy (the cavity position must not move while V_j/current is
+    # swept, or tau_rad_cavity/detuning/Fp_add would not be comparable
+    # across the trace) -- and that every 230 K Stark panel is therefore a
+    # 300 K-ANCHORED cavity, not a cavity re-tracked to 230 K the way the
+    # headline core rows are.
+    lines += ["## Stark trace cavity-tracking convention (item 4)", "",
+              f"All {len(bias)} stark_bias rows and {len(current)} stark_current rows carry "
+              "cavity_tracking=fixed_300K BY DESIGN: the cavity is held at the card's fixed 300 K "
+              "position for every V_j/current point within one trace (a fixed instrument reference "
+              "for bias spectroscopy), never re-tracked to that trace's own T_hs -- unlike the "
+              "headline core rows above, which use cavity_tracking=per_T_hs. Consequently every "
+              "T_hs=230 K panel in stark_energy_bias.png, stark_tau_bias.png, "
+              "stark_tau_cavity_bias.png, stark_overlap_bias.png, stark_energy_current.png and "
+              "stark_tau_current.png shows a cavity ANCHORED AT 300 K, not one re-tracked to 230 K; "
+              "compare against the Fixed-anchor sensitivity table below and the per_T_hs core rows "
+              "above before drawing any temperature conclusion from these Stark panels.", ""]
     # Fixed-anchor (cavity_tracking=fixed_300K) sensitivity set (item 1):
     # quantify the detuning consequence of NOT re-tracking the cavity,
     # against the matching per_T_hs-tracked core row at the same
@@ -1287,15 +1375,37 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
               "REF_pass_c_plane_screened_SET and REF_pass_a_plane_SET (H=3nm, R=10nm, T_hs=300K, "
               "deterministic_pair regime) DO pass, so every [A] assumption below is also bounded at "
               "a configuration that produces a verdict.", ""]
+    # Hardening item 3: every OAT axis row's own regime/orientation/n_dot_cm2
+    # is shown next to it, plus a note wherever a row was evaluated under a
+    # DIFFERENT regime, orientation or carrier density than its own baseline
+    # (island_radius_nm rows force regime=deterministic_pair; semipolar_
+    # factor rows force orientation=semipolar_11_22; tau_cap_density_
+    # convention rows force n_dot_cm2=1e9) -- otherwise the axis label alone
+    # could be misread as isolating a single physical input.
+    baseline_for_label = {"REF_unscreened_rectangular": REF, "REF_pass_c_plane_screened_SET": REF_PASS_C,
+                           "REF_pass_a_plane_SET": REF_PASS_A}
     for label in ("REF_unscreened_rectangular", "REF_pass_c_plane_screened_SET", "REF_pass_a_plane_SET"):
         rs = [r for r in sens if r.get("sensitivity_baseline") == label and r["row_kind"] == "sensitivity"]
         if not rs: continue
         sample = rs[0]
         lines.append(f"### {label} (optical_pass at baseline: {sample.get('optical_pass')})")
-        lines += ["", "| axis | value | T_hs K | g2 | flux/s | optical_pass | row_id |", "|---|---|---|---|---|---|---|"]
+        base = baseline_for_label[label]
+        base_regime, base_orientation, base_n_dot = base["regime"], base["orientation"], base.get("n_dot_cm2")
+        lines += ["", "| axis | value | regime | orientation | n_dot_cm2 | T_hs K | g2 | flux/s | optical_pass | row_id | note |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
         for r in sorted(rs, key=lambda z: (z.get("sensitivity_axis"), str(z.get("sensitivity_value")), z.get("T_hs"))):
-            lines.append(f"| {r.get('sensitivity_axis')} | {r.get('sensitivity_value')} | {r.get('T_hs'):g} | "
-                          f"{r.get('g2')} | {r.get('signal_flux_s')} | {r.get('optical_pass')} | {r.get('row_id')} |")
+            row_regime = r.get("regime"); row_orientation = r.get("orientation"); row_n_dot = r.get("n_dot_cm2")
+            diffs = []
+            if row_regime != base_regime:
+                diffs.append(f"regime={row_regime} (baseline {base_regime})")
+            if row_orientation != base_orientation:
+                diffs.append(f"orientation={row_orientation} (baseline {base_orientation})")
+            if row_n_dot not in (None, base_n_dot):
+                diffs.append(f"n_dot_cm2={float(row_n_dot):g} (baseline card default)")
+            note = "; ".join(diffs)
+            lines.append(f"| {r.get('sensitivity_axis')} | {r.get('sensitivity_value')} | {row_regime} | {row_orientation} | "
+                          f"{row_n_dot if row_n_dot is not None else ''} | {r.get('T_hs'):g} | "
+                          f"{r.get('g2')} | {r.get('signal_flux_s')} | {r.get('optical_pass')} | {r.get('row_id')} | {note} |")
         lines.append("")
     # Invalid-row accounting (item 7): every kind, with reasons, tied to
     # the manifest's own invalid_counts_by_kind/invalid_reasons_summary.
@@ -1416,7 +1526,8 @@ def main(argv=None):
         {"row_id": "LC00002", "source": "Wang et al., APL 111, 053101 (2017)", "kind": "informational_only",
          "note": "[V] FSS 2-12 meV at 200 K (16 dots); omitted by this single-band model", "model_row_ids": "[]"},
         {"row_id": "LC00003", "source": ZHANG2016_COMPARISON["citation"], "kind": "non_gating_slope_guide",
-         "slope_meV_per_V": ZHANG2016_SLOPE_MEV_PER_V, "note": "[V] Fig. 5, below 2 V; non-gating comparison only",
+         "slope_meV_per_V": ZHANG2016_SLOPE_MEV_PER_V, "temperature_K": 10, "composition": "In0.15Ga0.85N",
+         "note": "[V] Fig. 5, 10 K, x=0.15, below 2 V; non-gating comparison only",
          "model_row_ids": json.dumps([r["row_id"] for r in comp])},
         {"row_id": "LC00004", "source": "Deshpande et al., APL 105, 141109 (2014)", "kind": "conditions_incomplete_replay",
          "note": "[V abstract-only] measured g2=0.29",
@@ -1485,12 +1596,16 @@ def main(argv=None):
     if current:
         figs += [
             ("stark_energy_current.png", plot_stark, (out, "stark_energy_current.png", current, "current_uA", "E_X_eV", "E_X(I), self-consistent T_j (heating)"), dict(fail_log=plot_trace_failures)),
-            ("stark_tau_current.png", plot_stark, (out, "stark_tau_current.png", current, "current_uA", "tau_rad_bare_ns", "tau_rad(I), self-consistent T_j (heating)"), dict(ylog=False, fail_log=plot_trace_failures)),
+            ("stark_tau_current.png", plot_stark, (out, "stark_tau_current.png", current, "current_uA", "tau_rad_bare_ns", "tau_rad(I), self-consistent T_j (heating)"), dict(ylog=True, fail_log=plot_trace_failures)),
         ]
+    figure_axis_scale = {}
     for fig_name, fn, args, kwargs in figs:
         result = _safe_plot(fig_name, plot_trace_failures, fn, *args, **kwargs)
         if result is not None:
             plots[fig_name] = result
+            scale = _resolve_axis_scale(fn, args, kwargs)
+            if scale is not None:
+                figure_axis_scale[fig_name] = scale
 
     complete = (not a.quick) and counter["evaluate_calls"] <= a.max_evaluations and (time.time() - t0) < 1800
     runtime_s = time.time() - t0
@@ -1570,6 +1685,7 @@ def main(argv=None):
         "compatibility_trace_failures": compatibility_trace_failures,
         "plot_trace_failures": plot_trace_failures,
         "plot_row_mapping": plots,
+        "figure_axis_scale": figure_axis_scale,
         "output_hashes": hashes,
         "card_hashes": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "cards").glob("nitride-*.yaml")},
         "source_hashes": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "fsim_core").glob("*.py")},
