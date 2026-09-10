@@ -50,6 +50,30 @@ this swap moves E_X by about +32 meV and the hole escape depth by about
 orientation.  semipolar_11_22 keeps c-plane masses [A; orientation-
 dependent valence reordering, Schade et al., phys. status solidi (b)
 (2011), is not modelled].
+
+RESERVOIR KIND AND ENERGY.  For an isolated dot (no wl_thickness_nm)
+``reservoir_kind`` is always ``'gan_barrier'`` and ``reservoir_energy_eV``
+is the bulk GaN Varshni gap at the row's T_K minus the same 25 meV [A]
+localization/Urbach offset that ``fsim_core.device._nitride_reservoir_energy_eV``
+applies on its own zero-wetting-layer branch, so the two independently
+computed values agree numerically (about 3.41 eV at 300 K); the field is
+therefore orientation/height/radius/screening independent, as a bulk
+material edge must be.  device.py does NOT read this field for isolated-dot
+rows -- it keeps its own bulk-edge helper as the value it reports -- so
+this field is provided for documentation/consistency (and for any future or
+external consumer), not as the number device.py's isolated-dot rows
+currently forward.  For a qw_fluctuation dot each carrier independently
+selects its own escape channel, min(surrounding-QW subband edge, GaN
+plateau); ``reservoir_electron_edge_meV``/``reservoir_hole_edge_meV`` report
+that SELECTED per-carrier edge (not the raw surrounding-well edge).
+``reservoir_kind`` is ``'ingan_qw'`` only when BOTH carriers select the
+well, ``'gan_barrier'`` only when BOTH select the GaN plateau, and
+``'mixed'`` when the two carriers select different channels (e.g. electron
+confined by the well, hole escaping into the wider GaN barrier) -- a
+spatially indirect situation no single reservoir label describes exactly;
+``reservoir_energy_eV`` still reports gap+eth+hth in that case (device.py
+only reads reservoir_kind as a label and reservoir_energy_eV as a number,
+never branches on the kind string, so a 'mixed' row evaluates normally).
 """
 from dataclasses import dataclass
 from functools import lru_cache
@@ -67,6 +91,31 @@ _KB_SI = 1.380649e-23 # J K-1 [V] SI 2019
 _HC_EV_NM = 1239.841984 # h c [V] CODATA 2018, eV nm
 _E2_4PIEPS0_EV_NM = 1.439964 # e^2/(4 pi eps0) [DR] CODATA 2018, eV nm
 TAIL_CONVERGENCE_TOL_MEV = 1e-3 # [E] padding-doubling bound-state convergence threshold
+
+# [E] Documented, NOT runtime-computed, default-grid interior discretization
+# bound (hardening round after commit 17a333f, Opus re-review finding).
+# electron_padding_delta_meV/hole_padding_delta_meV below only re-solve with
+# exterior_nm doubled at the SAME z_points, so they measure padding
+# (exterior-domain) sufficiency, not interior mesh resolution, and read
+# close to 0 meV at these heights even though a doubling of BOTH z_points
+# and exterior_nm together (the check the verifier's convergence matrix
+# actually performs) moves E_X well past the 0.5 meV convergence budget at
+# the DEFAULT grid (z_points=1201, exterior_nm=45). Measured once, offline,
+# at commit 17a333f (c-plane, R=17.5 nm, screening_fraction=0, T=300 K);
+# doubling both controls at construction cost for every default-settings
+# levels() call is explicitly NOT an acceptable way to close this finding.
+# See verify_nitride_geometry.py's own (h, R, orientation, geometry_type,
+# screening) convergence matrix for the general sweep this table summarizes.
+DEFAULT_GRID_EX_BOUND_MEV_17A333F = {5.: 0.438, 6.: 0.525, 7.: 0.612} # h_nm -> meV [E]
+DEFAULT_GRID_EX_RESIDUAL_MEV_17A333F_H7 = 1.2 # [E] residual at h=7nm after one further doubling
+_GRID_NOTE = ('default grid (z_points=1201, exterior_nm=45) has a height-dependent interior-'
+    'resolution discretization error NOT captured by padding_delta (exterior-only doubling): '
+    'measured (not recomputed per call) at commit 17a333f, c-plane, R=17.5 nm, '
+    'screening_fraction=0, doubling z_points AND exterior_nm together moves E_X by '
+    + repr(DEFAULT_GRID_EX_BOUND_MEV_17A333F) + ' meV (h_nm -> meV) with a ~'
+    + repr(DEFAULT_GRID_EX_RESIDUAL_MEV_17A333F_H7)
+    + ' meV residual at h=7 nm even after that further doubling; pass explicit '
+    'z_points/exterior_nm for a tighter bound')
 
 # Source-transcription targets: named module constants (compared, in the
 # verifier, to INDEPENDENTLY typed literals so the check is a real
@@ -317,29 +366,48 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
         return _invalid(s,['nonphysical E_X'],F)
     # First excited state = min(z, radial) for the DOT COLUMN, same rule as
     # the isolated branch (Opus fix-round finding: ee1/eh1 were computed by
-    # the caller but discarded here, hardwiring zg_e=zg_h=inf).
-    zg_e=(ee1-ee) if (math.isfinite(ee1) and ee1<ce) else float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
-    zg_h=(eh1-eh) if (math.isfinite(eh1) and eh1<ch) else float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
+    # the caller but discarded here, hardwiring zg_e=zg_h=inf). Admission is
+    # against THIS branch's own threshold eth/hth=min(er,ce)/min(hr,ch), not
+    # the isolated-dot continuum ce/ch (hardening-round finding: ee1<ce
+    # admitted a z-excited state above the branch's own selected continuum,
+    # e.g. sp_split_e_meV=88.69 meV reported for a state 33 meV above the
+    # surrounding-well edge at h=7, R=5, w=3.5, screening=1).
+    zg_e=(ee1-ee) if (math.isfinite(ee1) and ee1<eth) else float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
+    zg_h=(eh1-eh) if (math.isfinite(eh1) and eh1<hth) else float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
     eleft=float(_z_potential(h_eff,Ve,F,-1,np.array([-h_eff/2.-1.]))[0]); eright=float(_z_potential(h_eff,Ve,F,-1,np.array([h_eff/2.+1.]))[0])
     hleft=float(_z_potential(h_eff,Vh,F,+1,np.array([-h_eff/2.-1.]))[0]); hright=float(_z_potential(h_eff,Vh,F,+1,np.array([h_eff/2.+1.]))[0])
-    # reservoir_kind/reservoir_energy_eV (Opus fix-round finding 4): report
-    # the channel each carrier ACTUALLY escapes into (min(er,ce), min(hr,ch))
-    # rather than hardcoding the QW edge. 'ingan_qw' only when BOTH carriers
-    # select the surrounding well; if either carrier's true escape channel is
-    # the wider GaN barrier plateau, the row is reported 'gan_barrier' and
-    # the reservoir energy tracks the selected (eth,hth) pair, which reduces
-    # exactly to the QW edge (gap+er+hr) when both carriers select the QW.
+    # reservoir_kind/reservoir_energy_eV (Opus fix-round finding 4, refined by
+    # the hardening round after commit 17a333f): report the channel each
+    # carrier ACTUALLY escapes into (min(er,ce), min(hr,ch)) rather than
+    # hardcoding the QW edge. 'ingan_qw' only when BOTH carriers select the
+    # surrounding well, 'gan_barrier' only when BOTH select the wider GaN
+    # plateau, and 'mixed' when the two carriers select DIFFERENT channels
+    # (a spatially indirect situation -- electron confined by the well while
+    # the hole escapes to the plateau, or vice versa -- that neither single
+    # label describes exactly; the prior both-carriers rule mislabelled this
+    # case 'gan_barrier'). reservoir_energy_eV tracks the selected (eth,hth)
+    # pair in every case, which reduces exactly to the QW edge (gap+er+hr)
+    # when both carriers select the QW and to gap+ce+ch when both select the
+    # barrier; device.py only reads reservoir_kind as a label and
+    # reservoir_energy_eV as a number (see module docstring) and never
+    # branches on the kind string, so 'mixed' rows evaluate normally.
+    # reservoir_electron_edge_meV/reservoir_hole_edge_meV report the SAME
+    # selected per-carrier edge (eth, hth), not the raw surrounding-well
+    # edge (er, hr) previously emitted here regardless of which channel was
+    # actually selected.
     e_is_qw = er <= ce; h_is_qw = hr <= ch
-    reservoir_kind = 'ingan_qw' if (e_is_qw and h_is_qw) else 'gan_barrier'
+    if e_is_qw and h_is_qw: reservoir_kind = 'ingan_qw'
+    elif e_is_qw or h_is_qw: reservoir_kind = 'mixed'
+    else: reservoir_kind = 'gan_barrier'
     reservoir_energy_eV = (de['Ec_eV']-de['Ev_eV'])+eth+hth
     return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,ebe*1000.,hbe*1000.,ede,hde,None,
         min(zg_e,rg_e)*1000. if math.isfinite(min(zg_e,rg_e)) else float('nan'),min(zg_h,rg_h)*1000. if math.isfinite(min(zg_h,rg_h)) else float('nan'),
         d_exy,d_hxy,True,(),'[V] BenDaniel & Duke, PR 152, 683 (1966); [A] same-composition adiabatic local-column QW fluctuation, both columns centered on the same z=0 midplane; lateral interface electrostatics neglected',
-        le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,reservoir_kind,reservoir_energy_eV,er*1000.,hr*1000.,h_eff,r_eff,volume,
+        le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,reservoir_kind,reservoir_energy_eV,eth*1000.,hth*1000.,h_eff,r_eff,volume,
         geometry_label+'; [A] local-column thickness fluctuation with effective field length',
         'numerical padding/discretization reported separately; lateral interface electrostatics, shape and nonpolar strain/valence systematic error UNQUANTIFIED; '
         'symmetric-fluctuation placement assumption: in the unscreened tilted limit the reported lateral depth collapses to the mass-independent geometric '
-        'estimate |F|*(H-w)/2 rather than a quantum-confinement difference (see module docstring)',
+        'estimate |F|*(H-w)/2 rather than a quantum-confinement difference (see module docstring); ' + _GRID_NOTE,
         orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
 
 @lru_cache(maxsize=256)
@@ -418,9 +486,20 @@ def _levels_cached(s,T_K,n,pad):
                           'Gaussian-envelope Coulomb approximation; '
                           '[A] partial screening parameter and real-energy retention',
                           le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,
-                          'gan_barrier',(de['Ec_eV']-de['Ev_eV']),0.,0.,h_eff,r_eff,volume,
+                          # reservoir_energy_eV (hardening round after commit 17a333f): the bulk
+                          # GaN Varshni edge at this T_K minus the SAME 25 meV [A] localization/
+                          # Urbach offset fsim_core.device._nitride_reservoir_energy_eV applies on
+                          # its own zero-wetting-layer branch (both read the identical band_edges(
+                          # GaN, T_K, substrate=GaN) call: `be` above), not the dot's OWN strained
+                          # InGaN gap (de['Ec_eV']-de['Ev_eV']) previously reported here, which was
+                          # numerically BELOW this row's own E_X and disagreed with the GaN-barrier
+                          # reservoir_kind already reported alongside it. device.py does not read
+                          # this field for isolated-dot rows (it keeps its own bulk-edge helper's
+                          # value); this field exists for documentation/consistency, see module
+                          # docstring "RESERVOIR KIND AND ENERGY".
+                          'gan_barrier',(be['Ec_eV']-be['Ev_eV'])-.025,0.,0.,h_eff,r_eff,volume,
                           geometry_label+'; [A] effective field length used consistently',
-                          'numerical padding/discretization reported separately; shape and nonpolar strain/valence systematic error UNQUANTIFIED; effective-height spread is sensitivity only',
+                          'numerical padding/discretization reported separately; shape and nonpolar strain/valence systematic error UNQUANTIFIED; effective-height spread is sensitivity only; ' + _GRID_NOTE,
                           orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
 
 def _invalid(s,reasons,F=0.):

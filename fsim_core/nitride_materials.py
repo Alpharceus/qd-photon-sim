@@ -90,13 +90,20 @@ _ORIENTATION_FACTORS = {
 def orientation_factor(orientation, polarization_factor=None):
     """Return the reduced-model normal-polarization factor.
 
-    The c-plane scalar strain, band-edge partition, and c-plane masses are
-    retained for every orientation [A/E transfer; Bernardini et al., PRB
-    1997; Rinke et al., PRB 2008].  For nonpolar m/a-plane growth the
-    confinement axis is perpendicular to c, but nitride_levels uses the
-    c-plane GaN masses mh_z=1.88 and me_z=0.209 rather than mh_xy=0.33;
-    the hole mass therefore differs by up to about 5.7x [A; Rinke et al.,
-    PRB 77, 075202 (2008)].  Nonpolar valence-band ordering is not modelled
+    The c-plane scalar strain and band-edge partition (`band_edges` above)
+    are retained for every orientation [A/E transfer; Bernardini et al., PRB
+    1997; Rinke et al., PRB 2008] -- this module does not itself rotate the
+    strain tensor or the valence partition by orientation.  Growth-axis
+    MASSES are handled separately, in `nitride_levels._growth_masses`: for
+    c_plane and semipolar_11_22 growth the confinement axis is the crystal
+    c-axis (GaN me_z=0.209, mh_z=1.88), while for nonpolar m/a-plane growth
+    the confinement axis is perpendicular to c and nitride_levels swaps in
+    the PERPENDICULAR (xy) masses (me_xy, mh_xy) for z-confinement and the
+    c-axis masses for the lateral direction instead -- since commit 17a333f
+    (hardening-round fix; previously this swap was missing and every
+    orientation used c-plane masses throughout, differing by up to about
+    5.7x in the hole mass) [A; Rinke et al., PRB 77, 075202 (2008)].
+    Nonpolar valence-band ordering itself is still not modelled
     [A; Schade et al., phys. status solidi (b) (2011)].  Factors 1, 0.2, and
     0 are assumptions,
     not measurements.  Schade et al., phys. status solidi (b) (2011),

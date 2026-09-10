@@ -31,12 +31,21 @@ meta:
     pair". The dot's own confinement solver (fsim_core.nitride_levels.
     _qw_levels) reports no explicit reservoir_energy_eV override --
     nitride.background carries no override key, which device.py's guard
-    requires for qw_fluctuation cards -- and exposes reservoir_kind=
-    'ingan_qw' from the SAME surrounding InGaN well (x_in=0.25,
-    wl_thickness_nm=3.0 nm) shared between the confinement dot and the
-    diode's own SRH background layer, closing the reservoir-vs-diode
-    disagreement documented in _nitride_reservoir_energy_eV's docstring
-    for isolated-dot cards; this QW well still uses the existing bulk-SRH
+    requires for qw_fluctuation cards -- and exposes a reservoir_kind
+    selected PER CARRIER (min(surrounding-well subband edge, GaN plateau)
+    independently for the electron and the hole; 'ingan_qw' only when BOTH
+    select the well, 'gan_barrier' only when BOTH select the plateau,
+    'mixed' if they select different channels): at this card's own default
+    geometry (H=3.5 nm, w=3.0 nm, R=20 nm, screening_fraction=0.0) BOTH
+    carriers select the wider GaN plateau, so reservoir_kind='gan_barrier'
+    (pinned in verify/verify_nitride_geometry_cards.py); raising
+    nitride.dot.screening_fraction toward 1.0 pulls both carriers back into
+    the SAME surrounding InGaN well (x_in=0.25, wl_thickness_nm=3.0 nm)
+    shared between the confinement dot and the diode's own SRH background
+    layer, giving reservoir_kind='ingan_qw' instead, closing the
+    reservoir-vs-diode disagreement documented in
+    _nitride_reservoir_energy_eV's docstring for isolated-dot cards; this
+    QW well still uses the existing bulk-SRH
     carrier approximation (fsim_core.nitride_transport.evaluate_injection)
     rather than a newly solved QW carrier distribution. Same-composition
     thickness fluctuation confines carriers LATERALLY through the
