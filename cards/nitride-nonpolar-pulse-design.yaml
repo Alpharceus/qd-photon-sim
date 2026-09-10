@@ -1061,7 +1061,7 @@ design:
       - drive.b_e
       - cavity.beta_sin
 
-    headline_grid_row_count: 3240
+    headline_grid_row_count: 3360
 
     provenance_note: >
       This card is the docs/nitride_geometry_stark_contract.md "Nonpolar

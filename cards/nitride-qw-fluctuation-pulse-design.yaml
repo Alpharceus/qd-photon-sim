@@ -886,7 +886,7 @@ design:
       NitrideDiode fields left unset on this card (fsim_core.
       nitride_transport.NitrideDiode class defaults apply, resolved here
       per this contract's rule that a factory default not exposed as an
-      accepted card override is still recorded): d_active_nm=3.0 nm [A],
+      accepted card override is still recorded): d_active_nm (module default 3.0 nm; OVERRIDDEN on this card to 3.5 nm, see provenance.sources drive.diode.d_active_nm) [A],
       area_um2=0.785 um^2 [A] (this NitrideDiode injection area is
       independent of aperture.diameter_um=0.05 um and of thermal.
       mesa_diameter_um=20 um -- fsim_core.device._evaluate_nitride does not
@@ -1100,7 +1100,7 @@ design:
       - drive.b_e
       - cavity.beta_sin
 
-    headline_grid_row_count: 3240
+    headline_grid_row_count: 3360
 
     provenance_note: >
       This card is the docs/nitride_geometry_stark_contract.md

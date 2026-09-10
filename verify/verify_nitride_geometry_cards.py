@@ -334,9 +334,20 @@ def check_qw_reservoir_wiring():
         s = evaluate(design, T_grid=[300.0])["scalars"]
         ok(f"[{label}] scalars['geometry_type'] is qw_fluctuation (QW branch actually ran)",
            s["geometry_type"] == "qw_fluctuation")
-        ok(f"[{label}] scalars['reservoir_kind'] is a legitimate QW-branch value",
-           s["reservoir_kind"] in ("ingan_qw", "gan_barrier"))
-        print(f"     [{label}] reservoir_kind at 300 K, screening=0: {s['reservoir_kind']!r}")
+        # Pinned to the per-carrier channel rule of fsim_core.nitride_levels
+        # (commit 17a333f): at this card's H=3.5/w=3.0/R=20 nm geometry the
+        # unscreened tilt sends one carrier to the GaN plateau, so the
+        # reservoir is the barrier; with the field screened both carriers
+        # stay in the well and the reservoir is the InGaN QW.
+        ok(f"[{label}] scalars['reservoir_kind'] == 'gan_barrier' at screening 0 (pinned)",
+           s["reservoir_kind"] == "gan_barrier")
+        import copy as _copy
+        d1 = _copy.deepcopy(design)
+        d1.nitride["dot"]["screening_fraction"] = 1.0
+        s1 = evaluate(d1, T_grid=[300.0])["scalars"]
+        ok(f"[{label}] scalars['reservoir_kind'] == 'ingan_qw' at screening 1 (pinned)",
+           s1["reservoir_kind"] == "ingan_qw")
+        print(f"     [{label}] reservoir_kind at 300 K: screening 0 -> {s['reservoir_kind']!r}, screening 1 -> {s1['reservoir_kind']!r}")
 
 
 def check_nonpolar_orientation_wiring():
