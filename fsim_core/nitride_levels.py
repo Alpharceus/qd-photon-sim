@@ -1,4 +1,4 @@
-"""Finite-well c-plane InGaN/GaN dot levels.
+"""Finite-well InGaN/GaN dot levels.
 
 This is a single-band, anisotropic-effective-mass, separable disk model [E],
 with thick GaN reservoirs and a real-energy (not tunnelling) retention
@@ -19,15 +19,19 @@ can partially screen the polarization field, as indicated by the <2 meV
 current shift in Deshpande et al., Nat. Commun. 4, 1675 (2013), p.5 [V], and
 the bias-dependent QCSE in Zhang et al., APL 108, 153102 (2016), Fig. 5 [V].
 
-No wetting-layer continuum is implemented.  A nonzero `wl_thickness_nm` is
-rejected rather than acting as a silent reservoir parameter [A].
+The opt-in ``qw_fluctuation`` geometry is a same-composition local thickness
+fluctuation.  Its lateral depth is the difference between independently
+solved local-column and surrounding-QW subband edges [A], not the GaN band
+offset.  Carrier edge energies are measured upward from the strained InGaN
+band edge; ``reservoir_energy_eV`` is the free electron-hole continuum edge
+and deliberately contains no dot Coulomb correction.
 """
 from dataclasses import dataclass
 from functools import lru_cache
 import math
 import numpy as np
 from scipy.linalg import eigh_tridiagonal
-from .nitride_materials import binary, ingaN, band_edges, polarization_field, KB_EV
+from .nitride_materials import binary, ingaN, band_edges, polarization_field, orientation_factor, KB_EV
 from .dot_levels import finite_disk_2d
 
 _HBAR2_2M0 = 0.0380998212 # eV nm2 [DR] CODATA 2018 constants
@@ -67,6 +71,9 @@ class NitrideDotSystem:
     wl_thickness_nm: float = 0.0; strain_fraction: float = 1.0
     screening_fraction: float = 0.0; external_field_kVcm: float = 0.0
     vbo_InN_GaN_eV: float = 1.15; strain_c_fraction: float = .7
+    orientation: str = "c_plane"; polarization_factor: object = None
+    shape: str = "disc"; top_radius_fraction: float = 1.0
+    geometry_type: str = "isolated_dot"; shape_height_fraction: object = None
 
 @dataclass(frozen=True)
 class NitrideLevels:
@@ -83,6 +90,16 @@ class NitrideLevels:
     electron_exterior_right_eV: float = float('nan')
     hole_exterior_left_eV: float = float('nan')
     hole_exterior_right_eV: float = float('nan')
+    reservoir_kind: str = 'gan_barrier'
+    reservoir_energy_eV: float = float('nan')
+    reservoir_electron_edge_meV: float = float('nan')
+    reservoir_hole_edge_meV: float = float('nan')
+    effective_height_nm: float = float('nan')
+    effective_radius_nm: float = float('nan')
+    shape_volume_nm3: float = float('nan')
+    geometry_approximation: str = ''
+    approximation_error: str = ''
+    polarization_factor_used: float = float('nan')
 
 def _validate(s):
     bad=[]
@@ -96,7 +113,35 @@ def _validate(s):
     if not 0<=s.wl_thickness_nm<s.height_nm: bad.append('wl_thickness_nm must be >=0 and < height_nm')
     if not 0<=s.strain_fraction<=1: bad.append('strain_fraction must be in [0,1]')
     if not 0<=s.screening_fraction<=1: bad.append('screening_fraction must be in [0,1]')
+    if s.shape not in ('disc','lens','truncated_cone'): bad.append('shape is invalid')
+    if s.geometry_type not in ('isolated_dot','qw_fluctuation'): bad.append('geometry_type is invalid')
+    if not isinstance(s.top_radius_fraction,(int,float)) or isinstance(s.top_radius_fraction,bool) or not math.isfinite(s.top_radius_fraction) or not 0<=s.top_radius_fraction<=1:
+        bad.append('top_radius_fraction must be finite in [0,1]')
+    elif s.shape != 'truncated_cone' and s.top_radius_fraction != 1.:
+        bad.append('top_radius_fraction is only supported for truncated_cone')
+    if s.shape_height_fraction is not None:
+        q=s.shape_height_fraction
+        if not isinstance(q,(int,float)) or isinstance(q,bool) or not math.isfinite(q):
+            bad.append('shape_height_fraction must be finite')
+        else:
+            native = .5 if s.shape == 'lens' else ((1+s.top_radius_fraction+s.top_radius_fraction*s.top_radius_fraction)/3. if s.shape == 'truncated_cone' else 1.)
+            if s.shape == 'disc' or not native<=q<=1.: bad.append('shape_height_fraction is unsupported or outside [native,1]')
+    if s.geometry_type == 'qw_fluctuation':
+        if s.shape != 'disc' or s.shape_height_fraction is not None: bad.append('qw_fluctuation requires disc shape and no shape_height_fraction')
+        if not 0 < s.wl_thickness_nm < s.height_nm: bad.append('qw_fluctuation requires 0 < wl_thickness_nm < height_nm')
+    elif s.wl_thickness_nm != 0: bad.append('wl_thickness_nm is only supported for qw_fluctuation')
+    try: orientation_factor(s.orientation,s.polarization_factor)
+    except ValueError as exc: bad.append(str(exc))
     return bad
+
+def _geometry(s):
+    """Effective separable confinement mapping [A/DR elementary volume integration]."""
+    if s.shape == 'disc': native=1.; label='full-height disc'
+    elif s.shape == 'lens': native=.5; label='paraboloidal lens volume mapping'
+    else:
+        t=s.top_radius_fraction; native=(1+t+t*t)/3.; label='truncated-cone volume mapping'
+    frac=native if s.shape_height_fraction is None else s.shape_height_fraction
+    return s.height_nm*frac, s.radius_nm, math.pi*s.radius_nm*s.radius_nm*s.height_nm*native, label
 
 def _z_grid(half, pad, target_n):
     """Node grid with +/-half landing EXACTLY on a node (finite-volume cell
@@ -188,30 +233,70 @@ def _coulomb_binding_eV(l_e_xy, l_h_xy, z_sep_nm, eps_r):
     if L2 <= 0.: return float('nan')
     return math.sqrt(math.pi) * _E2_4PIEPS0_EV_NM / (eps_r * math.sqrt(L2))
 
+def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label):
+    """Same-composition QW fluctuation, adiabatic local-column model [A]."""
+    er,_,cer,_,_,_=_z_state(s.wl_thickness_nm,Ve,d.me_z,m.me_z,F,-1,n,pad)
+    hr,_,chr,_,_,_=_z_state(s.wl_thickness_nm,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
+    erp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
+    hrp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
+    bad=[]
+    if not (ee < ce and eh < ch and er < cer and hr < chr): bad.append('dot-column or surrounding-QW vertical reservoir is unbound')
+    if abs(erp-er)*1000. > TAIL_CONVERGENCE_TOL_MEV or abs(hrp-hr)*1000. > TAIL_CONVERGENCE_TOL_MEV:
+        bad.append('surrounding-QW vertical reservoir padding-unconverged')
+    de_lat=er-ee; dh_lat=hr-eh
+    if de_lat <= 0: bad.append('electron QW lateral depth is nonpositive: no localized dot')
+    if dh_lat <= 0: bad.append('hole QW lateral depth is nonpositive: no localized dot')
+    re,rpe,oke,pbe,rmse=_radial(de_lat,r_eff,d.me_xy,d.me_xy)
+    rh,rph,okh,pbh,rmsh=_radial(dh_lat,r_eff,d.mh_xy,d.mh_xy)
+    ebe=ee+(re if oke else float('nan')); hbe=eh+(rh if okh else float('nan'))
+    eth=min(er,ce); hth=min(hr,ch)
+    ede=(eth-ebe)*1000. if oke else float('nan'); hde=(hth-hbe)*1000. if okh else float('nan')
+    if not (oke and ede>0 and de_pad<=TAIL_CONVERGENCE_TOL_MEV): bad.append('electron fluctuation state is unbound, padding-unconverged, or laterally exhausted')
+    if not (okh and hde>0 and dh_pad<=TAIL_CONVERGENCE_TOL_MEV): bad.append('hole fluctuation state is unbound, padding-unconverged, or laterally exhausted')
+    if bad: return _invalid(s,bad,F)
+    ov=float(np.trapezoid(pe*ph,ze)**2); ov=max(0.,min(1.,ov))
+    zsep=abs(float(np.trapezoid(ze*pe*pe,ze))-float(np.trapezoid(zh*ph*ph,zh)))
+    lee=rmse if rmse else r_eff; lhh=rmsh if rmsh else r_eff
+    coul=_coulomb_binding_eV(lee,lhh,zsep,d.eps_r)
+    ex=(de['Ec_eV']-de['Ev_eV'])+ebe+hbe-coul
+    zg_e=float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
+    zg_h=float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
+    eleft=float(_z_potential(h_eff,Ve,F,-1,np.array([-h_eff/2.-1.]))[0]); eright=float(_z_potential(h_eff,Ve,F,-1,np.array([h_eff/2.+1.]))[0])
+    hleft=float(_z_potential(h_eff,Vh,F,+1,np.array([-h_eff/2.-1.]))[0]); hright=float(_z_potential(h_eff,Vh,F,+1,np.array([h_eff/2.+1.]))[0])
+    return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,ebe*1000.,hbe*1000.,ede,hde,None,
+        min(zg_e,rg_e)*1000. if math.isfinite(min(zg_e,rg_e)) else float('nan'),min(zg_h,rg_h)*1000. if math.isfinite(min(zg_h,rg_h)) else float('nan'),
+        d.me_xy,d.mh_xy,True,(),'[V] BenDaniel & Duke, PR 152, 683 (1966); [A] same-composition adiabatic local-column QW fluctuation; lateral interface electrostatics neglected',
+        le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,'ingan_qw',(de['Ec_eV']-de['Ev_eV'])+er+hr,er*1000.,hr*1000.,h_eff,r_eff,volume,
+        geometry_label+'; [A] local-column thickness fluctuation with effective field length',
+        'numerical padding/discretization reported separately; lateral interface electrostatics, shape and nonpolar strain/valence systematic error UNQUANTIFIED',orientation_factor(s.orientation,s.polarization_factor))
+
 @lru_cache(maxsize=256)
 def _levels_cached(s,T_K,n,pad):
     bad=_validate(s)
     if not math.isfinite(T_K) or T_K<=0: bad.append('T_K must be positive and finite')
     if bad: return _invalid(s,bad)
     d,m=ingaN(s.x_in),binary('GaN')
+    h_eff,r_eff,volume,geometry_label=_geometry(s)
     de=band_edges(d,T_K,substrate=m,strain_fraction=s.strain_fraction,vbo_InN_GaN_eV=s.vbo_InN_GaN_eV,strain_c_fraction=s.strain_c_fraction)
     be=band_edges(m,T_K,substrate=m)
     Ve=be['Ec_eV']-de['Ec_eV']; Vh=de['Ev_eV']-be['Ev_eV']
-    F=polarization_field(d,m,T_K,strain_fraction=s.strain_fraction,screening_fraction=s.screening_fraction,external_field_kVcm=s.external_field_kVcm)
+    F=polarization_field(d,m,T_K,strain_fraction=s.strain_fraction,screening_fraction=s.screening_fraction,external_field_kVcm=s.external_field_kVcm,orientation=s.orientation,polarization_factor=s.polarization_factor)
     if Ve<=0: bad.append('electron offset is nonpositive')
     if Vh<=0: bad.append('hole offset is nonpositive')
     if bad: return _invalid(s,bad,F)
-    ee,ee1,ce,le,ze,pe=_z_state(s.height_nm,Ve,d.me_z,m.me_z,F,-1,n,pad)
-    eh,eh1,ch,lh,zh,ph=_z_state(s.height_nm,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
+    ee,ee1,ce,le,ze,pe=_z_state(h_eff,Ve,d.me_z,m.me_z,F,-1,n,pad)
+    eh,eh1,ch,lh,zh,ph=_z_state(h_eff,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
     # A true discrete state has an exponentially decaying exterior tail, so
     # its eigenenergy is insensitive to doubling an already-large padding.
     # This replaces the arbitrary in-dot-probability > 0.5 validity gate [E].
-    ee_pad,_,_,_,_,_=_z_state(s.height_nm,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
-    eh_pad,_,_,_,_,_=_z_state(s.height_nm,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
+    ee_pad,_,_,_,_,_=_z_state(h_eff,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
+    eh_pad,_,_,_,_,_=_z_state(h_eff,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
     de_pad=abs(ee_pad-ee)*1000.
     dh_pad=abs(eh_pad-eh)*1000.
-    re,rpe,ok_e,pb_e,rms_e=_radial(ce-ee,s.radius_nm,d.me_xy,m.me_xy)
-    rh,rph,ok_h,pb_h,rms_h=_radial(ch-eh,s.radius_nm,d.mh_xy,m.mh_xy)
+    if s.geometry_type == 'qw_fluctuation':
+        return _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label)
+    re,rpe,ok_e,pb_e,rms_e=_radial(ce-ee,r_eff,d.me_xy,m.me_xy)
+    rh,rph,ok_h,pb_h,rms_h=_radial(ch-eh,r_eff,d.mh_xy,m.mh_xy)
     eb=ee+(re if ok_e else float('nan')); hb=eh+(rh if ok_h else float('nan'))
     if not (ok_e and eb<ce and de_pad<=TAIL_CONVERGENCE_TOL_MEV):
         bad.append('electron unbound, padding-unconverged, or laterally exhausted offset')
@@ -235,11 +320,11 @@ def _levels_cached(s,T_K,n,pad):
     rg_h = (rph-rh) if (ok_h and math.isfinite(rph)) else float('inf')
     sp_h = min(zg_h,rg_h)
     valid=True
-    half=s.height_nm/2.
-    eleft=float(_z_potential(s.height_nm,Ve,F,-1,np.array([-half-1.]))[0])
-    eright=float(_z_potential(s.height_nm,Ve,F,-1,np.array([half+1.]))[0])
-    hleft=float(_z_potential(s.height_nm,Vh,F,+1,np.array([-half-1.]))[0])
-    hright=float(_z_potential(s.height_nm,Vh,F,+1,np.array([half+1.]))[0])
+    half=h_eff/2.
+    eleft=float(_z_potential(h_eff,Ve,F,-1,np.array([-half-1.]))[0])
+    eright=float(_z_potential(h_eff,Ve,F,-1,np.array([half+1.]))[0])
+    hleft=float(_z_potential(h_eff,Vh,F,+1,np.array([-half-1.]))[0])
+    hright=float(_z_potential(h_eff,Vh,F,+1,np.array([half+1.]))[0])
     return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,
                           eb*1000,hb*1000,(ce-eb)*1000,(ch-hb)*1000,None,
                           sp_e*1000 if math.isfinite(sp_e) else float('nan'),
@@ -253,7 +338,11 @@ def _levels_cached(s,T_K,n,pad):
                           '[E] separable disk, finite-barrier radial confinement, and screened '
                           'Gaussian-envelope Coulomb approximation; '
                           '[A] partial screening parameter and real-energy retention',
-                          le,lh,de_pad,dh_pad,eleft,eright,hleft,hright)
+                          le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,
+                          'gan_barrier',(de['Ec_eV']-de['Ev_eV']),0.,0.,h_eff,r_eff,volume,
+                          geometry_label+'; [A] effective field length used consistently',
+                          'numerical padding/discretization reported separately; shape and nonpolar strain/valence systematic error UNQUANTIFIED; effective-height spread is sensitivity only',
+                          orientation_factor(s.orientation,s.polarization_factor))
 
 def _invalid(s,reasons,F=0.):
     return NitrideLevels(float('nan'),float('nan'),False,False,0.,F,float('nan'),float('nan'),float('nan'),float('nan'),None,float('nan'),float('nan'),float('nan'),float('nan'),False,tuple(reasons),'[A] invalid geometry/offset rejected before model evaluation')
@@ -261,7 +350,7 @@ def _invalid(s,reasons,F=0.):
 def levels(system, T_K=300.0, *, z_points=1201, exterior_nm=45.0):
     """Return immutable cached levels. Numerical controls are cache keys."""
     if not isinstance(system,NitrideDotSystem): raise TypeError('system must be NitrideDotSystem')
-    if math.isfinite(system.wl_thickness_nm) and system.wl_thickness_nm>0:
+    if system.geometry_type == 'isolated_dot' and math.isfinite(system.wl_thickness_nm) and system.wl_thickness_nm>0:
         raise ValueError('nonzero wl_thickness_nm is unsupported: no wetting-layer continuum is implemented')
     return _levels_cached(system,float(T_K),int(z_points),float(exterior_nm))
 
@@ -269,7 +358,9 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
     """Absolute detailed-balance escape rates in 1/ns; no cavity/Purcell input.
 
     tau_rad0_ns default is TAU_RAD0_DEFAULT_NS [E], see module docstring
-    constants; callers (fsim_core.device) always pass an explicit value."""
+    constants; callers (fsim_core.device) always pass an explicit value.
+    QW fluctuations use the surrounding InGaN well in-plane masses in N2D;
+    pair channels remain unsupported [A]."""
     bad=list(lv.invalid_reasons)
     if not lv.valid: bad.append('levels are invalid')
     if T_K<=0 or tau_rad0_ns<=0 or n_dot_cm2<=0 or tau_cap_ps<=0 or k_nr_ns<0: bad.append('invalid rate input')
