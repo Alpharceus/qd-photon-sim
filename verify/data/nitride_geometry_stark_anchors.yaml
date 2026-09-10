@@ -1,6 +1,235 @@
+# Evidence ledger for the nonpolar/QW-fluctuation geometry cards and the
+# frozen Stark-diagnostic contract (piece 5, nitride-geometry-stark-contract).
+# Read by verify/verify_nitride_geometry_cards.py. Companion ledger to
+# verify/data/nitride_cavity_anchors.yaml (piece 6), which this file does
+# NOT modify or duplicate.
+#
+# Schema (docs/nitride_geometry_stark_contract.md "Evidence ledger schema"):
+# top-level `anchors` is a MAPPING keyed by anchor id. Each entry:
+#   citation, doi_or_url, location, evidence_status, evidence_kind, tag,
+#   platform, excitation, observable, value, unit, tolerance, transfer_notes
+#
+# `evidence_status` in {full_text, abstract_only, figure_reading, missing}
+# (same enum and semantics as verify/data/nitride_cavity_anchors.yaml):
+# how completely the underlying text was retrieved; a missing numerical
+# value is `null` with `tolerance: {value: null, meaning: "..."}`.
+#
+# `evidence_kind` (NEW field this ledger adds) distinguishes what ROLE the
+# entry plays in verification, orthogonal to evidence_status:
+#   - source_transcription: an independently-typed literal transcribed
+#     from the paper/digest, checked by the verifier against a SECOND,
+#     independently-typed copy of the same number (never the number
+#     compared to itself).
+#   - non_gating_comparison: a published number placed alongside this
+#     project's own model output for context only; it never gates a card's
+#     device_pass/valid scalar and is never treated as a validation of the
+#     model against that number.
+#   - missing_evidence: no specific paper number is available (retrieval
+#     gap or, for Schade 2011, an orientation/valence-ordering caveat with
+#     no associated polarization-factor measurement); value is null.
+#
+# `tag` is the measurement's own [V]/[DR]/[E]/[A] tag (the TRANSFER of that
+# measurement into a card field carries its own, separate tag on the card's
+# provenance.sources entry -- never conflate the two: a verified
+# off-platform/optical measurement transferred onto an electrical planar
+# design is [E] or [A] in the card, never [V] there, even where the anchor
+# itself is tagged [V] here). `tolerance` always names what the number
+# means: a reported paper uncertainty, or an explicit null/read tolerance
+# for a bare transcription with no stated error bar -- never left
+# ambiguous. `doi_or_url` uses ONLY identifiers actually printed in
+# ../_goal/nitride_digests.md (an arXiv id where the digest states one,
+# `null` where the digest states none) -- NEVER a fabricated DOI; the sole
+# exception is schade2011_orientation, whose DOI is given directly by the
+# orchestrator's design brief (.workers/briefs/nitride-geometry-stark.md),
+# not the digest, and is recorded as such below.
+#
+# Source digest: ../_goal/nitride_digests.md Sec. 7d/7e/8 (compiled
+# 2026-09-09). Schade et al., phys. status solidi (b) (2011) is NOT in that
+# digest; its citation and DOI come from the design brief only, and its
+# entry below is evidence_status=missing / evidence_kind=missing_evidence
+# accordingly -- see fsim_core/nitride_materials.py orientation_factor's
+# own docstring, which carries the same citation for the code-level
+# orientation/valence-ordering caveat this anchor documents.
+
 anchors:
-  wang2017_geometry: {citation: 'Wang et al., Sci. Rep. 7, 12089 (2017)', doi_or_url: 'https://arxiv.org/abs/1610.00152', location: 'Sec. 7d', evidence_status: full_text, tag: V, platform: a-plane InGaN, excitation: 'optical 800 nm two-photon, 1 ps, 76 MHz', observable: 'AFM height/diameter and emission', value: '7 nm; 35 nm; 2.54 eV at 220 K', unit: mixed, tolerance: 'reported/class transcription', transfer_notes: 'not electrical or 300 K'}
-  wang2017_lifetime: {citation: 'Wang et al., Sci. Rep. 7, 12089 (2017)', doi_or_url: 'https://arxiv.org/abs/1610.00152', location: 'Sec. 7d', evidence_status: full_text, tag: V, platform: a-plane InGaN, excitation: optical, observable: 'biexponential decay', value: '357+/-20 ps; 480+/-20 ps at 4.7 K; ~4 ns slow', unit: ps/ns, tolerance: 'reported uncertainty', transfer_notes: 'not bare radiative lifetime'}
-  wang2017_linewidth_g2: {citation: 'Wang et al., Sci. Rep. 7, 12089 (2017)', doi_or_url: 'https://arxiv.org/abs/1610.00152', location: 'Sec. 7d', evidence_status: full_text, tag: V, platform: a-plane InGaN, excitation: optical, observable: 'linewidth and g2', value: '19.0+/-0.4; raw 0.47; corrected 0.21', unit: meV/dimensionless, tolerance: 'reported uncertainty; raw/corrected distinct', transfer_notes: 'optical evidence only'}
-  zhang2016_stark_slope: {citation: 'Zhang et al., APL 108, 153102 (2016)', doi_or_url: 'https://doi.org/10.1063/1.4946894', location: 'Fig. 5', evidence_status: figure_reading, tag: V, platform: planar InGaN/GaN, excitation: optical during bias, observable: 'spectral slope', value: -10.0, unit: meV/V, tolerance: 'approximate figure comparison', transfer_notes: 'non-gating; no fabricated uncertainty'}
-  schade2011_orientation: {citation: 'Schade et al., phys. status solidi (b) (2011)', doi_or_url: 'https://doi.org/10.1002/pssb.201046350', location: 'orientation/valence discussion', evidence_status: full_text, tag: A, platform: nonpolar nitride, excitation: n/a, observable: 'orientation caveat', value: null, unit: null, tolerance: 'not a polarization-factor measurement', transfer_notes: 'unknown systematic transfer'}
+
+  wang2017_geometry:
+    citation: "Wang, Puchtler, Zhu, Jarman, Nuttall, Oliver, Taylor, arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)"
+    doi_or_url: "arXiv:1610.00152"
+    location: "Methods"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: a-plane (11-20) InGaN QD, p-i-n GaN nanopillar
+    excitation: "optical 800 nm two-photon, 1 ps, 76 MHz (AFM geometry itself is excitation-independent)"
+    observable: "uncapped AFM dot height, diameter, and areal density"
+    value: {height_nm: 7.0, diameter_nm: 35.0, density_cm2: 1.0e+9}
+    unit: mixed (nm, nm, cm^-2)
+    tolerance: {value: 0.0, meaning: "AFM point values as reported; no stated measurement uncertainty in the digest"}
+    transfer_notes: >
+      [V] source measurement of an UNCAPPED dot by AFM; the actual emitting
+      dots are capped/buried inside the p-i-n nanopillar and may differ in
+      size (digest does not separately report capped dimensions). This
+      geometry (H=7 nm, R=17.5 nm from the 35 nm diameter) feeds the
+      auxiliary nonpolar comparison sweep row in
+      docs/nitride_geometry_stark_contract.md "Auxiliary Wang 2017
+      comparison row" -- an [E]/[A] platform and composition-unknown
+      transfer onto this project's own electrical planar model, not an
+      electrical or 300 K measurement, and not itself a card default.
+
+  wang2017_emission:
+    citation: "Wang, Puchtler, Zhu, Jarman, Nuttall, Oliver, Taylor, arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)"
+    doi_or_url: "arXiv:1610.00152"
+    location: "p.3"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: a-plane (11-20) InGaN QD, p-i-n GaN nanopillar
+    excitation: "optical 800 nm two-photon, 1 ps, 76 MHz"
+    observable: exciton_emission_energy_vs_T
+    value: {E_eV_4p7K: 2.58, E_eV_220K: 2.54}
+    unit: eV
+    tolerance: {value: 0.0, meaning: "reported point values as tabulated; no stated measurement uncertainty in the digest"}
+    transfer_notes: >
+      [V] optical PL emission energy, NOT an electrical EL measurement and
+      NOT a 300 K value; 220 K is the paper's own upper temperature bound
+      for observed antibunching (Fig. 2 caption), never read as 300 K.
+      This project's own nonpolar headline cards (cards/
+      nitride-nonpolar-*-design.yaml) compute E_X from the reduced scalar
+      model at H=3/R=10 nm, a DIFFERENT geometry (see wang2017_geometry);
+      no numeric agreement with this value is claimed or checked.
+
+  wang2017_linewidth:
+    citation: "Wang, Puchtler, Zhu, Jarman, Nuttall, Oliver, Taylor, arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)"
+    doi_or_url: "arXiv:1610.00152"
+    location: "p.3"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: a-plane (11-20) InGaN QD, p-i-n GaN nanopillar
+    excitation: "optical 800 nm two-photon, 1 ps, 76 MHz"
+    observable: homogeneous_linewidth_vs_T
+    value: {meV_4p7K: 0.722, meV_220K: 19.0}
+    unit: meV
+    tolerance: {meV_4p7K: 0.065, meV_220K: 0.4, meaning: "reported +/- uncertainties, p.3"}
+    transfer_notes: >
+      [V] optical linewidth; used only as the class-range context cited on
+      cards/nitride-cavity-*-design.yaml dot.gamma300's own [A] source
+      entry (that card's own 35 meV is NOT this 19.0 meV value rescaled --
+      see that card's own dot.gamma300 source text). No numeric equality
+      is checked by this piece's verifier.
+
+  wang2017_g2:
+    citation: "Wang, Puchtler, Zhu, Jarman, Nuttall, Oliver, Taylor, arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)"
+    doi_or_url: "arXiv:1610.00152"
+    location: "Fig. 2"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: a-plane (11-20) InGaN QD, p-i-n GaN nanopillar
+    excitation: "optical 800 nm two-photon, 1 ps, 76 MHz, PULSED"
+    observable: g2_zero_raw_and_dark_count_corrected
+    value: {g2_raw_4p7K: 0.37, g2_corr_4p7K: 0.13, g2_raw_220K: 0.47, g2_corr_220K: 0.21}
+    unit: dimensionless
+    tolerance: {value: 0.0, meaning: "reported point values as tabulated (Fig. 2); rho=0.85/0.82 dark-count-correction factors given alongside, not independently re-derived here"}
+    transfer_notes: >
+      [V] optical g2(0), NOT an electrical SPS demonstration at 230-300 K.
+      raw and corrected values are DISTINCT and must never be conflated
+      (verify/verify_nitride_geometry_cards.py checks both are transcribed
+      independently and that raw != corrected in this entry). Antibunching
+      is reported "still seen at 250 K" per the digest but no g2 VALUE is
+      given at 250 K -- not transcribed as a number here.
+
+  wang2017_lifetime:
+    citation: "Wang, Puchtler, Zhu, Jarman, Nuttall, Oliver, Taylor, arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)"
+    doi_or_url: "arXiv:1610.00152"
+    location: "Fig. 2c,d"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: a-plane (11-20) InGaN QD, p-i-n GaN nanopillar
+    excitation: "optical 800 nm two-photon, 1 ps, 76 MHz"
+    observable: biexponential_decay_fast_and_slow_components
+    value: {tau_fast_ps_4p7K: 480.0, tau_fast_ps_220K: 357.0, tau_slow_ns_approx: 4.0}
+    unit: mixed (ps, ns)
+    tolerance: {tau_fast_ps_4p7K: 20.0, tau_fast_ps_220K: 20.0, tau_slow_ns_approx: null, meaning: "reported +/- uncertainties on the fast component; slow component given only as an approximate ~4 ns with no stated uncertainty"}
+    transfer_notes: >
+      [V] MEASURED biexponential PL decay, NOT this model's bare radiative
+      lifetime nitride.tau_rad0_ns. Never fit tau_rad0_ns to the fast
+      component to claim validation -- cards/nitride-cavity-*-design.yaml's
+      own tau_rad0_ns=1.0 ns is an independent [A] design choice (see that
+      card's own nitride.tau_rad0_ns source entry), deliberately distinct
+      from both this value and from Deshpande et al. 2014's 1.3+/-0.3 ns.
+
+  wang2017_fss:
+    citation: "Wang, Puchtler, Zhu, Jarman, Kocher, Oliver, Taylor, Appl. Phys. Lett. 111, 053101 (2017)"
+    doi_or_url: null
+    location: "Fig. 2-3"
+    evidence_status: full_text
+    evidence_kind: non_gating_comparison
+    tag: V
+    platform: a-plane InGaN QD (16 dots)
+    excitation: optical
+    observable: fine_structure_splitting_vs_T
+    value: {FSS_meV_200K_min: 2.0, FSS_meV_200K_max: 12.0, n_dots: 16}
+    unit: meV
+    tolerance: {value: 0.0, meaning: "reported range across 16 dots (Fig. 3a), not a single-dot uncertainty"}
+    transfer_notes: >
+      OMITTED-PHYSICS CAUTION: this project's single-band model does not
+      predict polarized fine-structure doublets or any FSS -- dot.r_xx and
+      dot.delta_xx are X/XX INTENSITY-ratio and binding-energy assumptions,
+      not a fine-structure splitting model. This entry is a non-gating
+      comparison only; no card field is checked against it and no card
+      claims to reproduce it. No DOI or arXiv id for this paper is printed
+      in ../_goal/nitride_digests.md Sec. 7e; doi_or_url is left null
+      rather than fabricated.
+
+  zhang2016_stark_slope:
+    citation: "Zhang, Teng, Ku, Deng, Appl. Phys. Lett. 108, 153102 (2016)"
+    doi_or_url: "arXiv:1602.02325"
+    location: "Fig. 5"
+    evidence_status: full_text
+    evidence_kind: non_gating_comparison
+    tag: V
+    platform: planar InGaN/GaN site-controlled nanopillar diode
+    excitation: "optical PL under applied DC bias (NOT electroluminescence)"
+    observable: PL_peak_energy_vs_bias_slope
+    value: {E_eV_0V: 3.09, E_eV_2V: null, slope_meV_per_V: -10.0, saturates_at_eV: 3.06}
+    unit: mixed (eV, meV/V)
+    tolerance: {value: 0.0, meaning: "approximate figure-reading of Fig. 5's redshift-then-saturation trend (evidence_status figure_reading would apply to any digitized point NOT already stated in the digest's own text; this slope IS stated in digest text, so full_text applies to the number itself); no fabricated per-point uncertainty"}
+    transfer_notes: >
+      [V] source measurement, but [E]/[A] TRANSFER to this project's own
+      --stark diagnostic output (dE_X/dV): Zhang 2016 measures PL under
+      OPTICAL excitation during electrical bias, on a nanopillar (not this
+      project's planar reservoir), and reports QCSE saturation
+      (|E_pin| < |E_pol|) rather than a pure linear slope beyond 2 V. This
+      value is a NON-GATING reference line only (docs/
+      nitride_geometry_stark_contract.md "--stark output and compatibility
+      table"); no card's device_pass/valid scalar depends on matching it,
+      and no card computes a current-derived screening law from it.
+
+  schade2011_orientation:
+    citation: "Schade, Wagner, Roder, Hommel, phys. status solidi (b) (2011)"
+    doi_or_url: "https://doi.org/10.1002/pssb.201046350"
+    location: "not retrieved (cited from the design brief and from fsim_core/nitride_materials.py orientation_factor's own docstring, not from ../_goal/nitride_digests.md)"
+    evidence_status: missing
+    evidence_kind: missing_evidence
+    tag: A
+    platform: nonpolar/semipolar III-nitride (general orientation/valence-band discussion)
+    excitation: "n/a"
+    observable: orientation_and_valence_band_ordering_caveat
+    value: null
+    unit: null
+    tolerance: {value: null, meaning: "not applicable: no specific number is transcribed from this paper anywhere in this project; it supports a qualitative orientation/valence-ordering caveat only"}
+    transfer_notes: >
+      NOT a numeric polarization-factor measurement -- do not treat this
+      citation as a source for nitride.dot.polarization_factor's own value
+      (0, 0.2, or 1, all [A] design assumptions per fsim_core/
+      nitride_materials.py orientation_factor). Supports the caveat that
+      this project's reduced scalar model retains c-plane strain, band-edge
+      partition, and c-plane effective masses for every orientation and
+      does not model nonpolar valence-band reordering -- an unknown,
+      unquantified systematic error on the nonpolar cards (cards/
+      nitride-nonpolar-*-design.yaml), disclosed there and in
+      docs/nitride_geometry_stark_contract.md, never claimed to be bounded
+      by this citation.
