@@ -49,34 +49,7 @@ from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
 from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
 from . import nitride_levels, nitride_transport, nitride_cavity, nitride_materials
-try:  # Piece 3 is deliberately an optional sibling during staged integration.
-    from .nitride_stark import resolve_bias
-except ImportError:  # pragma: no cover - exercised only before piece 3 lands.
-    def resolve_bias(diode, *, T_j_K, current_uA=None, junction_voltage_V=None,
-                     field_polarity=1, external_field_kVcm=0.0):
-        """Staged copy of piece 3's resolver; removed from use when available."""
-        out = {"T_j_K": T_j_K, "current_uA": current_uA, "V_j": junction_voltage_V,
-               "V_terminal": np.nan, "diode_field_kVcm": np.nan,
-               "applied_field_kVcm": np.nan, "bias_valid": False, "invalid_reasons": []}
-        if ((current_uA is None) == (junction_voltage_V is None) or
-                isinstance(field_polarity, bool) or field_polarity not in (-1, 1) or
-                not isinstance(T_j_K, (int, float)) or isinstance(T_j_K, bool) or not np.isfinite(T_j_K) or T_j_K <= 0):
-            out["invalid_reasons"].append("invalid bias controls")
-            return out
-        try:
-            if current_uA is not None:
-                terminal, vj = diode.v_of_i(float(current_uA) * 1e-6, T_j_K)
-                out.update(V_j=vj, V_terminal=terminal)
-            else:
-                current_A = diode.j_of_vj(float(junction_voltage_V), T_j_K) * diode.area_cm2
-                out.update(current_uA=current_A * 1e6, V_terminal=float(junction_voltage_V) + current_A * diode.R_s_ohm)
-            dep = diode.depletion(out["V_j"], T_j_K)
-            out.update(diode_field_kVcm=dep.F_kVcm,
-                       applied_field_kVcm=field_polarity * dep.F_kVcm + external_field_kVcm,
-                       bias_valid=all(np.isfinite(out[k]) for k in ("current_uA", "V_j", "V_terminal")))
-        except (ArithmeticError, ValueError, OverflowError) as exc:
-            out["invalid_reasons"].append(str(exc))
-        return out
+from .nitride_stark import resolve_bias
 
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -933,6 +906,17 @@ def _nitride_reservoir_energy_eV(dot_kw, T_K, background):
     return float(edges["Ec_eV"] - edges["Ev_eV"] - .025)  # [A] 25 meV localization/Urbach offset
 
 
+def _nitride_lifetime_ns(rate_ns):
+    """1/rate in ns, distinguishing a genuinely zero rate (infinite
+    lifetime, an explicit physical statement) from a non-finite/not-computed
+    rate (NaN row, e.g. a thermal-runaway or invalid-levels row) -- `rate_ns
+    > 0 else np.inf` conflated the two (Opus fix-round finding), since
+    NaN > 0 is False and fell into the same inf branch as a real zero."""
+    if not np.isfinite(rate_ns):
+        return np.nan
+    return np.inf if rate_ns == 0 else 1.0 / rate_ns
+
+
 def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     """Opt-in planar InGaN/GaN cycle evaluator.
 
@@ -996,6 +980,21 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     for _k, _v in dot_kw.items():
         if _k in _dot_numeric and (isinstance(_v, bool) or not isinstance(_v, (int, float)) or not np.isfinite(_v)):
             raise ValueError(f"invalid nitride.dot.{_k}: must be a finite number (got {_v!r})")
+    # polarization_factor and shape_height_fraction are Optional[float]
+    # (None is their own valid "use the native/orientation default"), so
+    # they cannot sit in _dot_numeric's finite-scalar-only gate above; left
+    # unchecked here they escaped the ValueError card-schema contract and
+    # a malformed value (wrong type, or a finite-check failure like NaN)
+    # surfaced only as a silently invalid row deep inside nitride_levels
+    # (Opus fix-round finding). Semantic range/consistency checks (e.g.
+    # semipolar_11_22 in [0,1], contradicting the fixed orientation factor)
+    # remain nitride_levels._validate's job and stay reported as an invalid
+    # row, not raised here.
+    for _k in ("polarization_factor", "shape_height_fraction"):
+        if _k in dot_kw and dot_kw[_k] is not None:
+            _v = dot_kw[_k]
+            if isinstance(_v, bool) or not isinstance(_v, (int, float)) or not np.isfinite(_v):
+                raise ValueError(f"invalid nitride.dot.{_k}: must be None or a finite number (got {_v!r})")
     try:
         system0 = nitride_levels.NitrideDotSystem(**dot_kw)
     except TypeError as exc:
@@ -1162,8 +1161,22 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         rho = g2 = np.nan
         one_pair = False; blocked = np.nan
         feas = {}; priced_fp = np.nan
-        supplied = False
+        # Restored pre-9d7ebd3 semantics (Opus fix-round finding): electrical
+        # source feasibility is a property of the REQUESTED drive alone --
+        # does drive.I_uA deliver >=1 electron in the pulse window -- and is
+        # computed unconditionally, before bias resolution or the thermal
+        # loop can fail. It intentionally does NOT depend on resolved_current_uA
+        # (which needs a successful bias/thermal solve), so a thermal-runaway
+        # or bias-invalid row still reports the source-feasibility verdict a
+        # 9d7ebd3 regression collapsed to False regardless of cause.
+        supplied = d.drive.I_uA*1e-6*tau_on*1e-9/E_SI >= 1
         bias = None
+        # Per-row reset (Opus fix-round finding): these must NOT leak a
+        # previous row's value into a row whose try block raises before
+        # reaching the assignment below -- locals().get() at append time
+        # silently read the prior iteration's still-bound local instead.
+        reservoir_energy_eV = np.nan
+        reservoir_offset_meV = np.nan
         # Invalid-row placeholder: an ALL-NaN NitrideLevels, never a real
         # evaluation of some other (e.g. unbiased, heat-sink-T) state (Opus
         # fix-round finding 3: a thermal-runaway row was reporting finite,
@@ -1191,7 +1204,6 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
                 raise ValueError("invalid bias: " + "; ".join(bias["invalid_reasons"]))
             resolved_current_uA = bias["current_uA"]
             va, vj = bias["V_terminal"], bias["V_j"]
-            supplied = resolved_current_uA*1e-6*tau_on*1e-9/E_SI >= 1
             # Bias field: the diode's OWN depletion(vj, Tj).F_kVcm (physical
             # p-i-n depletion field, shrinks toward 0 as V_j -> V_bi), added
             # directly to nitride_levels' intrinsic polarization field --
@@ -1215,8 +1227,20 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             cr = nitride_cavity.response(cav,T_K=Tj,E_X_eV=lv.E_X_eV,E_X_track_eV=track0.E_X_eV,gamma_X_meV=gam,gamma_XX_meV=gam,delta_xx_meV=d.dot.delta_xx,gamma_X0_ns=rr["gamma_X0_ns"],gamma_XX0_ns=rr["gamma_XX0_ns"],w_meV=w_val,dx_w_meV=d.filter.dx)
             # The reservoir is a material continuum, not E_X plus a fixed
             # offset: it must not follow dot-height QCSE.  See
-            # _nitride_reservoir_energy_eV for the [V]/[A] convention.
-            reservoir_energy_eV = _nitride_reservoir_energy_eV(dot_kw, Tj, bg_kw)
+            # _nitride_reservoir_energy_eV for the [V]/[A] convention. QW-
+            # fluctuation cards are surrounded by the SAME InGaN quantum
+            # well the fluctuation sits in, so their reservoir is the
+            # levels object's own w-dependent surrounding-QW continuum edge
+            # (lv.reservoir_energy_eV, solved from nitride.dot.wl_thickness_nm
+            # by nitride_levels._qw_levels), never the isolated-dot bulk
+            # GaN-barrier/unstrained-WL edge from _nitride_reservoir_energy_eV,
+            # which is w-independent and disagreed with the real w-dependent
+            # continuum by up to several hundred meV (Opus fix-round finding).
+            # Isolated-dot cards keep the existing bulk-edge helper unchanged.
+            if system0.geometry_type == "qw_fluctuation":
+                reservoir_energy_eV = float(lv.reservoir_energy_eV)
+            else:
+                reservoir_energy_eV = _nitride_reservoir_energy_eV(dot_kw, Tj, bg_kw)
             reservoir_offset_meV = (reservoir_energy_eV-lv.E_X_eV)*1e3
             # tau_rad_ns is the overlap-SCALED radiative lifetime of this
             # actual (biased) dot state -- tau_rad0_ns/overlap_sq, i.e.
@@ -1289,20 +1313,28 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         valid=bool(converged and lv.valid and rr["valid"] and cnt.get("converged",True) and np.isfinite(g2))
         if not valid and not reasons:
             reasons.append("invalid row: cause not captured by an explicit check (internal inconsistency)")
-        rows.append(dict(T_hs=ths,T_j=Tj,g2=g2,rho=rho,lv=lv,rr=rr,cr=cr,
+        # T_hs (Opus fix-round finding): in junction_voltage mode `ths` is the
+        # requested T_j (the loop's [T_j_K] coordinate convention, never a
+        # self-consistent heat-sink temperature -- see this function's
+        # interface docstring), so reporting it as T_hs silently overwrote
+        # the card's own heat-sink setting. Report the card's actual
+        # d.thermal.T_hs there and T_j (Tj, below) separately; current mode
+        # is unaffected since ths IS the heat-sink T there.
+        row_T_hs = d.thermal.T_hs if bias_mode == "junction_voltage" else ths
+        rows.append(dict(T_hs=row_T_hs,T_j=Tj,g2=g2,rho=rho,lv=lv,rr=rr,cr=cr,
                          r_dot=r_dot_val,mu=mu_val,power=power_val,
                          cnt=cnt,signal=signal,sx=sx,sxx=sxx,bg=bg_counts,valid=valid,reasons=reasons,
                          feas=feas,priced_fp=priced_fp,supplied=supplied,one_pair=one_pair,blocked=blocked,vj=vj,gam=gam,
-                         bias=bias, reservoir_energy_eV=locals().get("reservoir_energy_eV", np.nan),
-                         reservoir_offset_meV=locals().get("reservoir_offset_meV", np.nan)))
+                         bias=bias, reservoir_energy_eV=reservoir_energy_eV,
+                         reservoir_offset_meV=reservoir_offset_meV))
     keys={"g2":lambda r:r["g2"],"rho2":lambda r:r["rho"]**2,"Tj":lambda r:r["T_j"],"gamma":lambda r:r["gam"],"eps":lambda r:r["cr"]["t_XX"]/r["cr"]["t_X"],"signal_flux":lambda r:r["signal"]*rep}
     curves={k:np.array([f(r) for r in rows]) for k,f in keys.items()}; op=rows[int(np.argmin(abs(ts-d.thermal.T_hs)))]
     x=op; c=x["cr"]; rr=x["rr"]; lv=x["lv"]; feas=x["feas"]
     scalars={"platform":"ingan_gan_planar","cycle_loading":d.drive.cycle_loading,"T_hs":x["T_hs"],"T_j":x["T_j"],"g2_op":x["g2"],"rho_pulsed":x["rho"],"collected_flux_pulsed_s":x["signal"]*rep,"collected_flux_x_s":x["sx"]*rep,"collected_flux_xx_s":x["sxx"]*rep,"background_flux_s":x["bg"]*rep,"total_detected_flux_s":(x["signal"]+x["bg"])*rep,"mean_counts":x["cnt"]["mean_counts"],"mean_counts_x":x["cnt"].get("mean_counts_x",np.nan),"mean_counts_xx":x["cnt"].get("mean_counts_xx",np.nan),"E_X_eV":lv.E_X_eV,"lambda_nm":lv.lambda_nm,"field_kVcm":lv.field_kVcm,"overlap_sq":lv.overlap_sq,"electron_bound":lv.electron_bound,"hole_bound":lv.hole_bound,"E_a_meV":rr["E_a_meV"],"k_X_ns":rr["k_X_ns"],"k_XX_ns":rr["k_XX_ns"],"gamma_X0_ns":rr["gamma_X0_ns"],"gamma_XX0_ns":rr["gamma_XX0_ns"],"gamma_X_ns":c["gamma_X_ns"],"gamma_XX_ns":c["gamma_XX_ns"],"S_X":c["gamma_X_ns"]/(c["gamma_X_ns"]+rr["k_X_ns"]),"S_XX":c["gamma_XX_ns"]/(c["gamma_XX_ns"]+rr["k_XX_ns"]),"Q":cav.Q,"kappa_meV":c["kappa_meV"],"detuning_meV":c["detuning_meV"],"Fp_add":c["Fp_add"],"F_eff_X":c["F_eff_X"],"F_eff_XX":c["F_eff_XX"],"eta_out":c["eta_out"],"gate_ns_used":x["cnt"]["gate_ns_used"],"rep_rate_hz":rep,"r_dot_s":x["r_dot"],"mu_resolved":x["mu"],"n_dot_cm2_used":density,"tau_cap_ps_used":rr["tau_cap_ps_used"],"I_pair_pA":E_SI*rep*1e12,"transport_current_uA":d.drive.I_uA,"resolved_current_uA":x["bias"]["current_uA"] if x["bias"] else np.nan,"V_j":x["vj"],"V_terminal":x["bias"]["V_terminal"] if x["bias"] else np.nan,"power_W":x["power"],"counting_converged":x["cnt"].get("converged",True),"blocked_load_probability":x["blocked"],"one_pair_valid":x["one_pair"],"set_feasible":feas.get("feasible",False),"set_priced_F_p":x["priced_fp"],"set_E_C_meV":feas.get("E_C_meV",np.nan),"set_EC_over_kT":feas.get("EC_over_kT",np.nan),"set_radius_nm":feas.get("radius_nm",np.nan),"set_radius_max_nm":feas.get("radius_max_nm",np.nan),"set_C_sigma_F":feas.get("C_sigma_F",np.nan),"set_R_T_over_RQ":feas.get("R_T_over_RQ",np.nan),"set_f_max_Hz":feas.get("f_max_Hz",np.nan),"pair_supply_possible":x["supplied"],"ideal_load_F_p":0.0 if d.drive.cycle_loading=="deterministic_pair" else np.nan,"valid":x["valid"],"invalid_reasons":x["reasons"],"provenance":{"nitride":"[A/E/DR] planar integration; cavity/transport inputs retain module provenance"}}
     spectroscopy_valid = bool(lv.valid and rr.get("valid", False) and np.isfinite(c["gamma_X_ns"]) and c["gamma_X_ns"] > 0)
     scalars.update({
-        "tau_rad_bare_ns": (1.0 / rr["gamma_X0_ns"] if rr["gamma_X0_ns"] > 0 else np.inf),
-        "tau_rad_cavity_ns": (1.0 / c["gamma_X_ns"] if c["gamma_X_ns"] > 0 else np.inf),
+        "tau_rad_bare_ns": _nitride_lifetime_ns(rr["gamma_X0_ns"]),
+        "tau_rad_cavity_ns": _nitride_lifetime_ns(c["gamma_X_ns"]),
         "spectroscopy_valid": spectroscopy_valid,
         "spectroscopy_invalid_reasons": [] if spectroscopy_valid else list(x["reasons"]),
         "temperature_mode": "fixed_junction" if bias_mode == "junction_voltage" else "self_consistent",
@@ -1310,6 +1342,11 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         "field_polarity": polarity,
         "diode_field_kVcm": x["bias"]["diode_field_kVcm"] if x["bias"] else np.nan,
         "applied_field_kVcm": x["bias"]["applied_field_kVcm"] if x["bias"] else np.nan,
+        # Copied from the resolved bias (Opus fix-round finding): needed so
+        # nitride_stark._marker() can split a Stark trace at the flat-band
+        # kink; previously resolved but never surfaced past this function.
+        "flat_band": bool(x["bias"]["flat_band"]) if x["bias"] else False,
+        "depletion_regime": x["bias"]["depletion_regime"] if x["bias"] else None,
         "reservoir_energy_eV": x["reservoir_energy_eV"], "reservoir_offset_meV": x["reservoir_offset_meV"],
         "reservoir_kind": lv.reservoir_kind, "geometry_type": system0.geometry_type,
         "effective_height_nm": lv.effective_height_nm, "effective_radius_nm": lv.effective_radius_nm,
