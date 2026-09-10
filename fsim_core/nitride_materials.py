@@ -1,6 +1,9 @@
 """Wurtzite InGaN/GaN material inputs, kept separate from cubic materials.
 
-The polarization convention is positive along +c.  Alloy interpolation is a
+The polarization convention is positive along +c; returned polarization
+fields are the c-axis projection in this sign convention.  Orientation
+factors are non-negative and do not change that polarity, so consumers add
+the depletion field directly.  Alloy interpolation is a
 virtual-crystal approximation [A]; it is not a claim that an alloy value was
 measured.  Thermal expansion is omitted [A].
 """
@@ -89,7 +92,13 @@ def orientation_factor(orientation, polarization_factor=None):
 
     The c-plane scalar strain, band-edge partition, and c-plane masses are
     retained for every orientation [A/E transfer; Bernardini et al., PRB
-    1997; Rinke et al., PRB 2008].  Factors 1, 0.2, and 0 are assumptions,
+    1997; Rinke et al., PRB 2008].  For nonpolar m/a-plane growth the
+    confinement axis is perpendicular to c, but nitride_levels uses the
+    c-plane GaN masses mh_z=1.88 and me_z=0.209 rather than mh_xy=0.33;
+    the hole mass therefore differs by up to about 5.7x [A; Rinke et al.,
+    PRB 77, 075202 (2008)].  Nonpolar valence-band ordering is not modelled
+    [A; Schade et al., phys. status solidi (b) (2011)].  Factors 1, 0.2, and
+    0 are assumptions,
     not measurements.  Schade et al., phys. status solidi (b) (2011),
     discusses orientation-dependent band structure and matrix elements that
     this scalar model does not rotate or reproduce.  A zero normal component
@@ -114,6 +123,16 @@ def orientation_factor(orientation, polarization_factor=None):
 
 def polarization_field(dot,matrix,T_K,*,strain_fraction=1.,screening_fraction=0.,external_field_kVcm=0.,orientation="c_plane",polarization_factor=None):
     """Normal polarization field plus an independently applied junction field.
+
+    The returned value is the c-axis projection with the module's "+c
+    positive" sign convention.  Orientation factors are non-negative and do
+    not change this polarity; nitride_levels._z_potential and
+    device._evaluate_nitride therefore add the depletion field directly.
+    The single scalar factor multiplies the summed spontaneous and
+    piezoelectric discontinuity [A].  At (11-22) those contributions partially
+    cancel, so sign-reversed semipolar components are outside the [0,1]
+    clamp by construction [A; Romanov et al., J. Appl. Phys. 100, 023522
+    (2006)].
 
     Electrostatic normalization follows Bernardini et al., PRB 56, R10024
     (1997), Table II and Bernardini & Fiorentini, phys. status solidi (b)

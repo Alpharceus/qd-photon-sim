@@ -42,6 +42,45 @@ check("assumed orientation policy", orientation_factor("c_plane") == 1.0 and ori
 check("semipolar sensitivity factors", orientation_factor("semipolar_11_22", 0.1) == 0.1 and orientation_factor("semipolar_11_22", 0.2) == 0.2 and orientation_factor("semipolar_11_22", 0.3) == 0.3)
 check("explicit zero semipolar override", orientation_factor("semipolar_11_22", 0.0) == 0.0)
 
+# The override is intentionally tested through the public field API.
+semi_fields = [polarization_field(dot, g, 300, strain_fraction=0.0,
+                                  orientation="semipolar_11_22",
+                                  polarization_factor=f) for f in (0.1, 0.2, 0.3)]
+check("semipolar override intrinsic 1:2:3",
+      close(semi_fields[1] / semi_fields[0], 2.0) and
+      close(semi_fields[2] / semi_fields[0], 3.0))
+check("semipolar override fields are all different",
+      len(set(semi_fields)) == 3)
+check("override changes intrinsic contribution",
+      semi_fields[0] != polarization_field(dot, g, 300, strain_fraction=0.0,
+                                            orientation="semipolar_11_22"))
+ext = 37.25
+for f in (0.1, 0.2, 0.3):
+    overridden = polarization_field(dot, g, 300, strain_fraction=0.0,
+                                    external_field_kVcm=ext,
+                                    orientation="semipolar_11_22",
+                                    polarization_factor=f)
+    intrinsic_only = polarization_field(dot, g, 300, strain_fraction=0.0,
+                                        orientation="semipolar_11_22",
+                                        polarization_factor=f)
+check("override leaves external field unchanged %.1f" % f,
+          close(overridden - intrinsic_only, ext))
+
+field_bad = [
+    lambda: polarization_field(dot, g, 300, orientation="semipolar_11_22", polarization_factor=-0.01),
+    lambda: polarization_field(dot, g, 300, orientation="semipolar_11_22", polarization_factor=1.01),
+    lambda: polarization_field(dot, g, 300, orientation="m_plane", polarization_factor=0.1),
+    lambda: polarization_field(dot, g, 300, orientation="c_plane", polarization_factor=0.9),
+    lambda: polarization_field(dot, g, 300, orientation="unknown", polarization_factor=0.1),
+]
+for n, fn in enumerate(field_bad):
+    try:
+        fn()
+        ok = False
+    except ValueError:
+        ok = True
+    check("field API rejects invalid override %d" % n, ok)
+
 base = polarization_field(dot, g, 300, strain_fraction=0.0)
 for screen in (0.0, 0.5, 1.0):
     for ext in (-100.0, 0.0, 100.0):
@@ -56,9 +95,13 @@ for screen in (0.0, 0.5, 1.0):
 check("zero-field orientation ratios", close(polarization_field(dot,g,300,strain_fraction=0.0)/base,1.0) and close(polarization_field(dot,g,300,strain_fraction=0.0,orientation="semipolar_11_22")/base,0.2) and polarization_field(dot,g,300,strain_fraction=0.0,orientation="m_plane") == 0.0)
 check("m and a model identity", polarization_field(dot,g,300,orientation="m_plane",external_field_kVcm=17.0) == polarization_field(dot,g,300,orientation="a_plane",external_field_kVcm=17.0))
 
-# Legacy equality is deliberately exact, against the pre-change formula with
-# independently spelled-out arithmetic, at varied composition and temperature.
-for composition, temperature in ((0.15, 230.0), (0.25, 300.0), (0.4, 273.0)):
+# Legacy equality is deliberately exact against commit 67b0c59, using
+# non-dyadic inputs so reassociation is observable.  These literals were
+# recorded from that commit's c-plane path.
+for composition, temperature, screen, ext, expected in (
+    (0.25, 300.0, 0.3, 12.3, -2814.673836843254),
+    (0.25, 300.0, 0.7, -7.9, -1219.4602157899665),
+):
     d = ingaN(composition)
     # Repeat the documented VCA/strain expression without band_edges.
     a_dot = (1-composition)*3.189 + composition*3.545
@@ -71,9 +114,8 @@ for composition, temperature in ((0.15, 230.0), (0.25, 300.0), (0.4, 273.0)):
     ez = -2.0*c13/c33*ep
     p_dot = psp+2.0*e31*ep+e33*ez
     eps = (1-composition)*10.28+composition*14.61
-    expected = (1.0-0.5)*((-0.029)-p_dot)/(8.8541878128e-12*eps)*1e-5+12.5
-    actual = polarization_field(d,g,temperature,screening_fraction=0.5,external_field_kVcm=12.5)
-    check("legacy exact composition=%s temperature=%s" % (composition, temperature), actual == expected)
+    actual = polarization_field(d,g,temperature,screening_fraction=screen,external_field_kVcm=ext)
+    check("legacy literal 67b0c59 composition=%s screen=%s" % (composition, screen), actual == expected)
 
 bad = [
     lambda: orientation_factor("bad"),
