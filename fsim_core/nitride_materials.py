@@ -77,8 +77,57 @@ def band_edges(material, T_K, *, substrate=None, strain_fraction=1., vbo_InN_GaN
     ec=ev0+bandgap(material,T_K)+strain_c_fraction*dEg
     return dict(Ec_eV=ec,Ev_eV=ev,eps_parallel=ep,eps_zz=ez,P_total_Cm2=p,provenance="[V] B97 polarization; [V] Rinke 2008 volume deformation; [V] Tsai 2020 VBO endpoints; [A] 0.7 conduction partition, linear alloy VBO transfer, no thermal expansion")
 
-def polarization_field(dot,matrix,T_K,*,strain_fraction=1.,screening_fraction=0.,external_field_kVcm=0.):
+_ORIENTATION_FACTORS = {
+    "c_plane": 1.0,
+    "semipolar_11_22": 0.2,
+    "m_plane": 0.0,
+    "a_plane": 0.0,
+}
+
+def orientation_factor(orientation, polarization_factor=None):
+    """Return the reduced-model normal-polarization factor.
+
+    The c-plane scalar strain, band-edge partition, and c-plane masses are
+    retained for every orientation [A/E transfer; Bernardini et al., PRB
+    1997; Rinke et al., PRB 2008].  Factors 1, 0.2, and 0 are assumptions,
+    not measurements.  Schade et al., phys. status solidi (b) (2011),
+    discusses orientation-dependent band structure and matrix elements that
+    this scalar model does not rotate or reproduce.  A zero normal component
+    here does not establish that a finite real dot has no lateral fields.
+    """
+    if not isinstance(orientation, str) or orientation not in _ORIENTATION_FACTORS:
+        raise ValueError("orientation must be c_plane, semipolar_11_22, m_plane, or a_plane")
+    if polarization_factor is None:
+        return _ORIENTATION_FACTORS[orientation]
+    if isinstance(polarization_factor, bool) or not isinstance(polarization_factor, (int, float)):
+        raise ValueError("polarization_factor must be a finite real number")
+    factor = float(polarization_factor)
+    if not math.isfinite(factor):
+        raise ValueError("polarization_factor must be finite")
+    if orientation == "semipolar_11_22":
+        if not 0.0 <= factor <= 1.0:
+            raise ValueError("semipolar polarization_factor must be in [0, 1]")
+        return factor
+    if factor != _ORIENTATION_FACTORS[orientation]:
+        raise ValueError("polarization_factor contradicts the selected orientation")
+    return factor
+
+def polarization_field(dot,matrix,T_K,*,strain_fraction=1.,screening_fraction=0.,external_field_kVcm=0.,orientation="c_plane",polarization_factor=None):
+    """Normal polarization field plus an independently applied junction field.
+
+    Electrostatic normalization follows Bernardini et al., PRB 56, R10024
+    (1997), Table II and Bernardini & Fiorentini, phys. status solidi (b)
+    216, 391 (1999), Sec. III/Eqs. 7-8 [V].  Orientation factors are [A],
+    as documented by :func:`orientation_factor`; screening is an independent
+    scenario parameter and is not a current-dependent law.
+    """
     if not 0 <= screening_fraction <= 1: raise ValueError("screening_fraction must be in [0, 1]")
     pd=band_edges(dot,T_K,substrate=matrix,strain_fraction=strain_fraction)["P_total_Cm2"]
     pm=band_edges(matrix,T_K,substrate=matrix,strain_fraction=0.)["P_total_Cm2"]
-    return (1-screening_fraction)*(pm-pd)/(EPS0_SI*dot.eps_r)*1e-5+external_field_kVcm # fixed-D thick GaN reservoirs [A]
+    # Preserve the pre-orientation c-plane arithmetic path byte-for-byte in
+    # numerical operation order for legacy callers and explicit factor=1.
+    factor=orientation_factor(orientation,polarization_factor)
+    if orientation == "c_plane" and factor == 1.0:
+        return (1-screening_fraction)*(pm-pd)/(EPS0_SI*dot.eps_r)*1e-5+external_field_kVcm # fixed-D thick GaN reservoirs [A]
+    intrinsic=factor*(1-screening_fraction)*(pm-pd)/(EPS0_SI*dot.eps_r)*1e-5
+    return intrinsic+external_field_kVcm # external junction field is never orientation/screening scaled [A]
