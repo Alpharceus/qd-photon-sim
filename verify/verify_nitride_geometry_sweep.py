@@ -60,7 +60,7 @@ def close_nan_safe(a, b, rtol=1e-8, atol=1e-10):
 def check_grid(core, geo, bias, cur, sens, comp, man, quick, checks, detail):
     core_p = s.build_core(quick); shape_p = s.build_shape(quick); qw_p = s.build_qw(quick)
     bias_p, cur_p = s.build_stark(quick)
-    sens_p = s.build_sensitivities(quick)
+    sens_p = s.build_all_sensitivities(quick); anchor_p = s.build_fixed_anchor(quick)
     checks.append(("core row count matches independent build_core()", len(core) == len(core_p)))
     ax = ("height_nm", "radius_nm", "orientation", "T_hs", "screening_fraction", "regime")
     expected_combos = {tuple(round(p[k], 6) if isinstance(p[k], float) else p[k] for k in ax) for p in core_p}
@@ -71,7 +71,12 @@ def check_grid(core, geo, bias, cur, sens, comp, man, quick, checks, detail):
     checks.append(("qw row count matches independent build_qw()", len([r for r in geo if r["row_kind"] == "qw"]) == len(qw_p)))
     checks.append(("stark_bias row count matches independent build_stark()", len(bias) == len(bias_p)))
     checks.append(("stark_current row count matches independent build_stark()", len(cur) == len(cur_p)))
-    checks.append(("sensitivities row count matches independent build_sensitivities()", len(sens) == len(sens_p)))
+    sens_only = [r for r in sens if r.get("row_kind") == "sensitivity"]
+    anchor_only = [r for r in sens if r.get("row_kind") == "fixed_anchor"]
+    checks.append(("sensitivities row count matches independent build_all_sensitivities() "
+                    "(fix round 3, item 5: all three baselines)", len(sens_only) == len(sens_p)))
+    checks.append(("fixed_anchor row count matches independent build_fixed_anchor() (item 1)",
+                    len(anchor_only) == len(anchor_p)))
     all_ids = [r["row_id"] for r in core + geo + bias + cur + sens + comp]
     checks.append(("all row_ids unique across every output file", len(set(all_ids)) == len(all_ids)))
     checks.append(("core covers all 4 orientations", {x["orientation"] for x in core} == set(s.ORI)))
@@ -79,6 +84,18 @@ def check_grid(core, geo, bias, cur, sens, comp, man, quick, checks, detail):
     checks.append(("core covers all 3 screening fractions", {round(f(x["screening_fraction"]), 6) for x in core} == {round(v, 6) for v in s.SCR}))
     checks.append(("every core row carries card_hash/cache_identity/invalid_reasons", all(x.get("card_hash") and x.get("cache_identity") and "invalid_reasons" in x for x in core)))
     checks.append(("every stark_bias row carries spectroscopy_valid and V_j", all("spectroscopy_valid" in x and "V_j" in x for x in bias) if bias else True))
+    # Fix round 3, item 1/8: cavity_tracking column values -- every core row
+    # (headline, re-tracked) is "per_T_hs"; every Stark bias/current row
+    # (fixed cavity reference across the whole V_j/current sweep) is
+    # "fixed_300K"; no row carries any other value.
+    checks.append(("every row's cavity_tracking is one of per_T_hs/fixed_300K",
+                    all(x.get("cavity_tracking") in ("per_T_hs", "fixed_300K") for x in core + geo + bias + cur)))
+    checks.append(("every core row has cavity_tracking=per_T_hs (item 1: headline rows re-track the cavity)",
+                    all(x.get("cavity_tracking") == "per_T_hs" for x in core)))
+    checks.append(("every stark_bias row has cavity_tracking=fixed_300K (fixed cavity reference across the trace)",
+                    all(x.get("cavity_tracking") == "fixed_300K" for x in bias) if bias else True))
+    checks.append(("every stark_current row has cavity_tracking=fixed_300K",
+                    all(x.get("cavity_tracking") == "fixed_300K" for x in cur) if cur else True))
     checks.append(("manifest core/shape/qw/stark full-contract counts recorded", man.get("full_contract_rows") == {"core": 3360, "shape": 864, "qw": 288, "stark": 3120, "total_before_caching": 7632}))
     # Tie the module's own grid constants to the frozen contract literals
     # (Opus fix-round medium finding) -- independent of build_core(), so a
@@ -476,6 +493,140 @@ def check_results_md(text, core, checks):
                         f"eligible={n_elig} opt={n_opt} hw={n_hw} invalid={n_invalid} n={len(rs)}", ok))
 
 
+BEST_FLUX_RE = re.compile(r"^BEST_PASSING_FLUX family=(?P<family>\S+) value=(?P<value>\S+) row_id=(?P<row_id>\S+)")
+
+def check_best_passing_flux(text, core, checks):
+    """Fix round 3, item 4/8: independently recompute the best flux among
+    optical_pass rows per family straight from sweep.csv (using the run
+    module's own pure eligible/optical_pass functions, never trusting the
+    row's own saved optical_pass column) and compare against the
+    machine-checkable BEST_PASSING_FLUX line in results.md."""
+    lines_found = [ln for ln in text.splitlines() if ln.startswith("BEST_PASSING_FLUX")]
+    checks.append(("results.md carries a BEST_PASSING_FLUX line per family", len(lines_found) >= 1))
+    for fam in ("c_plane", "a_plane"):
+        m = next((BEST_FLUX_RE.match(ln) for ln in lines_found if f"family={fam} " in ln), None)
+        cand = []
+        for r in core:
+            if r["orientation"] != fam: continue
+            valid = r["valid"] == "True"; g2v = f(r["g2"]); fluxv = f(r["signal_flux_s"])
+            one_pair = r.get("one_pair_valid") == "True"
+            elig = s.eligible(valid, g2v, fluxv)
+            opt = s.optical_pass(elig, g2v, r["regime"], one_pair)
+            if opt and isfin(fluxv): cand.append((fluxv, r["row_id"]))
+        if not cand:
+            checks.append((f"BEST_PASSING_FLUX family={fam} matches independent recomputation (no passing rows)",
+                            m is not None and m["value"] == "none"))
+            continue
+        best_val, best_rid = max(cand, key=lambda z: z[0])
+        # results.md prints value with %.6g -- compare by row_id (exact) and
+        # value with a tolerance wide enough for that 6-sig-fig rounding.
+        ok = (m is not None and m["family"] == fam and m["row_id"] == best_rid
+              and close_nan_safe(m["value"], best_val, rtol=1e-4, atol=1e-9))
+        checks.append((f"BEST_PASSING_FLUX family={fam} row_id/value match independent max-over-optical_pass-rows "
+                        f"recomputation (expected row {best_rid}, value {best_val:.6g})", ok))
+
+
+def check_distinct_hypotheses(text, comp, checks):
+    """Fix round 3, item 3/8: independently collapse screening_compatibility.
+    csv's raw fit rows to DISTINCT (orientation,height,polarity,screening)
+    hypotheses (regime/T_hs are replicates, not independent hypotheses) and
+    compare the count against the 'N raw ... reduce to M DISTINCT
+    hypotheses' line in results.md."""
+    m = re.search(r"(?P<raw>\d+) raw compatibility-fit rows reduce to (?P<distinct>\d+) DISTINCT hypotheses", text)
+    checks.append(("results.md states the raw->distinct compatibility hypothesis count", m is not None))
+    if m is None or not comp: return
+    seen = set()
+    for r in comp:
+        try:
+            gk = dict(json.loads(r["group"]))
+        except (KeyError, ValueError, json.JSONDecodeError):
+            continue
+        seen.add((gk.get("orientation"), gk.get("height_nm"), gk.get("field_polarity"), r.get("screening")))
+    checks.append(("results.md's raw compatibility-row count matches screening_compatibility.csv",
+                    int(m["raw"]) == len(comp)))
+    checks.append((f"results.md's DISTINCT hypothesis count ({m['distinct']}) matches an independent "
+                    f"(orientation,height,polarity,screening) collapse of screening_compatibility.csv "
+                    f"(expected {len(seen)})", int(m["distinct"]) == len(seen)))
+
+
+def check_nonpolar_slope_in_window(comp, man, checks):
+    """Fix round 3, item 8: every nonpolar screening_unidentifiable row's
+    fitted slope actually lies inside the run's own slope window (the
+    override in build_compatibility only applies when the window already
+    accepted the shared curve)."""
+    si = man.get("slope_interval", {})
+    lo, hi = (si.get("range_meV_per_V") or [None, None])[:2]
+    nonpolar_unident = [r for r in comp if r.get("identification_status") == "screening_unidentifiable"
+                         and ("a_plane" in r.get("group", "") or "m_plane" in r.get("group", ""))]
+    if lo is None or not nonpolar_unident:
+        checks.append(("nonpolar screening_unidentifiable rows' fitted slope lies within the run's slope window "
+                        "(no such rows this run, or window unavailable -- vacuously true)", True))
+        return
+    ok = all(lo - 1e-6 <= f(r.get("fitted_slope_meV_per_V")) <= hi + 1e-6 for r in nonpolar_unident)
+    checks.append((f"every nonpolar screening_unidentifiable row's fitted slope lies within [{lo},{hi}] meV/V "
+                    "(the override only applies when the window already accepted the shared curve)", ok))
+
+
+def check_sensitivity_baselines_pass(sens, core, checks):
+    """Fix round 3, item 5/8: the two new passing baselines actually
+    produce at least one optical-pass row (independently recomputed via
+    s.eligible/s.optical_pass on the sensitivities.csv rows themselves,
+    never trusting the saved optical_pass column) -- checked against
+    sensitivities.csv directly so it holds in --quick too, where the
+    reduced core grid (H in {1,7}, R in {5,30}) does not sample the
+    baseline's own H=3/R=10 reference point."""
+    baselines = {r.get("sensitivity_baseline") for r in sens}
+    checks.append(("sensitivities.csv carries the REF_pass_c_plane_screened_SET baseline",
+                    "REF_pass_c_plane_screened_SET" in baselines))
+    checks.append(("sensitivities.csv carries the REF_pass_a_plane_SET baseline",
+                    "REF_pass_a_plane_SET" in baselines))
+
+    def _baseline_passes(label):
+        rs = [r for r in sens if r.get("sensitivity_baseline") == label and r.get("row_kind") == "sensitivity"]
+        for r in rs:
+            valid = r.get("valid") == "True"; g2v = f(r.get("g2")); fluxv = f(r.get("signal_flux_s"))
+            one_pair = r.get("one_pair_valid") == "True"
+            elig = s.eligible(valid, g2v, fluxv)
+            if s.optical_pass(elig, g2v, r.get("regime"), one_pair): return True
+        return False
+    checks.append(("REF_pass_c_plane_screened_SET yields at least one independently-recomputed optical_pass row",
+                    _baseline_passes("REF_pass_c_plane_screened_SET")))
+    checks.append(("REF_pass_a_plane_SET yields at least one independently-recomputed optical_pass row",
+                    _baseline_passes("REF_pass_a_plane_SET")))
+
+
+def check_panel_grouping(man, checks):
+    """Fix round 3, item 6/8: no Stark figure's panel_index splits a
+    screening triplet or polarity pair -- every contract entry sharing the
+    same subtitle (the 'orientation h=..nm regime T=..K' super-group
+    prefix before ' | ' in its label) must carry the SAME panel_index."""
+    mapping = man.get("plot_row_mapping", {})
+    stark_figs = [n for n in mapping if n.startswith("stark_")]
+    checks.append(("at least one Stark figure is present to check panel grouping on", len(stark_figs) > 0))
+    all_ok = True
+    for name in stark_figs:
+        by_subtitle = {}
+        for label, entry in mapping[name].items():
+            subtitle = label.split(" | ", 1)[0]
+            by_subtitle.setdefault(subtitle, set()).add(entry.get("panel_index"))
+        if any(len(idxs) > 1 for idxs in by_subtitle.values()):
+            all_ok = False
+    checks.append(("every Stark figure's screening/polarity lines within one trace-identity super-group "
+                    "share a single panel_index (no split triplets/pairs)", all_ok))
+
+
+def check_invalid_completeness(text, man, checks):
+    """Fix round 3, item 7/8: results.md's invalid-rows accounting matches
+    the manifest's own invalid_counts_by_kind/invalid_total exactly (all
+    kinds, not just core)."""
+    invalid_total = man.get("invalid_total", 0)
+    checks.append((f"results.md states invalid_total={invalid_total} matching the manifest",
+                    f"invalid_total={invalid_total}" in text))
+    by_kind = man.get("invalid_counts_by_kind", {})
+    checks.append(("results.md's invalid-rows section names every kind in the manifest's invalid_counts_by_kind",
+                    all(f"{k}={v}" in text for k, v in by_kind.items())))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
@@ -498,6 +649,12 @@ def main(argv=None):
     check_failure_logging(man, checks)
     check_convergence(man, checks)
     check_plots(out, man, core, geo, bias, checks)
+    check_panel_grouping(man, checks)
+    check_best_passing_flux(text, core, checks)
+    check_distinct_hypotheses(text, comp, checks)
+    check_nonpolar_slope_in_window(comp, man, checks)
+    check_sensitivity_baselines_pass(sens, core, checks)
+    check_invalid_completeness(text, man, checks)
     check_mutation_fixtures(checks)
     check_literature(lit_csv, comp, checks)
     check_results_md(text, core, checks)

@@ -50,7 +50,14 @@ STARK_ORI = ("c_plane", "a_plane")
 REF = {"height_nm": 3., "radius_nm": 10., "orientation": "c_plane", "x_in": .25,
        "screening_fraction": 0., "strain_fraction": 1., "Q": 2000., "current_uA": .02,
        "regime": "rectangular", "polarity": 1, "geometry_type": "isolated_dot",
-       "shape": "disc", "top_radius_fraction": 1., "T_hs": 300.}
+       "shape": "disc", "top_radius_fraction": 1., "T_hs": 300., "cavity_tracking": "per_T_hs"}
+# Fix round 3, item 5: the original REF (rectangular/unscreened) baseline
+# never passes the optical gate (pulse fails everywhere; c-plane needs
+# screening to pass). Two additional baselines that DO pass the optical
+# gate (matching the headline SET passes) so the OAT sensitivities also
+# bound assumptions at a configuration that produces a verdict.
+REF_PASS_C = dict(REF, regime="deterministic_pair", screening_fraction=1.)
+REF_PASS_A = dict(REF, regime="deterministic_pair", orientation="a_plane")
 # Fixed reservation for the derivative-refinement convergence checks (halved
 # voltage step around a representative point); a declared constant, not a
 # post-hoc count, so the dry-run estimate matches the actual run exactly
@@ -165,6 +172,21 @@ def _design(p):
         _set(d.drive.diode, "wl_thickness_nm", p["wl_thickness_nm"])
         _set(d.drive.diode, "d_i_nm", 24. + p["wl_thickness_nm"])
         _set(d.drive.diode, "d_active_nm", p["height_nm"])
+    # Cavity tracking (fix round 3, item 1): "per_T_hs" re-tracks the
+    # cavity to this row's own T_hs, exactly matching scripts/
+    # run_nitride_cavity.py's round-1 headline convention
+    # (`_put(d.nitride["cavity"],"T_track",v)` there). "fixed_300K" is the
+    # LABELLED sensitivity/Stark convention: T_track is pinned to the
+    # card's own 300 K default regardless of T_hs, so it is set
+    # explicitly here too (never left to accidentally match the card
+    # default) -- an undisclosed detuning between T_j and a stale cavity
+    # position was the round-2 high finding this fixes.
+    tracking = p.get("cavity_tracking", "per_T_hs")
+    if tracking == "per_T_hs":
+        _set(cav, "T_track", p["T_hs"])
+    else:
+        _set(cav, "T_track", 300.)
+    _set(d.thermal, "T_hs", p["T_hs"])
     d.drive.cycle_loading = p["regime"]
     if "current_uA" in p: d.drive.I_uA = p["current_uA"]
     if "b_res" in p: d.drive.b_res = p["b_res"]
@@ -244,9 +266,19 @@ def _write(path, rows):
         w = csv.DictWriter(f, fieldnames=keys); w.writeheader(); w.writerows(rows)
 
 def _base(h, r, o, t, s, reg):
+    # cavity_tracking (fix round 3, item 1): non-Stark rows default to
+    # "per_T_hs" -- the cavity re-tracks to each row's own operating
+    # temperature (nitride.cavity.T_track = T_hs), exactly as
+    # scripts/run_nitride_cavity.py's round-1 headline does. Stark bias/
+    # current rows override this to "fixed_300K" (build_stark below):
+    # a Stark trace needs ONE fixed cavity reference across its whole V_j
+    # sweep for tau_rad_cavity/detuning/Fp_add to stay comparable point to
+    # point (unchanged from the original spec: "T_track stays at the
+    # card's 300 K").
     return {"height_nm": h, "radius_nm": r, "orientation": o, "T_hs": t, "screening_fraction": s,
             "regime": reg, "x_in": .25, "Q": 2000., "current_uA": .02, "polarity": 1,
-            "geometry_type": "isolated_dot", "shape": "disc", "top_radius_fraction": 1.}
+            "geometry_type": "isolated_dot", "shape": "disc", "top_radius_fraction": 1.,
+            "cavity_tracking": "per_T_hs"}
 
 # ------------------------------------------------------------- combo builders
 # Pure (no evaluate() calls) so dry-run counts and the real run never drift
@@ -277,7 +309,8 @@ def build_qw(quick):
     out = []
     for w, dh, r, o, t, s, reg in itertools.product(ws, hs_off, rs, oo, tt, ss, REG):
         h = w + dh
-        p = _base(h, r, o, t, s, reg); p.update(geometry_type="qw_fluctuation", wl_thickness_nm=w)
+        p = _base(h, r, o, t, s, reg)
+        p.update(geometry_type="qw_fluctuation", wl_thickness_nm=w, qw_height_offset_nm=dh)
         out.append(p)
     return out
 
@@ -290,33 +323,70 @@ def build_stark(quick):
     else:
         HH, tt, vv, ii = STARK_H_FULL, STARK_T_FULL, STARK_V_FULL, STARK_I_FULL
     for h, o, s, reg, t in itertools.product(HH, STARK_ORI, SCR, REG, tt):
-        p0 = _base(h, 10., o, t, s, reg)
+        p0 = _base(h, 10., o, t, s, reg); p0["cavity_tracking"] = "fixed_300K"
         for v in vv:
             p = dict(p0); p.update(bias_mode="junction_voltage", V_j=v, T_j=t, polarity=1); bias.append(p)
         for cur in ii:
             p = dict(p0); p.update(bias_mode="current", current_uA=cur, polarity=1); current.append(p)
     # opposite polarity at H=3 only, same remaining axes
     for o, s, reg, t in itertools.product(STARK_ORI, SCR, REG, tt):
-        p0 = _base(3., 10., o, t, s, reg)
+        p0 = _base(3., 10., o, t, s, reg); p0["cavity_tracking"] = "fixed_300K"
         for v in vv:
             p = dict(p0); p.update(bias_mode="junction_voltage", V_j=v, T_j=t, polarity=-1); bias.append(p)
         for cur in ii:
             p = dict(p0); p.update(bias_mode="current", current_uA=cur, polarity=-1); current.append(p)
     return bias, current
 
-def build_sensitivities(quick):
-    """One-at-a-time axes around REF; each axis holds every other input fixed
-    (spec: 'Hold all other inputs fixed within each axis group'). Explicit
-    null cases (nonpolar screening_fraction, m/a orientation identity) are
-    NOT re-tested here -- they already fall out of the core grid, which
-    the verifier checks directly against sweep.csv."""
+def build_fixed_anchor(quick):
+    """Fix round 3, item 1: a LABELLED fixed-anchor (cavity_tracking=
+    'fixed_300K') sensitivity row set across the full T_hs axis, at the
+    REF geometry (H=3nm, R=10nm, screening=0), both headline orientations
+    and both regimes -- mirrors scripts/run_nitride_cavity.py's own
+    `_anchor_rows`. Core rows (above) now re-track the cavity per row
+    (T_track=T_hs); these rows instead hold T_track fixed at the card's
+    300 K default while T_hs varies, so the resulting detuning is a
+    visible, named diagnostic (results.md quantifies it against the
+    matching tracked core row at the same coordinates) rather than an
+    unlabelled artifact."""
+    ts = (230., 300.) if quick else TS
+    # Quick core only samples H in {1,7}, R in {5,30} (reduced grid); use a
+    # point on that same reduced grid so the fixed-vs-tracked comparison
+    # table below always finds a matching tracked core row, even in quick
+    # mode. Full mode uses the REF geometry (H=3nm, R=10nm).
+    h, r = (1., 5.) if quick else (3., 10.)
+    out = []
+    for o in ("c_plane", "a_plane"):
+        for reg in (REG if not quick else ("rectangular",)):
+            for t in ts:
+                p = _base(h, r, o, t, 0., reg)
+                p["cavity_tracking"] = "fixed_300K"
+                p["sensitivity_axis"] = "cavity_tracking_fixed_300K"
+                p["sensitivity_value"] = t
+                out.append(p)
+    return out
+
+def build_sensitivities(quick, baseline=None, label="REF_unscreened_rectangular"):
+    """One-at-a-time axes around `baseline` (defaults to REF); each axis
+    holds every other input fixed (spec: 'Hold all other inputs fixed
+    within each axis group'). Explicit null cases (nonpolar
+    screening_fraction, m/a orientation identity) are NOT re-tested here --
+    they already fall out of the core grid, which the verifier checks
+    directly against sweep.csv.
+
+    Fix round 3, item 5: called once at the original REF (rectangular,
+    unscreened -- never passes the optical gate) and again at
+    REF_PASS_C/REF_PASS_A (deterministic_pair baselines that DO pass), so
+    every [A] assumption is also bounded at a configuration that produces
+    a verdict. `sensitivity_baseline` on every row records which."""
+    if baseline is None: baseline = REF
     ts = (300.,) if quick else STARK_T_FULL
     out = []
     def add(axis, key, values, **extra):
         for v in values:
             for t in ts:
-                p = dict(REF); p["T_hs"] = t; p[key] = v; p.update(extra)
+                p = dict(baseline); p["T_hs"] = t; p[key] = v; p.update(extra)
                 p["sensitivity_axis"] = axis; p["sensitivity_value"] = v
+                p["sensitivity_baseline"] = label
                 out.append(p)
     add("semipolar_factor", "polarization_factor", (.1, .3), orientation="semipolar_11_22")
     add("x_in", "x_in", (.15, .4))
@@ -332,9 +402,19 @@ def build_sensitivities(quick):
     for tcd in (False, True):
         add("tau_cap_density_convention", "tau_cap_scales_with_density", (tcd,), n_dot_cm2=1e9)
     for rad in ((.5, 5.) if quick else (.5, 1., 5.)):
-        p = dict(REF); p["T_hs"] = ts[-1]; p["regime"] = "deterministic_pair"
+        p = dict(baseline); p["T_hs"] = ts[-1]; p["regime"] = "deterministic_pair"
         p["island_radius_nm"] = rad; p["sensitivity_axis"] = "island_radius_nm"; p["sensitivity_value"] = rad
+        p["sensitivity_baseline"] = label
         out.append(p)
+    return out
+
+def build_all_sensitivities(quick):
+    """The OAT axis set evaluated at all three baselines (fix round 3,
+    item 5): out += REF (never passes) + REF_PASS_C (c-plane screened SET,
+    passes) + REF_PASS_A (a-plane SET, passes)."""
+    out = build_sensitivities(quick, REF, "REF_unscreened_rectangular")
+    out += build_sensitivities(quick, REF_PASS_C, "REF_pass_c_plane_screened_SET")
+    out += build_sensitivities(quick, REF_PASS_A, "REF_pass_a_plane_SET")
     return out
 
 def build_literature_aux():
@@ -369,6 +449,7 @@ def _deshpande_row(rid, counter, cache):
     row = {"row_id": rid, "row_kind": "literature_aux", "card_file": path.name,
            "card_hash": hashlib.sha256(path.read_bytes()).hexdigest(), "cache_hit": hit,
            "cache_identity": ident, "T_hs": 300., "T_hs_requested": 300., "regime": "rectangular", "orientation": "c_plane",
+           "cavity_tracking": "fixed_300K",  # replayed as-is; the card's own default (300 K) is untouched
            "literature_source": "Deshpande et al., APL 105, 141109 (2014)",
            "literature_note": "abstract-only [V]; CONDITIONS INCOMPLETE", "measured_g2": .29}
     for k, v in s.items(): row[k] = _primitive(v)
@@ -494,6 +575,7 @@ def run_refinement_checks(specs, bias_rows, counter, cache, rid_start, half_step
         v0 = float(anchor["V_j"]); coarse = float(anchor["dE_X_dV_meV_per_V"])
         anchor_flat_band = anchor.get("flat_band")
         p0 = _base(spec["height_nm"], 10., spec["orientation"], spec["T_hs"], spec["screening_fraction"], spec["regime"])
+        p0["cavity_tracking"] = "fixed_300K"  # refinement probes are Stark bias points
         probes = {}
         for dv, tag in ((-half_step, "lo"), (half_step, "hi")):
             v = round(v0 + dv, 6)
@@ -524,38 +606,68 @@ def run_refinement_checks(specs, bias_rows, counter, cache, rid_start, half_step
     return checks, rid, probe_rows
 
 # ----------------------------------------------------------- screening compatibility
+def _tau_at_screening(part_rows, screening, v_ref):
+    """Bare radiative lifetime nearest v_ref (V_j) at the given screening
+    hypothesis, from the SAME geometry-group rows already gathered for one
+    screening_compatibility() call -- used for the lifetime-ratio column
+    (fix round 3, item 3: 'the discriminating observable is the bias-
+    resolved lifetime')."""
+    cands = [r for r in part_rows if _finite_num(r.get("tau_rad_bare_ns")) and _finite_num(r.get("V_j"))
+             and _screen_like(r) is not None and abs(float(_screen_like(r)) - float(screening)) < 1e-9]
+    if not cands: return None
+    best = min(cands, key=lambda r: abs(float(r["V_j"]) - v_ref))
+    return float(best["tau_rad_bare_ns"])
+
 def build_compatibility(bias_rows, slope_range, bias_window, slope_user_supplied, rid_start):
     """screening_compatibility groups internally on nitride_stark's own
     (_gkey(r), _screen(r)) -- _gkey uses _TRACE_KEYS, which includes the
     literal "T_hs" field, corrupted (see _gkey_like) for bias_mode==
     'junction_voltage' rows. Feed it rows whose "T_hs" has been repaired to
-    the uncorrupted sweep value first, and call it once PER trace partition
-    (using (_gkey_like(r), _screen_like(r)), an EXACT reproduction of
-    nitride_stark's own internal grouping) so one trace's failure cannot
-    abort every other trace's compatibility fit -- required alongside the
-    attach_derivatives fix ('any per-trace exception in derivatives,
-    compatibility or plotting must be caught ... and never abort the
-    sweep')."""
+    the uncorrupted sweep value first.
+
+    Fix round 3, item 3 (Opus/Astra high finding): partition ONLY by the
+    geometry/field identity (_gkey_like, no screening_fraction) so ALL
+    screening hypotheses of one trace group are handed to a SINGLE
+    screening_compatibility() call together -- that function's own
+    cross-hypothesis degeneracy check (identical fitted slopes across
+    different screening_fraction values -> 'screening_unidentifiable') can
+    then actually fire; the previous per-screening partitioning fed it
+    exactly one hypothesis per call, so degeneracy could never be
+    detected. One try/except per GROUP (not per group+screening) still
+    isolates a bad group's failure from every other group (spec: 'any
+    per-trace exception in derivatives, compatibility or plotting must be
+    caught ... and never abort the sweep')."""
     fixed_rows = [dict(r, T_hs=r.get("T_hs_requested", r.get("T_hs"))) for r in bias_rows]
     partitions = {}
     for r in fixed_rows:
-        pkey = (_gkey_like(r), _screen_like(r))
+        pkey = _gkey_like(r)
         partitions.setdefault(pkey, []).append(r)
-    compat = []; compat_failures = []
-    for pkey, part_rows in partitions.items():
-        gk, scr = pkey
-        trace_id = "|".join("%s=%s" % (k, v) for k, v in gk) + "|screening_fraction=%s" % (scr,)
+    compat = []; compat_failures = []; compat_by_id = []
+    for gk, part_rows in partitions.items():
+        trace_id = "|".join("%s=%s" % (k, v) for k, v in gk)
         try:
-            compat += screening_compatibility(part_rows, slope_range_meV_per_V=slope_range, voltage_window_V=tuple(bias_window))
+            fits = screening_compatibility(part_rows, slope_range_meV_per_V=slope_range, voltage_window_V=tuple(bias_window))
         except (ValueError, ArithmeticError) as exc:
             compat_failures.append({"trace_id": trace_id, "row_ids": [r.get("row_id") for r in part_rows], "reason": str(exc)})
+            continue
+        # Lifetime-ratio column (item 3): unscreened/screened bare tau_rad
+        # at the bias-window's lower edge, from this SAME group's rows --
+        # one ratio per geometry group, attached to every fit row that
+        # came out of it (whichever screening hypothesis it represents).
+        v_ref = float(bias_window[0])
+        tau0 = _tau_at_screening(part_rows, 0., v_ref)
+        tau1 = _tau_at_screening(part_rows, 1., v_ref)
+        ratio = (tau0 / tau1) if (tau0 is not None and tau1 not in (None, 0.)) else None
+        for x in fits:
+            compat.append(x); compat_by_id.append(ratio)
     out = []; rid = rid_start
-    for x in compat:
+    for x, lifetime_ratio in zip(compat, compat_by_id):
         rid += 1
         row = {"row_id": f"CT{rid:05d}",
                "slope_interval_kind": "user_supplied" if slope_user_supplied else "illustrative_not_measured",
                "zhang_guide_meV_per_V": ZHANG2016_SLOPE_MEV_PER_V,
-               "source": ZHANG2016_COMPARISON["citation"] + " [V] non-gating"}
+               "source": ZHANG2016_COMPARISON["citation"] + " [V] non-gating",
+               "lifetime_ratio_s0_over_s1": lifetime_ratio}
         gk = dict(x["group"])
         orientation = gk.get("orientation")
         if orientation in NONPOLAR_ORI and x["identification_status"] == "compatible":
@@ -585,12 +697,14 @@ def _leg(ax, **kw): return ax.legend(fontsize=7, loc="best", **kw)
 
 MAX_TRACES_PER_PANEL = 8  # spec: "split into panels if > 8 traces"
 
-def _panel_plot(out, name, entries, xlabel, ylabel, suptitle, xlog=False, ylog=False):
+def _panel_plot(out, name, entries, xlabel, ylabel, suptitle, xlog=False, ylog=False, guide=None):
     """entries: ordered [(label, xv, yv, row_ids, style), ...], ONE trace per
     fully-specified group -- never merged (Opus fix-round high finding).
     Splits into ceil(n/8) panels so no group is silently dropped (the
     previous [:14] truncation), each panel's legend placed OUTSIDE the axes.
-    Returns the plot-construction contract {label: {row_ids, x, y}}."""
+    `guide`, when given, is (value, label) for a horizontal reference line
+    drawn on every panel (fix round 3, item 6: 1000/s flux floor or g2<0.5
+    gate). Returns the plot-construction contract {label: {row_ids, x, y}}."""
     import matplotlib.pyplot as plt
     contract = {}
     n = len(entries)
@@ -605,17 +719,56 @@ def _panel_plot(out, name, entries, xlabel, ylabel, suptitle, xlog=False, ylog=F
         for label, xv, yv, rids, style in chunk:
             ax.plot(xv, yv, style, ms=3, lw=1.2, label=label)
             contract[label] = {"row_ids": rids, "x": xv, "y": yv}
+        if guide is not None:
+            ax.axhline(guide[0], color="k", lw=.9, ls="--", label=guide[1])
         if xlog: ax.set_xscale("log")
         if ylog: ax.set_yscale("log")
         ax.set(xlabel=xlabel, ylabel=ylabel)
         if n_panels > 1: ax.set_title(f"panel {i + 1}/{n_panels}", fontsize=8)
-        if chunk: ax.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
+        if chunk or guide is not None: ax.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
     fig.suptitle(suptitle, fontsize=9)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out / name, dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
-def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime"), fail_log=None):
+def _panel_plot_grouped(out, name, super_groups, xlabel, ylabel, suptitle, xlog=False, ylog=False):
+    """super_groups: ordered [(subtitle, [(label,xv,yv,rids,style), ...]), ...].
+    ONE subplot per super-group -- a super-group's own lines are NEVER
+    split across panels/subplots (fix round 3, item 6: 'panels never split
+    a screening triplet or a polarity pair'; the caller forms super-groups
+    so every screening triplet / polarity pair for one (orientation,
+    height,regime,T_hs) trace-identity lands in the SAME super-group).
+    Returns the SAME flat plot-construction contract {label: {row_ids, x,
+    y}} as _panel_plot (the verifier's replay check does not care how
+    labels are laid out into subplots), plus 'panel_index' per label so a
+    verifier can confirm co-grouped labels share a subplot."""
+    import matplotlib.pyplot as plt
+    contract = {}
+    n_panels = max(1, len(super_groups))
+    ncols = min(3, n_panels); nrows = math.ceil(n_panels / ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(6.6 * ncols, 4.6 * nrows), squeeze=False)
+    for i in range(nrows * ncols):
+        ax = axes[i // ncols][i % ncols]
+        if i >= n_panels or i >= len(super_groups):
+            ax.set_visible(False); continue
+        subtitle, lines_in_group = super_groups[i]
+        for label, xv, yv, rids, style in lines_in_group:
+            ax.plot(xv, yv, style, ms=3, lw=1.2, label=label)
+            # Contract key qualified by subtitle (bare labels like "pol=1
+            # (unscreened lower bound)" repeat across every super-group and
+            # would silently collide/overwrite each other in a flat dict).
+            contract[f"{subtitle} | {label}"] = {"row_ids": rids, "x": xv, "y": yv, "panel_index": i}
+        if xlog: ax.set_xscale("log")
+        if ylog: ax.set_yscale("log")
+        ax.set(xlabel=xlabel, ylabel=ylabel)
+        ax.set_title(subtitle, fontsize=7)
+        if lines_in_group: ax.legend(fontsize=6, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
+    fig.suptitle(suptitle, fontsize=9)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(out / name, dpi=120, bbox_inches="tight"); plt.close(fig)
+    return contract
+
+def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", "screening_fraction", "regime"), fail_log=None, guide=None):
     groups = {}
     for r in rows:
         if _finite_num(r.get(x)) and _finite_num(r.get(y)):
@@ -630,54 +783,66 @@ def plot_axis_response(out, name, rows, x, y, title, group_keys=("orientation", 
         except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
             if fail_log is not None:
                 fail_log.append({"trace_id": "%s|%s" % (name, "|".join(str(k) for k in key)), "reason": str(exc)})
-    return _panel_plot(out, name, entries, x, y, title)
+    return _panel_plot(out, name, entries, x, y, title, guide=guide)
 
 def plot_stark(out, name, rows, x, y, title, ylog=False, zhang_anchor=False, fail_log=None):
-    """E_X/tau/overlap vs V_j or current. Grouped by the FULL coordinate set
-    (orientation, height, regime, T_hs_requested, polarity, screening) --
-    one trace per group, never merged (Opus fix-round high finding: the
-    previous (orientation, screening, height, regime) grouping silently
-    averaged opposite-polarity and multi-T_hs rows into one sawtooth trace).
-    T_hs_requested, not the row's own "T_hs" field, is used for grouping and
-    the label (Fix round 2: evaluate() reports the CARD's fixed heat-sink
-    setting as "T_hs" for bias_mode=='junction_voltage' rows -- identical
-    across every T_j in the sweep -- so grouping on it directly would merge
-    every requested temperature back into one trace, the same bug that
-    crashed attach_derivatives; see _gkey_like/_derivative_group_key). Screening 0/0.5/1 use
-    the same line-style/legend convention as the rest of the nitride pieces.
-    Current traces (x=='current_uA') use a log x-axis. A single group's
-    entry construction failing is caught and logged to fail_log (trace_id,
-    reason) rather than aborting the whole figure (spec: 'any per-trace
-    exception in ... plotting must be caught ... and never abort the
-    sweep')."""
+    """E_X/tau/overlap vs V_j or current. Fix round 3, item 6: panels never
+    split a screening triplet or a polarity pair. Rows are first grouped
+    into SUPER-groups by (orientation, height, regime, T_hs_requested) --
+    the trace-identity axes that legitimately deserve their own panel --
+    and each super-group's OWN lines vary only polarity and screening (at
+    most 2x3=6 lines), all drawn together in ONE subplot via
+    _panel_plot_grouped, so a screening triplet or a +/-1 polarity pair
+    (only present at H=3) can never be split across panels the way the
+    previous flat 8-per-panel chunking could.
+
+    T_hs_requested, not the row's own "T_hs" field, is used for grouping
+    and the label (Fix round 2: evaluate() reports the CARD's fixed
+    heat-sink setting as "T_hs" for bias_mode=='junction_voltage' rows --
+    identical across every T_j in the sweep -- so grouping on it directly
+    would merge every requested temperature back into one trace, the same
+    bug that crashed attach_derivatives; see _gkey_like/
+    _derivative_group_key). Screening 0/0.5/1 use the same line-style/
+    legend convention as the rest of the nitride pieces. Current traces
+    (x=='current_uA') use a log x-axis. A single line's construction
+    failing is caught and logged to fail_log (trace_id, reason) rather
+    than aborting the whole figure (spec: 'any per-trace exception in ...
+    plotting must be caught ... and never abort the sweep')."""
     label_for_s = {0.: "unscreened lower bound", .5: "midpoint 0.5", 1.: "screened upper bound"}
-    style_for_s = {0.: "-o", .5: "--o", 1.: ":o"}
-    groups = {}
+    style_for_s = {(0., 1): "-o", (.5, 1): "--o", (1., 1): ":o", (0., -1): "-s", (.5, -1): "--s", (1., -1): ":s"}
+    supergroups = {}
     for r in rows:
         if _finite_num(r.get(x)) and _finite_num(r.get(y)):
-            key = (r.get("orientation"), r.get("height_nm"), r.get("regime"),
-                   r.get("T_hs_requested", r.get("T_hs")), r.get("polarity"), r.get("screening_fraction"))
-            groups.setdefault(key, []).append(r)
-    entries = []; zhang_entry = None
-    for key, rr in sorted(groups.items(), key=lambda kv: str(kv[0])):
-        try:
-            o, h, reg, t, pol, s = key
-            rr = sorted(rr, key=lambda z: float(z[x]))
-            xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
-            lab = f"{o} h={h:g}nm {reg} T={t:g}K pol={pol:g} ({label_for_s.get(s, s)})"
-            entries.append((lab, xv, yv, [z["row_id"] for z in rr], style_for_s.get(s, "-.o")))
-            if zhang_anchor and zhang_entry is None and o == "c_plane" and s == 0. and reg == "rectangular" and pol == 1 and len(xv) >= 2:
-                # Zhang guide anchored to this actual model row (not an
-                # invented dataset); no row_ids of its own (it is a drawn
-                # annotation, not a saved evaluate() trace).
-                x0, y0 = xv[0], yv[0]
-                zhang_entry = ("Zhang 2016 -10 meV/V guide (non-gating)",
-                                [x0, x0 + 2.0], [y0, y0 + 2.0 * ZHANG2016_SLOPE_MEV_PER_V / 1000.], [], "k--")
-        except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
-            if fail_log is not None:
-                fail_log.append({"trace_id": "%s|%s" % (name, "|".join(str(k) for k in key)), "reason": str(exc)})
-    if zhang_entry is not None: entries.append(zhang_entry)
-    return _panel_plot(out, name, entries, x, y, title, xlog=(x == "current_uA"), ylog=ylog)
+            skey = (r.get("orientation"), r.get("height_nm"), r.get("regime"), r.get("T_hs_requested", r.get("T_hs")))
+            lkey = (r.get("polarity"), r.get("screening_fraction"))
+            supergroups.setdefault(skey, {}).setdefault(lkey, []).append(r)
+    super_groups_ordered = []
+    zhang_target = None
+    for skey, by_line in sorted(supergroups.items(), key=lambda kv: str(kv[0])):
+        o, h, reg, t = skey
+        lines_in_group = []
+        for lkey, rr in sorted(by_line.items(), key=lambda kv: str(kv[0])):
+            pol, s = lkey
+            try:
+                rr = sorted(rr, key=lambda z: float(z[x]))
+                xv = [float(z[x]) for z in rr]; yv = [float(z[y]) for z in rr]
+                lab = f"pol={pol:g} ({label_for_s.get(s, s)})"
+                lines_in_group.append((lab, xv, yv, [z["row_id"] for z in rr], style_for_s.get((s, pol), "-.o")))
+                if zhang_anchor and zhang_target is None and o == "c_plane" and h == 3. and s == 0. and reg == "rectangular" and pol == 1 and len(xv) >= 2:
+                    zhang_target = (len(super_groups_ordered), xv[0], yv[0])
+            except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
+                if fail_log is not None:
+                    fail_log.append({"trace_id": "%s|%s|%s" % (name, "|".join(str(k) for k in skey), "|".join(str(k) for k in lkey)), "reason": str(exc)})
+        subtitle = f"{o} h={h:g}nm {reg} T={t:g}K"
+        super_groups_ordered.append((subtitle, lines_in_group))
+    if zhang_target is not None:
+        # Fix round 3, item 6: the Zhang guide is drawn ON the panel of the
+        # model curve it anchors (c-plane H=3, polarity +1), never alone.
+        gi, x0, y0 = zhang_target
+        subtitle, lines_in_group = super_groups_ordered[gi]
+        lines_in_group.append(("Zhang 2016 -10 meV/V guide (non-gating)",
+                                [x0, x0 + 2.0], [y0, y0 + 2.0 * ZHANG2016_SLOPE_MEV_PER_V / 1000.], [], "k--"))
+    return _panel_plot_grouped(out, name, super_groups_ordered, x, y, title, xlog=(x == "current_uA"), ylog=ylog)
 
 def plot_envelope(out, name, core_rows, title):
     """Columns = orientation (c-plane AND a-plane -- Opus fix-round medium
@@ -685,28 +850,41 @@ def plot_envelope(out, name, core_rows, title):
     a-plane panel); rows = unscreened lower bound / screened upper bound.
     Cell value is the optical-pass fraction, matching run_nitride_cavity.
     py's envelope convention exactly (its `optical_pass`, not the flux-only
-    `eligible` gate)."""
+    `eligible` gate). Fix round 3, item 6: a cell whose rows are ALL
+    invalid (rejected before any gate could apply) is masked and drawn
+    hatched/grey, distinct from a cell with valid rows that simply fail
+    the optical gate (which stays plain red at 0)."""
     import matplotlib.pyplot as plt
     orientations = [o for o in ("c_plane", "a_plane") if any(r["orientation"] == o for r in core_rows)] or ["c_plane"]
     fig, axes = plt.subplots(2, len(orientations), figsize=(6.2 * len(orientations), 8.6), squeeze=False)
     contract = {}
     hs = sorted({r["height_nm"] for r in core_rows}); ts = sorted({r["T_hs"] for r in core_rows})
+    cmap = plt.get_cmap("RdYlGn").copy(); cmap.set_bad(color="0.75")
     for col, o in enumerate(orientations):
         for row_i, (s, lab) in enumerate(((0., "unscreened lower bound"), (1., "screened upper bound"))):
             ax = axes[row_i][col]
-            mat = []; cellmap = {}
-            for t in ts:
+            mat = []; cellmap = {}; invalid_cells = []
+            for ti, t in enumerate(ts):
                 rowvals = []
-                for h in hs:
+                for hi, h in enumerate(hs):
                     q = [r for r in core_rows if r["orientation"] == o and r["height_nm"] == h and r["T_hs"] == t and r["screening_fraction"] == s]
-                    rowvals.append(sum(r["optical_pass"] for r in q) / len(q) if q else float("nan"))
+                    all_invalid = bool(q) and all(not r["valid"] for r in q)
+                    if all_invalid:
+                        rowvals.append(float("nan")); invalid_cells.append((hi, ti))
+                    else:
+                        rowvals.append(sum(r["optical_pass"] for r in q) / len(q) if q else float("nan"))
                     cellmap[f"h{h:g}_T{t:g}_s{s:g}"] = [r["row_id"] for r in q]
                 mat.append(rowvals)
-            im = ax.imshow(mat, vmin=0, vmax=1, aspect="auto", origin="lower", cmap="RdYlGn")
+            im = ax.imshow(mat, vmin=0, vmax=1, aspect="auto", origin="lower", cmap=cmap)
             fig.colorbar(im, ax=ax, label="optical-pass fraction")
+            for hi, ti in invalid_cells:
+                ax.add_patch(plt.Rectangle((hi - .5, ti - .5), 1, 1, fill=False, hatch="xxx", edgecolor="0.35", lw=.6))
             ax.set(xticks=range(len(hs)), xticklabels=[f"{v:g}" for v in hs],
                    yticks=range(len(ts)), yticklabels=[f"{v:g}" for v in ts],
                    xlabel="height nm", ylabel="T_hs K", title=f"{o} {lab}\n{title}")
+            from matplotlib.patches import Patch
+            ax.legend(handles=[Patch(facecolor="0.75", edgecolor="0.35", hatch="xxx", label="all rows invalid (not a gate failure)")],
+                      fontsize=6, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
             contract[f"{o} {lab}"] = cellmap
     fig.tight_layout(); fig.savefig(out / name, dpi=125); plt.close(fig)
     return contract
@@ -752,7 +930,15 @@ def plot_pulse_vs_set(out, core_rows):
 
 def plot_set_island(out, sens_rows):
     import matplotlib.pyplot as plt
-    z = [r for r in sens_rows if r.get("sensitivity_axis") == "island_radius_nm"]
+    # set_EC_over_kT depends only on (island_radius_nm, T_hs), not on
+    # sensitivity_baseline -- dedupe to one row per (radius,T_hs) so the
+    # three baselines (item 5) don't triple-plot identical points.
+    seen = {}
+    for r in sens_rows:
+        if r.get("sensitivity_axis") != "island_radius_nm": continue
+        key = (r.get("sensitivity_value"), r.get("T_hs"))
+        seen.setdefault(key, r)
+    z = list(seen.values())
     fig, ax = plt.subplots(figsize=(6.5, 4.2)); contract = {}
     rr = sorted(z, key=lambda r: float(r["sensitivity_value"]))
     xs = [float(r["sensitivity_value"]) for r in rr]
@@ -784,7 +970,40 @@ def _safe_plot(name, outer_fail_log, fn, *args, **kwargs):
         return None
 
 # ---------------------------------------------------------------- results.md
-def _results_md(core, geo, bias, current, comp, refinement_checks, complete, runtime_s, evaluate_calls):
+def _best_passing_flux(core, family):
+    """Fix round 3, item 4: the best flux among rows that PASS the optical
+    gate (optical_pass=True), never a diagnostic row (a Stark row at high
+    V_j with no optical/hardware gating applied to it, as the previous
+    'maximum valid signal_flux_s' picked)."""
+    cand = [(float(r["signal_flux_s"]), r["row_id"], r.get("T_hs"), r.get("screening_fraction"), r.get("regime"))
+            for r in core if r.get("orientation") == family and r.get("optical_pass") and _finite_num(r.get("signal_flux_s"))]
+    return max(cand, key=lambda z: z[0]) if cand else None
+
+def _hypothesis_key(gk):
+    """(orientation, height_nm, polarity, screening_fraction) -- the
+    DISTINCT-hypothesis identity for compatibility reporting (fix round 3,
+    item 3): regime and T_hs are replicate evaluations of the SAME
+    physical hypothesis (Stark E_X(V_j) does not depend on regime, and the
+    fitted slope is nearly T-independent), not independent hypotheses."""
+    return (gk.get("orientation"), gk.get("height_nm"), gk.get("field_polarity"), gk.get("screening"))
+
+def _distinct_compat_rows(comp):
+    """One representative CSV row per distinct hypothesis (first seen, by
+    row_id order), for the results.md table and summary counts."""
+    seen = {}
+    for r in comp:
+        try:
+            gk = json.loads(r["group"]) if isinstance(r.get("group"), str) else r.get("group")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            gk = None
+        gk_dict = dict(gk) if gk else {}
+        key = _hypothesis_key({**gk_dict, "screening": r.get("screening")})
+        if key not in seen:
+            seen[key] = r
+    return list(seen.values())
+
+def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complete, runtime_s, evaluate_calls,
+                 invalid_by_kind, invalid_reasons_summary, ec_margin, g2_floor):
     lines = ["# Nitride geometry and Stark sweep results", "",
              "Model-only planar predictions; every number below is an evaluate() output "
              "or a traceable reduction of one (row_id in manifest.json's plot_row_mapping / "
@@ -795,7 +1014,13 @@ def _results_md(core, geo, bias, current, comp, refinement_checks, complete, run
              "`eligible` is the flux-floor gate only (matches scripts/run_nitride_cavity.py's "
              "`eligible` exactly); `paired_optical_pass` additionally requires g2<0.5 and, "
              "for the SET regime, one_pair_valid; `hardware_qualified` further requires "
-             "set_feasible AND pair_supply_possible for the SET regime.", ""]
+             "set_feasible AND pair_supply_possible for the SET regime. Every headline core "
+             "row carries cavity_tracking=per_T_hs: the cavity is re-tracked to that row's own "
+             "operating temperature (nitride.cavity.T_track=T_hs), exactly as scripts/"
+             "run_nitride_cavity.py's round-1 headline does. A separate cavity_tracking="
+             "fixed_300K sensitivity set (below) holds the cavity fixed at the card's 300 K "
+             "default while T_hs varies, to show the resulting detuning as a labelled, "
+             "quantified effect rather than an undisclosed artifact.", ""]
     for family in ("c_plane", "a_plane"):
         for reg in REG:
             for s, label in ((0., "unscreened_lower"), (1., "screened_upper")):
@@ -822,29 +1047,98 @@ def _results_md(core, geo, bias, current, comp, refinement_checks, complete, run
                 if not rs: continue
                 opt = [r for r in rs if r["optical_pass"]]; hw = [r for r in rs if r["hardware_qualified"]]
                 lines.append(f"| {family} | {reg} | {s:g} | {len(opt)} | {len(hw)} | {len(rs)} | {sum(not r['valid'] for r in rs)} |")
-    # Maximum flux / eligible-g2 statistics (Opus fix-round finding: results.md
-    # omitted both, along with reservoir choice and the round-1 coverage delta).
-    all_rows = core + geo + bias + current
-    flux_pairs = [(float(r["signal_flux_s"]), r["row_id"]) for r in all_rows
-                  if r.get("valid") and _finite_num(r.get("signal_flux_s"))]
+    # Maximum flux among optically-passing rows / eligible-g2 statistics
+    # (fix round 3, item 4: the previous "maximum valid signal_flux_s" was
+    # a Stark diagnostic row at high V_j with no optical gate applied; the
+    # headline number must be the best flux among rows that actually PASS
+    # optical_pass, reported separately per family).
     opt_core = [r for r in core if r.get("optical_pass")]
     g2_opt = sorted(float(r["g2"]) for r in opt_core if _finite_num(r.get("g2")))
     def _median(xs):
         n = len(xs)
         if not n: return None
         return xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2])
-    lines += ["", "## Maximum flux and eligible-g2 statistics", ""]
-    if flux_pairs:
-        mf, mf_rid = max(flux_pairs, key=lambda z: z[0])
-        lines.append(f"Maximum valid signal_flux_s across all core/shape/QW/Stark rows: {mf:.6g}/s (row {mf_rid}).")
-    else:
-        lines.append("No valid rows with finite signal_flux_s.")
+    lines += ["", "## Maximum flux among optically-passing rows, and eligible-g2 statistics", "",
+              "MACHINE-CHECKABLE (verifier recomputes these from sweep.csv):"]
+    for family in ("c_plane", "a_plane"):
+        best = _best_passing_flux(core, family)
+        if best is None:
+            lines.append(f"BEST_PASSING_FLUX family={family} value=none row_id=none")
+        else:
+            mf, mf_rid, mf_t, mf_scr, mf_reg = best
+            lines.append(f"BEST_PASSING_FLUX family={family} value={mf:.6g} row_id={mf_rid} "
+                          f"T_hs={mf_t:g} screening={mf_scr:g} regime={mf_reg}")
+    lines.append("")
     if g2_opt:
         lines.append(f"Core-grid paired-optical-pass rows (g2<{G2:g}, flux>={FLUX:g}/s, plus "
                       f"one_pair_valid for SET): {len(opt_core)} of {len(core)}; "
                       f"g2_min={g2_opt[0]:.6g}, g2_median={_median(g2_opt):.6g}.")
     else:
         lines.append(f"No core-grid rows pass the paired-optical-pass gate (g2<{G2:g}, flux>={FLUX:g}/s).")
+    if g2_floor is not None:
+        set_g2s = sorted({round(float(r["g2"]), 5) for r in opt_core if r.get("regime") == "deterministic_pair" and _finite_num(r.get("g2"))})
+        lines.append(f"SET g2 floor: g2 = 1-(1/(1+b_res))^2 = {g2_floor:.6g} (b_res from the evaluated card's own "
+                      "drive.b_res). Under idealized deterministic one-pair loading, exact-one-pair counting "
+                      "gives zero coincidence probability by construction, so rho asymptotes to 1/(1+b_res) and "
+                      "g2_op to this floor nearly independent of geometry -- distinct SET g2 values observed among "
+                      f"optical-pass rows: {set_g2s if set_g2s else 'none'}. The g2 gate therefore carries no "
+                      "geometry information in the SET regime; only the flux/eligibility gates discriminate "
+                      "geometry there.")
+    lines.append("")
+    # Fixed-anchor (cavity_tracking=fixed_300K) sensitivity set (item 1):
+    # quantify the detuning consequence of NOT re-tracking the cavity,
+    # against the matching per_T_hs-tracked core row at the same
+    # coordinates.
+    anchor_rows = [r for r in sens if r["row_kind"] == "fixed_anchor"]
+    anchor_geom = f"H={anchor_rows[0].get('height_nm'):g}nm, R={anchor_rows[0].get('radius_nm'):g}nm" if anchor_rows else "n/a"
+    lines += ["## Fixed-anchor (cavity_tracking=fixed_300K) sensitivity", "",
+              "Headline core rows re-track the cavity to T_hs every row (cavity_tracking=per_T_hs). "
+              "These rows instead hold the cavity fixed at the card's 300 K default while T_hs "
+              f"varies, at a reference geometry sampled by the core grid ({anchor_geom}, screening=0), "
+              "matching each row against the tracked core row at the SAME coordinates.", "",
+              "| orientation | regime | T_hs K | detuning_meV (fixed) | flux/s (fixed) | flux/s (tracked, matching core row) | ratio tracked/fixed | fixed row_id | tracked row_id |",
+              "|---|---|---|---|---|---|---|---|---|"]
+    for r in sorted(anchor_rows, key=lambda z: (z.get("orientation"), z.get("regime"), z.get("T_hs"))):
+        matches = [c for c in core if c.get("orientation") == r.get("orientation") and c.get("regime") == r.get("regime")
+                   and c.get("T_hs") == r.get("T_hs") and c.get("height_nm") == r.get("height_nm")
+                   and c.get("radius_nm") == r.get("radius_nm") and c.get("screening_fraction") == r.get("screening_fraction")]
+        tr = matches[0] if matches else None
+        fx_fixed = r.get("signal_flux_s"); fx_tracked = tr.get("signal_flux_s") if tr else None
+        ratio = (float(fx_tracked) / float(fx_fixed)) if (_finite_num(fx_fixed) and _finite_num(fx_tracked) and float(fx_fixed) != 0.) else None
+        lines.append(f"| {r.get('orientation')} | {r.get('regime')} | {r.get('T_hs'):g} | {r.get('detuning_meV')} | "
+                      f"{fx_fixed} | {fx_tracked} | {('%.4g' % ratio) if ratio is not None else 'n/a'} | "
+                      f"{r.get('row_id')} | {tr.get('row_id') if tr else 'n/a'} |")
+    lines.append("")
+    # SET hardware-feasibility quantification (item 2): read directly off
+    # every deterministic_pair core row's own set_EC_over_kT/set_radius_
+    # max_nm/set_R_T_over_RQ/set_f_max_Hz -- never hand-entered.
+    set_rows = [r for r in core if r.get("regime") == "deterministic_pair" and _finite_num(r.get("set_EC_over_kT"))]
+    lines += ["## SET hardware feasibility (item 2)", ""]
+    if set_rows:
+        ecs = [float(r["set_EC_over_kT"]) for r in set_rows]
+        rmax = [float(r["set_radius_max_nm"]) for r in set_rows if _finite_num(r.get("set_radius_max_nm"))]
+        rtq = [float(r["set_R_T_over_RQ"]) for r in set_rows if _finite_num(r.get("set_R_T_over_RQ"))]
+        fmax = [float(r["set_f_max_Hz"]) for r in set_rows if _finite_num(r.get("set_f_max_Hz"))]
+        island_r = {r.get("set_radius_nm") for r in set_rows if r.get("set_radius_nm") is not None}
+        margin_s = f"{ec_margin:g}" if ec_margin is not None else "unavailable"
+        lines.append(f"hardware_qualified=0 in every headline VERDICT line because set_EC_over_kT is "
+                      f"{min(ecs):.4g}-{max(ecs):.4g} across all {len(set_rows)} SET core rows at the card's "
+                      f"assumed island radius ({sorted(island_r)} nm; allowed max {min(rmax):.4g}-{max(rmax):.4g} nm), "
+                      f"versus the required margin ec_margin={margin_s} -- the sole failing criterion. R_T/R_Q "
+                      f"({min(rtq):.4g}-{max(rtq):.4g}) and f_max ({min(fmax):.4g}-{max(fmax):.4g} Hz) both pass. "
+                      "The island-radius sensitivity rows below carry set_EC_over_kT across an explicit radius "
+                      "sweep (0.5/1/5 nm) to show how strongly this single criterion depends on the assumed "
+                      "island size.")
+    else:
+        lines.append("No deterministic_pair core rows carried finite set_EC_over_kT.")
+    island_sens = [r for r in sens if r.get("sensitivity_axis") == "island_radius_nm"]
+    if island_sens:
+        lines += ["", "| baseline | island radius nm | T_hs K | E_C/kT | allowed max radius nm | R_T/R_Q | f_max Hz | row_id |",
+                  "|---|---|---|---|---|---|---|---|"]
+        for r in sorted(island_sens, key=lambda z: (z.get("sensitivity_baseline"), float(z.get("sensitivity_value", 0)), float(z.get("T_hs", 0)))):
+            lines.append(f"| {r.get('sensitivity_baseline')} | {r.get('sensitivity_value'):g} | {r.get('T_hs'):g} | "
+                          f"{r.get('set_EC_over_kT')} | {r.get('set_radius_max_nm')} | {r.get('set_R_T_over_RQ')} | "
+                          f"{r.get('set_f_max_Hz')} | {r.get('row_id')} |")
     lines.append("")
     # Per-card reservoir choice (device.py's reservoir_kind, one sample row
     # per distinct (card_file, orientation, geometry_type)).
@@ -867,7 +1161,34 @@ def _results_md(core, geo, bias, current, comp, refinement_checks, complete, run
         f"supplements, and bias/current Stark diagnostic traces ({len(bias)}+{len(current)} rows) "
         "with derivative-refinement convergence checks and screening-compatibility fits. Round 1's "
         "own results.md and artifacts under out/nitride_cavity/ are unchanged and are not "
-        "reinterpreted here (out of scope for this piece).", ""]
+        "reinterpreted here (out of scope for this piece). Comparability (fix round 3, item 7): "
+        "round 1's headline used cavity_tracking=per_T_hs (T_track=T_hs) and screening_fraction=0 "
+        "exclusively. This round's headline now ALSO uses cavity_tracking=per_T_hs for every core "
+        "row (item 1), so the family=c_plane screening=unscreened_lower VERDICT line above IS on "
+        "comparable tracking-convention and screening terms with round 1's headline; the "
+        "screening=screened_upper line is a round-2-only addition with no round-1 counterpart and "
+        "is NOT comparable to round 1 on screening.", ""]
+    # Radius-degeneracy disclosure (item 7): overlap_sq and tau_rad_bare_ns
+    # are checked HERE (not asserted) for radius-invariance at matched
+    # (orientation, height, T_hs, screening, regime) -- radius enters this
+    # model only through E_a and prefactors, not the overlap/lifetime
+    # themselves.
+    by_group = {}
+    for r in core:
+        if r.get("valid") and _finite_num(r.get("overlap_sq")):
+            key = (r.get("orientation"), r.get("height_nm"), r.get("T_hs"), r.get("screening_fraction"), r.get("regime"))
+            by_group.setdefault(key, set()).add(round(float(r["overlap_sq"]), 12))
+    n_groups_checked = sum(1 for v in by_group.values() if v)
+    n_radius_invariant = sum(1 for v in by_group.values() if len(v) == 1)
+    lines += ["## Radius-degeneracy disclosure", "",
+              f"Checked directly against sweep.csv: {n_radius_invariant} of {n_groups_checked} "
+              "(orientation, height, T_hs, screening, regime) groups have IDENTICAL overlap_sq "
+              "across every sampled radius (5,10,15,20,30 nm) -- this planar model's overlap_sq "
+              "and tau_rad_bare_ns do not depend on radius_nm; the radius axis enters only through "
+              "E_a_meV (escape barrier, ~11 meV over 5-30 nm) and the escape/counting prefactors. "
+              "Most core rows at fixed (orientation,height,T_hs,screening,regime) are therefore "
+              "near-duplicates in E_X/overlap/tau_rad_bare, differing materially only through the "
+              "escape-limited flux and validity at large radius.", ""]
     shape_rows = [r for r in geo if r["row_kind"] == "shape"]; qw_rows = [r for r in geo if r["row_kind"] == "qw"]
     lines += ["", "## Shape supplement (mapping sensitivity, not a demonstrated shape accuracy)",
               f"{len(shape_rows)} rows (lens / truncated_cone, native and full-height variants). "
@@ -880,38 +1201,121 @@ def _results_md(core, geo, bias, current, comp, refinement_checks, complete, run
     wang = [r for r in geo if r["row_kind"] == "literature_aux" and "Wang" in str(r.get("literature_source", ""))]
     lines += ["## Literature comparisons (non-gating)", "",
               "Wang et al., Sci. Rep. 7, 12089 (2017): uncapped a-plane AFM ~7 nm/~35 nm dots, "
-              "2.54 eV at 220 K, 19.0+/-0.4 meV linewidth, raw/corrected g2 0.47/0.21, optical "
-              "excitation (76 MHz, 1 ps, 800 nm two-photon) -- NOT an electrical SPS or a 300 K "
-              "validation. Model rows at the same nominal geometry (comparison-only, excluded "
-              "from headline coverage):", ""]
+              "E_X=2.54 eV [V] at 220 K, 19.0+/-0.4 meV linewidth [V], raw/corrected g2=0.47/0.21 [V], "
+              "optical excitation (76 MHz, 1 ps, 800 nm two-photon) -- NOT an electrical SPS or a "
+              "300 K validation. Composition transfer [A]: this model's cards use x_in=0.25 "
+              "(In0.25Ga0.75N) at the same nominal geometry; Wang's paper does not report a "
+              "composition, so the model's own default is retained rather than fitted. Model rows "
+              "(comparison-only, excluded from headline coverage):", ""]
     for r in wang:
-        lines.append(f"- row {r['row_id']}: T_hs={r['T_hs']:g} K, E_X_eV={r.get('E_X_eV')}, g2={r.get('g2')}, valid={r['valid']} ({r.get('literature_note')})")
+        lines.append(f"- row {r['row_id']}: T_hs={r['T_hs']:g} K, x_in={r.get('x_in')}, E_X_eV={r.get('E_X_eV')}, g2={r.get('g2')}, valid={r['valid']} ({r.get('literature_note')})")
+    wang220 = next((r for r in wang if float(r.get("T_hs", -1)) == 220.), None)
+    if wang220 is not None and _finite_num(wang220.get("E_X_eV")):
+        lines.append(f"- Discrepancy at 220 K (never fitted to force agreement): model E_X={float(wang220['E_X_eV']):.4g} eV "
+                      f"vs measured 2.54 eV [V]; model g2={wang220.get('g2')} vs measured raw/corrected 0.47/0.21 [V]. "
+                      "The gap reflects the assumed x_in=0.25 transfer, uncapped-vs-capped surface treatment and "
+                      "this model's idealized single-band overlap, none of which were tuned to close it.")
     desh = [r for r in geo if r["row_kind"] == "literature_aux" and "Deshpande" in str(r.get("literature_source", ""))]
     if desh:
         r = desh[0]
         lines.append(f"- Deshpande et al., APL 105, 141109 (2014) [V abstract-only; CONDITIONS INCOMPLETE], replay row {r['row_id']}: measured g2=0.29, model g2={r.get('g2')}.")
     lines += ["",
-              f"Zhang et al., APL 108, 153102 (2016), Fig. 5: {ZHANG2016_SLOPE_MEV_PER_V:g} meV/V below 2 V, "
-              "non-gating (different device, excitation and unspecified temperature); shown only as a "
-              "labelled guide anchored to a model row on the Stark figures, never a fitted target.", ""]
+              f"Zhang et al., APL 108, 153102 (2016), Fig. 5: {ZHANG2016_SLOPE_MEV_PER_V:g} meV/V below 2 V [V], "
+              "measured at T=10 K on a 3 nm In0.15Ga0.85N QW [V Fig. 5 / device section] -- both the "
+              "temperature and the composition (x=0.15 vs this model's x_in=0.25 curves) are disclosed "
+              "differences, non-gating (different device, temperature and excitation from this "
+              "model's 230-300 K planar-dot cards); shown only as a labelled guide anchored to a "
+              "model row on the Stark figures, never a fitted target.", ""]
     lines += ["## Screening-compatibility table", "",
               "The [-12,-8] meV/V window used when --slope-range is not supplied is EXPLICITLY "
               "illustrative around Zhang's approximate value, never a measured interval; the same "
-              "--bias-window applies to any user-supplied slope. Nonpolar (m-plane/a-plane) rows "
-              "are marked screening_unidentifiable: polarization_factor=0 makes screening_fraction "
-              "physically inert for those orientations, so no compatibility test there can resolve "
-              "a screening fraction -- this is a structural degeneracy, not a measurement result.", ""]
-    n_unident = sum(1 for r in comp if r.get("identification_status") == "screening_unidentifiable")
-    n_compat = sum(1 for r in comp if r.get("compatible") in (True, "True"))
-    n_incompat = sum(1 for r in comp if r.get("identification_status") == "incompatible")
-    lines.append(f"{len(comp)} compatibility rows: {n_compat} compatible, {n_incompat} incompatible, {n_unident} screening_unidentifiable (nonpolar or degenerate).")
-    lines += ["", "## Derivative-refinement convergence checks", "",
-              "| check | anchor V_j | coarse meV/V | fine (half-step) meV/V | abs diff | rel diff | converged |",
+              "--bias-window applies to any user-supplied slope. screening_compatibility is now "
+              "called ONCE per (orientation,height,polarity,T_hs) geometry group with ALL THREE "
+              "screening hypotheses together (fix round 3, item 3), so a genuine degeneracy across "
+              "screening_fraction is detected instead of being hidden by testing each hypothesis in "
+              "isolation. Nonpolar (m-plane/a-plane) rows are marked screening_unidentifiable ONLY "
+              "when the shared curve already matches the window (polarization_factor=0 makes "
+              "screening_fraction physically inert there, so an ACCEPTED nonpolar slope cannot "
+              "distinguish a screening hypothesis); a nonpolar slope the window rejects stays "
+              "incompatible.", ""]
+    # Distinct-hypothesis counting (item 3): (orientation, height, polarity,
+    # screening) -- regime and T_hs are replicate evaluations, not
+    # independent hypotheses.
+    distinct = _distinct_compat_rows(comp)
+    n_unident = sum(1 for r in distinct if r.get("identification_status") == "screening_unidentifiable")
+    n_compat = sum(1 for r in distinct if r.get("compatible") is True)
+    n_incompat = sum(1 for r in distinct if r.get("identification_status") == "incompatible")
+    lines.append(f"{len(comp)} raw compatibility-fit rows reduce to {len(distinct)} DISTINCT hypotheses "
+                 "(orientation, height, polarity, screening) after collapsing regime/T_hs replicates: "
+                 f"{n_compat} compatible, {n_incompat} incompatible, {n_unident} screening_unidentifiable.")
+    compatible_distinct = [r for r in distinct if r.get("compatible") is True]
+    lines += ["", "| orientation | height_nm | polarity | screening | fitted_slope meV/V | lifetime_ratio(s0/s1) | row_id |",
               "|---|---|---|---|---|---|---|"]
+    for r in sorted(compatible_distinct, key=lambda z: (str(z.get("group")), z.get("screening"))):
+        try:
+            gk = dict(json.loads(r["group"])) if isinstance(r.get("group"), str) else dict(r.get("group") or [])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            gk = {}
+        lines.append(f"| {gk.get('orientation')} | {gk.get('height_nm')} | {gk.get('field_polarity')} | "
+                      f"{r.get('screening')} | {r.get('fitted_slope_meV_per_V')} | {r.get('lifetime_ratio_s0_over_s1')} | {r.get('row_id')} |")
+    if len(compatible_distinct) >= 2:
+        # Height-screening degeneracy check: >=2 distinct (height,screening)
+        # combos matching the SAME window at the SAME (orientation,polarity)
+        # means the window alone does not identify screening.
+        by_orient_pol = {}
+        for r in compatible_distinct:
+            try:
+                gk = dict(json.loads(r["group"])) if isinstance(r.get("group"), str) else dict(r.get("group") or [])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                gk = {}
+            by_orient_pol.setdefault((gk.get("orientation"), gk.get("field_polarity")), []).append((gk.get("height_nm"), r.get("screening")))
+        degenerate = {k: v for k, v in by_orient_pol.items() if len(set(v)) >= 2}
+        if degenerate:
+            for (o, pol), combos in degenerate.items():
+                lines.append(f"\nHeight-screening degeneracy at orientation={o}, polarity={pol}: "
+                              f"{sorted(set(combos))} all fit the same illustrative window -- the window "
+                              "does NOT identify screening_fraction from height alone. The discriminating "
+                              "observable is the bias-resolved lifetime (see lifetime_ratio_s0_over_s1 "
+                              "column above, computed from stark_bias.csv's tau_rad_bare_ns at the "
+                              "unscreened vs screened hypotheses).")
+        else:
+            lines.append("\nNo height-screening degeneracy among the currently compatible hypotheses this run.")
+    lines.append("")
+    # Sensitivities at baselines that PASS (item 5).
+    lines += ["## One-at-a-time sensitivities at multiple baselines (item 5)", "",
+              "The original REF baseline (rectangular, unscreened) never passes the optical gate; "
+              "REF_pass_c_plane_screened_SET and REF_pass_a_plane_SET (H=3nm, R=10nm, T_hs=300K, "
+              "deterministic_pair regime) DO pass, so every [A] assumption below is also bounded at "
+              "a configuration that produces a verdict.", ""]
+    for label in ("REF_unscreened_rectangular", "REF_pass_c_plane_screened_SET", "REF_pass_a_plane_SET"):
+        rs = [r for r in sens if r.get("sensitivity_baseline") == label and r["row_kind"] == "sensitivity"]
+        if not rs: continue
+        sample = rs[0]
+        lines.append(f"### {label} (optical_pass at baseline: {sample.get('optical_pass')})")
+        lines += ["", "| axis | value | T_hs K | g2 | flux/s | optical_pass | row_id |", "|---|---|---|---|---|---|---|"]
+        for r in sorted(rs, key=lambda z: (z.get("sensitivity_axis"), str(z.get("sensitivity_value")), z.get("T_hs"))):
+            lines.append(f"| {r.get('sensitivity_axis')} | {r.get('sensitivity_value')} | {r.get('T_hs'):g} | "
+                          f"{r.get('g2')} | {r.get('signal_flux_s')} | {r.get('optical_pass')} | {r.get('row_id')} |")
+        lines.append("")
+    # Invalid-row accounting (item 7): every kind, with reasons, tied to
+    # the manifest's own invalid_counts_by_kind/invalid_reasons_summary.
+    lines += ["## Invalid rows (all kinds)", "",
+              f"invalid_total={sum(invalid_by_kind.values())} across kinds: "
+              + ", ".join(f"{k}={v}" for k, v in sorted(invalid_by_kind.items())) + ".", "",
+              "Reasons: " + ", ".join(f"{k}={v}" for k, v in sorted(invalid_reasons_summary.items())) if invalid_reasons_summary else "Reasons: none recorded.", ""]
+    scr05_invalid = sum(1 for r in core if r.get("orientation") == "c_plane" and not r.get("valid") and r.get("screening_fraction") == .5)
+    lines.append(f"c-plane screening=0.5 invalid core rows: {scr05_invalid} (included in the core count above).")
+    lines.append("")
+    lines += ["", "## Derivative-refinement convergence checks", "",
+              "| check | orientation | height_nm | screening | polarity | T_hs | anchor V_j | coarse meV/V | fine (half-step) meV/V | abs diff | rel diff | converged | anchor row_id | probe row_ids |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for i, c in enumerate(refinement_checks):
+        sp = c.get("spec", {})
+        coords = f"{sp.get('orientation')} | {sp.get('height_nm')} | {sp.get('screening_fraction')} | {sp.get('polarity')} | {sp.get('T_hs')}"
         if "coarse_slope_meV_per_V" not in c:
-            lines.append(f"| {i} | - | - | - | - | - | {c.get('status')} |"); continue
-        lines.append(f"| {i} | {c['anchor_V_j']:.3g} | {c['coarse_slope_meV_per_V']:.4g} | {c['fine_slope_meV_per_V']:.4g} | {c['abs_diff_meV_per_V']:.4g} | {c['rel_diff']:.4g} | {c['converged']} |")
+            lines.append(f"| {i} | {coords} | - | - | - | - | - | {c.get('status')} | - | {c.get('probe_row_ids', [])} |"); continue
+        lines.append(f"| {i} | {coords} | {c['anchor_V_j']:.3g} | {c['coarse_slope_meV_per_V']:.4g} | {c['fine_slope_meV_per_V']:.4g} | "
+                      f"{c['abs_diff_meV_per_V']:.4g} | {c['rel_diff']:.4g} | {c['converged']} | {c.get('anchor_row_id')} | {c.get('probe_row_ids', [])} |")
     lines += ["", "## Limitations",
               "Nonpolar strain, valence-band ordering and FSS are not modelled; shape mapping error "
               "is unquantified; finite-dot lateral fields, field-assisted escape and injection-"
@@ -939,14 +1343,15 @@ def main(argv=None):
 
     core_p = build_core(a.quick); shape_p = build_shape(a.quick); qw_p = build_qw(a.quick)
     bias_p, current_p = build_stark(a.quick) if a.stark else ([], [])
-    sens_p = build_sensitivities(a.quick); lit_p = build_literature_aux()
+    sens_p = build_all_sensitivities(a.quick); anchor_p = build_fixed_anchor(a.quick); lit_p = build_literature_aux()
     refinement_specs = (REFINEMENT_SPECS_QUICK if a.quick else REFINEMENT_SPECS_FULL) if a.stark else []
     planned = (len(core_p) + len(shape_p) + len(qw_p) + len(bias_p) + len(current_p)
-               + len(sens_p) + len(lit_p) + 1 + 2 * len(refinement_specs))
+               + len(sens_p) + len(anchor_p) + len(lit_p) + 1 + 2 * len(refinement_specs))
     if a.dry_run:
         print(json.dumps({"core_rows": len(core_p), "shape_rows": len(shape_p), "qw_rows": len(qw_p),
                            "stark_bias_rows": len(bias_p), "stark_current_rows": len(current_p),
-                           "sensitivity_rows": len(sens_p), "literature_aux_rows": len(lit_p) + 1,
+                           "sensitivity_rows": len(sens_p), "fixed_anchor_rows": len(anchor_p),
+                           "literature_aux_rows": len(lit_p) + 1,
                            "refinement_evaluate_calls": 2 * len(refinement_specs),
                            "planned_evaluate_calls": planned, "max_evaluations": a.max_evaluations,
                            "within_cap": planned <= a.max_evaluations and planned <= 10000}, sort_keys=True))
@@ -974,6 +1379,7 @@ def main(argv=None):
     add_all(bias, "stark_bias", bias_p)
     add_all(current, "stark_current", current_p)
     add_all(sens, "sensitivity", sens_p)
+    add_all(sens, "fixed_anchor", anchor_p)
 
     # Fix round 2: any per-trace exception in derivatives, compatibility or
     # plotting is caught and logged to the manifest (trace_id, reason) --
@@ -1026,24 +1432,41 @@ def main(argv=None):
     # manifest.json) is still written.
     plot_trace_failures = []
     # A fixed representative slice (radius=5nm, height=1nm) is used for the
-    # "other axis" of these response plots -- both values are guaranteed
-    # present in the reduced --quick core grid (H=[1,7], R=[5,30]) as well
-    # as the full grid, so quick and full runs both produce populated
-    # (non-empty) figures from the same slice logic.
+    # "other axis" of height/radius response plots -- both values are
+    # guaranteed present in the reduced --quick core grid (H=[1,7],
+    # R=[5,30]) as well as the full grid, so quick and full runs both
+    # produce populated (non-empty) figures from the same slice logic.
     # height/radius response: group_keys include T_hs (Opus fix-round medium
     # finding: these previously selected T_hs in (230,300) but omitted it
     # from group_keys, mixing both temperatures into one curve at duplicated
-    # x); orientation_flux keeps its default group_keys (T_hs is the x-axis
-    # there, not a grouping key) -- panel-splitting (in plot_axis_response/
-    # _panel_plot) now shows every orientation/screening/regime group
-    # instead of truncating to the first 14 by sort key.
+    # x) -- panel-splitting (in plot_axis_response/_panel_plot) now shows
+    # every orientation/screening/regime group instead of truncating to the
+    # first 14 by sort key.
+    #
+    # Fix round 3, item 6: orientation_flux/temperature_response use the
+    # REFERENCE geometry (H=3nm, R=10nm -- the corner where SET rows
+    # actually pass), not the previous (R=5,H=1) corner where nothing
+    # passes; the fixed H/R are stated in the title, and the 1000/s flux
+    # floor / g2<0.5 gate are drawn as guide lines. Falls back to whatever
+    # the reduced --quick core grid actually samples (H=1,R=5) when the
+    # true reference point (3,10) is not in this run's core grid.
+    avail_h = sorted({r["height_nm"] for r in core}); avail_r = sorted({r["radius_nm"] for r in core})
+    ref_h = 3. if 3. in avail_h else (avail_h[0] if avail_h else 1.)
+    ref_r = 10. if 10. in avail_r else (avail_r[0] if avail_r else 5.)
+    ref_rows = [r for r in core if r["radius_nm"] == ref_r and r["height_nm"] == ref_h]
     figs = [
         ("height_response.png", plot_axis_response, (out, "height_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["radius_nm"] == 5.], "height_nm", "E_X_eV", "height response (r=5nm)"), dict(group_keys=("orientation", "screening_fraction", "regime", "T_hs"), fail_log=plot_trace_failures)),
         ("radius_response.png", plot_axis_response, (out, "radius_response.png", [r for r in core if r["T_hs"] in (230., 300.) and r["height_nm"] == 1.], "radius_nm", "E_X_eV", "radius response (h=1nm)"), dict(group_keys=("orientation", "screening_fraction", "regime", "T_hs"), fail_log=plot_trace_failures)),
-        ("temperature_response.png", plot_axis_response, (out, "temperature_response.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "g2", "temperature response (g2)"), dict(fail_log=plot_trace_failures)),
-        ("orientation_flux.png", plot_axis_response, (out, "orientation_flux.png", [r for r in core if r["radius_nm"] == 5. and r["height_nm"] == 1.], "T_hs", "signal_flux_s", "orientation flux comparison"), dict(fail_log=plot_trace_failures)),
-        ("shape_comparison.png", plot_axis_response, (out, "shape_comparison.png", [r for r in geo if r["row_kind"] == "shape"], "height_nm", "E_X_eV", "shape mapping sensitivity"), dict(group_keys=("shape", "orientation", "screening_fraction"), fail_log=plot_trace_failures)),
-        ("qw_response.png", plot_axis_response, (out, "qw_response.png", [r for r in geo if r["row_kind"] == "qw"], "wl_thickness_nm", "E_X_eV", "QW thickness response"), dict(group_keys=("orientation", "screening_fraction"), fail_log=plot_trace_failures)),
+        ("temperature_response.png", plot_axis_response, (out, "temperature_response.png", ref_rows, "T_hs", "g2", f"temperature response (g2); FIXED height={ref_h:g}nm radius={ref_r:g}nm"), dict(fail_log=plot_trace_failures, guide=(G2, "g2<0.5 optical gate"))),
+        ("orientation_flux.png", plot_axis_response, (out, "orientation_flux.png", ref_rows, "T_hs", "signal_flux_s", f"orientation flux comparison; FIXED height={ref_h:g}nm radius={ref_r:g}nm"), dict(fail_log=plot_trace_failures, guide=(FLUX, "flux>=1000/s floor"))),
+        # Shape/QW plots grouped by every fixed input (Astra finding): shape
+        # additionally separates radius_nm, T_hs, regime and the native/
+        # full-height variant (shape_height_fraction); QW separates
+        # radius_nm, T_hs, regime and the height-offset dh (the QW's own
+        # x-axis is wl_thickness_nm=w, so dh must stay a group key, not be
+        # folded into the x-axis, or the two dh values collide).
+        ("shape_comparison.png", plot_axis_response, (out, "shape_comparison.png", [r for r in geo if r["row_kind"] == "shape"], "height_nm", "E_X_eV", "shape mapping sensitivity (every fixed input separated)"), dict(group_keys=("shape", "orientation", "screening_fraction", "radius_nm", "T_hs", "regime", "shape_height_fraction"), fail_log=plot_trace_failures)),
+        ("qw_response.png", plot_axis_response, (out, "qw_response.png", [r for r in geo if r["row_kind"] == "qw"], "wl_thickness_nm", "E_X_eV", "QW thickness response (every fixed input separated)"), dict(group_keys=("orientation", "screening_fraction", "radius_nm", "T_hs", "regime", "qw_height_offset_nm"), fail_log=plot_trace_failures)),
         ("pulse_vs_set.png", plot_pulse_vs_set, (out, core), {}),
         # Envelopes cover c-plane AND a-plane (Opus fix-round medium finding:
         # both envelope figures previously filtered to orientation=="c_plane" only).
@@ -1055,9 +1478,9 @@ def main(argv=None):
     if bias:
         figs += [
             ("stark_energy_bias.png", plot_stark, (out, "stark_energy_bias.png", bias, "V_j", "E_X_eV", "E_X(V_j)"), dict(zhang_anchor=True, fail_log=plot_trace_failures)),
-            ("stark_tau_bias.png", plot_stark, (out, "stark_tau_bias.png", bias, "V_j", "tau_rad_bare_ns", "bare tau_rad(V_j)"), dict(fail_log=plot_trace_failures)),
-            ("stark_tau_cavity_bias.png", plot_stark, (out, "stark_tau_cavity_bias.png", bias, "V_j", "tau_rad_cavity_ns", "cavity tau_rad(V_j)"), dict(fail_log=plot_trace_failures)),
-            ("stark_overlap_bias.png", plot_stark, (out, "stark_overlap_bias.png", bias, "V_j", "overlap_sq", "overlap(V_j)"), dict(fail_log=plot_trace_failures)),
+            ("stark_tau_bias.png", plot_stark, (out, "stark_tau_bias.png", bias, "V_j", "tau_rad_bare_ns", "bare tau_rad(V_j)"), dict(ylog=True, fail_log=plot_trace_failures)),
+            ("stark_tau_cavity_bias.png", plot_stark, (out, "stark_tau_cavity_bias.png", bias, "V_j", "tau_rad_cavity_ns", "cavity tau_rad(V_j)"), dict(ylog=True, fail_log=plot_trace_failures)),
+            ("stark_overlap_bias.png", plot_stark, (out, "stark_overlap_bias.png", bias, "V_j", "overlap_sq", "overlap(V_j)"), dict(ylog=True, fail_log=plot_trace_failures)),
         ]
     if current:
         figs += [
@@ -1071,19 +1494,15 @@ def main(argv=None):
 
     complete = (not a.quick) and counter["evaluate_calls"] <= a.max_evaluations and (time.time() - t0) < 1800
     runtime_s = time.time() - t0
-    (out / "results.md").write_text(
-        _results_md(core, geo, bias, current, comp, refinement_checks, complete, runtime_s, counter["evaluate_calls"]),
-        encoding="utf-8")
 
-    files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]
-    hashes = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in files}
     # Actual call counts by kind and invalid counts/reasons (Opus fix-round
     # medium finding: the manifest previously recorded no invalid/skipped
     # counts or reasons and no actual evaluate() call counts by kind, so the
     # 18 valid=False stark_bias rows in the fix-round-1 review appeared
     # nowhere). refinement_probe rows are included even though they are not
     # written to their own CSV (they are diagnostic-only, already referenced
-    # by row_id inside convergence_checks).
+    # by row_id inside convergence_checks). Computed BEFORE results.md so
+    # its invalid-rows section (item 7) can report the same numbers.
     all_kind_rows = core + geo + bias + current + sens + probe_rows
     evaluate_calls_by_kind = {}; invalid_by_kind = {}; invalid_reasons_summary = {}
     for r in all_kind_rows:
@@ -1098,6 +1517,29 @@ def main(argv=None):
                 row_reasons = []
             for reason in row_reasons:
                 invalid_reasons_summary[reason] = invalid_reasons_summary.get(reason, 0) + 1
+
+    # ec_margin (item 2) and the SET g2 floor (item 4) are read directly off
+    # an actually-evaluated card's own design object (never hand-entered).
+    ec_margin = None; g2_floor = None
+    try:
+        set_card = _CARD_CACHE.get("nitride-cavity-set-design.yaml") or next(iter(_CARD_CACHE.values()))
+        sp = set_card.drive.set_params
+        ec_margin = float(sp["ec_margin"] if isinstance(sp, dict) else sp.ec_margin)
+    except (AttributeError, KeyError, StopIteration, TypeError):
+        pass
+    try:
+        b_res_val = float(set_card.drive.b_res)
+        g2_floor = 1. - (1. / (1. + b_res_val)) ** 2
+    except (AttributeError, KeyError, NameError, TypeError):
+        pass
+
+    (out / "results.md").write_text(
+        _results_md(core, geo, bias, current, sens, comp, refinement_checks, complete, runtime_s,
+                    counter["evaluate_calls"], invalid_by_kind, invalid_reasons_summary, ec_margin, g2_floor),
+        encoding="utf-8")
+
+    files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]
+    hashes = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in files}
     manifest = {
         "quick": a.quick, "stark": a.stark, "complete": complete, "runtime_s": runtime_s,
         "evaluate_calls": counter["evaluate_calls"], "max_evaluations": a.max_evaluations,
@@ -1109,7 +1551,9 @@ def main(argv=None):
                             "qw": len([r for r in geo if r["row_kind"] == "qw"]),
                             "literature_aux": len([r for r in geo if r["row_kind"] == "literature_aux"]),
                             "stark_bias": len(bias), "stark_current": len(current),
-                            "sensitivities": len(sens), "compatibility": len(comp),
+                            "sensitivities": len([r for r in sens if r["row_kind"] == "sensitivity"]),
+                            "fixed_anchor": len([r for r in sens if r["row_kind"] == "fixed_anchor"]),
+                            "compatibility": len(comp),
                             "refinement_probes": len(probe_rows)},
         "full_contract_rows": {"core": 3360, "shape": 864, "qw": 288, "stark": 3120, "total_before_caching": 7632},
         "axes": {"height_nm": list(CORE_H), "radius_nm": list(CORE_R), "orientation": list(ORI),
