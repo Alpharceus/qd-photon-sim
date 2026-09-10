@@ -24,7 +24,32 @@ fluctuation.  Its lateral depth is the difference between independently
 solved local-column and surrounding-QW subband edges [A], not the GaN band
 offset.  Carrier edge energies are measured upward from the strained InGaN
 band edge; ``reservoir_energy_eV`` is the free electron-hole continuum edge
-and deliberately contains no dot Coulomb correction.
+and deliberately contains no dot Coulomb correction.  The fluctuation model
+also assumes the local dot column and the surrounding well are centered on
+the SAME z=0 midplane [A]; in the unscreened tilted limit (large intrinsic
+or external field, small confinement offset) that placement assumption
+becomes the entire predicted lateral depth, which collapses to the
+mass-independent geometric estimate |F|*(H-w)/2 (F in eV/nm, H and w in nm)
+rather than a quantum-confinement difference -- a one-sided (asymmetric)
+fluctuation would give a very different value (0 up to |F|*(H-w)).  This is
+disclosed per-row in ``approximation_error``.
+
+ORIENTATION-DEPENDENT MASSES.  For c_plane and semipolar_11_22 growth the
+growth (z) axis is taken as the crystal c-axis, so the z-confinement mass is
+me_z/mh_z and the lateral (radial) mass is me_xy/mh_xy, as before.  For
+m_plane/a_plane (nonpolar) growth the growth axis is perpendicular to c, so
+the z-confinement mass is instead the crystal's PERPENDICULAR (xy)
+component and the c-axis component is used for the lateral direction [A;
+the true nonpolar lateral direction is itself anisotropic -- one in-plane
+direction lies along c (mass mh_z) and the other is again perpendicular
+(mass mh_xy) -- this single-band radial model cannot represent that split
+and uses the c-axis value for both].  Rinke et al., PRB 77, 075202 (2008),
+Table V.  At orientation=a_plane, height_nm=3 (otherwise-default system)
+this swap moves E_X by about +32 meV and the hole escape depth by about
+-24 meV relative to (incorrectly) using c-plane masses at every
+orientation.  semipolar_11_22 keeps c-plane masses [A; orientation-
+dependent valence reordering, Schade et al., phys. status solidi (b)
+(2011), is not modelled].
 """
 from dataclasses import dataclass
 from functools import lru_cache
@@ -100,6 +125,9 @@ class NitrideLevels:
     geometry_approximation: str = ''
     approximation_error: str = ''
     polarization_factor_used: float = float('nan')
+    physical_height_nm: float = float('nan')
+    physical_radius_nm: float = float('nan')
+    aspect_ratio: float = float('nan')
 
 def _validate(s):
     bad=[]
@@ -135,13 +163,31 @@ def _validate(s):
     return bad
 
 def _geometry(s):
-    """Effective separable confinement mapping [A/DR elementary volume integration]."""
+    """Effective separable confinement mapping [A/DR elementary volume integration].
+
+    shape='lens' is specifically a PARABOLOID of revolution (h_eff=H/2 by
+    volume-preserving construction); a spherical-cap lens of the same H,R
+    has h_eff = H/2 + H**3/(6*R*R) instead (e.g. 3.25 vs 3.00 nm at H=6,
+    R=12 nm) [A elementary volume integration]. That profile choice --
+    paraboloid vs spherical cap, and disc/cone vs any real 3-D solve -- is
+    part of the UNQUANTIFIED shape systematic error disclosed in
+    `approximation_error`, not a rigorous bound on it.
+    """
     if s.shape == 'disc': native=1.; label='full-height disc'
     elif s.shape == 'lens': native=.5; label='paraboloidal lens volume mapping'
     else:
         t=s.top_radius_fraction; native=(1+t+t*t)/3.; label='truncated-cone volume mapping'
     frac=native if s.shape_height_fraction is None else s.shape_height_fraction
     return s.height_nm*frac, s.radius_nm, math.pi*s.radius_nm*s.radius_nm*s.height_nm*native, label
+
+def _growth_masses(mat, orientation):
+    """Return (me_growth, me_lateral, mh_growth, mh_lateral) for `mat` along
+    the actual growth axis of `orientation`. See the module docstring
+    ("ORIENTATION-DEPENDENT MASSES") for the physical justification and
+    magnitude of the m/a-plane swap; semipolar_11_22 keeps c-plane masses."""
+    if orientation in ('m_plane', 'a_plane'):
+        return mat.me_xy, mat.me_z, mat.mh_xy, mat.mh_z
+    return mat.me_z, mat.me_xy, mat.mh_z, mat.mh_xy
 
 def _z_grid(half, pad, target_n):
     """Node grid with +/-half landing EXACTLY on a node (finite-volume cell
@@ -233,12 +279,18 @@ def _coulomb_binding_eV(l_e_xy, l_h_xy, z_sep_nm, eps_r):
     if L2 <= 0.: return float('nan')
     return math.sqrt(math.pi) * _E2_4PIEPS0_EV_NM / (eps_r * math.sqrt(L2))
 
-def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label):
-    """Same-composition QW fluctuation, adiabatic local-column model [A]."""
-    er,_,cer,_,_,_=_z_state(s.wl_thickness_nm,Ve,d.me_z,m.me_z,F,-1,n,pad)
-    hr,_,chr,_,_,_=_z_state(s.wl_thickness_nm,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
-    erp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
-    hrp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
+def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label,
+               ee1,eh1,d_ez,d_exy,d_hz,d_hxy,m_ez,m_exy,m_hz,m_hxy):
+    """Same-composition QW fluctuation, adiabatic local-column model [A].
+    `d_ez`/`d_exy`/`d_hz`/`d_hxy` and `m_ez`/`m_exy`/`m_hz`/`m_hxy` are the
+    orientation-swapped growth-axis/lateral masses from `_growth_masses`,
+    shared with the dot-column solve the caller already performed for
+    `ee`/`eh`/`ce`/`ch` so both the local dot column and the surrounding
+    well use the SAME (orientation-correct) masses."""
+    er,_,cer,_,_,_=_z_state(s.wl_thickness_nm,Ve,d_ez,m_ez,F,-1,n,pad)
+    hr,_,chr,_,_,_=_z_state(s.wl_thickness_nm,Vh,d_hz,m_hz,F,+1,n,pad)
+    erp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Ve,d_ez,m_ez,F,-1,n,2.*pad)
+    hrp,_,_,_,_,_=_z_state(s.wl_thickness_nm,Vh,d_hz,m_hz,F,+1,n,2.*pad)
     bad=[]
     if not (ee < ce and eh < ch and er < cer and hr < chr): bad.append('dot-column or surrounding-QW vertical reservoir is unbound')
     if abs(erp-er)*1000. > TAIL_CONVERGENCE_TOL_MEV or abs(hrp-hr)*1000. > TAIL_CONVERGENCE_TOL_MEV:
@@ -246,8 +298,8 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
     de_lat=er-ee; dh_lat=hr-eh
     if de_lat <= 0: bad.append('electron QW lateral depth is nonpositive: no localized dot')
     if dh_lat <= 0: bad.append('hole QW lateral depth is nonpositive: no localized dot')
-    re,rpe,oke,pbe,rmse=_radial(de_lat,r_eff,d.me_xy,d.me_xy)
-    rh,rph,okh,pbh,rmsh=_radial(dh_lat,r_eff,d.mh_xy,d.mh_xy)
+    re,rpe,oke,pbe,rmse=_radial(de_lat,r_eff,d_exy,d_exy)
+    rh,rph,okh,pbh,rmsh=_radial(dh_lat,r_eff,d_hxy,d_hxy)
     ebe=ee+(re if oke else float('nan')); hbe=eh+(rh if okh else float('nan'))
     eth=min(er,ce); hth=min(hr,ch)
     ede=(eth-ebe)*1000. if oke else float('nan'); hde=(hth-hbe)*1000. if okh else float('nan')
@@ -259,16 +311,36 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
     lee=rmse if rmse else r_eff; lhh=rmsh if rmsh else r_eff
     coul=_coulomb_binding_eV(lee,lhh,zsep,d.eps_r)
     ex=(de['Ec_eV']-de['Ev_eV'])+ebe+hbe-coul
-    zg_e=float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
-    zg_h=float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
+    # Validity gate (Opus fix-round finding 1): a nonphysical (nonpositive
+    # or non-finite) transition energy must never be reported valid=True.
+    if not (math.isfinite(ex) and ex>0.):
+        return _invalid(s,['nonphysical E_X'],F)
+    # First excited state = min(z, radial) for the DOT COLUMN, same rule as
+    # the isolated branch (Opus fix-round finding: ee1/eh1 were computed by
+    # the caller but discarded here, hardwiring zg_e=zg_h=inf).
+    zg_e=(ee1-ee) if (math.isfinite(ee1) and ee1<ce) else float('inf'); rg_e=(rpe-re) if (oke and math.isfinite(rpe)) else float('inf')
+    zg_h=(eh1-eh) if (math.isfinite(eh1) and eh1<ch) else float('inf'); rg_h=(rph-rh) if (okh and math.isfinite(rph)) else float('inf')
     eleft=float(_z_potential(h_eff,Ve,F,-1,np.array([-h_eff/2.-1.]))[0]); eright=float(_z_potential(h_eff,Ve,F,-1,np.array([h_eff/2.+1.]))[0])
     hleft=float(_z_potential(h_eff,Vh,F,+1,np.array([-h_eff/2.-1.]))[0]); hright=float(_z_potential(h_eff,Vh,F,+1,np.array([h_eff/2.+1.]))[0])
+    # reservoir_kind/reservoir_energy_eV (Opus fix-round finding 4): report
+    # the channel each carrier ACTUALLY escapes into (min(er,ce), min(hr,ch))
+    # rather than hardcoding the QW edge. 'ingan_qw' only when BOTH carriers
+    # select the surrounding well; if either carrier's true escape channel is
+    # the wider GaN barrier plateau, the row is reported 'gan_barrier' and
+    # the reservoir energy tracks the selected (eth,hth) pair, which reduces
+    # exactly to the QW edge (gap+er+hr) when both carriers select the QW.
+    e_is_qw = er <= ce; h_is_qw = hr <= ch
+    reservoir_kind = 'ingan_qw' if (e_is_qw and h_is_qw) else 'gan_barrier'
+    reservoir_energy_eV = (de['Ec_eV']-de['Ev_eV'])+eth+hth
     return NitrideLevels(ex,_HC_EV_NM/ex if ex>0 else float('nan'),True,True,ov,F,ebe*1000.,hbe*1000.,ede,hde,None,
         min(zg_e,rg_e)*1000. if math.isfinite(min(zg_e,rg_e)) else float('nan'),min(zg_h,rg_h)*1000. if math.isfinite(min(zg_h,rg_h)) else float('nan'),
-        d.me_xy,d.mh_xy,True,(),'[V] BenDaniel & Duke, PR 152, 683 (1966); [A] same-composition adiabatic local-column QW fluctuation; lateral interface electrostatics neglected',
-        le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,'ingan_qw',(de['Ec_eV']-de['Ev_eV'])+er+hr,er*1000.,hr*1000.,h_eff,r_eff,volume,
+        d_exy,d_hxy,True,(),'[V] BenDaniel & Duke, PR 152, 683 (1966); [A] same-composition adiabatic local-column QW fluctuation, both columns centered on the same z=0 midplane; lateral interface electrostatics neglected',
+        le,lh,de_pad,dh_pad,eleft,eright,hleft,hright,reservoir_kind,reservoir_energy_eV,er*1000.,hr*1000.,h_eff,r_eff,volume,
         geometry_label+'; [A] local-column thickness fluctuation with effective field length',
-        'numerical padding/discretization reported separately; lateral interface electrostatics, shape and nonpolar strain/valence systematic error UNQUANTIFIED',orientation_factor(s.orientation,s.polarization_factor))
+        'numerical padding/discretization reported separately; lateral interface electrostatics, shape and nonpolar strain/valence systematic error UNQUANTIFIED; '
+        'symmetric-fluctuation placement assumption: in the unscreened tilted limit the reported lateral depth collapses to the mass-independent geometric '
+        'estimate |F|*(H-w)/2 rather than a quantum-confinement difference (see module docstring)',
+        orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
 
 @lru_cache(maxsize=256)
 def _levels_cached(s,T_K,n,pad):
@@ -276,6 +348,8 @@ def _levels_cached(s,T_K,n,pad):
     if not math.isfinite(T_K) or T_K<=0: bad.append('T_K must be positive and finite')
     if bad: return _invalid(s,bad)
     d,m=ingaN(s.x_in),binary('GaN')
+    d_ez,d_exy,d_hz,d_hxy=_growth_masses(d,s.orientation)
+    m_ez,m_exy,m_hz,m_hxy=_growth_masses(m,s.orientation)
     h_eff,r_eff,volume,geometry_label=_geometry(s)
     de=band_edges(d,T_K,substrate=m,strain_fraction=s.strain_fraction,vbo_InN_GaN_eV=s.vbo_InN_GaN_eV,strain_c_fraction=s.strain_c_fraction)
     be=band_edges(m,T_K,substrate=m)
@@ -284,19 +358,20 @@ def _levels_cached(s,T_K,n,pad):
     if Ve<=0: bad.append('electron offset is nonpositive')
     if Vh<=0: bad.append('hole offset is nonpositive')
     if bad: return _invalid(s,bad,F)
-    ee,ee1,ce,le,ze,pe=_z_state(h_eff,Ve,d.me_z,m.me_z,F,-1,n,pad)
-    eh,eh1,ch,lh,zh,ph=_z_state(h_eff,Vh,d.mh_z,m.mh_z,F,+1,n,pad)
+    ee,ee1,ce,le,ze,pe=_z_state(h_eff,Ve,d_ez,m_ez,F,-1,n,pad)
+    eh,eh1,ch,lh,zh,ph=_z_state(h_eff,Vh,d_hz,m_hz,F,+1,n,pad)
     # A true discrete state has an exponentially decaying exterior tail, so
     # its eigenenergy is insensitive to doubling an already-large padding.
     # This replaces the arbitrary in-dot-probability > 0.5 validity gate [E].
-    ee_pad,_,_,_,_,_=_z_state(h_eff,Ve,d.me_z,m.me_z,F,-1,n,2.*pad)
-    eh_pad,_,_,_,_,_=_z_state(h_eff,Vh,d.mh_z,m.mh_z,F,+1,n,2.*pad)
+    ee_pad,_,_,_,_,_=_z_state(h_eff,Ve,d_ez,m_ez,F,-1,n,2.*pad)
+    eh_pad,_,_,_,_,_=_z_state(h_eff,Vh,d_hz,m_hz,F,+1,n,2.*pad)
     de_pad=abs(ee_pad-ee)*1000.
     dh_pad=abs(eh_pad-eh)*1000.
     if s.geometry_type == 'qw_fluctuation':
-        return _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label)
-    re,rpe,ok_e,pb_e,rms_e=_radial(ce-ee,r_eff,d.me_xy,m.me_xy)
-    rh,rph,ok_h,pb_h,rms_h=_radial(ch-eh,r_eff,d.mh_xy,m.mh_xy)
+        return _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label,
+                           ee1,eh1,d_ez,d_exy,d_hz,d_hxy,m_ez,m_exy,m_hz,m_hxy)
+    re,rpe,ok_e,pb_e,rms_e=_radial(ce-ee,r_eff,d_exy,m_exy)
+    rh,rph,ok_h,pb_h,rms_h=_radial(ch-eh,r_eff,d_hxy,m_hxy)
     eb=ee+(re if ok_e else float('nan')); hb=eh+(rh if ok_h else float('nan'))
     if not (ok_e and eb<ce and de_pad<=TAIL_CONVERGENCE_TOL_MEV):
         bad.append('electron unbound, padding-unconverged, or laterally exhausted offset')
@@ -311,6 +386,10 @@ def _levels_cached(s,T_K,n,pad):
     l_e_xy = rms_e if rms_e else s.radius_nm; l_h_xy = rms_h if rms_h else s.radius_nm
     coul=_coulomb_binding_eV(l_e_xy,l_h_xy,z_sep,eps) # eV, screened Gaussian-envelope proxy [E]
     ex=(de['Ec_eV']-de['Ev_eV'])+eb+hb-coul
+    # Validity gate (Opus fix-round finding 1): a nonphysical (nonpositive
+    # or non-finite) transition energy must never be reported valid=True.
+    if not (math.isfinite(ex) and ex>0.):
+        return _invalid(s,['nonphysical E_X'],F)
     # First excited state = min(z-excitation, radial p-shell excitation),
     # each admitted only if it is itself bound below the local continuum.
     zg_e = (ee1-ee) if (math.isfinite(ee1) and ee1<ce) else float('inf')
@@ -329,7 +408,7 @@ def _levels_cached(s,T_K,n,pad):
                           eb*1000,hb*1000,(ce-eb)*1000,(ch-hb)*1000,None,
                           sp_e*1000 if math.isfinite(sp_e) else float('nan'),
                           sp_h*1000 if math.isfinite(sp_h) else float('nan'),
-                          m.me_xy,m.mh_xy,valid,tuple(bad),
+                          m_exy,m_hxy,valid,tuple(bad),
                           '[V] Rinke et al., PRB 77, 075202 (2008), Table V; '
                           '[V] Bernardini et al., PRB 56, R10024 (1997); '
                           '[V/DR] Bernardini & Fiorentini, pss(b) 216, 391 (1999), '
@@ -342,7 +421,7 @@ def _levels_cached(s,T_K,n,pad):
                           'gan_barrier',(de['Ec_eV']-de['Ev_eV']),0.,0.,h_eff,r_eff,volume,
                           geometry_label+'; [A] effective field length used consistently',
                           'numerical padding/discretization reported separately; shape and nonpolar strain/valence systematic error UNQUANTIFIED; effective-height spread is sensitivity only',
-                          orientation_factor(s.orientation,s.polarization_factor))
+                          orientation_factor(s.orientation,s.polarization_factor),s.height_nm,s.radius_nm,s.height_nm/(2.*s.radius_nm))
 
 def _invalid(s,reasons,F=0.):
     return NitrideLevels(float('nan'),float('nan'),False,False,0.,F,float('nan'),float('nan'),float('nan'),float('nan'),None,float('nan'),float('nan'),float('nan'),float('nan'),False,tuple(reasons),'[A] invalid geometry/offset rejected before model evaluation')
@@ -363,6 +442,11 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
     pair channels remain unsupported [A]."""
     bad=list(lv.invalid_reasons)
     if not lv.valid: bad.append('levels are invalid')
+    # Opus fix-round finding 3: an overlap below the numerical noise floor
+    # (e.g. 1e-21) is not a resolved lifetime prediction, just underflow in
+    # the separable-envelope integral; flag it instead of reporting an
+    # astronomical (numerically meaningless) radiative lifetime.
+    elif lv.overlap_sq < 1e-12: bad.append('overlap_unresolved')
     if T_K<=0 or tau_rad0_ns<=0 or n_dot_cm2<=0 or tau_cap_ps<=0 or k_nr_ns<0: bad.append('invalid rate input')
     if channel not in ('min','electron','hole','pair','pair_half'): bad.append('unknown channel')
     if channel in ('pair','pair_half'): bad.append('pair channel requires a bound wetting-layer continuum')
