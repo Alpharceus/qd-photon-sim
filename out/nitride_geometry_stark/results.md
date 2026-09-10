@@ -33,9 +33,15 @@ VERDICT: idealized_status=pass_hardware_infeasible family=a_plane regime=determi
 MACHINE-CHECKABLE (verifier recomputes these from sweep.csv):
 BEST_PASSING_FLUX family=c_plane value=422153 row_id=CO01350 T_hs=230 screening=1 regime=deterministic_pair
 BEST_PASSING_FLUX family=a_plane value=88746.2 row_id=CO02378 T_hs=230 screening=0 regime=deterministic_pair
+BEST_PASSING_FLUX_300K family=c_plane value=28393.6 row_id=CO01368 T_hs=300 screening=1 regime=deterministic_pair
+BEST_PASSING_FLUX_300K family=a_plane value=3040.28 row_id=CO02396 T_hs=300 screening=0 regime=deterministic_pair
 
 Core-grid paired-optical-pass rows (g2<0.5, flux>=1000/s, plus one_pair_valid for SET): 1159 of 3360; g2_min=0.173554, g2_median=0.173554.
 SET g2 floor: g2 = 1-(1/(1+b_res))^2 = 0.173554 (b_res from the evaluated card's own drive.b_res). Under idealized deterministic one-pair loading, exact-one-pair counting gives zero coincidence probability by construction, so rho asymptotes to 1/(1+b_res) and g2_op to this floor nearly independent of geometry -- distinct SET g2 values observed among optical-pass rows: [0.17355]. The g2 gate therefore carries no geometry information in the SET regime; only the flux/eligibility gates discriminate geometry there.
+
+## Stark trace cavity-tracking convention (item 4)
+
+All 2040 stark_bias rows and 1080 stark_current rows carry cavity_tracking=fixed_300K BY DESIGN: the cavity is held at the card's fixed 300 K position for every V_j/current point within one trace (a fixed instrument reference for bias spectroscopy), never re-tracked to that trace's own T_hs -- unlike the headline core rows above, which use cavity_tracking=per_T_hs. Consequently every T_hs=230 K panel in stark_energy_bias.png, stark_tau_bias.png, stark_tau_cavity_bias.png, stark_overlap_bias.png, stark_energy_current.png and stark_tau_current.png shows a cavity ANCHORED AT 300 K, not one re-tracked to 230 K; compare against the Fixed-anchor sensitivity table below and the per_T_hs core rows above before drawing any temperature conclusion from these Stark panels.
 
 ## Fixed-anchor (cavity_tracking=fixed_300K) sensitivity
 
@@ -139,159 +145,159 @@ The original REF baseline (rectangular, unscreened) never passes the optical gat
 
 ### REF_unscreened_rectangular (optical_pass at baseline: False)
 
-| axis | value | T_hs K | g2 | flux/s | optical_pass | row_id |
-|---|---|---|---|---|---|---|
-| Q_purcell | 10000.0 | 230 | 0.998874238514352 | 0.005690607601621742 | False | SE07668 |
-| Q_purcell | 10000.0 | 300 | 0.999668584358809 | 0.0008886884921624619 | False | SE07669 |
-| Q_purcell | 167.0 | 230 | 0.9991729883153779 | 0.10230272846147936 | False | SE07664 |
-| Q_purcell | 167.0 | 300 | 0.9997815927440364 | 0.02962426339338993 | False | SE07665 |
-| Q_purcell | 500.0 | 230 | 0.9989953799307202 | 0.07201897999749715 | False | SE07666 |
-| Q_purcell | 500.0 | 230 | 0.9992526492989291 | 0.014230183139320951 | False | SE07670 |
-| Q_purcell | 500.0 | 300 | 0.9997145796704188 | 0.014456284713042571 | False | SE07667 |
-| Q_purcell | 500.0 | 300 | 0.9998118256421988 | 0.004651655297391359 | False | SE07671 |
-| b_res | 0.0 | 230 | 0.9986704369648789 | 0.02564746663466914 | False | SE07660 |
-| b_res | 0.0 | 300 | 0.9996118251057948 | 0.004247138693754914 | False | SE07661 |
-| b_res | 0.5 | 230 | 0.9994090808002184 | 0.02564746663466914 | False | SE07662 |
-| b_res | 0.5 | 300 | 0.9998274766069121 | 0.004247138693754914 | False | SE07663 |
-| background_tau_ns | 0.0 | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07656 |
-| background_tau_ns | 0.0 | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07657 |
-| background_tau_ns | 1.0 | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07658 |
-| background_tau_ns | 1.0 | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07659 |
-| detuning_offset_meV | 0.0 | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07672 |
-| detuning_offset_meV | 0.0 | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07673 |
-| detuning_offset_meV | 10.0 | 230 | 0.9988929950189479 | 0.0007759227944418132 | False | SE07674 |
-| detuning_offset_meV | 10.0 | 300 | 0.9994951045143491 | 0.002680663150882631 | False | SE07675 |
-| island_radius_nm | 0.5 | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07680 |
-| island_radius_nm | 1.0 | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07681 |
-| island_radius_nm | 5.0 | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07682 |
-| k_nr_ns | 0.0 | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07652 |
-| k_nr_ns | 0.0 | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07653 |
-| k_nr_ns | 1.0 | 230 | 0.998901280159109 | 0.025645276589994107 | False | SE07654 |
-| k_nr_ns | 1.0 | 300 | 0.9996792109019386 | 0.0042469106385417165 | False | SE07655 |
-| semipolar_factor | 0.1 | 230 | 0.6061277704722288 | 5.733868746510371e-06 | False | SE07636 |
-| semipolar_factor | 0.1 | 300 | 0.9314341260827127 | 7.598092260246392e-06 | False | SE07637 |
-| semipolar_factor | 0.3 | 230 | 0.9272838867016583 | 1.116450709650972e-05 | False | SE07638 |
-| semipolar_factor | 0.3 | 300 | 0.991598778800592 | 6.838818575934152e-06 | False | SE07639 |
-| strain_fraction | 0.0 | 230 | 0.5998581126239653 | 1.6852257894762432 | False | SE07644 |
-| strain_fraction | 0.0 | 300 | 0.7944633953659482 | 0.6948968499953352 | False | SE07645 |
-| strain_fraction | 0.5 | 230 | 0.9360753047771412 | 0.38764442609137595 | False | SE07646 |
-| strain_fraction | 0.5 | 300 | 0.9924924046426596 | 0.016128383823171638 | False | SE07647 |
-| tau_cap_density_convention | False | 230 | 0.9998900328830732 | 0.0023549511918210496 | False | SE07676 |
-| tau_cap_density_convention | False | 300 | 0.9999679041937176 | 0.00038996687724695585 | False | SE07677 |
-| tau_cap_density_convention | True | 230 | 0.9989011854677752 | 0.02354907714289014 | False | SE07678 |
-| tau_cap_density_convention | True | 300 | 0.9996791940083959 | 0.0038996474417952887 | False | SE07679 |
-| tau_rad0_ns | 0.5 | 230 | 0.998901188459612 | 0.0512948488517463 | False | SE07648 |
-| tau_rad0_ns | 0.5 | 300 | 0.9996791939204358 | 0.008494272543473626 | False | SE07649 |
-| tau_rad0_ns | 2.0 | 230 | 0.9989011853858228 | 0.012823743869555839 | False | SE07650 |
-| tau_rad0_ns | 2.0 | 300 | 0.9996791935669387 | 0.0021235699523821355 | False | SE07651 |
-| x_in | 0.15 | 230 | 0.999509320280985 | 0.023133881803611527 | False | SE07640 |
-| x_in | 0.15 | 300 | 0.999825218680176 | 0.004527042996645048 | False | SE07641 |
-| x_in | 0.4 | 230 | 0.9889723241767102 | 0.04769243032115655 | False | SE07642 |
-| x_in | 0.4 | 300 | 0.9981685901672467 | 0.004750533928600966 | False | SE07643 |
+| axis | value | regime | orientation | n_dot_cm2 | T_hs K | g2 | flux/s | optical_pass | row_id | note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Q_purcell | 10000.0 | rectangular | c_plane |  | 230 | 0.998874238514352 | 0.005690607601621742 | False | SE07668 |  |
+| Q_purcell | 10000.0 | rectangular | c_plane |  | 300 | 0.999668584358809 | 0.0008886884921624619 | False | SE07669 |  |
+| Q_purcell | 167.0 | rectangular | c_plane |  | 230 | 0.9991729883153779 | 0.10230272846147936 | False | SE07664 |  |
+| Q_purcell | 167.0 | rectangular | c_plane |  | 300 | 0.9997815927440364 | 0.02962426339338993 | False | SE07665 |  |
+| Q_purcell | 500.0 | rectangular | c_plane |  | 230 | 0.9989953799307202 | 0.07201897999749715 | False | SE07666 |  |
+| Q_purcell | 500.0 | rectangular | c_plane |  | 230 | 0.9992526492989291 | 0.014230183139320951 | False | SE07670 |  |
+| Q_purcell | 500.0 | rectangular | c_plane |  | 300 | 0.9997145796704188 | 0.014456284713042571 | False | SE07667 |  |
+| Q_purcell | 500.0 | rectangular | c_plane |  | 300 | 0.9998118256421988 | 0.004651655297391359 | False | SE07671 |  |
+| b_res | 0.0 | rectangular | c_plane |  | 230 | 0.9986704369648789 | 0.02564746663466914 | False | SE07660 |  |
+| b_res | 0.0 | rectangular | c_plane |  | 300 | 0.9996118251057948 | 0.004247138693754914 | False | SE07661 |  |
+| b_res | 0.5 | rectangular | c_plane |  | 230 | 0.9994090808002184 | 0.02564746663466914 | False | SE07662 |  |
+| b_res | 0.5 | rectangular | c_plane |  | 300 | 0.9998274766069121 | 0.004247138693754914 | False | SE07663 |  |
+| background_tau_ns | 0.0 | rectangular | c_plane |  | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07656 |  |
+| background_tau_ns | 0.0 | rectangular | c_plane |  | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07657 |  |
+| background_tau_ns | 1.0 | rectangular | c_plane |  | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07658 |  |
+| background_tau_ns | 1.0 | rectangular | c_plane |  | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07659 |  |
+| detuning_offset_meV | 0.0 | rectangular | c_plane |  | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07672 |  |
+| detuning_offset_meV | 0.0 | rectangular | c_plane |  | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07673 |  |
+| detuning_offset_meV | 10.0 | rectangular | c_plane |  | 230 | 0.9988929950189479 | 0.0007759227944418132 | False | SE07674 |  |
+| detuning_offset_meV | 10.0 | rectangular | c_plane |  | 300 | 0.9994951045143491 | 0.002680663150882631 | False | SE07675 |  |
+| island_radius_nm | 0.5 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07680 | regime=deterministic_pair (baseline rectangular) |
+| island_radius_nm | 1.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07681 | regime=deterministic_pair (baseline rectangular) |
+| island_radius_nm | 5.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 0.13742222076335409 | False | SE07682 | regime=deterministic_pair (baseline rectangular) |
+| k_nr_ns | 0.0 | rectangular | c_plane |  | 230 | 0.9989011864102583 | 0.02564746663466914 | False | SE07652 |  |
+| k_nr_ns | 0.0 | rectangular | c_plane |  | 300 | 0.9996791936846767 | 0.004247138693754914 | False | SE07653 |  |
+| k_nr_ns | 1.0 | rectangular | c_plane |  | 230 | 0.998901280159109 | 0.025645276589994107 | False | SE07654 |  |
+| k_nr_ns | 1.0 | rectangular | c_plane |  | 300 | 0.9996792109019386 | 0.0042469106385417165 | False | SE07655 |  |
+| semipolar_factor | 0.1 | rectangular | semipolar_11_22 |  | 230 | 0.6061277704722288 | 5.733868746510371e-06 | False | SE07636 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.1 | rectangular | semipolar_11_22 |  | 300 | 0.9314341260827127 | 7.598092260246392e-06 | False | SE07637 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.3 | rectangular | semipolar_11_22 |  | 230 | 0.9272838867016583 | 1.116450709650972e-05 | False | SE07638 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.3 | rectangular | semipolar_11_22 |  | 300 | 0.991598778800592 | 6.838818575934152e-06 | False | SE07639 | orientation=semipolar_11_22 (baseline c_plane) |
+| strain_fraction | 0.0 | rectangular | c_plane |  | 230 | 0.5998581126239653 | 1.6852257894762432 | False | SE07644 |  |
+| strain_fraction | 0.0 | rectangular | c_plane |  | 300 | 0.7944633953659482 | 0.6948968499953352 | False | SE07645 |  |
+| strain_fraction | 0.5 | rectangular | c_plane |  | 230 | 0.9360753047771412 | 0.38764442609137595 | False | SE07646 |  |
+| strain_fraction | 0.5 | rectangular | c_plane |  | 300 | 0.9924924046426596 | 0.016128383823171638 | False | SE07647 |  |
+| tau_cap_density_convention | False | rectangular | c_plane | 1000000000.0 | 230 | 0.9998900328830732 | 0.0023549511918210496 | False | SE07676 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | False | rectangular | c_plane | 1000000000.0 | 300 | 0.9999679041937176 | 0.00038996687724695585 | False | SE07677 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | rectangular | c_plane | 1000000000.0 | 230 | 0.9989011854677752 | 0.02354907714289014 | False | SE07678 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | rectangular | c_plane | 1000000000.0 | 300 | 0.9996791940083959 | 0.0038996474417952887 | False | SE07679 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_rad0_ns | 0.5 | rectangular | c_plane |  | 230 | 0.998901188459612 | 0.0512948488517463 | False | SE07648 |  |
+| tau_rad0_ns | 0.5 | rectangular | c_plane |  | 300 | 0.9996791939204358 | 0.008494272543473626 | False | SE07649 |  |
+| tau_rad0_ns | 2.0 | rectangular | c_plane |  | 230 | 0.9989011853858228 | 0.012823743869555839 | False | SE07650 |  |
+| tau_rad0_ns | 2.0 | rectangular | c_plane |  | 300 | 0.9996791935669387 | 0.0021235699523821355 | False | SE07651 |  |
+| x_in | 0.15 | rectangular | c_plane |  | 230 | 0.999509320280985 | 0.023133881803611527 | False | SE07640 |  |
+| x_in | 0.15 | rectangular | c_plane |  | 300 | 0.999825218680176 | 0.004527042996645048 | False | SE07641 |  |
+| x_in | 0.4 | rectangular | c_plane |  | 230 | 0.9889723241767102 | 0.04769243032115655 | False | SE07642 |  |
+| x_in | 0.4 | rectangular | c_plane |  | 300 | 0.9981685901672467 | 0.004750533928600966 | False | SE07643 |  |
 
 ### REF_pass_c_plane_screened_SET (optical_pass at baseline: True)
 
-| axis | value | T_hs K | g2 | flux/s | optical_pass | row_id |
-|---|---|---|---|---|---|---|
-| Q_purcell | 10000.0 | 230 | 0.17355371900826455 | 88406.31439103976 | True | SE07715 |
-| Q_purcell | 10000.0 | 300 | 0.17355371900826433 | 5437.181532723568 | True | SE07716 |
-| Q_purcell | 167.0 | 230 | 0.17355371900826433 | 1651115.4461871076 | True | SE07711 |
-| Q_purcell | 167.0 | 300 | 0.17355371900826455 | 155585.25131821044 | True | SE07712 |
-| Q_purcell | 500.0 | 230 | 0.17355371900826455 | 1137032.4352100824 | True | SE07713 |
-| Q_purcell | 500.0 | 230 | 0.17355371900826433 | 367917.5667745471 | True | SE07717 |
-| Q_purcell | 500.0 | 300 | 0.17355371900826455 | 83427.84112599432 | True | SE07714 |
-| Q_purcell | 500.0 | 300 | 0.17355371900826455 | 24115.392004527985 | True | SE07718 |
-| b_res | 0.0 | 230 | 0.0 | 400171.62811885105 | True | SE07707 |
-| b_res | 0.0 | 300 | 0.0 | 25642.788985855634 | True | SE07708 |
-| b_res | 0.5 | 230 | 0.5555555555555555 | 400171.62811885105 | False | SE07709 |
-| b_res | 0.5 | 300 | 0.5555555555555556 | 25642.788985855634 | False | SE07710 |
-| background_tau_ns | 0.0 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07703 |
-| background_tau_ns | 0.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07704 |
-| background_tau_ns | 1.0 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07705 |
-| background_tau_ns | 1.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07706 |
-| detuning_offset_meV | 0.0 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07719 |
-| detuning_offset_meV | 0.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07720 |
-| detuning_offset_meV | 10.0 | 230 | 0.17355371900826455 | 22310.87181166967 | True | SE07721 |
-| detuning_offset_meV | 10.0 | 300 | 0.17355371900826455 | 16296.641000198546 | True | SE07722 |
-| island_radius_nm | 0.5 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07727 |
-| island_radius_nm | 1.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07728 |
-| island_radius_nm | 5.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07729 |
-| k_nr_ns | 0.0 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07699 |
-| k_nr_ns | 0.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07700 |
-| k_nr_ns | 1.0 | 230 | 0.17355371900826433 | 365371.0019426988 | True | SE07701 |
-| k_nr_ns | 1.0 | 300 | 0.17355371900826455 | 25073.25855486469 | True | SE07702 |
-| semipolar_factor | 0.1 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07683 |
-| semipolar_factor | 0.1 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07684 |
-| semipolar_factor | 0.3 | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07685 |
-| semipolar_factor | 0.3 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07686 |
-| strain_fraction | 0.0 | 230 | 0.17355371900826455 | 584724.0790347588 | True | SE07691 |
-| strain_fraction | 0.0 | 300 | 0.17355371900826455 | 171710.28413773407 | True | SE07692 |
-| strain_fraction | 0.5 | 230 | 0.17355371900826433 | 563754.0177845515 | True | SE07693 |
-| strain_fraction | 0.5 | 300 | 0.17355371900826455 | 80157.36992368038 | True | SE07694 |
-| tau_cap_density_convention | False | 230 | 0.17355371900826455 | 91168.62376676891 | True | SE07723 |
-| tau_cap_density_convention | False | 300 | 0.17355371900826455 | 2769.4993849051384 | True | SE07724 |
-| tau_cap_density_convention | True | 230 | 0.17355371900826455 | 400171.62811885093 | True | SE07725 |
-| tau_cap_density_convention | True | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07726 |
-| tau_rad0_ns | 0.5 | 230 | 0.17355371900826455 | 493002.8923843233 | True | SE07695 |
-| tau_rad0_ns | 0.5 | 300 | 0.17355371900826455 | 47384.26262052851 | True | SE07696 |
-| tau_rad0_ns | 2.0 | 230 | 0.17355371900826455 | 290696.65851941006 | True | SE07697 |
-| tau_rad0_ns | 2.0 | 300 | 0.17355371900826433 | 13371.871427560782 | True | SE07698 |
-| x_in | 0.15 | 230 | 0.17355371900826433 | 17732.554550375757 | True | SE07687 |
-| x_in | 0.15 | 300 | 0.17355371900826455 | 1271.7733239861022 | True | SE07688 |
-| x_in | 0.4 | 230 | 0.17355371900826433 | 567547.1247777955 | True | SE07689 |
-| x_in | 0.4 | 300 | 0.17355371900826455 | 258752.24049906997 | True | SE07690 |
+| axis | value | regime | orientation | n_dot_cm2 | T_hs K | g2 | flux/s | optical_pass | row_id | note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Q_purcell | 10000.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 88406.31439103976 | True | SE07715 |  |
+| Q_purcell | 10000.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 5437.181532723568 | True | SE07716 |  |
+| Q_purcell | 167.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 1651115.4461871076 | True | SE07711 |  |
+| Q_purcell | 167.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 155585.25131821044 | True | SE07712 |  |
+| Q_purcell | 500.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 1137032.4352100824 | True | SE07713 |  |
+| Q_purcell | 500.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 367917.5667745471 | True | SE07717 |  |
+| Q_purcell | 500.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 83427.84112599432 | True | SE07714 |  |
+| Q_purcell | 500.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 24115.392004527985 | True | SE07718 |  |
+| b_res | 0.0 | deterministic_pair | c_plane |  | 230 | 0.0 | 400171.62811885105 | True | SE07707 |  |
+| b_res | 0.0 | deterministic_pair | c_plane |  | 300 | 0.0 | 25642.788985855634 | True | SE07708 |  |
+| b_res | 0.5 | deterministic_pair | c_plane |  | 230 | 0.5555555555555555 | 400171.62811885105 | False | SE07709 |  |
+| b_res | 0.5 | deterministic_pair | c_plane |  | 300 | 0.5555555555555556 | 25642.788985855634 | False | SE07710 |  |
+| background_tau_ns | 0.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07703 |  |
+| background_tau_ns | 0.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07704 |  |
+| background_tau_ns | 1.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07705 |  |
+| background_tau_ns | 1.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07706 |  |
+| detuning_offset_meV | 0.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07719 |  |
+| detuning_offset_meV | 0.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07720 |  |
+| detuning_offset_meV | 10.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 22310.87181166967 | True | SE07721 |  |
+| detuning_offset_meV | 10.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 16296.641000198546 | True | SE07722 |  |
+| island_radius_nm | 0.5 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07727 |  |
+| island_radius_nm | 1.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07728 |  |
+| island_radius_nm | 5.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07729 |  |
+| k_nr_ns | 0.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07699 |  |
+| k_nr_ns | 0.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07700 |  |
+| k_nr_ns | 1.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 365371.0019426988 | True | SE07701 |  |
+| k_nr_ns | 1.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 25073.25855486469 | True | SE07702 |  |
+| semipolar_factor | 0.1 | deterministic_pair | semipolar_11_22 |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07683 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.1 | deterministic_pair | semipolar_11_22 |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07684 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.3 | deterministic_pair | semipolar_11_22 |  | 230 | 0.17355371900826455 | 400171.62811885105 | True | SE07685 | orientation=semipolar_11_22 (baseline c_plane) |
+| semipolar_factor | 0.3 | deterministic_pair | semipolar_11_22 |  | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07686 | orientation=semipolar_11_22 (baseline c_plane) |
+| strain_fraction | 0.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 584724.0790347588 | True | SE07691 |  |
+| strain_fraction | 0.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 171710.28413773407 | True | SE07692 |  |
+| strain_fraction | 0.5 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 563754.0177845515 | True | SE07693 |  |
+| strain_fraction | 0.5 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 80157.36992368038 | True | SE07694 |  |
+| tau_cap_density_convention | False | deterministic_pair | c_plane | 1000000000.0 | 230 | 0.17355371900826455 | 91168.62376676891 | True | SE07723 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | False | deterministic_pair | c_plane | 1000000000.0 | 300 | 0.17355371900826455 | 2769.4993849051384 | True | SE07724 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | deterministic_pair | c_plane | 1000000000.0 | 230 | 0.17355371900826455 | 400171.62811885093 | True | SE07725 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | deterministic_pair | c_plane | 1000000000.0 | 300 | 0.17355371900826433 | 25642.788985855634 | True | SE07726 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_rad0_ns | 0.5 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 493002.8923843233 | True | SE07695 |  |
+| tau_rad0_ns | 0.5 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 47384.26262052851 | True | SE07696 |  |
+| tau_rad0_ns | 2.0 | deterministic_pair | c_plane |  | 230 | 0.17355371900826455 | 290696.65851941006 | True | SE07697 |  |
+| tau_rad0_ns | 2.0 | deterministic_pair | c_plane |  | 300 | 0.17355371900826433 | 13371.871427560782 | True | SE07698 |  |
+| x_in | 0.15 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 17732.554550375757 | True | SE07687 |  |
+| x_in | 0.15 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 1271.7733239861022 | True | SE07688 |  |
+| x_in | 0.4 | deterministic_pair | c_plane |  | 230 | 0.17355371900826433 | 567547.1247777955 | True | SE07689 |  |
+| x_in | 0.4 | deterministic_pair | c_plane |  | 300 | 0.17355371900826455 | 258752.24049906997 | True | SE07690 |  |
 
 ### REF_pass_a_plane_SET (optical_pass at baseline: True)
 
-| axis | value | T_hs K | g2 | flux/s | optical_pass | row_id |
-|---|---|---|---|---|---|---|
-| Q_purcell | 10000.0 | 230 | 0.17355371900826455 | 13053.236789716952 | True | SE07762 |
-| Q_purcell | 10000.0 | 300 | 0.17355371900826455 | 457.2997096285444 | False | SE07763 |
-| Q_purcell | 167.0 | 230 | 0.17355371900826455 | 180878.68866609386 | True | SE07758 |
-| Q_purcell | 167.0 | 300 | 0.17355371900826433 | 12744.002351576071 | True | SE07759 |
-| Q_purcell | 500.0 | 230 | 0.17355371900826433 | 146965.27256956187 | True | SE07760 |
-| Q_purcell | 500.0 | 230 | 0.17355371900826455 | 26091.505176731993 | True | SE07764 |
-| Q_purcell | 500.0 | 300 | 0.17355371900826455 | 6941.9125037904205 | True | SE07761 |
-| Q_purcell | 500.0 | 300 | 0.17355371900826455 | 1891.6709013662366 | True | SE07765 |
-| b_res | 0.0 | 230 | 0.0 | 57181.920600857135 | True | SE07754 |
-| b_res | 0.0 | 300 | 0.0 | 2151.3242842275577 | True | SE07755 |
-| b_res | 0.5 | 230 | 0.5555555555555555 | 57181.920600857135 | False | SE07756 |
-| b_res | 0.5 | 300 | 0.5555555555555556 | 2151.3242842275577 | False | SE07757 |
-| background_tau_ns | 0.0 | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07750 |
-| background_tau_ns | 0.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07751 |
-| background_tau_ns | 1.0 | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07752 |
-| background_tau_ns | 1.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07753 |
-| detuning_offset_meV | 0.0 | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07766 |
-| detuning_offset_meV | 0.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07767 |
-| detuning_offset_meV | 10.0 | 230 | 0.17355371900826455 | 2348.298741773773 | True | SE07768 |
-| detuning_offset_meV | 10.0 | 300 | 0.17355371900826455 | 1348.786846431506 | True | SE07769 |
-| island_radius_nm | 0.5 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07774 |
-| island_radius_nm | 1.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07775 |
-| island_radius_nm | 5.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07776 |
-| k_nr_ns | 0.0 | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07746 |
-| k_nr_ns | 0.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07747 |
-| k_nr_ns | 1.0 | 230 | 0.17355371900826455 | 56470.59121734534 | True | SE07748 |
-| k_nr_ns | 1.0 | 300 | 0.17355371900826455 | 2147.5359524866785 | True | SE07749 |
-| semipolar_factor | 0.1 | 230 | 0.17355371900826455 | 262119.7530452213 | True | SE07730 |
-| semipolar_factor | 0.1 | 300 | 0.17355371900826455 | 13183.392890562816 | True | SE07731 |
-| semipolar_factor | 0.3 | 230 | 0.17355371900826433 | 6993.311170239615 | True | SE07732 |
-| semipolar_factor | 0.3 | 300 | 0.17355371900826433 | 438.5540861159112 | False | SE07733 |
-| strain_fraction | 0.0 | 230 | 0.17355371900826433 | 465511.7827716468 | True | SE07738 |
-| strain_fraction | 0.0 | 300 | 0.17355371900826433 | 27750.412451603923 | True | SE07739 |
-| strain_fraction | 0.5 | 230 | 0.17355371900826433 | 227819.75707326696 | True | SE07740 |
-| strain_fraction | 0.5 | 300 | 0.17355371900826455 | 7913.174978671014 | True | SE07741 |
-| tau_cap_density_convention | False | 230 | 0.17355371900826455 | 6211.576496416844 | True | SE07770 |
-| tau_cap_density_convention | False | 300 | 0.17355371900826455 | 216.46488105836696 | False | SE07771 |
-| tau_cap_density_convention | True | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07772 |
-| tau_cap_density_convention | True | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07773 |
-| tau_rad0_ns | 0.5 | 230 | 0.17355371900826433 | 105089.15944389762 | True | SE07742 |
-| tau_rad0_ns | 0.5 | 300 | 0.17355371900826455 | 4273.420678012138 | True | SE07743 |
-| tau_rad0_ns | 2.0 | 230 | 0.17355371900826455 | 29910.857051552517 | True | SE07744 |
-| tau_rad0_ns | 2.0 | 300 | 0.17355371900826433 | 1079.3532388476697 | True | SE07745 |
-| x_in | 0.15 | 230 | 0.17355371900826455 | 1150.3280722100662 | True | SE07734 |
-| x_in | 0.15 | 300 | 0.17355371900826455 | 104.59868607157303 | False | SE07735 |
-| x_in | 0.4 | 230 | 0.17355371900826455 | 568554.1794343806 | True | SE07736 |
-| x_in | 0.4 | 300 | 0.17355371900826455 | 165679.72860721534 | True | SE07737 |
+| axis | value | regime | orientation | n_dot_cm2 | T_hs K | g2 | flux/s | optical_pass | row_id | note |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Q_purcell | 10000.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 13053.236789716952 | True | SE07762 |  |
+| Q_purcell | 10000.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 457.2997096285444 | False | SE07763 |  |
+| Q_purcell | 167.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 180878.68866609386 | True | SE07758 |  |
+| Q_purcell | 167.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826433 | 12744.002351576071 | True | SE07759 |  |
+| Q_purcell | 500.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826433 | 146965.27256956187 | True | SE07760 |  |
+| Q_purcell | 500.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 26091.505176731993 | True | SE07764 |  |
+| Q_purcell | 500.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 6941.9125037904205 | True | SE07761 |  |
+| Q_purcell | 500.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 1891.6709013662366 | True | SE07765 |  |
+| b_res | 0.0 | deterministic_pair | a_plane |  | 230 | 0.0 | 57181.920600857135 | True | SE07754 |  |
+| b_res | 0.0 | deterministic_pair | a_plane |  | 300 | 0.0 | 2151.3242842275577 | True | SE07755 |  |
+| b_res | 0.5 | deterministic_pair | a_plane |  | 230 | 0.5555555555555555 | 57181.920600857135 | False | SE07756 |  |
+| b_res | 0.5 | deterministic_pair | a_plane |  | 300 | 0.5555555555555556 | 2151.3242842275577 | False | SE07757 |  |
+| background_tau_ns | 0.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07750 |  |
+| background_tau_ns | 0.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07751 |  |
+| background_tau_ns | 1.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07752 |  |
+| background_tau_ns | 1.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07753 |  |
+| detuning_offset_meV | 0.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07766 |  |
+| detuning_offset_meV | 0.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07767 |  |
+| detuning_offset_meV | 10.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 2348.298741773773 | True | SE07768 |  |
+| detuning_offset_meV | 10.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 1348.786846431506 | True | SE07769 |  |
+| island_radius_nm | 0.5 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07774 |  |
+| island_radius_nm | 1.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07775 |  |
+| island_radius_nm | 5.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07776 |  |
+| k_nr_ns | 0.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07746 |  |
+| k_nr_ns | 0.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07747 |  |
+| k_nr_ns | 1.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 56470.59121734534 | True | SE07748 |  |
+| k_nr_ns | 1.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 2147.5359524866785 | True | SE07749 |  |
+| semipolar_factor | 0.1 | deterministic_pair | semipolar_11_22 |  | 230 | 0.17355371900826455 | 262119.7530452213 | True | SE07730 | orientation=semipolar_11_22 (baseline a_plane) |
+| semipolar_factor | 0.1 | deterministic_pair | semipolar_11_22 |  | 300 | 0.17355371900826455 | 13183.392890562816 | True | SE07731 | orientation=semipolar_11_22 (baseline a_plane) |
+| semipolar_factor | 0.3 | deterministic_pair | semipolar_11_22 |  | 230 | 0.17355371900826433 | 6993.311170239615 | True | SE07732 | orientation=semipolar_11_22 (baseline a_plane) |
+| semipolar_factor | 0.3 | deterministic_pair | semipolar_11_22 |  | 300 | 0.17355371900826433 | 438.5540861159112 | False | SE07733 | orientation=semipolar_11_22 (baseline a_plane) |
+| strain_fraction | 0.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826433 | 465511.7827716468 | True | SE07738 |  |
+| strain_fraction | 0.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826433 | 27750.412451603923 | True | SE07739 |  |
+| strain_fraction | 0.5 | deterministic_pair | a_plane |  | 230 | 0.17355371900826433 | 227819.75707326696 | True | SE07740 |  |
+| strain_fraction | 0.5 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 7913.174978671014 | True | SE07741 |  |
+| tau_cap_density_convention | False | deterministic_pair | a_plane | 1000000000.0 | 230 | 0.17355371900826455 | 6211.576496416844 | True | SE07770 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | False | deterministic_pair | a_plane | 1000000000.0 | 300 | 0.17355371900826455 | 216.46488105836696 | False | SE07771 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | deterministic_pair | a_plane | 1000000000.0 | 230 | 0.17355371900826455 | 57181.920600857135 | True | SE07772 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_cap_density_convention | True | deterministic_pair | a_plane | 1000000000.0 | 300 | 0.17355371900826455 | 2151.3242842275577 | True | SE07773 | n_dot_cm2=1e+09 (baseline card default) |
+| tau_rad0_ns | 0.5 | deterministic_pair | a_plane |  | 230 | 0.17355371900826433 | 105089.15944389762 | True | SE07742 |  |
+| tau_rad0_ns | 0.5 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 4273.420678012138 | True | SE07743 |  |
+| tau_rad0_ns | 2.0 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 29910.857051552517 | True | SE07744 |  |
+| tau_rad0_ns | 2.0 | deterministic_pair | a_plane |  | 300 | 0.17355371900826433 | 1079.3532388476697 | True | SE07745 |  |
+| x_in | 0.15 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 1150.3280722100662 | True | SE07734 |  |
+| x_in | 0.15 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 104.59868607157303 | False | SE07735 |  |
+| x_in | 0.4 | deterministic_pair | a_plane |  | 230 | 0.17355371900826455 | 568554.1794343806 | True | SE07736 |  |
+| x_in | 0.4 | deterministic_pair | a_plane |  | 300 | 0.17355371900826455 | 165679.72860721534 | True | SE07737 |  |
 
 ## Invalid rows (all kinds)
 
@@ -322,4 +328,4 @@ c-plane screening=0.5 invalid core rows: 40 (included in the core count above).
 ## Limitations
 Nonpolar strain, valence-band ordering and FSS are not modelled; shape mapping error is unquantified; finite-dot lateral fields, field-assisted escape and injection-dependent screening are not solved (screening_fraction is fixed along every current trace). m-plane and a-plane rows coincide under this scalar model (both polarization_factor=0) -- a model limitation, not independent evidence for either. SET hardware feasibility (island charging energy / RC bandwidth) is reported independently of the idealized optical pass and never substitutes for it. No field-free lifetime or screening fraction was ever fitted to force agreement with Wang or Zhang.
 
-runtime_s=1078.1 evaluate_calls=7816 complete=True
+runtime_s=1103.8 evaluate_calls=7816 complete=True
