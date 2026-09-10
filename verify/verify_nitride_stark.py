@@ -62,13 +62,23 @@ ok('no match', not any(x['compatible'] for x in none))
 same_rows=fixture((-10.,-10.,-10.))
 for number, row in enumerate(same_rows): row['screening_fraction'] = (0., .5, 1.)[number // 4]
 same=screening_compatibility(same_rows, slope_range_meV_per_V=(-10.,-10.), voltage_window_V=(0.,3.))
-ok('nonpolar degeneracy', all(x['compatible'] and x['identification_status']=='screening_unidentifiable' for x in same))
+ok('nonpolar degeneracy', all(x['compatible'] is None and x['identification_status']=='screening_unidentifiable' for x in same))
 life=screening_compatibility(fixture((-10.,)), slope_range_meV_per_V=(-10.,-10.), voltage_window_V=(0.,3.), lifetime_range_ns={'voltage_V':2.,'min_ns':.5,'max_ns':1.,'kind':'bare'})
 ok('lifetime exact sample', life[0]['compatible'])
+missing_life=screening_compatibility(fixture((-10.,)), slope_range_meV_per_V=(-10.,-10.), voltage_window_V=(0.,3.), lifetime_range_ns={'voltage_V':2.5,'min_ns':.5,'max_ns':1.,'kind':'bare'})
+ok('missing lifetime is incomplete coverage', missing_life[0]['identification_status']=='incomplete_model_coverage')
 gap=fixture((-10.,), False)
 inc=screening_compatibility(gap, slope_range_meV_per_V=(-10.,-10.), voltage_window_V=(0.,3.))
 ok('invalid coverage reported', inc[0]['identification_status']=='incomplete_model_coverage')
 ok('Zhang transcription', ZHANG2016_SLOPE_MEV_PER_V == -10.0 and 'non-gating' in ZHANG2016_COMPARISON['use'])
+flat=[{'row_id':i,'V_j':v,'E_X_eV':1.0-.01*v,'spectroscopy_valid':True,
+       'flat_band': i >= 2} for i,v in enumerate((3.1,3.2,3.3,3.4))]
+flat_out=stark_derivatives(flat)
+ok('flat-band kink masks derivatives', not any(x['derivative_valid'] for x in flat_out))
+invalid_row=stark_derivatives([{'V_j':0.,'E_X_eV':1.,'spectroscopy_valid':True},
+    {'V_j':None,'E_X_eV':None,'spectroscopy_valid':False},
+    {'V_j':2.,'E_X_eV':.98,'spectroscopy_valid':True}])
+ok('invalid voltage row is skipped', not any(x['derivative_valid'] for x in invalid_row))
 print('Zhang -10 meV/V is a non-gating PL comparison; screening remains conditional.')
 failed=[n for n,p in checks if not p]
 for name in failed: print('FAILED:',name)
