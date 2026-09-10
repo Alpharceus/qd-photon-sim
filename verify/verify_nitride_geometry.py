@@ -102,16 +102,21 @@ ok_fixture=levels(NitrideDotSystem(height_nm=10.,radius_nm=10.,x_in=.25,orientat
 ck('V a genuinely bound fixture is not swept up by the validity gate',
    ok_fixture.valid and ok_fixture.E_X_eV>0. and math.isfinite(ok_fixture.lambda_nm))
 
-# ---- (V2) overlap_unresolved: a state below the numerical overlap floor
-# (h=8nm, x=.25, unscreened -- overlap_sq ~1e-14) is levels()-valid (a real
-# bound state) but rates() must refuse it rather than report an
-# astronomical lifetime.
+# ---- (V2) overlap_unresolved: a state below the physical overlap floor
+# (h=8nm, x=.25, unscreened -- overlap_sq ~1e-14, well under the 1e-8 gate)
+# is now rejected by levels() itself as a QCSE-separated pair (corrected
+# gate, orchestrator note 2026-09-09: overlap_sq>=1e-8 and E_X>0, the 0.8x
+# strained-gap criterion withdrawn); rates() must propagate that invalidity
+# rather than independently gating an already-invalid row.
 unresolved=levels(NitrideDotSystem(height_nm=8.,radius_nm=10.,x_in=.25,screening_fraction=0.),300.)
 r_unresolved=rates(unresolved,300.)
-ck('V2 levels() accepts the low-overlap bound state',unresolved.valid and 0.<unresolved.overlap_sq<1e-12)
-ck('V2 rates() rejects it as overlap_unresolved',not r_unresolved['valid'] and 'overlap_unresolved' in r_unresolved['invalid_reasons'])
+ck('V2 levels() rejects the low-overlap state as overlap_unresolved',
+   not unresolved.valid and unresolved.invalid_reasons==('overlap_unresolved (QCSE-separated pair)',))
+ck('V2 rates() propagates the levels()-level invalidity',
+   not r_unresolved['valid'] and 'overlap_unresolved (QCSE-separated pair)' in r_unresolved['invalid_reasons']
+   and 'levels are invalid' in r_unresolved['invalid_reasons'])
 resolved=levels(NitrideDotSystem(**qargs),300.)
-ck('V2 an ordinary well-overlapped state is unaffected',resolved.overlap_sq>=1e-12 and rates(resolved,300.)['valid'])
+ck('V2 an ordinary well-overlapped state is unaffected',resolved.overlap_sq>=1e-8 and rates(resolved,300.)['valid'])
 
 # ---- (M) orientation-dependent growth-axis mass swap: isolate the swap
 # from the (much larger) polarization-field change between orientations by
@@ -403,12 +408,18 @@ for (h, Rr, orient, scr, E_X_eV, overlap_sq, dE_e_meV, dE_h_meV, valid, reservoi
     s_pin = NitrideDotSystem(height_nm=h, radius_nm=Rr, orientation=orient, screening_fraction=scr)
     lv_pin = levels(s_pin, 300.)
     rr_pin = rates(lv_pin, 300., tau_rad0_ns=1.3, n_dot_cm2=1e10, tau_cap_ps=10.)
-    row_ok = (_nan_eq(lv_pin.E_X_eV, E_X_eV) and _nan_eq(lv_pin.overlap_sq, overlap_sq)
-              and _nan_eq(lv_pin.dE_e_meV, dE_e_meV) and _nan_eq(lv_pin.dE_h_meV, dE_h_meV)
-              and lv_pin.valid == valid and lv_pin.reservoir_kind == reservoir_kind
-              and _nan_eq(rr_pin['gamma_X0_ns'], gamma_X0_ns) and _nan_eq(rr_pin['k_X_ns'], k_X_ns)
-              and _nan_eq(rr_pin['S0'], S0) and _nan_eq(rr_pin['E_a_meV'], E_a_meV)
-              and rr_pin['valid'] == rates_valid)
+    newly_invalid = h == 7.0 and orient == 'c_plane' and scr == 0.0
+    if newly_invalid:
+        row_ok = (not lv_pin.valid and
+                  lv_pin.invalid_reasons == ('overlap_unresolved (QCSE-separated pair)',) and
+                  not rr_pin['valid'])
+    else:
+        row_ok = (_nan_eq(lv_pin.E_X_eV, E_X_eV) and _nan_eq(lv_pin.overlap_sq, overlap_sq)
+                  and _nan_eq(lv_pin.dE_e_meV, dE_e_meV) and _nan_eq(lv_pin.dE_h_meV, dE_h_meV)
+                  and lv_pin.valid == valid and lv_pin.reservoir_kind == reservoir_kind
+                  and _nan_eq(rr_pin['gamma_X0_ns'], gamma_X0_ns) and _nan_eq(rr_pin['k_X_ns'], k_X_ns)
+                  and _nan_eq(rr_pin['S0'], S0) and _nan_eq(rr_pin['E_a_meV'], E_a_meV)
+                  and rr_pin['valid'] == rates_valid)
     if not row_ok:
         pin_ok = False
         print('PIN FAIL h=%g R=%g %s scr=%g: got E_X=%r overlap=%r dEe=%r dEh=%r valid=%r kind=%r gX0=%r kX=%r S0=%r Ea=%r rvalid=%r'
@@ -431,6 +442,17 @@ ck('PIN isolated-dot c-plane/nonpolar E_X/overlap/escape-depths/valid/reservoir_
    'bit-identical to commit 17a333f across the (h,R,orientation,screening) grid', pin_ok)
 ck('PIN isolated-dot reservoir_energy_eV is now the T-only bulk GaN edge (device.py agreement, finding d)',
    pin_ok)
+
+# QCSE-separated c-plane pairs must be rejected at every representative
+# radius, while a nearby c-plane row that remains physical is still valid.
+for _radius in (5., 10., 30.):
+    _qcse_lv = levels(NitrideDotSystem(height_nm=7., radius_nm=_radius,
+        orientation='c_plane', screening_fraction=0.), 300.)
+    ck('QCSE gate rejects c-plane H=7 nm R=%g nm' % _radius,
+       not _qcse_lv.valid and _qcse_lv.invalid_reasons == ('overlap_unresolved (QCSE-separated pair)',))
+_physical_lv = levels(NitrideDotSystem(height_nm=3., radius_nm=10.,
+    orientation='c_plane', screening_fraction=0.), 300.)
+ck('QCSE gate retains a physical c-plane row', _physical_lv.valid)
 
 # ---- (B) QW ee1/eh1 admission now uses this branch's own threshold
 # eth=min(er,ce)/hth=min(hr,ch), not the isolated-dot continuum ce/ch (the

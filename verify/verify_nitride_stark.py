@@ -112,6 +112,18 @@ short_result=screening_compatibility(short_trace, slope_range_meV_per_V=(-11.,-9
 ok('requested voltage window outside valid trace coverage is incomplete',
    short_result[0]['compatible'] is False and short_result[0]['identification_status']=='incomplete_model_coverage')
 
+# Coverage is invariant under reversal of an otherwise identical valid trace.
+forward=fixture((-10.79,))
+reverse=list(reversed(forward))
+forward_result=screening_compatibility(forward, slope_range_meV_per_V=(-11.,-10.), voltage_window_V=(0.,3.))
+reverse_result=screening_compatibility(reverse, slope_range_meV_per_V=(-11.,-10.), voltage_window_V=(0.,3.))
+ok('reversed trace preserves compatible coverage and fitted slope',
+   forward_result[0]['compatible'] and reverse_result[0]['compatible']
+   and abs(forward_result[0]['fitted_slope_meV_per_V']-reverse_result[0]['fitted_slope_meV_per_V']) < 1e-12)
+ok('shape sensitivity is a numeric central-half-window slope change',
+   isinstance(forward_result[0]['shape_sensitivity'],float)
+   and abs(forward_result[0]['shape_sensitivity']) < 1e-12)
+
 # AC5: bare-vs-cavity dispatch, window containing only ONE of the two
 # lifetime values (mutation: swapping the bare/cavity key selection).
 bc_rows=fixture((-10.,))

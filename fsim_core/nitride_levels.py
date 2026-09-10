@@ -340,6 +340,15 @@ def _coulomb_binding_eV(l_e_xy, l_h_xy, z_sep_nm, eps_r):
     if L2 <= 0.: return float('nan')
     return math.sqrt(math.pi) * _E2_4PIEPS0_EV_NM / (eps_r * math.sqrt(L2))
 
+def _resolved_pair_overlap(overlap_sq):
+    """Return whether a bound pair has a resolvable radiative overlap [A].
+
+    ``1e-8`` corresponds to a radiative lifetime of roughly 0.1 s for the
+    ns-scale reference lifetime used by this model [A].  Smaller overlaps are
+    treated as QCSE-separated pairs rather than physical emitters.
+    """
+    return math.isfinite(overlap_sq) and overlap_sq >= 1e-8
+
 def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pad,h_eff,r_eff,volume,geometry_label,
                ee1,eh1,d_ez,d_exy,d_hz,d_hxy,m_ez,m_exy,m_hz,m_hxy):
     """Same-composition QW fluctuation, adiabatic local-column model [A].
@@ -372,10 +381,11 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
     lee=rmse if rmse else r_eff; lhh=rmsh if rmsh else r_eff
     coul=_coulomb_binding_eV(lee,lhh,zsep,d.eps_r)
     ex=(de['Ec_eV']-de['Ev_eV'])+ebe+hbe-coul
-    # Validity gate (Opus fix-round finding 1): a nonphysical (nonpositive
-    # or non-finite) transition energy must never be reported valid=True.
+    # A finite positive transition remains the energy validity condition.
     if not (math.isfinite(ex) and ex>0.):
         return _invalid(s,['nonphysical E_X'],F)
+    if not _resolved_pair_overlap(ov):
+        return _invalid(s,['overlap_unresolved (QCSE-separated pair)'],F)
     # First excited state = min(z, radial) for the DOT COLUMN, same rule as
     # the isolated branch (Opus fix-round finding: ee1/eh1 were computed by
     # the caller but discarded here, hardwiring zg_e=zg_h=inf). Admission is
@@ -473,10 +483,11 @@ def _levels_cached(s,T_K,n,pad):
     l_e_xy = rms_e if rms_e else s.radius_nm; l_h_xy = rms_h if rms_h else s.radius_nm
     coul=_coulomb_binding_eV(l_e_xy,l_h_xy,z_sep,eps) # eV, screened Gaussian-envelope proxy [E]
     ex=(de['Ec_eV']-de['Ev_eV'])+eb+hb-coul
-    # Validity gate (Opus fix-round finding 1): a nonphysical (nonpositive
-    # or non-finite) transition energy must never be reported valid=True.
+    # A finite positive transition remains the energy validity condition.
     if not (math.isfinite(ex) and ex>0.):
         return _invalid(s,['nonphysical E_X'],F)
+    if not _resolved_pair_overlap(ov):
+        return _invalid(s,['overlap_unresolved (QCSE-separated pair)'],F)
     # First excited state = min(z-excitation, radial p-shell excitation),
     # each admitted only if it is itself bound below the local continuum.
     zg_e = (ee1-ee) if (math.isfinite(ee1) and ee1<ce) else float('inf')

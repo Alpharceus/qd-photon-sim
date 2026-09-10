@@ -94,7 +94,12 @@ def _fit(items,key):
     return slope,math.sqrt(sum((b-(intercept+slope*a))**2 for a,b in zip(x,y))/len(x))
 
 def screening_compatibility(rows, *, slope_range_meV_per_V, voltage_window_V, lifetime_range_ns=None):
-    """Fit contiguous valid same-window slopes per supplied screening hypothesis."""
+    """Fit contiguous valid same-window slopes per supplied screening hypothesis.
+
+    ``shape_sensitivity`` is the signed change (central-half-window slope
+    minus full-window slope), in meV/V.  It is NaN when the central window
+    cannot support a slope fit.
+    """
     try: lo,hi=slope_range_meV_per_V; vlo,vhi=voltage_window_V
     except (TypeError,ValueError): raise ValueError("ranges must each contain two values")
     if not all(_finite(x) for x in (lo,hi,vlo,vhi)) or lo>hi or vlo>=vhi: raise ValueError("invalid slope range or voltage window")
@@ -121,13 +126,22 @@ def screening_compatibility(rows, *, slope_range_meV_per_V, voltage_window_V, li
         for bid,branch in enumerate(branches):
             win=[q for q in branch if vlo<=float(_vkey(q[1])[0])<=vhi]
             if len(win)<3: continue
-            _,key=_vkey(win[0][1]); slope,rms=_fit(win,key); coverage=(float(_vkey(branch[0][1])[0]) <= vlo and float(_vkey(branch[-1][1])[0]) >= vhi); lifeval=None; lifeok=True
+            _,key=_vkey(win[0][1]); slope,rms=_fit(win,key)
+            # A trace may be supplied in either voltage order.  Coverage is
+            # defined by the extrema of the valid samples in this branch, not
+            # by its ordered endpoints.
+            branch_voltages=[float(_vkey(q[1])[0]) for q in branch]
+            coverage=min(branch_voltages) <= vlo and max(branch_voltages) >= vhi
+            centre=(vlo+vhi)/2.; half_width=(vhi-vlo)/4.
+            central=[q for q in win if centre-half_width <= float(_vkey(q[1])[0]) <= centre+half_width]
+            shape_sensitivity=float('nan') if len(central)<2 else _fit(central,key)[0]-slope
+            lifeval=None; lifeok=True
             if lifetime_range_ns is not None:
                 lk="tau_rad_bare_ns" if lifetime_range_ns["kind"]=="bare" else "tau_rad_cavity_ns"; hits=[r for _,r in branch if float(_vkey(r)[0])==float(lifetime_range_ns["voltage_V"])]
                 if not hits or not _finite(hits[0].get(lk)): coverage=False; lifeok=False
                 else: lifeval=float(hits[0][lk]); lifeok=lifetime_range_ns["min_ns"]<=lifeval<=lifetime_range_ns["max_ns"]
             eps=1e-12*max(1,abs(lo),abs(hi),abs(slope)); slopeok=lo-eps<=slope<=hi+eps; status="incomplete_model_coverage" if not coverage else "compatible" if slopeok and lifeok else "incompatible"
-            result.append({"group":group,"screening":hyp,"branch_id":bid,"voltage_window_V":(vlo,vhi),"fitted_slope_meV_per_V":slope,"slope_interval_meV_per_V":(slope,slope),"residual_rms_meV":rms,"nonlinearity_diagnostic":"rms_residual_meV","row_ids":[_rid(r,i) for i,r in win],"compatible":slopeok and lifeok if coverage else False,"lifetime_value_ns":lifeval,"identification_status":status,"numerical_sensitivity":"not_quantified","shape_sensitivity":"rms_residual_meV","nuisance_sensitivity":"conditional_fixed_settings"}); made=True
+            result.append({"group":group,"screening":hyp,"branch_id":bid,"voltage_window_V":(vlo,vhi),"fitted_slope_meV_per_V":slope,"slope_interval_meV_per_V":(slope,slope),"residual_rms_meV":rms,"nonlinearity_diagnostic":"rms_residual_meV","row_ids":[_rid(r,i) for i,r in win],"compatible":slopeok and lifeok if coverage else False,"lifetime_value_ns":lifeval,"identification_status":status,"numerical_sensitivity":"not_quantified","shape_sensitivity":shape_sensitivity,"nuisance_sensitivity":"conditional_fixed_settings"}); made=True
         if not made: result.append({"group":group,"screening":hyp,"branch_id":None,"voltage_window_V":(vlo,vhi),"fitted_slope_meV_per_V":float("nan"),"slope_interval_meV_per_V":None,"residual_rms_meV":float("nan"),"nonlinearity_diagnostic":"incomplete_model_coverage","row_ids":[],"compatible":False,"lifetime_value_ns":None,"identification_status":"incomplete_model_coverage","numerical_sensitivity":"not_quantified","shape_sensitivity":"not_available","nuisance_sensitivity":"conditional_fixed_settings"})
     bybranch={}
     for r in result: bybranch.setdefault((r["group"],r["branch_id"]),[]).append(r)
