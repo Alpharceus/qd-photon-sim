@@ -1,0 +1,145 @@
+{
+  "arxiv_id|0801.0421": {
+    "response": {
+      "found": true,
+      "title": "Consistent set of band parameters for the group-III nitrides AlN, GaN, and InN",
+      "year": 2008
+    },
+    "verification_timestamp": "2026-09-11T05:29:04.712362+00:00"
+  },
+  "arxiv_id|1602.02325": {
+    "response": {
+      "found": true,
+      "title": "Site-controlled InGaN/GaN single-photon-emitting diode",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-09-11T05:29:13.703695+00:00"
+  },
+  "arxiv_id|1610.00152": {
+    "response": {
+      "found": true,
+      "title": "An ultrafast polarised single photon source at 220 K",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-09-11T05:31:55.345230+00:00"
+  },
+  "arxiv_id|2001.09805": {
+    "response": {
+      "found": true,
+      "title": "Towards bright and pure single photon emitters at 300 K based on GaN quantum dots on silicon",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-09-11T05:29:18.789606+00:00"
+  },
+  "arxiv_id|cond-mat/0610425": {
+    "response": {
+      "found": true,
+      "title": "Multi-excitonic complexes in single InGaN quantum dots",
+      "year": 2006
+    },
+    "verification_timestamp": "2026-09-11T05:29:17.895987+00:00"
+  },
+  "arxiv_id|cond-mat/9705105": {
+    "response": {
+      "found": true,
+      "title": "Spontaneous polarization and piezoelectric constants of III-V nitrides",
+      "year": 1997
+    },
+    "verification_timestamp": "2026-09-11T05:29:04.546189+00:00"
+  },
+  "crossref_doi|10.1002/pssb.201046350": {
+    "response": {
+      "found": true,
+      "title": "Impact of band structure and transition matrix elements on polarization properties of the photoluminescence of semipolar and nonpolar InGaN quantum wells",
+      "year": 2011
+    },
+    "verification_timestamp": "2026-09-11T05:31:55.574001+00:00"
+  },
+  "crossref_doi|10.1007/s11671-009-9514-4": {
+    "response": {
+      "found": true,
+      "title": "Cavity Enhancement of Single Quantum Dot Emission in the Blue",
+      "year": 2009
+    },
+    "verification_timestamp": "2026-09-11T05:29:06.562762+00:00"
+  },
+  "crossref_doi|10.1021/nl404400d": {
+    "response": {
+      "found": true,
+      "title": "Room-Temperature Triggered Single Photon Emission from a III-Nitride Site-Controlled Nanowire Quantum Dot",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-09-11T05:29:18.505889+00:00"
+  },
+  "crossref_doi|10.1038/ncomms2691": {
+    "response": {
+      "found": true,
+      "title": "Electrically driven polarized single-photon emission from an InGaN quantum dot in a GaN nanowire",
+      "year": 2013
+    },
+    "verification_timestamp": "2026-09-11T05:29:06.151900+00:00"
+  },
+  "crossref_doi|10.1038/nmat1763": {
+    "response": {
+      "found": true,
+      "title": "A gallium nitride single-photon source operating at 200\u2009K",
+      "year": 2006
+    },
+    "verification_timestamp": "2026-09-11T05:29:18.242875+00:00"
+  },
+  "crossref_doi|10.1063/1.4897640": {
+    "response": {
+      "found": true,
+      "title": "Electrically pumped single-photon emission at room temperature from a single InGaN/GaN quantum dot",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-09-11T05:29:06.337326+00:00"
+  },
+  "crossref_title|Band alignments of ternary wurtzite and zincblende III-nitrides investigated by hybrid density functional theory": {
+    "response": {
+      "found": true,
+      "title": "Band Alignments of Ternary Wurtzite and Zincblende\nIII-Nitrides Investigated by Hybrid Density Functional Theory",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-09-11T05:36:48.498475+00:00"
+  },
+  "crossref_title|Multi-excitonic complexes in single InGaN quantum dots": {
+    "response": {
+      "found": true,
+      "title": "Multi-excitonic complexes in single InGaN quantum dots",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-09-11T05:29:14.617024+00:00"
+  },
+  "crossref_title|Temperature-dependent fine structure splitting in InGaN quantum dots": {
+    "response": {
+      "found": true,
+      "title": "Temperature-dependent fine structure splitting in InGaN quantum dots",
+      "year": 2017
+    },
+    "verification_timestamp": "2026-09-11T05:37:27.554236+00:00"
+  },
+  "crossref_title|Universal bandgap bowing in group III nitride alloys": {
+    "response": {
+      "found": true,
+      "title": "Universal bandgap bowing in group-III nitride alloys",
+      "year": 2003
+    },
+    "verification_timestamp": "2026-09-11T05:29:05.884647+00:00"
+  },
+  "semantic_scholar|10.1007/s11671-009-9514-4": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-09-11T05:29:13.399920+00:00"
+  },
+  "semantic_scholar|Multi-excitonic complexes in single InGaN quantum dots": {
+    "response": {
+      "found": true,
+      "title": "Multi-excitonic complexes in single InGaN quantum dots",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-09-11T05:29:17.549712+00:00"
+  }
+}

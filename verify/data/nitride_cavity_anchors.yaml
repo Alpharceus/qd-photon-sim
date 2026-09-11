@@ -85,7 +85,7 @@ anchors:
       both card [A]/[V] design choices in their own right.
 
   tsai2020-inn-gan-vbo:
-    citation: "Tsai & Bayram, ACS Omega 5, 3917 (2020), PMC7057329"
+    citation: "Tsai & Bayram, \"Band alignments of ternary wurtzite and zincblende III-nitrides investigated by hybrid density functional theory\", ACS Omega 5, 3917 (2020), PMC7057329"
     doi_or_url: "PMC7057329"
     location: "Table 2, text p.3"
     evidence_status: full_text
