@@ -237,6 +237,13 @@ ok("HIGH1 3.1e9 K/W fails the 15pct band at 1nA/10K bath",not math.isclose(rise_
 o=wire_operating_point(d15,I_uA=.001,T_hs_K=300.,duty=1.,Rth_K_W=0.,eta_total=.01,h_nu_eV=2.);ok("zero Rth electrical retained",o["T_j_K"]==300. and o["P_on_W"]>0 and o["V_j"]>0)
 o=wire_operating_point(d15,I_uA=.001,T_hs_K=300.,duty=.1,Rth_K_W=1e7,eta_total=.01,h_nu_eV=2.)
 ok("duty not squared average current",math.isclose(o["P_average_W"],.1*o["P_on_W"],rel_tol=1e-12))
+# T1: independently pin electrical, optical, and local-heating terms.
+_p = evaluate_injection(d15, I_uA=1., **dict(a, eta_total=.5, E_X_eV=2.84))
+_ii = 1e-6
+ok("T1 P_on includes optical subtraction", math.isclose(_p["power_on_W"], _ii*_p["V_j"] + _ii*_ii*d15.R_s_ohm - _ii*.5*2.84, rel_tol=1e-10))
+_dhalf = wire_pin(preset="deshpande_2013_30nm", f_Rs_local=.5)
+_ph = evaluate_injection(_dhalf, I_uA=1., **dict(a, eta_total=0.))
+ok("T1 f_Rs_local halves series heat", math.isclose(_ph["power_on_W"], _ii*_ph["V_j"] + .5*_ii*_ii*d15.R_s_ohm, rel_tol=1e-10))
 # E: T_j must equal T_hs + Rth*(duty*P_on), computed independently here
 # with the LINEAR duty factor -- a mutant heating with duty**2 (a factor
 # of 10 off at duty=0.1) fails this even though P_average alone (checked

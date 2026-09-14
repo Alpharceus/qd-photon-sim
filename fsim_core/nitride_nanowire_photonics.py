@@ -1034,8 +1034,9 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
         # [Attempt 3 fix B+E+F] the isotropic sensitivity's own residual gap
         # against the +70% anchor, attributed (not fitted) to three
         # candidate, unmodeled causes.
-        notes.append(
-            "[Attempt 3 fix B+E+F] the isotropic-weight degree_of_linear_"
+        if diag['degree_of_linear_polarization_isotropic'] > 0.70:
+            notes.append(
+                "[Attempt 3 fix B+E+F] the isotropic-weight degree_of_linear_"
             f"polarization sensitivity ({diag['degree_of_linear_polarization_isotropic'] * 100.0:.1f}%) "
             "still exceeds the deshpande2013_polarization +70% anchor; candidate "
             "(unfitted) causes for the remaining gap: the omitted substrate "

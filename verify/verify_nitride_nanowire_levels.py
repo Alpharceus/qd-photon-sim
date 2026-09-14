@@ -274,6 +274,10 @@ C('H6: sidewall_overlap reported (finite, non-negative) at both the disc and the
   and math.isfinite(l_full_100.sidewall_overlap) and l_full_100.sidewall_overlap >= 0.)
 C('H6: a dot laterally isolated inside a much larger core has far less sidewall overlap than the full-core limit',
   l_disc_in_100.sidewall_overlap < l_full_100.sidewall_overlap)
+C('L1: finite-barrier disc E_perp is strictly below independent 9.054 meV hard-wall literal',
+  l_disc_in_100.transverse_e_meV < 9.054)
+C('L2: returned resolutions are disclosed in approximation metadata',
+  _z_points_used(l_headline) is not None and _z_points_used(l_headline_default) is not None)
 
 print('%d/%d nitride nanowire levels checks passed' % (sum(c), len(c)))
 raise SystemExit(0 if all(c) else 1)
