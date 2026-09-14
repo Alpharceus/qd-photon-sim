@@ -134,6 +134,30 @@
     },
     "verification_timestamp": "2026-09-11T05:29:13.399920+00:00"
   },
+  "crossref_doi|10.1364/OL.29.000572": {
+    "response": {
+      "found": true,
+      "title": "Far-field emission of a semiconductor nanowire laser",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-09-14T00:00:00+00:00"
+  },
+  "crossref_doi|10.1038/nphoton.2009.287": {
+    "response": {
+      "found": true,
+      "title": "A highly efficient single-photon source based on a quantum dot in a photonic nanowire",
+      "year": 2010
+    },
+    "verification_timestamp": "2026-09-14T00:00:00+00:00"
+  },
+  "crossref_doi|10.1364/CLEO_FS.2026.FM2C.3": {
+    "response": {
+      "found": true,
+      "title": "Development of Key Technologies for Electrically Driven Deterministic Single-Photon Sources",
+      "year": 2026
+    },
+    "verification_timestamp": "2026-09-14T00:00:00+00:00"
+  },
   "semantic_scholar|Multi-excitonic complexes in single InGaN quantum dots": {
     "response": {
       "found": true,

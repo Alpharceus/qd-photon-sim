@@ -1,6 +1,5 @@
 """Citation existence check for the project's evidence ledgers
-(verify/data/nitride_cavity_anchors.yaml and
-verify/data/nitride_geometry_stark_anchors.yaml): every anchor's
+(including verify/data/nitride_nanowire_anchors.yaml): every anchor's
 `doi_or_url` is resolved against Crossref / Semantic Scholar / arXiv
 (via skills/citation_gate) and cross-checked against the anchor's
 `citation` string.
@@ -37,6 +36,7 @@ from skills.citation_gate import VerificationCache, to_ascii, verify_ledger
 LEDGERS = [
     ROOT / "verify" / "data" / "nitride_cavity_anchors.yaml",
     ROOT / "verify" / "data" / "nitride_geometry_stark_anchors.yaml",
+    ROOT / "verify" / "data" / "nitride_nanowire_anchors.yaml",
 ]
 CACHE_PATH = ROOT / "verify" / "data" / "citation_verification_cache.json"
 

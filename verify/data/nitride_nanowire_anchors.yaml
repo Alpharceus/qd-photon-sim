@@ -1,0 +1,164 @@
+# Separate evidence ledger for the nanowire contract.  Unknown is null.
+anchors:
+  deshpande2013_geometry:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "pp. 2-4, Fig. 4"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "CW electrical injection"
+    observable: "disc, barriers, doping, resistance, and optical diameter"
+    value: {disc_height_nm: 2.0, optical_diameter_nm: 25.0, optical_diameter_tolerance_nm: 5.0, barrier_left_nm: 15.0, barrier_right_nm: 15.0, x_in: 0.25, n_cm3: 3.0e18, p_cm3: 5.0e17, resistance_GOhm: 2.38}
+    unit: mixed
+    tolerance: {value: null, meaning: "25 +/- 5 nm reported; other literal transcriptions"}
+    transfer_notes: "[V] 2013 device geometry; 2014 inheritance is [A]."
+    temperature: 10.0
+    geometry: "25 +/- 5 nm optical diameter; 2 nm disc"
+    raw_corrected: null
+    observable_definition: "optical diameter is not the thermal cross section"
+  deshpande2013_hbt:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 5, Fig. 5"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "CW electrical, 1 nA"
+    observable: "X and XX HBT g2(0)"
+    value: {X_raw: 0.30, X_corrected: 0.16, XX_raw: 0.38, XX_corrected: 0.25}
+    unit: dimensionless
+    tolerance: {value: null, meaning: "literal reported values"}
+    transfer_notes: "[V] corrected values use an unreported signal fraction; not a b_res fit."
+    temperature: 10.0
+    geometry: "25 nm optical diameter"
+    raw_corrected: "both, explicitly distinct"
+    observable_definition: "CW electrical HBT, not pulsed prediction"
+  deshpande2013_lifetimes:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 6, Fig. 6"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "TRPL and CW HBT fit"
+    observable: "distinct PL and HBT lifetimes"
+    value: {TRPL_XX_ps: 711.0, HBT_X_ns: 1.1, HBT_XX_ns: 0.7}
+    unit: mixed
+    tolerance: {value: null, meaning: "711 ps stretched decay, distinct fitted correlations"}
+    transfer_notes: "No predicted lifetime is calibrated to these values."
+    temperature: 10.0
+    geometry: null
+    raw_corrected: null
+    observable_definition: "PL decay is not HBT correlation time or total model lifetime"
+  deshpande2013_thermal_and_pl:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "pp. 2, 4-5; Fig. 4"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "CW electrical thermal simulation; ensemble PL"
+    observable: "thermal estimates, current density, current shift, ensemble PL ratio"
+    value: {thermal_diameter_nm: 30.0, J_1nA_reported_A_cm2: 142.0, rise_1nA_K: 15.0, rise_2nA_K: 49.0, current_shift_meV_upper: 2.0, ensemble_PL_300K_over_10K: 0.52, surface_S_cm_s_secondary: 1000.0}
+    unit: mixed
+    tolerance: {value: null, meaning: "thermal rises are simulation estimates; S is secondary attribution"}
+    transfer_notes: "52 percent is separate ensemble loss comparison, never a fitted S, activation energy, or lifetime."
+    temperature: {bath_K: 10.0, simulated_junction_K: [25.0, 59.0]}
+    geometry: "30 nm thermal/current-density cross section"
+    raw_corrected: null
+    observable_definition: "not direct thermometry; current shift is below 2 meV"
+  deshpande2014_abstract:
+    citation: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)"
+    doi_or_url: "10.1063/1.4897640"
+    location: "abstract"
+    evidence_status: abstract_only
+    evidence_kind: non_gating_comparison
+    tag: V
+    platform: "InGaN/GaN nanowire single-photon diode"
+    excitation: "electrical; waveform unknown"
+    observable: "room-temperature comparison"
+    value: {x_in: 0.40, wavelength_nm_approx: 630.0, temperature_K: 300.0, g2: 0.29, lifetime_ns: 1.3, lifetime_uncertainty_ns: 0.3, max_rate_MHz: 200.0}
+    unit: mixed
+    tolerance: {value: 0.3, meaning: "reported lifetime uncertainty"}
+    transfer_notes: "Radius, thickness, contacts, shell, and waveform inherited from 2013 are [A], not 2014 fabrication facts."
+    temperature: 300.0
+    geometry: null
+    raw_corrected: "unspecified"
+    observable_definition: "waveform and g2 measurement rate unknown"
+  deshpande2013_supplement:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013) supplementary"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "supplement retrieval status"
+    evidence_status: missing
+    evidence_kind: missing_evidence
+    tag: A
+    platform: null
+    excitation: null
+    observable: "supplementary data"
+    value: null
+    unit: null
+    tolerance: {value: null, meaning: "not retrieved in this contract round"}
+    transfer_notes: "Missing retrieval is not an offline-cache failure."
+    temperature: null
+    geometry: null
+    raw_corrected: null
+    observable_definition: null
+  maslov2004_he11:
+    citation: "Maslov and Ning, Opt. Lett. 29, 572 (2004)"
+    doi_or_url: "10.1364/OL.29.000572"
+    location: "exact-paper inspection required by photonics piece"
+    evidence_status: missing
+    evidence_kind: missing_evidence
+    tag: A
+    platform: "dielectric-cylinder far-field reference"
+    excitation: null
+    observable: "HE11 confinement/far-field distinction"
+    value: null
+    unit: null
+    tolerance: {value: null, meaning: "no confinement number assigned before exact inspection"}
+    transfer_notes: "Far-field, reflection, and confinement papers are not interchangeable."
+    temperature: null
+    geometry: null
+    raw_corrected: null
+    observable_definition: "source-role caution"
+  claudon2010_extraction:
+    citation: "Claudon et al., Nat. Photon. 4, 174 (2010)"
+    doi_or_url: "10.1038/nphoton.2009.287"
+    location: "reported first-lens configuration"
+    evidence_status: missing
+    evidence_kind: missing_evidence
+    tag: A
+    platform: "GaAs/InAs photonic wire"
+    excitation: null
+    observable: "first-lens extraction"
+    value: null
+    unit: null
+    tolerance: {value: null, meaning: "not transcribed before exact inspection"}
+    transfer_notes: "Any GaAs-to-GaN extraction mapping is [A]/[E]."
+    temperature: null
+    geometry: null
+    raw_corrected: null
+    observable_definition: "not a GaN verified efficiency"
+  kitamura2026_architecture:
+    citation: "Kitamura et al., Development of Key Technologies for Electrically Driven Deterministic Single-Photon Sources, CLEO 2026, FM2C.3"
+    doi_or_url: "10.1364/CLEO_FS.2026.FM2C.3"
+    location: "conference abstract"
+    evidence_status: abstract_only
+    evidence_kind: non_gating_comparison
+    tag: V
+    platform: "nitride injector architecture"
+    excitation: null
+    observable: "device technologies and single-dot emission"
+    value: null
+    unit: null
+    tolerance: {value: null, meaning: "architecture is not a deterministic-pair rate benchmark"}
+    transfer_notes: "Does not demonstrate deterministic nitride pair injection, rate, selectivity, or RT single-pair claim."
+    temperature: null
+    geometry: null
+    raw_corrected: null
+    observable_definition: "architecture evidence only"
