@@ -31,6 +31,13 @@
     },
     "verification_timestamp": "2026-09-11T05:29:18.789606+00:00"
   },
+  "arxiv_id|2303.08352": {
+    "response": {
+      "found": false,
+      "note": "arXiv network error: The read operation timed out"
+    },
+    "verification_timestamp": "2026-09-14T18:15:15.602081+00:00"
+  },
   "arxiv_id|cond-mat/0610425": {
     "response": {
       "found": true,
@@ -102,6 +109,14 @@
       "year": 2014
     },
     "verification_timestamp": "2026-09-11T05:29:06.337326+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.106.103601": {
+    "response": {
+      "found": true,
+      "title": "Inhibition, Enhancement, and Control of Spontaneous Emission in Photonic Nanowires",
+      "year": 2011
+    },
+    "verification_timestamp": "2026-09-14T18:15:15.852793+00:00"
   },
   "crossref_doi|10.1364/CLEO_FS.2026.FM2C.3": {
     "response": {

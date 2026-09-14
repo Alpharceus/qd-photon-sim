@@ -59,7 +59,17 @@ def main(argv=None) -> int:
         anchors = (doc or {}).get("anchors") or {}
         rows, passed, count = verify_ledger(anchors, cache=cache, offline=args.offline)
         for anchor_id, ok, identifier_display, detail in rows:
-            outcome = "PASS" if ok else "FAIL"
+            # fix-2 finding 11: a recorded gap (null identifier,
+            # evidence_status=missing) auto-passes (ok=True, see
+            # skills/citation_gate/ledger.py verify_anchor) but is not a
+            # DOI-resolved PASS -- print it as GAP so the gate is honest
+            # about what was actually checked, while still exiting 0 for
+            # every recorded gap (ok stays True; only the printed label
+            # changes).
+            if ok and "recorded gap" in detail:
+                outcome = "GAP"
+            else:
+                outcome = "PASS" if ok else "FAIL"
             print(f"{anchor_id} | {identifier_display} | {outcome} | {to_ascii(detail)}")
         total_passed += passed
         total_count += count

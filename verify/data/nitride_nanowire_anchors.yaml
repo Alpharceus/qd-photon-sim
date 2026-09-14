@@ -100,12 +100,12 @@ anchors:
     platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
     excitation: null
     observable: "substrate stack, end contacts, contacted length, collection objective"
-    value: {substrate: "100 nm thermal SiO2 on (001) Si", contact_metal: "Ti/Au", contact_thickness_nm: [5.0, 45.0], contacted_length_nm: 600.0, objective: "50x", collection_geometry: "normal incidence"}
+    value: {substrate: "100 nm thermal SiO2 on (001) Si", contact_metal: "Ti/Au", contact_thickness_nm: [5.0, 45.0], wire_length_nm: 600.0, objective: "50x", collection_geometry: "normal incidence"}
     unit: mixed
     tolerance: {value: null, meaning: "literal transcription; NA not stated by the paper"}
-    transfer_notes: "[V] device is a dispersed, lying-flat wire on an oxidized Si chip with lithographic end contacts, not a vertical/tapered/mirrored device; this is the horizontal_as_built family's own as-measured geometry, distinct from the designed vertical_photonic family."
+    transfer_notes: "[V] device is a dispersed, lying-flat wire on an oxidized Si chip with lithographic end contacts, not a vertical/tapered/mirrored device; this is the horizontal_as_built family's own as-measured geometry, distinct from the designed vertical_photonic family. [fix-2 finding 10] the paper's ~600 nm figure is the total dispersed wire length, not the inter-contact (electrically active) length, which is unstated and necessarily smaller; the field is named wire_length_nm (was contacted_length_nm) to avoid implying the active length is known."
     temperature: null
-    geometry: "horizontal dispersed wire, ~600 nm contacted length"
+    geometry: "horizontal dispersed wire, ~600 nm wire length (inter-contact length unstated)"
     raw_corrected: null
     observable_definition: "device layout, not an optical or electrical measurement"
   deshpande2013_polarization:
@@ -138,7 +138,7 @@ anchors:
     observable: "single-dot X/XX emission energy and ordering"
     value: {X_eV: 2.84, X_nm: 436.56, XX_above_X_meV: 10.0, XX_ordering: antibinding, T_ambient_K: 10.0, T_junction_K_approx: 25.0}
     unit: mixed
-    tolerance: {value: 0.0, meaning: "single-dot EL line-position read; no reported error bar"}
+    tolerance: {value: null, meaning: "single-dot EL line-position read; no reported error bar (fix-2 finding 7: null, not 0.0 -- 0.0 reads as a known-exact measurement, not an unreported error bar)"}
     transfer_notes: "[V] cross-references deshpande2013-xx-splitting in verify/data/nitride_cavity_anchors.yaml (same X 436.56 nm / XX 435.03 nm measurement, same -10 meV antibinding splitting), reused here unmodified for the nanowire ledger's own module-evidence requirement; the ~25 K junction temperature at 1 nA is the same Joule-heating estimate as deshpande2013_thermal_and_pl, not independent thermometry."
     temperature: {ambient_K: 10.0, junction_K_approx: 25.0}
     geometry: "25 nm optical diameter"
@@ -247,11 +247,29 @@ anchors:
     value: {barrier_nm: 1.5, well_nm: 3.0, doping_cm3: 2.0e+19, peak_voltage_V: 5.66, peak_current_density_A_cm2: 2.55e+4}
     unit: mixed
     tolerance: {value: null, meaning: "literal transcription of the device structure and reported I-V peak; no error bar given"}
-    transfer_notes: "[A] recorded gap, not a citation-gate PASS: this arXiv id is not yet in verify/data/citation_verification_cache.json and this fix round had no network access to add it (see verify_nitride_nanowire_injector.py's benchmark section header for the fuller structure description and the fetch-date note carried over from the prior coding round); doi_or_url is deliberately left null with evidence_status=missing (the ledger's recorded-gap convention, matching deshpande2013_supplement and maslov2004_he11 in spirit) so verify_citations.py --offline reports an honest gap instead of a fabricated PASS. Promote doi_or_url to \"arXiv:2303.08352\" and evidence_status to full_text once a networked run of verify_citations.py has cached that arXiv id. Only the device structure (1.5/3/1.5 nm, ~2e19 cm-3) and the two non-gating I-V numbers (5.66 V, 2.55e4 A/cm2) are transcribed here; this module's own flat-band RESONANCE ENERGY at that structure is checked independently in verify_nitride_nanowire_injector.py against a fresh finite-well transcendental solve, not against this anchor."
+    transfer_notes: "[A] recorded gap, not a citation-gate PASS: a networked run of verify/verify_citations.py during this fix-2 round attempted to resolve arXiv:2303.08352 and hit a transient arXiv network timeout (not a not-found result), so promotion was NOT completed this round; doi_or_url stays null with evidence_status=missing (the ledger's recorded-gap convention, matching deshpande2013_supplement and maslov2004_he11 in spirit) so verify_citations.py --offline reports an honest gap instead of a fabricated PASS. Retry: set doi_or_url to \"arXiv:2303.08352\" and evidence_status to full_text, then re-run verify/verify_citations.py (networked, once) -- if it resolves, the id is cached and --offline will pass afterward. Only the device structure (1.5/3/1.5 nm, ~2e19 cm-3) and the two non-gating I-V numbers (5.66 V, 2.55e4 A/cm2) are transcribed here; this module's own flat-band RESONANCE ENERGY at that structure is checked independently in verify_nitride_nanowire_injector.py against a fresh finite-well transcendental solve, not against this anchor."
     temperature: null
     geometry: "1.5 nm / 3.0 nm / 1.5 nm AlN/GaN/AlN double barrier"
     raw_corrected: null
     observable_definition: "I-V peak voltage and peak current density are not gated on by this project's flat-barrier transmission engine (no Poisson/band-bending model); recorded for provenance only"
+  bleuse2011_claudon2010_beta_envelope:
+    citation: "Bleuse et al., Phys. Rev. Lett. 106, 103601 (2011); Claudon et al., Nat. Photon. 4, 174 (2010)"
+    doi_or_url: "10.1103/PhysRevLett.106.103601"
+    location: "Bleuse et al. Fig. 2; Claudon et al. reported guided-mode beta near the single-mode/multimode boundary"
+    evidence_status: figure_reading
+    evidence_kind: non_gating_comparison
+    tag: E
+    platform: "GaAs/InAs photonic-wire single-photon source (n_wire ~ 3.45), NOT GaN"
+    excitation: null
+    observable: "guided-mode beta_HE11 versus normalized wire diameter d/lambda, two calibration points"
+    value: {d_over_lambda_high_beta: 0.23, beta_high: 0.95, d_over_lambda_lower_beta: 0.40, beta_lower: 0.70}
+    unit: dimensionless
+    tolerance: {value: null, meaning: "read off a published figure; no error bar transcribed"}
+    transfer_notes: "[E] two-point beta(d/lambda) calibration used only for the RELATIVE decline (0.70/0.95) applied multiplicatively to fsim_core/nitride_nanowire_photonics.py's own confinement-based beta_single_mode(V) surrogate (fix round DIRECTIVE H7); NOT used to force this module's absolute beta values to 0.95/0.7, and NOT a GaN measurement -- any GaAs-to-GaN platform transfer is a separate, undeclared-magnitude [A]. See claudon2010_extraction (a DIFFERENT quantity, first-lens extraction efficiency, still missing) and maslov2004_he11 (still missing) for the two remaining photonics gaps this anchor does not close."
+    temperature: null
+    geometry: "photonic-wire single-mode/multimode boundary near d/lambda 0.22-0.24"
+    raw_corrected: null
+    observable_definition: "guided-mode beta envelope shape, not an absolute GaN-platform extraction efficiency"
   kitamura2026_architecture:
     citation: "Kitamura et al., Development of Key Technologies for Electrically Driven Deterministic Single-Photon Sources, CLEO 2026, FM2C.3"
     doi_or_url: "10.1364/CLEO_FS.2026.FM2C.3"

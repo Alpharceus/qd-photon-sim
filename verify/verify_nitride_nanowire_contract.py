@@ -16,18 +16,90 @@ literal` tautology.
 """
 from __future__ import annotations
 
+import dataclasses
+import importlib
+import inspect
 import math
 import re
+import sys
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 DOC_PATH = ROOT / "docs" / "nitride_nanowire_contract.md"
 LEDGER_PATH = ROOT / "verify" / "data" / "nitride_nanowire_anchors.yaml"
 CACHE_PATH = ROOT / "verify" / "data" / "citation_verification_cache.json"
 CITATIONS_PY_PATH = ROOT / "verify" / "verify_citations.py"
+DEVICE_PY_PATH = ROOT / "fsim_core" / "device.py"
 SPEC_DIR = ROOT / ".workers" / "specs"
+
+# fix-2: bind the contract to the modules LIVE, not only to the specs. Only
+# the five modules committed at this revision are imported; the device/
+# sweep pieces (7/9) are not on disk yet, so their Module table rows stay
+# bound to spec text only (see check_module_table).
+LIVE_MODULE_NAMES = {
+    "levels": "fsim_core.nitride_nanowire_levels",
+    "photonics": "fsim_core.nitride_nanowire_photonics",
+    "surface": "fsim_core.nitride_nanowire_surface",
+    "transport": "fsim_core.nitride_nanowire_transport",
+    "injector": "fsim_core.nitride_nanowire_injector",
+}
+LIVE_MODULES: dict[str, object] = {}
+for _key, _modname in LIVE_MODULE_NAMES.items():
+    try:
+        LIVE_MODULES[_key] = importlib.import_module(_modname)
+    except ImportError:
+        LIVE_MODULES[_key] = None
+
+
+def canonical_signature(name: str, obj) -> str:
+    """Render a live callable's inspect.signature() the way this document's
+    Signature cells are written: annotations stripped (this project's
+    `from __future__ import annotations` makes every annotation an opaque
+    source-text string, not the simplified name this table uses), defaults
+    formatted with repr(), no per-parameter type hints."""
+    sig = inspect.signature(obj)
+    parts = []
+    star_emitted = False
+    for pname, p in sig.parameters.items():
+        if p.kind == inspect.Parameter.VAR_POSITIONAL:
+            parts.append("*" + pname)
+            star_emitted = True
+            continue
+        if p.kind == inspect.Parameter.VAR_KEYWORD:
+            parts.append("**" + pname)
+            continue
+        if p.kind == inspect.Parameter.KEYWORD_ONLY and not star_emitted:
+            parts.append("*")
+            star_emitted = True
+        token = pname
+        if p.default is not inspect.Parameter.empty:
+            token += "=" + repr(p.default)
+        parts.append(token)
+    # Return annotation is deliberately NOT rendered: this document's
+    # Signature cells are inconsistent (by spec-text inheritance, not by
+    # error) about carrying "-> dict" even where the live function has a
+    # return annotation, so the live-signature check below compares
+    # parameter lists only, matching what actually determines call
+    # compatibility.
+    return name + "(" + ", ".join(parts) + ")"
+
+
+def normalize_ws(s: str) -> str:
+    return " ".join(s.split())
+
+
+def strip_return_annotation(sig_text: str) -> str:
+    return re.sub(r"\s*->\s*\S+\s*$", "", sig_text.strip())
+
+
+def leaf_identifier(cell: str) -> str | None:
+    """Extract the backticked leaf name from a Card schema first cell like
+    '`core_radius_nm` (horizontal)' -> 'core_radius_nm'."""
+    m = re.match(r"`([A-Za-z_][A-Za-z0-9_]*)`", cell.strip())
+    return m.group(1) if m else None
 
 SPEC_FILES = {
     "levels": SPEC_DIR / "nitride-nanowire-levels.md",
@@ -160,24 +232,79 @@ def check_module_table(doc_text: str, ok) -> None:
             m = re.search(r"## Interface or signature constraints\n(.*)", spec_text, re.S)
         return m.group(1) if m else ""
 
+    def row_spec_key(module_cell: str) -> str | None:
+        for needle, key in MODULE_SPEC_KEY:
+            if needle in module_cell:
+                return key
+        return None
+
+    # First pass: a symbol with a "module-only" row (a fix/directive round
+    # drifted its live signature past its frozen spec text) keeps its
+    # ORIGINAL, spec-verbatim row's live-signature check skipped -- the
+    # module-only row alone carries the live binding for that symbol, so
+    # the same function is never bound to two different literal strings.
+    module_only_symbols: set[tuple[str, str]] = set()
+    for row in rows:
+        if len(row) < 4:
+            continue
+        module_cell, symbol_cell, _sig, verifier_cell = row[0], row[1], row[2], row[3]
+        if "module-only" not in verifier_cell:
+            continue
+        spec_key = row_spec_key(module_cell)
+        m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", symbol_cell.strip("`"))
+        if spec_key and m:
+            module_only_symbols.add((spec_key, m.group(0)))
+
     for row in rows:
         if len(row) < 4:
             ok("module_table_row_shape_" + "_".join(row), False)
             continue
         module_cell, symbol_cell, signature_cell, verifier_cell = row[0], row[1], row[2], row[3]
-        spec_key = None
-        for needle, key in MODULE_SPEC_KEY:
-            if needle in module_cell:
-                spec_key = key
-                break
-        name = f"module_signature_{symbol_cell.strip('`')}"
+        spec_key = row_spec_key(module_cell)
+        symbol_display = symbol_cell.strip("`")
+        name = f"module_signature_{symbol_display}"
         if spec_key is None:
             ok(name, False)
             continue
-        section_text = interface_section(spec_texts[spec_key])
+        module_only = "module-only" in verifier_cell
         sig = signature_cell.strip("`")
-        ok(name, sig in section_text)
+        if not module_only:
+            # Unchanged since round 1: the Signature cell is a literal
+            # substring of the spec's own "Interface or signature
+            # constraints" section.
+            section_text = interface_section(spec_texts[spec_key])
+            ok(name, sig in section_text)
         ok(name + "_verifier_path", "verify_nitride_nanowire" in verifier_cell)
+
+        # --- fix-2: live module binding, independent of the spec text ---
+        live_mod = LIVE_MODULES.get(spec_key)
+        symbol_id_m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", symbol_display)
+        symbol_id = symbol_id_m.group(0) if symbol_id_m else None
+        if live_mod is None or symbol_id is None:
+            # device/sweep modules are not committed yet (piece 7/9); skip
+            # live binding for those two rows only.
+            continue
+        obj = getattr(live_mod, symbol_id, None)
+        ok(f"module_live_{symbol_display}_symbol_exists", obj is not None)
+        if obj is None:
+            continue
+        if inspect.isfunction(obj):
+            if not module_only and (spec_key, symbol_id) in module_only_symbols:
+                # the drifted live truth is carried by the module-only
+                # sibling row instead; this frozen row stays spec-bound only
+                continue
+            try:
+                canon = canonical_signature(symbol_id, obj)
+            except (TypeError, ValueError):
+                canon = None
+            ok(f"module_live_{symbol_display}_signature_matches_module",
+               canon is not None
+               and normalize_ws(canon) == normalize_ws(strip_return_annotation(sig)))
+        elif dataclasses.is_dataclass(obj):
+            # dataclass rows are bound to the Card schema leaf set instead
+            # of to a literal constructor-signature string; see
+            # check_dataclass_card_binding below.
+            pass
 
 
 def check_module_evidence_map(doc_text: str, anchors: dict, ok) -> None:
@@ -231,6 +358,59 @@ def check_card_schema(doc_text: str, ok) -> None:
     ok("card_schema_leaf_count", total_leaves >= 30)
 
 
+# fix-2 required change 5: "for each dataclass, assert the card-table leaf
+# set equals the field set." Three of the five committed dataclasses map
+# 1:1 onto a single Card schema subsection with identical leaf names
+# (checked as exact set equality, both directions). The other two
+# (NitrideNanowireSystem, NitrideWireDiode) have leaves split across
+# several subsections, some renamed for continuity with the pre-H6 card
+# convention (documented in "Composition rules for the device piece" and
+# the Card schema notes); those are checked as "every field name is
+# present somewhere in the Card schema section", which is what acceptance
+# criterion 2 ("lists no field absent from the contract's table") actually
+# requires.
+DATACLASS_CARD_BINDING = [
+    ("photonics", "NitrideNanowirePhotonicsParams", "nitride.photonics", {}),
+    ("surface", "NitrideNanowireSurfaceParams", "nitride.surface", {}),
+    ("injector", "NitrideNanowireInjectorParams", "nitride.injector", {}),
+    ("levels", "NitrideNanowireSystem", None, {"disc_radius_nm": "radius_nm"}),
+    ("transport", "NitrideWireDiode", None, {}),
+]
+
+
+def check_dataclass_card_binding(doc_text: str, ok) -> None:
+    card_section = get_section(doc_text, "## Card schema\n", "## Row columns\n")
+    tables = find_all_subsection_tables(card_section, "### ")
+
+    all_leaves: set[str] = set()
+    by_subsection: dict[str, set[str]] = {}
+    for name, header, rows in tables:
+        leaves = {leaf_identifier(row[0]) for row in rows if leaf_identifier(row[0])}
+        all_leaves |= leaves
+        m = re.match(r"`([^`]+)`", name.strip())
+        key = m.group(1) if m else name.strip()
+        by_subsection.setdefault(key, set()).update(leaves)
+
+    for spec_key, class_name, subsection, rename in DATACLASS_CARD_BINDING:
+        live_mod = LIVE_MODULES.get(spec_key)
+        cls = getattr(live_mod, class_name, None) if live_mod is not None else None
+        ok(f"dataclass_binding_{class_name}_exists",
+           cls is not None and dataclasses.is_dataclass(cls))
+        if cls is None or not dataclasses.is_dataclass(cls):
+            continue
+        field_names = {f.name for f in dataclasses.fields(cls)}
+        mapped = {rename.get(f, f) for f in field_names}
+        if subsection is not None:
+            leaves = by_subsection.get(subsection, set())
+            ok(f"dataclass_binding_{class_name}_no_field_absent_from_card",
+               mapped <= leaves)
+            ok(f"dataclass_binding_{class_name}_no_undocumented_extra_leaf",
+               leaves <= mapped)
+        else:
+            ok(f"dataclass_binding_{class_name}_no_field_absent_from_card",
+               mapped <= all_leaves)
+
+
 def check_row_columns(doc_text: str, ok) -> None:
     section = get_section(doc_text, "## Row columns\n", "## Sweep grid")
     # Names required verbatim from the injector spec (piece 6).
@@ -267,6 +447,60 @@ def check_row_columns(doc_text: str, ok) -> None:
     for name in transport_names:
         ok("row_column_" + name + "_in_doc", name in section)
         ok("row_column_" + name + "_in_transport_spec", name in transport_spec_text)
+
+    # --- fix-2 required change 3: established count/flux/background/
+    # filter/thermal columns from fsim_core/device.py's planar
+    # _evaluate_nitride (around line 1333), bound to that module's own
+    # source text (a literal dict-key substring), not to a spec file. ---
+    device_py_text = read_text(DEVICE_PY_PATH)
+    established_device_names = [
+        "collected_flux_x_s", "collected_flux_xx_s", "background_flux_s",
+        "total_detected_flux_s", "mean_counts", "mean_counts_x",
+        "mean_counts_xx", "gate_ns_used", "S_X", "S_XX", "rho_pulsed",
+        "blocked_load_probability", "counting_converged", "eta_out",
+    ]
+    for name in established_device_names:
+        ok("row_column_" + name + "_in_doc", name in section)
+        ok("row_column_" + name + "_established_in_device_py",
+           ('"' + name + '"') in device_py_text)
+
+    # --- fix-2 required change 3: new coherence columns (physics
+    # coherence review). fsim_core/nitride_nanowire_device.py does not
+    # exist yet, so these are checked against this document only. ---
+    coherence_names = [
+        "thermal_iterations", "thermal_converged", "bound_reversal",
+        "collected_flux_delivered_s", "f_qfl_dot_thermodynamic_limit",
+        "sidewall_overlap", "degree_of_linear_polarization",
+        "beta_multimode_penalty", "single_mode",
+    ]
+    for name in coherence_names:
+        ok("row_column_" + name + "_in_doc", name in section)
+
+    # --- fix-2 required change 3/5: the injector's rti_* extra keys,
+    # introspected LIVE by calling injector_feasibility at its card
+    # defaults (not a hardcoded list) -- catches a key this document has
+    # not documented yet, independent of the (frozen) injector spec text.
+    injector_mod = LIVE_MODULES.get("injector")
+    live_rti_keys: list[str] = []
+    if injector_mod is not None:
+        try:
+            params_cls = injector_mod.NitrideNanowireInjectorParams
+            defaults = params_cls(occupancy_control_known=True,
+                                   second_pair_control_known=True)
+            out = injector_mod.injector_feasibility(
+                defaults, T_K=300.0, rep_rate_hz=200e6,
+                loading_window_ns=0.1, electron_level_eV=0.05,
+                hole_level_eV=0.01, electron_spacing_meV=float("nan"),
+                hole_spacing_meV=float("nan"),
+                second_pair_addition_meV=10.0,
+                available_pair_rate_Hz=1e9,
+            )
+            live_rti_keys = sorted(k for k in out if k.startswith("rti_"))
+        except Exception:
+            live_rti_keys = []
+    ok("row_column_injector_live_introspection_succeeded", len(live_rti_keys) > 0)
+    for name in live_rti_keys:
+        ok("row_column_" + name + "_in_doc_live", name in section)
 
 
 def check_verdict_and_grid(doc_text: str, ok) -> None:
@@ -313,6 +547,13 @@ def check_verdict_and_grid(doc_text: str, ok) -> None:
     for field in REQUIRED_VERDICT_FIELDS:
         ok("verdict_field_" + field + "_named_in_sweep_spec", field in sweep_spec_text)
 
+    # fix-2 required change 4 / coherence finding 8: screening= and access=
+    # are new fields this contract revision adds; they postdate piece 9's
+    # own frozen field-list bullet, so they are checked against this
+    # document's VERDICT template only, not against the sweep spec text.
+    ok("verdict_field_screening", "screening=" in verdict_line)
+    ok("verdict_field_access", "access=" in verdict_line)
+
     # --- output paths ---
     ok("output_path_sweep_csv", "sweep.csv" in section)
     ok("output_path_manifest", "manifest.json" in section)
@@ -333,6 +574,15 @@ def check_ledger_rules(anchors: dict, ok) -> None:
 
         if row.get("value") is None:
             ok("ledger_null_value_missing_status_" + anchor_id, row.get("evidence_status") == "missing")
+
+        # fix-2 required change 5: "scan tolerance values for
+        # zero-as-unknown" -- the same null-is-unknown convention the
+        # ledger already enforces for `value` (never 0/0.0 for "unknown")
+        # applies to `tolerance.value` too (fix-1 finding 7).
+        tol = row.get("tolerance") or {}
+        tol_val = tol.get("value") if isinstance(tol, dict) else None
+        ok("ledger_tolerance_value_not_zero_" + anchor_id,
+           tol_val is None or tol_val != 0)
 
         if row.get("tag") == "V":
             notes = (row.get("transfer_notes") or "").lower()
@@ -389,7 +639,7 @@ def check_ledger_rules(anchors: dict, ok) -> None:
        coulomb.get("convention_used_by_set_feasibility") == "sphere")
 
 
-def check_source_transcription_literals(anchors: dict, ok) -> None:
+def check_source_transcription_literals(doc_text: str, anchors: dict, ok) -> None:
     """Independent, non-tautological checks on the transcribed 2013/2014
     numbers (unchanged in substance from the previous revision, but no
     longer duplicated as a self-comparison)."""
@@ -400,10 +650,29 @@ def check_source_transcription_literals(anchors: dict, ok) -> None:
     rt = anchors["deshpande2014_abstract"]
 
     ok("diameters_distinct", g["optical_diameter_nm"] == 25.0 and thermal["thermal_diameter_nm"] == 30.0)
-    area25 = math.pi * (12.5e-7) ** 2
-    area30 = math.pi * (15.0e-7) ** 2
-    ok("current_density_25nm", abs(1e-9 / area25 - 203.718327) < 1e-3)
-    ok("current_density_30nm", abs(1e-9 / area30 - 141.471061) < 1e-3)
+
+    # fix-2 required change 5 (fix-1 finding 4): recompute both current
+    # densities from RADII READ LIVE from the ledger anchors (not a
+    # hardcoded area literal), then cross-check the result against (a) the
+    # 203.7/141.5 A/cm2 figures parsed out of this document's own
+    # "Evidence and verdict semantics" prose and (b) Deshpande 2013's own
+    # independently reported rounded 142 A/cm2 figure for the 30 nm case.
+    r25_cm = (g["optical_diameter_nm"] / 2.0) * 1e-7
+    r30_cm = (thermal["thermal_diameter_nm"] / 2.0) * 1e-7
+    area25 = math.pi * r25_cm ** 2
+    area30 = math.pi * r30_cm ** 2
+    J25 = 1e-9 / area25
+    J30 = 1e-9 / area30
+    m = re.search(
+        r"1 nA is (\d+\.?\d*) A/cm2 at 25 nm and (\d+\.?\d*) A/cm2 at 30 nm",
+        doc_text,
+    )
+    ok("current_density_prose_found", m is not None)
+    if m is not None:
+        ok("current_density_25nm_matches_doc_prose", abs(J25 - float(m.group(1))) < 0.1)
+        ok("current_density_30nm_matches_doc_prose", abs(J30 - float(m.group(2))) < 0.1)
+    ok("current_density_30nm_matches_reported_142",
+       abs(J30 - thermal["J_1nA_reported_A_cm2"]) < 1.0)
     ok("cw_not_pulsed", hbt["excitation"] == "CW electrical, 1 nA" and "unknown" in rt["excitation"])
     v = hbt["value"]
     ok("x_xx_raw_corrected", v == {"X_raw": 0.30, "X_corrected": 0.16, "XX_raw": 0.38, "XX_corrected": 0.25})
@@ -425,7 +694,7 @@ def check_source_transcription_literals(anchors: dict, ok) -> None:
 
     device_geom = anchors["deshpande2013_device_geometry"]["value"]
     ok("device_geometry_substrate", "SiO2" in device_geom["substrate"] and "Si" in device_geom["substrate"])
-    ok("device_geometry_contacted_length", device_geom["contacted_length_nm"] == 600.0)
+    ok("device_geometry_wire_length", device_geom["wire_length_nm"] == 600.0)
 
 
 def main() -> int:
@@ -445,11 +714,12 @@ def main() -> int:
     check_module_table(doc_text, ok)
     check_module_evidence_map(doc_text, anchors, ok)
     check_card_schema(doc_text, ok)
+    check_dataclass_card_binding(doc_text, ok)
     check_row_columns(doc_text, ok)
     check_verdict_and_grid(doc_text, ok)
     check_evidence_semantics(doc_text, ok)
     check_ledger_rules(anchors, ok)
-    check_source_transcription_literals(anchors, ok)
+    check_source_transcription_literals(doc_text, anchors, ok)
 
     ok("ledger_registered_in_citations_py",
        "nitride_nanowire_anchors.yaml" in read_text(CITATIONS_PY_PATH))
