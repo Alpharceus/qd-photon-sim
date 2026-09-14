@@ -50,24 +50,41 @@ Physics and conventions
   (good to within roughly kT at these dopings, since E_F - E_edge is tens of
   meV and kT is 20-26 meV over 230-300 K); no non-degenerate/finite-T
   Fermi-Dirac inversion is attempted.
-* Barrier material: an Al_xGa_1-xN barrier's conduction/valence offsets and
-  effective masses come from a linear (Vegard-law) virtual-crystal
-  interpolation between the GaN and AlN binaries already parameterized and
-  cited in fsim_core.nitride_materials (Bernardini PRB 1997, Bernardini &
-  Fiorentini pss(b) 1999, Rinke PRB 2008, Tsai & Bayram ACS Omega 2020) --
-  [A] interpolation of [V] endpoints, exactly the same epistemic split that
-  module already uses for its In_xGa_1-xN alloy.  Barrier bowing is
-  neglected [A].  The barrier is evaluated UNSTRAINED (strain_fraction=0):
-  this piece does not model the barrier as pseudomorphically strained to
-  the GaN reservoir lattice; that is a conservative simplifying choice
-  (coherency strain would shift the offset by an amount this piece does not
-  attempt to sign) and is recorded under the module's `provenance` string
-  and the worker's STATUS `decisions:` field.
-* Growth realism: barrier thickness is checked against the GaN c-axis
-  bilayer spacing (c/2, taken from nitride_materials' [V] lattice constant)
-  as the growth increment; a design that only clears its screens at an
-  exact nominal thickness and fails at +/- one growth step is reported
+* Barrier material: an Al_xGa_1-xN barrier's conduction/valence BARRIER
+  HEIGHTS come from a linear (no-bowing [A]) virtual-crystal interpolation
+  of the GaN/AlN bandgap difference (nitride_materials' [V] Wu et al.
+  bandgap()), PARTITIONED into electron/hole shares by the explicit
+  `delta_Ev_GaN_AlN_eV` knob on NitrideNanowireInjectorParams -- default
+  0.70 eV [V, Martin, Yu, Waldrop, APL 68, 2541 (1996), 0.70 +/- 0.24 eV;
+  Rinke et al., PRB 77, 075202 (2008), ~0.8 eV].  This module does NOT use
+  nitride_materials' own pinned Tsai & Bayram 0.30 eV valence-band offset
+  (that module is read-only and its 0.30 eV value is a cited [V] number
+  pinned by verify_nitride_materials.py) -- 0.30 eV is retained here only
+  as the ALTERNATIVE partition, reported as the non-gating sensitivity
+  output `rti_bypass_fraction_tsai_partition`.  Effective masses use a
+  separate linear mass VCA between the same GaN/AlN endpoints.  Barrier
+  bowing is neglected [A].  The barrier is evaluated UNSTRAINED
+  (strain_fraction=0): this piece does not model the barrier as
+  pseudomorphically strained to the GaN reservoir lattice; that is a
+  conservative simplifying choice (coherency strain would shift the offset
+  by an amount this piece does not attempt to sign) and is recorded under
+  the module's `provenance` string and the worker's STATUS `decisions:`
+  field.
+* Growth realism: growth_tolerance_steps is a TOLERANCE (in units of the
+  GaN c-axis bilayer spacing c/2, taken from nitride_materials' [V] lattice
+  constant), not a commensurability requirement -- a nominal thickness is
+  growth-feasible only if it lies within growth_tolerance_steps growth
+  steps of its nearest integer-bilayer thickness AND the feasibility
+  conjunction still holds when the barrier stack is perturbed by +/-
+  growth_tolerance_steps growth steps in BOTH directions.  A design that
+  only clears its screens at an exact nominal thickness, or whose nominal
+  thickness itself sits far from any growable bilayer count, is reported
   fragile (rti_growth_feasible=False), never claimed manufacturable.
+* Carrier default: transmission() and reflection() default to
+  carrier="electron" -- a call that omits `carrier` prices ELECTRONS ONLY.
+  Any device-integration caller pricing the hole path must pass
+  carrier="hole" explicitly; injector_feasibility itself always prices both
+  paths explicitly and does not rely on this default.
 
 Honesty tags: no branch in this module can set rti_feasible=True without
 computed, finite, out-of-branch-independent energetic/rate numbers passing
@@ -82,7 +99,7 @@ from __future__ import annotations
 
 import math
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from scipy.integrate import quad
@@ -106,8 +123,8 @@ _REF_T_K = 300.0
 # ~2.4 eV AlN-GaN offset changes by well under 0.1% over 230-300 K, which is
 # negligible next to the [A] linear-interpolation and [A] partition
 # uncertainties already carried by the offset itself.
-_EDGES_GAN = NM.band_edges(_GAN, _REF_T_K, substrate=_GAN, strain_fraction=0.0)
-_EDGES_ALN = NM.band_edges(_ALN, _REF_T_K, substrate=_ALN, strain_fraction=0.0)
+_EG_GAN_EV = NM.bandgap(_GAN, _REF_T_K)   # [V] Wu et al., APL 2002, via nitride_materials
+_EG_ALN_EV = NM.bandgap(_ALN, _REF_T_K)   # [V] Wu et al., APL 2002, via nitride_materials
 _GAN_C_NM = _GAN.c_A / 10.0
 _GROWTH_STEP_NM_DEFAULT = _GAN_C_NM / 2.0
 # [V] GaN c-axis bilayer spacing c/2; c_A from nitride_materials' Bernardini
@@ -117,18 +134,47 @@ _SLICE_LENGTH_M = 2.0e-10        # 0.2 nm spatial staircase step for field tilt
 _MIN_SLICES_PER_SEGMENT = 8
 
 
-def _default_barrier_material(al_fraction: float) -> dict:
-    """Al_xGa_1-xN barrier conduction/valence offsets (relative to GaN,
-    unstrained) and effective masses via linear virtual-crystal
-    interpolation between the GaN and AlN endpoints of nitride_materials.
-    [A] interpolation of [V] endpoints (see module docstring)."""
+_TSAI_BAYRAM_DELTA_EV_EV = 0.30
+# [V] Tsai & Bayram, ACS Omega 5, 3917 (2020), Table 2: AlN valence 0.30 eV
+# below GaN. This is the SAME number nitride_materials._VBO_ALN_EV pins for
+# the shared strained-band-edge solver (that module is read-only and its
+# 0.30 eV value is not touched here); it is retained below only as the
+# ALTERNATIVE partition for the rti_bypass_fraction_tsai_partition
+# sensitivity output, never as this module's default.
+
+
+def _bandgap_diff_eV(al_fraction: float) -> float:
+    """Linear (no-bowing [A]) virtual-crystal Al_xGa_1-xN - GaN bandgap
+    difference at the barrier reference temperature, from nitride_materials'
+    [V] Wu et al. bandgap() -- independent of how that gap is PARTITIONED
+    into conduction/valence offsets (see _default_barrier_material)."""
     if not math.isfinite(al_fraction) or not 0.0 <= al_fraction <= 1.0:
         raise ValueError("al_fraction must be finite and in [0, 1]")
-    dEc = (_EDGES_ALN["Ec_eV"] - _EDGES_GAN["Ec_eV"]) * al_fraction
-    dEv = (_EDGES_ALN["Ev_eV"] - _EDGES_GAN["Ev_eV"]) * al_fraction
+    return (_EG_ALN_EV - _EG_GAN_EV) * al_fraction
+
+
+def _default_barrier_material(al_fraction: float, delta_Ev_eV: float) -> dict:
+    """Al_xGa_1-xN barrier conduction/valence BARRIER HEIGHTS (relative to
+    GaN, unstrained) and effective masses.
+
+    The valence (hole) barrier height is x * delta_Ev_eV, an EXPLICIT
+    partition of the VCA bandgap difference (see _bandgap_diff_eV) that
+    this module owns -- NOT nitride_materials' own pinned Tsai & Bayram
+    0.30 eV VBO (nitride_materials.py is read-only; see module docstring
+    and NitrideNanowireInjectorParams.delta_Ev_GaN_AlN_eV). The conduction
+    (electron) barrier height takes the remainder of the gap difference,
+    dEc = dEg(x) - x*delta_Ev_eV, so Ec-Ev reproduces the VCA gap exactly
+    for any choice of delta_Ev_eV. Effective masses are an unrelated linear
+    mass VCA between the same GaN/AlN endpoints. [A] interpolation of [V]
+    endpoints (see module docstring)."""
+    if not math.isfinite(delta_Ev_eV) or delta_Ev_eV < 0.0:
+        raise ValueError("delta_Ev_eV must be non-negative and finite")
+    dEg = _bandgap_diff_eV(al_fraction)
+    hole_barrier_eV = delta_Ev_eV * al_fraction
+    dEc = dEg - hole_barrier_eV
     me = _GAN.me_z + (_ALN.me_z - _GAN.me_z) * al_fraction
     mh = _GAN.mh_z + (_ALN.mh_z - _GAN.mh_z) * al_fraction
-    return dict(dEc_eV=float(dEc), dEv_eV=float(dEv), me=float(me), mh=float(mh))
+    return dict(dEc_eV=float(dEc), dEv_eV=float(-hole_barrier_eV), me=float(me), mh=float(mh))
 
 
 def _degenerate_mu_eV(n_m3: float, m_ratio: float) -> float:
@@ -178,6 +224,15 @@ class NitrideNanowireInjectorParams:
     me_well: float = _GAN.me_z                        # [V] Rinke PRB 2008 GaN conduction mass
     mh_well: float = _GAN.mh_z                        # [V] Rinke PRB 2008 GaN valence mass (z)
 
+    delta_Ev_GaN_AlN_eV: float = 0.70                 # [V] Martin, Yu, Waldrop, APL 68, 2541 (1996),
+                                                       # 0.70 +/- 0.24 eV; Rinke et al. PRB 77, 075202
+                                                       # (2008) ~0.8 eV. Explicit valence-band-offset
+                                                       # partition knob for the AlGaN barrier (see
+                                                       # _default_barrier_material); the Tsai & Bayram
+                                                       # 0.30 eV alternative pinned by nitride_materials
+                                                       # (read-only) is reported separately as
+                                                       # rti_bypass_fraction_tsai_partition.
+
     n_cm3: float = 3.0e18                             # [V] Deshpande et al. 2013 n-GaN doping anchor
     p_cm3: float = 5.0e17                             # [V] Deshpande et al. 2013 p-GaN doping anchor
 
@@ -185,6 +240,9 @@ class NitrideNanowireInjectorParams:
     degeneracy: float = 2.0                           # [A] spin/valley degeneracy in the Landauer rate
     bypass_prefactor: float = 1.0                     # [A] declared prefactor on the thermionic (over-barrier) integral
     field_leverarm: float = 1.0                       # [A] fraction of the applied bias dropping across the injector
+
+    alignment_tunable: bool = False                   # [A] can a post-growth bias retune the resonance onto the target level
+    bias_tuning_range_meV: float = 0.0                # [A] maximum level shift deliverable by that bias, if alignment_tunable
 
     occupancy_control_known: bool = False             # necessary, not sufficient (see module docstring)
     second_pair_control_known: bool = False
@@ -200,7 +258,7 @@ class NitrideNanowireInjectorParams:
             "electron_barrier_thickness_nm", "hole_barrier_thickness_nm",
             "electron_well_width_nm", "hole_well_width_nm", "growth_step_nm",
             "me_well", "mh_well", "n_cm3", "p_cm3", "alignment_uncertainty_meV",
-            "degeneracy", "bypass_prefactor", "field_leverarm",
+            "degeneracy", "bypass_prefactor", "field_leverarm", "delta_Ev_GaN_AlN_eV",
         )
         for name in positive:
             v = getattr(self, name)
@@ -208,6 +266,8 @@ class NitrideNanowireInjectorParams:
                 raise ValueError(f"{name} must be positive and finite")
         if not math.isfinite(self.growth_tolerance_steps) or self.growth_tolerance_steps < 0:
             raise ValueError("growth_tolerance_steps must be non-negative and finite")
+        if not math.isfinite(self.bias_tuning_range_meV) or self.bias_tuning_range_meV < 0:
+            raise ValueError("bias_tuning_range_meV must be non-negative and finite")
         for name in ("me_barrier_override", "mh_barrier_override"):
             v = getattr(self, name)
             if v is not None and (not math.isfinite(v) or v <= 0):
@@ -227,7 +287,7 @@ _ResolvedPath = namedtuple(
 def _resolve_path(params: NitrideNanowireInjectorParams, carrier: str) -> _ResolvedPath:
     if carrier not in ("electron", "hole"):
         raise ValueError("carrier must be 'electron' or 'hole'")
-    default = _default_barrier_material(params.al_fraction)
+    default = _default_barrier_material(params.al_fraction, params.delta_Ev_GaN_AlN_eV)
     me_b = params.me_barrier_override if params.me_barrier_override is not None else default["me"]
     mh_b = params.mh_barrier_override if params.mh_barrier_override is not None else default["mh"]
     dEc = params.dEc_eV_override if params.dEc_eV_override is not None else default["dEc_eV"]
@@ -277,16 +337,23 @@ def _segment_k(E_eV: float, V_eV: float, m_ratio: float) -> complex:
 
 
 def _transmission_reflection_scalar(segments, energy_eV: float, m_left: float,
-                                     m_right: float, tilt_eV_per_m: float):
+                                     m_right: float, tilt_eV_per_m: float,
+                                     v_right_eV: float = 0.0):
     """Flux/mass-normalized transmission and reflection through a stack of
-    (length_m, V_eV, m_ratio) flat-band segments, ends referenced to GaN
-    reservoirs of mass m_left / m_right at V=0 (before the field tilt).  A
-    linear field tilt is applied by subdividing each segment into thin
-    slices (staircase approximation of a linear ramp; a standard treatment,
-    e.g. Ridley, "Quantum Processes in Semiconductors").  Numerically stable
-    backward coefficient recursion (BenDaniel-Duke effective-mass boundary
-    condition: continuity of psi and (1/m) dpsi/dx), not a chained-matrix
-    product, to avoid overflow for thick/deep barriers."""
+    (length_m, V_eV, m_ratio) flat-band segments. The LEFT (emitter)
+    reservoir stays at the module's energy zero (V=0); the RIGHT
+    (collector) reservoir is referenced at v_right_eV, the field/bias-
+    tilted band edge at the far end of the stack (see _transmission_scalar)
+    -- pinning both reservoirs at V=0 regardless of tilt would reproduce
+    the interior ramp but then snap back by tilt*L at the exit, an
+    unphysical discontinuity that also means bias_V could never lower the
+    collector (MEDIUM 5 fix). A linear field tilt is applied by subdividing
+    each segment into thin slices (staircase approximation of a linear
+    ramp; a standard treatment, e.g. Ridley, "Quantum Processes in
+    Semiconductors").  Numerically stable backward coefficient recursion
+    (BenDaniel-Duke effective-mass boundary condition: continuity of psi
+    and (1/m) dpsi/dx), not a chained-matrix product, to avoid overflow for
+    thick/deep barriers."""
     slices = []
     x0 = 0.0
     for (length_m, V_eV, m_ratio) in segments:
@@ -299,7 +366,7 @@ def _transmission_reflection_scalar(segments, energy_eV: float, m_left: float,
             slices.append((dl, V_eV - tilt_eV_per_m * xc, m_ratio))
         x0 += length_m
 
-    k_right = _segment_k(energy_eV, 0.0, m_right)
+    k_right = _segment_k(energy_eV, v_right_eV, m_right)
     A, B = 1.0 + 0j, 0.0 + 0j
     k_prev, m_prev = k_right, m_right
     for (dl, V_eV, m_ratio) in reversed(slices):
@@ -337,7 +404,13 @@ def _transmission_scalar(params, energy_eV, bias_V, field_kVcm, carrier):
     segs = _stack_segments(path)
     total_len_m = sum(s[0] for s in segs)
     tilt = _tilt_eV_per_m(field_kVcm, bias_V, params.field_leverarm, total_len_m)
-    T, R = _transmission_reflection_scalar(segs, float(energy_eV), path.m_well, path.m_well, tilt)
+    # MEDIUM 5 fix: the collector (output) reservoir band edge is lowered
+    # (for a positive/forward tilt) by the same tilt that ramps the barrier
+    # interior, so the ramp is continuous into the collector instead of
+    # snapping back to the emitter's V=0 at the exit face.
+    v_right_eV = -tilt * total_len_m
+    T, R = _transmission_reflection_scalar(segs, float(energy_eV), path.m_well, path.m_well,
+                                            tilt, v_right_eV=v_right_eV)
     return T, R
 
 
@@ -450,51 +523,114 @@ def _analytic_well_seed_eV(m_w: float, m_b: float, V0: float, L_m: float):
     return None
 
 
+def _tilted_window_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPath",
+                       bias_V: float, field_kVcm: float):
+    """(well_floor_eV, lower_barrier_top_eV, tilt_eV_per_m) bounding the
+    energy window a resonance search must cover for this path's stack at
+    the given bias/field, referenced to the SAME (emitter) reservoir zero
+    as transmission()'s energy_eV.  A nonzero field/bias tilts the barrier
+    stack (see _tilt_eV_per_m): the true transmission resonance can sit far
+    from its flat-band location -- HIGH 2 fix; Opus review 2026-09-14 found
+    the previous (flat-band-seeded, +/-10%-window) finder stuck at 62 meV /
+    T 7e-7 for the electron path at 50 kV/cm, against a dense scan of this
+    engine's own transmission() peaking at 252 meV / T 0.98.  The coarse
+    scan below must therefore span the FULL field-tilted window: from the
+    lowest point either barrier's tilted top reaches (past which the
+    structure no longer presents a barrier at all) down to the lowest
+    point the tilted well floor (or the reservoir zero) reaches."""
+    segs = _stack_segments(path)
+    total_len_m = sum(s[0] for s in segs)
+    tilt = _tilt_eV_per_m(field_kVcm, bias_V, params.field_leverarm, total_len_m)
+    x = 0.0
+    barrier_tops = []
+    well_floors = [0.0]
+    for (length_m, V_eV, m_ratio) in segs:
+        x0, x1 = x, x + length_m
+        v0, v1 = V_eV - tilt * x0, V_eV - tilt * x1
+        if V_eV > 0.0:
+            barrier_tops.append(min(v0, v1))
+        else:
+            well_floors.append(min(v0, v1))
+        x = x1
+    lower_barrier_top = min(barrier_tops) if barrier_tops else float("nan")
+    well_floor = min(well_floors)
+    return well_floor, lower_barrier_top, tilt
+
+
 def _find_resonance(params: NitrideNanowireInjectorParams, carrier: str,
                      bias_V: float, field_kVcm: float):
-    """Locate the lowest double-barrier resonance below the barrier top.
-    Seeds the search from the analytic finite-well estimate above (a real
-    double barrier's true transmission resonance can be far narrower than a
-    blind uniform grid can resolve for a deep/thick design), then refines
-    with a multi-level local zoom on the transfer-matrix transmission
-    itself, so the REPORTED energy and height are always numerically
-    computed, never the analytic estimate. Falls back to a coarse full-range
-    scan if the analytic seed is unavailable. Returns (E_res_eV, T_res) or
-    None (single_barrier topology, or no resolvable peak -- "a single
-    tunnel barrier has no claimed resonant well")."""
+    """Locate the lowest double-barrier resonance under the given bias/
+    field. HIGH 2 fix: scans the module's own transmission() on a coarse
+    grid over the FULL field-tilted window (_tilted_window_eV above, never
+    a +/-10% band around the flat-band analytic seed, which a field can
+    move the true resonance well outside of), then refines with a
+    multi-level local zoom on the transfer-matrix transmission itself, so
+    the REPORTED energy and height are always numerically computed, never
+    the analytic estimate.  The flat-band estimate is folded in only as one
+    extra sample point injected into the coarse grid (some designed double
+    barriers give an extremely narrow true resonance that a blind uniform
+    grid can straddle without ever sampling); a coarse pass that finds
+    nothing resolvable is retried once with a much denser full-window scan
+    before giving up.  Returns (E_res_eV, T_res) or None (single_barrier
+    topology, or no resolvable peak anywhere in the window)."""
     path = _resolve_path(params, carrier)
     if path.topology != "double_barrier":
         return None
-    e_hi = path.barrier_height_eV
-    if not math.isfinite(e_hi) or e_hi <= 0:
+    well_floor, lower_top, _tilt = _tilted_window_eV(params, path, bias_V, field_kVcm)
+    if not (math.isfinite(lower_top) and lower_top > well_floor):
         return None
 
     def T_at(E):
         return _transmission_scalar(params, E, bias_V, field_kVcm, carrier)[0]
 
-    seed = _analytic_well_seed_eV(path.m_well, path.m_barrier, e_hi, path.well_nm * 1e-9)
-    if seed is None or not (0.0 < seed < e_hi):
-        grid = np.linspace(e_hi * 1e-4, e_hi * 0.999, 600)
+    e_lo = max(well_floor, 1e-9)
+    e_hi_scan = lower_top - abs(lower_top) * 1e-6 - 1e-12
+    if e_hi_scan <= e_lo:
+        return None
+    seed = _analytic_well_seed_eV(path.m_well, path.m_barrier,
+                                   path.barrier_height_eV, path.well_nm * 1e-9)
+
+    def _first_local_max(Ts, threshold):
+        """Index of the FIRST (lowest-energy) sampled local maximum above
+        threshold, scanning low-to-high -- a real double barrier generally
+        supports several quasi-bound states (this design's flat-band
+        window has three), and the lowest one is the physically relevant
+        target; a plain global argmax would instead return whichever
+        excited state happens to transmit best, silently mispricing
+        alignment against the wrong state."""
+        for j in range(1, len(Ts) - 1):
+            if Ts[j] > threshold and Ts[j] >= Ts[j - 1] and Ts[j] >= Ts[j + 1]:
+                return j
+        return None
+
+    def _coarse_scan(n, threshold):
+        grid = np.linspace(e_lo, e_hi_scan, n)
+        if seed is not None and e_lo < seed < e_hi_scan:
+            grid = np.sort(np.append(grid, seed))
         Ts = np.array([T_at(E) for E in grid])
-        i = int(np.argmax(Ts))
-        if Ts[i] < 1e-12:
-            return None
-        lo, hi = grid[max(i - 2, 0)], grid[min(i + 2, len(grid) - 1)]
-        best_E, best_T = float(grid[i]), float(Ts[i])
-    else:
-        lo, hi = seed * 0.9, min(seed * 1.1, e_hi * 0.999999)
-        best_E, best_T = seed, T_at(seed)
-        for _ in range(4):
-            local = np.linspace(lo, hi, 60)
-            Ts_local = np.array([T_at(E) for E in local])
-            j = int(np.argmax(Ts_local))
-            if Ts_local[j] > best_T:
-                best_E, best_T = float(local[j]), float(Ts_local[j])
-            span = (hi - lo) / 30.0
-            lo = max(local[j] - span, 1e-12)
-            hi = min(local[j] + span, e_hi * 0.999999)
-            if hi <= lo:
-                break
+        i = _first_local_max(Ts, threshold)
+        return grid, Ts, i
+
+    grid, Ts, i = _coarse_scan(2000, 1e-9)
+    if i is None:
+        grid, Ts, i = _coarse_scan(20000, 1e-12)   # narrow-resonance safety net
+    if i is None:
+        return None
+
+    best_E, best_T = float(grid[i]), float(Ts[i])
+    lo = grid[max(i - 2, 0)]
+    hi = grid[min(i + 2, len(grid) - 1)]
+    for _ in range(4):
+        if hi <= lo:
+            break
+        local = np.linspace(lo, hi, 60)
+        Ts_local = np.array([T_at(E) for E in local])
+        j = int(np.argmax(Ts_local))
+        if Ts_local[j] > best_T:
+            best_E, best_T = float(local[j]), float(Ts_local[j])
+        span = (hi - lo) / 30.0
+        lo = max(local[j] - span, e_lo)
+        hi = min(local[j] + span, e_hi_scan)
 
     if hi <= lo:
         return best_E, best_T
@@ -589,23 +725,58 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
     res = _find_resonance(params, carrier, bias_V, field_kVcm)
     if path.topology == "double_barrier" and res is not None:
         E_res, T_res = res
+        _well_floor, lower_top, _tilt = _tilted_window_eV(params, path, bias_V, field_kVcm)
+        e_hi_width = lower_top if math.isfinite(lower_top) else path.barrier_height_eV
         linewidth_eV = _resonance_width_eV(params, carrier, bias_V, field_kVcm,
-                                            E_res, T_res, path.barrier_height_eV)
+                                            E_res, T_res, e_hi_width)
         alignment_error_meV = abs(E_res - level_eV) * 1000.0
         E_center = E_res
+        linewidth_na = False
     else:
         # Single tunnel barrier: no claimed resonant well, so no resonance
-        # to misalign against [A]; the only broadening is the declared
-        # alignment uncertainty itself.
-        linewidth_eV = params.alignment_uncertainty_meV / 1000.0
+        # to misalign against [A]; a NaN width here is NOT APPLICABLE (no
+        # resonance exists to have a width), distinct from a double-barrier
+        # resonance whose width genuinely could not be bracketed -- MEDIUM
+        # 6/7 fix: this must not be double-counted into combined_width_eV
+        # alongside the alignment uncertainty below, and must not trip the
+        # "unresolved linewidth" invalidity check the other case does.
+        linewidth_eV = float("nan")
         alignment_error_meV = 0.0
         E_center = level_eV
+        linewidth_na = True
 
     linewidth_meV = linewidth_eV * 1000.0 if math.isfinite(linewidth_eV) else float("nan")
-    combined_width_eV = math.sqrt(
-        (linewidth_eV if math.isfinite(linewidth_eV) else 0.0) ** 2
-        + (params.alignment_uncertainty_meV / 1000.0) ** 2
-    )
+    if linewidth_na:
+        # No resonance -> no separate linewidth to add in quadrature; the
+        # combined width is the alignment uncertainty alone (MEDIUM 7 fix,
+        # previously this branch quadrature-added alignment_uncertainty
+        # with itself, over-broadening by sqrt(2)).
+        combined_width_eV = params.alignment_uncertainty_meV / 1000.0
+    elif math.isfinite(linewidth_eV):
+        combined_width_eV = math.sqrt(linewidth_eV ** 2 + (params.alignment_uncertainty_meV / 1000.0) ** 2)
+    else:
+        # A double-barrier resonance was found but its width could not be
+        # bracketed: missing information, not zero broadening (MEDIUM 6
+        # fix) -- propagate NaN instead of assuming an infinitely sharp
+        # resonance; see the linewidth_unresolved invalidity check below.
+        combined_width_eV = float("nan")
+
+    # HIGH 3 fix: allowed-state ALIGNMENT error (delivery into the
+    # REQUESTED level) is a distinct, separately-gated screen from the
+    # unwanted-state SEPARATION priced into margin_kT/orbital_margin_kT
+    # below -- a high-transmission resonance that simply is not where the
+    # dot's level sits must not be reported as a passing delivery rate.
+    _combined_width_for_gate_eV = combined_width_eV if math.isfinite(combined_width_eV) else 0.0
+    align_threshold_meV = max(2.0 * kT_eV, _combined_width_for_gate_eV) * 1000.0
+    if params.alignment_tunable:
+        # [A] a post-growth bias shifts the resonance roughly 1:1 with the
+        # applied energy; the bias required to close a given misalignment
+        # is therefore taken equal to the misalignment itself.
+        required_bias_shift_meV = alignment_error_meV
+        alignment_ok = required_bias_shift_meV <= params.bias_tuning_range_meV
+    else:
+        required_bias_shift_meV = float("nan")
+        alignment_ok = alignment_error_meV <= align_threshold_meV
 
     rate_hz, rate_above_hz = _forward_rate_hz(params, carrier, bias_V, field_kVcm,
                                                E_center, combined_width_eV, kT_eV)
@@ -647,7 +818,9 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
 
     return dict(
         rate_hz=rate_hz, alignment_error_meV=alignment_error_meV,
-        linewidth_meV=linewidth_meV, bypass_fraction=bypass_fraction,
+        linewidth_meV=linewidth_meV, linewidth_na=linewidth_na,
+        alignment_ok=alignment_ok, required_bias_shift_meV=required_bias_shift_meV,
+        bypass_fraction=bypass_fraction,
         margin_kT=margin_kT, orbital_margin_kT=orbital_margin_kT,
         missed_load_p=missed_load_p, second_pair_p=second_pair_p,
         rate_second_hz=rate_second_hz, barrier_height_eV=path.barrier_height_eV,
@@ -657,9 +830,15 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
 
 def _transport_ok(screen: dict, margin_floor_kT: float, bypass_ceiling: float,
                    missed_ceiling: float) -> bool:
+    # HIGH 3 fix: a path whose delivery is not aligned onto the requested
+    # level (screen["alignment_ok"] False) is not transport-feasible, even
+    # if its resonant transmission/rate numbers look otherwise excellent --
+    # resonant transmission is not the same claim as one-pair loading into
+    # the intended state.
     return (math.isfinite(screen["margin_kT"]) and screen["margin_kT"] >= margin_floor_kT
             and math.isfinite(screen["bypass_fraction"]) and screen["bypass_fraction"] <= bypass_ceiling
-            and math.isfinite(screen["missed_load_p"]) and screen["missed_load_p"] <= missed_ceiling)
+            and math.isfinite(screen["missed_load_p"]) and screen["missed_load_p"] <= missed_ceiling
+            and screen["alignment_ok"])
 
 
 # --------------------------------------------------------- engineering thresholds
@@ -671,19 +850,26 @@ RTI_MISSED_LOAD_CEILING = 0.01
 RTI_SECOND_PAIR_CEILING = 0.01
 
 _PROVENANCE = (
-    "[V] material endpoints (GaN/AlN masses, offsets, lattice constant) from "
+    "[V] material endpoints (GaN/AlN masses, bandgaps, lattice constant) from "
     "fsim_core.nitride_materials (Bernardini PRB 1997; Bernardini & "
-    "Fiorentini pss(b) 1999; Rinke PRB 2008; Tsai & Bayram ACS Omega 2020); "
-    "[A] linear Al_xGa_1-xN interpolation of those endpoints, unstrained "
-    "barrier; [V] n/p-GaN doping anchors Deshpande et al., Nat. Commun. 4, "
-    "1675 (2013); [DR] degenerate free-electron-gas reservoir "
+    "Fiorentini pss(b) 1999; Rinke PRB 2008; Wu et al. bandgap, APL 2002); "
+    "[A] linear Al_xGa_1-xN VCA (no bowing) of that gap and of masses, "
+    "unstrained barrier; [V] default valence-band-offset partition Martin, "
+    "Yu, Waldrop, APL 68, 2541 (1996), 0.70 +/- 0.24 eV (Rinke PRB 2008 "
+    "~0.8 eV), with nitride_materials' own pinned Tsai & Bayram ACS Omega "
+    "2020 0.30 eV VBO reported as the alternative partition "
+    "(rti_bypass_fraction_tsai_partition) -- [A] which partition is correct "
+    "for this device; [V] n/p-GaN doping anchors Deshpande et al., Nat. "
+    "Commun. 4, 1675 (2013); [DR] degenerate free-electron-gas reservoir "
     "electrochemical energy (Ashcroft & Mermin, 'Solid State Physics', "
     "1976, Ch. 2 Eq. 2.33); [V] single-channel Landauer/Buttiker rate "
     "normalization 1/h (e.g. Datta, 'Electronic Transport in Mesoscopic "
     "Systems', 1995, Ch. 2); [A] spin/valley degeneracy, bypass prefactor, "
-    "field lever-arm, alignment uncertainty, engineering thresholds "
-    "(margin 10 kT, bypass/missed-load/second-pair 0.01). Conditional "
-    "engineering screening only; not a demonstrated hardware claim."
+    "field lever-arm, alignment uncertainty, alignment-gate threshold "
+    "max(2 kT, combined width) unless alignment_tunable, growth tolerance "
+    "in bilayer steps, engineering thresholds (margin 10 kT, "
+    "bypass/missed-load/second-pair 0.01). Conditional engineering "
+    "screening only; not a demonstrated hardware claim."
 )
 
 
@@ -695,10 +881,13 @@ def _unknown_result(failed_checks, status: str) -> dict:
         rti_alignment_error_meV=nan, rti_linewidth_meV=nan,
         rti_rate_Hz=nan, rti_e_rate_Hz=nan, rti_h_rate_Hz=nan,
         rti_bypass_fraction=nan, rti_missed_load_probability=nan,
-        rti_second_pair_probability=nan, rti_growth_feasible=False,
+        rti_second_pair_probability=nan, rti_second_carrier_probability=nan,
+        rti_growth_feasible=False,
         rti_failed_checks=list(failed_checks),
         rti_evidence_status="conditional_engineering_screen_no_measured_device",
         valid=False, provenance=_PROVENANCE,
+        rti_required_bias_shift_meV=nan, rti_bypass_fraction_tsai_partition=nan,
+        rti_growth_nearest_commensurate_nm=None, rti_growth_perturbed_margins_kT=None,
     )
 
 
@@ -722,7 +911,21 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     rti_second_pair_probability (from actual second_pair_addition_meV and
     available_pair_rate_Hz numbers) to clear its threshold. There is no
     branch that can set rti_feasible=True without a passing numeric
-    computation behind it."""
+    computation behind it.
+
+    Each carrier path is also gated on ALIGNMENT: a resonance (or, for a
+    single tunnel barrier, the requested level itself) more than
+    max(2 kT, combined linewidth) away from the requested
+    electron_level_eV/hole_level_eV fails that path's transport screen
+    (params.alignment_tunable=True substitutes a bias-tuning-range gate on
+    the reported rti_required_bias_shift_meV instead) -- resonant
+    transmission is not itself evidence of delivery into the REQUESTED
+    state. rti_second_pair_probability is P(second electron OR second
+    hole), a conservative upper bound on the true second-PAIR probability;
+    rti_second_carrier_probability is the same number under its honest
+    name. rti_bypass_fraction_tsai_partition reports the same design's
+    bypass fraction under the alternative (Tsai & Bayram 0.30 eV) valence
+    partition, non-gating."""
     raw = dict(T_K=T_K, rep_rate_hz=rep_rate_hz, loading_window_ns=loading_window_ns,
                electron_level_eV=electron_level_eV, hole_level_eV=hole_level_eV,
                electron_spacing_meV=electron_spacing_meV, hole_spacing_meV=hole_spacing_meV,
@@ -787,8 +990,25 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     h_ok = _transport_ok(h, RTI_MARGIN_FLOOR_KT, RTI_BYPASS_CEILING, RTI_MISSED_LOAD_CEILING)
     if not e_ok:
         failed_checks.append("electron_transport")
+        if not e["alignment_ok"]:
+            failed_checks.append("electron_alignment")
     if not h_ok:
         failed_checks.append("hole_transport")
+        if not h["alignment_ok"]:
+            failed_checks.append("hole_alignment")
+
+    # MEDIUM 6 fix: a double-barrier resonance that was FOUND but whose
+    # width could not be bracketed is missing information, not zero
+    # broadening -- it must invalidate the screen. A single-barrier path's
+    # NaN linewidth is "not applicable" (no resonance exists at all) and
+    # must NOT trip this (see _carrier_screen's linewidth_na).
+    e_linewidth_unresolved = (not e["linewidth_na"]) and not math.isfinite(e["linewidth_meV"])
+    h_linewidth_unresolved = (not h["linewidth_na"]) and not math.isfinite(h["linewidth_meV"])
+    if e_linewidth_unresolved:
+        failed_checks.append("electron_linewidth_unresolved")
+    if h_linewidth_unresolved:
+        failed_checks.append("hole_linewidth_unresolved")
+    linewidth_unresolved = e_linewidth_unresolved or h_linewidth_unresolved
 
     missed_load_probability = 1.0 - (1.0 - e["missed_load_p"]) * (1.0 - h["missed_load_p"])
     if missed_load_probability > RTI_MISSED_LOAD_CEILING:
@@ -796,27 +1016,45 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
 
     rti_transport_feasible = bool(
         e_ok and h_ok and missed_load_probability <= RTI_MISSED_LOAD_CEILING
+        and not linewidth_unresolved
     )
 
-    # Growth realism: perturb both barriers together by +/- N growth steps
-    # and require the necessary transport conditions to survive at every
-    # perturbation; a design that only clears at the exact nominal
-    # thickness is fragile, never a manufacturable claim.
-    growth_ok = rti_transport_feasible
+    # Growth realism (HIGH 1 fix): growth_tolerance_steps is a TOLERANCE
+    # around the nearest commensurate (integer-bilayer) thickness, not a
+    # commensurability test in itself -- a nominal thickness is
+    # growth-feasible only if (a) it lies within
+    # growth_tolerance_steps*growth_step_nm of its nearest integer-bilayer
+    # thickness AND (b) the feasibility conjunction still holds when the
+    # barrier stack is perturbed by +/- growth_tolerance_steps bilayers in
+    # BOTH directions (a design that only clears exactly at nominal is
+    # fragile, never a manufacturable claim).
+    def _nearest_commensurate_nm(thickness_nm):
+        n = round(thickness_nm / params.growth_step_nm)
+        return n * params.growth_step_nm
+
+    nearest_e_nm = _nearest_commensurate_nm(params.electron_barrier_thickness_nm)
+    nearest_h_nm = _nearest_commensurate_nm(params.hole_barrier_thickness_nm)
+    tolerance_nm = params.growth_tolerance_steps * params.growth_step_nm
+    commensurate_ok = (abs(params.electron_barrier_thickness_nm - nearest_e_nm) <= tolerance_nm
+                        and abs(params.hole_barrier_thickness_nm - nearest_h_nm) <= tolerance_nm)
+
+    growth_ok = rti_transport_feasible and commensurate_ok
+    perturbed_margins_kT = {}
     if params.growth_tolerance_steps > 0:
-        for sign in (-1.0, 1.0):
+        for sign, tag in ((-1.0, "minus"), (1.0, "plus")):
             delta = sign * params.growth_tolerance_steps * params.growth_step_nm
             p_pert = _with_thickness(params, delta)
             e_p, h_p = _screen_at(p_pert)
             e_p_ok = _transport_ok(e_p, RTI_MARGIN_FLOOR_KT, RTI_BYPASS_CEILING, RTI_MISSED_LOAD_CEILING)
             h_p_ok = _transport_ok(h_p, RTI_MARGIN_FLOOR_KT, RTI_BYPASS_CEILING, RTI_MISSED_LOAD_CEILING)
             missed_pert = 1.0 - (1.0 - e_p["missed_load_p"]) * (1.0 - h_p["missed_load_p"])
+            perturbed_margins_kT[tag] = dict(
+                electron_margin_kT=e_p["margin_kT"], hole_margin_kT=h_p["margin_kT"],
+                missed_load_probability=missed_pert, ok=bool(e_p_ok and h_p_ok
+                                                              and missed_pert <= RTI_MISSED_LOAD_CEILING),
+            )
             growth_ok = growth_ok and e_p_ok and h_p_ok and missed_pert <= RTI_MISSED_LOAD_CEILING
-    nominal_steps_e = params.electron_barrier_thickness_nm / params.growth_step_nm
-    nominal_steps_h = params.hole_barrier_thickness_nm / params.growth_step_nm
-    submonolayer = (abs(nominal_steps_e - round(nominal_steps_e)) > 0.05
-                    or abs(nominal_steps_h - round(nominal_steps_h)) > 0.05)
-    rti_growth_feasible = bool(growth_ok and not submonolayer)
+    rti_growth_feasible = bool(growth_ok)
     if not rti_growth_feasible:
         failed_checks.append("growth_tolerance")
 
@@ -825,6 +1063,12 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         failed_checks.append("second_pair_exclusion_unknown")
         second_pair_probability = float("nan")
     else:
+        # P(second electron OR second hole): a conservative UPPER BOUND on
+        # true second-PAIR probability, not the pair probability itself
+        # (LOW 10 fix -- rti_second_carrier_probability is the honestly
+        # named quantity; rti_second_pair_probability is retained,
+        # documented as that same conservative bound, for contract
+        # compatibility).
         second_pair_probability = 1.0 - (1.0 - e["second_pair_p"]) * (1.0 - h["second_pair_p"])
         if second_pair_probability > RTI_SECOND_PAIR_CEILING:
             failed_checks.append("second_pair_reload")
@@ -859,10 +1103,25 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
                           else float("nan"))
     rti_bypass_fraction = max(e["bypass_fraction"], h["bypass_fraction"])
     rti_rate_Hz = min(e["rate_hz"], h["rate_hz"])   # slower completed-pair rate
+    if params.alignment_tunable:
+        _bias_shift_candidates = [v for v in (e["required_bias_shift_meV"], h["required_bias_shift_meV"])
+                                   if math.isfinite(v)]
+        rti_required_bias_shift_meV = max(_bias_shift_candidates) if _bias_shift_candidates else float("nan")
+    else:
+        rti_required_bias_shift_meV = float("nan")
+
+    # HIGH 4 sensitivity: the same designed stack's bypass fraction under
+    # the Tsai & Bayram 0.30 eV valence-offset partition (nitride_materials'
+    # own pinned VBO) instead of this module's default 0.70 eV partition --
+    # reported, never gated on, so the choice of partition is visible
+    # without silently changing the pass/fail verdict above.
+    p_tsai = replace(params, delta_Ev_GaN_AlN_eV=_TSAI_BAYRAM_DELTA_EV_EV)
+    e_tsai, h_tsai = _screen_at(p_tsai)
+    rti_bypass_fraction_tsai_partition = float(max(e_tsai["bypass_fraction"], h_tsai["bypass_fraction"]))
 
     critical = [rti_level_margin_kT, rti_alignment_error_meV, e["rate_hz"], h["rate_hz"],
                 rti_bypass_fraction, missed_load_probability]
-    valid = bool(all(math.isfinite(v) for v in critical))
+    valid = bool(all(math.isfinite(v) for v in critical) and not linewidth_unresolved)
     if not valid:
         rti_feasible = False
         if rti_status == "feasible":
@@ -882,6 +1141,7 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         rti_bypass_fraction=float(rti_bypass_fraction),
         rti_missed_load_probability=float(missed_load_probability),
         rti_second_pair_probability=float(second_pair_probability),
+        rti_second_carrier_probability=float(second_pair_probability),
         rti_growth_feasible=rti_growth_feasible,
         rti_failed_checks=failed_checks,
         rti_evidence_status="conditional_engineering_screen_no_measured_device",
@@ -892,4 +1152,8 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         rti_level_margin_h_kT=float(h["margin_kT"]),
         rti_alignment_error_e_meV=float(e["alignment_error_meV"]),
         rti_alignment_error_h_meV=float(h["alignment_error_meV"]),
+        rti_required_bias_shift_meV=float(rti_required_bias_shift_meV),
+        rti_bypass_fraction_tsai_partition=rti_bypass_fraction_tsai_partition,
+        rti_growth_nearest_commensurate_nm={"electron": float(nearest_e_nm), "hole": float(nearest_h_nm)},
+        rti_growth_perturbed_margins_kT=perturbed_margins_kT,
     )
