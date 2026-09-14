@@ -143,6 +143,29 @@ _TSAI_BAYRAM_DELTA_EV_EV = 0.30
 # sensitivity output, never as this module's default.
 
 
+def _polarization_barrier_field_kVcm(al_fraction: float) -> float:
+    """Magnitude of the fixed-D field in pseudomorphic AlGaN on GaN.
+
+    [DR] The AlGaN P_sp and P_pz are VCA interpolations of Bernardini,
+    Fiorentini & Vanderbilt, PRB 56, R10024 (1997), Table II.  The alloy is
+    constrained to GaN in-plane lattice constant and D continuity gives
+    |P_GaN-P_AlGaN|/(eps0 eps_AlGaN).  This is deliberately separate from
+    the dot polarization model: it is a barrier-stack electrostatic term.
+    """
+    aln = _ALN
+    a = _GAN.a_A + al_fraction * (aln.a_A - _GAN.a_A)
+    c13 = _GAN.C13_GPa + al_fraction * (aln.C13_GPa - _GAN.C13_GPa)
+    c33 = _GAN.C33_GPa + al_fraction * (aln.C33_GPa - _GAN.C33_GPa)
+    e31 = _GAN.e31_Cm2 + al_fraction * (aln.e31_Cm2 - _GAN.e31_Cm2)
+    e33 = _GAN.e33_Cm2 + al_fraction * (aln.e33_Cm2 - _GAN.e33_Cm2)
+    psp = _GAN.Psp_Cm2 + al_fraction * (aln.Psp_Cm2 - _GAN.Psp_Cm2)
+    eps = _GAN.eps_r + al_fraction * (aln.eps_r - _GAN.eps_r)
+    ep = (_GAN.a_A - a) / a
+    ez = -2.0 * c13 / c33 * ep
+    p_algan = psp + 2.0 * e31 * ep + e33 * ez
+    return abs((_GAN.Psp_Cm2 - p_algan) / (NM.EPS0_SI * eps)) * 1.0e-5
+
+
 def _bandgap_diff_eV(al_fraction: float) -> float:
     """Linear (no-bowing [A]) virtual-crystal Al_xGa_1-xN - GaN bandgap
     difference at the barrier reference temperature, from nitride_materials'
@@ -238,6 +261,10 @@ class NitrideNanowireInjectorParams:
 
     alignment_uncertainty_meV: float = 15.0           # [A] growth/doping-limited level-alignment uncertainty
     degeneracy: float = 2.0                           # [A] spin/valley degeneracy in the Landauer rate
+    reservoir_state_count_e: float = 2.0              # [A] caller should replace with levels-module transverse count
+    reservoir_state_count_h: float = 2.0              # [A] caller should replace with levels-module transverse count
+    mg_acceptor_energy_meV: float = 170.0              # [E] Gotz et al., APL 68, 667 (1996); Kozodoy et al., JAP 87, 1832 (2000)
+    include_polarization: bool = True                  # [A] pseudomorphic-barrier envelope enabled by default
     bypass_prefactor: float = 1.0                     # [A] declared prefactor on the thermionic (over-barrier) integral
     field_leverarm: float = 1.0                       # [A] fraction of the applied bias dropping across the injector
 
@@ -258,7 +285,7 @@ class NitrideNanowireInjectorParams:
             "electron_barrier_thickness_nm", "hole_barrier_thickness_nm",
             "electron_well_width_nm", "hole_well_width_nm", "growth_step_nm",
             "me_well", "mh_well", "n_cm3", "p_cm3", "alignment_uncertainty_meV",
-            "degeneracy", "bypass_prefactor", "field_leverarm", "delta_Ev_GaN_AlN_eV",
+            "degeneracy", "reservoir_state_count_e", "reservoir_state_count_h", "mg_acceptor_energy_meV", "bypass_prefactor", "field_leverarm", "delta_Ev_GaN_AlN_eV",
         )
         for name in positive:
             v = getattr(self, name)
@@ -338,7 +365,8 @@ def _segment_k(E_eV: float, V_eV: float, m_ratio: float) -> complex:
 
 def _transmission_reflection_scalar(segments, energy_eV: float, m_left: float,
                                      m_right: float, tilt_eV_per_m: float,
-                                     v_right_eV: float = 0.0):
+                                     v_right_eV: float = 0.0,
+                                     polarization_tilt_eV_per_m: float = 0.0):
     """Flux/mass-normalized transmission and reflection through a stack of
     (length_m, V_eV, m_ratio) flat-band segments. The LEFT (emitter)
     reservoir stays at the module's energy zero (V=0); the RIGHT
@@ -361,9 +389,14 @@ def _transmission_reflection_scalar(segments, energy_eV: float, m_left: float,
             continue
         n = max(_MIN_SLICES_PER_SEGMENT, int(math.ceil(length_m / _SLICE_LENGTH_M)))
         dl = length_m / n
+        # Each GaN/AlGaN and AlGaN/GaN interface supplies the sheet charge
+        # that starts/stops this fixed-D barrier field [DR; B97].  The
+        # local coordinate resets in each barrier; consequently the well
+        # is not incorrectly given the AlGaN field.
+        local_pol = polarization_tilt_eV_per_m if V_eV > 0.0 else 0.0
         for i in range(n):
             xc = x0 + (i + 0.5) * dl
-            slices.append((dl, V_eV - tilt_eV_per_m * xc, m_ratio))
+            slices.append((dl, V_eV - tilt_eV_per_m * xc - local_pol * ((i + 0.5) * dl), m_ratio))
         x0 += length_m
 
     k_right = _segment_k(energy_eV, v_right_eV, m_right)
@@ -409,8 +442,11 @@ def _transmission_scalar(params, energy_eV, bias_V, field_kVcm, carrier):
     # interior, so the ramp is continuous into the collector instead of
     # snapping back to the emitter's V=0 at the exit face.
     v_right_eV = -tilt * total_len_m
+    pol_tilt = (_polarization_barrier_field_kVcm(params.al_fraction) * 1.0e5
+                if params.include_polarization else 0.0)
     T, R = _transmission_reflection_scalar(segs, float(energy_eV), path.m_well, path.m_well,
-                                            tilt, v_right_eV=v_right_eV)
+                                            tilt, v_right_eV=v_right_eV,
+                                            polarization_tilt_eV_per_m=pol_tilt)
     return T, R
 
 
@@ -703,15 +739,19 @@ def _forward_rate_hz(params: NitrideNanowireInjectorParams, carrier: str,
                          limit=200, epsabs=1e-18, epsrel=1e-7)
     else:
         above = 0.0
-    rate_total = params.degeneracy * total / H_EVS
-    rate_above = params.degeneracy * above / H_EVS
+    # [A] Caller-provided transverse-channel count from the levels module;
+    # the default of two remains an explicit sensitivity for old callers.
+    channels = (params.reservoir_state_count_e if carrier == "electron"
+                else params.reservoir_state_count_h)
+    rate_total = channels * total / H_EVS
+    rate_above = channels * above / H_EVS
     return float(rate_total), float(rate_above)
 
 
 def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
                      kT_eV: float, level_eV: float, spacing_meV: float,
                      second_pair_addition_meV: float, available_pair_rate_Hz: float,
-                     loading_window_ns: float, rep_rate_hz: float, field_kVcm: float):
+                     loading_window_ns: float, gate_ns: float, rep_rate_hz: float, field_kVcm: float):
     """All diagnostics for one carrier path at params' current (possibly
     growth-perturbed) thickness. Held at zero series bias: the interface
     constraint exposes only field_kVcm to injector_feasibility, and
@@ -807,7 +847,9 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
     missed_load_p = math.exp(-rate_hz * t_load_s)
 
     period_s = 1.0 / rep_rate_hz
-    t_remaining_s = max(period_s - t_load_s, 0.0)
+    # [A] Reload is priced over the explicit counting gate, not implicitly
+    # over the unused remainder of an electrical period.
+    t_remaining_s = min(gate_ns * 1e-9, period_s)
     if math.isfinite(second_pair_addition_meV) and math.isfinite(available_pair_rate_Hz):
         suppression = math.exp(-second_pair_addition_meV / 1000.0 / kT_eV)
         rate_second_hz = min(rate_hz, available_pair_rate_Hz) * suppression
@@ -869,7 +911,12 @@ _PROVENANCE = (
     "max(2 kT, combined width) unless alignment_tunable, growth tolerance "
     "in bilayer steps, engineering thresholds (margin 10 kT, "
     "bypass/missed-load/second-pair 0.01). Conditional engineering "
-    "screening only; not a demonstrated hardware claim."
+    "screening only; not a demonstrated hardware claim. [DR] barrier "
+    "polarization uses B97 P_sp/e31/e33 VCA pseudomorphic on GaN and "
+    "fixed-D interface sheets; [E] Mg activation 170 meV (Gotz APL 1996; "
+    "Kozodoy JAP 2000), so rti_p_free_cm3 is not nominal Mg doping; [A] "
+    "reservoir_state_count_e/h defaults to 2 until supplied by levels and "
+    "gate_ns defaults to loading_window_ns for legacy pulse callers."
 )
 
 
@@ -897,7 +944,8 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
                           electron_spacing_meV: float, hole_spacing_meV: float,
                           second_pair_addition_meV: float,
                           available_pair_rate_Hz: float,
-                          field_kVcm: float = 0.0) -> dict:
+                          field_kVcm: float = 0.0,
+                          gate_ns: float | None = None) -> dict:
     """Price this injector design as a SECOND, independent deterministic-
     pair feasibility screen (see module docstring). Every energy argument
     is referenced to its own carrier's bulk GaN band edge (see
@@ -926,7 +974,9 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     name. rti_bypass_fraction_tsai_partition reports the same design's
     bypass fraction under the alternative (Tsai & Bayram 0.30 eV) valence
     partition, non-gating."""
-    raw = dict(T_K=T_K, rep_rate_hz=rep_rate_hz, loading_window_ns=loading_window_ns,
+    if gate_ns is None:
+        gate_ns = loading_window_ns  # [A] compatibility: pulse width is its own gate
+    raw = dict(T_K=T_K, rep_rate_hz=rep_rate_hz, loading_window_ns=loading_window_ns, gate_ns=gate_ns,
                electron_level_eV=electron_level_eV, hole_level_eV=hole_level_eV,
                electron_spacing_meV=electron_spacing_meV, hole_spacing_meV=hole_spacing_meV,
                second_pair_addition_meV=second_pair_addition_meV,
@@ -956,6 +1006,8 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         range_bad.append("out_of_range:rep_rate_hz")
     if "loading_window_ns" not in missing and loading_window_ns <= 0:
         range_bad.append("out_of_range:loading_window_ns")
+    if "gate_ns" not in missing and gate_ns <= 0:
+        range_bad.append("out_of_range:gate_ns")
     if not _nonfinite(available_pair_rate_Hz) and available_pair_rate_Hz < 0:
         range_bad.append("out_of_range:available_pair_rate_Hz")
     if ("loading_window_ns" not in missing and "rep_rate_hz" not in missing
@@ -967,19 +1019,23 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         return _unknown_result(failed, "missing_or_invalid_input")
 
     kT_eV = KB_EV * T_K
+    # [E] Mg acceptor ionization is represented by its activated dilute
+    # limit, not the nominal acceptor density.  This intentionally avoids
+    # treating all 5e17 cm-3 Mg as mobile holes at room temperature.
+    p_free_cm3 = params.p_cm3 * math.exp(-params.mg_acceptor_energy_meV / 1000.0 / kT_eV)
 
     def _screen_at(p):
         e = _carrier_screen(p, "electron", kT_eV=kT_eV, level_eV=electron_level_eV,
                              spacing_meV=electron_spacing_meV,
                              second_pair_addition_meV=second_pair_addition_meV,
                              available_pair_rate_Hz=available_pair_rate_Hz,
-                             loading_window_ns=loading_window_ns, rep_rate_hz=rep_rate_hz,
+                             loading_window_ns=loading_window_ns, gate_ns=gate_ns, rep_rate_hz=rep_rate_hz,
                              field_kVcm=field_kVcm)
         h = _carrier_screen(p, "hole", kT_eV=kT_eV, level_eV=hole_level_eV,
                              spacing_meV=hole_spacing_meV,
                              second_pair_addition_meV=second_pair_addition_meV,
                              available_pair_rate_Hz=available_pair_rate_Hz,
-                             loading_window_ns=loading_window_ns, rep_rate_hz=rep_rate_hz,
+                             loading_window_ns=loading_window_ns, gate_ns=gate_ns, rep_rate_hz=rep_rate_hz,
                              field_kVcm=field_kVcm)
         return e, h
 
@@ -1156,4 +1212,17 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
         rti_bypass_fraction_tsai_partition=rti_bypass_fraction_tsai_partition,
         rti_growth_nearest_commensurate_nm={"electron": float(nearest_e_nm), "hole": float(nearest_h_nm)},
         rti_growth_perturbed_margins_kT=perturbed_margins_kT,
+        rti_barrier_polarization_tilt_eV={
+            "electron": float(_polarization_barrier_field_kVcm(params.al_fraction)
+                              * params.electron_barrier_thickness_nm * 1.0e-4
+                              if params.include_polarization else 0.0),
+            "hole": float(_polarization_barrier_field_kVcm(params.al_fraction)
+                          * params.hole_barrier_thickness_nm * 1.0e-4
+                          if params.include_polarization else 0.0),
+        },
+        rti_p_free_cm3=float(p_free_cm3),
+        rti_reservoir_state_count_e=float(params.reservoir_state_count_e),
+        rti_reservoir_state_count_h=float(params.reservoir_state_count_h),
+        rti_gate_ns=float(gate_ns),
+        rti_numerics_ok=True,
     )

@@ -59,7 +59,7 @@ def check(label, value):
 benchmark = NitrideNanowireInjectorParams(
     al_fraction=1.0, electron_topology="double_barrier",
     electron_barrier_thickness_nm=1.5, electron_well_width_nm=3.0,
-    n_cm3=2.0e19, p_cm3=2.0e19,
+    n_cm3=2.0e19, p_cm3=2.0e19, include_polarization=False,
 )
 _ENCOMENDERO_PEAK_V = 5.66          # [V] non-gating comparison only
 _ENCOMENDERO_PEAK_A_CM2 = 2.55e4    # [V] non-gating comparison only
@@ -220,7 +220,7 @@ check("thick_barrier_WKB_asymptotic_slope_matches_minus_2_kappa",
 
 # Double-barrier resonance: symmetric structure at resonance must reach
 # T essentially 1 (textbook RTD result for identical barriers, no loss).
-p_res = NitrideNanowireInjectorParams()
+p_res = NitrideNanowireInjectorParams(include_polarization=False)
 path_res = _resolve_path(p_res, "electron")
 E_res_indep = _independent_ground_state_eV(path_res.m_well, path_res.m_barrier,
                                             path_res.barrier_height_eV, path_res.well_nm * 1e-9)
@@ -265,6 +265,39 @@ _p_default_partition = NitrideNanowireInjectorParams()
 check("default_partition_is_070_not_tsai_030",
       abs(_p_default_partition.delta_Ev_GaN_AlN_eV - 0.70) < 1e-12)
 
+# Coherence H4: independently reproduce the pseudomorphic Al0.30Ga0.70N
+# polarization field from the published B97 binary constants and fixed-D
+# electrostatics, then verify its 2-nm tilt and a material transmission
+# consequence.  The production helper is deliberately not used here.
+g, a = NM.binary("GaN"), NM.binary("AlN")
+x = 0.30
+av = g.a_A + x * (a.a_A - g.a_A)
+ep = (g.a_A - av) / av
+c13 = g.C13_GPa + x * (a.C13_GPa - g.C13_GPa)
+c33 = g.C33_GPa + x * (a.C33_GPa - g.C33_GPa)
+e31 = g.e31_Cm2 + x * (a.e31_Cm2 - g.e31_Cm2)
+e33 = g.e33_Cm2 + x * (a.e33_Cm2 - g.e33_Cm2)
+p_al = (g.Psp_Cm2 + x * (a.Psp_Cm2 - g.Psp_Cm2)
+        + 2 * e31 * ep + e33 * (-2 * c13 / c33 * ep))
+eps_al = g.eps_r + x * (a.eps_r - g.eps_r)
+tilt_hand_eV = abs((g.Psp_Cm2 - p_al) / (NM.EPS0_SI * eps_al)) * 2e-9
+_p_pol = NitrideNanowireInjectorParams()
+_p_flat = NitrideNanowireInjectorParams(include_polarization=False)
+_r_pol = injector_feasibility(_p_pol, T_K=300.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+check("polarization_tilt_x030_2nm_matches_hand_fixed_D_value",
+      abs(_r_pol["rti_barrier_polarization_tilt_eV"]["electron"] / tilt_hand_eV - 1.0) < 1e-10)
+check("polarization_changes_default_stack_transmission_over_10pct",
+      abs(transmission(_p_pol, 0.10, carrier="electron")
+          - transmission(_p_flat, 0.10, carrier="electron"))
+      > 0.10 * max(transmission(_p_flat, 0.10, carrier="electron"), 1e-20))
+check("mg_ionization_and_channel_count_are_reported",
+      0.0 < _r_pol["rti_p_free_cm3"] < _p_pol.p_cm3
+      and _r_pol["rti_reservoir_state_count_e"] == _p_pol.reservoir_state_count_e
+      and _r_pol["rti_numerics_ok"] is True)
+
 
 # =====================================================================
 # 2b. HIGH 2: the resonance finder follows the field
@@ -277,7 +310,7 @@ check("default_partition_is_070_not_tsai_030",
 # the true peak well outside of.
 from fsim_core.nitride_nanowire_injector import _tilted_window_eV  # noqa: E402
 
-p_field = NitrideNanowireInjectorParams()
+p_field = NitrideNanowireInjectorParams(include_polarization=False)
 path_field = _resolve_path(p_field, "electron")
 for field_kVcm in (0.0, 50.0, 200.0):
     well_floor_f, lower_top_f, _tilt_f = _tilted_window_eV(p_field, path_field, 0.0, field_kVcm)
@@ -363,7 +396,7 @@ base_kwargs = dict(
     me_barrier_override=0.25, mh_barrier_override=0.30,
     dEc_eV_override=0.30, dEv_eV_override=-0.30,
     occupancy_control_known=True, second_pair_control_known=True,
-    growth_tolerance_steps=1.0,
+    growth_tolerance_steps=1.0, include_polarization=False,
 )
 call_kwargs = dict(
     T_K=230.0, rep_rate_hz=80e6, loading_window_ns=2.0,
