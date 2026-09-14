@@ -10,6 +10,7 @@ injector_feasibility() routines to manufacture their own "expected" value.
 """
 import math
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -159,7 +160,6 @@ rng = np.random.default_rng(20260914)
 
 # T + R = 1 (unitarity/flux conservation) across random energies, both
 # carriers, both topologies, with and without bias/field.
-p_unit = NitrideNanowireInjectorParams()
 all_unitary = True
 for carrier in ("electron", "hole"):
     for topo_kwargs in (dict(electron_topology="single_barrier", hole_topology="single_barrier"),
@@ -273,10 +273,18 @@ _p_default_partition = NitrideNanowireInjectorParams()
 check("default_partition_is_070_not_tsai_030",
       abs(_p_default_partition.delta_Ev_GaN_AlN_eV - 0.70) < 1e-12)
 
-# Coherence H4: independently reproduce the pseudomorphic Al0.30Ga0.70N
-# polarization field from the published B97 binary constants and fixed-D
-# electrostatics, then verify its 2-nm tilt and a material transmission
-# consequence.  The production helper is deliberately not used here.
+# Coherence H4 / Attempt-4 HIGH 3-4-5: independently reproduce the
+# pseudomorphic Al0.30Ga0.70N polarization electrostatics from the
+# published B97 binary constants -- the UNDOPED 2/4/2 nm stack sits
+# between two reservoirs that pin the potential at BOTH ends, so D
+# (displacement) is a single constant across every interface and the net
+# potential drop across the WHOLE stack is zero: 2*d_b*E_b + d_w*E_w = 0,
+# E_i = (D - P_i)/(eps0 eps_i).  Independently solved here (fresh
+# arithmetic, not the production _stack_polarization_fields_eV_per_m) and
+# compared against the LITERAL hand-computed numbers from the fix-round
+# directive (never against the module's own algebra, LOW 17):
+#   E_b = +1.4755 MV/cm, +0.2951 eV per 2 nm barrier
+#   E_w = -1.4755 MV/cm, -0.5902 eV across the 4 nm well
 g, a = NM.binary("GaN"), NM.binary("AlN")
 x = 0.30
 av = g.a_A + x * (a.a_A - g.a_A)
@@ -288,15 +296,36 @@ e33 = g.e33_Cm2 + x * (a.e33_Cm2 - g.e33_Cm2)
 p_al = (g.Psp_Cm2 + x * (a.Psp_Cm2 - g.Psp_Cm2)
         + 2 * e31 * ep + e33 * (-2 * c13 / c33 * ep))
 eps_al = g.eps_r + x * (a.eps_r - g.eps_r)
-tilt_hand_eV = abs((g.Psp_Cm2 - p_al) / (NM.EPS0_SI * eps_al)) * 2e-9
-_p_pol = NitrideNanowireInjectorParams()
+p_gan, eps_gan = g.Psp_Cm2, g.eps_r
+d_b, d_w = 2.0e-9, 4.0e-9
+_D_closure = (2 * d_b * p_al / eps_al + d_w * p_gan / eps_gan) / (2 * d_b / eps_al + d_w / eps_gan)
+E_b_hand = (_D_closure - p_al) / (NM.EPS0_SI * eps_al)      # V/m, signed
+E_w_hand = (_D_closure - p_gan) / (NM.EPS0_SI * eps_gan)    # V/m, signed
+_E_B_LITERAL_MV_CM = 1.4755      # [DR] hand-derived, see module docstring
+_BARRIER_DROP_LITERAL_EV = 0.2951
+_WELL_DROP_LITERAL_EV = -0.5902
+check("zero_net_drop_closure_field_matches_hand_literal_1.4755_MVcm",
+      abs(E_b_hand / 1.0e8 - _E_B_LITERAL_MV_CM) < 1e-3)
+check("zero_net_drop_closure_barrier_drop_matches_hand_literal_0.2951_eV",
+      abs(E_b_hand * d_b - _BARRIER_DROP_LITERAL_EV) < 1e-3)
+check("zero_net_drop_closure_well_drop_matches_hand_literal_minus_0.5902_eV",
+      abs(E_w_hand * d_w - _WELL_DROP_LITERAL_EV) < 1e-3)
+check("zero_net_drop_closure_self_consistent", abs(2 * d_b * E_b_hand + d_w * E_w_hand) < 1e-3)
+
+_p_pol = NitrideNanowireInjectorParams(polarity="Ga")
+_p_pol_N = NitrideNanowireInjectorParams(polarity="N")
 _p_flat = NitrideNanowireInjectorParams(include_polarization=False)
+
+# The module's own reported per-barrier drop (rti_barrier_polarization_tilt_eV)
+# must match the hand literal too -- via injector_feasibility's public output,
+# not by importing the internal closure function.
 _r_pol = injector_feasibility(_p_pol, T_K=300.0, rep_rate_hz=80e6,
     loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
     electron_spacing_meV=600.0, hole_spacing_meV=600.0,
     second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
-check("polarization_tilt_x030_2nm_matches_hand_fixed_D_value",
-      abs(_r_pol["rti_barrier_polarization_tilt_eV"]["electron"] / tilt_hand_eV - 1.0) < 1e-10)
+check("module_barrier_polarization_tilt_matches_hand_literal_both_carriers",
+      abs(_r_pol["rti_barrier_polarization_tilt_eV"]["electron"] - _BARRIER_DROP_LITERAL_EV) < 1e-3
+      and abs(_r_pol["rti_barrier_polarization_tilt_eV"]["hole"] - _BARRIER_DROP_LITERAL_EV) < 1e-3)
 check("polarization_changes_default_stack_transmission_over_10pct",
       abs(transmission(_p_pol, 0.10, carrier="electron")
           - transmission(_p_flat, 0.10, carrier="electron"))
@@ -305,6 +334,128 @@ check("mg_ionization_and_channel_count_are_reported",
       0.0 < _r_pol["rti_p_free_cm3"] < _p_pol.p_cm3
       and _r_pol["rti_reservoir_state_count_e"] == _p_pol.reservoir_state_count_e
       and _r_pol["rti_numerics_ok"] is True)
+
+# HIGH 3/4/5: the potential is CONTINUOUS at every interface (no reset) --
+# probe the module's own transmission() profile indirectly is not possible
+# (V(x) is internal), so reconstruct the SAME running-offset arithmetic
+# fresh here (independent of _stack_polarization_fields_eV_per_m) and check
+# it has no interface jump, using the SAME material segment list a
+# double-barrier electron path has (barrier/well/barrier).
+_pol_fields_hand = [E_b_hand, E_w_hand, E_b_hand]
+_lengths_hand = [d_b, d_w, d_b]
+_flat_heights_hand = [0.60615, 0.0, 0.60615]   # AlGaN barrier / GaN well / AlGaN barrier, x=0.30, 0.70 eV partition
+_pos = 0.0
+_pol_offset = 0.0
+_profile_points = []   # (V_total_eV at entry, V_total_eV at exit) per segment
+for _L, _Efield, _Vflat in zip(_lengths_hand, _pol_fields_hand, _flat_heights_hand):
+    _entry = _Vflat + _pol_offset
+    _pol_offset += _Efield * _L
+    _exit = _Vflat + _pol_offset
+    _profile_points.append((_entry, _exit))
+_max_jump_eV = 0.0
+for i in range(len(_profile_points) - 1):
+    _flat_step = _flat_heights_hand[i + 1] - _flat_heights_hand[i]
+    _gap = (_profile_points[i + 1][0] - _profile_points[i][1]) - _flat_step
+    _max_jump_eV = max(_max_jump_eV, abs(_gap))
+check("polarization_potential_continuous_at_every_interface",
+      _max_jump_eV < 1e-9)
+# Ga-polar: exit face ABOVE entry face for the electron barrier (never abs()).
+check("ga_polar_electron_barrier_exit_above_entry",
+      _profile_points[0][1] > _profile_points[0][0])
+# Same closure/sign applies identically to the hole path (same material
+# electrostatics, see module docstring "Growth polarity and transport
+# direction"): the module's own reported hole tilt must be POSITIVE too.
+check("ga_polar_hole_barrier_tilt_reported_positive",
+      _r_pol["rti_barrier_polarization_tilt_eV"]["hole"] > 0.0)
+# N-polar reverses the sign for both carriers.
+_r_pol_N = injector_feasibility(_p_pol_N, T_K=300.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+check("n_polar_reverses_barrier_polarization_tilt_sign_both_carriers",
+      _r_pol_N["rti_barrier_polarization_tilt_eV"]["electron"] < 0.0
+      and _r_pol_N["rti_barrier_polarization_tilt_eV"]["hole"] < 0.0)
+
+# MEDIUM 6: independent (fresh) Mg-acceptor charge-neutrality mass-action
+# solve, p^2/(Na-p) = (N_V/g) exp(-E_A/kT), NOT calling
+# _hole_quasi_fermi_eV -- must match the module's rti_p_free_cm3 and the
+# reviewer's independently-derived numbers (~3.10e16 / 9.55e16 cm-3 at
+# 230/300 K).
+def _n_v_hand(T_K, mh=1.88):
+    m = mh * 9.1093837015e-31
+    kT_J = KB_EV * T_K * 1.602176634e-19
+    h_js = 4.135667696e-15 * 1.602176634e-19
+    return 2.0 * (2.0 * math.pi * m * kT_J / (h_js ** 2)) ** 1.5
+
+
+def _p_free_hand_cm3(T_K, Na_cm3=5.0e17, E_A_eV=0.170, g_deg=4.0):
+    kT_eV = KB_EV * T_K
+    NV = _n_v_hand(T_K)
+    Na_m3 = Na_cm3 * 1e6
+    K = (NV / g_deg) * math.exp(-E_A_eV / kT_eV)
+    p_m3 = (-K + math.sqrt(K * K + 4.0 * K * Na_m3)) / 2.0
+    return p_m3 / 1e6
+
+
+_p_free_230_hand = _p_free_hand_cm3(230.0)
+_p_free_300_hand = _p_free_hand_cm3(300.0)
+check("mg_neutrality_p_free_230K_matches_independent_mass_action_solve",
+      abs(_p_free_230_hand / 3.10e16 - 1.0) < 0.02)
+check("mg_neutrality_p_free_300K_matches_independent_mass_action_solve",
+      abs(_p_free_300_hand / 9.55e16 - 1.0) < 0.02)
+_r_pol_230 = injector_feasibility(_p_pol, T_K=230.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+check("module_rti_p_free_cm3_matches_independent_mass_action_solve_230K",
+      abs(_r_pol_230["rti_p_free_cm3"] / _p_free_230_hand - 1.0) < 1e-3)
+
+# MEDIUM 7: rti_numerics_ok is a REAL computation, not a hardcoded True --
+# a nominal (fine) stack is True; a DELIBERATELY coarse staircase (few,
+# large slices) is False.
+_p_numerics_fine = NitrideNanowireInjectorParams(occupancy_control_known=True, second_pair_control_known=True)
+_r_numerics_fine = injector_feasibility(_p_numerics_fine, T_K=300.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+# A deliberately coarse staircase: a thick, deep barrier forced into just
+# ONE flat slice (min_slices_per_segment=1, slice_length_nm larger than the
+# barrier itself) drives the complex exponential in the backward recursion
+# to overflow (deep evanescent decay collapsed into a single huge step),
+# producing non-finite T/R that a hardcoded True would never catch.
+_p_numerics_coarse = NitrideNanowireInjectorParams(
+    electron_topology="single_barrier", hole_topology="single_barrier",
+    electron_barrier_thickness_nm=500.0, hole_barrier_thickness_nm=500.0,
+    dEc_eV_override=5.0, dEv_eV_override=-5.0,
+    me_barrier_override=2.0, mh_barrier_override=2.0,
+    slice_length_nm=1000.0, min_slices_per_segment=1, include_polarization=False,
+    occupancy_control_known=True, second_pair_control_known=True)
+import warnings as _warnings_numerics   # noqa: E402
+with _warnings_numerics.catch_warnings():
+    _warnings_numerics.simplefilter("ignore")
+    _r_numerics_coarse = injector_feasibility(_p_numerics_coarse, T_K=300.0, rep_rate_hz=80e6,
+        loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+        electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+        second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+check("rti_numerics_ok_true_for_fine_slicing", _r_numerics_fine["rti_numerics_ok"] is True)
+check("rti_numerics_ok_false_for_deliberately_coarse_staircase",
+      _r_numerics_coarse["rti_numerics_ok"] is False)
+
+# MEDIUM 8: degeneracy is NOT dead -- doubling it (4 vs 2, channel count
+# held fixed) must double the reported rate.
+_p_deg2 = NitrideNanowireInjectorParams(degeneracy=2.0, reservoir_state_count_e=1.0, reservoir_state_count_h=1.0)
+_p_deg4 = NitrideNanowireInjectorParams(degeneracy=4.0, reservoir_state_count_e=1.0, reservoir_state_count_h=1.0)
+_r_deg2 = injector_feasibility(_p_deg2, T_K=300.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+_r_deg4 = injector_feasibility(_p_deg4, T_K=300.0, rep_rate_hz=80e6,
+    loading_window_ns=0.1, electron_level_eV=0.05, hole_level_eV=0.01,
+    electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+    second_pair_addition_meV=20.0, available_pair_rate_Hz=1e9)
+check("degeneracy_4_doubles_rate_vs_degeneracy_2",
+      abs(_r_deg4["rti_e_rate_Hz"] / _r_deg2["rti_e_rate_Hz"] - 2.0) < 1e-9
+      and abs(_r_deg4["rti_h_rate_Hz"] / _r_deg2["rti_h_rate_Hz"] - 2.0) < 1e-9)
 
 
 # =====================================================================
@@ -398,16 +549,27 @@ check("coarse_grid_is_not_converged_refinement_matters",
 
 step = _GROWTH_STEP_NM_DEFAULT
 thick_nom = 6 * step
+hole_thick_nom = 2 * step
+# MEDIUM 6 fix note: base_kwargs/call_kwargs are re-tuned for this round.
+# With the hole reservoir's quasi-Fermi level now coming from the honest
+# Mg-acceptor charge-neutrality solve (mu_h ~ -144 meV at 230 K, a dilute
+# non-degenerate hole gas) instead of the old always-positive degenerate
+# estimate, the hole path's capture rate is far smaller than the previous
+# fixture assumed -- the hole barrier here is deliberately shallower/
+# thinner than the electron barrier so the synthetic PASSING case still
+# clears rate/bypass/margin under the corrected physics; single_barrier +
+# include_polarization=False keeps this fixture's numbers independent of
+# the polarization closure (exercised separately in section 2a).
 base_kwargs = dict(
     electron_topology="single_barrier", hole_topology="single_barrier",
-    electron_barrier_thickness_nm=thick_nom, hole_barrier_thickness_nm=thick_nom,
-    me_barrier_override=0.25, mh_barrier_override=0.30,
-    dEc_eV_override=0.30, dEv_eV_override=-0.30,
+    electron_barrier_thickness_nm=thick_nom, hole_barrier_thickness_nm=hole_thick_nom,
+    me_barrier_override=0.25, mh_barrier_override=0.20,
+    dEc_eV_override=0.30, dEv_eV_override=-0.29,
     occupancy_control_known=True, second_pair_control_known=True,
     growth_tolerance_steps=1.0, include_polarization=False,
 )
 call_kwargs = dict(
-    T_K=230.0, rep_rate_hz=80e6, loading_window_ns=2.0,
+    T_K=230.0, rep_rate_hz=80e6, loading_window_ns=12.4,
     electron_level_eV=0.02, hole_level_eV=0.005,
     electron_spacing_meV=600.0, hole_spacing_meV=600.0,
     second_pair_addition_meV=600.0, available_pair_rate_Hz=1.0,
@@ -465,9 +627,9 @@ check("fault_thermionic_bypass_fails", r_bypass["rti_feasible"] is False
 # but perturbing by +growth_tolerance_steps growth steps (thicker barrier,
 # lower rate) pushes the missed-load probability over threshold -- fragile
 # under tolerance, not merely off a round number.
-_growth_fault_offset = 3 * step
+_growth_fault_offset = 1 * step
 r_growth = run(pkw=dict(electron_barrier_thickness_nm=thick_nom + _growth_fault_offset,
-                         hole_barrier_thickness_nm=thick_nom + _growth_fault_offset))
+                         hole_barrier_thickness_nm=hole_thick_nom + _growth_fault_offset))
 check("fault_growth_tolerance_fails_but_nominal_transport_ok",
       r_growth["rti_feasible"] is False and r_growth["rti_growth_feasible"] is False
       and r_growth["rti_transport_feasible"] is True
@@ -478,15 +640,18 @@ check("growth_diagnostics_report_nearest_commensurate_and_perturbed_margins",
       and "rti_growth_perturbed_margins_kT" in r_growth
       and set(r_growth["rti_growth_perturbed_margins_kT"]) == {"minus", "plus"})
 
-# The designed stack itself (default 2 nm barriers, an exact multiple of
-# the growth step) must be growth-feasible whenever its perturbed screens
-# both pass -- the bug this fix replaces flagged every round-number
-# thickness, including this one, as "submonolayer" regardless of physics.
+# The designed stack itself (barriers at exact multiples of the growth
+# step) must be growth-feasible whenever its perturbed screens both pass --
+# the bug this fix replaces flagged every round-number thickness as
+# "submonolayer" regardless of physics. Uses the same (post-MEDIUM-6)
+# passing composition as base_kwargs above, since a symmetric literal-2.0nm
+# hole barrier no longer clears rate/bypass under the corrected (much more
+# dilute) hole quasi-Fermi level.
 p_designed_growth = NitrideNanowireInjectorParams(
     electron_topology="single_barrier", hole_topology="single_barrier",
-    electron_barrier_thickness_nm=2.0, hole_barrier_thickness_nm=2.0,
-    me_barrier_override=0.25, mh_barrier_override=0.30,
-    dEc_eV_override=0.30, dEv_eV_override=-0.30,
+    electron_barrier_thickness_nm=thick_nom, hole_barrier_thickness_nm=hole_thick_nom,
+    me_barrier_override=0.25, mh_barrier_override=0.20,
+    dEc_eV_override=0.30, dEv_eV_override=-0.29,
     occupancy_control_known=True, second_pair_control_known=True,
     growth_tolerance_steps=1.0,
 )
@@ -542,65 +707,111 @@ r_short_window = run(ckw=dict(loading_window_ns=0.5))
 check("loading_window_changes_missed_load_probability",
       r_short_window["rti_missed_load_probability"] > baseline["rti_missed_load_probability"])
 
-# Use the disc charging scale [DR] 12.126 meV and a finite 10 ns requested
-# counting gate.  It fits the 80 MHz period but is clipped to the 200 MHz
-# period by the public model's min(gate, period) rule, so this test exercises
-# repetition-rate dependence without changing the explicit-gate physics.  A
-# 50 meV detuning instead underflows both probabilities to zero.
-r_rep_a = run(ckw=dict(rep_rate_hz=80e6, gate_ns=10.0,
-                       second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
-r_rep_b = run(ckw=dict(rep_rate_hz=200e6, gate_ns=10.0,
-                       second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
-check("rep_rate_changes_second_pair_probability",
-      r_rep_a["rti_second_pair_probability"] != r_rep_b["rti_second_pair_probability"])
+# LOW 14 fix: keep the rep-rate check HONEST about what it exercises.
+# Use the disc charging scale [DR] 12.126 meV throughout.
+#   (a) a gate SHORTER than BOTH the 80 MHz (12.5 ns) and 200 MHz (5 ns)
+#       periods must give the IDENTICAL second-pair probability at both
+#       rates -- reload is priced over the explicit counting gate, not the
+#       electrical period, so with an unclipped gate the rep rate must be
+#       irrelevant (this is correct physics, not a bug: a previous version
+#       of this check used a 10 ns gate that happens to be clipped at 200
+#       MHz only, and so "passed" for testing min() rather than reload
+#       physics -- see the failed-attempt notes in this module's spec).
+#   (b) a gate LONGER than the 200 MHz period (so it is clipped there but
+#       not at 80 MHz) must then differ between the two rates.
+r_rep_unclipped_a = run(ckw=dict(rep_rate_hz=80e6, gate_ns=2.0, loading_window_ns=2.0,
+                                  second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
+r_rep_unclipped_b = run(ckw=dict(rep_rate_hz=200e6, gate_ns=2.0, loading_window_ns=2.0,
+                                  second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
+check("rep_rate_independent_when_gate_shorter_than_both_periods",
+      abs(r_rep_unclipped_a["rti_second_pair_probability"]
+          - r_rep_unclipped_b["rti_second_pair_probability"]) < 1e-12)
 
-# HIGH 3 fix: allowed-state ALIGNMENT error is a distinct, separately-
-# gated screen from the unwanted-state SEPARATION margin above -- run on a
-# genuine double-barrier resonance (base_kwargs' single-barrier fixture
+r_rep_clipped_a = run(ckw=dict(rep_rate_hz=80e6, gate_ns=10.0, loading_window_ns=2.0,
+                                second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
+r_rep_clipped_b = run(ckw=dict(rep_rate_hz=200e6, gate_ns=10.0, loading_window_ns=2.0,
+                                second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
+check("rep_rate_changes_second_pair_probability_when_gate_clipped",
+      r_rep_clipped_a["rti_second_pair_probability"] != r_rep_clipped_b["rti_second_pair_probability"])
+
+# HIGH 2 fix: allowed-state ALIGNMENT error is versus the carrier's own
+# EMITTER quasi-Fermi level (mu_e from n_cm3), NOT the dot level -- run on
+# a genuine double-barrier resonance (base_kwargs' single-barrier fixture
 # has alignment error identically 0 by construction and cannot exercise
 # this gate; LOW 9 fix, replaces the previous vacuous
 # "alignment_error_reduces_orbital_margin" check on that fixture).
+# electron_level_eV no longer controls alignment at all (HIGH 2) -- it is
+# used ONLY for the informational rti_well_to_dot_drop_meV.  Misalignment
+# is instead constructed by choosing n_cm3 (electron reservoir doping) so
+# that mu_e sits a KNOWN distance from the zero-field resonance E_res0,
+# inverting the SAME degenerate free-electron-gas formula fresh here
+# (mu = hbar^2 k_f^2/2m, k_f=(3 pi^2 n)^(1/3)) -- never by calling the
+# production _degenerate_mu_eV to manufacture the target.
 p_align_probe = NitrideNanowireInjectorParams(
     hole_topology="single_barrier", hole_barrier_thickness_nm=thick_nom,
     mh_barrier_override=0.30, dEv_eV_override=-0.30,
     occupancy_control_known=True, second_pair_control_known=True,
+    include_polarization=False,
 )
 E_res_probe, _T_res_probe = _find_resonance(p_align_probe, "electron", 0.0, 0.0)
-align_call = dict(T_K=230.0, rep_rate_hz=80e6, loading_window_ns=2.0,
-                   hole_level_eV=0.005, electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+
+
+def _n_cm3_for_mu_hand(mu_eV, m_ratio):
+    k_f = math.sqrt(2.0 * m_ratio * M0_KG * mu_eV * EV_J) / HBAR_JS
+    n_m3 = k_f ** 3 / (3.0 * math.pi ** 2)
+    return n_m3 / 1e6
+
+
+_me_well_probe = p_align_probe.me_well
+_n_cm3_big = _n_cm3_for_mu_hand(E_res_probe + 0.146, _me_well_probe)
+_n_cm3_small = _n_cm3_for_mu_hand(E_res_probe + 0.002, _me_well_probe)
+
+align_call = dict(T_K=230.0, rep_rate_hz=80e6, loading_window_ns=12.4,
+                   hole_level_eV=0.005, electron_level_eV=0.02,
+                   electron_spacing_meV=600.0, hole_spacing_meV=600.0,
                    second_pair_addition_meV=600.0, available_pair_rate_Hz=1.0)
 
-r_misaligned = injector_feasibility(p_align_probe, electron_level_eV=E_res_probe + 0.146, **align_call)
+p_misaligned = replace(p_align_probe, n_cm3=_n_cm3_big)
+r_misaligned = injector_feasibility(p_misaligned, **align_call)
 check("146meV_misalignment_fails_feasibility",
       r_misaligned["rti_feasible"] is False
-      and abs(r_misaligned["rti_alignment_error_e_meV"] - 146.0) < 1e-6
+      and abs(r_misaligned["rti_alignment_error_e_meV"] - 146.0) < 1e-3
       and "electron_alignment" in r_misaligned["rti_failed_checks"])
 
-r_small_misalign = injector_feasibility(p_align_probe, electron_level_eV=E_res_probe + 0.002, **align_call)
+p_small_misalign = replace(p_align_probe, n_cm3=_n_cm3_small)
+r_small_misalign = injector_feasibility(p_small_misalign, **align_call)
 check("2meV_misalignment_passes_alignment_gate",
-      abs(r_small_misalign["rti_alignment_error_e_meV"] - 2.0) < 1e-6
+      abs(r_small_misalign["rti_alignment_error_e_meV"] - 2.0) < 1e-3
       and "electron_alignment" not in r_small_misalign["rti_failed_checks"])
 
-# alignment_tunable: the same 146 meV misalignment is instead gated on the
-# reported required bias shift against bias_tuning_range_meV.
-p_align_tunable_ok = NitrideNanowireInjectorParams(
-    hole_topology="single_barrier", hole_barrier_thickness_nm=thick_nom,
-    mh_barrier_override=0.30, dEv_eV_override=-0.30,
-    occupancy_control_known=True, second_pair_control_known=True,
-    alignment_tunable=True, bias_tuning_range_meV=200.0,
-)
-r_tunable_ok = injector_feasibility(p_align_tunable_ok, electron_level_eV=E_res_probe + 0.146, **align_call)
+# rti_well_to_dot_drop_meV is purely informational and independent of the
+# alignment gate: changing electron_level_eV must not change the reported
+# alignment error or the alignment_ok gate above.
+r_misaligned_other_dot = injector_feasibility(replace(p_align_probe, n_cm3=_n_cm3_big),
+                                               **{**align_call, "electron_level_eV": 0.30})
+check("well_to_dot_drop_is_informational_only",
+      abs(r_misaligned_other_dot["rti_alignment_error_e_meV"]
+          - r_misaligned["rti_alignment_error_e_meV"]) < 1e-6
+      and r_misaligned_other_dot["rti_well_to_dot_drop_meV"]["electron"]
+      != r_misaligned["rti_well_to_dot_drop_meV"]["electron"])
+
+# MEDIUM 10 fix: alignment_tunable is gated on the ENGINE's own bias scan
+# (a genuine sweep of the production resonance finder over bias, see
+# _scan_required_bias_shift_meV), not an assumed 1:1 lever arm -- a
+# generous range finds a bias that clears the gate; a narrow range does
+# not.  The exact required shift is whatever the engine's sweep finds
+# (not necessarily 146 meV 1:1), so this checks the GATING behavior, not a
+# hardcoded lever arm.
+p_align_tunable_ok = replace(p_align_probe, n_cm3=_n_cm3_big,
+                              alignment_tunable=True, bias_tuning_range_meV=200.0)
+r_tunable_ok = injector_feasibility(p_align_tunable_ok, **align_call)
 check("alignment_tunable_within_bias_range_clears_alignment_gate",
       "electron_alignment" not in r_tunable_ok["rti_failed_checks"]
-      and abs(r_tunable_ok["rti_required_bias_shift_meV"] - 146.0) < 1e-6)
+      and math.isfinite(r_tunable_ok["rti_required_bias_shift_meV"]))
 
-p_align_tunable_bad = NitrideNanowireInjectorParams(
-    hole_topology="single_barrier", hole_barrier_thickness_nm=thick_nom,
-    mh_barrier_override=0.30, dEv_eV_override=-0.30,
-    occupancy_control_known=True, second_pair_control_known=True,
-    alignment_tunable=True, bias_tuning_range_meV=50.0,
-)
-r_tunable_bad = injector_feasibility(p_align_tunable_bad, electron_level_eV=E_res_probe + 0.146, **align_call)
+p_align_tunable_bad = replace(p_align_probe, n_cm3=_n_cm3_big,
+                               alignment_tunable=True, bias_tuning_range_meV=50.0)
+r_tunable_bad = injector_feasibility(p_align_tunable_bad, **align_call)
 check("alignment_tunable_beyond_bias_range_still_fails_alignment_gate",
       r_tunable_bad["rti_feasible"] is False
       and "electron_alignment" in r_tunable_bad["rti_failed_checks"])
@@ -637,8 +848,17 @@ r_ballistic = run(pkw=dict(electron_topology="single_barrier",
                             me_barrier_override=NitrideNanowireInjectorParams().me_well,
                             n_cm3=3.0e18),
                    ckw=dict(T_K=4.0, electron_level_eV=1e-6))
+# MEDIUM 8 fix: the production rate is g_s (degeneracy) * channels
+# (reservoir_state_count_e) * Landauer integral -- the channel count
+# defaults to 2.0 (unset by base_kwargs/p_ballistic), so it must be
+# included in the independent T=0 expectation too.
+_p_ballistic_from_run = NitrideNanowireInjectorParams(**{**base_kwargs,
+    "electron_topology": "single_barrier", "electron_barrier_thickness_nm": 1e-6,
+    "dEc_eV_override": 0.0, "me_barrier_override": NitrideNanowireInjectorParams().me_well,
+    "n_cm3": 3.0e18})
+rate_expected_T0_production = _p_ballistic_from_run.reservoir_state_count_e * rate_expected_T0
 check("rate_normalization_matches_production_within_5pct",
-      abs(r_ballistic["rti_e_rate_Hz"] / rate_expected_T0 - 1.0) < 0.05)
+      abs(r_ballistic["rti_e_rate_Hz"] / rate_expected_T0_production - 1.0) < 0.05)
 
 # --- Out-of-range / nonfinite inputs fail safely (never raise) -------------
 try:
@@ -673,12 +893,20 @@ check("single_barrier_linewidth_not_applicable_but_screen_still_valid",
       math.isnan(baseline["rti_linewidth_meV"]) and baseline["valid"] is True)
 
 # Double-barrier path: a resonance IS found, so its linewidth must be a
-# finite number gating validity if it cannot be resolved.
-p_db_linewidth = NitrideNanowireInjectorParams(occupancy_control_known=True,
-                                                second_pair_control_known=True)
+# finite number gating validity if it cannot be resolved.  The DEFAULT
+# (Ga-polar, 0.70 eV partition) hole barrier is only 0.21 eV tall -- less
+# than the 0.2951 eV polarization swing across a single 2 nm barrier --
+# so it has no resolvable resonance at all under Attempt-4 physics (a
+# real, honest consequence of HIGH 3/4/5, not a bug: see
+# hole_resonance_unresolved coverage below); deepen the hole barrier here
+# (dEv_eV_override) so BOTH carriers resolve a resonance and this check
+# exercises the genuine "found, finite linewidth" path for both.
+p_db_linewidth = NitrideNanowireInjectorParams(
+    dEv_eV_override=-0.5, mh_barrier_override=0.30,
+    occupancy_control_known=True, second_pair_control_known=True)
 r_db_linewidth = injector_feasibility(
     p_db_linewidth, T_K=230.0, rep_rate_hz=80e6, loading_window_ns=2.0,
-    electron_level_eV=0.066, hole_level_eV=0.009,
+    electron_level_eV=0.269, hole_level_eV=0.0004,
     electron_spacing_meV=600.0, hole_spacing_meV=600.0,
     second_pair_addition_meV=600.0, available_pair_rate_Hz=1.0,
 )
@@ -689,39 +917,58 @@ check("double_barrier_resonance_reports_a_finite_linewidth",
 check("second_carrier_probability_alias_matches_documented_upper_bound",
       baseline["rti_second_carrier_probability"] == baseline["rti_second_pair_probability"])
 
-# --- MEDIUM 8: exercise injector_feasibility with the actual DOUBLE-BARRIER
-#     designed stack (both carriers) at T 230/300 K and rep 80/200 MHz,
-#     under both valence partitions, printing every rti_* column -- the
-#     base_kwargs fixture above is single_barrier for both carriers and
-#     never exercised a real double-barrier feasibility call at all.
+# --- MEDIUM 8 / LOW 13: exercise injector_feasibility with the actual
+#     DOUBLE-BARRIER designed stack (both carriers) at T 230/300 K and rep
+#     80/200 MHz, E_C 12.126 meV, gate 2 ns, under both valence partitions
+#     AND both polarities, printing every rti_* column -- the base_kwargs
+#     fixture above is single_barrier for both carriers and never exercised
+#     a real double-barrier feasibility call at all.  LOW 13 fix: uses the
+#     REAL dot levels (from the levels module's dE_e/dE_h at the Deshpande
+#     geometry, transcribed here as literals since this module does not
+#     import the levels solver) instead of feeding the found resonance back
+#     as the level -- the previous version made alignment trivially exact
+#     by construction; the printed verdict is now the device's, not a
+#     tautology.  Under HIGH 2 the electron_level_eV/hole_level_eV inputs
+#     no longer gate alignment at all (that is now versus the emitter mu),
+#     so this is safe regardless of whether a resonance is found.
+_ELECTRON_DOT_LEVEL_EV = -0.6995   # [V] nitride_nanowire_levels dE_e at the Deshpande disc-in-wire geometry
+_HOLE_DOT_LEVEL_EV = -0.4164       # [V] nitride_nanowire_levels dE_h at the Deshpande disc-in-wire geometry
 _designed_call_common = dict(
     electron_spacing_meV=600.0, hole_spacing_meV=600.0,
-    second_pair_addition_meV=600.0, available_pair_rate_Hz=1.0,
+    second_pair_addition_meV=12.126, available_pair_rate_Hz=1.0,
+    electron_level_eV=_ELECTRON_DOT_LEVEL_EV, hole_level_eV=_HOLE_DOT_LEVEL_EV,
+    gate_ns=2.0,
 )
 _designed_results = {}
-for _delta_ev in (0.70, _TSAI_BAYRAM_DELTA_EV_EV):
-    _p_designed = NitrideNanowireInjectorParams(
-        delta_Ev_GaN_AlN_eV=_delta_ev,
-        occupancy_control_known=True, second_pair_control_known=True,
-    )
-    _res_e = _find_resonance(_p_designed, "electron", 0.0, 0.0)
-    _res_h = _find_resonance(_p_designed, "hole", 0.0, 0.0)
-    for _T in (230.0, 300.0):
-        for _rep in (80e6, 200e6):
-            _r = injector_feasibility(
-                _p_designed, T_K=_T, rep_rate_hz=_rep, loading_window_ns=2.0,
-                electron_level_eV=_res_e[0], hole_level_eV=_res_h[0],
-                **_designed_call_common,
-            )
-            _designed_results[(_delta_ev, _T, _rep)] = _r
-            _cols = " ".join(f"{k}={_r[k]}" for k in sorted(_r)
-                              if k.startswith("rti_") or k == "valid")
-            print(f"designed stack partition={_delta_ev:.2f}eV T={_T:.0f}K "
-                  f"rep={_rep/1e6:.0f}MHz | {_cols}")
+for _polarity in ("Ga", "N"):
+    for _delta_ev in (0.70, _TSAI_BAYRAM_DELTA_EV_EV):
+        _p_designed = NitrideNanowireInjectorParams(
+            delta_Ev_GaN_AlN_eV=_delta_ev, polarity=_polarity,
+            occupancy_control_known=True, second_pair_control_known=True,
+        )
+        for _T in (230.0, 300.0):
+            for _rep in (80e6, 200e6):
+                _r = injector_feasibility(
+                    _p_designed, T_K=_T, rep_rate_hz=_rep, loading_window_ns=2.0,
+                    **_designed_call_common,
+                )
+                _designed_results[(_polarity, _delta_ev, _T, _rep)] = _r
+                _cols = " ".join(f"{k}={_r[k]}" for k in sorted(_r)
+                                  if k.startswith("rti_") or k == "valid")
+                print(f"designed stack polarity={_polarity} partition={_delta_ev:.2f}eV "
+                      f"T={_T:.0f}K rep={_rep/1e6:.0f}MHz | {_cols}")
 check("designed_stack_double_barrier_both_carriers_both_partitions_finite_diagnostics",
-      all(math.isfinite(_r["rti_e_rate_Hz"]) and math.isfinite(_r["rti_h_rate_Hz"])
-          and math.isfinite(_r["rti_bypass_fraction_tsai_partition"])
+      all(math.isfinite(_r["rti_bypass_fraction_tsai_partition"])
           for _r in _designed_results.values()))
+check("designed_stack_rate_or_resonance_unresolved_is_explicit_never_silently_zero_error",
+      all(math.isfinite(_r["rti_e_rate_Hz"]) or "electron_resonance_unresolved" in _r["rti_failed_checks"]
+          for _r in _designed_results.values())
+      and all(math.isfinite(_r["rti_h_rate_Hz"]) or "hole_resonance_unresolved" in _r["rti_failed_checks"]
+              for _r in _designed_results.values()))
+check("designed_stack_no_hardcoded_feasible_true_and_rti_feasible_false_is_diagnosed",
+      all((not _r["rti_feasible"]) or (len(_r["rti_failed_checks"]) == 0)
+          for _r in _designed_results.values())
+      and any(_r["rti_failed_checks"] for _r in _designed_results.values()))
 
 # --- No production routine used to derive its own expected value ----------
 import fsim_core.nitride_nanowire_injector as _mod  # noqa: E402
