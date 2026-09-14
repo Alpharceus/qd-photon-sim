@@ -204,14 +204,22 @@ check("mass_mismatch_matches_independent_slab_formula",
 # not merely "some" exponential decay -- a bare exp(-2 kappa d) alone
 # cannot represent the double-barrier resonance checked above, but it MUST
 # be this engine's correct single-barrier deep-thickness asymptote.
-p_thick = NitrideNanowireInjectorParams(electron_topology="single_barrier")
+# This analytic flat-barrier asymptote intentionally excludes the interface
+# polarization staircase.  With polarization enabled the relevant exponent is
+# the tilted-barrier WKB integral, rather than -2*kappa for one flat height.
+p_thick = NitrideNanowireInjectorParams(electron_topology="single_barrier",
+                                        include_polarization=False)
 path_thick = _resolve_path(p_thick, "electron")
 V0_t, m_t = path_thick.barrier_height_eV, path_thick.m_barrier
 E_t = 0.1
 kappa_t = math.sqrt(2 * m_t * M0_KG * (V0_t - E_t) * EV_J) / HBAR_JS
 d1, d2 = 15.0, 16.0
-p1 = NitrideNanowireInjectorParams(electron_topology="single_barrier", electron_barrier_thickness_nm=d1)
-p2t = NitrideNanowireInjectorParams(electron_topology="single_barrier", electron_barrier_thickness_nm=d2)
+p1 = NitrideNanowireInjectorParams(electron_topology="single_barrier",
+                                   electron_barrier_thickness_nm=d1,
+                                   include_polarization=False)
+p2t = NitrideNanowireInjectorParams(electron_topology="single_barrier",
+                                    electron_barrier_thickness_nm=d2,
+                                    include_polarization=False)
 T1 = transmission(p1, E_t, carrier="electron")
 T2 = transmission(p2t, E_t, carrier="electron")
 slope = (math.log(T2) - math.log(T1)) / ((d2 - d1) * 1e-9)
@@ -534,8 +542,15 @@ r_short_window = run(ckw=dict(loading_window_ns=0.5))
 check("loading_window_changes_missed_load_probability",
       r_short_window["rti_missed_load_probability"] > baseline["rti_missed_load_probability"])
 
-r_rep_a = run(ckw=dict(rep_rate_hz=80e6, second_pair_addition_meV=50.0, available_pair_rate_Hz=1e6))
-r_rep_b = run(ckw=dict(rep_rate_hz=200e6, second_pair_addition_meV=50.0, available_pair_rate_Hz=1e6))
+# Use the disc charging scale [DR] 12.126 meV and a finite 10 ns requested
+# counting gate.  It fits the 80 MHz period but is clipped to the 200 MHz
+# period by the public model's min(gate, period) rule, so this test exercises
+# repetition-rate dependence without changing the explicit-gate physics.  A
+# 50 meV detuning instead underflows both probabilities to zero.
+r_rep_a = run(ckw=dict(rep_rate_hz=80e6, gate_ns=10.0,
+                       second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
+r_rep_b = run(ckw=dict(rep_rate_hz=200e6, gate_ns=10.0,
+                       second_pair_addition_meV=12.126, available_pair_rate_Hz=1e6))
 check("rep_rate_changes_second_pair_probability",
       r_rep_a["rti_second_pair_probability"] != r_rep_b["rti_second_pair_probability"])
 
