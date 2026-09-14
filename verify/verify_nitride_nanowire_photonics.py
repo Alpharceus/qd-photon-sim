@@ -15,6 +15,7 @@ anywhere below (this piece implements independent predictions only).
 from __future__ import annotations
 
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -25,12 +26,12 @@ from scipy.special import jn_zeros
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fsim_core.nitride_nanowire_photonics import (
-    NitrideNanowirePhotonicsError, NitrideNanowirePhotonicsParams,
+    CPLANE_ONLY_DIPOLE_WEIGHTS, NitrideNanowirePhotonicsError, NitrideNanowirePhotonicsParams,
     V_CUTOFF_LP11, dipole_collection_fraction, gan_ordinary_index,
     response, si_complex_index, sio2_index, stack_reflection, v_number,
 )
 from fsim_core.nitride_nanowire_photonics import (
-    _he11_far_field_intensity, _he11_objective_acceptance, _mode_field_radius_nm,
+    _he11_objective_acceptance, _mode_field_radius_nm,
     _group_index_ratio, _wire_antenna_screening_intensity,
 )
 
@@ -164,6 +165,29 @@ ck("T module source transcribes the Bleuse et al. PRL 106, 103601 (2011) "
    and "_MULTIMODE_ANCHOR_BETA_PEAK = 0.95" in MODULE_SRC
    and "_MULTIMODE_ANCHOR_BETA_HIGH = 0.70" in MODULE_SRC
    and "Bleuse" in MODULE_SRC and "Claudon" in MODULE_SRC and "[E]" in MODULE_SRC)
+
+# T (Attempt 3 fix C): the Bleuse/Claudon multimode-penalty anchor is now a
+# POPULATED, non-null ledger entry (bleuse2011_claudon2010_beta_envelope,
+# evidence_status=figure_reading) -- pin the module's own hardcoded
+# multimode-penalty constants against the ledger's own transcribed values
+# (parsed from the ledger, never re-typed independently of it), so the two
+# cannot silently drift apart.
+_bleuse_claudon_anchor = _ledger["bleuse2011_claudon2010_beta_envelope"]
+ck("T Attempt 3 fix C: bleuse2011_claudon2010_beta_envelope ledger entry is "
+   "populated (evidence_status=figure_reading, not missing) and the "
+   "module's own multimode-penalty constants match its transcribed "
+   "beta_high/beta_lower/d_over_lambda_lower_beta values",
+   _bleuse_claudon_anchor["evidence_status"] == "figure_reading"
+   and _bleuse_claudon_anchor["tag"] == "E"
+   and math.isclose(_bleuse_claudon_anchor["value"]["beta_high"], 0.95, abs_tol=1e-9)
+   and math.isclose(_bleuse_claudon_anchor["value"]["beta_lower"], 0.70, abs_tol=1e-9)
+   and math.isclose(_bleuse_claudon_anchor["value"]["d_over_lambda_lower_beta"], 0.40, abs_tol=1e-9)
+   and "_MULTIMODE_ANCHOR_BETA_PEAK = 0.95" in MODULE_SRC
+   and "_MULTIMODE_ANCHOR_BETA_HIGH = 0.70" in MODULE_SRC
+   and "_MULTIMODE_ANCHOR_D_LAMBDA_HIGH = 0.40" in MODULE_SRC)
+ck("T Attempt 3 fix C: provenance cites the ledger key by name instead of "
+   "describing the numbers as ledger-free",
+   "bleuse2011_claudon2010_beta_envelope" in MODULE_SRC)
 
 # T8 (fix round LOW 8): oxide_thickness_nm=100.0 is [V], a literal
 # transcription of deshpande2013_device_geometry's substrate description,
@@ -431,15 +455,22 @@ def _h_with(**over):
 ck("N horizontal: NA is mutation-sensitive",
    _h_with(NA=0.9)["eta_collection_X"] != _r_h["eta_collection_X"])
 # [fix round MEDIUM 4] replaces a hardcoded ck(..., True): n_wire genuinely
-# IS consulted for horizontal_as_built now (V_number diagnostic always, and
-# -- new this round -- eta_collection_X via the wire-antenna screening
-# factor, MEDIUM 2), so the real, mutation-sensitive claim is asserted here
-# instead of the previous (false) "not consulted" label.
+# IS consulted for horizontal_as_built now (V_number diagnostic, and
+# gamma_X_ns via antenna_rate_factor).
 ck("N horizontal: n_wire override moves the V_number diagnostic",
    _h_with(n_wire=2.0)["V_number"] != _r_h["V_number"])
-ck("N horizontal: n_wire override moves eta_collection_X via the wire-antenna "
-   "screening factor (fix round MEDIUM 2)",
-   _h_with(n_wire=2.0)["eta_collection_X"] != _r_h["eta_collection_X"])
+# [Attempt 3 fix A] REVERSES the fix-round MEDIUM 2 claim above: the
+# wire-antenna screening is now a RATE effect (antenna_rate_factor), so
+# n_wire must move gamma_X_ns and must NOT move eta_collection_X (the
+# plain unscreened geometric collection).
+ck("N Attempt 3 fix A: horizontal n_wire override moves gamma_X_ns via "
+   "antenna_rate_factor (the screening is a rate effect, not a collection "
+   "loss)",
+   _h_with(n_wire=2.0)["gamma_X_ns"] != _r_h["gamma_X_ns"])
+ck("N Attempt 3 fix A: horizontal n_wire override does NOT move "
+   "eta_collection_X (the wire-antenna screening no longer touches "
+   "collection at all)",
+   close(_h_with(n_wire=2.0)["eta_collection_X"], _r_h["eta_collection_X"]))
 # [fix round MEDIUM 5] replaces a check that mutated emitter_height_nm, not
 # n_ambient, while claiming to test n_ambient: n_ambient is mutated directly.
 ck("N horizontal: n_ambient is mutation-sensitive",
@@ -607,9 +638,18 @@ ck("N non-positive gamma_X0_ns raises", expect(NitrideNanowirePhotonicsError,
 ck("N eta_collection_X equals eta_collection_XX (documented same-lambda simplification)",
    _r_h["eta_collection_X"] == _r_h["eta_collection_XX"]
    and _r_v["eta_collection_X"] == _r_v["eta_collection_XX"])
-ck("N gamma_XX0_ns scales gamma_XX_ns by radiative_rate_factor independently of gamma_X0_ns",
+# [Attempt 3 fix A] gamma_XX_ns now also picks up antenna_rate_factor (the
+# default card's dipole_weights are isotropic, so this is NOT 1.0) --
+# independently recomputed here, never read from the module's own output.
+_n_wire_500 = gan_ordinary_index(500.0)
+_screen_500 = (2.0 / (_n_wire_500 ** 2 + 1.0)) ** 2
+_antenna_rate_factor_iso_500 = (1.0 / 3.0) * (1.0 + 2.0 * _screen_500)
+ck("N gamma_XX0_ns scales gamma_XX_ns by radiative_rate_factor*antenna_rate_factor "
+   "independently of gamma_X0_ns (Attempt 3 fix A: antenna_rate_factor now enters too, "
+   "recomputed fresh here for the isotropic default)",
    close(response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"), lambda_nm=500.0,
-                  outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=0.5)["gamma_XX_ns"], 0.5))
+                  outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=0.5)["gamma_XX_ns"],
+         0.5 * _antenna_rate_factor_iso_500, rtol=1e-9))
 
 # ================================================================= (fix round LOW 10) NA domain
 
@@ -629,18 +669,40 @@ ck("N an admitted NA>1 immersion card documents the saturated-hemisphere "
 
 # ================================================================= (fix round HIGH 1) vertical objective acceptance
 
-# Independent re-derivation of _he11_objective_acceptance's normalization
-# invariant: integrating the SAME angular intensity over [0,pi/2] against
-# itself must give exactly 1.0 (not approximately), by construction of the
-# ratio -- checked here with a hand-rolled trapezoid, not the module's own.
-def _independent_hemisphere_ratio(k, w_nm, n_pts=8001):
-    theta = np.linspace(0.0, math.pi / 2.0, n_pts)
-    weight = _he11_far_field_intensity(theta, k, w_nm) * np.sin(theta)
-    return float(np.trapezoid(weight, theta) / np.trapezoid(weight, theta))
+# [Attempt 3 fix G] the old version of this check divided an expression by
+# itself (numerator and denominator were the SAME trapezoid integral) --
+# a tautology, true by construction regardless of the module's own
+# correctness. This is a genuine independent re-derivation instead: a
+# FRESH, independently typed copy of the Gaussian-aperture far-field
+# formula (obliquity factor ((1+cos theta)/2)^2 times
+# exp(-(k*w*sin theta)^2/2)) -- never imported from the module -- is
+# integrated over [0, theta_max] and separately over the full [0, pi/2]
+# hemisphere, and the resulting ratio is compared against
+# `_he11_objective_acceptance`'s own returned value for the SAME
+# theta_max/k/w (which IS imported, since that is the production routine
+# under test).
+def _independent_he11_far_field(theta, k, w_nm):
+    return ((1.0 + np.cos(theta)) / 2.0) ** 2 * np.exp(-0.5 * (k * w_nm * np.sin(theta)) ** 2)
 
 
-ck("N independent re-derivation: HE11 far-field hemisphere self-ratio is exactly 1.0",
-   _independent_hemisphere_ratio(2.0 * math.pi / 500.0, 84.0) == 1.0)
+def _independent_objective_acceptance(theta_max, k, w_nm, n_pts=8001):
+    theta_cone = np.linspace(0.0, theta_max, n_pts)
+    theta_full = np.linspace(0.0, math.pi / 2.0, n_pts)
+    numer = np.trapezoid(_independent_he11_far_field(theta_cone, k, w_nm) * np.sin(theta_cone), theta_cone)
+    denom = np.trapezoid(_independent_he11_far_field(theta_full, k, w_nm) * np.sin(theta_full), theta_full)
+    return float(numer / denom)
+
+
+ck("N Attempt 3 fix G: independent re-derivation (fresh far-field formula, "
+   "not imported from the module -- replaces the old x/x tautology) of the "
+   "HE11 objective-acceptance ratio matches _he11_objective_acceptance "
+   "across several theta_max/w",
+   all(math.isclose(_independent_objective_acceptance(_tm, 2.0 * math.pi / 500.0, _w),
+                     _he11_objective_acceptance(_tm, 2.0 * math.pi / 500.0, _w), rel_tol=2e-3)
+       for _tm, _w in ((0.3, 84.0), (0.7, 84.0), (1.2, 150.0), (1.5, 40.0))))
+ck("N Attempt 3 fix G: independent re-derivation confirms the full-"
+   "hemisphere self-ratio is exactly 1.0 (theta_max=pi/2 against itself)",
+   _independent_objective_acceptance(math.pi / 2.0, 2.0 * math.pi / 500.0, 84.0) == 1.0)
 ck("N _he11_objective_acceptance at NA=1.0 (theta_max=pi/2) returns exactly 1.0 for any finite w",
    _he11_objective_acceptance(math.pi / 2.0, 2.0 * math.pi / 500.0, 84.0) == 1.0
    and _he11_objective_acceptance(math.pi / 2.0, 2.0 * math.pi / 500.0, 5000.0) == 1.0)
@@ -695,6 +757,21 @@ ck("N a small untapered wire's 1/e^2 half-angle exceeds 60 deg and is noted",
    any("exceeds 60 deg" in n for n in _r_small_untapered["notes"]))
 ck("N a taper expanding the mode past 2000 nm removes the 60-deg note",
    not any("exceeds 60 deg" in n for n in _r_small_tapered["notes"]))
+# [Attempt 3 fix K] the RAW paraxial diagnostic exceeds 90 deg here (a
+# non-physical artifact of the small-angle formula), but the PRINTED note
+# is capped at 90 deg for display; and every note fires for THIS card must
+# carry the [A] platform-transfer tag for the GaAs/InAs-calibrated s(V)
+# envelope applied to a GaN card.
+ck("N Attempt 3 fix K: the raw theta_div_rad diagnostic itself is NOT "
+   "capped (it genuinely exceeds 90 deg for this small default wire)",
+   math.degrees(_r_small_untapered["diagnostics"]["theta_div_rad"]) > 90.0)
+ck("N Attempt 3 fix K: the PRINTED 1/e^2 half-angle note never states a "
+   "value above 90 deg, even though the underlying diagnostic does",
+   all(float(_m) <= 90.0 for n in _r_small_untapered["notes"]
+       for _m in re.findall(r"\(([\d.]+) deg", n)))
+ck("N Attempt 3 fix K: the above-cutoff note explicitly tags the GaAs/InAs "
+   "-> GaN platform transfer as [A]",
+   any("platform transfer itself is [A]" in n for n in _r_small_untapered["notes"]))
 
 # ================================================================= (fix round MEDIUM 6) beta != confinement
 
@@ -703,31 +780,107 @@ ck("N beta_HE11 differs from confinement_fraction at the default vertical card",
 ck("N beta_HE11 and confinement_fraction are both in [0, 1] at the default",
    0.0 <= _r_v["beta_HE11"] <= 1.0
    and 0.0 <= _r_v["diagnostics"]["confinement_fraction"] <= 1.0)
+ck("N Attempt 3 fix I: the dead 'beta_clipped' diagnostic/note is gone "
+   "(beta_raw is a ratio of two non-negative terms and is always already "
+   "in [0, 1])",
+   "beta_clipped" not in _r_v["diagnostics"]
+   and not any("clipped" in n for n in _r_v["notes"]))
 ck("N group_index_ratio (n_g/n_wire) differs from 1.0 at the default (dispersive) card, "
    "reproduced independently via a fresh finite difference of gan_ordinary_index",
    not math.isclose(_r_v["diagnostics"]["group_index_ratio"], 1.0, abs_tol=1e-3))
-ck("N group_index_ratio is exactly 1.0 when n_wire is caller-overridden (no dispersion curve)",
-   _group_index_ratio(2.2, 2.2, 500.0) == 1.0)
+# [Attempt 3 fix D] REVERSES the old claim: an n_wire override no longer
+# collapses group_index_ratio to a hardcoded 1.0 -- it applies the SAME
+# GaN-Sellmeier dispersion slope, scaled onto the override's magnitude,
+# reproduced fresh here via an independent central finite difference of
+# gan_ordinary_index (never via _group_index_ratio's own internals).
+_d_fd = 1.0
+_n_lo_fd = gan_ordinary_index(500.0 - _d_fd)
+_n_hi_fd = gan_ordinary_index(500.0 + _d_fd)
+_dn_dlambda_fd = (_n_hi_fd - _n_lo_fd) / (2.0 * _d_fd)
+_expected_ratio_override = (2.2 - 500.0 * _dn_dlambda_fd) / 2.2
+ck("N Attempt 3 fix D: group_index_ratio for an n_wire override matches an "
+   "independent re-derivation (GaN Sellmeier slope scaled onto the "
+   "override's magnitude, fresh finite difference typed here) and is NOT "
+   "1.0",
+   close(_group_index_ratio(2.2, 2.2, 500.0), _expected_ratio_override, rtol=1e-6)
+   and not math.isclose(_group_index_ratio(2.2, 2.2, 500.0), 1.0, abs_tol=1e-3))
+ck("N Attempt 3 fix D: group_index_ratio still falls back to 1.0 only when "
+   "lambda_nm itself is outside the GaN Sellmeier's own validity window "
+   "(350-10000 nm), preserving the n_wire-override-bypasses-GaN-range "
+   "invariant",
+   _group_index_ratio(2.2, 2.2, 100.0) == 1.0)
+ck("N Attempt 3 fix D: beta_HE11 differs from confinement_fraction at the "
+   "SOURCE-MATCHED CLAUDON REFERENCE too (n_wire override), not only at "
+   "the default GaN card",
+   not math.isclose(_r_claudon["beta_HE11"], _r_claudon["diagnostics"]["confinement_fraction"],
+                     rel_tol=1e-6))
 print(f"non-gating: Claudon-matched beta_HE11={_r_claudon['beta_HE11']:.4f} vs reported "
       f"guided-mode beta ~0.95 at d/lambda~0.24 (GaAs/InAs source, non-gating; "
       f"deviation {_r_claudon['beta_HE11'] - 0.95:+.4f})")
 
-# ================================================================= (fix round MEDIUM 2) polarization
+# ================================================================= (Attempt 3 fix A) antenna_rate_factor (rate, not collection)
+
+# Independent per-orientation collection/screening literals at 450/630 nm
+# (already-verified dipole_collection_fraction plus a freshly typed
+# screening formula, not imported from the module) cross-checked against
+# pure-orientation cards, where antenna_rate_factor collapses to the
+# single orientation's own s_i and gamma_X_ns*eta_collection_X (the
+# collected rate) exactly reproduces the OLD (pre-Attempt-3) screened
+# per-orientation product s_i*eta_raw_i.
+for _lam_a in (450.0, 630.0):
+    _n_wire_a = gan_ordinary_index(_lam_a)
+    _n_ox_a = sio2_index(_lam_a)
+    _n_sub_a = si_complex_index(_lam_a)
+    _screen_a = (2.0 / (_n_wire_a ** 2 + 1.0)) ** 2
+    _eta_a_along = dipole_collection_fraction((1.0, 0.0, 0.0), 0.5, 1.0, _n_ox_a, _n_sub_a,
+                                               100.0, 12.5, _lam_a)
+    _eta_a_trans = dipole_collection_fraction((0.0, 1.0, 0.0), 0.5, 1.0, _n_ox_a, _n_sub_a,
+                                               100.0, 12.5, _lam_a)
+    _eta_a_vert = dipole_collection_fraction((0.0, 0.0, 1.0), 0.5, 1.0, _n_ox_a, _n_sub_a,
+                                              100.0, 12.5, _lam_a)
+    for _label_a, _vec_a, _s_expected, _eta_expected in (
+            ("along_wire", (1.0, 0.0, 0.0), 1.0, _eta_a_along),
+            ("transverse_inplane", (0.0, 1.0, 0.0), _screen_a, _eta_a_trans),
+            ("vertical", (0.0, 0.0, 1.0), _screen_a, _eta_a_vert)):
+        _r_pure = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                                            dipole_weights=_vec_a),
+                            lambda_nm=_lam_a, outer_radius_nm=12.5,
+                            gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+        ck(f"N Attempt 3 fix A: pure-{_label_a} card at {_lam_a:.0f} nm: "
+           "antenna_rate_factor equals the independent s_i",
+           close(_r_pure["antenna_rate_factor"], _s_expected, rtol=1e-9))
+        ck(f"N Attempt 3 fix A: pure-{_label_a} card at {_lam_a:.0f} nm: "
+           "eta_collection_X equals the independent UNSCREENED "
+           "per-orientation collection",
+           close(_r_pure["eta_collection_X"], _eta_expected, rtol=1e-6))
+        ck(f"N Attempt 3 fix A: pure-{_label_a} card at {_lam_a:.0f} nm: "
+           "gamma_X_ns*eta_collection_X (collected rate) reproduces the "
+           "OLD screened product s_i*eta_raw_i",
+           close(_r_pure["gamma_X_ns"] * _r_pure["eta_collection_X"],
+                 _s_expected * _eta_expected, rtol=1e-6))
+
+ck("N Attempt 3 fix A: antenna_rate_factor is mutation-sensitive to "
+   "dipole_weights (isotropic default differs from a pure along_wire card)",
+   response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+            lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+            )["antenna_rate_factor"]
+   != response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                               dipole_weights=(1.0, 0.0, 0.0)),
+               lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+               )["antenna_rate_factor"])
+ck("N Attempt 3 fix A: vertical_photonic antenna_rate_factor is the "
+   "neutral 1.0 (no subwavelength dielectric-antenna screening modeled)",
+   response(NitrideNanowirePhotonicsParams(family="vertical_photonic"),
+            lambda_nm=500.0, outer_radius_nm=90.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+            )["antenna_rate_factor"] == 1.0)
+
+# ================================================================= (Attempt 3 fix B+E+F) polarization
 
 _pol_ledger = _ledger["deshpande2013_polarization"]
 for _lam_pol in (450.0, 630.0):
-    _r_pol = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
-                       lambda_nm=_lam_pol, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
-    _dolp = _r_pol["degree_of_linear_polarization"]
-    ck(f"N degree_of_linear_polarization at {_lam_pol:.0f} nm is a finite fraction in [-1, 1]",
-       isinstance(_dolp, float) and -1.0 <= _dolp <= 1.0)
-    # independent re-derivation: fresh calls to the already-verified
-    # dipole_collection_fraction plus a freshly typed screening formula
-    # (not imported from the module), never the production _horizontal_
-    # collection/response wrapper under test.
-    _n_wire_fresh = gan_ordinary_index(_lam_pol)
     _n_ox_fresh = sio2_index(_lam_pol)
     _n_sub_fresh = si_complex_index(_lam_pol)
+    _n_wire_fresh = gan_ordinary_index(_lam_pol)
     _screen_fresh = (2.0 / (_n_wire_fresh ** 2 + 1.0)) ** 2
     _along_fresh = dipole_collection_fraction((1.0, 0.0, 0.0), 0.5, 1.0, _n_ox_fresh, _n_sub_fresh,
                                                100.0, 12.5, _lam_pol)
@@ -735,15 +888,67 @@ for _lam_pol in (450.0, 630.0):
                                                100.0, 12.5, _lam_pol)
     _vert_fresh = dipole_collection_fraction((0.0, 0.0, 1.0), 0.5, 1.0, _n_ox_fresh, _n_sub_fresh,
                                               100.0, 12.5, _lam_pol)
-    _i_perp_fresh = 0.5 * (_trans_fresh * _screen_fresh + _vert_fresh * _screen_fresh)
-    _dolp_fresh = (_along_fresh - _i_perp_fresh) / (_along_fresh + _i_perp_fresh)
-    ck(f"N degree_of_linear_polarization at {_lam_pol:.0f} nm matches an independent "
-       "re-derivation (fresh screening formula + already-verified dipole_collection_fraction)",
-       close(_dolp, _dolp_fresh, rtol=1e-9))
-    print(f"non-gating: predicted degree_of_linear_polarization at {_lam_pol:.0f} nm = "
-          f"{_dolp * 100.0:.1f}% vs deshpande2013_polarization anchor "
-          f"{_pol_ledger['value']['axial_dolp_percent']:.1f}% "
-          f"(deviation {_dolp * 100.0 - _pol_ledger['value']['axial_dolp_percent']:+.1f} points, non-gating)")
+
+    def _dolp_fresh_sum(weights, _along=_along_fresh, _trans=_trans_fresh,
+                         _vert=_vert_fresh, _screen=_screen_fresh):
+        # [Attempt 3 fix E] SUM (not mean) convention, typed fresh here --
+        # never imported from the module's own _dolp_sum_convention.
+        w_along, w_transverse, w_vertical = weights
+        i_par = w_along * _along
+        i_perp = w_transverse * _trans * _screen + w_vertical * _vert * _screen
+        denom = i_par + i_perp
+        return (i_par - i_perp) / denom if denom > 0.0 else 0.0
+
+    _iso_w = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+    _cplane_w = (0.0, 0.5, 0.5)
+
+    _r_pol_default = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+                               lambda_nm=_lam_pol, outer_radius_nm=12.5,
+                               gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+    _r_pol_cplane = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                                              dipole_weights=_cplane_w),
+                              lambda_nm=_lam_pol, outer_radius_nm=12.5,
+                              gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+    _dolp_default = _r_pol_default["degree_of_linear_polarization"]
+    _dolp_cplane = _r_pol_cplane["degree_of_linear_polarization"]
+    _dolp_iso_diag = _r_pol_default["diagnostics"]["degree_of_linear_polarization_isotropic"]
+
+    ck(f"N degree_of_linear_polarization (default, isotropic card) at "
+       f"{_lam_pol:.0f} nm is a finite fraction in [-1, 1]",
+       isinstance(_dolp_default, float) and -1.0 <= _dolp_default <= 1.0)
+    ck(f"N Attempt 3 fix B: default-card degree_of_linear_polarization at "
+       f"{_lam_pol:.0f} nm matches an independent SUM-convention "
+       "re-derivation for the card's own (isotropic) weights",
+       close(_dolp_default, _dolp_fresh_sum(_iso_w), rtol=1e-9))
+    ck(f"N Attempt 3 fix B: diagnostics['degree_of_linear_polarization_"
+       f"isotropic'] at {_lam_pol:.0f} nm matches the same independent "
+       "isotropic re-derivation (and equals the default card's own value, "
+       "since the default IS isotropic)",
+       close(_dolp_iso_diag, _dolp_fresh_sum(_iso_w), rtol=1e-9)
+       and close(_dolp_iso_diag, _dolp_default, rtol=1e-9))
+    ck(f"N Attempt 3 fix B+F: cplane_only-card degree_of_linear_polarization "
+       f"at {_lam_pol:.0f} nm matches an independent SUM-convention "
+       "re-derivation and equals exactly -1.0 (-100%, the opposite sign "
+       "from the +70% anchor)",
+       close(_dolp_cplane, _dolp_fresh_sum(_cplane_w), rtol=1e-9)
+       and close(_dolp_cplane, -1.0, atol=1e-9))
+    ck(f"N Attempt 3 fix B: cplane_only prediction at {_lam_pol:.0f} nm is "
+       "printed as a falsification against the anchor (never hidden)",
+       any("falsified" in n for n in _r_pol_cplane["notes"]))
+    print(f"non-gating: predicted degree_of_linear_polarization (default, "
+          f"isotropic) at {_lam_pol:.0f} nm = {_dolp_default * 100.0:.1f}% vs "
+          f"deshpande2013_polarization anchor "
+          f"{_pol_ledger['value']['axial_dolp_percent']:.1f}% (deviation "
+          f"{_dolp_default * 100.0 - _pol_ledger['value']['axial_dolp_percent']:+.1f} "
+          "points, non-gating)")
+    print(f"non-gating: predicted degree_of_linear_polarization "
+          f"(cplane_only sensitivity) at {_lam_pol:.0f} nm = "
+          f"{_dolp_cplane * 100.0:.1f}% vs deshpande2013_polarization anchor "
+          f"{_pol_ledger['value']['axial_dolp_percent']:.1f}% (deviation "
+          f"{_dolp_cplane * 100.0 - _pol_ledger['value']['axial_dolp_percent']:+.1f} "
+          "points, non-gating; OPPOSITE SIGN from the anchor: c-plane-only "
+          "dipole prior falsified by the polarization anchor)")
+
 ck("N wire_antenna_screening_intensity matches the closed-form (2/(n^2+1))^2 independently",
    math.isclose(_wire_antenna_screening_intensity(2.4869166125042943),
                 (2.0 / (2.4869166125042943 ** 2 + 1.0)) ** 2, rel_tol=1e-12))
@@ -754,6 +959,19 @@ ck("N degree_of_linear_polarization is mutation-sensitive to n_wire (screening f
             lambda_nm=500.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
             )["degree_of_linear_polarization"]
    != _r_h["degree_of_linear_polarization"])
+ck("N Attempt 3 fix B: degree_of_linear_polarization is mutation-sensitive "
+   "to dipole_weights itself (isotropic default, cplane_only, and pure "
+   "along_wire all give three distinct values)",
+   len({response(NitrideNanowirePhotonicsParams(family="horizontal_as_built", dipole_weights=w),
+                 lambda_nm=500.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+                 )["degree_of_linear_polarization"]
+        for w in ((1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0), (0.0, 0.5, 0.5), (1.0, 0.0, 0.0))}) == 3)
+ck("N Attempt 3 fix B: a pure along_wire card gives degree_of_linear_"
+   "polarization exactly +1.0 (100% axial, I_perp=0)",
+   close(response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                                   dipole_weights=(1.0, 0.0, 0.0)),
+                  lambda_nm=500.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+                  )["degree_of_linear_polarization"], 1.0, rtol=1e-9))
 
 # ================================================================= (fix round LOW 11) stated approximations
 
@@ -795,6 +1013,39 @@ ck("N approximation_error is exactly 0 at d/lambda<=0.22 (at/below the LP11 "
    "d/lambda>=0.24 (above cutoff) -- fix round DIRECTIVE H7",
    _h7_resp[0.22]["approximation_error"] == 0.0
    and all(_h7_resp[d]["approximation_error"] > 0.0 for d in _h7_grid if d >= 0.24))
+# [Attempt 3 fix H] approximation_error is a bookkeeping SUM of two
+# UNLIKE-UNIT quantities: marcuse_window_error (V-number units) and
+# multimode_penalty_deficit (dimensionless, 1-beta_multimode_penalty),
+# each now separately named in diagnostics and re-derived independently
+# here (marcuse_window_error via a fresh copy of the extrapolation-
+# distance formula, multimode_penalty_deficit as 1-beta_multimode_penalty
+# read from the response's own already-checked field).
+for _d_h in _h7_grid:
+    _diag_h = _h7_resp[_d_h]["diagnostics"]
+    _v_h = _h7_resp[_d_h]["V_number"]
+    _marcuse_expected = max(0.0, 0.8 - _v_h) + max(0.0, _v_h - 2.5)
+    _deficit_expected = max(0.0, 1.0 - _h7_resp[_d_h]["beta_multimode_penalty"])
+    ck(f"N Attempt 3 fix H: marcuse_window_error + multimode_penalty_deficit "
+       f"sums exactly to approximation_error at d/lambda={_d_h:.2f}, and each "
+       "matches an independent re-derivation",
+       close(_diag_h["marcuse_window_error"] + _diag_h["multimode_penalty_deficit"],
+             _h7_resp[_d_h]["approximation_error"], rtol=1e-12)
+       and close(_diag_h["marcuse_window_error"], _marcuse_expected, rtol=1e-9)
+       and close(_diag_h["multimode_penalty_deficit"], _deficit_expected, rtol=1e-9))
+# [Attempt 3 fix J] the DELIVERED beta_HE11(d/lambda) decline between the
+# two anchor points is honestly smaller than the anchors' own ratio-based
+# decline (0.70/0.95): printed, not glossed over.
+_delivered_decline_pct = (_h7_beta[0.24] - _h7_beta[0.40]) / _h7_beta[0.24] * 100.0
+_anchored_decline_pct = (1.0 - 0.70 / 0.95) * 100.0
+ck("N Attempt 3 fix J: the delivered beta_HE11(d/lambda) decline (0.24->0.40) "
+   "is smaller than the anchors' own relative decline (honesty check, not a "
+   "calibration target)",
+   _delivered_decline_pct < _anchored_decline_pct)
+print(f"non-gating: Attempt 3 fix J -- delivered beta_HE11 decline "
+      f"(d/lambda 0.24->0.40) = {_delivered_decline_pct:.1f}% vs the "
+      f"Bleuse/Claudon anchors' own relative decline = "
+      f"{_anchored_decline_pct:.1f}% (0.70/0.95); s(V) is calibrated to the "
+      "anchors' decline, not to reproduce the delivered curve's own decline")
 ck("N single_mode is True at d/lambda<=0.22 and False at d/lambda>=0.24 "
    "(fix round DIRECTIVE H7)",
    _h7_resp[0.22]["single_mode"] is True
@@ -813,40 +1064,37 @@ print("non-gating: beta_HE11(d/lambda) at n_wire=3.45/950nm (fix round DIRECTIVE
       + f"; maximum at d/lambda={_h7_peak_d:.2f} (Bleuse et al. PRL 106, 103601 "
         "(2011) Fig. 2 / Claudon et al. (2010) anchors, non-gating)")
 
-# ================================================================= (fix round DIRECTIVE M5) default dipole_weights
+# ================================================================= (Attempt 3 fix B) default dipole_weights reverts to isotropic
 
-ck("T default dipole_weights is (0.0, 0.5, 0.5): the c-plane disc exciton "
-   "dipole lies in the c-plane, perpendicular to the lying wire's c-axis "
-   "(fix round DIRECTIVE M5)",
-   NitrideNanowirePhotonicsParams(family="horizontal_as_built").dipole_weights == (0.0, 0.5, 0.5))
-ck("N isotropic dipole_weights remains an accepted, explicit sensitivity "
-   "input distinct from the new default (fix round DIRECTIVE M5)",
+# [Attempt 3 fix B] REVERSES the DIRECTIVE M5 default: (0.0, 0.5, 0.5)
+# predicts the wrong-sign DOLP against the anchor (see the fix B+E+F
+# section above), so it cannot be the default; isotropic (orientation
+# prior unknown) is.
+ck("T CPLANE_ONLY_DIPOLE_WEIGHTS equals the literal (0.0, 0.5, 0.5) named "
+   "sensitivity constant",
+   CPLANE_ONLY_DIPOLE_WEIGHTS == (0.0, 0.5, 0.5))
+ck("T Attempt 3 fix B: default dipole_weights is isotropic (1/3, 1/3, 1/3), "
+   "NOT CPLANE_ONLY_DIPOLE_WEIGHTS -- orientation prior unknown",
+   NitrideNanowirePhotonicsParams(family="horizontal_as_built").dipole_weights
+   == (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+   and NitrideNanowirePhotonicsParams(family="horizontal_as_built").dipole_weights
+   != CPLANE_ONLY_DIPOLE_WEIGHTS)
+ck("N CPLANE_ONLY_DIPOLE_WEIGHTS remains an accepted, explicit named "
+   "sensitivity input, distinct from the isotropic default",
    NitrideNanowirePhotonicsParams(
-       family="horizontal_as_built", dipole_weights=(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
-   ).dipole_weights == (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0))
+       family="horizontal_as_built", dipole_weights=CPLANE_ONLY_DIPOLE_WEIGHTS
+   ).dipole_weights == CPLANE_ONLY_DIPOLE_WEIGHTS)
 ck("N a default vertical_photonic card (dipole_weights unspecified) matches "
-   "the new horizontal default and is accepted by the two-sided cross-talk "
-   "guard (fix round DIRECTIVE M5)",
-   NitrideNanowirePhotonicsParams(family="vertical_photonic").dipole_weights == (0.0, 0.5, 0.5))
-ck("N degree_of_linear_polarization is unaffected by the DIRECTIVE M5 "
-   "default-weight change (already computed for a fixed isotropic "
-   "population independent of dipole_weights, fix round MEDIUM 2): the new "
-   "default and an extreme (1,0,0) override give the identical value",
-   close(response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
-                  lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
-                  )["degree_of_linear_polarization"],
-         response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
-                                                   dipole_weights=(1.0, 0.0, 0.0)),
-                  lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
-                  )["degree_of_linear_polarization"]))
-for _lam_m5 in (450.0, 630.0):
-    _r_m5 = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
-                      lambda_nm=_lam_m5, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
-    print(f"non-gating: DIRECTIVE M5 default weights (0.0, 0.5, 0.5) at {_lam_m5:.0f} nm: "
-          f"degree_of_linear_polarization = {_r_m5['degree_of_linear_polarization'] * 100.0:.1f}% "
-          f"vs deshpande2013_polarization anchor {_pol_ledger['value']['axial_dolp_percent']:.1f}% "
-          f"(deviation {_r_m5['degree_of_linear_polarization'] * 100.0 - _pol_ledger['value']['axial_dolp_percent']:+.1f} "
-          "points, non-gating)")
+   "the isotropic horizontal default and is accepted by the two-sided "
+   "cross-talk guard",
+   NitrideNanowirePhotonicsParams(family="vertical_photonic").dipole_weights
+   == (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0))
+ck("N vertical_photonic still raises when dipole_weights is set to the "
+   "OLD (0.0, 0.5, 0.5) default (now non-default for the two-sided guard)",
+   expect(NitrideNanowirePhotonicsError,
+          lambda: response(NitrideNanowirePhotonicsParams(
+                                family="vertical_photonic", dipole_weights=CPLANE_ONLY_DIPOLE_WEIGHTS),
+                            lambda_nm=500.0, outer_radius_nm=90.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)))
 
 passed = sum(1 for _, ok in checks if ok)
 total = len(checks)
