@@ -11,7 +11,7 @@ pieces.  It is not a fit: no parameter here is chosen by solving for a
 measured ratio (see ``yield_ratio`` below and CLAUDE.md's provenance rule).
 
 Provenance of every literal:
-  - S_cm_s=1e3 [V]: Deshpande et al., Nat. Commun. 4, 1675 (2013), p.1,
+  - S_cm_s=1e3 [E]: Deshpande et al., Nat. Commun. 4, 1675 (2013), p.1,
     "the surface recombination velocity of GaN nanowires has been reported
     to be as low as 1e3 cm/s" -- a SECONDARY attribution to ref. 35 of that
     paper, not a value Deshpande et al. measured themselves.  See
@@ -161,7 +161,7 @@ def surface_rates(params: NitrideNanowireSurfaceParams, *, core_radius_nm: float
         "core_radius_nm": r_nm,
         "T_K": t_k,
         "provenance": {
-            "S_cm_s": "[V] Deshpande et al., Nat. Commun. 4, 1675 (2013), p.1, secondary attribution to ref. 35",
+            "S_cm_s": "[E] Deshpande et al., Nat. Commun. 4, 1675 (2013), p.1, secondary attribution to ref. 35",
             "k_side_ns_formula": "[DR] 2S/R surface/volume unit conversion, Sze & Ng ch. 1",
             "geometry_transfer": "[A] uniform-cylinder bulk expression applied to reservoir/occupied-dot carriers; not itself verified by the S citation",
             "shell_multiplier": "[A] AlGaN passivation factor 0.1, or 1.0 for shell='none'",

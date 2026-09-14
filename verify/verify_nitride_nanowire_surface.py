@@ -55,16 +55,20 @@ def main() -> int:
     # --- Acceptance 1: velocity attribution and PL ratio as DISTINCT ---
     # source transcriptions; 0.52 must never be an absolute IQE or a fit.
     doc = yaml.safe_load(LEDGER.read_text(encoding="utf-8"))
+    # Ledger layout after the piece-1 fix round (Opus finding, 2026-09-14):
+    # the velocity lives in its own [E]-tagged anchor (secondary attribution,
+    # ref. 35 never read); the PL ratio stays in the [V] thermal/PL anchor.
+    vel = doc["anchors"]["deshpande2013_surface_velocity"]
     anchor = doc["anchors"]["deshpande2013_thermal_and_pl"]
-    checks.append(anchor["value"]["surface_S_cm_s_secondary"] == 1000.0)
+    checks.append(vel["value"]["S_cm_s"] == 1000.0)
     checks.append(anchor["value"]["ensemble_PL_300K_over_10K"] == 0.52)
-    checks.append(anchor["tag"] == "V")
+    checks.append(vel["tag"] == "E" and anchor["tag"] == "V")
     # The two numbers are transcribed as separate fields of one anchor row,
     # not merged into a single quantity, and the ledger's own transfer note
     # already refuses the IQE/fit reading -- this line pins that text so a
     # future edit cannot quietly delete the caveat.
     checks.append("never a fitted S, activation energy, or lifetime" in anchor["transfer_notes"])
-    checks.append(anchor["value"]["ensemble_PL_300K_over_10K"] != anchor["value"]["surface_S_cm_s_secondary"])
+    checks.append(anchor["value"]["ensemble_PL_300K_over_10K"] != vel["value"]["S_cm_s"])
     # The module may DOCUMENT 0.52 (it does, as a disclaimed reference in
     # the docstrings), but it must never appear as an actual numeric literal
     # in the code (a fitted parameter or gating threshold).  Parse the AST
