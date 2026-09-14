@@ -473,6 +473,9 @@ separate counting gate). The verifier asserts this leaf set equals
 | `mg_acceptor_energy_meV` | meV | 170.0 | fixed | V (directive round, `e696bdd`; Mg acceptor ionization energy, p-GaN free-hole fraction) |
 | `include_polarization` | bool | `True` | `{True, False}` | DR (directive round, `e696bdd`; pseudomorphic fixed-D polarization sheet-charge envelope at every AlGaN/GaN interface) |
 | `bypass_prefactor` | dimensionless | 1.0 | fixed | A |
+| `polarity` | enum | `"Ga"` | `{"Ga", "N"}` | A (fix 3, `12b39cd`; Ga-polar c-axis growth assumed for the catalyst-free PA-MBE wires; N is the opposite-sign sensitivity) |
+| `slice_length_nm` | nm | module default | > 0 | A (fix 3, `12b39cd`; staircase slice length for the tilted-profile transfer matrix; default bit-identical) |
+| `min_slices_per_segment` | count | module default | >= 1 | A (fix 3, `12b39cd`; verifier-only knob to force a coarse staircase for the rti_numerics_ok False case) |
 | `field_leverarm` | dimensionless | 1.0 | fixed | A |
 | `alignment_tunable` | bool | `False` | `{False, True}` | A |
 | `bias_tuning_range_meV` | meV | 0.0 | sensitivity when `alignment_tunable=True` | A |
@@ -571,7 +574,7 @@ and listing every `rti_`-prefixed key it returns, not by spec text --
 `rti_second_carrier_probability`, `rti_growth_nearest_commensurate_nm`,
 `rti_growth_perturbed_margins_kT` (piece-6 fix-1 round), and
 `rti_barrier_polarization_tilt_eV`, `rti_well_to_dot_drop_meV`,
-`rti_p_free_cm3`, `rti_numerics_ok`, `rti_gate_ns`,
+`rti_p_free_cm3`, `rti_numerics_ok`, `rti_gate_ns`, `rti_polarity`,
 `rti_reservoir_state_count_e`, `rti_reservoir_state_count_h` (the
 subsequent directive round, commit `e696bdd`: polarization sheet charges,
 alignment against the emitter quasi-Fermi level with the required bias
