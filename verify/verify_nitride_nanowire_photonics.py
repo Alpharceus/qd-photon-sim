@@ -150,10 +150,20 @@ ck("T module source has no import of fsim_core.waveguide",
    not any("waveguide" in ln for ln in _import_lines))
 ck("T module source has no import of fsim_core.nitride_cavity",
    not any("nitride_cavity" in ln for ln in _import_lines))
-ck("T module source does not hardcode Claudon's reported ~0.95 guided-mode "
-   "beta as a GaN value either (fix round MEDIUM 6: non-gating comparison "
-   "only, kept in this verifier)",
-   "0.95" not in MODULE_SRC)
+# [fix round DIRECTIVE H7] Claudon's reported ~0.95 guided-mode beta is now
+# LEGITIMATELY transcribed into the module as a tagged [E] multimode-penalty
+# anchor (see _multimode_penalty) -- it is no longer absent, but it must be
+# present ONLY as that tagged, cited anchor, never as a silently fabricated
+# GaN confinement/beta value.
+ck("T module source transcribes the Bleuse et al. PRL 106, 103601 (2011) "
+   "Fig. 2 / Claudon et al. (2010) multimode-penalty anchors (n_wire=3.45, "
+   "beta~0.95 near d/lambda 0.22-0.24 falling to beta~0.70 by d/lambda~0.40) "
+   "with an [E] tag and citation, not as a silently fabricated GaN value "
+   "(fix round DIRECTIVE H7)",
+   "_MULTIMODE_ANCHOR_N_WIRE = 3.45" in MODULE_SRC
+   and "_MULTIMODE_ANCHOR_BETA_PEAK = 0.95" in MODULE_SRC
+   and "_MULTIMODE_ANCHOR_BETA_HIGH = 0.70" in MODULE_SRC
+   and "Bleuse" in MODULE_SRC and "Claudon" in MODULE_SRC and "[E]" in MODULE_SRC)
 
 # T8 (fix round LOW 8): oxide_thickness_nm=100.0 is [V], a literal
 # transcription of deshpande2013_device_geometry's substrate description,
@@ -344,10 +354,22 @@ for _r in _radii:
     _betas.append(_resp["beta_HE11"])
 ck("N beta_HE11 is strictly positive at every tested radius (3-320 nm, no hard cutoff)",
    all(b > 0.0 for b in _betas))
-ck("N beta_HE11 increases monotonically with radius (smooth, no discontinuity)",
-   all(_betas[i] < _betas[i + 1] for i in range(len(_betas) - 1)))
+# [fix round DIRECTIVE H7] radii 3-80 nm are all single-mode (V<=V_CUTOFF_LP11)
+# at this lambda/n_wire, where the multimode penalty s(V)=1 and beta_HE11
+# still increases monotonically exactly as before; radii 160/320 nm are
+# ABOVE cutoff, where the new multimode penalty must instead turn the curve
+# over (see the dedicated interior-maximum section below) -- the old
+# full-range "monotonic increase to R=320" claim was the bug H7 fixes.
+ck("N beta_HE11 increases monotonically with radius while V stays at/below "
+   "the LP11 cutoff (single-mode branch, radii 3-80 nm)",
+   all(_betas[i] < _betas[i + 1] for i in range(5)))
 ck("N beta_HE11 is small (<1e-6) at the smallest resolvable radius, consistent with V->0",
    _betas[0] < 1e-6)
+ck("N beta_HE11 DECREASES once V crosses the LP11 cutoff (fix round DIRECTIVE "
+   "H7: an interior maximum, not unbounded growth) -- R=160/320 nm are both "
+   "above cutoff at this lambda/n_wire and both lower than the R=80 nm "
+   "(still single-mode) value",
+   _betas[6] < _betas[5] and _betas[7] < _betas[6])
 
 # N7: beta_scale and radiative_rate_factor are independently perturbable:
 # changing one leaves the other's channel untouched.
@@ -741,6 +763,90 @@ ck("N horizontal provenance states the emitter-medium (n_ambient, not n_wire) ap
 ck("N vertical provenance states the incoherent bottom-mirror treatment",
    "mirror_treatment" in _r_v["provenance"]
    and any("incoherent" in n for n in _r_v["notes"]))
+
+# ================================================================= (fix round DIRECTIVE H7) beta_HE11 interior maximum
+
+# Source-matched to the SAME n_wire=3.45/lambda=950nm Claudon platform used
+# above (never the module's own default GaN dispersion, since the two
+# transcribed anchor points are read off that platform's own beta_HE11(V)
+# curve) -- a fresh call to response() at each d/lambda, not a re-derivation
+# of _multimode_penalty's own formula.
+def _h7_response_at(d_over_lambda, n_wire=3.45, lambda_nm=950.0):
+    radius_nm = d_over_lambda * lambda_nm / 2.0
+    return response(NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=n_wire),
+                     lambda_nm=lambda_nm, outer_radius_nm=radius_nm,
+                     gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+
+
+_h7_grid = [0.15, 0.18, 0.20, 0.22, 0.24, 0.26, 0.28, 0.30, 0.35, 0.40]
+_h7_resp = {d: _h7_response_at(d) for d in _h7_grid}
+_h7_beta = {d: _h7_resp[d]["beta_HE11"] for d in _h7_grid}
+_h7_peak_d = max(_h7_beta, key=_h7_beta.get)
+
+ck("N beta_HE11(d/lambda) has its maximum strictly inside (0.18, 0.30) on the "
+   "n_wire=3.45/950nm Claudon-matched platform (fix round DIRECTIVE H7 "
+   "acceptance criterion)",
+   0.18 < _h7_peak_d < 0.30)
+ck("N beta_HE11 at d/lambda=0.40 is lower than at d/lambda=0.24 (fix round "
+   "DIRECTIVE H7 acceptance criterion)",
+   _h7_beta[0.40] < _h7_beta[0.24])
+ck("N approximation_error is exactly 0 at d/lambda<=0.22 (at/below the LP11 "
+   "cutoff on this platform) and strictly positive at every tested "
+   "d/lambda>=0.24 (above cutoff) -- fix round DIRECTIVE H7",
+   _h7_resp[0.22]["approximation_error"] == 0.0
+   and all(_h7_resp[d]["approximation_error"] > 0.0 for d in _h7_grid if d >= 0.24))
+ck("N single_mode is True at d/lambda<=0.22 and False at d/lambda>=0.24 "
+   "(fix round DIRECTIVE H7)",
+   _h7_resp[0.22]["single_mode"] is True
+   and all(_h7_resp[d]["single_mode"] is False for d in _h7_grid if d >= 0.24))
+ck("N beta_multimode_penalty equals exactly 1.0 at/below cutoff and is "
+   "strictly less than 1.0 above it (fix round DIRECTIVE H7)",
+   _h7_resp[0.22]["beta_multimode_penalty"] == 1.0
+   and all(_h7_resp[d]["beta_multimode_penalty"] < 1.0 for d in _h7_grid if d >= 0.24))
+ck("N single_mode and beta_multimode_penalty are 'not_applicable' for "
+   "horizontal_as_built, matching beta_HE11's own convention (fix round "
+   "DIRECTIVE H7)",
+   _r_h["single_mode"] == "not_applicable"
+   and _r_h["beta_multimode_penalty"] == "not_applicable")
+print("non-gating: beta_HE11(d/lambda) at n_wire=3.45/950nm (fix round DIRECTIVE H7): "
+      + ", ".join(f"{d:.2f}->{_h7_beta[d]:.4f}" for d in (0.15, 0.20, 0.24, 0.30, 0.40))
+      + f"; maximum at d/lambda={_h7_peak_d:.2f} (Bleuse et al. PRL 106, 103601 "
+        "(2011) Fig. 2 / Claudon et al. (2010) anchors, non-gating)")
+
+# ================================================================= (fix round DIRECTIVE M5) default dipole_weights
+
+ck("T default dipole_weights is (0.0, 0.5, 0.5): the c-plane disc exciton "
+   "dipole lies in the c-plane, perpendicular to the lying wire's c-axis "
+   "(fix round DIRECTIVE M5)",
+   NitrideNanowirePhotonicsParams(family="horizontal_as_built").dipole_weights == (0.0, 0.5, 0.5))
+ck("N isotropic dipole_weights remains an accepted, explicit sensitivity "
+   "input distinct from the new default (fix round DIRECTIVE M5)",
+   NitrideNanowirePhotonicsParams(
+       family="horizontal_as_built", dipole_weights=(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+   ).dipole_weights == (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0))
+ck("N a default vertical_photonic card (dipole_weights unspecified) matches "
+   "the new horizontal default and is accepted by the two-sided cross-talk "
+   "guard (fix round DIRECTIVE M5)",
+   NitrideNanowirePhotonicsParams(family="vertical_photonic").dipole_weights == (0.0, 0.5, 0.5))
+ck("N degree_of_linear_polarization is unaffected by the DIRECTIVE M5 "
+   "default-weight change (already computed for a fixed isotropic "
+   "population independent of dipole_weights, fix round MEDIUM 2): the new "
+   "default and an extreme (1,0,0) override give the identical value",
+   close(response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+                  lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+                  )["degree_of_linear_polarization"],
+         response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                                   dipole_weights=(1.0, 0.0, 0.0)),
+                  lambda_nm=450.0, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0
+                  )["degree_of_linear_polarization"]))
+for _lam_m5 in (450.0, 630.0):
+    _r_m5 = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+                      lambda_nm=_lam_m5, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+    print(f"non-gating: DIRECTIVE M5 default weights (0.0, 0.5, 0.5) at {_lam_m5:.0f} nm: "
+          f"degree_of_linear_polarization = {_r_m5['degree_of_linear_polarization'] * 100.0:.1f}% "
+          f"vs deshpande2013_polarization anchor {_pol_ledger['value']['axial_dolp_percent']:.1f}% "
+          f"(deviation {_r_m5['degree_of_linear_polarization'] * 100.0 - _pol_ledger['value']['axial_dolp_percent']:+.1f} "
+          "points, non-gating)")
 
 passed = sum(1 for _, ok in checks if ok)
 total = len(checks)

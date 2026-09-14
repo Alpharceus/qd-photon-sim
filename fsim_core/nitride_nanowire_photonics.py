@@ -125,6 +125,43 @@ Fix round (this revision), addressing the Opus review of commit 3f6329e:
     ``n_substrate``, ``oxide_thickness_nm``, or ``emitter_height_nm`` (all
     horizontal-only), mirroring the existing horizontal-rejects-vertical
     direction.
+
+Directive round (this revision), addressing H7 and M5 of the Opus physics
+coherence review (`.workers/review/nitride-nanowire-physics-opus-coherence-
+findings.md`):
+  * ``beta_HE11`` no longer grows without bound in V: above the LP11 cutoff
+    (V > V_CUTOFF_LP11 = 2.405) an on-axis dipole's emission couples into
+    higher-order guided modes too, so the ON-AXIS HE11 share of guided
+    emission falls as V grows past cutoff. ``beta_HE11 =
+    beta_single_mode(V) * s(V)``, with ``s(V)`` a multimode-penalty envelope
+    ([E], see `_multimode_penalty`) anchored on two published photonic-wire
+    beta_HE11 data points on the SAME n_wire~3.45 GaAs/InAs platform this
+    module already uses for its Claudon-matched reference point below:
+    Bleuse et al., PRL 106, 103601 (2011), Fig. 2, and Claudon et al., Nat.
+    Photon. 4, 174 (2010) report beta~0.95 near the single-mode/multimode
+    boundary (d/lambda 0.22-0.24) falling to beta~0.7 by d/lambda~0.4.
+    ``s(V)`` is calibrated to reproduce the RELATIVE decline between those
+    two points (0.70/0.95), applied multiplicatively to whatever this
+    module's own (separately [A]) confinement-based beta_single_mode(V)
+    surrogate gives -- NOT forced to hit the absolute 0.95/0.7 values
+    themselves, since that absolute normalization is a distinct,
+    already-declared [A] approximation (see the non-gating Claudon-matched
+    beta comparison in the verifier). New outputs: ``single_mode``
+    (V<=V_CUTOFF_LP11) and ``beta_multimode_penalty`` (the s(V) value, both
+    ``not_applicable`` for ``horizontal_as_built``); ``approximation_error``
+    now also picks up a (1-s(V)) contribution for V>V_CUTOFF_LP11, so it is
+    always non-zero above cutoff even inside the Marcuse fit's own
+    calibration window [0.8, 2.5].
+  * The horizontal family's default ``dipole_weights`` changes from
+    isotropic (1/3, 1/3, 1/3) to (0.0, 0.5, 0.5) [DR: the c-plane disc
+    exciton's transition dipole lies IN the c-plane, i.e. perpendicular to
+    the lying wire's c-axis (along_wire) direction, so the physically
+    motivated default excludes the along_wire component]; isotropic is kept
+    as an explicit sensitivity input, never removed. ``degree_of_linear_
+    polarization`` is unaffected by this (it was already computed for a
+    fixed isotropic population, independent of ``dipole_weights`` -- see
+    the fix round MEDIUM 2 note above) and is re-reported against the
+    deshpande2013_polarization 70% anchor, non-gating, in the verifier.
 """
 from __future__ import annotations
 
@@ -173,7 +210,7 @@ _VERTICAL_ONLY_DEFAULTS = {
 # neutral default or `_check_family_activation` raises.
 _HORIZONTAL_ONLY_DEFAULTS = {
     "collection_scale": 1.0,
-    "dipole_weights": (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+    "dipole_weights": (0.0, 0.5, 0.5),
     "n_oxide": None,
     "n_substrate": None,
     "oxide_thickness_nm": 100.0,
@@ -246,7 +283,7 @@ class NitrideNanowirePhotonicsParams:
     n_oxide: float | None = None         # [V] SiO2 Sellmeier if None
     oxide_thickness_nm: float = 100.0    # [V] Deshpande et al. 2013 pp.3,6 device description (deshpande2013_device_geometry)
     n_substrate: complex | float | None = None  # [E] Si anchor table if None
-    dipole_weights: tuple = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)  # [A] isotropic default
+    dipole_weights: tuple = (0.0, 0.5, 0.5)  # [DR, fix round DIRECTIVE M5] c-plane disc exciton dipole in the c-plane, perpendicular to the c-axis wire; isotropic kept as an explicit sensitivity
     emitter_height_nm: float | None = None      # [A] defaults to outer_radius_nm
     collection_scale: float = 1.0        # [A] horizontal-only omitted-physics envelope
     radiative_rate_factor: float = 1.0   # [A] baseline; independent of beta/eta
@@ -402,6 +439,54 @@ def _extrapolation_metric(V: float) -> float:
     return float(max(0.0, _MARCUSE_V_LO - V) + max(0.0, V - _MARCUSE_V_HI))
 
 
+# [E, fix round DIRECTIVE H7] Multimode penalty s(V) for V > V_CUTOFF_LP11:
+# beta_HE11 = beta_single_mode(V) * s(V). Anchored on two published
+# photonic-wire beta_HE11 points, both read off the same n_wire~3.45
+# GaAs/InAs platform this module already uses for its Claudon-matched
+# reference point (see the source-matched verifier check): Bleuse et al.,
+# PRL 106, 103601 (2011), Fig. 2, and Claudon et al., Nat. Photon. 4, 174
+# (2010) report beta~0.95 near the single-mode/multimode boundary (d/lambda
+# 0.22-0.24) falling to beta~0.7 by d/lambda~0.4. s(V) is calibrated to
+# reproduce the RELATIVE decline between those two points (0.70/0.95),
+# applied multiplicatively to whatever this module's own (separately [A])
+# beta_single_mode(V) surrogate gives -- NOT forced to hit the absolute
+# 0.95/0.7 values themselves, since that absolute normalization is a
+# distinct, already-declared [A] approximation (see
+# `confinement_to_beta_mapping` in `response`'s provenance). s(V)=1.0 (no
+# penalty) at and below V_CUTOFF_LP11; an exponential decay above it, with
+# the rate fixed by requiring s(V) = 0.70/0.95 at the V corresponding to
+# d/lambda=0.40 on that same n_wire=3.45 platform.
+_MULTIMODE_ANCHOR_N_WIRE = 3.45          # [E] Bleuse 2011 Fig. 2 / Claudon 2010 platform index
+_MULTIMODE_ANCHOR_D_LAMBDA_HIGH = 0.40   # [E] Bleuse 2011 Fig. 2: beta~0.7 by here
+_MULTIMODE_ANCHOR_BETA_PEAK = 0.95       # [E] Bleuse 2011 Fig. 2: beta~0.95 near d/lambda 0.22-0.24
+_MULTIMODE_ANCHOR_BETA_HIGH = 0.70       # [E] Bleuse 2011 Fig. 2: beta~0.70 by d/lambda~0.40
+
+
+def _v_from_d_over_lambda(d_over_lambda: float, n_wire: float) -> float:
+    """[V] V = pi*(d/lambda)*sqrt(n_wire^2-1) for n_ambient=1 (air) -- the
+    diameter form of `v_number`, used only to convert the two published
+    d/lambda anchor points above into this module's own V-number units."""
+    return math.pi * d_over_lambda * math.sqrt(n_wire * n_wire - 1.0)
+
+
+_MULTIMODE_V_ANCHOR_HIGH = _v_from_d_over_lambda(_MULTIMODE_ANCHOR_D_LAMBDA_HIGH,
+                                                  _MULTIMODE_ANCHOR_N_WIRE)
+# [E] exponential decay rate fixed by s(V_CUTOFF_LP11)=1 and
+# s(_MULTIMODE_V_ANCHOR_HIGH) = 0.70/0.95 (the two anchors' ratio).
+_MULTIMODE_DECAY_RATE = -math.log(_MULTIMODE_ANCHOR_BETA_HIGH / _MULTIMODE_ANCHOR_BETA_PEAK) / (
+    _MULTIMODE_V_ANCHOR_HIGH - V_CUTOFF_LP11)
+
+
+def _multimode_penalty(V: float) -> float:
+    """[E] s(V): 1.0 (no penalty) for V<=V_CUTOFF_LP11; a smooth exponential
+    decay above it, calibrated as described in the comment above. Always in
+    (0, 1], strictly < 1 for any V > V_CUTOFF_LP11 -- this is what makes
+    `approximation_error` non-zero above cutoff (see `response`)."""
+    if V <= V_CUTOFF_LP11:
+        return 1.0
+    return math.exp(-_MULTIMODE_DECAY_RATE * (V - V_CUTOFF_LP11))
+
+
 def _mode_field_radius_nm(params: "NitrideNanowirePhotonicsParams", w_over_a: float,
                            outer_radius_nm: float) -> float:
     """[A, fix round HIGH 1] The far field's divergence is set by the guided
@@ -510,7 +595,15 @@ def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: floa
     denom = gamma_guided + gamma_rad
     beta_raw = gamma_guided / denom if denom > 0.0 else 0.0
     beta_clipped = beta_raw > 1.0 or beta_raw < 0.0
-    beta = min(max(beta_raw, 0.0), 1.0)
+    beta_single_mode = min(max(beta_raw, 0.0), 1.0)
+
+    # [E, fix round DIRECTIVE H7] above the LP11 cutoff an on-axis dipole's
+    # emission couples into higher-order guided modes too; beta_HE11 is the
+    # single-mode estimate above times the multimode penalty s(V) -- see
+    # `_multimode_penalty`. s(V)=1.0 (no change) at/below cutoff.
+    single_mode = V <= V_CUTOFF_LP11
+    multimode_penalty = _multimode_penalty(V)
+    beta = beta_single_mode * multimode_penalty
 
     # [DR] beta is BOTH propagation directions (contract); split evenly by
     # the disc's up/down mirror symmetry within the wire.
@@ -550,6 +643,8 @@ def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: floa
         "unguided_fraction": unguided_fraction, "unguided_collected": unguided_collected,
         "beta_clipped": beta_clipped, "additional_modes_possible": V > V_CUTOFF_LP11,
         "V_cutoff_LP11": V_CUTOFF_LP11,
+        "beta_single_mode": beta_single_mode, "beta_multimode_penalty": multimode_penalty,
+        "single_mode": single_mode,
     }
     return beta, eta_raw, diag
 
@@ -756,6 +851,8 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
 
     if params.family == "horizontal_as_built":
         beta_HE11 = "not_applicable"
+        single_mode = "not_applicable"
+        beta_multimode_penalty = "not_applicable"
         eta_raw, dolp, diag = _horizontal_collection(params, lam, radius, n_wire)
         eta_x_raw = eta_raw * params.collection_scale
         degree_of_linear_polarization = dolp
@@ -778,7 +875,13 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
                 "n_wire must exceed n_ambient for a designed vertical_photonic wire to guide")
         beta_HE11, eta_x_raw, diag = _vertical_collection(params, lam, radius, V, n_wire)
         diagnostics.update(diag)
-        approximation_error = _extrapolation_metric(V)
+        single_mode = diag["single_mode"]
+        beta_multimode_penalty = diag["beta_multimode_penalty"]
+        # [fix round DIRECTIVE H7] approximation_error also picks up the
+        # multimode penalty's (1-s(V)) distance from 1, so it is non-zero
+        # above V_CUTOFF_LP11 even inside the Marcuse fit's own calibration
+        # window [0.8, 2.5] (where the old Marcuse-only term alone was 0).
+        approximation_error = _extrapolation_metric(V) + max(0.0, 1.0 - beta_multimode_penalty)
         notes.append(
             "[fix round LOW 11] bottom-mirror redirection is treated as an "
             "incoherent power multiplication by bottom_reflectivity; no "
@@ -790,7 +893,10 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             notes.append(
                 f"V_number={V:.4f} exceeds the single-mode (LP11, V={V_CUTOFF_LP11:.6f}) "
                 "cutoff; higher-order guided content is not modeled by this "
-                "single-mode surrogate")
+                "single-mode surrogate; beta_HE11 is reduced by an [E] multimode "
+                f"penalty beta_multimode_penalty={beta_multimode_penalty:.4f} (Bleuse "
+                "et al., PRL 106, 103601 (2011), Fig. 2; Claudon et al., Nat. Photon. "
+                "4, 174 (2010) -- see _multimode_penalty)")
         if approximation_error > 0.0:
             notes.append(
                 f"V_number={V:.4f} is outside the Marcuse (1977) calibration "
@@ -870,18 +976,34 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             f"{_MARCUSE_V_LO}<=V<={_MARCUSE_V_HI}; smoothly extrapolated outside that "
             "window (approximation_error quantifies the extrapolation distance)")
         provenance["confinement_to_beta_mapping"] = (
-            "[A] beta_HE11 = Gamma_guided/(Gamma_guided+Gamma_rad), Gamma_guided "
-            "proportional to confinement_fraction*(n_g/n_wire)*beta_scale (a "
-            "Lecamp/Claudon-style guided-mode density-of-states estimator; n_g is "
-            "this module's own finite-difference GaN group index) and Gamma_rad "
-            "proportional to (1-confinement_fraction); this differs from "
-            "confinement_fraction whenever n_g != n_wire (the default, dispersive "
-            "case), and radiative_rate_factor is deliberately excluded from this "
-            "ratio so beta_HE11 stays independent of the separate Purcell/rate "
-            "envelope on gamma. Claudon et al. (2010)'s reported guided-mode beta "
-            "for a similar GaAs/InAs geometry is used ONLY as a non-gating "
-            "comparison in verify_nitride_nanowire_photonics.py, never as a "
-            "numeric input or anchor here (see maslov_claudon_status above)")
+            "[A] beta_single_mode(V) = Gamma_guided/(Gamma_guided+Gamma_rad), "
+            "Gamma_guided proportional to confinement_fraction*(n_g/n_wire)*"
+            "beta_scale (a Lecamp/Claudon-style guided-mode density-of-states "
+            "estimator; n_g is this module's own finite-difference GaN group "
+            "index) and Gamma_rad proportional to (1-confinement_fraction); this "
+            "differs from confinement_fraction whenever n_g != n_wire (the "
+            "default, dispersive case), and radiative_rate_factor is "
+            "deliberately excluded from this ratio so beta_single_mode stays "
+            "independent of the separate Purcell/rate envelope on gamma. "
+            "beta_HE11 = beta_single_mode(V) * beta_multimode_penalty (see "
+            "multimode_penalty below). Claudon et al. (2010)'s reported "
+            "guided-mode beta for a similar GaAs/InAs geometry is used ONLY as "
+            "a non-gating comparison in verify_nitride_nanowire_photonics.py, "
+            "never as a numeric input or anchor here (see maslov_claudon_status "
+            "above)")
+        provenance["multimode_penalty"] = (
+            "[E, fix round DIRECTIVE H7] beta_HE11 = beta_single_mode(V) * "
+            "beta_multimode_penalty; beta_multimode_penalty is 1.0 (no penalty) "
+            "for V<=V_CUTOFF_LP11 (2.405) and decays exponentially above it, "
+            "calibrated to the RELATIVE decline (0.70/0.95) between two "
+            "published photonic-wire beta_HE11 anchors on the n_wire~3.45 "
+            "GaAs/InAs platform: Bleuse et al., PRL 106, 103601 (2011), Fig. 2, "
+            "and Claudon et al., Nat. Photon. 4, 174 (2010) (beta~0.95 near "
+            "d/lambda 0.22-0.24, falling to beta~0.7 by d/lambda~0.4); it is "
+            "NOT calibrated to reproduce those absolute beta values from this "
+            "module's own beta_single_mode(V), only their relative decline. "
+            "This is what gives beta_HE11(d/lambda) an interior maximum instead "
+            "of growing monotonically with radius")
         provenance["taper_far_field"] = (
             "[A] HE11 far field modeled as a Gaussian aperture field's angular "
             "spectrum ((1+cos theta)/2)^2 * exp(-(k*w*sin theta)^2/2), w = "
@@ -900,6 +1022,8 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
         "radius_over_lambda": radius_over_lambda,
         "V_number": V,
         "beta_HE11": beta_HE11,
+        "single_mode": single_mode,
+        "beta_multimode_penalty": beta_multimode_penalty,
         "degree_of_linear_polarization": degree_of_linear_polarization,
         "eta_collection_X": eta_x,
         "eta_collection_XX": eta_xx,
