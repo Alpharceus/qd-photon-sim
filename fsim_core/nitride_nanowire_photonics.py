@@ -66,6 +66,65 @@ above what a real device would show at small heights -- flagged, and capped
 at 1, rather than hidden); no cavity Q, DBR, or spectral linewidth filter
 (owned by device integration); no dipole-orientation dependence of the
 guided-mode beta.
+
+Fix round (this revision), addressing the Opus review of commit 3f6329e:
+  * The vertical family's objective acceptance no longer uses a bare-radius
+    paraxial Gaussian (which discarded power "beyond 90 deg" at small
+    radius/short wavelength).  It now integrates the HE11 mode's actual
+    Gaussian-aperture far field -- obliquity factor ((1+cos theta)/2)^2
+    times exp(-(k*w*sin theta)^2/2) -- numerically over the objective cone
+    and normalizes by the SAME integral over the full forward hemisphere,
+    so NA=1.0 always accepts exactly 100% of the upward guided power. ``w``
+    is the guided mode's own Marcuse mode-field radius (or the new
+    ``taper_output_mfr_nm`` card knob when a taper expands it), never the
+    bare wire radius.  A taper's entire physical point -- shrinking the
+    far-field divergence by expanding the mode at the wire's top facet --
+    is now representable; ``taper_transmission`` remains a separate pure
+    power-loss factor.
+  * ``beta_HE11`` no longer equals ``confinement_fraction`` at the default
+    card: it is now Gamma_guided/(Gamma_guided+Gamma_rad) with Gamma_guided
+    proportional to confinement times the group-to-phase index ratio
+    n_g/n_wire (a Lecamp/Claudon-style guided-mode density-of-states
+    estimator -- see `_group_index_ratio`) and Gamma_rad proportional to
+    (1-confinement); n_g is obtained from a finite-difference derivative of
+    this module's own GaN Sellmeier, so it differs from the phase index at
+    any default (dispersive) card. ``radiative_rate_factor`` is
+    deliberately NOT part of this ratio (it stays the independent
+    Purcell/rate envelope on gamma, never on beta -- see the "Both
+    families share" paragraph above).
+  * A horizontal wire's own quasi-static antenna response now
+    distinguishes the along-wire (axial) dipole component from the two
+    components transverse to the wire axis: a subwavelength dielectric
+    cylinder screens a transverse dipole's radiated intensity by
+    (2/(n_wire^2+1))^2 (DR, standard thin-cylinder depolarization result;
+    Wang, Gudiksen, Duan, Cui, and Lieber, Science 293, 1455 (2001); Ruda
+    and Shik, Phys. Rev. B 72, 115308 (2005)), while the axial component is
+    unscreened. This is layered ONLY on top of `_horizontal_collection`'s
+    per-orientation combination step; `dipole_collection_fraction` and
+    `stack_reflection` themselves (the substrate/objective integral
+    machinery the reviewer verified to machine precision) are untouched.
+    A new `degree_of_linear_polarization` output compares an isotropic
+    dipole's axial vs (averaged) transverse screened collection against
+    the `deshpande2013_polarization` anchor (70%), non-gating.
+  * ``oxide_thickness_nm=100.0`` is now tagged [V] (Deshpande et al. 2013,
+    p.3/p.6 device description, `deshpande2013_device_geometry`), not [A]:
+    it is a literal transcription of the reported substrate, not a design
+    choice, matching the frozen contract's own "V (2013 substrate)" tag.
+  * NA's domain is now (0, 1]; NA in (1, n_ambient] is admitted only under
+    an explicit immersion ambient (n_ambient > 1), never silently.
+  * The horizontal family's substrate/objective integral normalizes the
+    emitter as radiating directly into ``n_ambient`` (air), not into the
+    surrounding GaN (n_wire); this uncorrected approximation is now stated
+    in the returned ``provenance``, not only here.  The vertical family's
+    bottom-mirror return is treated as an incoherent power multiplication
+    (no phase/interference between the direct-up and reflected-down
+    paths); this is likewise now stated in ``provenance``, not only in a
+    source comment.
+  * The family cross-talk guard is now two-sided: a ``vertical_photonic``
+    card also rejects a non-default ``dipole_weights``, ``n_oxide``,
+    ``n_substrate``, ``oxide_thickness_nm``, or ``emitter_height_nm`` (all
+    horizontal-only), mirroring the existing horizontal-rejects-vertical
+    direction.
 """
 from __future__ import annotations
 
@@ -106,9 +165,19 @@ _VERTICAL_ONLY_DEFAULTS = {
     "propagation_transmission": 1.0,
     "unguided_collection_scale": 0.0,
     "beta_scale": 1.0,
+    "taper_output_mfr_nm": None,
 }
+# [fix round MEDIUM 3] two-sided guard: these are the horizontal wire's OWN
+# knobs (substrate stack, dipole orientation, emitter height, collection
+# envelope); a vertical_photonic card must leave every one of them at its
+# neutral default or `_check_family_activation` raises.
 _HORIZONTAL_ONLY_DEFAULTS = {
     "collection_scale": 1.0,
+    "dipole_weights": (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0),
+    "n_oxide": None,
+    "n_substrate": None,
+    "oxide_thickness_nm": 100.0,
+    "emitter_height_nm": None,
 }
 
 
@@ -138,6 +207,24 @@ def _fraction(name, value):
     return v
 
 
+def _validate_NA(na, n_ambient):
+    """[fix round LOW 10] NA's domain is (0, 1] in the ordinary (n_ambient=1)
+    case; NA in (1, n_ambient] is admitted ONLY under an explicit immersion
+    ambient (n_ambient > 1, an objective cannot exceed the index of its own
+    immersion medium), never silently accepted or silently rejected."""
+    v = _finite("NA", na)
+    if v <= 0.0:
+        raise NitrideNanowirePhotonicsError("NA must be > 0")
+    if v > 1.0:
+        if not n_ambient > 1.0:
+            raise NitrideNanowirePhotonicsError(
+                "NA > 1 requires an explicit immersion ambient (n_ambient > 1)")
+        if v > n_ambient + 1e-9:
+            raise NitrideNanowirePhotonicsError(
+                "NA cannot exceed the immersion ambient's index n_ambient")
+    return v
+
+
 @dataclass(frozen=True)
 class NitrideNanowirePhotonicsParams:
     """Card-level optical inputs, frozen and normalized separately per
@@ -153,27 +240,30 @@ class NitrideNanowirePhotonicsParams:
     restriction then applies to the override).
     """
     family: str
-    NA: float = 0.5                      # [A] objective numerical aperture
+    NA: float = 0.5                      # [A] objective numerical aperture, domain (0,1] (or (0,n_ambient] under immersion)
     n_wire: float | None = None          # [V] GaN Sellmeier if None
     n_ambient: float = 1.0               # [A] air
     n_oxide: float | None = None         # [V] SiO2 Sellmeier if None
-    oxide_thickness_nm: float = 100.0    # [A] design brief, Deshpande 2013 p.3; not a frozen ledger anchor
+    oxide_thickness_nm: float = 100.0    # [V] Deshpande et al. 2013 pp.3,6 device description (deshpande2013_device_geometry)
     n_substrate: complex | float | None = None  # [E] Si anchor table if None
     dipole_weights: tuple = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)  # [A] isotropic default
     emitter_height_nm: float | None = None      # [A] defaults to outer_radius_nm
     collection_scale: float = 1.0        # [A] horizontal-only omitted-physics envelope
     radiative_rate_factor: float = 1.0   # [A] baseline; independent of beta/eta
-    beta_scale: float = 1.0              # [A] confinement-to-beta mapping, vertical-only
-    taper_transmission: float = 1.0      # [A] vertical-only, neutral = lossless
+    beta_scale: float = 1.0              # [A] Gamma_guided prefactor in the beta estimator, vertical-only
+    taper_transmission: float = 1.0      # [A] vertical-only, neutral = lossless (pure power factor)
     bottom_reflectivity: float = 0.0     # [A] vertical-only, neutral = no mirror
     top_contact_transmission: float = 1.0  # [A] vertical-only, neutral = no contact loss
     propagation_transmission: float = 1.0  # [A] vertical-only, neutral = lossless guiding
     unguided_collection_scale: float = 0.0  # [A] vertical-only, neutral = excluded
+    taper_output_mfr_nm: float | None = None  # [A] vertical-only; None = no taper, mode radius = bare-wire Marcuse w
 
     def __post_init__(self):
         if self.family not in FAMILIES:
             raise NitrideNanowirePhotonicsError(f"family must be one of {sorted(FAMILIES)}")
-        _fraction("NA", self.NA)
+        _validate_NA(self.NA, self.n_ambient)
+        if self.taper_output_mfr_nm is not None:
+            _finite_positive("taper_output_mfr_nm", self.taper_output_mfr_nm)
         if self.n_wire is not None:
             _finite_positive("n_wire", self.n_wire)
         _finite_positive("n_ambient", self.n_ambient)
@@ -312,28 +402,113 @@ def _extrapolation_metric(V: float) -> float:
     return float(max(0.0, _MARCUSE_V_LO - V) + max(0.0, V - _MARCUSE_V_HI))
 
 
+def _mode_field_radius_nm(params: "NitrideNanowirePhotonicsParams", w_over_a: float,
+                           outer_radius_nm: float) -> float:
+    """[A, fix round HIGH 1] The far field's divergence is set by the guided
+    mode's own Gaussian mode-field radius w = (w/a)*outer_radius_nm (Marcuse
+    1977), NEVER the bare wire radius. An adiabatic taper expanding the mode
+    at the wire's top facet is represented by the explicit
+    `taper_output_mfr_nm` card knob (default None = no taper = the bare-wire
+    Marcuse w); this is the taper's actual physical effect (shrinking
+    far-field divergence), which a pure power-transmission factor
+    (`taper_transmission`) cannot represent."""
+    if params.taper_output_mfr_nm is not None:
+        return params.taper_output_mfr_nm
+    if not math.isfinite(w_over_a):
+        return math.inf
+    return w_over_a * outer_radius_nm
+
+
 def _diffraction_half_angle_rad(mode_radius_nm: float, lambda_nm: float) -> float:
-    """[A] theta_div ~ lambda/(pi*w): the guided mode's own size (taken as
-    the wire's outer radius) sets the diffraction-limited divergence of the
-    light emerging from an idealized taper, in the same small-angle Gaussian
-    form used for the objective-acceptance integral below."""
+    """[A] theta_div ~ lambda/(pi*w): the standard PARAXIAL Gaussian 1/e^2
+    divergence half-angle of the guided mode's own field radius w (fix round
+    HIGH 1: never the bare wire radius). Used only as a diagnostic threshold
+    here (see the module docstring's "put a note ... when the 1/e^2
+    half-angle exceeds 60 deg"); the actual collection integral below is the
+    non-paraxial `_he11_objective_acceptance`, which this reduces to exactly
+    at small theta (see `_he11_far_field_intensity`)."""
+    if not math.isfinite(mode_radius_nm) or mode_radius_nm <= 0.0:
+        return math.pi / 2.0
     return lambda_nm / (math.pi * mode_radius_nm)
 
 
-def _objective_acceptance(theta_max_rad: float, theta_div_rad: float) -> float:
-    """[DR] Fraction of a circular Gaussian beam of divergence half-angle
-    theta_div falling within a cone of half-angle theta_max: the same
-    1-exp(-2 x^2) integral as `_gaussian_core_fraction`, in angle space."""
-    if theta_div_rad <= 0.0:
+def _he11_far_field_intensity(theta, k: float, mode_radius_nm: float):
+    """[A, fix round HIGH 1] Far field of a Gaussian aperture field of
+    radius w = `mode_radius_nm` (the HE11 mode's own field, per Marcuse),
+    valid at large angles unlike the old small-angle paraxial form: the
+    standard Kirchhoff/Huygens obliquity factor ((1+cos theta)/2)^2 times
+    the Gaussian aperture's angular spectrum exp(-(k*w*sin theta)^2/2).
+    Reduces exactly to the paraxial exp(-2*theta^2/theta_div^2) form (with
+    theta_div = lambda/(pi*w)) at small theta, since (k*w)^2/2 = 2/theta_div^2
+    there -- so the two divergence definitions above agree in that limit.
+    ``theta`` may be a numpy array."""
+    return ((1.0 + np.cos(theta)) / 2.0) ** 2 * np.exp(-0.5 * (k * mode_radius_nm * np.sin(theta)) ** 2)
+
+
+def _he11_objective_acceptance(theta_max_rad: float, k: float, mode_radius_nm: float,
+                                n_pts: int = 4001) -> float:
+    """[A, fix round HIGH 1] Numerically integrate `_he11_far_field_intensity`
+    (weighted by sin(theta) for solid angle) over the objective's cone
+    [0, theta_max_rad], normalized by the SAME integral over the full
+    forward hemisphere [0, pi/2] -- so NA=1.0 (theta_max_rad=pi/2) always
+    accepts EXACTLY 100% of the upward guided power by construction, fixing
+    the reviewed bug where up to 21.5% of upward power was silently
+    discarded "beyond 90 deg". theta_max_rad>=pi/2 is special-cased to
+    return 1.0 exactly rather than relying on quadrature to reproduce it."""
+    if not math.isfinite(mode_radius_nm) or mode_radius_nm <= 0.0 or theta_max_rad <= 0.0:
         return 0.0
-    return 1.0 - math.exp(-2.0 * theta_max_rad * theta_max_rad / (theta_div_rad * theta_div_rad))
+    if theta_max_rad >= math.pi / 2.0 - 1e-9:
+        return 1.0
+    theta_full = np.linspace(0.0, math.pi / 2.0, n_pts)
+    weight_full = _he11_far_field_intensity(theta_full, k, mode_radius_nm) * np.sin(theta_full)
+    denom = np.trapezoid(weight_full, theta_full)
+    if denom <= 0.0:
+        return 0.0
+    n_cone = max(3, int(round(n_pts * theta_max_rad / (math.pi / 2.0))))
+    theta_cone = np.linspace(0.0, theta_max_rad, n_cone)
+    weight_cone = _he11_far_field_intensity(theta_cone, k, mode_radius_nm) * np.sin(theta_cone)
+    numer = np.trapezoid(weight_cone, theta_cone)
+    return float(min(max(numer / denom, 0.0), 1.0))
+
+
+def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float) -> float:
+    """[A, fix round MEDIUM 6] Lecamp/Claudon-style guided-vs-radiative rate
+    estimator: a guided mode's local density of states scales with the GROUP
+    index n_g, not the phase index n_wire; approximated here as n_g/n_wire
+    via a central finite difference of this module's OWN GaN Sellmeier
+    (`gan_ordinary_index`), n_g = n - lambda*dn/dlambda. This is what makes
+    beta_HE11 differ from confinement_fraction at the default (dispersive)
+    card. If the caller overrides n_wire directly there is no dispersion
+    curve to differentiate, so the ratio conservatively defaults to 1.0 (no
+    group-index enhancement assumed) rather than fabricating one."""
+    if n_wire_override is not None:
+        return 1.0
+    d = 1.0  # nm finite-difference step
+    lo = max(lambda_nm - d, 350.0 + 1e-6)
+    hi = min(lambda_nm + d, 10000.0 - 1e-6)
+    if hi <= lo:
+        return 1.0
+    n_lo = gan_ordinary_index(lo)
+    n_hi = gan_ordinary_index(hi)
+    dn_dlambda = (n_hi - n_lo) / (hi - lo)
+    n_g = n_wire_used - lambda_nm * dn_dlambda
+    return n_g / n_wire_used
 
 
 def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: float,
-                          outer_radius_nm: float, V: float):
+                          outer_radius_nm: float, V: float, n_wire_used: float):
     w_over_a = _marcuse_w_over_a(V)
     confinement = _gaussian_core_fraction(w_over_a)
-    beta_raw = confinement * params.beta_scale
+
+    # [fix round MEDIUM 6] beta = Gamma_guided/(Gamma_guided+Gamma_rad); NOT
+    # simply confinement*beta_scale (that conflated confinement and beta).
+    # radiative_rate_factor is deliberately absent from this ratio -- it
+    # stays the independent Purcell/rate envelope on gamma (see N7).
+    group_ratio = _group_index_ratio(n_wire_used, params.n_wire, lambda_nm)
+    gamma_guided = confinement * group_ratio * params.beta_scale
+    gamma_rad = max(0.0, 1.0 - confinement)
+    denom = gamma_guided + gamma_rad
+    beta_raw = gamma_guided / denom if denom > 0.0 else 0.0
     beta_clipped = beta_raw > 1.0 or beta_raw < 0.0
     beta = min(max(beta_raw, 0.0), 1.0)
 
@@ -344,14 +519,22 @@ def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: floa
     top_up = beta_up * params.propagation_transmission
     # [A] disc-near-base geometry: the down-then-reflect-then-up path
     # crosses the full guided length once (same propagation_transmission),
-    # the short disc-to-bottom hop treated as lossless.
+    # the short disc-to-bottom hop treated as lossless; the mirror return
+    # itself is an incoherent power multiplication (bottom_reflectivity),
+    # no phase/interference tracked against the direct-up path.
     top_down = beta_down * params.bottom_reflectivity * params.propagation_transmission
     guided_at_top = top_up + top_down
     through_taper = guided_at_top * params.taper_transmission * params.top_contact_transmission
 
+    mode_radius_nm = _mode_field_radius_nm(params, w_over_a, outer_radius_nm)
+    # theta_max = asin(min(NA, 1.0)): matches the horizontal family's own
+    # (unchanged) convention -- an admitted NA>1 immersion card (LOW 10)
+    # still saturates at the full forward hemisphere here, see `response`'s
+    # notes for that stated approximation.
     theta_max = math.asin(min(params.NA, 1.0))
-    theta_div = _diffraction_half_angle_rad(outer_radius_nm, lambda_nm)
-    obj_accept = _objective_acceptance(theta_max, theta_div)
+    theta_div = _diffraction_half_angle_rad(mode_radius_nm, lambda_nm)
+    k0 = 2.0 * math.pi / lambda_nm
+    obj_accept = _he11_objective_acceptance(theta_max, k0, mode_radius_nm)
     guided_collected = through_taper * obj_accept
 
     unguided_fraction = max(0.0, 1.0 - beta)
@@ -359,10 +542,11 @@ def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: floa
 
     eta_raw = guided_collected + unguided_collected
     diag = {
-        "confinement_fraction": confinement, "beta_up": beta_up, "beta_down": beta_down,
+        "confinement_fraction": confinement, "group_index_ratio": group_ratio,
+        "beta_up": beta_up, "beta_down": beta_down,
         "top_up": top_up, "top_down": top_down, "guided_at_top": guided_at_top,
-        "through_taper": through_taper, "theta_max_rad": theta_max,
-        "theta_div_rad": theta_div, "obj_accept": obj_accept,
+        "through_taper": through_taper, "mode_field_radius_nm": mode_radius_nm,
+        "theta_max_rad": theta_max, "theta_div_rad": theta_div, "obj_accept": obj_accept,
         "unguided_fraction": unguided_fraction, "unguided_collected": unguided_collected,
         "beta_clipped": beta_clipped, "additional_modes_possible": V > V_CUTOFF_LP11,
         "V_cutoff_LP11": V_CUTOFF_LP11,
@@ -432,7 +616,16 @@ def dipole_collection_fraction(p, NA, n_ambient, n_oxide, n_substrate,
     incidence objective of the given NA, normalized by the FIXED free-space
     4*pi total (`_FREE_SPACE_TOTAL_POWER`) -- see the module docstring for
     why this can legitimately exceed 1 near a strongly reflecting interface
-    at small height (an omitted LDOS/rate effect, not a bug)."""
+    at small height (an omitted LDOS/rate effect, not a bug).
+
+    theta_max = asin(min(NA, 1.0)), UNCHANGED from the reviewer-verified
+    revision (fix round, HORIZONTAL family): the fix round's new NA>1
+    immersion admission (`_validate_NA`) is a validation-layer change only
+    here -- an admitted NA in (1, n_ambient] still saturates this integral
+    at the full forward hemisphere (theta_max=pi/2) rather than at the
+    smaller true immersion cone asin(NA/n_ambient); `response` states this
+    known approximation in ``notes`` when it applies, rather than silently
+    treating it as exact."""
     if NA <= 0.0:
         return 0.0
     theta_max = math.asin(min(NA, 1.0))
@@ -465,23 +658,67 @@ def dipole_collection_fraction(p, NA, n_ambient, n_oxide, n_substrate,
     return float(collected / _FREE_SPACE_TOTAL_POWER)
 
 
+# [fix round MEDIUM 2] which canonical orientations are TRANSVERSE to the
+# wire's own long axis (x, "along_wire") and therefore subject to the
+# quasi-static antenna-screening factor below; the axial component is not.
+_TRANSVERSE_TO_WIRE_AXIS = {"along_wire": False, "transverse_inplane": True, "vertical": True}
+
+
+def _wire_antenna_screening_intensity(n_wire: float) -> float:
+    """[DR, fix round MEDIUM 2] Quasi-static depolarization of a subwavelength
+    dielectric cylinder in a uniform transverse field: the internal field
+    (and hence a transverse dipole's effective radiated amplitude) is
+    screened by 2/(n_wire^2+1) relative to the unscreened axial component,
+    i.e. (2/(n_wire^2+1))^2 in intensity. Standard thin-cylinder antenna
+    result; cited for nanowire dipole polarization by Wang, Gudiksen, Duan,
+    Cui, and Lieber, Science 293, 1455 (2001) and derived explicitly by Ruda
+    and Shik, Phys. Rev. B 72, 115308 (2005). Applied ONLY here, on top of
+    `dipole_collection_fraction`'s own (unmodified, machine-precision
+    verified) substrate/objective integral -- never inside it."""
+    return (2.0 / (n_wire * n_wire + 1.0)) ** 2
+
+
 def _horizontal_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: float,
-                            outer_radius_nm: float):
+                            outer_radius_nm: float, n_wire: float):
     n_oxide = params.n_oxide if params.n_oxide is not None else sio2_index(lambda_nm)
     n_sub = params.n_substrate if params.n_substrate is not None else si_complex_index(lambda_nm)
     height = params.emitter_height_nm if params.emitter_height_nm is not None else outer_radius_nm
-    per_orientation = {}
+    screen = _wire_antenna_screening_intensity(n_wire)
+    per_orientation_raw = {}
+    per_orientation_screened = {}
     total = 0.0
     for (label, vec), weight in zip(_ORIENTATIONS, params.dipole_weights):
-        eta = dipole_collection_fraction(vec, params.NA, params.n_ambient, n_oxide, n_sub,
-                                          params.oxide_thickness_nm, height, lambda_nm)
-        per_orientation[label] = eta
-        total += weight * eta
+        eta_raw_orientation = dipole_collection_fraction(
+            vec, params.NA, params.n_ambient, n_oxide, n_sub,
+            params.oxide_thickness_nm, height, lambda_nm)
+        eta_screened = eta_raw_orientation * (screen if _TRANSVERSE_TO_WIRE_AXIS[label] else 1.0)
+        per_orientation_raw[label] = eta_raw_orientation
+        per_orientation_screened[label] = eta_screened
+        total += weight * eta_screened
+
+    # [fix round MEDIUM 2] degree_of_linear_polarization for an ISOTROPIC
+    # dipole (equal population of orientations, independent of the
+    # dipole_weights [A] prior): I_par is the unscreened axial component;
+    # I_perp is the mean of the two (screened) transverse components, since
+    # the substrate/objective integral alone already distinguishes
+    # transverse_inplane from vertical (different image-dipole response),
+    # while the wire's own antenna response does not prefer one transverse
+    # azimuth over the other.
+    i_par = per_orientation_screened["along_wire"]
+    i_perp = 0.5 * (per_orientation_screened["transverse_inplane"]
+                     + per_orientation_screened["vertical"])
+    denom = i_par + i_perp
+    dolp = (i_par - i_perp) / denom if denom > 0.0 else 0.0
+
     diag = {
         "n_oxide_used": n_oxide, "n_substrate_used": n_sub,
-        "emitter_height_nm_used": height, "eta_by_orientation": per_orientation,
+        "emitter_height_nm_used": height,
+        "eta_by_orientation": per_orientation_screened,
+        "eta_by_orientation_unscreened": per_orientation_raw,
+        "wire_antenna_screening_intensity": screen,
+        "dolp_I_par": i_par, "dolp_I_perp": i_perp,
     }
-    return total, diag
+    return total, dolp, diag
 
 
 # --------------------------------------------------------------- top level
@@ -519,21 +756,34 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
 
     if params.family == "horizontal_as_built":
         beta_HE11 = "not_applicable"
-        eta_raw, diag = _horizontal_collection(params, lam, radius)
+        eta_raw, dolp, diag = _horizontal_collection(params, lam, radius, n_wire)
         eta_x_raw = eta_raw * params.collection_scale
+        degree_of_linear_polarization = dolp
         diagnostics.update(diag)
         diagnostics["eta_geom_raw"] = eta_raw
         notes.append(
             "no substrate near-field/nonradiative LDOS is modeled; this is a "
             "collection envelope, and collection_scale in [0, ~0.3-1.0] is the "
             "assumed range for that omitted physics")
+        notes.append(
+            "[fix round LOW 11] the emitter's dipole field is normalized/phased in "
+            "dipole_collection_fraction as if radiating directly into n_ambient "
+            "(air), not into the surrounding n_wire (GaN); this uncorrected "
+            "approximation is unrelated to the separate wire-antenna screening "
+            "factor above, which acts only on the combined per-orientation total")
     else:
+        degree_of_linear_polarization = "not_applicable"
         if n_wire <= params.n_ambient:
             invalid_reasons.append(
                 "n_wire must exceed n_ambient for a designed vertical_photonic wire to guide")
-        beta_HE11, eta_x_raw, diag = _vertical_collection(params, lam, radius, V)
+        beta_HE11, eta_x_raw, diag = _vertical_collection(params, lam, radius, V, n_wire)
         diagnostics.update(diag)
         approximation_error = _extrapolation_metric(V)
+        notes.append(
+            "[fix round LOW 11] bottom-mirror redirection is treated as an "
+            "incoherent power multiplication by bottom_reflectivity; no "
+            "phase/interference is tracked between the direct-up and "
+            "reflected-down-then-up paths")
         if diag["beta_clipped"]:
             notes.append("beta_HE11 clipped to [0, 1] after applying beta_scale")
         if diag["additional_modes_possible"]:
@@ -546,6 +796,22 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
                 f"V_number={V:.4f} is outside the Marcuse (1977) calibration "
                 f"window [{_MARCUSE_V_LO}, {_MARCUSE_V_HI}]; beta_HE11 is an [A] "
                 "smooth extrapolation of that fit, not independently validated there")
+        if diag["theta_div_rad"] > math.radians(60.0):
+            notes.append(
+                f"[fix round HIGH 1] the guided mode's 1/e^2 far-field half-angle "
+                f"({math.degrees(diag['theta_div_rad']):.1f} deg, mode field radius "
+                f"{diag['mode_field_radius_nm']:.1f} nm) exceeds 60 deg; consider an "
+                "explicit taper_output_mfr_nm to represent a real adiabatic taper's "
+                "mode expansion, or treat obj_accept as a wide-divergence envelope")
+
+    if params.NA > 1.0:
+        notes.append(
+            f"[fix round LOW 10] NA={params.NA} > 1 admitted under an explicit "
+            f"immersion ambient (n_ambient={params.n_ambient}); the objective-"
+            "acceptance integral still saturates at the full forward hemisphere "
+            "for any NA>=1 (theta_max=asin(min(NA,1.0))) and does not yet model "
+            "the smaller true immersion cone asin(NA/n_ambient) -- a stated, not "
+            "silently applied, approximation")
 
     if eta_x_raw > 1.0 + 1e-9:
         notes.append(
@@ -583,14 +849,50 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
         provenance["dipole_weights"] = ("[A] assumed effective dipole-orientation mixture; "
                                          "NOT derived from the reported ~70% axial "
                                          "polarization (Deshpande et al. 2013, p.5)")
+        provenance["oxide_thickness_nm"] = ("[V] Deshpande et al., Nat. Commun. 4, 1675 "
+                                             "(2013), pp.3,6 (deshpande2013_device_geometry): "
+                                             "100 nm thermal SiO2 on (001) Si"
+                                             if params.oxide_thickness_nm == 100.0
+                                             else "[A] caller-supplied override")
+        provenance["wire_antenna_screening"] = (
+            "[DR] transverse-dipole intensity screened by (2/(n_wire^2+1))^2, "
+            "axial component unscreened; Wang, Gudiksen, Duan, Cui, and Lieber, "
+            "Science 293, 1455 (2001); Ruda and Shik, Phys. Rev. B 72, 115308 "
+            "(2005). degree_of_linear_polarization compares an isotropic dipole "
+            "against the deshpande2013_polarization anchor (70%), non-gating")
+        provenance["emitter_medium_approximation"] = (
+            "[A] the dipole's far-field phase/normalization is computed as if it "
+            "radiates directly into n_ambient (air), not into the surrounding GaN "
+            "(n_wire); uncorrected, stated in notes when this response is computed")
     else:
         provenance["confinement_surrogate"] = (
             "[V]/[A] Marcuse (1977) Gaussian mode-field-radius fit, calibrated "
             f"{_MARCUSE_V_LO}<=V<={_MARCUSE_V_HI}; smoothly extrapolated outside that "
             "window (approximation_error quantifies the extrapolation distance)")
         provenance["confinement_to_beta_mapping"] = (
-            "[A] confinement fraction is mapped onto beta_HE11 (times beta_scale); "
-            "this mapping itself is an assumption, not an independently derived beta")
+            "[A] beta_HE11 = Gamma_guided/(Gamma_guided+Gamma_rad), Gamma_guided "
+            "proportional to confinement_fraction*(n_g/n_wire)*beta_scale (a "
+            "Lecamp/Claudon-style guided-mode density-of-states estimator; n_g is "
+            "this module's own finite-difference GaN group index) and Gamma_rad "
+            "proportional to (1-confinement_fraction); this differs from "
+            "confinement_fraction whenever n_g != n_wire (the default, dispersive "
+            "case), and radiative_rate_factor is deliberately excluded from this "
+            "ratio so beta_HE11 stays independent of the separate Purcell/rate "
+            "envelope on gamma. Claudon et al. (2010)'s reported guided-mode beta "
+            "for a similar GaAs/InAs geometry is used ONLY as a non-gating "
+            "comparison in verify_nitride_nanowire_photonics.py, never as a "
+            "numeric input or anchor here (see maslov_claudon_status above)")
+        provenance["taper_far_field"] = (
+            "[A] HE11 far field modeled as a Gaussian aperture field's angular "
+            "spectrum ((1+cos theta)/2)^2 * exp(-(k*w*sin theta)^2/2), w = "
+            "taper_output_mfr_nm if given else the bare-wire Marcuse mode-field "
+            "radius; integrated over the objective cone and normalized by the "
+            "full forward hemisphere so NA=1.0 always accepts 100% of upward "
+            "guided power")
+        provenance["mirror_treatment"] = (
+            "[A] bottom_reflectivity is an incoherent power reflectivity; no "
+            "phase/interference is tracked between the direct-up and "
+            "reflected-down-then-up guided paths")
 
     return {
         "family": params.family,
@@ -598,6 +900,7 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
         "radius_over_lambda": radius_over_lambda,
         "V_number": V,
         "beta_HE11": beta_HE11,
+        "degree_of_linear_polarization": degree_of_linear_polarization,
         "eta_collection_X": eta_x,
         "eta_collection_XX": eta_xx,
         "radiative_rate_factor": params.radiative_rate_factor,
