@@ -64,14 +64,104 @@ anchors:
     platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
     excitation: "CW electrical thermal simulation; ensemble PL"
     observable: "thermal estimates, current density, current shift, ensemble PL ratio"
-    value: {thermal_diameter_nm: 30.0, J_1nA_reported_A_cm2: 142.0, rise_1nA_K: 15.0, rise_2nA_K: 49.0, current_shift_meV_upper: 2.0, ensemble_PL_300K_over_10K: 0.52, surface_S_cm_s_secondary: 1000.0}
+    value: {thermal_diameter_nm: 30.0, J_1nA_reported_A_cm2: 142.0, rise_1nA_K: 15.0, rise_2nA_K: 49.0, current_shift_meV_upper: 2.0, ensemble_PL_300K_over_10K: 0.52}
     unit: mixed
-    tolerance: {value: null, meaning: "thermal rises are simulation estimates; S is secondary attribution"}
-    transfer_notes: "52 percent is separate ensemble loss comparison, never a fitted S, activation energy, or lifetime."
+    tolerance: {value: null, meaning: "thermal rises are simulation estimates"}
+    transfer_notes: "52 percent is separate ensemble loss comparison, never a fitted S, activation energy, or lifetime. The surface recombination velocity is a distinct number with its own attribution caveat, moved to deshpande2013_surface_velocity with tag E."
     temperature: {bath_K: 10.0, simulated_junction_K: [25.0, 59.0]}
     geometry: "30 nm thermal/current-density cross section"
     raw_corrected: null
     observable_definition: "not direct thermometry; current shift is below 2 meV"
+  deshpande2013_surface_velocity:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 1"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: E
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: null
+    observable: "GaN nanowire surface recombination velocity"
+    value: {S_cm_s: 1000.0}
+    unit: "cm/s"
+    tolerance: {value: null, meaning: "order-of-magnitude literature value; two orders below planar GaAs per the same sentence"}
+    transfer_notes: "[E] secondary attribution: Deshpande 2013 p.1 cites its own ref. 35 for this number; ref. 35 has never been read by this project, so this is NOT a [V] Deshpande measurement despite appearing in a full_text-read paper. The transfer from a uniform carrier density to a localized disc (fsim_core/nitride_nanowire_surface.py) is a further [A], not verified by this quotation."
+    temperature: null
+    geometry: null
+    raw_corrected: null
+    observable_definition: "secondary literature citation inside a directly-read paper, not a Deshpande measurement"
+  deshpande2013_device_geometry:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 3 (device description), p. 6 (methods)"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: null
+    observable: "substrate stack, end contacts, contacted length, collection objective"
+    value: {substrate: "100 nm thermal SiO2 on (001) Si", contact_metal: "Ti/Au", contact_thickness_nm: [5.0, 45.0], contacted_length_nm: 600.0, objective: "50x", collection_geometry: "normal incidence"}
+    unit: mixed
+    tolerance: {value: null, meaning: "literal transcription; NA not stated by the paper"}
+    transfer_notes: "[V] device is a dispersed, lying-flat wire on an oxidized Si chip with lithographic end contacts, not a vertical/tapered/mirrored device; this is the horizontal_as_built family's own as-measured geometry, distinct from the designed vertical_photonic family."
+    temperature: null
+    geometry: "horizontal dispersed wire, ~600 nm contacted length"
+    raw_corrected: null
+    observable_definition: "device layout, not an optical or electrical measurement"
+  deshpande2013_polarization:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 5"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "electrical"
+    observable: "axial degree of linear polarization and its attribution"
+    value: {axial_dolp_percent: 70.0, mechanism: "dielectric-contrast antenna effect of a thin wire in air"}
+    unit: percent
+    tolerance: {value: null, meaning: "literal reported value; no error bar given"}
+    transfer_notes: "[V] the paper attributes this to the wire acting as a subwavelength dielectric antenna (radius << lambda/n), not to dot anisotropy; this constrains orientation/antenna weighting in fsim_core/nitride_nanowire_photonics.py only, and is never treated as an automatic 70 percent collection efficiency."
+    temperature: 10.0
+    geometry: "25 nm optical diameter"
+    raw_corrected: null
+    observable_definition: "polarization ratio, not a collection or extraction efficiency"
+  deshpande2013_emission_energy:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013)"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "pp. 2-3, Fig. 3c"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: V
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire"
+    excitation: "electrical CW"
+    observable: "single-dot X/XX emission energy and ordering"
+    value: {X_eV: 2.84, X_nm: 436.56, XX_above_X_meV: 10.0, XX_ordering: antibinding, T_ambient_K: 10.0, T_junction_K_approx: 25.0}
+    unit: mixed
+    tolerance: {value: 0.0, meaning: "single-dot EL line-position read; no reported error bar"}
+    transfer_notes: "[V] cross-references deshpande2013-xx-splitting in verify/data/nitride_cavity_anchors.yaml (same X 436.56 nm / XX 435.03 nm measurement, same -10 meV antibinding splitting), reused here unmodified for the nanowire ledger's own module-evidence requirement; the ~25 K junction temperature at 1 nA is the same Joule-heating estimate as deshpande2013_thermal_and_pl, not independent thermometry."
+    temperature: {ambient_K: 10.0, junction_K_approx: 25.0}
+    geometry: "25 nm optical diameter"
+    raw_corrected: null
+    observable_definition: "EL line position, not a fitted transition energy"
+  deshpande2013_coulomb_reference:
+    citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013); formula per fsim_core/drive_mech.py set_feasibility and fsim_core/loading.py island_radius_nm"
+    doi_or_url: "10.1038/ncomms2691"
+    location: "p. 2-4 (r=12.5 nm optical radius); formula is this project's own module, not the cited paper"
+    evidence_status: full_text
+    evidence_kind: source_transcription
+    tag: DR
+    platform: "horizontal dispersed InGaN/GaN p-i-n nanowire (radius only)"
+    excitation: null
+    observable: "Coulomb charging energy and E_C/kT at the disc radius, two capacitance conventions"
+    value: {r_nm: 12.5, eps_r: 9.5, formula_sphere: "E_C = e^2 / (4*pi*eps0*eps_r*R)", EC_sphere_meV: 12.126, EC_over_kT_230K_sphere: 0.612, EC_over_kT_300K_sphere: 0.469, formula_disc: "E_C = e^2 / (8*eps0*eps_r*R)", EC_disc_meV: 19.05, EC_over_kT_230K_disc: 0.961, EC_over_kT_300K_disc: 0.737, convention_used_by_set_feasibility: sphere}
+    unit: mixed
+    tolerance: {value: null, meaning: "eps_r=9.5 is an [E] III-N dielectric-constant assumption (design brief user answer 3), not a Deshpande measurement; only r_nm=12.5 is [V] transcription"}
+    transfer_notes: "[DR] derived reference value, not a number Deshpande 2013 reports: only the disc radius (r=12.5 nm, from deshpande2013_geometry) is [V]; eps_r, both formulas, and both numeric results are this project's own derivation. fsim_core.drive_mech.set_feasibility uses the isolated-sphere convention (C_sigma=4*pi*eps0*eps_r*R, matching fsim_core/loading.py island_radius_nm), which reproduces the design brief's 0.61/0.47 numbers; the isolated-disc convention (C=8*eps0*eps_r*R) gives different numbers and is recorded for comparison only, never used by production code."
+    temperature: null
+    geometry: "12.5 nm disc/core radius"
+    raw_corrected: null
+    observable_definition: "derived charging energy, not a spectroscopic or electrical measurement"
   deshpande2014_abstract:
     citation: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014)"
     doi_or_url: "10.1063/1.4897640"
@@ -92,7 +182,7 @@ anchors:
     observable_definition: "waveform and g2 measurement rate unknown"
   deshpande2013_supplement:
     citation: "Deshpande et al., Nat. Commun. 4, 1675 (2013) supplementary"
-    doi_or_url: "10.1038/ncomms2691"
+    doi_or_url: null
     location: "supplement retrieval status"
     evidence_status: missing
     evidence_kind: missing_evidence
@@ -103,7 +193,7 @@ anchors:
     value: null
     unit: null
     tolerance: {value: null, meaning: "not retrieved in this contract round"}
-    transfer_notes: "Missing retrieval is not an offline-cache failure."
+    transfer_notes: "Missing retrieval is not an offline-cache failure. doi_or_url is deliberately null (not the main article's DOI): reusing the main article's DOI here would let the citation gate resolve it and print PASS for a supplement that was never actually retrieved. A null identifier with evidence_status=missing is reported by the gate as a recorded gap instead."
     temperature: null
     geometry: null
     raw_corrected: null
@@ -148,16 +238,16 @@ anchors:
     citation: "Kitamura et al., Development of Key Technologies for Electrically Driven Deterministic Single-Photon Sources, CLEO 2026, FM2C.3"
     doi_or_url: "10.1364/CLEO_FS.2026.FM2C.3"
     location: "conference abstract"
-    evidence_status: abstract_only
+    evidence_status: missing
     evidence_kind: non_gating_comparison
-    tag: V
+    tag: A
     platform: "nitride injector architecture"
     excitation: null
     observable: "device technologies and single-dot emission"
     value: null
     unit: null
     tolerance: {value: null, meaning: "architecture is not a deterministic-pair rate benchmark"}
-    transfer_notes: "Does not demonstrate deterministic nitride pair injection, rate, selectivity, or RT single-pair claim."
+    transfer_notes: "Does not demonstrate deterministic nitride pair injection, rate, selectivity, or RT single-pair claim. The abstract itself was read (doi_or_url resolves), but it names no numeric quantity this project transcribes, so value stays null and evidence_status is the ledger's null-value convention (missing) rather than abstract_only; tag is A (architecture reference only), matching maslov2004_he11 and claudon2010_extraction."
     temperature: null
     geometry: null
     raw_corrected: null
