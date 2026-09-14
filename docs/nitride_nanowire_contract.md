@@ -395,6 +395,7 @@ leaf and its default/range apply identically to `horizontal_as_built` and
 | `collection_scale` | dimensionless | 1.0 | `[0,1]`, quantified assumption range | A | horizontal |
 | `radiative_rate_factor` | dimensionless | 1.0 | independent envelope on sensitivity cuts | A | both |
 | `beta_scale` | dimensionless | 1.0 | independent envelope on sensitivity cuts | A | vertical |
+| `n_group_override` | dimensionless | None | optional platform-matched group index n_g for the beta estimator; None = GaN dispersion shape (polish round) | A | vertical |
 | `taper_transmission` | dimensionless | 1.0 | `[0,1]` | A | vertical |
 | `bottom_reflectivity` | dimensionless | 0.0 (no mirror baseline) | `[0,1]` | A | vertical |
 | `top_contact_transmission` | dimensionless | 1.0 | `[0,1]` | A | vertical |
