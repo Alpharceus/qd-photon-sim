@@ -22,3 +22,12 @@ scratch/
 /out/presentation2_selftest/
 .workers/
 .claude/settings.local.json
+
+# run-time leftovers under out/ (logs, matplotlib cache, quick pre-runs); the
+# committed deliverables in each out/<run>/ are unaffected
+/out/**/mplconfig/
+/out/**/quick/
+/out/**/*.log
+
+# report staging (weekly report inputs copied from memory / ~/.claude)
+/reports/
