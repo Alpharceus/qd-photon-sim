@@ -43,13 +43,26 @@ def _once(s,T,n,pad):
  ov=max(0,min(1,float(np.trapezoid(pe*ph,z)**2)))
  if ov<1e-12:return None,['overlap_unresolved'],F
  sep=abs(np.trapezoid(z*pe*pe,z)-np.trapezoid(zh*ph*ph,zh));r=s.core_radius_nm*_rf();ex=de['Ec_eV']-de['Ev_eV']+te+th+ee+eh-_coulomb_binding_eV(r,r,sep,d.eps_r) # [E] dot eps envelope
- def spl(md,mb,t,Tm,v,q,e,eone,c):
-  t1=_ep(md,s.core_radius_nm,J11)/1000;T1=_ep(mb,s.core_radius_nm,J11)/1000;rad=float('inf')
-  if v+T1-t1>0:
-   x,_,cc,_,_,_=_z_state(s.height_nm,v+T1-t1,md,mb,F,q,n,pad)
-   if x<cc:rad=t1+x-t-e
-  ax=eone-e if math.isfinite(eone) and eone<c else float('inf');return min(ax,rad)
- return (ex,ov,F,fs,fp,d,g,de,ee,eh,ce,ch,te,th,r,spl(d.me_z,g.me_z,te,Te,ve,-1,ee,e1,ce),spl(d.mh_z,g.mh_z,th,Th,vh,1,eh,h1,ch)),[],F
+ bare_e=ge['Ec_eV']-de['Ec_eV'];bare_h=de['Ev_eV']-ge['Ev_eV'] # [DR] bare band offset, no transverse zero-point term
+ def spl(mxy_d,mxy_b,t,bare,e,eone,c):
+  # J11 transverse level [fix A]: this is a separable product-state model
+  # (V(z) does not depend on the transverse quantum numbers), so the SAME
+  # axial eigenstate `e` applies whichever transverse mode is occupied and
+  # the J01->J11 spacing is the pure in-plane Bessel difference t1-t, using
+  # the IN-PLANE masses (mxy_d/mxy_b) exactly like the ground subband `t`
+  # above -- never the axial masses. Boundedness is checked against the
+  # J11-SPECIFIC continuum `bare+T1` (the bare band offset plus the J11
+  # transverse zero-point energy), because a transverse-excited carrier
+  # autoionizes through its own, higher-energy escape channel even while
+  # the ground-transverse continuum `c` (=ve/vh) remains closed. A
+  # non-positive or unbound spacing means no bound J11 excited state at
+  # this geometry: return nan, never a negative meV value with valid=True.
+  t1=_ep(mxy_d,s.core_radius_nm,J11)/1000;T1=_ep(mxy_b,s.core_radius_nm,J11)/1000
+  rad=t1-t if bare+T1-t1>e else float('inf')
+  ax=eone-e if math.isfinite(eone) and eone<c else float('inf');sp=min(ax,rad)
+  return sp if sp>0 else float('nan')
+ se=spl(d.me_xy,g.me_xy,te,bare_e,ee,e1,ce);sh=spl(d.mh_xy,g.mh_xy,th,bare_h,eh,h1,ch)
+ return (ex,ov,F,fs,fp,d,g,de,ee,eh,ce,ch,te,th,r,se,sh),[],F
 @lru_cache(maxsize=256)
 def _solve(s,T,n,pad):
  bad=[]
@@ -58,16 +71,40 @@ def _solve(s,T,n,pad):
  if s.height_nm<=0 or s.core_radius_nm<=0:bad.append('positive geometry required')
  if s.outer_radius_nm<s.core_radius_nm:bad.append('outer radius below core radius')
  if s.strain_bound not in ('relaxed','unrelaxed') or not 0<=s.x_in<=1 or not 0<=s.screening_fraction<=1 or not 0<=s.strain_c_fraction<=1:bad.append('invalid bound or fraction')
- if not math.isfinite(T) or T<=0 or n<101 or n%2==0 or not math.isfinite(pad) or pad<=0:bad.append('invalid numerical control')
+ # z_points floor of 401 [A fix C/D]: nitride_levels._z_grid clamps
+ # n_half=max(200,round(n/2)), so a base n<=401 could double to a refined
+ # grid whose n_half is STILL 200 -- a bit-identical grid that would let a
+ # false convergence pass silently. n>=401 guarantees 2*n+1 always lands
+ # above the floor (n_half>=402), so base and refined solves are always on
+ # different grids.
+ if not math.isfinite(T) or T<=0 or n<401 or n%2==0 or not math.isfinite(pad) or pad<=0:bad.append('invalid numerical control')
  if bad:return _bad(bad)
  a,b,F=_once(s,T,n,pad)
  if b:return _bad(b,F)
- q,qb,_=_once(s,T,2*n+1,2*pad)
- if qb:return _bad(qb+['refinement unresolved'],F)
- if abs(q[0]-a[0])*1000>.5:return _bad(['E_X refinement exceeds 0.5 meV'],F)
- if abs(q[1]-a[1])/a[1]>.02:return _bad(['overlap refinement exceeds 2 percent'],F)
+ qz,bz,_=_once(s,T,2*n+1,pad) # z_points refined alone [fix C/E]
+ if bz:return _bad(bz+['z-refinement unresolved'],F)
+ qp,bp,_=_once(s,T,n,2*pad) # exterior padding refined alone [fix C/E]
+ if bp:return _bad(bp+['pad-refinement unresolved'],F)
+ # Rate-equivalent gate [fix C]: k=pref*exp(-Ea/kT) with pref set only by
+ # the T/R/reservoir-length transverse partition (unaffected by z_points or
+ # pad), so d(k)/k ~= -d(Ea)/kT to first order; gating Ea (=dE_e/dE_h, the
+ # axial escape depth already computed here) to 0.02*kT bounds k_X/k_XX
+ # drift under refinement to <=2% without inventing a tau_rad0_ns/
+ # tau_cap_ps default inside levels() -- tau_rad0_ns has no implicit
+ # default per the interface constraints, so rates() itself cannot be
+ # called from this gate.  gamma_X0/XX0's refinement stability is already
+ # covered by the overlap gate above (gamma_X0=overlap_sq/tau_rad0_ns).
+ tol_mev=.02*KB_EV*1000.*T
+ for tag,q in (('z-points',qz),('exterior padding',qp)):
+  if abs(q[0]-a[0])*1000>.5:return _bad([tag+' refinement: E_X exceeds 0.5 meV'],F)
+  if abs(q[1]-a[1])/a[1]>.02:return _bad([tag+' refinement: overlap exceeds 2 percent'],F)
+  if abs((q[10]-q[8])-(a[10]-a[8]))*1000>tol_mev:return _bad([tag+' refinement: electron escape depth exceeds rate tolerance'],F)
+  if abs((q[11]-q[9])-(a[11]-a[9]))*1000>tol_mev:return _bad([tag+' refinement: hole escape depth exceeds rate tolerance'],F)
  ex,ov,F,fs,fp,d,g,de,ee,eh,ce,ch,te,th,r,se,sh=a
- return NanowireLevels(ex,HC/ex,True,True,ov,F,fs,fp,d.Psp_Cm2,g.Psp_Cm2,de['P_total_Cm2']-d.Psp_Cm2,0.,(te+ee)*1000,(th+eh)*1000,(ce-ee)*1000,(ch-eh)*1000,None,se*1000 if math.isfinite(se) else float('nan'),sh*1000 if math.isfinite(sh) else float('nan'),d.me_xy,d.mh_xy,ce*1000,ch*1000,te*1000,th*1000,r,s.core_radius_nm,s.outer_radius_nm,'full-core hard-wall cylinder','[E] separable BDD axial/cylinder; [A] vacuum wall, no dielectric images or alloy localization; refinement passed',True,(),'[V] Bernardini PRB 1997; Rinke PRB 2008; BenDaniel and Duke PR 1966')
+ meta='[E] separable BDD axial/cylinder; [A] vacuum wall, no dielectric images or alloy localization; refinement passed (z_points, exterior_nm and dE_e/dE_h rate-equivalent tolerance gated separately)'
+ meta+='; [A] dE_pair_meV is None: no pair-correlation correction to the single-particle escape depths is modeled'
+ if not (math.isfinite(se) and math.isfinite(sh)):meta+='; [A] sp_split_e/h nan marks an absent J11 transverse excited state at this geometry, not zero RT-injector selectivity'
+ return NanowireLevels(ex,HC/ex,True,True,ov,F,fs,fp,d.Psp_Cm2,g.Psp_Cm2,de['P_total_Cm2']-d.Psp_Cm2,0.,(te+ee)*1000,(th+eh)*1000,(ce-ee)*1000,(ch-eh)*1000,None,se*1000 if math.isfinite(se) else float('nan'),sh*1000 if math.isfinite(sh) else float('nan'),d.me_xy,d.mh_xy,ce*1000,ch*1000,te*1000,th*1000,r,s.core_radius_nm,s.outer_radius_nm,'full-core hard-wall cylinder',meta,True,(),'[V] Bernardini PRB 1997; Rinke PRB 2008; BenDaniel and Duke PR 1966')
 def levels(system,T_K=300.,*,z_points=1201,exterior_nm=45.):
  if not isinstance(system,NitrideNanowireSystem):raise TypeError('system must be NitrideNanowireSystem')
  if isinstance(z_points,bool) or int(z_points)!=z_points:raise ValueError('z_points must be integer')
@@ -92,5 +129,11 @@ def rates(lv,T_K,*,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,channel='min',k_nr
  g=binary('GaN');ne,ok1=_part(g.me_z,g.me_xy,lv.core_radius_nm,reservoir_length_nm,T_K);nh,ok2=_part(g.mh_z,g.mh_xy,lv.core_radius_nm,reservoir_length_nm,T_K)
  if not ok1 or not ok2:bad.append('transverse partition unconverged')
  if bad:return dict(gamma_X0_ns=float('nan'),gamma_XX0_ns=float('nan'),k_X_ns=float('nan'),k_XX_ns=float('nan'),E_a_meV=float('nan'),escape_prefactor_ns=float('nan'),tau_cap_ps_used=tau_cap_ps,reservoir_state_count_e=2*ne,reservoir_state_count_h=2*nh,valid=False,invalid_reasons=tuple(bad),provenance='[A] partition rejected')
- ne*=2;nh*=2;name='electron' if channel=='min' and lv.dE_e_meV<=lv.dE_h_meV else ('hole' if channel=='min' else channel);ea=lv.dE_e_meV if name=='electron' else lv.dE_h_meV;pref=1000/tau_cap_ps*((ne if name=='electron' else nh)/2);gx=lv.overlap_sq/tau_rad0_ns;k=pref*math.exp(-ea/1000/(KB_EV*T_K))+k_nr_ns
- return dict(gamma_X0_ns=gx,gamma_XX0_ns=2*gx,k_X_ns=k,k_XX_ns=2*k,E_a_meV=ea,escape_prefactor_ns=pref,tau_cap_ps_used=tau_cap_ps,reservoir_state_count_e=ne,reservoir_state_count_h=nh,valid=True,invalid_reasons=(),provenance='[DR] nondegenerate cylindrical reservoir, spin/angular states; [A] XX=2X including occupied-dot loss')
+ ne*=2;nh*=2;name='electron' if channel=='min' and lv.dE_e_meV<=lv.dE_h_meV else ('hole' if channel=='min' else channel);ea=lv.dE_e_meV if name=='electron' else lv.dE_h_meV;pref=1000/tau_cap_ps*((ne if name=='electron' else nh)/2);gx=lv.overlap_sq/tau_rad0_ns
+ # [fix L] k_nr_ns is intrinsic occupied-dot loss, not a thermal escape
+ # attempt: only the escape term doubles for XX (two independent carriers
+ # each attempting thermal escape), so k_XX_ns=2*k_escape+k_nr_XX with
+ # k_nr_XX=k_nr_ns (there is no separate k_nr_XX_ns parameter in this
+ # frozen signature for the caller to override).
+ k_escape=pref*math.exp(-ea/1000/(KB_EV*T_K));kx=k_escape+k_nr_ns;kxx=2*k_escape+k_nr_ns
+ return dict(gamma_X0_ns=gx,gamma_XX0_ns=2*gx,k_X_ns=kx,k_XX_ns=kxx,E_a_meV=ea,escape_prefactor_ns=pref,tau_cap_ps_used=tau_cap_ps,reservoir_state_count_e=ne,reservoir_state_count_h=nh,valid=True,invalid_reasons=(),provenance='[DR] nondegenerate cylindrical reservoir, spin/angular states; [A] XX=2X thermal-escape doubling, occupied-dot k_nr_ns NOT doubled (k_XX_ns=2*k_escape+k_nr_ns)')
