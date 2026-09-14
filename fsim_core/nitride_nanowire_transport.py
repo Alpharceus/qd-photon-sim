@@ -198,7 +198,7 @@ def evaluate_injection(diode,*,I_uA,T_K,tau_pulse_ns,E_X_eV,reservoir_energy_eV,
  if reason: return _invalid(diode,I,reason)
  re=math.exp(-float(barrier_e_eV)/(KB_EV*T)); rh=math.exp(-float(barrier_h_eV)/(KB_EV*T)); eta=1/(1+re+rh)
  supply=I/Q_SI; leak=supply*(1-eta); usable=supply-leak
- fd=qfl_suppression(float(E_X_eV),v,KB_EV*T); fd_lim=qfl_suppression(float(E_X_eV),dep.V_bi,KB_EV*T) # [DR, H2] delivered (V_j) vs thermodynamic-ceiling (V_bi) QFL pair; see _PROVENANCE['qfl_pair'].
+ fd=qfl_suppression(float(E_X_eV),v,KB_EV*T); fd_lim=(1.0 if dep.flat_band else qfl_suppression(float(E_X_eV),dep.V_bi,KB_EV*T)) # [DR] on flat-band rows the delivered ceiling is the saturated value; V_bi is retained in V_bi.
  fbg=qfl_suppression(float(reservoir_energy_eV),v,KB_EV*T)
  kc=0. if float(tau_cap_ps)<=0 else 1000/float(tau_cap_ps) # [DR] tau_cap_ps<=0 guarded to k_cap=0 (no dot-capture channel) instead of a ZeroDivisionError; conservative -- does not assume instantaneous, certain capture at the limit.
  kr=float(eta_rad_matrix)/diode.tau_matrix_ns; knr=(1-float(eta_rad_matrix))/diode.tau_matrix_ns
@@ -222,14 +222,15 @@ def evaluate_injection(diode,*,I_uA,T_K,tau_pulse_ns,E_X_eV,reservoir_energy_eV,
  # planar Stark module (nitride_stark.py) already uses for the identical
  # V_j >= V_bi condition -- no separate re-derivation.
  eg_reservoir=bandgap(binary(diode._kernel().reservoir_material),T)
- return {"valid":math.isfinite(residual),"reasons":[],"provenance":dict(_PROVENANCE),"area_cm2":diode.area_cm2,"J_A_cm2":I/diode.area_cm2,"V_j":v,"V_bi":dep.V_bi,"V_terminal":vt,"depletion_field_kVcm":dep.F_kVcm,"C_dep_F":dep.C_dep_pF*1e-12,"V_bi_minus_Eg_mV":(dep.V_bi-eg_reservoir)*1e3,"flat_band":dep.flat_band,"depletion_regime":"flat_band" if dep.flat_band else "depleted","eta_inj":eta,"r_e_leak_ratio":re,"r_h_leak_ratio":rh,"f_capture":fc,"f_qfl_dot":fd,"f_qfl_dot_thermodynamic_limit":fd_lim,"f_qfl_background":fbg,"r_supply_s":supply,"r_captured_s":cap,"r_matrix_radiative_s":rad,"r_matrix_nonradiative_s":nr,"r_surface_reservoir_s":surf,"r_leakage_s":leak,"r_other_declared_loss_s":other,"raw_background_radiative_s":rad,"accepted_background_s":rad*xi,"background_window_fraction":xi,"mu":cap*tp*1e-9,"ideal_min_pair_current_A":ideal,"ideal_min_pair_current_uA":ideal*1e6,"power_on_W":power,"accounting_residual_s":residual}
+ if not math.isfinite(residual): return _invalid(diode,I,"non_finite_row")
+ return {"valid":True,"reasons":[],"provenance":dict(_PROVENANCE),"area_cm2":diode.area_cm2,"J_A_cm2":I/diode.area_cm2,"V_j":v,"V_bi":dep.V_bi,"V_terminal":vt,"depletion_field_kVcm":dep.F_kVcm,"C_dep_F":dep.C_dep_pF*1e-12,"V_bi_minus_Eg_mV":(dep.V_bi-eg_reservoir)*1e3,"flat_band":dep.flat_band,"depletion_regime":"flat_band" if dep.flat_band else "depleted","eta_inj":eta,"r_e_leak_ratio":re,"r_h_leak_ratio":rh,"f_capture":fc,"f_qfl_dot":fd,"f_qfl_dot_thermodynamic_limit":fd_lim,"f_qfl_background":fbg,"r_supply_s":supply,"r_captured_s":cap,"r_matrix_radiative_s":rad,"r_matrix_nonradiative_s":nr,"r_surface_reservoir_s":surf,"r_leakage_s":leak,"r_other_declared_loss_s":other,"raw_background_radiative_s":rad,"accepted_background_s":rad*xi,"background_window_fraction":xi,"mu":cap*tp*1e-9,"ideal_min_pair_current_A":ideal,"ideal_min_pair_current_uA":ideal*1e6,"power_on_W":power,"accounting_residual_s":residual}
 
 def wire_operating_point(diode,*,I_uA,T_hs_K,duty,Rth_K_W,eta_total,h_nu_eV):
  if not isinstance(diode,NitrideWireDiode): raise TypeError("diode must be NitrideWireDiode")
  Iu=_pos("I_uA",I_uA,True); th=_pos("T_hs_K",T_hs_K); rth=_pos("Rth_K_W",Rth_K_W,True); _pos("h_nu_eV",h_nu_eV,True)
  if not 0<=float(duty)<=1 or not 0<=float(eta_total)<=1: raise ValueError("duty and eta_total must be in [0, 1]")
  I=Iu*1e-6; vt,v,_,reason=_kernel(diode,I,th)
- if reason:return {"valid":False,"reasons":[reason],"T_j_K":th,"P_on_W":float("nan"),"P_average_W":float("nan"),"V_j":float("nan"),"V_terminal":float("nan"),"iterations":0,"provenance":dict(_PROVENANCE)}
+ if reason:return {"valid":False,"reasons":[reason],"T_j_K":float("nan"),"P_on_W":float("nan"),"P_average_W":float("nan"),"V_j":float("nan"),"V_terminal":float("nan"),"iterations":0,"provenance":dict(_PROVENANCE)}
  def out(v,vt,t,po,it,valid=True,reasons=None):return {"valid":valid,"reasons":reasons if reasons is not None else [],"T_j_K":t,"P_on_W":po,"P_average_W":float(duty)*po,"V_j":v,"V_terminal":vt,"iterations":it,"provenance":dict(_PROVENANCE)}
  p=lambda x:I*x+diode.f_Rs_local*I*I*diode.R_s_ohm-I*float(eta_total)*float(h_nu_eV); po=p(v)
  if I==0 or rth==0 or duty==0:return out(v,vt,th,po,0)

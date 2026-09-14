@@ -380,6 +380,7 @@ class NitrideNanowirePhotonicsParams:
     family: str
     NA: float = 0.5                      # [A] objective numerical aperture, domain (0,1] (or (0,n_ambient] under immersion)
     n_wire: float | None = None          # [V] GaN Sellmeier if None
+    n_group_override: float | None = None # [A] optional platform-matched group index
     n_ambient: float = 1.0               # [A] air
     n_oxide: float | None = None         # [V] SiO2 Sellmeier if None
     oxide_thickness_nm: float = 100.0    # [V] Deshpande et al. 2013 pp.3,6 device description (deshpande2013_device_geometry)
@@ -404,6 +405,8 @@ class NitrideNanowirePhotonicsParams:
             _finite_positive("taper_output_mfr_nm", self.taper_output_mfr_nm)
         if self.n_wire is not None:
             _finite_positive("n_wire", self.n_wire)
+        if self.n_group_override is not None:
+            _finite_positive("n_group_override", self.n_group_override)
         _finite_positive("n_ambient", self.n_ambient)
         if self.n_oxide is not None:
             _finite_positive("n_oxide", self.n_oxide)
@@ -657,7 +660,7 @@ def _he11_objective_acceptance(theta_max_rad: float, k: float, mode_radius_nm: f
     return float(min(max(numer / denom, 0.0), 1.0))
 
 
-def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float) -> float:
+def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float, n_group_override=None) -> float:
     """[A, Attempt 3 fix D] Guided-vs-radiative rate estimator: a guided
     mode's local density of states scales with the GROUP index n_g, not
     the phase index n_wire; approximated here as n_g/n_wire via a central
@@ -684,6 +687,8 @@ def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float) ->
     with an out-of-GaN-range lambda_nm, preserving this module's stated
     invariant that an n_wire override bypasses GaN's wavelength
     restriction entirely."""
+    if n_group_override is not None:
+        return float(n_group_override) / n_wire_used  # [A] platform-matched group index override
     d = 1.0  # nm finite-difference step
     if not 350.0 <= lambda_nm <= 10000.0:
         return 1.0
@@ -707,7 +712,7 @@ def _vertical_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: floa
     # simply confinement*beta_scale (that conflated confinement and beta).
     # radiative_rate_factor is deliberately absent from this ratio -- it
     # stays the independent Purcell/rate envelope on gamma (see N7).
-    group_ratio = _group_index_ratio(n_wire_used, params.n_wire, lambda_nm)
+    group_ratio = _group_index_ratio(n_wire_used, params.n_wire, lambda_nm, params.n_group_override)
     gamma_guided = confinement * group_ratio * params.beta_scale
     gamma_rad = max(0.0, 1.0 - confinement)
     denom = gamma_guided + gamma_rad
@@ -906,7 +911,8 @@ def _dolp_sum_convention(weights, eta_raw_by_orientation, screen):
     w_along, w_transverse, w_vertical = weights
     i_par = w_along * eta_raw_by_orientation["along_wire"]
     i_perp = (w_transverse * eta_raw_by_orientation["transverse_inplane"] * screen
-              + w_vertical * eta_raw_by_orientation["vertical"] * screen)
+              + 0.5 * w_vertical * eta_raw_by_orientation["vertical"] * screen)
+    i_par += 0.5 * w_vertical * eta_raw_by_orientation["vertical"] * screen
     denom = i_par + i_perp
     dolp = (i_par - i_perp) / denom if denom > 0.0 else 0.0
     return dolp, i_par, i_perp
@@ -1146,7 +1152,8 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             "[Attempt 3 fix A] neutral 1.0 for vertical_photonic: no "
             "subwavelength dielectric-antenna screening is modeled for a "
             "designed HE11-guiding wire"),
-        "maslov_claudon_status": "Maslov and Ning (2004) and Claudon et al. (2010) are "
+        "maslov_claudon_status": "Maslov and Ning (2004) is not used for an extraction-efficiency anchor; "
+                                  "an [E] figure-read beta point is attributed jointly to Bleuse et al. (2011) / Claudon et al. (2010); "
                                   "evidence_status=missing in verify/data/"
                                   "nitride_nanowire_anchors.yaml; no numeric anchor from "
                                   "either paper is used in this module",

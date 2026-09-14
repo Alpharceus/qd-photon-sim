@@ -176,8 +176,8 @@ def _solve(s,T,n,pad):
  # covered by the overlap gate above (gamma_X0=overlap_sq/tau_rad0_ns).
  tol_mev=.02*KB_EV*1000.*T
  for tag,q in (('z-points',qz),('exterior padding',qp)):
-  if abs(q[0]-a[0])*1000>.5:return _bad([tag+' refinement: E_X exceeds 0.5 meV'],F)
-  if abs(q[1]-a[1])/a[1]>.02:return _bad([tag+' refinement: overlap exceeds 2 percent'],F)
+  if abs(q[0]-a[0])*1000>.25:return _bad([tag+' refinement: E_X exceeds 0.25 meV safety gate'],F)
+  if abs(q[1]-a[1])/a[1]>.01:return _bad([tag+' refinement: overlap exceeds 1 percent safety gate'],F)
   if abs(q[18]-a[18])*1000>tol_mev:return _bad([tag+' refinement: electron escape depth exceeds rate tolerance'],F)
   if abs(q[19]-a[19])*1000>tol_mev:return _bad([tag+' refinement: hole escape depth exceeds rate tolerance'],F)
  ex,ov,F,fs,fp,d,g,de,ee,eh,ce,ch,te,th,r_e,r_h,se,sh,de_e,de_h,sw,geom=a
@@ -187,7 +187,7 @@ def _solve(s,T,n,pad):
   meta='[E] separable BDD axial/cylinder; [A] vacuum wall, no dielectric images or alloy localization; refinement passed (z_points, exterior_nm and dE_e/dE_h rate-equivalent tolerance gated separately)'
  meta+='; [A] dE_pair_meV is None: no pair-correlation correction to the single-particle escape depths is modeled'
  if not (math.isfinite(se) and math.isfinite(sh)):meta+='; [A] sp_split_e/h nan marks an absent transverse excited state at this geometry, not zero RT-injector selectivity'
- meta+='; z_points_used=%d'%n
+ meta+='; convergence gate uses a 2x safety factor: measured doubling step <=0.25 meV E_X and <=1 percent overlap; z_points_used=%d'%n
  return NanowireLevels(ex,HC/ex,True,True,ov,F,fs,fp,d.Psp_Cm2,g.Psp_Cm2,de['P_total_Cm2']-d.Psp_Cm2,0.,(te+ee)*1000,(th+eh)*1000,de_e*1000,de_h*1000,None,se*1000 if math.isfinite(se) else float('nan'),sh*1000 if math.isfinite(sh) else float('nan'),d.me_xy,d.mh_xy,ce*1000,ch*1000,te*1000,th*1000,r_e,s.core_radius_nm,s.outer_radius_nm,geom,meta,True,(),'[V] Bernardini PRB 1997; Rinke PRB 2008; BenDaniel and Duke PR 1966; [E] dot_levels.finite_disk_2d radial matching (disc-in-wire family)',sw)
 def levels(system,T_K=300.,*,z_points=1201,exterior_nm=45.):
  if not isinstance(system,NitrideNanowireSystem):raise TypeError('system must be NitrideNanowireSystem')
