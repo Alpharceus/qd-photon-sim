@@ -2,20 +2,20 @@
 import math, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fsim_core.device import DeviceDesign, DriveBlock, RetentionBlock, CavityBlock, EmissionBlock, evaluate
+from fsim_core.device import DeviceDesign, DriveBlock, RetentionBlock, CavityBlock, EmissionBlock, ThermalBlock, DotBlock, evaluate
 
 
 def card(family="horizontal_as_built", regime="rectangular"):
     core = 12.5 if family == "horizontal_as_built" else 80.0
     dotr = core if family == "horizontal_as_built" else 12.5
-    return DeviceDesign(platform="ingan_gan_nanowire", ret=RetentionBlock(mode="nitride_confinement"),
+    return DeviceDesign(platform="ingan_gan_nanowire", dot=DotBlock(linewidth="anchored", lineshape="lorentzian", gamma300=3.0), ret=RetentionBlock(mode="nitride_confinement"),
       drive=DriveBlock(mode="EL-transport",I_uA=.02,duty=.008,rep_rate_hz=80e6,b_res=.1,
-        diode={"preset":"nitride-nanowire","tau_pulse_ns":.1}), cavity=CavityBlock(enabled=False),
-      emission=EmissionBlock(type="nanowire"), nitride={"T_hs_K":300.,"cycle_loading":regime,
+        diode={"preset":"nitride-nanowire","tau_pulse_ns":.1}), thermal=ThermalBlock(T_hs=300.), cavity=CavityBlock(enabled=False),
+      emission=EmissionBlock(type="nanowire"), nitride={
       "nanowire":{"family":family,"core_radius_nm":core,"outer_radius_nm":core,"strain_bound":"relaxed","barrier_left_nm":15.,"barrier_right_nm":15.},
       "dot":{"radius_nm":dotr,"height_nm":2.,"x_in":.4,"strain_fraction":0.,"tau_rad0_ns":1.,"tau_cap_ps":10.},
-      "surface":{"occupied_dot_access":.05},"photonics":{"NA":.5},"wire_thermal":{"Rth_K_W":3.1e9},
-      "injector":{},"set_params":{"R_T_ohm":1e6}})
+      "surface":{"occupied_dot_access":.05},"photonics":{"NA":.5},"wire_thermal":{"Rth_K_W":3.1e9,"eta_total":1.0,"f_Rs_local":1.0,"R_s_ohm":2.38e9,"C_parasitic_F":0.0},
+      "injector":{}},)
 
 
 def main():

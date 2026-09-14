@@ -565,12 +565,13 @@ class DeviceDesign:
         platform = d.get("platform", "legacy")
         if platform not in ("legacy", "ingan_gan_planar", "ingan_gan_nanowire"):
             raise ValueError(f"unknown platform {platform!r}")
-        if platform == "ingan_gan_planar":
+        if platform in ("ingan_gan_planar", "ingan_gan_nanowire"):
             dot_raw = d.get("dot", {})
-            required_dot_fields = ("gamma0", "a_ac", "E_LO", "gamma300", "r_xx", "delta_xx")
+            required_dot_fields = (("gamma0", "a_ac", "E_LO", "gamma300", "r_xx", "delta_xx")
+                                   if platform == "ingan_gan_planar" else ("gamma300",))
             missing = [k for k in required_dot_fields if k not in dot_raw]
             if missing:
-                raise ValueError("ingan_gan_planar cards must set dot." +
+                raise ValueError(f"{platform} cards must set dot." +
                                  ", dot.".join(missing) + " explicitly")
         return DeviceDesign(
             name=d.get("name", "my-device"),
