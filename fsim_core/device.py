@@ -563,7 +563,7 @@ class DeviceDesign:
         # there (see _evaluate_nitride) [A, conservative reading of "require
         # explicit ... on cards"].
         platform = d.get("platform", "legacy")
-        if platform not in ("legacy", "ingan_gan_planar"):
+        if platform not in ("legacy", "ingan_gan_planar", "ingan_gan_nanowire"):
             raise ValueError(f"unknown platform {platform!r}")
         if platform == "ingan_gan_planar":
             dot_raw = d.get("dot", {})
@@ -1363,6 +1363,11 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     d = design
     if d.platform == "ingan_gan_planar":
         return _evaluate_nitride(d, T_grid)
+    if d.platform == "ingan_gan_nanowire":
+        # Local import: the nanowire evaluator consumes this design's data
+        # interface but must not import device at module load time.
+        from .nitride_nanowire_device import evaluate_nanowire
+        return evaluate_nanowire(d, T_grid)
     if d.platform != "legacy":
         raise ValueError(f"unknown platform {d.platform!r}")
     # cycle_loading's "deterministic_pair" opt-in is nitride-only (spec);
