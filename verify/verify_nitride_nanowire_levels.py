@@ -9,11 +9,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem, levels, rates, _ep
 from fsim_core.nitride_materials import EPS0_SI, binary
+import re
 
 c = []
 def C(n, x):
     c.append(bool(x))
     if not x: print('FAIL ' + n)
+
+def _z_points_used(lv):
+    m = re.search(r'z_points_used=(\d+)', lv.approximation_metadata)
+    return int(m.group(1)) if m else None
 
 # ---- AC1: source transcriptions and field-construction negative controls.
 # Bernardini, Fiorentini & Vanderbilt, PRB 56, R10024 (1997), Table II
@@ -82,15 +87,35 @@ C('sp_split_h_meV within 0.1 meV of 3.31 at the Deshpande geometry',
 # (sum=1) is thermally reachable, so N_res reduces to the bare 1-D
 # thermal-length literal below, independently typed (not the module's own
 # formula fed back into itself).
+#
+# fix L3: reservoir_length_nm is a PER-SIDE GaN reservoir extent; the
+# module's prefactor counts BOTH flanking reservoirs
+# (L_total=2*reservoir_length_nm, "L=barrier_left_nm+barrier_right_nm" per
+# the interface constraints). The independent literals below apply the same
+# factor of 2 to the SAME reservoir_length_nm passed to rates(), so the
+# comparison is apples-to-apples rather than silently absorbing the fix.
 HBAR_SI = 1.054571817e-34; M0_SI = 9.1093837015e-31; KB_SI = 1.380649e-23
+RES_LEN_NM = 30.  # per-side length passed to rates(); physical total is 2x this
 def _n1d_ground_only(mz, L_nm, T_K):
     return 2. * L_nm*1e-9 * math.sqrt(mz*M0_SI*KB_SI*T_K/(2.*math.pi*HBAR_SI**2))
 l_small = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=3., outer_radius_nm=3.,
                                         x_in=.25, strain_bound='relaxed'), 300.)
-r_small = rates(l_small, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=30.) if l_small.valid else None
-n1d = _n1d_ground_only(g.me_z, 30., 300.)
-C('independent 1-D thermal partition literal (ground-mode-only, small R)',
+r_small = rates(l_small, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=RES_LEN_NM) if l_small.valid else None
+n1d = _n1d_ground_only(g.me_z, 2.*RES_LEN_NM, 300.)
+C('independent 1-D thermal partition literal (ground-mode-only, small R, L_total=2x per-side)',
   l_small.valid and r_small['valid'] and abs(r_small['reservoir_state_count_e']/n1d - 1.) < .01)
+
+# fix L3 tag check: reservoir_state_count_e must be exactly linear in the
+# per-side reservoir_length_nm (N_res proportional to L_total=2*
+# reservoir_length_nm), independent of any particular factor-of-2 choice --
+# doubling the per-side input must exactly double the state count.
+r_1x = rates(l_small, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=RES_LEN_NM)
+r_2x = rates(l_small, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=2.*RES_LEN_NM)
+C('reservoir_state_count_e is linear in reservoir_length_nm (per-side convention)',
+  r_1x['valid'] and r_2x['valid']
+  and abs(r_2x['reservoir_state_count_e']/r_1x['reservoir_state_count_e'] - 2.) < 1e-6)
+C('fix L3 choice is tagged in the rates() provenance string',
+  'reservoir_length_nm' in r_1x['provenance'] and '2*' in r_1x['provenance'])
 
 # Wide-radius limit: an independently coded 3-D nondegenerate carrier count
 # (Boltzmann effective-DOS formula, anisotropic mass m_eff=(mxy^2*mz)^(1/3))
@@ -104,8 +129,8 @@ ratios = []
 for R in (40., 80., 120.):
     lw = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=R, outer_radius_nm=R,
                                        x_in=.25, strain_bound='relaxed'), 300.)
-    rw = rates(lw, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=30.)
-    ratios.append(rw['reservoir_state_count_e'] / _n3d(R, 30., 300., g.me_z, g.me_xy) if lw.valid and rw['valid'] else float('nan'))
+    rw = rates(lw, 300., tau_rad0_ns=1.3, tau_cap_ps=10., reservoir_length_nm=RES_LEN_NM)
+    ratios.append(rw['reservoir_state_count_e'] / _n3d(R, 2.*RES_LEN_NM, 300., g.me_z, g.me_xy) if lw.valid and rw['valid'] else float('nan'))
 C('wide-radius 3-D-DOS ratio ~0.90 at R=40 nm (electrons)', abs(ratios[0]-0.90) < .03)
 C('wide-radius 3-D-DOS ratio ~0.95 at R=80 nm (electrons)', abs(ratios[1]-0.95) < .03)
 C('wide-radius 3-D-DOS ratio ~0.96 at R=120 nm (electrons)', abs(ratios[2]-0.96) < .03)
@@ -122,9 +147,15 @@ C('k_nr_ns adds once to k_X_ns, once (not doubled) to k_XX_ns',
 
 # ---- AC4: refinement table. H {1.5,4} x R {10,120} x x_in {0.25,0.40} x
 # T {230,300} x strain_bound, all 32 rows checked unconditionally (never
-# hidden under `if valid`). Exactly the 4 rows H=4, x_in=0.40, unrelaxed
-# (both R, both T) are expected invalid (E_X refinement exceeds its 0.5 meV
-# budget); the other 28 must be valid AND -- re-solved at an EXTERNALLY
+# hidden under `if valid`). Resolution policy (directive round): levels()
+# now refines z_points adaptively on a gate failure (double up to a cap of
+# 9601) instead of returning invalid at the fixed default -- the row that
+# used to be the fixed "4 expected-invalid rows" (H=4, x_in=0.40, unrelaxed)
+# now converges honestly at an internally-doubled z_points and is VALID at
+# the default call; verified directly (no row is exempted from the
+# expected-valid branch below, and never clamped -- levels() only reports
+# valid when the actual convergence gates pass at whatever z_points it
+# settled on). All 32 rows must be valid AND -- re-solved at an EXTERNALLY
 # doubled resolution called fresh through the public levels() API, not the
 # internal gate's own numbers -- converged in E_X (<=0.5 meV) and overlap
 # (<=2%).
@@ -137,33 +168,112 @@ for h in (1.5, 4):
                                                   x_in=x, strain_bound=b)
                     q = levels(sysx, t)
                     tag = str((h, rad, x, t, b))
-                    if h == 4 and x == .4 and b == 'unrelaxed':
-                        C('refinement ' + tag + ' expected invalid (E_X refinement budget)',
-                          (not q.valid) and any('E_X' in reason for reason in q.invalid_reasons))
-                    else:
-                        qq = levels(sysx, t, z_points=2403, exterior_nm=90.)
-                        ok = (q.valid and qq.valid
-                              and abs(qq.E_X_eV-q.E_X_eV)*1000 <= .5
-                              and abs(qq.overlap_sq-q.overlap_sq)/q.overlap_sq <= .02)
-                        C('refinement ' + tag + ' expected valid and externally converged at 2x', ok)
+                    qq = levels(sysx, t, z_points=2403, exterior_nm=90.)
+                    ok = (q.valid and qq.valid
+                          and abs(qq.E_X_eV-q.E_X_eV)*1000 <= .5
+                          and abs(qq.overlap_sq-q.overlap_sq)/q.overlap_sq <= .02)
+                    C('refinement ' + tag + ' expected valid and externally converged at 2x', ok)
 
-# ---- AC5: held-out Deshpande comparison, reported without gating on
-# agreement (this model is an independent prediction, not a fit). Default
-# resolution at the Deshpande T=25 K point is invalid under the low-T
-# k_X/k_XX rate-equivalent tolerance (fix C: dE_e/dE_h gate scales with kT,
-# so its absolute meV budget shrinks at low T); reported at an elevated
-# resolution that resolves it instead, disclosed here rather than silently
-# using a finer default.
-l_headline = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.25,
-                                           strain_bound='relaxed'), 25., z_points=4807, exterior_nm=45.)
-l_headline_default = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.25,
-                                                   strain_bound='relaxed'), 25.)
-print('Deshpande T=25 K default resolution (z_points=1201): valid=%s reasons=%s'
-      % (l_headline_default.valid, l_headline_default.invalid_reasons))
+# ---- Resolution policy (directive round, fix 2 follow-up): the 0.02 kT
+# escape-depth gate makes a FIXED default z_points=1201 grid INVALID at low
+# T (grid noise ~0.1 meV exceeds 0.02 kT there); levels() now refines
+# adaptively on a gate failure (double z_points up to a cap of 9601,
+# returning the first converged result) instead of surfacing that as a
+# caller-visible failure. The Deshpande geometry must be VALID at the
+# DEFAULT call (no z_points override) at every one of these temperatures,
+# with z_points_used disclosed in approximation_metadata.
+desh_sys = NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.25, strain_bound='relaxed')
+for T in (25., 60., 230., 300.):
+    lt = levels(desh_sys, T)
+    zpu = _z_points_used(lt)
+    print('Deshpande geometry T=%g K default call: valid=%s z_points_used=%s reasons=%s'
+          % (T, lt.valid, zpu, lt.invalid_reasons))
+    C('Deshpande geometry valid at the default call, T=%g K' % T, lt.valid)
+    C('Deshpande geometry reports z_points_used at T=%g K' % T, zpu is not None)
+
+# The adaptive refinement must still give up (return invalid, never clamped
+# to passing) when the underlying failure is NOT a grid-noise/convergence
+# issue that more z_points can fix -- e.g. a genuinely too-thin/low-offset
+# geometry whose axial state is unbound at every resolution.
+l_unbound = levels(NitrideNanowireSystem(height_nm=.5, core_radius_nm=10., outer_radius_nm=10.,
+                                          x_in=.1, strain_bound='unrelaxed'), 230.)
+C('adaptive refinement still returns invalid (never clamped to passing) for a structurally unbound case',
+  not l_unbound.valid and len(l_unbound.invalid_reasons) > 0)
+
+# ---- AC5 / M3: held-out comparisons, reported side by side without gating
+# on agreement (this model is an independent prediction, not a fit). The
+# 2013 anchor (x_in=0.25) and the 2014 anchor (x_in=0.40) are matched by
+# OPPOSITE strain endpoints -- relaxed matches 2013, unrelaxed is closer to
+# 2014 -- so the results are never averaged; x_in=0.40 is abstract-only [A]
+# (APL 2014 abstract gives no direct structural confirmation).
+l_headline = levels(desh_sys, 25., z_points=4807, exterior_nm=45.)
+l_headline_default = levels(desh_sys, 25.)
+print('Deshpande T=25 K default resolution: valid=%s z_points_used=%s'
+      % (l_headline_default.valid, _z_points_used(l_headline_default)))
+l2014_relaxed = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.4,
+                                              strain_bound='relaxed'), 300.)
+l2014_unrelaxed = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.4,
+                                                strain_bound='unrelaxed'), 300.)
+print('---- M3: held-out comparisons (non-gating, anchors matched by opposite endpoints) ----')
 if l_headline.valid:
-    print('Deshpande T=25 K at z_points=4807: predicted E_X %.4f eV, lambda %.2f nm '
-          '(published 2013 emission 2.84 eV / 436.56 nm; published X HBT-fit lifetime '
-          '1.1 ns) -- held out, non-gating' % (l_headline.E_X_eV, l_headline.lambda_nm))
+    print('2013 (x_in=0.25, relaxed, 25 K): predicted %.2f nm vs measured 436.56 nm'
+          % l_headline.lambda_nm)
+if l2014_relaxed.valid and l2014_unrelaxed.valid:
+    print('2014 (x_in=0.40, 300 K): relaxed %.1f nm / unrelaxed %.1f nm vs measured ~630 nm [E]'
+          % (l2014_relaxed.lambda_nm, l2014_unrelaxed.lambda_nm))
+print('x_in=0.40 is abstract-only [A] (APL 2014 abstract, no direct structural confirmation); '
+      'the 2013 and 2014 anchors are matched by opposite strain endpoints and are reported '
+      'separately, never averaged -- held out, non-gating')
+C('M3 held-out comparisons computed and reported (non-gating)',
+  l_headline.valid and l2014_relaxed.valid and l2014_unrelaxed.valid)
+
+# ---- H6: vertical disc-in-wire family (disc_radius_nm < core_radius_nm).
+# The disc radius is decoupled from the core radius: the radial problem
+# becomes the finite-barrier InGaN/GaN disk (dot_levels.finite_disk_2d),
+# NOT the hard wall, while the GaN reservoir subbands still use core_radius
+# (unchanged rates()/_part() call site, which reads lv.core_radius_nm).
+l_full_12p5 = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, outer_radius_nm=12.5,
+                                            x_in=.25, strain_bound='relaxed'), 300.)
+l_disc_in_100 = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=100., outer_radius_nm=100.,
+                                              disc_radius_nm=12.5, x_in=.25, strain_bound='relaxed'), 300.)
+C('H6: 12.5 nm disc in a 100 nm core is valid and selects the disc geometry label',
+  l_disc_in_100.valid and l_disc_in_100.geometry == 'disc-in-wire finite-barrier radial')
+C('H6: 12.5 nm disc-in-100nm-core E_perp within 30% of the horizontal 12.5 nm full-core value',
+  l_full_12p5.valid and l_disc_in_100.valid
+  and abs(l_disc_in_100.transverse_e_meV - l_full_12p5.transverse_e_meV) / l_full_12p5.transverse_e_meV < .30)
+
+l_full_100 = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=100., outer_radius_nm=100.,
+                                           x_in=.25, strain_bound='relaxed'), 300.)
+l_disc_eq_core_100 = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=100., outer_radius_nm=100.,
+                                                   disc_radius_nm=100., x_in=.25, strain_bound='relaxed'), 300.)
+C('H6: a 100 nm disc in a 100 nm core reproduces the full-core (horizontal) result exactly',
+  l_full_100.valid and l_disc_eq_core_100.valid
+  and l_disc_eq_core_100.geometry == 'full-core hard-wall cylinder'
+  and l_disc_eq_core_100.E_X_eV == l_full_100.E_X_eV
+  and l_disc_eq_core_100.transverse_e_meV == l_full_100.transverse_e_meV)
+
+# Monotonic E_perp in disc radius: a smaller disc (tighter lateral
+# confinement) must give a strictly larger transverse (E_perp) energy, at
+# fixed core_radius_nm.
+disc_radii = (10., 15., 20., 30., 50., 80.)
+e_perp_seq = []
+for R in disc_radii:
+    ld = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=100., outer_radius_nm=100.,
+                                       disc_radius_nm=R, x_in=.25, strain_bound='relaxed'), 300.)
+    e_perp_seq.append(ld.transverse_e_meV if ld.valid else float('nan'))
+print('H6 E_perp(disc_radius_nm) at core_radius_nm=100: %s'
+      % dict(zip(disc_radii, e_perp_seq)))
+C('H6: E_perp is monotonically decreasing as disc radius increases (all rows valid)',
+  all(math.isfinite(v) for v in e_perp_seq)
+  and all(e_perp_seq[i] > e_perp_seq[i+1] for i in range(len(e_perp_seq)-1)))
+
+print('H6 sidewall_overlap: 12.5-in-100 disc %.3e, full-core 12.5 %.3e, full-core 100 limit %.3e'
+      % (l_disc_in_100.sidewall_overlap, l_full_12p5.sidewall_overlap, l_full_100.sidewall_overlap))
+C('H6: sidewall_overlap reported (finite, non-negative) at both the disc and the full-core limit',
+  math.isfinite(l_disc_in_100.sidewall_overlap) and l_disc_in_100.sidewall_overlap >= 0.
+  and math.isfinite(l_full_100.sidewall_overlap) and l_full_100.sidewall_overlap >= 0.)
+C('H6: a dot laterally isolated inside a much larger core has far less sidewall overlap than the full-core limit',
+  l_disc_in_100.sidewall_overlap < l_full_100.sidewall_overlap)
 
 print('%d/%d nitride nanowire levels checks passed' % (sum(c), len(c)))
 raise SystemExit(0 if all(c) else 1)
