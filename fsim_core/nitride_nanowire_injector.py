@@ -361,8 +361,13 @@ class NitrideNanowireInjectorParams:
 
     alignment_uncertainty_meV: float = 15.0           # [A] growth/doping-limited level-alignment uncertainty
     degeneracy: float = 2.0                           # [A] spin/valley degeneracy in the Landauer rate
-    reservoir_state_count_e: float = 2.0              # [A] caller should replace with levels-module transverse count
-    reservoir_state_count_h: float = 2.0              # [A] caller should replace with levels-module transverse count
+    reservoir_state_count_e: float = 1.0              # [A] MEDIUM 6 fix: spin lives in
+                                                       # degeneracy alone (see `degeneracy`
+                                                       # above) -- default 1 per carrier;
+                                                       # caller should replace with the
+                                                       # levels module's own transverse
+                                                       # (non-spin) channel count.
+    reservoir_state_count_h: float = 1.0              # [A] see reservoir_state_count_e
     mg_acceptor_energy_meV: float = 170.0              # [E] Gotz et al., APL 68, 667 (1996); Kozodoy et al., JAP 87, 1832 (2000)
     include_polarization: bool = True                  # [A] pseudomorphic-barrier envelope enabled by default
     polarity: str = "Ga"                              # [A] Deshpande et al. 2013 catalyst-free PA-MBE c-axis
@@ -446,11 +451,18 @@ def _resolve_path(params: NitrideNanowireInjectorParams, carrier: str) -> _Resol
                               params.electron_barrier_thickness_nm,
                               params.electron_well_width_nm,
                               me_b, params.me_well, dEc, mu)
-    mu = _degenerate_mu_eV(params.p_cm3 * 1e6, params.mh_well)
+    # LOW 11 fix (Opus re-review of 12b39cd, 2026-09-14): the hole path's own
+    # degenerate free-electron-gas mu is DEAD -- every caller of a hole
+    # emitter quasi-Fermi level uses _hole_quasi_fermi_eV's Mg-acceptor
+    # mass-action solve instead (MEDIUM 6, injector_feasibility's
+    # _screen_at), never this field.  Kept as NaN (not computed at all) so
+    # nothing can mistake an unused degenerate-gas estimate for a
+    # meaningful number; the field name is unchanged (mu_eV) since the
+    # electron branch above still genuinely uses it.
     return _ResolvedPath("hole", params.hole_topology,
                           params.hole_barrier_thickness_nm,
                           params.hole_well_width_nm,
-                          mh_b, params.mh_well, -dEv, mu)
+                          mh_b, params.mh_well, -dEv, float("nan"))
 
 
 def _stack_segments(path: _ResolvedPath):
@@ -710,6 +722,41 @@ def _analytic_well_seed_eV(m_w: float, m_b: float, V0: float, L_m: float):
     return None
 
 
+def _tilted_faces_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPath",
+                      bias_V: float, field_kVcm: float):
+    """Per-segment (V_eV, entry_face_eV, exit_face_eV) for this path's
+    stack in the ACTUAL (bias/field tilt + polarization) profile,
+    referenced to the SAME (emitter) reservoir zero as transmission()'s
+    energy_eV, plus the tilt (eV/m). Shared by _tilted_window_eV (resonance
+    -search bounds) and _tilted_profile_max_eV (thermionic/over-barrier
+    partition bound) so the two can never independently disagree about
+    where the tilted profile's segment endpoints sit.  Each segment's
+    potential is linear in x (tilt and the running polarization offset are
+    both linear within one flat-band segment), so the segment's extremum
+    is exactly one of its two endpoints -- the polarization contribution
+    is accumulated continuously (never reset) exactly as in
+    _transmission_reflection_scalar."""
+    segs = _stack_segments(path)
+    total_len_m = sum(s[0] for s in segs)
+    tilt = _tilt_eV_per_m(field_kVcm, bias_V, params.field_leverarm, total_len_m)
+    if params.include_polarization:
+        pol_fields = _stack_polarization_fields_eV_per_m(params.al_fraction, segs, params.polarity)
+    else:
+        pol_fields = [0.0] * len(segs)
+    x = 0.0
+    pol_offset = 0.0
+    faces = []
+    for (length_m, V_eV, m_ratio), E_pol in zip(segs, pol_fields):
+        x0, x1 = x, x + length_m
+        pol0, pol1 = pol_offset, pol_offset + E_pol * length_m
+        v0 = V_eV - tilt * x0 + pol0
+        v1 = V_eV - tilt * x1 + pol1
+        faces.append((V_eV, v0, v1))
+        pol_offset = pol1
+        x = x1
+    return faces, tilt
+
+
 def _tilted_window_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPath",
                        bias_V: float, field_kVcm: float):
     """(well_floor_eV, lower_barrier_top_eV, tilt_eV_per_m) bounding the
@@ -732,37 +779,51 @@ def _tilted_window_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPat
     barrier "top" computed here could sit well above where the true
     (polarization-tilted) barrier top actually is, and _find_resonance
     could search a window with no relation to the real transmission
-    landscape.  Each segment's potential is still linear in x (tilt and
-    the running polarization offset are both linear within one flat-band
-    segment), so the segment's extremum is still exactly one of its two
-    endpoints -- only the endpoint VALUES change to include the
-    polarization contribution, accumulated continuously (never reset)
-    exactly as in _transmission_reflection_scalar."""
-    segs = _stack_segments(path)
-    total_len_m = sum(s[0] for s in segs)
-    tilt = _tilt_eV_per_m(field_kVcm, bias_V, params.field_leverarm, total_len_m)
-    if params.include_polarization:
-        pol_fields = _stack_polarization_fields_eV_per_m(params.al_fraction, segs, params.polarity)
-    else:
-        pol_fields = [0.0] * len(segs)
-    x = 0.0
-    pol_offset = 0.0
-    barrier_tops = []
-    well_floors = [0.0]
-    for (length_m, V_eV, m_ratio), E_pol in zip(segs, pol_fields):
-        x0, x1 = x, x + length_m
-        pol0, pol1 = pol_offset, pol_offset + E_pol * length_m
-        v0 = V_eV - tilt * x0 + pol0
-        v1 = V_eV - tilt * x1 + pol1
-        if V_eV > 0.0:
-            barrier_tops.append(min(v0, v1))
-        else:
-            well_floors.append(min(v0, v1))
-        pol_offset = pol1
-        x = x1
+    landscape.
+
+    HIGH 1 fix (Opus re-review of 12b39cd, 2026-09-14): a tilted barrier's
+    own top is its HIGHEST face, max(v0, v1), not min(v0, v1) -- the
+    previous min() picked the barrier's LOWEST face, which for the hole
+    path collapsed the window to (well_floor, barrier_height - tilt) and
+    made _find_resonance bail entirely ("no hole resonance"), when a
+    200k-point scan of this engine's own transmission() finds three real
+    hole resonances once the window is built correctly.  The window's
+    upper bound stays the LOWER of the two (now correctly computed)
+    barrier TOPS -- past that point at least one barrier no longer
+    presents any barrier at all, so no bound state can exist above it."""
+    faces, tilt = _tilted_faces_eV(params, path, bias_V, field_kVcm)
+    barrier_tops = [max(v0, v1) for (V_eV, v0, v1) in faces if V_eV > 0.0]
+    well_floors = [0.0] + [min(v0, v1) for (V_eV, v0, v1) in faces if V_eV <= 0.0]
     lower_barrier_top = min(barrier_tops) if barrier_tops else float("nan")
     well_floor = min(well_floors)
     return well_floor, lower_barrier_top, tilt
+
+
+def _tilted_profile_max_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPath",
+                            bias_V: float, field_kVcm: float) -> float:
+    """HIGH 2 fix (Opus re-review of 12b39cd, 2026-09-14): the ACTUAL
+    tilted-profile maximum a carrier must clear to be genuinely over-
+    barrier/thermionic -- the MAXIMUM of max(v0, v1) across every barrier
+    segment (not the lower of the two barrier tops _tilted_window_eV uses
+    to bound the resonance-search window: that bound exists so the search
+    does not run past the point where the structure stops being a barrier
+    AT ALL, whereas the thermionic partition needs the highest point a
+    carrier must actually clear).  Must replace the flat-band
+    path.barrier_height_eV wherever the thermionic/over-barrier partition
+    of the Landauer integral, the orbital/continuum separation, or that
+    integral's upper limit is computed -- the polarization-tilted profile
+    peaks well above the flat-band barrier height (e.g. the designed hole
+    stack's flat-band barrier 0.210 eV vs. tilted top 0.505 eV), so using
+    the flat-band value there flips the thermionic-bypass screen from a
+    genuine ~40-95x fail to a spurious pass.  Falls back to the flat-band
+    path.barrier_height_eV only if the path has no barrier segment at all
+    (should not occur for single_barrier/double_barrier topologies)."""
+    faces, _tilt = _tilted_faces_eV(params, path, bias_V, field_kVcm)
+    barrier_tops = [max(v0, v1) for (V_eV, v0, v1) in faces if V_eV > 0.0]
+    if not barrier_tops:
+        return path.barrier_height_eV
+    top = max(barrier_tops)
+    return top if math.isfinite(top) else path.barrier_height_eV
 
 
 def _find_resonance(params: NitrideNanowireInjectorParams, carrier: str,
@@ -897,36 +958,56 @@ def _forward_rate_hz(params: NitrideNanowireInjectorParams, carrier: str,
     free-electron-gas estimate; hole: the Mg-acceptor-neutrality quasi-
     Fermi level, MEDIUM 6) rather than re-derived from path.mu_eV here.
     Also returns the same integral restricted to energies above the
-    flat-band barrier top (the thermionic/over-barrier share, used for
+    ACTUAL tilted-profile maximum (HIGH 2 fix, Opus re-review of 12b39cd,
+    2026-09-14: the flat-band path.barrier_height_eV understates the true
+    peak by the full polarization tilt, e.g. 0.2951 eV per barrier for the
+    designed stack, which alone flipped the hole thermionic-bypass screen
+    from a genuine ~40-95x fail to a spurious pass -- see
+    _tilted_profile_max_eV) -- the thermionic/over-barrier share, used for
     bypass pricing without double-counting: it is the SAME T(E) integral,
     partitioned by energy domain, not a second exp(-barrier/kT) estimate),
     and whether scipy's quad raised an integration-quality warning
-    (MEDIUM 7)."""
+    (MEDIUM 7).
+
+    MEDIUM 4 fix (Opus re-review of 12b39cd, 2026-09-14): a non-finite
+    E_center means the caller has NO resolved center to price a rate
+    around (a double-barrier path whose resonance could not be found --
+    resonance_unresolved) -- this must return NaN/NaN, never silently
+    substitute mu_eV and integrate as if the resonance sat right at the
+    reservoir's own quasi-Fermi level (a fabricated, not missing, rate)."""
+    if not math.isfinite(E_center):
+        return float("nan"), float("nan"), False
     path = _resolve_path(params, carrier)
+    true_top = _tilted_profile_max_eV(params, path, bias_V, field_kVcm)
     mu = mu_eV
     width = combined_width_eV if math.isfinite(combined_width_eV) else 0.0
-    center = E_center if math.isfinite(E_center) else mu
+    center = E_center
     e_lo = max(1e-6, min(center, mu) - 15.0 * kT_eV - 5.0 * width)
-    e_hi = max(path.barrier_height_eV, center, mu) + 15.0 * kT_eV
+    # HIGH 2 fix: e_hi is bounded by the ACTUAL tilted profile maximum, not
+    # the flat-band barrier height, and so extends at least 15 kT above the
+    # true top (not merely above the understated flat-band value).
+    e_hi = max(true_top, center, mu) + 15.0 * kT_eV
 
     def integrand(E):
         T = _transmission_scalar(params, E, bias_V, field_kVcm, carrier)[0]
         return T * _fermi_dirac(E, mu, kT_eV)
 
-    hint_points = sorted({p for p in (center, path.barrier_height_eV) if e_lo < p < e_hi})
+    hint_points = sorted({p for p in (center, true_top) if e_lo < p < e_hi})
     quad_warned = False
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", category=IntegrationWarning)
         total, _ = quad(integrand, e_lo, e_hi, points=hint_points or None,
                          limit=200, epsabs=1e-18, epsrel=1e-7)
-        if path.barrier_height_eV < e_hi:
-            above, _ = quad(integrand, path.barrier_height_eV, e_hi,
+        if true_top < e_hi:
+            above, _ = quad(integrand, true_top, e_hi,
                              limit=200, epsabs=1e-18, epsrel=1e-7)
         else:
             above = 0.0
         quad_warned = any(issubclass(w.category, IntegrationWarning) for w in caught)
     # [A] Caller-provided transverse-channel count from the levels module;
-    # the default of two remains an explicit sensitivity for old callers.
+    # MEDIUM 6 fix: the default is now one (spin lives in `degeneracy`
+    # alone), not two -- old callers relying on the previous default get
+    # an explicit sensitivity, never a silent double-count of spin.
     channels = (params.reservoir_state_count_e if carrier == "electron"
                 else params.reservoir_state_count_h)
     rate_total = params.degeneracy * channels * total / H_EVS
@@ -1072,11 +1153,23 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
     rate_below_hz = max(rate_hz - rate_above_hz, 0.0)
     bypassed = params.bypass_prefactor * rate_above_hz
     denom = rate_below_hz + bypassed
-    bypass_fraction = float(bypassed / denom) if denom > 0 else 0.0
+    # MEDIUM 4 fix companion: an unresolved rate (NaN, see _forward_rate_hz)
+    # must not silently read back as bypass_fraction 0.0 (a fabricated
+    # "no bypass" pass) via the denom>0 comparison's False-on-NaN behavior.
+    if not math.isfinite(rate_hz):
+        bypass_fraction = float("nan")
+    else:
+        bypass_fraction = float(bypassed / denom) if denom > 0 else 0.0
 
+    # HIGH 2 fix: continuum onset uses the ACTUAL tilted profile maximum
+    # (see _tilted_profile_max_eV), not the flat-band path.barrier_height_eV
+    # -- the true tilted top sits above the flat-band value by the full
+    # polarization tilt, so using the flat-band value here understated the
+    # separation to the continuum.
+    true_top = _tilted_profile_max_eV(params, path, bias_V, field_kVcm)
     orbital_candidates = [c for c in (
         spacing_meV / 1000.0 if math.isfinite(spacing_meV) else float("nan"),
-        path.barrier_height_eV - E_center if math.isfinite(E_center) else float("nan"),
+        true_top - E_center if math.isfinite(E_center) else float("nan"),
     ) if math.isfinite(c) and c > -1e9]
     orbital_sep_eV = min(orbital_candidates) if orbital_candidates else float("nan")
     full_candidates = list(orbital_candidates)
@@ -1124,6 +1217,8 @@ def _carrier_screen(params: NitrideNanowireInjectorParams, carrier: str, *,
         rate_second_hz=rate_second_hz, barrier_height_eV=path.barrier_height_eV,
         thickness_nm=path.thickness_nm, well_to_dot_drop_meV=well_to_dot_drop_meV,
         quad_warned=quad_warned, second_pair_addition_meV=second_pair_addition_meV,
+        E_center=E_center,   # LOW 10: internal-only, lets rti_numerics_ok refine
+                              # its scan around the actual found resonance
     )
 
 
@@ -1173,7 +1268,8 @@ def _barrier_polarization_tilt_eV(params: NitrideNanowireInjectorParams, carrier
 
 
 def _numerics_scan_ok(params: NitrideNanowireInjectorParams, carrier: str,
-                       field_kVcm: float, mu_eV: float, width_eV: float, kT_eV: float) -> bool:
+                       field_kVcm: float, mu_eV: float, width_eV: float, kT_eV: float,
+                       E_center: float = float("nan")) -> bool:
     """MEDIUM 7 fix: rti_numerics_ok is a REAL, falsifiable computation --
     max |T+R-1| <= 1e-8 and no RAW (unclamped) T > 1+1e-9 over a
     representative energy grid spanning this carrier's rate-integration
@@ -1181,21 +1277,40 @@ def _numerics_scan_ok(params: NitrideNanowireInjectorParams, carrier: str,
     scalar directly (bypassing the public API's [0,1] clamp) so genuine
     numerical overshoot from e.g. a deliberately coarse staircase
     (params.slice_length_nm / min_slices_per_segment) is visible instead
-    of hidden by the clamp."""
+    of hidden by the clamp.
+
+    LOW 10 fix (Opus re-review of 12b39cd, 2026-09-14): the broad 300-point
+    scan above alone has ~3 meV spacing over a window that can be a volt or
+    more wide, and so cannot land on a resonance whose own FWHM is a few
+    meV or less -- a genuine numerical overshoot confined to the resonance
+    itself would be invisible to it.  When the caller supplies a resolved
+    resonance center (E_center finite, double-barrier path only), fold in
+    a SECOND, densely-sampled scan of 50 points spanning +/- 5 FWHM
+    (width_eV) around that center, so the diagnostic actually samples the
+    one place a transfer-matrix resonance is most likely to misbehave."""
     path = _resolve_path(params, carrier)
     w = width_eV if math.isfinite(width_eV) else 0.0
     e_lo = max(1e-6, mu_eV - 15.0 * kT_eV - 5.0 * w)
     e_hi = max(path.barrier_height_eV, mu_eV) + 15.0 * kT_eV
-    if e_hi <= e_lo or not (math.isfinite(e_lo) and math.isfinite(e_hi)):
+    grids = []
+    if e_hi > e_lo and math.isfinite(e_lo) and math.isfinite(e_hi):
+        grids.append(np.linspace(e_lo, e_hi, 300))
+    if math.isfinite(E_center) and w > 0.0:
+        r_lo = max(E_center - 5.0 * w, 1e-9)
+        r_hi = E_center + 5.0 * w
+        if r_hi > r_lo:
+            grids.append(np.linspace(r_lo, r_hi, 50))
+    if not grids:
         return True
     max_resid = 0.0
     max_T = 0.0
-    for E in np.linspace(e_lo, e_hi, 300):
-        T, R = _transmission_scalar(params, float(E), 0.0, field_kVcm, carrier)
-        if not (math.isfinite(T) and math.isfinite(R)):
-            return False
-        max_resid = max(max_resid, abs(T + R - 1.0))
-        max_T = max(max_T, T)
+    for grid in grids:
+        for E in grid:
+            T, R = _transmission_scalar(params, float(E), 0.0, field_kVcm, carrier)
+            if not (math.isfinite(T) and math.isfinite(R)):
+                return False
+            max_resid = max(max_resid, abs(T + R - 1.0))
+            max_T = max(max_T, T)
     return bool(max_resid <= 1e-8 and max_T <= 1.0 + 1e-9)
 
 
@@ -1231,7 +1346,8 @@ _PROVENANCE = (
     "polarization uses B97 P_sp/e31/e33 VCA pseudomorphic on GaN and "
     "fixed-D interface sheets; [E] Mg activation 170 meV (Gotz APL 1996; "
     "Kozodoy JAP 2000), so rti_p_free_cm3 is not nominal Mg doping; [A] "
-    "reservoir_state_count_e/h defaults to 2 until supplied by levels and "
+    "reservoir_state_count_e/h defaults to 1 (spin lives in degeneracy "
+    "alone) until supplied by levels and "
     "gate_ns defaults to loading_window_ns for legacy pulse callers."
 )
 
@@ -1442,7 +1558,19 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     # misattributing the cause. rti_growth_feasible (the boolean folded
     # into the overall rti_feasible AND-gate) still requires nominal
     # transport to pass too.
-    growth_examined_ok = commensurate_ok
+    #
+    # MEDIUM 5 fix (Opus re-review of 12b39cd, 2026-09-14): a perturbed
+    # screen re-running the FULL _transport_ok conjunction reproduces any
+    # nominal failure regardless of thickness (bypass/margin/alignment do
+    # not improve just because the barrier moved by one growth step), so
+    # ANDing the perturbed pass/fail into growth_examined_ok tagged
+    # "growth_tolerance" on every one of those unrelated nominal failures
+    # too.  The tag must instead mean a growth-specific REGRESSION: a
+    # per-check pass at nominal that becomes a fail under perturbation.
+    # A check that already failed at nominal is never re-counted here (it
+    # is already reported under its own nominal failure tag above).
+    missed_load_ok_nominal = missed_load_probability <= RTI_MISSED_LOAD_CEILING
+    growth_regression = False
     perturbed_margins_kT = {}
     if params.growth_tolerance_steps > 0:
         for sign, tag in ((-1.0, "minus"), (1.0, "plus")):
@@ -1452,12 +1580,14 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
             e_p_ok = _transport_ok(e_p, RTI_MARGIN_FLOOR_KT, RTI_BYPASS_CEILING, RTI_MISSED_LOAD_CEILING)
             h_p_ok = _transport_ok(h_p, RTI_MARGIN_FLOOR_KT, RTI_BYPASS_CEILING, RTI_MISSED_LOAD_CEILING)
             missed_pert = 1.0 - (1.0 - e_p["missed_load_p"]) * (1.0 - h_p["missed_load_p"])
+            missed_pert_ok = missed_pert <= RTI_MISSED_LOAD_CEILING
             perturbed_margins_kT[tag] = dict(
                 electron_margin_kT=e_p["margin_kT"], hole_margin_kT=h_p["margin_kT"],
-                missed_load_probability=missed_pert, ok=bool(e_p_ok and h_p_ok
-                                                              and missed_pert <= RTI_MISSED_LOAD_CEILING),
+                missed_load_probability=missed_pert, ok=bool(e_p_ok and h_p_ok and missed_pert_ok),
             )
-            growth_examined_ok = growth_examined_ok and e_p_ok and h_p_ok and missed_pert <= RTI_MISSED_LOAD_CEILING
+            if (e_ok and not e_p_ok) or (h_ok and not h_p_ok) or (missed_load_ok_nominal and not missed_pert_ok):
+                growth_regression = True
+    growth_examined_ok = commensurate_ok and not growth_regression
     rti_growth_feasible = bool(rti_transport_feasible and growth_examined_ok)
     if not growth_examined_ok:
         failed_checks.append("growth_tolerance")
@@ -1545,8 +1675,10 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     e_width_for_scan = e["linewidth_meV"] / 1000.0 if math.isfinite(e["linewidth_meV"]) else params.alignment_uncertainty_meV / 1000.0
     h_width_for_scan = h["linewidth_meV"] / 1000.0 if math.isfinite(h["linewidth_meV"]) else params.alignment_uncertainty_meV / 1000.0
     rti_numerics_ok = bool(
-        _numerics_scan_ok(params, "electron", field_kVcm, mu_e, e_width_for_scan, kT_eV)
-        and _numerics_scan_ok(params, "hole", field_kVcm, mu_h_eV, h_width_for_scan, kT_eV)
+        _numerics_scan_ok(params, "electron", field_kVcm, mu_e, e_width_for_scan, kT_eV,
+                           E_center=e["E_center"])
+        and _numerics_scan_ok(params, "hole", field_kVcm, mu_h_eV, h_width_for_scan, kT_eV,
+                               E_center=h["E_center"])
         and not e["quad_warned"] and not h["quad_warned"]
     )
 
