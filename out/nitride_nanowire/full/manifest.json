@@ -105,21 +105,21 @@
     ]
   },
   "invalid_counts_by_kind": {
-    "core": 493,
-    "sensitivity": 4
+    "core": 205
   },
-  "invalid_total": 497,
+  "invalid_total": 205,
   "max_evaluations": 10000,
   "n_workers": 16,
   "output_hashes": {
-    "delivered_vs_commanded_flux.png": "6c07b8c8ab128e73fb78efe5e3b7cd0a4c83c84052470ed93b2b75e19fc1b4f1",
-    "g2_flux_vs_core_radius.png": "ff94de96c115e11cec07ef0ec1259072e26e45a1bf9c6f9edc735d940518e792",
-    "g2_flux_vs_disc_thickness.png": "7d611e5a56c9545364a31cd5fc091cfb5feeecb1945c3c62ecd402b2740b2f08",
-    "g2_flux_vs_ths.png": "eadb4648261bcb43af8cf93372502e0c36c071e9a6dffec0126da07ca7fcbc67",
+    "delivered_vs_commanded_flux.png": "c4cb9c62f0480a1c79f522cd8bf341301a3a29e19fa6f2c87a228c96cbd9cd43",
+    "full-rerun.log": "a9f746060436219e403144fc7d8ff66d3b58fa160e58498ba01b8f7e1790f92d",
+    "g2_flux_vs_core_radius.png": "806725ca4f586c3cca4383a416f5dccd98d9cc1843cea56438d9ecc1759a0020",
+    "g2_flux_vs_disc_thickness.png": "d36e5459077c6b05f537186d900421057f342920c25d53e76041283b21f007f1",
+    "g2_flux_vs_ths.png": "4c5970f9260279deb8cb6eafab96942861f9708d0210c4cff4421f1689d2107f",
     "hardware_screens.png": "e6f6a299c767e78de106f2d380d26b50f7afcefdcd79f0d67aed03357f46b067",
-    "results.md": "8ef3d2d35f82a6abb0ee678f5bd06143c59b1076c27b9f0ff020fb7ceac779c7",
+    "results.md": "736957f905f7b71c48f3282232713fb2b2dfbe31706835f688b7713844fbfa7f",
     "strain_reversal_map.png": "fb77aca83fb526a7843d03ef6abd54af150b3498f0f55df284f7209f52059c8e",
-    "sweep.csv": "20a3aaeb825bcc0347ffd7240baaa4af4e6d9918eb23e0eb5a8fbce7a05ff4ea"
+    "sweep.csv": "76efad48087f09cb4208cbe445ce8be211a28c4ab729df35b2a86e0cbc8d3c08"
   },
   "plot_row_mapping": {
     "delivered_vs_commanded_flux.png": {
@@ -135,24 +135,24 @@
           "SN02960"
         ],
         "x": [
-          444.3380257295628,
-          1109.0719089537083,
-          139.05450518727588,
-          347.28514128393584,
-          4148657.6167218825,
-          10357130.393738486,
-          4158040.92537602,
-          10380573.189988414
+          376.46126788073195,
+          939.6531452383385,
+          118.09607225424048,
+          294.9428071921462,
+          3457005.630536685,
+          8630428.170101818,
+          3467726.820423773,
+          8657207.554713154
         ],
         "y": [
-          444.3380257295628,
-          1109.0719089537083,
-          139.05450518727588,
-          347.28514128393584,
-          4148657.6167218825,
-          10357130.393738486,
-          4158040.92537602,
-          10380573.189988414
+          376.46126788073195,
+          939.6531452383385,
+          118.09607225424048,
+          294.9428071921462,
+          3457005.630536685,
+          8630428.170101818,
+          3467726.820423773,
+          8657207.554713154
         ]
       }
     },
@@ -175,12 +175,12 @@
           40.0
         ],
         "y": [
-          10061086.637028761,
-          10380458.669112533,
-          10540301.4688852,
-          10561233.781284276,
-          10326968.2683169,
-          8801276.567330185
+          8371152.504982121,
+          8657131.143435951,
+          8819584.441415409,
+          8922954.92173231,
+          8846816.182170488,
+          8071441.317684802
         ]
       },
       "horizontal_as_built|collected_flux_pulsed_s|unrelaxed (conservative_lower)": {
@@ -201,12 +201,12 @@
           40.0
         ],
         "y": [
-          556.0950983784959,
-          346.39580604219583,
-          235.44544658220573,
-          128.10510374600082,
-          79.72945530525463,
-          28.45953259860387
+          471.54869915514075,
+          294.1896059761477,
+          200.387048810853,
+          109.72417485032533,
+          68.92593954349567,
+          25.754329048553902
         ]
       },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
@@ -227,10 +227,10 @@
           40.0
         ],
         "y": [
-          0.30485387201690317,
-          0.31652841476707594,
-          0.32462570024044135,
-          0.3348004287448003,
+          0.30485387201690306,
+          0.3165284147670757,
+          0.32462570024044113,
+          0.3348004287448002,
           0.3405063846580272,
           0.34562336167777896
         ]
@@ -357,10 +357,10 @@
           4.0
         ],
         "y": [
-          9992301.93908932,
-          10380458.669112533,
-          10502974.689583471,
-          10233468.693071146
+          8286771.182940861,
+          8657131.143435951,
+          8805759.526149508,
+          8604904.022845164
         ]
       },
       "horizontal_as_built|collected_flux_pulsed_s|unrelaxed (conservative_lower)": {
@@ -373,8 +373,8 @@
           2.0
         ],
         "y": [
-          1236.0270211575973,
-          346.39580604219583
+          1029.5566865604621,
+          294.1896059761477
         ]
       },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
@@ -391,9 +391,9 @@
           4.0
         ],
         "y": [
-          0.3217184893390065,
-          0.31652841476707594,
-          0.31942964792388806,
+          0.3217184893390066,
+          0.3165284147670757,
+          0.31942964792388817,
           0.3474853756863493
         ]
       },
@@ -507,10 +507,10 @@
           300.0
         ],
         "y": [
-          10357246.372222234,
-          10369229.324068256,
-          10380729.499407392,
-          10380458.669112533
+          8630544.613331493,
+          8642618.486565394,
+          8654600.368518412,
+          8657131.143435951
         ]
       },
       "horizontal_as_built|collected_flux_pulsed_s|unrelaxed (conservative_lower)": {
@@ -527,10 +527,10 @@
           300.0
         ],
         "y": [
-          1104.741358244114,
-          752.5448911352133,
-          512.2094101882179,
-          346.39580604219583
+          935.9896504626765,
+          638.0008455433658,
+          434.5870730668384,
+          294.1896059761477
         ]
       },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
@@ -547,10 +547,10 @@
           300.0
         ],
         "y": [
-          0.3168346309252511,
-          0.31689109708329033,
+          0.3168346309252512,
+          0.3168910970832902,
           0.31689177953423453,
-          0.31652841476707594
+          0.3165284147670757
         ]
       },
       "horizontal_as_built|g2_op|unrelaxed (conservative_lower)": {
@@ -567,9 +567,9 @@
           300.0
         ],
         "y": [
+          0.17355371900826433,
           0.17355371900826455,
-          0.17355371900826433,
-          0.17355371900826433,
+          0.17355371900826455,
           0.17355371900826455
         ]
       },
@@ -657,12 +657,12 @@
     "hardware_screens.png": {
       "rti_level_margin_kT|horizontal_as_built": {
         "row_ids": [
-          "CO00039",
-          "CO00295",
-          "CO00551",
-          "CO00807",
-          "CO01063",
-          "CO01319"
+          "CO00007",
+          "CO00263",
+          "CO00519",
+          "CO00775",
+          "CO01031",
+          "CO01287"
         ],
         "x": [
           10.0,
@@ -703,12 +703,12 @@
       },
       "set_EC_over_kT|horizontal_as_built": {
         "row_ids": [
-          "CO00039",
-          "CO00295",
-          "CO00551",
-          "CO00807",
-          "CO01063",
-          "CO01319"
+          "CO00007",
+          "CO00263",
+          "CO00519",
+          "CO00775",
+          "CO01031",
+          "CO01287"
         ],
         "x": [
           10.0,
@@ -2117,7 +2117,7 @@
   },
   "plot_trace_failures": [],
   "quick": false,
-  "resolved_out_dir": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\out\\nitride_nanowire\\full",
+  "resolved_out_dir": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\out\\nitride_nanowire",
   "row_counts": {
     "core": 2560,
     "planar_2014_replay": 1,
@@ -2125,12 +2125,12 @@
     "sensitivity": 406,
     "total": 2983
   },
-  "runtime_s": 1370.8663733005524,
+  "runtime_s": 1437.3736448287964,
   "source_hashes": {
     "fsim_core\\nitride_nanowire_device.py": "5467d2c96a981d2fa03af2522380aba3fc3148161d28c36244359647151b8c41",
     "fsim_core\\nitride_nanowire_injector.py": "f31d5417965e4807cb13d7fe6bb44bd961dacb168674c84143f56238da3d947c",
     "fsim_core\\nitride_nanowire_levels.py": "d2d2269a3ef0bd8d0a2d210af13b7eb54eef04417c9aa6257165b55c28a489b9",
-    "fsim_core\\nitride_nanowire_photonics.py": "727f7ee1bab545a28c67fb3eb81b36bb6cd6710ec9329f905bd1ab64380b52de",
+    "fsim_core\\nitride_nanowire_photonics.py": "98529b179b07a66af08bf292b3bb620bb3172f78c44cc7da41bf5e370086e1c2",
     "fsim_core\\nitride_nanowire_surface.py": "17736f486e7c9752f42f1de127ed3e05cedcc27bb0f14d5d853af79abe1a1f43",
     "fsim_core\\nitride_nanowire_transport.py": "2186cc72c6ca4b6a9c35e732be5c811acd6200501c49f97591a1901656f41492"
   },
