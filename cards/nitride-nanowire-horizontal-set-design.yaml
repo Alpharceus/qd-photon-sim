@@ -326,7 +326,7 @@ design:
         value: 0.02
         unit: dimensionless
         tag: DR
-        source: "Informational restatement of tau_pulse_ns * rep_rate_hz * 1e-9 = 0.1e-9 * 2e8 = 0.02; not independently consumed (nitride_nanowire_device recomputes duty from drive.diode.tau_pulse_ns and drive.rep_rate_hz directly)."
+        source: "Consumed DIRECTLY by the nanowire device (fsim_core/nitride_nanowire_device.py: duty = float(d.drive.duty), fed straight into wire_operating_point -- it is NOT recomputed from drive.diode.tau_pulse_ns/drive.rep_rate_hz there), so this leaf must itself equal tau_pulse_ns * 1e-9 * rep_rate_hz = 0.1e-9 * 2e8 = 0.02 (asserted by verify_nitride_nanowire_cards.py); a rep-rate sweep row (e.g. the named 100 ps / 80 MHz operating row below, duty=0.008=0.1e-9*8e7) must set this leaf to match its own rep_rate_hz, never leave this card's 0.02 unchanged."
       drive.gate_ns:
         value: null
         unit: ns
@@ -336,8 +336,8 @@ design:
         value: 2.0e-3
         unit: uA
         tag: A
-        source: "2 nA, the 2013 device's own reported maximum current (Deshpande et al., Nat. Commun. 4, 1675 (2013)); at the horizontal card's R_s_ohm=2.38 GOhm this keeps V_terminal inside the 2013 device's own reported 2-20 V terminal-voltage range (V_terminal ~8 V), unlike a 20 nA/0.02 uA choice which would imply ~50 V across this series resistance alone. Kept identical on the vertical card (drive.I_uA is not on the horizontal/vertical allow-list of intended differences): at the vertical card's much smaller designed-contact R_s_ohm=1e6 ohm the same current drops only ~0.002 V, so V_terminal there tracks the junction voltage V_j regardless."
-        anchor_id: deshpande2013_geometry
+        source: "2 nA, the 2013 device's own reported maximum current (Deshpande et al., Nat. Commun. 4, 1675 (2013)); the 2 nA figure itself lives in the ledger's deshpande2013_thermal_and_pl entry (rise_2nA_K), not deshpande2013_geometry, which carries no current value at all. At the horizontal card's R_s_ohm=2.38 GOhm this keeps V_terminal inside the 2013 device's own reported 2-20 V terminal-voltage range (V_terminal ~8 V) -- that 2-20 V range is [E] from the paper as read by the project, not yet in the ledger as its own anchor entry -- unlike a 20 nA/0.02 uA choice which would imply ~50 V across this series resistance alone. Kept identical on the vertical card (drive.I_uA is not on the horizontal/vertical allow-list of intended differences): at the vertical card's much smaller designed-contact R_s_ohm=1e6 ohm the same current drops only ~0.002 V, so V_terminal there tracks the junction voltage V_j regardless."
+        anchor_id: deshpande2013_thermal_and_pl
       drive.cw:
         value: false
         unit: bool
@@ -485,8 +485,8 @@ design:
         value: 0.05
         unit: dimensionless
         tag: DR
-        source: "Headline default (contract 'Provenance corrections': the J0 hard-wall ground-state probability in a 2 nm sidewall capture layer over the uniform-density value, at core_radius_nm=12.5); the declared conservative [A] partner is 1.0 (recorded here, never removed, as the sweep's declared partner value; 0.1 is kept only as a third sensitivity point). Neither default is tuned to reproduce the held-out 0.71/1.1/1.3 ns lifetime anchors. Identical on all four cards, per this round's binding decision."
-        anchor_id: deshpande2013_lifetimes
+        source: "Headline default (contract 'Provenance corrections'): DERIVED from the surface module's own J0 hard-wall ground-state overlap ratio in a 2 nm sidewall capture layer over the uniform-density value, at core_radius_nm=12.5 (fsim_core/nitride_nanowire_surface.py; physics coherence review finding M1) -- this is a derivation from the module's own geometry, not a transcribed measurement, so it cites NO lifetime anchor. The declared conservative [A] partner is 1.0 (recorded here, never removed, as the sweep's declared partner value; 0.1 is kept only as a third sensitivity point). Neither default is tuned to reproduce the held-out 0.71/1.1/1.3 ns lifetime anchors (deshpande2013_lifetimes), which this entry deliberately does not cite. Identical on all four cards, per this round's binding decision."
+        anchor_id: null
       nitride.photonics.family:
         value: horizontal_as_built
         unit: enum
@@ -781,8 +781,8 @@ design:
         value: 1.0
         unit: ns
         tag: A
-        source: "Field-free radiative lifetime default, deliberately distinct from the Deshpande 2014 measured 1.3 +/- 0.3 ns recombination lifetime -- not a transferred measured field-suppressed lifetime."
-        anchor_id: deshpande2014_abstract
+        source: "Field-free radiative lifetime design default (contract 'Families and common card contract': 'Headline nitride.tau_rad0_ns=1.0 [A, deliberately not the held-out 2014 lifetime]'), deliberately distinct from the Deshpande 2014 measured 1.3 +/- 0.3 ns recombination lifetime. Cites NO anchor: this is not a transferred measured field-suppressed lifetime, and the held-out deshpande2014_abstract lifetime_ns stays a non-gating comparison number (design.provenance.deshpande_comparison), never this leaf's source."
+        anchor_id: null
       nitride.tau_cap_ps:
         value: 10.0
         unit: ps
@@ -840,16 +840,56 @@ design:
         unit: dimensionless
         tag: A
         source: "Contract sensitivity set; this card's own value (0.05) is the [DR] headline default, 1.0 the declared conservative [A] partner, 0.1 a third sensitivity point."
+      nitride.photonics.NA:
+        values: [0.5]
+        unit: dimensionless
+        tag: A
+        source: "Contract validity bound (0,1]; this card's own value (0.5) is the only value evaluated. The NA (horizontal)/bottom_reflectivity (vertical) collection-envelope cut is a contract-named reduced axis this round's sweep script explicitly DROPPED (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES), a real reported coverage gap, not a silent omission."
+      nitride.dot.screening_fraction:
+        values: [0.0, 1.0]
+        unit: dimensionless
+        tag: A
+        source: "Contract reduced-cut axis (design brief User answer 4: 'screening_fraction stays an independent axis at {0,1} on a reduced cut only'); this card's own value (0.0) is the main-grid default. Sampled by the sweep script's own screening_fraction axis."
+      nitride.surface.reservoir_access:
+        values: [0.0, 0.1, 1.0]
+        unit: dimensionless
+        tag: A
+        source: "Contract Card-schema note (reservoir_access): the field's full validity range is [0,1]; the reduced-cut set the contract names is {0,0.1}. This card's own value (1.0, the conservative-full-access default) is not itself one of those two reduced-cut points. That {0,0.1} cut is a contract-named reduced axis this round's sweep script explicitly DROPPED (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'reservoir_access'), a real reported coverage gap, not a silent omission."
+      nitride.photonics.collection_scale:
+        values: [1.0]
+        unit: dimensionless
+        tag: A
+        source: "Contract quantified-assumption range [0,1]; this card's own value (1.0, no additional derating) is the only value evaluated. Horizontal-consumed only."
+      dot.gamma300:
+        values: [25.0, 35.0, 55.0]
+        unit: meV
+        tag: A
+        source: "Linewidth reduced-cut axis (contract 'Sweep grid, VERDICT format, and output paths': the 'linewidth/tau_rad0/capture' reduced cut); this card's own value (35.0) is the design default, with 25/55 meV bracketing it as an unsourced +/-20 meV sensitivity band. This is a contract-named reduced axis this round's sweep script explicitly DROPPED (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'gamma300 (linewidth)'), a real reported coverage gap, not a silent omission."
+      nitride.tau_rad0_ns:
+        values: [1.0]
+        unit: ns
+        tag: A
+        source: "Contract-pinned exact default (docs/nitride_nanowire_contract.md 'Families and common card contract': nitride.tau_rad0_ns=1.0 [A]), not itself a sweep axis. The 'linewidth/tau_rad0/capture' reduced cut named in 'Sweep grid' is a contract-named reduced axis this round's sweep script explicitly DROPPED (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'tau_rad0_ns'), a real reported coverage gap, not a silent omission."
+      nitride.tau_cap_ps:
+        values: [10.0]
+        unit: ps
+        tag: A
+        source: "Round's own explicit default (10 ps, matching the levels module's class default), not itself a sweep axis. The 'linewidth/tau_rad0/capture' reduced cut named in 'Sweep grid' is a contract-named reduced axis this round's sweep script explicitly DROPPED (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'tau_cap_ps (capture)'), a real reported coverage gap, not a silent omission."
+      drive.I_uA / drive.diode.tau_pulse_ns:
+        values: [2.0e-3, 0.1]
+        unit: "uA / ns"
+        tag: A
+        source: "Current/pulse-width sensitivity is a contract-named reduced axis (contract 'Sweep grid': 'current/pulse sensitivity'); this round's sweep script explicitly DROPPED it (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'current_uA/tau_pulse_ns pulse sensitivity'), a real reported coverage gap, not a silent omission. This card's own values (2.0e-3 uA, 0.1 ns) are the only point evaluated; the spec's own 15 nm radius/1 nA CW geometry/contact comparison is recorded separately as a non-gating sweep-provenance comparison row, not a card leaf."
       nitride.wire_thermal.R_s_ohm:
         values: [2.38e+9, 1.0e+6]
         unit: ohm
         tag: A
         source: "Contract sensitivity axis: this card's own value (2.38e9) is the as-built [V] 2013 device; 1.0e6 is the designed-contact [A] alternative (the vertical card's own default)."
       nitride.wire_thermal.Rth_K_W:
-        values: [1.0e+9]
+        values: [1.0e+8, 1.0e+9, 1.0e+10]
         unit: K/W
         tag: A
-        source: "One decade each way from this card's own default, per the contract Card schema."
+        source: "One decade each way from this card's own default (1.0e+9), per the contract Card schema's declared validity band. This round's sweep script explicitly DROPPED the Rth_K_W axis for both families (not numerically sampled -- scripts/run_nitride_nanowire.py DROPPED_CUT_AXES: 'Rth_K_W (both families)'), a real reported coverage gap, not a silent omission."
       nitride.wire_thermal.C_parasitic_F:
         values: [0.0, 1.0e-18, 1.0e-16]
         unit: F

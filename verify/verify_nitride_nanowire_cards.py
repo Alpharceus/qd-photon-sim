@@ -26,9 +26,27 @@ SAME denominator, never shrinks it (fix-1 finding 5/12's complaint about
 the previous verifier). The cards on disk are never mutated: every
 strain-bound/mutation probe below operates on an in-memory
 copy.deepcopy() of a loaded DeviceDesign.
+
+Fix round (Opus review of 58eb5a2, HIGH 1 + MEDIUM 2/3/7/8): the previous
+version of this file compared only leaf NAME sets and provenance
+presence/anchor-existence against 8 hard-coded ledger literals, never a
+leaf VALUE against the contract's own Card schema tables -- 8 of 12
+Opus-planted single-leaf edits (b_res, I_uA, tau_rad0_ns, NA,
+unguided_collection_scale, Rth_K_W, tau_cap_ps, set_params.eps_r) passed
+556/556 unnoticed. This version parses
+docs/nitride_nanowire_contract.md's "Card schema" markdown tables directly
+(_parse_contract_card_schema below; see also DIRECT_DEFAULTS for the
+handful of round-pinned leaves the contract states only in prose, never in
+a table row: drive.b_res, drive.I_uA, nitride.tau_rad0_ns,
+nitride.tau_cap_ps) and asserts every card leaf's value against the
+contract's own default/range/tag for the card's own family, so a future
+contract-table edit is picked up automatically instead of drifting out of
+sync with a second, hand-maintained copy.
 """
 import copy
+import math
 import os
+import re
 import sys
 
 import yaml
@@ -109,10 +127,240 @@ MUTATIONS = (
     ("nitride.dot.height_nm", 4.0),
 )
 
+# ============================================================ HIGH-1 fix
+# Parse docs/nitride_nanowire_contract.md's own "Card schema" markdown
+# tables (leaf, unit, default, range, tag[, notes]) instead of hand-copying
+# a second schema that can silently drift from the doc. Only the eight
+# named sub-tables below exist in that section; a leaf not covered by one
+# of them (d_active_nm; drive.b_res/I_uA/nitride.tau_rad0_ns/tau_cap_ps,
+# which the contract pins only in prose, never in a table row) is asserted
+# separately -- see DIRECT_DEFAULTS and the b_res/I_uA/tau_rad0_ns/
+# tau_cap_ps checks in main().
+CONTRACT_PATH = os.path.join(ROOT, "docs", "nitride_nanowire_contract.md")
+_SCHEMA_SECTION_HEADERS = {
+    "`nitride.nanowire`": "nitride.nanowire",
+    "`nitride.dot`": "nitride.dot",
+    "`nitride.surface`": "nitride.surface",
+    "`nitride.photonics`": "nitride.photonics",
+    "`nitride.wire_thermal`": "nitride.wire_thermal",
+    "`drive.diode`": "drive.diode",
+    "`nitride.injector`": "nitride.injector",
+    "`drive.set_params`": "drive.set_params",
+}
+_NUM_RE = re.compile(r"[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?")
+
+
+def _numbers_in(text):
+    return [float(x) for x in _NUM_RE.findall(text)]
+
+
+def _backtick_tokens(text):
+    return re.findall(r"`([^`]+)`", text)
+
+
+def _md_table_rows(block_text):
+    lines = [l for l in block_text.splitlines() if l.strip().startswith("|")]
+    if len(lines) < 2:
+        return []
+    return [[c.strip() for c in line.strip().strip("|").split("|")] for line in lines[2:]]
+
+
+def parse_contract_card_schema(path=CONTRACT_PATH):
+    """Return {section: [raw markdown table row cell-lists]} for every
+    '### `section`' sub-table under docs/nitride_nanowire_contract.md's own
+    '## Card schema' heading (independently re-parsed here every run, not
+    imported from any cached copy)."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    section = text[text.index("## Card schema"):text.index("## Row columns")]
+    out = {}
+    for part in re.split(r"\n### ", section)[1:]:
+        key = next((v for k, v in _SCHEMA_SECTION_HEADERS.items() if part.startswith(k)), None)
+        if key:
+            out[key] = _md_table_rows(part)
+    return out
+
+
+def _parse_leaf_cell(cell):
+    m = re.match(r"`([^`]+)`(?:\s*\(([^)]+)\))?", cell)
+    if not m:
+        return cell.strip("` "), None
+    return m.group(1), m.group(2)
+
+
+def _parse_row_cells(section, cells):
+    if section == "nitride.photonics":
+        leaf_cell, _unit, default_cell, range_cell, tag_cell, _notes = cells
+    else:
+        leaf_cell, _unit, default_cell, range_cell, tag_cell = cells
+    name, family_suffix = _parse_leaf_cell(leaf_cell)
+    return name, family_suffix, default_cell, range_cell, tag_cell
+
+
+def parse_contract_tags(tag_cell):
+    """'V', 'V/E', or 'V (default)/A (override)' -> {'V'}, {'V','E'}, {'V','A'}."""
+    toks = set()
+    for part in tag_cell.split("/"):
+        m = re.match(r"\s*([A-Z]{1,2})\b", part)
+        if m:
+            toks.add(m.group(1))
+    return toks
+
+# Leaf-name-keyed dynamic-default resolvers, transcribed one-for-one from
+# the Default column's "equal to `X`" / "mirrors `X`" text (see the parsed
+# cells printed by parse_contract_card_schema): the referenced leaf X is
+# read from the SAME loaded card, never from a second hard-coded literal.
+_EQUALITY_REFS = {
+    ("nitride.dot", "radius_nm", "horizontal"): lambda nit: nit["nanowire"]["core_radius_nm"],
+    ("drive.diode", "conducting_radius_nm", None): lambda nit: nit["nanowire"]["core_radius_nm"],
+    ("drive.set_params", "radius_nm", None): lambda nit: nit["dot"]["radius_nm"],
+    ("nitride.photonics", "family", None): lambda nit: nit["nanowire"]["family"],
+}
+
+
+def _outer_radius_expected(nit):
+    core = nit["nanowire"]["core_radius_nm"]
+    return core if nit["nanowire"]["shell"] == "none" else core + 3.0
+
+
+def _strain_fraction_expected(nit, default_cell):
+    m = re.search(r"([\d.]+)\s+unrelaxed.*?([\d.]+)\s+relaxed", default_cell)
+    mapping = {"unrelaxed": float(m.group(1)), "relaxed": float(m.group(2))}
+    return mapping[nit["nanowire"]["strain_bound"]]
+
+
+def _shell_multiplier_expected(nit, default_cell):
+    m_none = re.search(r"([\d.]+)\s*\(`none`\)", default_cell)
+    m_alg = re.search(r"([\d.]+)\s*\(`AlGaN`\)", default_cell)
+    return {"none": float(m_none.group(1)), "AlGaN": float(m_alg.group(1))}[nit["surface"]["shell"]]
+
+
+def _family_split_numbers(cell):
+    m_h = re.search(r"([-+0-9.eE]+)\s*\(horizontal\)", cell)
+    m_v = re.search(r"([-+0-9.eE]+)\s*\(vertical\)", cell)
+    return float(m_h.group(1)), float(m_v.group(1))
+
+
+class SchemaParseError(Exception):
+    """A Card-schema row this module has no resolver for (should never fire
+    for the leaves the four cards actually write; a new leaf added to the
+    contract without a matching resolver here raises loudly instead of
+    silently skipping its value check)."""
+
+
+def check_contract_leaf(section, name, family_suffix, default_cell, range_cell, *, nit, value, family):
+    """Return None if this row's family_suffix does not apply to `family`,
+    else (ok, note) asserting value equals the contract default (resolved
+    for this card's own family/shell/strain_bound where the Default column
+    is conditional) or lies inside an explicitly ENUMERATED contract range
+    (a `{...}`/`sensitivity`/`sweep` cell). A continuous validity bound
+    (`[0,1]`, `(0,1]`, `fixed`, ...) is not itself a licence to deviate from
+    the default on a headline card -- only a discrete, explicitly named
+    alternate value is."""
+    dcell, rcell = default_cell.strip(), range_cell.strip()
+    key = (section, name, family_suffix)
+    if family_suffix is not None and family_suffix != family:
+        return None
+
+    if dcell.startswith("equal to") or dcell.startswith("mirrors"):
+        if name == "outer_radius_nm":
+            expected = _outer_radius_expected(nit)
+        elif key in _EQUALITY_REFS:
+            expected = _EQUALITY_REFS[key](nit)
+        elif (section, name, None) in _EQUALITY_REFS:
+            expected = _EQUALITY_REFS[(section, name, None)](nit)
+        else:
+            raise SchemaParseError("no equality resolver for " + section + "." + name)
+        return value == expected, "equal to " + repr(expected)
+    if dcell.startswith("derived from"):
+        if name == "strain_fraction":
+            expected = _strain_fraction_expected(nit, dcell)
+            return value == expected, "derived " + repr(expected)
+        raise SchemaParseError("no derivation resolver for " + section + "." + name)
+    if dcell == "required":
+        allowed = set(_backtick_tokens(rcell))
+        return value in allowed, "required, one of " + repr(allowed)
+    if "(`none`)" in dcell and "(`AlGaN`)" in dcell:
+        expected = _shell_multiplier_expected(nit, dcell)
+        return value == expected, "shell-conditional default " + repr(expected)
+
+    if "(horizontal)" in dcell and "(vertical)" in dcell:
+        h, v = _family_split_numbers(dcell)
+        default = h if family == "horizontal_as_built" else v
+    elif dcell.startswith("None"):
+        default = None
+    elif re.match(r"^`(True|False)`", dcell):
+        default = dcell.split("`")[1] == "True"
+    elif re.match(r'^`"([^"]+)"`', dcell):
+        default = re.match(r'^`"([^"]+)"`', dcell).group(1)
+    elif re.match(r"^`([A-Za-z_][\w-]*)`", dcell):
+        default = re.match(r"^`([A-Za-z_][\w-]*)`", dcell).group(1)
+    else:
+        nums = _numbers_in(dcell)
+        default = nums[0] if nums else None
+
+    m_fixed = re.search(r"fixed\s+(?:at\s+)?([-+0-9.eE]+)", rcell)
+    if m_fixed:
+        return value == float(m_fixed.group(1)), "fixed at " + m_fixed.group(1)
+    if re.match(r"^fixed\b", rcell) or "fixed baseline" in rcell or "unchanged SET convention" in rcell:
+        return value == default, "fixed, equal to default " + repr(default)
+    if "{" in rcell:
+        inner = re.search(r"\{([^}]*)\}", rcell).group(1)
+        nums = _numbers_in(inner)
+        if nums:
+            allowed = set(nums) | ({default} if isinstance(default, (int, float)) else set())
+            return value in allowed, "one of " + repr(allowed)
+        toks = set(_backtick_tokens(inner)) | set(re.findall(r'"([^"]+)"', inner))
+        toks = {True if t == "True" else False if t == "False" else t for t in toks}
+        if default is not None:
+            toks.add(default)
+        return value in toks, "one of " + repr(toks)
+    if ("sensitivity" in rcell or "sweep" in rcell) and not rcell.startswith("("):
+        nums = _numbers_in(rcell)
+        if nums:
+            allowed = set(nums) | ({default} if isinstance(default, (int, float)) else set())
+            return value in allowed, "one of " + repr(allowed)
+        return value == default, "equal to default " + repr(default) + " (no enumerated sensitivity set)"
+    if "one decade each way" in rcell:
+        lo, hi = default / 10.0, default * 10.0
+        return lo <= value <= hi, "within one decade of " + repr(default)
+    if re.match(r"^,?\s*`", rcell) and "{" not in rcell:
+        toks = {t for t in _backtick_tokens(rcell) if not re.search(r"[\[\](),]", t)}
+        if default is not None:
+            toks.add(default)
+        return value in toks, "one of " + repr(toks) + " or equal to default " + repr(default)
+    if rcell.startswith(">="):
+        bound = _numbers_in(rcell)[0]
+        return value >= bound, ">= " + repr(bound)
+    if rcell.startswith(">"):
+        head_nums = _numbers_in(rcell.split(",")[0])
+        bound = head_nums[0] if head_nums else 0.0
+        return value > bound, "> " + repr(bound)
+    if rcell == "finite":
+        return math.isfinite(value), "finite"
+    if "positive if set" in rcell:
+        return (value is None) or (value > 0), "None or > 0"
+    return value == default, "equal to default " + repr(default)
+
+
+SCHEMA_ROWS = parse_contract_card_schema()
+
+# The handful of DriveBlock/nitride-top-level leaves this round pins to one
+# exact value in prose (docs/nitride_nanowire_contract.md "Families and
+# common card contract": "drive.b_res=0.1 [A]"; nitride.tau_rad0_ns=1.0;
+# spec "Common explicit defaults": I_uA design choice = 2 nA = 2.0e-3 uA,
+# tau_cap_ps=10) rather than a Card-schema table row, so parse_contract_
+# card_schema above never sees them.
+DIRECT_DEFAULTS = {
+    "drive.b_res": 0.1,
+    "drive.I_uA": 2.0e-3,
+    "nitride.tau_rad0_ns": 1.0,
+    "nitride.tau_cap_ps": 10.0,
+}
+
 
 class Ledger:
-    def __init__(self, checks_ref):
-        self.checks_ref = checks_ref
+    def __init__(self):
         with open(LEDGER_PATH, encoding="utf-8") as f:
             self.anchors = yaml.safe_load(f)["anchors"]
 
@@ -161,24 +409,17 @@ def _diff_paths(a, b):
 
 
 def _allowed(path, prefixes):
-    return any(path == p or path.startswith(p + ".") or path.startswith(p) for p in prefixes)
+    # LOW-11 fix: exact match or a real child path (dot-separated) only --
+    # no bare startswith, which would also match e.g. "drive.set_paramsX"
+    # against the allow-listed prefix "drive.set_params".
+    return any(path == p or path.startswith(p + ".") for p in prefixes)
 
 
 def main():
     checks = [0]
     failures = []
 
-    def ck(fn, msg):
-        checks[0] += 1
-        try:
-            ok = fn()
-        except Exception as exc:
-            failures.append(f"{msg}: {exc}")
-            return
-        if not ok:
-            failures.append(msg)
-
-    ledger = Ledger(checks)
+    ledger = Ledger()
 
     raws = {}
     designs = {}
@@ -290,11 +531,15 @@ def main():
                 if entry is None or entry.get("tag") not in VALID_TAGS or not entry.get("source"):
                     failures.append(f"{name}: provenance.sources missing/invalid entry for {path}")
                     continue
+                # MEDIUM-3 fix: count this check unconditionally (not only
+                # when anchor_id happens to be present) so deleting an
+                # anchor_id line shrinks the failure count on the SAME
+                # denominator instead of silently shrinking the denominator
+                # too (the previous verifier's "552/552" bug).
+                checks[0] += 1
                 anchor = entry.get("anchor_id")
-                if anchor:
-                    checks[0] += 1
-                    if anchor not in ledger.anchors:
-                        failures.append(f"{name}: {path} cites unknown anchor {anchor!r}")
+                if anchor and anchor not in ledger.anchors:
+                    failures.append(f"{name}: {path} cites unknown anchor {anchor!r}")
 
         set_params = design["drive"].get("set_params", {})
         is_set = design["drive"]["cycle_loading"] == "deterministic_pair"
@@ -329,37 +574,58 @@ def main():
     # plain string, not a float (the same quirk fsim_core/device.py's own
     # _coerce_optional_floats works around) -- coerce explicitly here.
     geom = dict(geom, n_cm3=float(geom["n_cm3"]), p_cm3=float(geom["p_cm3"]))
+    # MEDIUM-3 fix (the actual denominator-shrink case the finding names):
+    # each of these ledger-governed leaves must ALSO cite the SAME anchor
+    # its value is checked against above, so deleting the anchor_id line
+    # (while leaving the value untouched) is its own separate failure, not
+    # merely a value check that happens to still pass.
+    def _anchor_ck(name, sources, path, expected_anchor):
+        checks[0] += 1
+        entry = sources.get(path)
+        if entry is None or entry.get("anchor_id") != expected_anchor:
+            failures.append(f"{name}: {path} does not cite anchor_id {expected_anchor!r}")
+
     for name in CARD_NAMES:
         design = raws[name]["design"]
         n = design["nitride"]
+        sources = design.get("provenance", {}).get("sources", {})
         checks[0] += 1
         if n["dot"]["x_in"] != abstract["x_in"]:
             failures.append(f"{name}: nitride.dot.x_in does not match deshpande2014_abstract x_in")
+        _anchor_ck(name, sources, "nitride.dot.x_in", "deshpande2014_abstract")
         checks[0] += 1
         if design["drive"]["diode"]["N_A"] != geom["p_cm3"]:
             failures.append(f"{name}: drive.diode.N_A does not match deshpande2013_geometry p_cm3")
+        _anchor_ck(name, sources, "drive.diode.N_A", "deshpande2013_geometry")
         checks[0] += 1
         if design["drive"]["diode"]["N_D"] != geom["n_cm3"]:
             failures.append(f"{name}: drive.diode.N_D does not match deshpande2013_geometry n_cm3")
+        _anchor_ck(name, sources, "drive.diode.N_D", "deshpande2013_geometry")
         checks[0] += 1
         if design["drive"]["rep_rate_hz"] != abstract["max_rate_MHz"] * 1e6:
             failures.append(f"{name}: drive.rep_rate_hz does not match deshpande2014_abstract max_rate_MHz")
+        _anchor_ck(name, sources, "drive.rep_rate_hz", "deshpande2014_abstract")
         checks[0] += 1
         if n["nanowire"]["barrier_left_nm"] != geom["barrier_left_nm"] or \
            n["nanowire"]["barrier_right_nm"] != geom["barrier_right_nm"]:
             failures.append(f"{name}: nitride.nanowire barrier_*_nm does not match deshpande2013_geometry")
+        _anchor_ck(name, sources, "nitride.nanowire.barrier_left_nm", "deshpande2013_geometry")
+        _anchor_ck(name, sources, "nitride.nanowire.barrier_right_nm", "deshpande2013_geometry")
         checks[0] += 1
         if n["dot"]["height_nm"] != geom["disc_height_nm"]:
             failures.append(f"{name}: nitride.dot.height_nm does not match deshpande2013_geometry disc_height_nm")
+        _anchor_ck(name, sources, "nitride.dot.height_nm", "deshpande2013_geometry")
         if "horizontal" in name:
             checks[0] += 1
             if n["nanowire"]["core_radius_nm"] != geom["optical_diameter_nm"] / 2.0:
                 failures.append(f"{name}: horizontal core_radius_nm does not match half the "
                                  "deshpande2013_geometry optical_diameter_nm")
+            _anchor_ck(name, sources, "nitride.nanowire.core_radius_nm", "deshpande2013_geometry")
             checks[0] += 1
             if n["wire_thermal"]["R_s_ohm"] != geom["resistance_GOhm"] * 1e9:
                 failures.append(f"{name}: horizontal R_s_ohm does not match "
                                  "deshpande2013_geometry resistance_GOhm")
+            _anchor_ck(name, sources, "nitride.wire_thermal.R_s_ohm", "deshpande2013_geometry")
         # 1.3 ns / g2=0.29 (2014) and the 2013 HBT/lifetime numbers must occur ONLY as
         # held-out comparison metadata (design.provenance.deshpande_comparison), never
         # promoted into a live card leaf.
@@ -393,6 +659,149 @@ def main():
     surfaces = [raws[n]["design"]["nitride"]["surface"] for n in CARD_NAMES]
     if not all(s == surfaces[0] for s in surfaces):
         failures.append("nitride.surface is not identical across all four cards")
+
+    # ================================================== HIGH-1: contract schema value/range/tag
+    # Parse docs/nitride_nanowire_contract.md's own Card schema tables and
+    # assert every card leaf's value against the contract's own default (or
+    # an explicitly enumerated sensitivity/sweep set), and that the card's
+    # provenance tag is one the contract allows for that leaf. Opus review
+    # of 58eb5a2 planted 8 single-leaf edits that the previous verifier
+    # (leaf-name-set + provenance-presence only) never caught; this section
+    # is the fix.
+    _BLOCK_ACCESSOR = {
+        "nitride.nanowire": lambda n, dr: n["nanowire"],
+        "nitride.dot": lambda n, dr: n["dot"],
+        "nitride.surface": lambda n, dr: n["surface"],
+        "nitride.photonics": lambda n, dr: n["photonics"],
+        "nitride.wire_thermal": lambda n, dr: n["wire_thermal"],
+        "drive.diode": lambda n, dr: dr["diode"],
+        "nitride.injector": lambda n, dr: n["injector"],
+        "drive.set_params": lambda n, dr: dr.get("set_params", {}),
+    }
+    for name in CARD_NAMES:
+        design = raws[name]["design"]
+        n, dr = design["nitride"], design["drive"]
+        fam = n["nanowire"]["family"]
+        sources = design.get("provenance", {}).get("sources", {})
+        for section, rows in SCHEMA_ROWS.items():
+            block = _BLOCK_ACCESSOR[section](n, dr)
+            for cells in rows:
+                leaf, family_suffix, default_cell, range_cell, tag_cell = _parse_row_cells(section, cells)
+                if leaf not in block:
+                    continue
+                value = block[leaf]
+                checks[0] += 1
+                try:
+                    result = check_contract_leaf(section, leaf, family_suffix, default_cell, range_cell,
+                                                  nit=n, value=value, family=fam)
+                except SchemaParseError as exc:
+                    failures.append(f"{name}: {section}.{leaf}: {exc}")
+                    continue
+                except Exception as exc:
+                    failures.append(f"{name}: {section}.{leaf}: contract schema check raised: {exc}")
+                    continue
+                if result is None:
+                    continue  # this table row is the other family's variant
+                ok, note = result
+                if not ok:
+                    failures.append(f"{name}: {section}.{leaf}={value!r} violates the contract "
+                                     f"Card schema (expected {note})")
+                # provenance tag must be one the contract allows for this leaf.
+                checks[0] += 1
+                entry = sources.get(f"{section}.{leaf}")
+                allowed_tags = parse_contract_tags(tag_cell)
+                if entry is None or entry.get("tag") not in allowed_tags:
+                    failures.append(f"{name}: {section}.{leaf} provenance tag "
+                                     f"{entry.get('tag') if entry else None!r} not in contract tags {allowed_tags}")
+
+    # The round's own explicit-default pins the contract states only in
+    # prose, never in a Card-schema table row (see DIRECT_DEFAULTS above).
+    for name in CARD_NAMES:
+        design = raws[name]["design"]
+        for path, expected in DIRECT_DEFAULTS.items():
+            checks[0] += 1
+            value, found = _get(design, path)
+            if not found or value != expected:
+                failures.append(f"{name}: {path}={value!r} must equal the round's pinned "
+                                 f"default {expected!r}")
+
+    # MEDIUM-2 fix: drive.duty is read directly by the nanowire device
+    # (nitride_nanowire_device.py: duty = float(d.drive.duty)), not
+    # recomputed from tau_pulse_ns/rep_rate_hz -- it must already equal
+    # that product on every card, including a rep-rate sweep row.
+    for name in CARD_NAMES:
+        design = raws[name]["design"]
+        checks[0] += 1
+        expected_duty = design["drive"]["diode"]["tau_pulse_ns"] * 1e-9 * design["drive"]["rep_rate_hz"]
+        if abs(design["drive"]["duty"] - expected_duty) > 1e-12:
+            failures.append(f"{name}: drive.duty={design['drive']['duty']!r} does not equal "
+                             f"tau_pulse_ns*1e-9*rep_rate_hz={expected_duty!r}")
+
+    # acceptance-criterion-3 consistency checks (radii, d_i_nm, numeric types).
+    for name in CARD_NAMES:
+        design = raws[name]["design"]
+        n = design["nitride"]
+        nw, dot, diode = n["nanowire"], n["dot"], design["drive"]["diode"]
+        fam = nw["family"]
+
+        checks[0] += 1
+        expected_outer = nw["core_radius_nm"] if nw["shell"] == "none" else nw["core_radius_nm"] + 3.0
+        if nw["outer_radius_nm"] != expected_outer:
+            failures.append(f"{name}: outer_radius_nm={nw['outer_radius_nm']!r} inconsistent with "
+                             f"core_radius_nm/shell (expected {expected_outer!r})")
+
+        checks[0] += 1
+        if fam == "horizontal_as_built":
+            radii_ok = dot["radius_nm"] == nw["core_radius_nm"]
+        else:
+            radii_ok = 0.0 < dot["radius_nm"] < nw["core_radius_nm"]
+        if not radii_ok:
+            failures.append(f"{name}: nitride.dot.radius_nm={dot['radius_nm']!r} inconsistent with "
+                             f"family {fam!r}/core_radius_nm={nw['core_radius_nm']!r}")
+
+        checks[0] += 1
+        if not (0.0 < diode["conducting_radius_nm"] <= nw["core_radius_nm"]):
+            failures.append(f"{name}: drive.diode.conducting_radius_nm={diode['conducting_radius_nm']!r} "
+                             f"not in (0, core_radius_nm={nw['core_radius_nm']!r}]")
+
+        set_params = design["drive"].get("set_params", {})
+        if "radius_nm" in set_params:
+            checks[0] += 1
+            if set_params["radius_nm"] != dot["radius_nm"]:
+                failures.append(f"{name}: drive.set_params.radius_nm={set_params['radius_nm']!r} "
+                                 f"!= nitride.dot.radius_nm={dot['radius_nm']!r} (never core_radius_nm)")
+
+        # d_i_nm = barrier_left_nm + height_nm + barrier_right_nm (contract
+        # "Families and common card contract"): this round's cards all use
+        # the V-tagged 2013-transferred geometry, so d_i_nm must reproduce
+        # the ledger's own barrier/disc-height total.
+        checks[0] += 1
+        d_i_nm = nw["barrier_left_nm"] + dot["height_nm"] + nw["barrier_right_nm"]
+        expected_d_i_nm = geom["barrier_left_nm"] + geom["disc_height_nm"] + geom["barrier_right_nm"]
+        if d_i_nm != expected_d_i_nm:
+            failures.append(f"{name}: d_i_nm (barrier_left+height+barrier_right)={d_i_nm!r} != "
+                             f"the deshpande2013_geometry total {expected_d_i_nm!r}")
+
+        # Numeric-typed leaves must not have drifted into a YAML string
+        # (e.g. a quoted "12.5" instead of 12.5): every leaf this section's
+        # Card-schema rows classify as numeric-default must still be a
+        # Python int/float (and not bool, which is an int subclass) on disk.
+        for section, rows in SCHEMA_ROWS.items():
+            block = _BLOCK_ACCESSOR[section](n, design["drive"])
+            for cells in rows:
+                leaf, family_suffix, default_cell, range_cell, _tag = _parse_row_cells(section, cells)
+                if leaf not in block or (family_suffix is not None and family_suffix != fam):
+                    continue
+                value = block[leaf]
+                if value is None or isinstance(value, bool) or isinstance(value, str):
+                    continue
+                nums = _numbers_in(default_cell)
+                looks_numeric = bool(nums) and not default_cell.strip().startswith(("`", "None", "required"))
+                if looks_numeric:
+                    checks[0] += 1
+                    if not isinstance(value, (int, float)):
+                        failures.append(f"{name}: {section}.{leaf}={value!r} is not numeric "
+                                         f"(type {type(value).__name__})")
 
     # ================================================== acceptance criterion 2 (deep diff)
     h_pulse = raws[CARD_NAMES[0]]["design"]
