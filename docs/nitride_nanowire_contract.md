@@ -422,7 +422,7 @@ leaf and its default/range apply identically to `horizontal_as_built` and
 | --- | --- | --- | --- | --- |
 | `family` | enum | required | `horizontal_as_built`, `vertical_photonic` | A |
 | `core_radius_nm` (horizontal) | nm | 12.5 | `{10,12.5,15,20,25,40}` | V (2013 optical diameter/2) |
-| `core_radius_nm` (vertical) | nm | 100.0 | `{60,80,100,120}` | A (design) |
+| `core_radius_nm` (vertical) | nm | 80.0 | `{60,80,100,120}` | A (design; 80 nm is the single-mode default at the relaxed headline wavelength 543 nm, V 2.04 < 2.405; 100 nm sits above the LP11 cutoff there and is a sweep-axis value only, headline_eligible False) |
 | `outer_radius_nm` | nm | equal to `core_radius_nm` (shell none); `core_radius_nm+3` (shell AlGaN) | `>= core_radius_nm` | A |
 | `strain_bound` | enum | required | `unrelaxed`, `relaxed` | DR (scenario label) |
 | `shell` | enum | `none` | `none`, `AlGaN` | A |
@@ -564,7 +564,7 @@ separate counting gate). The verifier asserts this leaf set equals
 | `occupancy_control_known` | bool | `False` | `{False, True}` | A (honest-failure flag, not a physics input) |
 | `second_pair_control_known` | bool | `False` | `{False, True}` | A (honest-failure flag, not a physics input) |
 
-### `drive.set_params` (SET/`deterministic_pair` regime only, both families)
+### `drive.set_params` (present on EVERY nanowire card, both families: the Coulomb screen `set_*` is computed on every row as a non-gating diagnostic, so `R_T_ohm`, `eps_r`, `ec_margin` are required on pulse cards too; `radius_nm` is written on SET cards only and defaults to the disc radius)
 
 | Leaf | Unit | Default | Range | Tag |
 | --- | --- | --- | --- | --- |
