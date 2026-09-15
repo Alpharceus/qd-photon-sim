@@ -63,6 +63,17 @@ def raises(fn):
     return False
 
 
+def _catch(fn):
+    """Call fn() with no arguments and return the exception it raised (any
+    type), or None if it did not raise -- for asserting on an error
+    MESSAGE (MEDIUM 3's named-error checks), not just "raised/did not"."""
+    try:
+        fn()
+    except Exception as exc:
+        return exc
+    return None
+
+
 def nan_eq(a, b):
     """Recursive NaN-aware equality (verify_nitride_geometry_device.py's
     convention): floats, bools, strings, nested lists/tuples and dicts all
@@ -110,6 +121,75 @@ def _contract_row_columns():
 CONTRACT_COLUMNS = _contract_row_columns()
 check("contract Row-columns section parses to a nonempty, plausible column list", len(CONTRACT_COLUMNS) > 100)
 
+# --------------------------------------------------------------- MEDIUM 3: contract-parsing robustness
+
+
+class _FakeContractPath:
+    """A duck-typed stand-in for _CONTRACT_PATH's Path interface (no real
+    temp file -- in-memory fixture per the spec's sandbox rule)."""
+    def __init__(self, text=None, missing=False):
+        self._text = text; self._missing = missing
+
+    def read_text(self, encoding="utf-8"):
+        if self._missing:
+            raise FileNotFoundError(str(self))
+        return self._text
+
+    def __str__(self):
+        return "<fake contract path>"
+
+
+import warnings as _warnings
+
+_orig_contract_path = dev._CONTRACT_PATH
+try:
+    dev._CONTRACT_PATH = _FakeContractPath(missing=True)
+    with _warnings.catch_warnings(record=True) as _w:
+        _warnings.simplefilter("always")
+        _fallback_cols = dev._contract_row_columns()
+    check("MEDIUM 3: a missing contract doc falls back to the frozen column list (not a bare FileNotFoundError)",
+          _fallback_cols == list(dev._FROZEN_CONTRACT_COLUMNS))
+    check("MEDIUM 3: a missing contract doc warns once (not silent)",
+          any(issubclass(x.category, RuntimeWarning) for x in _w))
+
+    dev._CONTRACT_PATH = _FakeContractPath(text="# Contract\n\nNo Row columns heading here.\n\n## Sweep grid\n")
+    check("MEDIUM 3: a doc missing the '## Row columns' heading fails loudly, naming that heading",
+          "Row columns" in str(_err) if (_err := _catch(dev._contract_row_columns)) else False)
+
+    dev._CONTRACT_PATH = _FakeContractPath(text="# Contract\n\n## Row columns\n\n`foo_col`, `bar_col`.\n\n(No closing heading here.)\n")
+    check("MEDIUM 3: a doc missing the closing '## Sweep grid' heading fails loudly, naming that heading",
+          "Sweep grid" in str(_err) if (_err := _catch(dev._contract_row_columns)) else False)
+finally:
+    dev._CONTRACT_PATH = _orig_contract_path
+
+# MEDIUM 3: the frozen fallback must not have silently drifted from the
+# live contract doc (a real content change to the Row-columns section
+# should be reflected here too, not just in CONTRACT_COLUMNS above).
+check("MEDIUM 3: the frozen fallback column list matches a live parse of the real contract doc",
+      list(dev._FROZEN_CONTRACT_COLUMNS) == dev._contract_row_columns())
+
+# MEDIUM 3 (generalization, not just today's fixed list): a synthetic
+# section demonstrates the STRUCTURAL depth-based rule -- a real column at
+# paren depth 0 is kept, a citation/reference nested inside parens
+# (including one spanning multiple lines, and one whose own closing colon
+# sits inside the parenthetical) is excluded, with no per-word denylist
+# entry required for the new citation.
+_synthetic_section = (
+    "Some intro sentence naming `evaluate_nanowire` before any column list.\n\n"
+    "Identity: `real_column_one`, `real_column_two` (see `some_future_citation`,\n"
+    "commit `abcdef1`: added in a later round) and `real_column_three`.\n\n"
+    "`formula_column = real_column_one + real_column_two`.\n"
+)
+_synthetic_cols = dev._parse_row_columns_section(_synthetic_section)
+check("MEDIUM 3: depth-based parser keeps depth-0 columns and the formula LHS",
+      {"real_column_one", "real_column_two", "real_column_three", "formula_column"} <= set(_synthetic_cols))
+check("MEDIUM 3: depth-based parser excludes a multi-line citation nested in parens (no denylist entry needed)",
+      "some_future_citation" not in _synthetic_cols and "abcdef1" not in _synthetic_cols)
+check("MEDIUM 3: depth-based parser excludes the opening sentence's function-name citation",
+      "evaluate_nanowire" not in _synthetic_cols)
+# (The "broken row-key fixture names itself" check lives further down,
+# after card() is defined -- see MEDIUM 3 section 2.)
+
 
 # --------------------------------------------------------------- card builder
 
@@ -117,9 +197,10 @@ def card(family="horizontal_as_built", regime="rectangular", T_hs=300.0,
          strain_bound="relaxed", core=None, outer=None, disc=None,
          R_s_ohm=None, x_in=0.40, occupied_dot_access=0.05, I_uA=0.02,
          rep_rate_hz=80e6, tau_pulse_ns=0.1, eta_total=0.01,
+         shell_multiplier=1.0,
          extra_nanowire=None, extra_dot=None, extra_drive_kw=None,
          extra_diode=None, extra_set_params=None, extra_photonics=None,
-         extra_thermal=None, aperture=None):
+         extra_thermal=None, extra_surface=None, extra_nitride=None, aperture=None):
     if core is None: core = 12.5 if family == "horizontal_as_built" else 80.0
     if disc is None: disc = core if family == "horizontal_as_built" else 12.5
     if outer is None: outer = core
@@ -143,14 +224,24 @@ def card(family="horizontal_as_built", regime="rectangular", T_hs=300.0,
                       "eta_total": eta_total, "f_Rs_local": 1.0, "R_s_ohm": R_s_ohm,
                       "C_parasitic_F": 0.0}
     if extra_thermal: thermal_block.update(extra_thermal)
+    # HIGH 1 (fix-3): shell_multiplier is set EXPLICITLY here (not merely
+    # left to NitrideNanowireSurfaceParams's own class default) so that a
+    # test which asks for shell='AlGaN' (via extra_nanowire) exercises the
+    # real card shape the fix actually guards -- a card that also states
+    # nitride.surface.shell_multiplier, not one relying on an unstated
+    # class default to accidentally look right.
+    surface = {"occupied_dot_access": occupied_dot_access, "shell_multiplier": shell_multiplier}
+    if extra_surface: surface.update(extra_surface)
+    nitride = {"tau_rad0_ns": 1.0, "tau_cap_ps": 10.0, "nanowire": nanowire, "dot": dot,
+               "surface": surface, "photonics": photonics, "wire_thermal": thermal_block,
+               "injector": {}}
+    if extra_nitride: nitride.update(extra_nitride)
     kw = dict(platform="ingan_gan_nanowire",
         dot=DotBlock(linewidth="anchored", lineshape="lorentzian", gamma300=3.0),
         ret=RetentionBlock(mode="nitride_confinement"),
         drive=DriveBlock(**drive_kw), thermal=ThermalBlock(T_hs=T_hs),
         cavity=CavityBlock(enabled=False), emission=EmissionBlock(type="nanowire"),
-        nitride={"tau_rad0_ns": 1.0, "tau_cap_ps": 10.0, "nanowire": nanowire, "dot": dot,
-                 "surface": {"occupied_dot_access": occupied_dot_access},
-                 "photonics": photonics, "wire_thermal": thermal_block, "injector": {}})
+        nitride=nitride)
     if aperture is not None: kw["aperture"] = aperture
     return DeviceDesign(**kw)
 
@@ -259,6 +350,25 @@ def bad_R_s_contradiction():
     d = card(extra_diode={"R_s_ohm": 1.0}); return evaluate(d)
 
 
+# MEDIUM 4 (fix-3): top-level nitride allow-list -- QW/wetting-layer/cavity
+# leaves have no meaning for a nanowire card and must be rejected by name,
+# not silently ignored.
+def bad_nitride_qw_leaf():
+    return evaluate(card(extra_nitride={"qw": {"wl_thickness_nm": 3.0}}))
+
+
+def bad_nitride_wl_leaf():
+    return evaluate(card(extra_nitride={"wl": {"thickness_nm": 3.0}}))
+
+
+def bad_nitride_cavity_leaf():
+    return evaluate(card(extra_nitride={"cavity": {"Q": 5000.0}}))
+
+
+def bad_nitride_unknown_leaf():
+    return evaluate(card(extra_nitride={"bogus_leaf": 1.0}))
+
+
 for name, fn in (
     ("missing nitride.surface block", bad_missing_block),
     ("unknown family", bad_family),
@@ -283,6 +393,10 @@ for name, fn in (
     ("HIGH 3: nitride.surface.shell contradicts nitride.nanowire.shell", bad_shell_contradiction),
     ("LOW 14: drive.eta_load != 1.0", bad_eta_load),
     ("LOW 13: drive.diode.R_s_ohm contradicts nitride.wire_thermal.R_s_ohm", bad_R_s_contradiction),
+    ("MEDIUM 4: nitride.qw is unrecognized on a nanowire card", bad_nitride_qw_leaf),
+    ("MEDIUM 4: nitride.wl is unrecognized on a nanowire card", bad_nitride_wl_leaf),
+    ("MEDIUM 4: nitride.cavity is unrecognized on a nanowire card", bad_nitride_cavity_leaf),
+    ("MEDIUM 4: unknown top-level nitride leaf is rejected", bad_nitride_unknown_leaf),
 ):
     check("rejects: " + name, raises(fn))
 
@@ -456,15 +570,31 @@ check("HIGH 2: external_field_kVcm is reported separately on the row",
 
 # HIGH 3: nitride.nanowire.shell propagates to surface (shell_multiplier_used,
 # k_side_ns, k_X_ns all move for an AlGaN shell vs the 'none' default).
+# HIGH 1 (fix-3): shell_multiplier is now stated EXPLICITLY on both cards
+# (via card()'s own shell_multiplier= knob, default 1.0) so this exercises
+# the real card shape the fix-3 guard checks, not an unstated class default.
 _s_none = evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed"))["scalars"]
 _s_algan = evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
-                          outer=15.5, extra_nanowire={"shell": "AlGaN"}))["scalars"]
+                          outer=15.5, extra_nanowire={"shell": "AlGaN"}, shell_multiplier=0.1))["scalars"]
 check("HIGH 3: AlGaN shell changes shell_multiplier_used vs shell='none'",
       not close(_s_algan["shell_multiplier_used"], _s_none["shell_multiplier_used"], rel=1e-9))
 check("HIGH 3: AlGaN shell changes k_X_ns vs shell='none'",
       not close(_s_algan["k_X_ns"], _s_none["k_X_ns"], rel=1e-6))
 check("HIGH 3: k_side_ns itself is geometry-only (unaffected by the shell factor, only the occupied-dot/reservoir channels are)",
       close(_s_algan["k_side_ns"], _s_none["k_side_ns"], rel=1e-9))
+
+# HIGH 1 (fix-3): nitride.surface.shell_multiplier is cross-checked against
+# the declared shell instead of silently accepted regardless of value.
+check("HIGH 1: shell='AlGaN' with shell_multiplier=1.0 (no passivation effect) is rejected",
+      raises(lambda: evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
+                                    outer=15.5, extra_nanowire={"shell": "AlGaN"}, shell_multiplier=1.0))))
+check("HIGH 1: shell='none' with shell_multiplier!=1.0 is rejected",
+      raises(lambda: evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
+                                    shell_multiplier=0.5))))
+check("HIGH 1: AlGaN shell with the contract's 0.1 default multiplier gives k_X_ns ~= 0.0112",
+      close(_s_algan["k_X_ns"], 0.0112, rel=0, abs_=2e-4))
+check("HIGH 1: shell_multiplier_used reports the effective 0.1 for the AlGaN card",
+      close(_s_algan["shell_multiplier_used"], 0.1, rel=1e-9))
 
 # M10 / surface-double-count: k_X_ns/k_XX_ns reported on the row already
 # include the occupied-dot surface channel exactly once; recompute
@@ -489,6 +619,18 @@ from fsim_core.device import _nitride_reservoir_energy_eV
 _res_e = _nitride_reservoir_energy_eV({}, hz["T_j"], {})
 check("M16: reservoir energy is the GaN barrier edge (device._nitride_reservoir_energy_eV), not E_X+0.05",
       _res_e - hz["E_X_eV"] > 0.1 and not close(_res_e, hz["E_X_eV"] + 0.05, rel=0, abs_=1e-6))
+
+# MEDIUM 4 (fix-3): nitride.reservoir_energy_eV is an allow-listed top-level
+# override, honored through the SAME planar helper/"background" dict
+# convention device.py's own nitride path uses -- previously dropped
+# unconditionally (background={} regardless of the card).
+_d_res_override = card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
+                        extra_nitride={"reservoir_energy_eV": 2.9})
+_s_res_override = evaluate(_d_res_override)["scalars"]
+check("MEDIUM 4: nitride.reservoir_energy_eV overrides the reservoir energy used by evaluate_injection (accepted_background_s moves)",
+      not close(_s_res_override["accepted_background_s"], hz["accepted_background_s"], rel=1e-6))
+check("MEDIUM 4: an invalid (non-positive) nitride.reservoir_energy_eV yields an explicit invalid row, not a silent value",
+      evaluate(card(extra_nitride={"reservoir_energy_eV": -1.0}))["scalars"]["valid"] is False)
 
 # Collection applied twice (structural, source-level): eta_collection_X/XX
 # must be passed as pulse_counting's t_X/t_XX argument WITHOUT eta_out
@@ -525,6 +667,54 @@ check("MEDIUM 8: eta_out is 1.0 (full transmission) when drive.filter.enabled is
 check("MEDIUM 8: eta_out with the filter enabled and narrower than the line differs from the disabled case",
       not close(_s_filt_on["eta_out"], _s_filt_off["eta_out"], rel=1e-6))
 
+# Coordinator addition (cards review, fix-3): NitrideNanowirePhotonicsParams
+# requires dipole_weights to be an actual Python tuple, but a YAML/JSON
+# card can only express a list -- coerce a 3-element list/tuple to a tuple
+# of floats at the card boundary so the contract's cplane_only sensitivity
+# (dipole_weights=[0.0, 0.5, 0.5]) is reachable from a card at all, and
+# reject a wrong-length list/tuple by name.
+_s_dipole_default = evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed"))["scalars"]
+_s_dipole_cplane = evaluate(card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
+                                  extra_photonics={"dipole_weights": [0.0, 0.5, 0.5]}))["scalars"]
+check("dipole_weights: a 3-element list from a card is accepted (coerced to a tuple), not rejected as 'must be a 3-tuple'",
+      _s_dipole_cplane["valid"] is True)
+check("dipole_weights=[0.0, 0.5, 0.5] moves gamma_X_ns relative to the isotropic default",
+      not close(_s_dipole_cplane["gamma_X_ns"], _s_dipole_default["gamma_X_ns"], rel=1e-6))
+check("dipole_weights=[0.0, 0.5, 0.5] moves degree_of_linear_polarization relative to the isotropic default",
+      not close(_s_dipole_cplane["degree_of_linear_polarization"], _s_dipole_default["degree_of_linear_polarization"], rel=1e-6))
+check("dipole_weights: a wrong-length list (2 elements) is rejected with a named error",
+      raises(lambda: evaluate(card(extra_photonics={"dipole_weights": [0.3, 0.7]}))))
+
+# LOW 8 (fix-3, structural): a non-finite signal must report a NaN flux, not
+# max(0.0, nan)==0.0 (Python's nan-comparisons-always-False behavior would
+# otherwise silently report "zero photons collected"). Unreachable through
+# a full row today (a non-finite signal already makes rho/g2 non-finite,
+# which independently marks the row invalid and NaN-fills every column
+# through the invalid-row path -- confirmed by the review), so this is a
+# structural source check of the specific guard, not a row-level probe.
+check("LOW 8: collected_flux_pulsed_s uses an explicit NaN guard instead of a bare max(0.0, signal)",
+      "_nan() if not math.isfinite(signal) else rep_v * max(0.0, signal)" in DEVICE_SRC)
+
+# LOW 6 (fix-3): the reservoir background must be attenuated by the
+# detuning-aware flat-spectrum acceptance (device._nitride_flat_background_
+# acceptance), NOT the on-resonance X-line eta_out -- the reservoir sits
+# reservoir_offset_meV away from the X line (hundreds of meV), so a narrow
+# filter should reject it far more than the on-resonance line.
+from fsim_core.device import _nitride_flat_background_acceptance as _bg_accept_fn
+_res_e_bg = _nitride_reservoir_energy_eV({}, _s_filt_on["T_j"], {})
+_reservoir_offset_meV = (_res_e_bg - _s_filt_on["E_X_eV"]) * 1e3
+_bg_accept_expected = float(_bg_accept_fn(1.0, 1.0, 0.5, 0.0, _reservoir_offset_meV))
+check("LOW 6: with the filter enabled, the detuning-aware background acceptance differs from the on-resonance eta_out",
+      not close(_bg_accept_expected, _s_filt_on["eta_out"], rel=1e-3))
+_gate_bg = min(_s_filt_on["gate_ns_used"], _d_filt_on.drive.diode["tau_pulse_ns"])
+_bg_counts_expected = _s_filt_on["accepted_background_s"] * _gate_bg * 1e-9 * _bg_accept_expected * _s_filt_on["eta_collection_X"]
+_sx_expected = _s_filt_on["eta_out"] * _s_filt_on["mean_counts_x"]
+if math.isfinite(_sx_expected): _bg_counts_expected += _d_filt_on.drive.b_res * _sx_expected
+check("LOW 6: background_flux_s reproduces the detuning-aware acceptance formula exactly",
+      close(_s_filt_on["background_flux_s"], _s_filt_on["rep_rate_hz"] * _bg_counts_expected, rel=1e-6))
+check("LOW 6: with the filter disabled, background acceptance is full transmission (1.0), same as eta_out",
+      close(_s_filt_off["eta_out"], 1.0))
+
 
 # --------------------------------------------------------------- 4. Coulomb anchors and radius sweeps
 
@@ -545,7 +735,7 @@ check("E_C/kT wall: deterministic loading fails set_feasible at 230-300 K, core_
 # its contract-declared core+3 -- still leaves disc (the Coulomb-charged
 # island) untouched, which is the property this sweep tests.
 _vert_base = card(family="vertical_photonic", regime="deterministic_pair")
-_vert_outer = card(family="vertical_photonic", regime="deterministic_pair", outer=83.0, extra_nanowire={"shell": "AlGaN"})
+_vert_outer = card(family="vertical_photonic", regime="deterministic_pair", outer=83.0, extra_nanowire={"shell": "AlGaN"}, shell_multiplier=0.1)
 _vert_disc = card(family="vertical_photonic", regime="deterministic_pair", disc=15.0)
 _sb, _so, _sd = (evaluate(x)["scalars"] for x in (_vert_base, _vert_outer, _vert_disc))
 check("disc-radius sweep moves the Coulomb screen (set_E_C_meV changes)",
@@ -686,12 +876,30 @@ check("missing RT injector occupancy/second-pair controls fail rti_feasible with
       _det_set["rti_feasible"] is False
       and any("occupancy_control_unspecified" in c or "second_pair_control_unspecified" in c for c in _det_set["rti_failed_checks"]))
 
+# LOW 12 (fix-3, documentation/structural): the injector is deliberately
+# priced at the transport depletion field ALONE (DEVICE-PIECE addendum),
+# unlike sysB's level feedback which adds ext_field_kVcm on top -- confirm
+# the injector call site does not also add ext_field_kVcm.
+check("LOW 12: injector_feasibility's field_kVcm argument is the depletion field alone (not ext_field_kVcm + depletion_field_kVcm)",
+      "field_kVcm=inj[\"depletion_field_kVcm\"],\n            gate_ns=" in DEVICE_SRC)
+
 
 # --------------------------------------------------------------- 6. invalid-row equality, lifetimes, curves
 
 def bad_pulse_card():
     return card(extra_diode={"tau_pulse_ns": 0.0})
 
+
+# LOW 9 (fix-3): the pulse==period boundary itself (not just pulse<=0) was
+# untested -- LOW 15 (fix-2 round 2) made this platform's loading window
+# strictly < the period (stricter than the planar `>`), but nothing
+# exercised the equality boundary specifically.
+def bad_pulse_equals_period():
+    return card(extra_diode={"tau_pulse_ns": 1e9 / 80e6})  # == the default period exactly
+
+
+check("LOW 9: tau_pulse_ns == period exactly is rejected as invalid (not accepted at the boundary)",
+      evaluate(bad_pulse_equals_period())["scalars"]["valid"] is False)
 
 d_bad = bad_pulse_card()
 fresh = evaluate(d_bad, T_grid=None)["scalars"]
@@ -720,6 +928,86 @@ for _key, _r in rows.items():
     check(f"HIGH 1: valid row key set equals the module's own full row-key set: {_key}",
           set(_r["scalars"]) == set(dev._row_keys()))
 
+# MEDIUM 3 (fix-3), section 2: a broken row-key fixture raises a NAMED
+# error identifying the fixture (not a bare traceback pointing at
+# _validate()/_one_raw() with no hint that the FIXTURE, not a real card,
+# needs fixing). Placed here (after card() is defined) rather than beside
+# the doc-parsing MEDIUM 3 checks above.
+_orig_fixture_design = dev._row_key_fixture_design
+_orig_row_keys_cache = dev._ROW_KEYS_CACHE
+try:
+    dev._row_key_fixture_design = lambda: card(extra_dot={"height_nm": -1.0})  # malformed: fails card-shape validation
+    dev._ROW_KEYS_CACHE = None
+    _fixture_err = _catch(dev._row_keys)
+    check("MEDIUM 3: a broken row-key fixture names _row_key_fixture_design in the raised error",
+          _fixture_err is not None and "_row_key_fixture_design" in str(_fixture_err))
+finally:
+    dev._row_key_fixture_design = _orig_fixture_design
+    dev._ROW_KEYS_CACHE = _orig_row_keys_cache
+
+# MEDIUM 2 (fix-3): the two HIGH-1 key-SET checks above are tautologies by
+# construction for VALUE regressions -- dev._row_keys() is contract-columns
+# UNION fixture-keys, and _one() always pre-fills that exact key set before
+# merging in the raw success-path dict, so dropping a genuinely-computed
+# column from the row literal just leaves it NaN under the SAME key (the
+# key set never shrinks) -- invisible to a key-set-only check. Replaced
+# with (kept alongside the still-legitimate key-set checks, which do catch
+# a row producing an UNEXPECTED extra key) a VALUE-level check: every
+# contract column the contract marks as always-present must be non-NaN on
+# a genuinely valid row, with two named, independently-confirmed exceptions
+# from dependency modules this piece does not own:
+#   - blocked_load_probability: only meaningful for deterministic_pair (SET)
+#     rows; pulse_counting.pulse_g2 does not return it at all.
+#   - rti_required_bias_shift_meV: piece 6's own diagnostic (nitride_
+#     nanowire_injector.py), NaN whenever no bias-shift candidate applies.
+_LEGITIMATELY_NAN_ON_VALID_ROWS = {
+    "blocked_load_probability": lambda s: s["cycle_loading"] != "deterministic_pair",
+    "rti_required_bias_shift_meV": lambda s: True,
+}
+_valid_scalars_all = [r["scalars"] for r in rows.values() if r["scalars"]["valid"]]
+_unexpected_nan = set()
+for _s in _valid_scalars_all:
+    for _col in CONTRACT_COLUMNS:
+        _v = _s.get(_col)
+        if isinstance(_v, float) and math.isnan(_v):
+            _allow = _LEGITIMATELY_NAN_ON_VALID_ROWS.get(_col)
+            if _allow is None or not _allow(_s):
+                _unexpected_nan.add((_col, _s["family"], _s["cycle_loading"], _s["strain_bound"]))
+check("MEDIUM 2: every always-present contract column is genuinely non-NaN on a valid row (two named, dependency-owned exceptions aside)",
+      not _unexpected_nan)
+if _unexpected_nan:
+    print("  unexpectedly NaN:", sorted(_unexpected_nan))
+
+# MEDIUM 2: dropping a genuinely-computed column from _one_raw's success
+# path (monkeypatched) IS caught by the value-level guard above, even
+# though it is invisible to the key-set checks (the key stays, only the
+# value goes NaN).
+_orig_one_raw = dev._one_raw
+_DROPPED_KEYS = ("mu", "V_terminal", "eta_inj", "degree_of_linear_polarization")
+
+
+def _dropping_one_raw(d, T_hs):
+    raw = _orig_one_raw(d, T_hs)
+    if raw.get("valid"):
+        for _k in _DROPPED_KEYS:
+            raw.pop(_k, None)
+    return raw
+
+
+dev._one_raw = _dropping_one_raw
+try:
+    _dropped_row = dev._one(card(family="horizontal_as_built", regime="deterministic_pair", strain_bound="relaxed"), 300.0)
+finally:
+    dev._one_raw = _orig_one_raw
+_dropped_still_present = set(_DROPPED_KEYS) <= set(_dropped_row)
+_dropped_all_nan = all(isinstance(_dropped_row.get(k), float) and math.isnan(_dropped_row[k]) for k in _DROPPED_KEYS)
+check("MEDIUM 2: dropping mu/V_terminal/eta_inj/degree_of_linear_polarization from _one_raw leaves the key set unchanged (the tautological check's blind spot)",
+      _dropped_row["valid"] is True and _dropped_still_present and _dropped_all_nan)
+check("MEDIUM 2: the SAME drop is caught by the value-level guard as unexpectedly-NaN",
+      set(_DROPPED_KEYS) <= {c for c in CONTRACT_COLUMNS
+                              if isinstance(_dropped_row.get(c), float) and math.isnan(_dropped_row[c])
+                              and c not in _LEGITIMATELY_NAN_ON_VALID_ROWS})
+
 # LOW 20 (fix-2 round 2): not_applicable is reserved for pulse (rectangular)
 # rows; an invalid deterministic_pair (SET) row must report set_feasible
 # False, not the pulse-regime sentinel.
@@ -740,6 +1028,25 @@ check("MEDIUM 7: thermal-solve failure reports thermal_converged False (not NaN)
       s_thermal_fail["valid"] is False and s_thermal_fail["thermal_converged"] is False)
 check("MEDIUM 7: a converged operating point reports thermal_converged True",
       hz["thermal_converged"] is True)
+
+# MEDIUM 5 (fix-3): the catch-all exception handler keeps every coordinate
+# already genuinely resolved before the exception hit (T_j,
+# thermal_iterations, thermal_converged, field_kVcm), instead of dropping
+# them to the row-level NaN/False defaults regardless of progress. x_in=1.0
+# (pure InN) converges the thermal solve at T_j~325.2 K, then fails later
+# (photonics response()'s si_complex_index lambda-range check) -- the
+# review's own confirmed repro of the previous round's bug.
+d_x_in_fail = card(family="horizontal_as_built", regime="rectangular", strain_bound="relaxed", x_in=1.0)
+s_x_in_fail = evaluate(d_x_in_fail)["scalars"]
+check("MEDIUM 5: a chain failure after the thermal solve still reports the real T_j (not NaN)",
+      s_x_in_fail["valid"] is False and math.isfinite(s_x_in_fail["T_j"])
+      and close(s_x_in_fail["T_j"], 325.2, rel=0, abs_=0.1))
+check("MEDIUM 5: the same row keeps thermal_iterations/thermal_converged from the successful thermal solve",
+      s_x_in_fail["thermal_converged"] is True and s_x_in_fail["thermal_iterations"] > 0)
+check("MEDIUM 5: the same row keeps field_kVcm from the successful injection solve (failure is later, in photonics)",
+      math.isfinite(s_x_in_fail["field_kVcm"]))
+check("MEDIUM 5: invalid_reasons names the actual downstream failure (photonics lambda range), not a generic message",
+      any("si_complex_index" in r or "lambda_nm" in r for r in s_x_in_fail["invalid_reasons"]))
 
 # lifetimes: independent arithmetic from the row's own rates.
 hz2 = rows[("horizontal_as_built", "rectangular", "unrelaxed")]["scalars"]
@@ -811,13 +1118,18 @@ check("MEDIUM 9: a valid partner below the 1000/s optical floor reports not_comp
 
 # vertical headline eligibility (M12, non-contract bonus column): a wide
 # vertical core pushed above the LP11 cutoff must not be headline-eligible.
+# LOW 7 (fix-3): removed the unconditional check(..., True) else-branch
+# (a silent pass if V_number ever dropped at/below the cutoff for this
+# configuration) -- the precondition is asserted explicitly instead, so a
+# future photonics change that moved V_number below the cutoff here would
+# FAIL this check loudly rather than silently taking the informational
+# branch.
 s_wide = evaluate(card(family="vertical_photonic", regime="rectangular", core=120.0, outer=120.0, disc=12.5))["scalars"]
 check("headline_eligible present as a bool for vertical rows", isinstance(s_wide.get("headline_eligible"), bool))
-if s_wide["V_number"] > 2.404826:
-    check("vertical row above the LP11 cutoff (single_mode False) is never headline_eligible",
-          s_wide["single_mode"] is False and s_wide["headline_eligible"] is False)
-else:
-    check("vertical headline card is below cutoff (informational, not a failure)", True)
+check("LOW 7: this configuration's V_number is above the LP11 cutoff (test precondition)",
+      s_wide["V_number"] > 2.404826)
+check("vertical row above the LP11 cutoff (single_mode False) is never headline_eligible",
+      s_wide["single_mode"] is False and s_wide["headline_eligible"] is False)
 
 
 # --------------------------------------------------------------- injector import wiring
