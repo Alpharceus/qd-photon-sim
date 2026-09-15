@@ -1,1061 +1,906 @@
 meta:
   name: nitride-nanowire-vertical-set-design
   role: device-design
-  device: >
-    Planar In0.40Ga0.60N/GaN quantum dot in a vertical-cavity, electrically
-    driven single-photon design (fsim_core.device.DeviceDesign.platform=
-    "ingan_gan_planar"), an explicitly limited, non-gating comparison
-    against Deshpande, Frost, Hazari, Bhattacharya, Appl. Phys. Lett. 105,
-    141109 (2014), DOI 10.1063/1.4897640 (abstract only).
-  source: "nitride-cards-contract (piece 6), docs/nitride_cavity_contract.md 'Deshpande comparison'"
-  note: >
-    NON-HEADLINE comparison card, distinct from the headline 80 MHz grid
-    (cards/nitride-cavity-pulse-design.yaml, cards/
-    nitride-cavity-set-design.yaml). Uses the Deshpande 2014 paper's own
-    published conditions where stated (x_in=0.40, T_hs=300 K, rep_rate_hz=
-    2.0e8 -- the paper's own reported MAXIMUM excitation rate, not verified
-    as the g2 measurement's own rate) with finite electrical loading
-    (drive.cycle_loading=rectangular, drive.finite_pulse=true), and
-    explicit [A] placeholders (height_nm=2.0, radius_nm=12.5,
-    diode.tau_pulse_ns=0.1, I_uA=0.02) for the dot size, drive waveform and
-    amplitude the retrieved abstract does not report (motivated only by
-    the SAME group's 2013 nanowire dot-in-wire geometry, Deshpande et al.,
-    Nat. Commun. 4, 1675 (2013) -- never presented as a verified 2014
-    value). design.provenance.comparison_status=conditions_incomplete
-    records this explicitly (a provenance note, not a new/unsupported
-    design schema field). This evaluation is a REQUIRED non-gating model
-    comparison (docs/nitride_cavity_contract.md "Acceptance gates"): it is
-    an assumed-geometry transfer at the paper's reported maximum rate, not
-    a reproduction of the published experiment, and it never gates the
-    headline cards' acceptance verdict. design.provenance.transfer_
-    assumptions lists every transfer this comparison makes explicit
-    (nanowire strain relaxation removed, planar polarization/QCSE
-    restored, cavity out-coupling in place of dielectric nanowire
-    extraction, assumed optical mode volume/Q/collection, unknown drive
-    waveform/contact heating/background, unspecified raw/corrected status
-    of the published g2=0.29). This unfitted comparison cannot gate
-    headline success and is never fitted to match the published value.
-
-    Class discipline (README.md's five-way split): this card's own
-    evaluated output is (N) numerical verification of device.py's wiring
-    plus a (T)/(M) non-gating, unfitted model-vs-abstract comparison -- NOT
-    (P) held-out prediction, and NOT a reproduction of the 2014 experiment.
-    Most inputs are [A] design choices or [E] estimates; the few [V]
-    entries transcribe the 2014 abstract or the 2013 companion paper
-    unmodified, and every TRANSFER of a [V] number onto this planar 300 K
-    comparison card is itself [E] or [A], never [V].
+  device: "Designed vertical HE11 photonic-wire In0.40Ga0.60N/GaN dot-in-wire diode; never demonstrated electrically in nitrides at room temperature; extraction is an explicit [A] envelope, not a measured device."
+  source: "docs/nitride_nanowire_contract.md (piece 8 card schema); .workers/briefs/nitride-nanowire.md (User answers 1-4)"
+  note: "Gated headline card, class=headline, platform=ingan_gan_nanowire, family=vertical_photonic. Regime: idealized one-pair-per-cycle deterministic loading (SET), plus the Coulomb-blockade and resonant-tunnelling injector hardware screens (fsim_core.pulse_counting.deterministic_cycle_g2). Rewritten from the contract's own Card schema tables (not copied from any planar card); the planar comparison card cards/nitride-deshpande2014-comparison-design.yaml is untouched and remains the separate, non-gating planar reference. Independent prediction (design brief User answer 2): not fitted to the 2013/2014 held-out lifetime/g2 anchors."
 
 design:
-  name: nitride-deshpande2014-comparison-design
+  name: nitride-nanowire-vertical-set-design
   platform: ingan_gan_nanowire
 
   dot:
     linewidth: anchored
     lineshape: lorentzian
-    gamma0: 1.0
-    a_ac: 0.03
-    E_LO: 91.5
     gamma300: 35.0
-    r_xx: 1.0
-    delta_xx: -10.0
 
   ret:
     mode: nitride_confinement
-    channel: min
-    tau_cap_ps: 10.0
     tau_cap_scales_with_density: false
-    b0: 0.0
-    beta: 0.0
 
   drive:
     mode: EL-transport
     diode:
       preset: nitride-nanowire
       tau_pulse_ns: 0.1
-      N_A: 1.0e+17
-      N_D: 1.0e+18
-    finite_pulse: true
+      conducting_radius_nm: 80.0
+      N_A: 5.0e+17
+      N_D: 3.0e+18
+      n_ideality: 2.0
+      tau_SRH_ns: 0.01
+      eps_r: 10.28
+      T: 300.0
+      tau_matrix_ns: 1.0
     cycle_loading: deterministic_pair
     rep_rate_hz: 2.0e+8
     duty: 0.02
     gate_ns: null
-    I_uA: 0.02
+    I_uA: 2.0e-3
     cw: false
     b_res: 0.1
-    set_params: {R_T_ohm: 1.0e+6, eps_r: 9.5, ec_margin: 10.0}
+    eta_load: 1.0
+    set_params: {R_T_ohm: 1.0e+6, eps_r: 9.5, ec_margin: 10.0, radius_nm: 12.5}
 
   thermal:
     T_hs: 300.0
-    mesa_diameter_um: 20.0
-    layers:
-      - name: "GaN epi film"
-        t_um: 2.0
-        k300: 130.0
-        alpha: 0.5
-        spread: false
-      - name: "dielectric DBR + contact stack (effective)"
-        t_um: 1.0
-        k300: 2.0
-        alpha: 0.0
-        spread: false
-    substrate:
-      name: Si
-      k300: 150.0
-      alpha: 1.3
 
   cavity:
     enabled: false
-    type: none
+
+  filter:
+    enabled: true
+    auto_w: true
+    auto_w_scale: 1.0
+    w: 2.0
+    dx: 0.0
+    track: mode
+    track_material: ""
+    hold_window: false
+
+  aperture: {}
 
   emission:
     type: nanowire
 
-  filter: {}
-
-  aperture: {}
-
   nitride:
-    nanowire: {family: vertical_photonic, core_radius_nm: 100.0, outer_radius_nm: 100.0, strain_bound: unrelaxed, shell: none, barrier_left_nm: 15.0, barrier_right_nm: 15.0}
-    surface: {S_cm_s: 1.0e+3, shell: none, shell_multiplier: 0.1, reservoir_access: 1.0, occupied_dot_access: 1.0}
-    photonics: {family: vertical_photonic, NA: 0.5, radiative_rate_factor: 1.0}
-    wire_thermal: {Rth_K_W: 1.0e+7, R_s_ohm: 1.0e+6, f_Rs_local: 1.0, eta_total: 0.01, C_parasitic_F: 0.0}
-    injector: {occupancy_control_known: false, second_pair_control_known: false}
+    nanowire:
+      family: vertical_photonic
+      core_radius_nm: 80.0
+      outer_radius_nm: 80.0
+      strain_bound: relaxed
+      shell: none
+      barrier_left_nm: 15.0
+      barrier_right_nm: 15.0
     dot:
-      height_nm: 2.0
       radius_nm: 12.5
+      height_nm: 2.0
       x_in: 0.40
-      strain_fraction: 1.0
+      strain_fraction: 0.0
       screening_fraction: 0.0
       external_field_kVcm: 0.0
       vbo_InN_GaN_eV: 1.15
       strain_c_fraction: 0.7
-    cavity:
-      Q: 2000.0
-      mode_volume_norm: 2.0
-      spatial_overlap: 1.0
-      eta_out: 0.1
-      T_track: 300.0
-      dEdT_cav_meV_K: -0.04
-      detuning_offset_meV: 0.0
-      purcell_enabled: true
+      k_intrinsic_ns: 0.0
+    surface:
+      S_cm_s: 1.0e+3
+      shell: none
+      shell_multiplier: 1.0
+      reservoir_access: 1.0
+      occupied_dot_access: 0.05
+    photonics:
+      family: vertical_photonic
+      NA: 0.5
+      n_wire: null
+      n_group_override: null
+      n_ambient: 1.0
+      n_oxide: null
+      oxide_thickness_nm: 100.0
+      n_substrate: null
+      emitter_height_nm: null
+      collection_scale: 1.0
+      radiative_rate_factor: 1.0
+      beta_scale: 1.0
+      taper_transmission: 1.0
+      bottom_reflectivity: 0.0
+      top_contact_transmission: 1.0
+      propagation_transmission: 1.0
+      unguided_collection_scale: 0.0
+      taper_output_mfr_nm: null
+    wire_thermal:
+      R_s_ohm: 1.0e+6
+      Rth_K_W: 1.0e+7
+      f_Rs_local: 1.0
+      eta_total: 0.01
+      C_parasitic_F: 0.0
+    injector:
+      al_fraction: 0.30
+      electron_topology: double_barrier
+      hole_topology: double_barrier
+      electron_barrier_thickness_nm: 2.0
+      hole_barrier_thickness_nm: 2.0
+      electron_well_width_nm: 4.0
+      hole_well_width_nm: 4.0
+      growth_step_nm: 0.2593
+      growth_tolerance_steps: 1.0
+      me_barrier_override: null
+      mh_barrier_override: null
+      dEc_eV_override: null
+      dEv_eV_override: null
+      me_well: 0.209
+      mh_well: 1.88
+      delta_Ev_GaN_AlN_eV: 0.70
+      n_cm3: 3.0e+18
+      p_cm3: 5.0e+17
+      alignment_uncertainty_meV: 15.0
+      degeneracy: 2.0
+      reservoir_state_count_e: 1.0
+      reservoir_state_count_h: 1.0
+      mg_acceptor_energy_meV: 170.0
+      include_polarization: true
+      bypass_prefactor: 1.0
+      polarity: Ga
+      field_leverarm: 1.0
+      slice_length_nm: 0.2
+      min_slices_per_segment: 8
+      alignment_tunable: false
+      bias_tuning_range_meV: 0.0
+      occupancy_control_known: false
+      second_pair_control_known: false
     tau_rad0_ns: 1.0
     tau_cap_ps: 10.0
-    k_nr_ns: 0.0
-    background_tau_ns: 0.0
-    eta_background: 0.1
 
   provenance:
-    card_id: nitride-deshpande2014-comparison-design
-    class: comparison
-    platform: ingan_gan_planar
-    cycle_loading: rectangular
-    comparison_status: conditions_incomplete
-
-    transfer_assumptions:
-      - "Nanowire strain relaxation removed: Deshpande 2013/2014 are dot-in-nanowire devices (radial strain relaxation at the wire sidewall); this card's nitride_levels.NitrideDotSystem is a planar, laterally unrelaxed disk model (nitride.dot.strain_fraction=1.0, matching the headline cards)."
-      - "Planar polarization/QCSE restored: the nanowire's own reported near-absence of a polarization-driven blueshift with current (Deshpande 2013, p.5: '<2 meV blueshift... polarization field essentially screened/absent') does NOT apply here; this planar card keeps nitride.dot.screening_fraction=0.0 (unscreened), so its own polarization/QCSE field is fully active, unlike the nanowire source devices."
-      - "Cavity out-coupling replaces dielectric nanowire extraction: emission.type=vertical_cavity/nitride.cavity model a planar dielectric-DBR cavity (assumed Q/mode volume/eta_out, see nitride.cavity.* below), not the nanowire's own dielectric-contrast-guided end-facet extraction (Deshpande 2013's polarization/DOLP discussion, Fig. 6c)."
-      - "Assumed optical mode volume/Q/collection: nitride.cavity.Q=2000, mode_volume_norm=2.0, eta_out=0.1 are the SAME [A] headline assumptions as cards/nitride-cavity-pulse-design.yaml, well above the measured InGaN-cavity ceiling (Taylor et al. 2010, Q<=260) -- not calibrated to either Deshpande paper, which reports no cavity at all."
-      - "Unknown drive waveform/contact heating/background: deshpande2014-waveform-missing (pulse shape/amplitude unpublished in the retrieved abstract); this card's own thermal stack, drive.b_res=0.1 and nitride.eta_background/background_tau_ns are the SAME [A] headline assumptions, not measurements of the 2014 device's own heating or background."
-      - "Unspecified raw/corrected status of the published g2=0.29: the abstract does not state whether 0.29 is a raw or background-corrected value (deshpande2014-g2); this card's own evaluated g2_op is never adjusted to match either reading."
+    card_id: nitride-nanowire-vertical-set-design
+    class: headline
+    platform: ingan_gan_nanowire
+    family: vertical_photonic
+    cycle_loading: deterministic_pair
+    strain_bound: relaxed
 
     sources:
       platform:
-        value: ingan_gan_planar
+        value: ingan_gan_nanowire
         unit: enum
         tag: A
-        source: "Opt-in planar InGaN/GaN evaluator (fsim_core/device.py DeviceDesign.platform, _evaluate_nitride)."
-
+        source: "Opt-in nanowire evaluator dispatch (fsim_core/device.py evaluate(): platform=ingan_gan_nanowire dispatches to nitride_nanowire_device.evaluate_nanowire)."
       dot.linewidth:
         value: anchored
         unit: enum
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py evaluate() guard: ret.mode='nitride_confinement' requires dot.linewidth='anchored')."
+        source: "Required opt-in for the nanowire evaluator (nitride_nanowire_device._validate)."
       dot.lineshape:
         value: lorentzian
         unit: enum
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py evaluate() guard rejects any other lineshape for platform='ingan_gan_planar')."
-      dot.gamma0:
-        value: 1.0
-        unit: meV
-        tag: A
-        source: >
-          Low-temperature homogeneous linewidth floor. No InGaN single-dot
-          low-T linewidth measurement is in the digest at this In content
-          (7f/7a report 0.3-2.5 meV, 5 K, at lower In content); 1.0 meV is
-          an explicit within-range [A] design choice, not fit to those
-          numbers.
-      dot.a_ac:
-        value: 0.03
-        unit: meV/K
-        tag: A
-        source: >
-          Acoustic-phonon linewidth slope; no InGaN-dot-specific value in
-          the digest. [A] design choice within the same order of magnitude
-          as the module's InP class default (device.py DotBlock.a_ac=2e-3
-          meV/K is a different material's [V] Ortner et al. value, not
-          transferred here).
-      dot.E_LO:
-        value: 91.5
-        unit: meV
-        tag: E
-        source: >
-          [V] GaN bulk LO phonon (Seguin et al., arXiv:cond-mat/0610425
-          (2006), main text) transferred, unmodified, to the alloyed
-          InGaN dot's own phonon coupling: an [E] alloy transfer, not a
-          measurement of this specific alloy fraction.
-        anchor_id: seguin2006-gan-lo-phonon
+        source: "Required opt-in for the nanowire evaluator (nitride_nanowire_device._validate)."
       dot.gamma300:
         value: 35.0
         unit: meV
         tag: A
-        source: >
-          300 K homogeneous linewidth. No electrical InGaN/GaN single-dot
-          300 K linewidth measurement exists in the digest. Wang et al.
-          (arXiv:1610.00152 / Sci. Rep. 7, 12089 (2017)) report 19.0 +/- 0.4
-          meV at 220 K for a-plane InGaN dots and note the RT class
-          extrapolates to roughly 25-30 meV (Notes-for-the-simulator item 3
-          in ../_goal/nitride_digests.md); Tamariz et al. (ACS Photonics 7,
-          1515 (2020)) report 55 +/- 7 meV at 300 K for the DIFFERENT
-          GaN/AlN material system under optical pumping. 35 meV is an [A]
-          design choice inside the union of both class ranges; it is NOT a
-          fit to either paper's data, and is NOT the Wang 220 K value
-          rescaled -- do not read a hidden fit here.
-        note: "See design.provenance.ranges['dot.gamma300'] for the one-at-a-time sensitivity axis [25, 35, 55] meV."
-      dot.r_xx:
-        value: 1.0
-        unit: dimensionless
-        tag: A
-        source: >
-          Gamma_XX/Gamma_X ratio; no InGaN-dot-specific measurement in the
-          digest. [A] neutral (equal-linewidth) design choice, distinct
-          from the module's InP class default (device.py DotBlock.r_xx=
-          0.72, a different material's [DR] class value, not transferred
-          here).
-      dot.delta_xx:
-        value: -10.0
-        unit: meV
-        tag: E
-        source: >
-          [V] Deshpande et al., Nat. Commun. 4, 1675 (2013), p.2-3, Fig. 3c
-          (single-dot EL, 10 K, nanowire dot-in-wire, XX above X =
-          antibinding), transferred unmodified in sign and magnitude to
-          this planar 300 K design: an [E] platform/temperature transfer,
-          not the -10 meV figure itself. Seguin et al. (arXiv:cond-mat/
-          0610425 (2006)) report a -3.5 to +16 meV InGaN range spanning
-          both signs (p.3); this card does not average over that range.
-        anchor_id: deshpande2013-xx-splitting
-        note: "See design.provenance.ranges['dot.delta_xx'] for the one-at-a-time sensitivity axis [-10, +10, +16] meV."
-
+        source: "Reservoir injection linewidth (evaluate_injection's w_meV) and, when filter.auto_w=true, the spectral filter window; no InGaN nanowire single-dot 300 K linewidth measurement exists in the digest. Design choice, not fit to any anchor. Other DotBlock leaves (delta_xx, gamma_scale, r_xx, gamma0, a_ac, E_LO, phonon) stay at their class (InP) defaults: not consumed by the nanowire evaluator, which reads only linewidth/lineshape/gamma300."
       ret.mode:
         value: nitride_confinement
         unit: enum
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py _evaluate_nitride guard)."
-      ret.channel:
-        value: min
-        unit: enum
-        tag: A
-        source: >
-          nitride_levels.rates()'s 'min' channel picks the faster of the
-          electron/hole escape rates (2D-reservoir detailed-balance model,
-          [A]); the RetentionBlock class default 'pair_half' is rejected by
-          this evaluator (requires a bound wetting-layer continuum this
-          card's finite-well model does not carry) and must be overridden
-          explicitly.
-      ret.tau_cap_ps:
-        value: 10.0
-        unit: ps
-        tag: A
-        source: >
-          Carrier capture time into the dot; no InGaN-dot-specific
-          measurement in the digest. [A] design choice, matching
-          nitride_levels.rates()'s own 10.0 ps class default (dot_levels.py
-          retention_params convention) restated explicitly per this
-          contract's rule that every explicit card leaf carries its own
-          source.
-        note: "See design.provenance.ranges['ret.tau_cap_ps'] for the one-at-a-time sensitivity axis [1, 10, 100] ps."
+        source: "Required opt-in for the nanowire evaluator (nitride_nanowire_device._validate)."
       ret.tau_cap_scales_with_density:
         value: false
         unit: bool
         tag: A
-        source: >
-          Shipped 'no-cancellation' convention (device.py RetentionBlock
-          docstring; docs/rt_edge_contract.md 'Model axes' pkg5b
-          discussion of the analogous InP tier's own default); the opt-in
-          'full-cancellation' alternative is left off by default on this
-          card, consistent with the RT-edge tier's own shipped default.
-      ret.b0:
-        value: 0.0
+        source: "Required false for the nanowire evaluator (_validate rejects true). All other RetentionBlock leaves (a_esc, E_a, b_p, E_b, b0, beta, preset, system, tau_rad_ns, channel, overrides, n_dot_cm2, tau_cap_ps) stay at class defaults: not consumed (the nanowire capture/lifetime numbers come from nitride.tau_cap_ps and nitride.tau_rad0_ns instead)."
+      cavity.enabled:
+        value: false
+        unit: bool
+        tag: A
+        source: "Contract: cavity.enabled is false for both nanowire families (no Q/DBR/cavity-Q axis on this platform)."
+      emission.type:
+        value: nanowire
+        unit: enum
+        tag: A
+        source: "Required opt-in for the nanowire evaluator (_validate)."
+      filter.enabled:
+        value: true
+        unit: bool
+        tag: A
+        source: "Genuine spectral FilterBlock transmission is applied on this platform (module docstring: no cavity out-coupling exists here, so the real spectral filter stands in for it), gated the same way the legacy path gates it."
+      filter.auto_w:
+        value: true
+        unit: bool
+        tag: A
+        source: "F-series operating convention: the collection window equals the anchored linewidth Gamma(T_j) = dot.gamma300 * filter.auto_w_scale."
+      filter.auto_w_scale:
+        value: 1.0
         unit: dimensionless
         tag: A
-        source: >
-          Explicit zero: the nitride evaluator does not read the legacy
-          proxy-Arrhenius retention fields (ret.mode='nitride_confinement'
-          bypasses them entirely), so this is a no-op restatement of the
-          RetentionBlock class default, set explicitly to document "no
-          proxy Arrhenius override" rather than leaving it silently unset.
-      ret.beta:
+        source: "No widening/narrowing of the auto_w collection window."
+      filter.dx:
         value: 0.0
-        unit: dimensionless
+        unit: meV
         tag: A
-        source: "Same no-op restatement as ret.b0 above; the nitride evaluator never reads this legacy proxy-Arrhenius field."
-
+        source: "No filter offset from the line center."
+      filter.w:
+        value: 2.0
+        unit: meV
+        tag: A
+        source: "Class default; unused while filter.auto_w=true."
+      filter.track:
+        value: mode
+        unit: enum
+        tag: A
+        source: "Class default; inert (no cavity mode exists on this platform for a slit to track)."
+      filter.track_material:
+        value: (empty)
+        unit: enum
+        tag: A
+        source: "Class default; inert (the nanowire evaluator never reads this field)."
+      filter.hold_window:
+        value: false
+        unit: bool
+        tag: A
+        source: "Class default; inert (no cavity-less Varshni-tracking chain is exercised here)."
+      aperture:
+        value: (empty, class defaults)
+        unit: mapping
+        tag: A
+        source: "Nanowire cards forbid any non-default ApertureBlock leaf (_validate: 'nanowire forbids non-default planar drive.aperture options'); there is no aperture/mesa current-supply partition on this platform (the wire IS the current path)."
+      thermal.T_hs:
+        value: 300.0
+        unit: K
+        tag: V
+        source: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract: room temperature (300 K) measurement condition, reused as the heatsink target. T_j is solved self-consistently from the drive power via nitride.wire_thermal, not pinned to 300 K."
+        anchor_id: deshpande2014_abstract
+      thermal.mesa_diameter_um / thermal.layers / thermal.substrate:
+        value: (class defaults)
+        unit: mixed
+        tag: A
+        source: "Legacy planar ThermalBlock leaves; not consumed by the nanowire evaluator (device power/temperature come from nitride.wire_thermal, drive.diode and thermal.T_hs only -- see nitride_nanowire_device.py's own module docstring)."
       drive.mode:
         value: EL-transport
         unit: enum
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py _evaluate_nitride guard)."
+        source: "Required opt-in for the nanowire evaluator (_validate)."
       drive.diode.preset:
-        value: nitride-planar
+        value: nitride-nanowire
         unit: enum
         tag: A
-        source: "Required opt-in diode preset (fsim_core.nitride_transport.planar_pin -> NitrideDiode); device.py rejects any other preset for platform='ingan_gan_planar'."
+        source: "Required diode preset opt-in (_validate: drive.diode.preset must be 'nitride-nanowire')."
       drive.diode.tau_pulse_ns:
         value: 0.1
         unit: ns
         tag: A
-        source: >
-          [A] Explicit placeholder pulse width (docs/nitride_cavity_
-          contract.md "Deshpande comparison"): the 2014 abstract does not
-          report the drive waveform/pulse width (deshpande2014-waveform-
-          missing); 0.1 ns matches the headline cards' own design value
-          and the RT-edge tier's own 100 ps convention, never presented as
-          a transcribed 2014 drive condition.
-        anchor_id: deshpande2014-waveform-missing
-      drive.diode.N_A:
-        value: 1.0e+17
-        unit: "cm^-3"
-        tag: V
-        source: >
-          Zhang et al., Appl. Phys. Lett. 108, 153102 (2016), p.2, Fig. 2
-          caption: p-GaN acceptor doping of their own planar InGaN/GaN
-          site-controlled diode, reused unmodified. Zhang 2016's device is
-          itself planar (unlike Deshpande's nanowire), so this transfer is
-          [V] source / [E] transfer from their QW active region to this
-          design's dot-in-reservoir transport model.
-        anchor_id: zhang2016-doping-na
-        transfer_notes: "[V Zhang 2016 source, E planar transfer]."
-      drive.diode.N_D:
-        value: 1.0e+18
-        unit: "cm^-3"
-        tag: V
-        source: "Zhang et al., Appl. Phys. Lett. 108, 153102 (2016), p.2, Fig. 2 caption: n-GaN donor doping, reused unmodified. Same transfer basis as drive.diode.N_A."
-        anchor_id: zhang2016-doping-nd
-        transfer_notes: "[V Zhang 2016 source, E planar transfer]."
-      drive.diode.d_i_nm:
-        value: 24.5
+        source: "Explicit 100 ps electrical pulse width design input (module docstring: 'the 0.1 ns electrical pulse [is a] card-level [A] design input, not a fit to Deshpande et al. (APL 2014)'); consumed as both the pump width (rectangular regime) and the SET loading_window_ns (deterministic_pair regime)."
+      drive.diode.conducting_radius_nm:
+        value: 80.0
         unit: nm
         tag: A
-        source: >
-          [A] Intrinsic-region thickness, adapted from Zhang et al. 2016's
-          own 12 nm undoped-GaN spacer geometry (p.2, Fig. 2 caption:
-          "3 nm In0.15Ga0.85N QW between 12 nm uid-GaN spacers") but built
-          from THIS card's own reservoir thickness instead of Zhang's 3 nm
-          QW: d_i_nm = drive.diode.wl_thickness_nm (0.5 nm) + 2 x 12 nm
-          spacers = 24.5 nm. An adapted-geometry assumption, not a
-          transcribed Zhang 2016 d_i value.
-      drive.diode.x_in:
-        value: 0.40
+        source: "Equal to nitride.nanowire.core_radius_nm (contract DEVICE-PIECE CONSTRAINT 1: conducting_radius_nm in (0, core_radius_nm], never an optical radius alias); the whole conducting core carries current on both families."
+      drive.diode.N_A:
+        value: 5.0e+17
+        unit: cm^-3
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): p-GaN reservoir acceptor doping (Mg 5e17 cm^-3), reused unmodified (contract directive round H2)."
+        anchor_id: deshpande2013_geometry
+      drive.diode.N_D:
+        value: 3.0e+18
+        unit: cm^-3
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): n-GaN reservoir donor doping (Si 3e18 cm^-3), reused unmodified (contract directive round H2)."
+        anchor_id: deshpande2013_geometry
+      drive.diode.n_ideality:
+        value: 2.0
         unit: dimensionless
         tag: A
-        source: >
-          Set equal to nitride.dot.x_in (0.40) per this contract's rule
-          that the transport diode's active composition must stay
-          consistent with the confinement dot's own reservoir composition;
-          see nitride.dot.x_in for the underlying [V] transfer of 0.40
-          itself (Deshpande et al. 2014, abstract).
-      drive.diode.wl_thickness_nm:
-        value: 0.5
-        unit: nm
+        source: "Diode ideality factor; no InGaN/GaN nanowire p-i-n ideality-factor measurement is in the digest. Class default."
+      drive.diode.tau_SRH_ns:
+        value: 0.01
+        unit: ns
+        tag: DR
+        source: "Back-solved so the GaN-kernel dark current reproduces the inferred 2.6-3.1 V junction-voltage window at 1 nA/300 K (contract drive.diode table); not an independent SRH-lifetime measurement."
+      drive.diode.eps_r:
+        value: 10.28
+        unit: dimensionless
+        tag: E
+        source: "GaN static relative permittivity class value (contract drive.diode table)."
+      drive.diode.T:
+        value: 300.0
+        unit: K
         tag: A
-        source: >
-          Kept at 0.5 nm as the SRH reservoir thickness (nitride.dot.wl_thickness_nm is 0 because the confinement solver has no wetting-layer model) per this
-          contract's rule that the transport diode's reservoir thickness
-          must stay consistent with the confinement dot's own wetting
-          layer; see nitride.dot.wl_thickness_nm for its own [A] source.
-      drive.finite_pulse:
-        value: true
-        unit: bool
+        source: "Overridden every call by the device piece's own T_j from wire_operating_point (contract 'Composition rules for the device piece' bullet 3); not an independently swept card default."
+      drive.diode.tau_matrix_ns:
+        value: 1.0
+        unit: ns
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py _evaluate_nitride guard: platform='ingan_gan_planar' requires finite_pulse=True and empty mechanism)."
+        source: "Class default matrix-element relaxation time (contract drive.diode table)."
       drive.cycle_loading:
-        value: rectangular
+        value: deterministic_pair
         unit: enum
         tag: A
-        source: >
-          Rectangular finite-electrical-pulse loading (fsim_core.
-          pulse_counting.pulse_g2), the non-SET headline loading regime;
-          contrasts with cards/nitride-cavity-set-design.yaml's
-          deterministic_pair.
+        source: "Idealized one-pair-per-cycle deterministic loading (fsim_core.pulse_counting.deterministic_cycle_g2), pairing with the SET/RT injector hardware screens."
       drive.rep_rate_hz:
         value: 2.0e+8
         unit: Hz
         tag: V
-        source: >
-          Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract:
-          reported MAXIMUM excitation repetition rate, reused unmodified.
-          This anchor verifies only the maximum rate the abstract states;
-          it does NOT verify that the g2=0.29 measurement itself was taken
-          at 200 MHz -- see deshpande2014-g2-measurement-rate-missing.
-          Gives a 5 ns full pulse period, distinct from the headline
-          cards' own 80 MHz/12.5 ns (see design.provenance.ranges
-          note below on this card's non-headline status).
-        anchor_id: deshpande2014-max-rep-rate
+        source: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract: reported maximum excitation repetition rate (up to 200 MHz), reused unmodified as the headline rate; this does NOT verify the g2=0.29 measurement was itself taken at 200 MHz. The core sweep's own reduced axis also includes 80 MHz (a named 100 ps / 80 MHz operating row is recorded under provenance.ranges below)."
+        anchor_id: deshpande2014_abstract
       drive.duty:
         value: 0.02
         unit: dimensionless
-        tag: A
-        source: >
-          [A] Informational restatement of tau_pulse_ns*rep_rate_hz*1e-9 =
-          0.1e-9*2e8 = 0.02 (see cards/nitride-cavity-pulse-design.yaml's
-          own drive.duty entry for the same not-independently-consumed
-          caveat: _evaluate_nitride recomputes duty from drive.diode.
-          tau_pulse_ns and drive.rep_rate_hz directly).
+        tag: DR
+        source: "Informational restatement of tau_pulse_ns * rep_rate_hz * 1e-9 = 0.1e-9 * 2e8 = 0.02; not independently consumed (nitride_nanowire_device recomputes duty from drive.diode.tau_pulse_ns and drive.rep_rate_hz directly)."
       drive.gate_ns:
         value: null
         unit: ns
         tag: A
-        source: >
-          [A] Not requested: resolves to the whole 5 ns pulse period
-          (device.py DriveBlock.gate_ns docstring), the same
-          not-requested convention as the headline cards.
+        source: "Not requested: resolves to the whole pulse period (device.py DriveBlock.gate_ns docstring)."
       drive.I_uA:
-        value: 0.02
+        value: 2.0e-3
         unit: uA
         tag: A
-        source: >
-          [A] Explicit placeholder drive current (docs/nitride_cavity_
-          contract.md "Deshpande comparison"): the 2014 abstract does not
-          report the drive amplitude/current (deshpande2014-waveform-
-          missing); 0.02 uA matches the headline cards' own design value,
-          never presented as a transcribed 2014 drive condition.
-        anchor_id: deshpande2014-waveform-missing
+        source: "2 nA, the 2013 device's own reported maximum current (Deshpande et al., Nat. Commun. 4, 1675 (2013)); at the horizontal card's R_s_ohm=2.38 GOhm this keeps V_terminal inside the 2013 device's own reported 2-20 V terminal-voltage range (V_terminal ~8 V), unlike a 20 nA/0.02 uA choice which would imply ~50 V across this series resistance alone. Kept identical on the vertical card (drive.I_uA is not on the horizontal/vertical allow-list of intended differences): at the vertical card's much smaller designed-contact R_s_ohm=1e6 ohm the same current drops only ~0.002 V, so V_terminal there tracks the junction voltage V_j regardless."
+        anchor_id: deshpande2013_geometry
       drive.cw:
         value: false
         unit: bool
         tag: A
-        source: >
-          [A] No CW diagnostics requested on the headline cards (unlike
-          the RT-edge InP cards, which opt into drive.cw=true); this
-          contract's acceptance gates are pulsed-only (docs/
-          nitride_cavity_contract.md "Acceptance gates"; absent optical
-          pumping is checked mechanically by verify_nitride_cards.py).
+        source: "No CW g2(tau)/IRF diagnostics requested; this contract's acceptance gates are pulsed/deterministic-pair only."
       drive.b_res:
         value: 0.1
         unit: dimensionless
         tag: A
-        source: >
-          [A] Residual background channel (background photons per
-          collected X photon, T-independent); no InGaN/GaN-specific
-          residual-background measurement exists in the digest (unlike the
-          RT-edge tier's own Reischle-2008-derived 80 K InP electrical
-          anchor, docs/rt_edge_contract.md, which is off-platform for this
-          material system and not transferred here). 0.1 is a round,
-          explicitly-stated design assumption.
-        note: "See design.provenance.ranges['drive.b_res'] for the one-at-a-time sensitivity axis [0, 0.1, 1]."
-
-      thermal.T_hs:
-        value: 300.0
-        unit: K
-        tag: V
-        source: >
-          Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract:
-          "room temperature (300 K)" measurement condition, reused
-          unmodified as the heatsink target. T_j is still solved
-          self-consistently from the drive power, not pinned to 300 K
-          (this card's own drive/thermal assumptions are its own, not a
-          transcription of the paper's junction temperature, which is not
-          reported).
-        anchor_id: deshpande2014-temperature
-      thermal.mesa_diameter_um:
-        value: 20.0
-        unit: um
-        tag: A
-        source: >
-          [A] Heat-source/contact mesa diameter for the thermal-spreading
-          calculation (fsim_core.device._stack/t_junction), deliberately
-          larger than the 0.05 um lithographic single-dot OPTICAL aperture
-          (aperture.diameter_um) and independent of the NitrideDiode's own
-          0.785 um^2 default ELECTRICAL injection area (drive.diode.
-          area_um2, left unset -- see design.provenance.diode_unset_defaults):
-          a generic small-contact-mesa class value, not independently
-          sourced in the digest.
-      thermal.layers.0.name:
-        value: "GaN epi film"
-        unit: string
-        tag: A
-        source: "Planar GaN-on-Si epitaxial film, the platform's own growth substrate family (../_goal/nitride_digests.md Sec. 9, Tamariz et al. 2020: NH3-MBE GaN QDs on AlN/Si(111))."
-      thermal.layers.0.t_um:
-        value: 2.0
-        unit: um
-        tag: A
-        source: "[A] Generic epi-film thickness class value; not independently sourced (no GaN epi thickness for a vertical-cavity device is reported in the digest)."
-      thermal.layers.0.k300:
-        value: 130.0
-        unit: "W/(m*K)"
-        tag: A
-        source: >
-          [A] No GaN thermal-conductivity value is present in
-          ../_goal/nitride_digests.md; 130 W/(m*K) is a generic
-          crystalline-semiconductor-class assumption (order of magnitude of
-          commonly cited bulk-GaN room-temperature values), NOT digest-
-          sourced, and explicitly NOT the legacy GaAs class fallback
-          (device.py ThermalBlock.substrate default) this contract
-          forbids using unlabelled.
-      thermal.layers.0.alpha:
-        value: 0.5
-        unit: dimensionless
-        tag: A
-        source: "[A] k(T) power-law exponent; matches the module's own legacy layer-class default (device.py ThermalBlock.layers), not independently sourced for GaN in the digest."
-      thermal.layers.0.spread:
-        value: false
-        unit: bool
-        tag: A
-        source: "[A] Planar heat flow through this layer, no current-spreading correction (fsim_core.thermal.Layer convention)."
-      thermal.layers.1.name:
-        value: "dielectric DBR + contact stack (effective)"
-        unit: string
-        tag: A
-        source: >
-          Lumped effective layer for the dielectric DBR (nitride.cavity)
-          plus metal contact stack, whose real thermal resistance is not
-          separately modelled by this piece's simple film stack.
-      thermal.layers.1.t_um:
+        source: "Residual background channel (background photons per collected X photon, T-independent); no InGaN/GaN nanowire residual-background measurement exists in the digest (design brief: b_res stays 0.1 nitride-wide, with a 0.02 sensitivity motivated by the 2013 corrected HBT g2 0.16, never a headline substitution)."
+      drive.eta_load:
         value: 1.0
-        unit: um
-        tag: A
-        source: "[A] Generic effective thickness; not independently sourced."
-      thermal.layers.1.k300:
-        value: 2.0
-        unit: "W/(m*K)"
-        tag: A
-        source: >
-          [A] Deliberately low effective conductivity representing the
-          combined dielectric-DBR/contact thermal bottleneck; an UNKNOWN
-          package thermal resistance, explicitly tagged [A] per this
-          contract's rule ("never label an unknown package thermal
-          resistance verified") -- not a measured or class-sourced value.
-      thermal.layers.1.alpha:
-        value: 0.0
         unit: dimensionless
         tag: A
-        source: "[A] No assumed temperature dependence for this lumped effective layer (a deliberately simple, conservative choice)."
-      thermal.layers.1.spread:
-        value: false
-        unit: bool
+        source: "Nanowire cards forbid any other value (_validate): SET/pulse loading is modeled explicitly via pulse_counting, not via a separate scalar loading efficiency."
+      drive.set_params.R_T_ohm:
+        value: 1.0e+6
+        unit: ohm
         tag: A
-        source: "[A] Planar heat flow through this effective layer."
-      thermal.substrate.name:
-        value: Si
-        unit: string
-        tag: A
-        source: "Si growth substrate, matching the platform's own growth family (../_goal/nitride_digests.md Sec. 9, Tamariz et al. 2020, GaN QDs on Si(111))."
-      thermal.substrate.k300:
-        value: 150.0
-        unit: "W/(m*K)"
-        tag: A
-        source: >
-          [A] No substrate thermal-conductivity value is present in
-          ../_goal/nitride_digests.md; 150 W/(m*K) is a generic bulk-Si
-          class assumption near room temperature, NOT digest-sourced, and
-          explicitly NOT the legacy GaAs class fallback (device.py
-          ThermalBlock.substrate default k300=55.0) this contract forbids
-          using unlabelled.
-      thermal.substrate.alpha:
-        value: 1.3
+        source: "Tunnel-junction resistance for the Coulomb-blockade screen (unchanged SET convention, drive_mech.set_feasibility); computed for every row (both regimes) as a diagnostic, reported (set_feasible) only for the deterministic_pair regime."
+      drive.set_params.eps_r:
+        value: 9.5
+        unit: dimensionless
+        tag: E
+        source: "III-N dielectric-constant assumption for the isolated-sphere Coulomb-charging formula (design brief User answer 3); matches deshpande2013_coulomb_reference's own eps_r."
+        anchor_id: deshpande2013_coulomb_reference
+      drive.set_params.ec_margin:
+        value: 10.0
         unit: dimensionless
         tag: A
-        source: "[A] k(T) power-law exponent class value for Si; not independently sourced in the digest."
-
-      cavity.enabled:
-        value: true
-        unit: bool
+        source: "Charge-quantization margin (drive_mech.set_feasibility's own convention: E_C/kT must exceed this margin to pass the Coulomb screen)."
+      drive.set_params.radius_nm:
+        value: 12.5
+        unit: nm
         tag: A
-        source: "Required opt-in for the nitride evaluator (device.py _evaluate_nitride guard)."
-      cavity.type:
-        value: nitride_planar
+        source: "Equals nitride.dot.radius_nm (the disc radius), never nitride.nanowire.core_radius_nm directly (contract 'Composition rules for the device piece' bullet 1): defaulting to the core radius would silently substitute set_EC_over_kT's reference charging energy on the vertical family (E_C=1.5 meV at 100 nm core vs. the intended E_C=12.126 meV at 12.5 nm disc). Present on this SET card only; the pulse card's drive.set_params has no radius_nm leaf and relies on the device's own disc-radius default (which is identical), per the contract's SET-only framing of this leaf."
+        anchor_id: deshpande2013_coulomb_reference
+      nitride.nanowire.family:
+        value: vertical_photonic
         unit: enum
         tag: A
-        source: "Required opt-in cavity type for the nitride evaluator; legacy cavity.F_P/G are deliberately left at their class defaults and rejected if overridden (device.py guard)."
-
-      emission.type:
-        value: vertical_cavity
+        source: "Required family selector."
+      nitride.nanowire.core_radius_nm:
+        value: 80.0
+        unit: nm
+        tag: A
+        source: "Designed wire/reservoir radius (contract sweep {60,80,100,120} nm). 80 nm keeps the wire single-mode (V_number < 2.405) at the relaxed-bound wavelength ~542.6 nm (headline_eligible True); 100 nm is the sweep's sensitivity value, not the card default (contract MEDIUM-13 fix)."
+      nitride.nanowire.outer_radius_nm:
+        value: 80.0
+        unit: nm
+        tag: A
+        source: "Equal to core_radius_nm: shell='none' requires outer_radius_nm == core_radius_nm (contract 'Family-specific interfaces')."
+      nitride.nanowire.strain_bound:
+        value: relaxed
+        unit: enum
+        tag: DR
+        source: "Headline/upper strain scenario (design brief User answer 4): removes the piezoelectric strain-deformation shift and P_pz while retaining spontaneous polarization P_sp (Deshpande 2013's own <2 meV blueshift with current is read as near-absent piezo field in the wire). The unrelaxed/conservative partner is produced by the sweep script, never by this card."
+      nitride.nanowire.shell:
+        value: none
         unit: enum
         tag: A
-        source: "Required opt-in emission type for the nitride evaluator (device.py _evaluate_nitride guard); a planar vertical out-coupling geometry, not the RT-edge tier's ridge-waveguide edge emission."
-
-      aperture.density_cm2:
-        value: 1.0e+10
-        unit: "cm^-2"
-        tag: A
-        source: >
-          [A] Lithographic single-dot-isolation density target, together
-          with aperture.diameter_um giving an expected dot count under this
-          aperture of pi*(0.05/2 um)^2 * 1e-8 cm^2/um^2 * 1e10 cm^-2 =
-          0.19635 [DR from these two A inputs]. Also supplies the transport
-          dot density (drive.n_dot_cm2 is left unset/0, so
-          fsim_core.device._evaluate_nitride falls back to this field).
-        note: "See design.provenance.single_dot_selection for the worked dot-count number."
-      aperture.diameter_um:
-        value: 0.05
-        unit: um
-        tag: A
-        source: >
-          [A] Small lithographic aperture for single-dot current/optical
-          selection, deliberately much smaller than the RT-edge tier's own
-          0.4 um aperture (cards/edge-inp-gainp-design.yaml) and much
-          smaller than thermal.mesa_diameter_um (20 um, the separate
-          thermal/contact footprint) -- see design.provenance.
-          single_dot_selection.
-
+        source: "Bare wire, no AlGaN shell (contract: shell is a sensitivity-only axis on the core grid, not a headline leaf)."
+      nitride.nanowire.barrier_left_nm:
+        value: 15.0
+        unit: nm
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): 15 nm i-GaN barrier each side of the disc."
+        anchor_id: deshpande2013_geometry
+      nitride.nanowire.barrier_right_nm:
+        value: 15.0
+        unit: nm
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): 15 nm i-GaN barrier each side of the disc."
+        anchor_id: deshpande2013_geometry
       nitride.dot.height_nm:
         value: 2.0
         unit: nm
-        tag: A
-        source: >
-          Explicit [A] placeholder (docs/nitride_cavity_contract.md
-          "Deshpande comparison"): the 2014 abstract does not report dot
-          size (deshpande2014-geometry-missing); 2.0 nm is transferred from
-          the SAME group's 2013 nanowire dot-in-wire dot thickness
-          (Deshpande et al., Nat. Commun. 4, 1675 (2013), p.2, Fig. 1d),
-          motivated only by that 2013 family, never presented as a
-          verified 2014 value.
-        anchor_id: deshpande2013-dot-thickness
-        transfer_notes: "See also deshpande2014-geometry-missing (the 2014 value itself is unpublished in the retrieved abstract)."
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): disc height 2.0 nm."
+        anchor_id: deshpande2013_geometry
       nitride.dot.radius_nm:
         value: 12.5
         unit: nm
         tag: A
-        source: >
-          Explicit [A] placeholder (docs/nitride_cavity_contract.md
-          "Deshpande comparison"): the 2014 abstract does not report dot
-          size (deshpande2014-geometry-missing); 12.5 nm = half the SAME
-          group's 2013 nanowire dot-in-wire diameter (Deshpande et al.,
-          Nat. Commun. 4, 1675 (2013), p.2, Fig. 1c, 25 +/- 5 nm),
-          motivated only by that 2013 family, never presented as a
-          verified 2014 value. This is a non-headline value: the headline
-          grid's own radius_nm axis is [5, 10, 15] nm and does not include
-          12.5 nm.
-        anchor_id: deshpande2013-dot-diameter
-        transfer_notes: "See also deshpande2014-geometry-missing (the 2014 value itself is unpublished in the retrieved abstract)."
+        source: "H6 disc-in-wire default: STRICTLY LESS than core_radius_nm (80 nm), laterally confined by the finite InGaN/GaN radial barrier, never a full-core hard wall (contract 'Family-specific interfaces' H6 correction). Fixed at 12.5 nm while core_radius_nm is swept 60-120 nm; also the disc radius used for the Coulomb-charging reference (E_C=12.126 meV)."
+        anchor_id: deshpande2013_coulomb_reference
       nitride.dot.x_in:
         value: 0.40
         unit: dimensionless
         tag: V
-        source: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract: In0.4Ga0.6N dot; reused unmodified. Platform transfer (nanowire dot-in-wire to planar reservoir) is [E], not this composition figure."
-        anchor_id: deshpande2014-x-in
-      nitride.dot.wl_thickness_nm:
-        value: 0.0
-        unit: nm
-        tag: A
-        source: "[A] Set to 0: the confinement solver (fsim_core.nitride_levels, commit 59014bc) has no wetting-layer continuum model and rejects a nonzero value as unsupported; the diode keeps drive.diode.wl_thickness_nm = 0.5 nm as its SRH reservoir thickness only."
+        source: "Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014), abstract: In0.40Ga0.60N dot composition, reused unmodified."
+        anchor_id: deshpande2014_abstract
       nitride.dot.strain_fraction:
-        value: 1.0
+        value: 0.0
         unit: dimensionless
-        tag: A
-        source: "[A] Full (unrelaxed) strain assumed, the conservative planar default (fsim_core.nitride_levels.NitrideDotSystem class default)."
-        note: "See design.provenance.ranges['nitride.dot.strain_fraction'] for the one-at-a-time sensitivity axis [0.5, 1]."
+        tag: DR
+        source: "Derived from strain_bound=relaxed (contract 'Single strain-bound switch': strain_fraction is display-only, validated 0.0 for relaxed, never itself passed to levels())."
       nitride.dot.screening_fraction:
         value: 0.0
         unit: dimensionless
         tag: A
-        source: >
-          [A] Unscreened polarization field default: 0 (no free-carrier
-          screening assumed), distinct from the verify_nitride_device.py
-          test fixture's own 0.98 (near-fully-screened) value -- this
-          headline card makes the conservative, unscreened design choice
-          explicitly.
-        note: "See design.provenance.ranges['nitride.dot.screening_fraction'] for the one-at-a-time sensitivity axis [0, 0.5, 1]."
+        source: "Main-grid fixed value (design brief User answer 4: 'screening_fraction stays an independent axis at {0,1} on a reduced cut only')."
       nitride.dot.external_field_kVcm:
         value: 0.0
         unit: kV/cm
         tag: A
-        source: >
-          [A] No additional imposed field beyond the diode's own
-          self-consistently solved, signed forward-bias field (device.py
-          _evaluate_nitride adds -V_j/d_i as a separate term on top of this
-          card's own unbiased NitrideDotSystem field at evaluation time);
-          this leaf is the card's baseline (V=0) system definition only.
+        source: "No additional externally applied field beyond the diode's own self-consistently solved depletion field (fed back by the device piece after the transport solve)."
       nitride.dot.vbo_InN_GaN_eV:
         value: 1.15
         unit: eV
         tag: V
-        source: "Tsai & Bayram, ACS Omega 5, 3917 (2020), Table 2, text p.3 (HSE06 InN/GaN valence-band offset). Reused unmodified; a further alloy-interpolation transfer inside nitride_levels.py (out of scope) is [A]."
-        anchor_id: tsai2020-inn-gan-vbo
+        source: "Rinke et al., Phys. Rev. B 77, 075202 (2008): InN/GaN valence-band offset (contract Card schema default)."
       nitride.dot.strain_c_fraction:
         value: 0.7
         unit: dimensionless
+        tag: DR
+        source: "Fraction of the biaxial strain resolved along c; matches NitrideNanowireSystem's own class default (contract Card schema)."
+      nitride.dot.k_intrinsic_ns:
+        value: 0.0
+        unit: ns^-1
         tag: A
-        source: "[A] Fraction of the biaxial strain resolved along c; matches fsim_core.nitride_levels.NitrideDotSystem's own class default, restated explicitly per this contract's rule."
-
-      nitride.cavity.Q:
-        value: 2000.0
-        unit: dimensionless
+        source: "Intrinsic occupied-dot non-radiative loss beyond surface/escape; NOT a contract Card-schema leaf (nitride_nanowire_device.py's own optional addendum, _ALLOWED_DOT_KEYS), explicit here at its neutral default (zero extra loss) rather than left silently implicit."
+      nitride.surface.S_cm_s:
+        value: 1.0e+3
+        unit: cm/s
+        tag: E
+        source: "Secondary attribution: Deshpande 2013 p.1 cites its own ref. 35 for this GaN-nanowire surface-recombination-velocity number; ref. 35 has never been read by this project, so this is [E], not a direct Deshpande [V] measurement (contract 'Provenance corrections')."
+        anchor_id: deshpande2013_surface_velocity
+      nitride.surface.shell:
+        value: none
+        unit: enum
         tag: A
-        source: >
-          [A] Assumed dielectric-DBR cavity Q. The published InGaN-QD
-          cavity ceiling is much lower (Taylor et al. 2010: Q=167 best
-          spot, up to 260 across the published nitride-cavity literature
-          summarized in ../_goal/nitride_digests.md Sec. 5/10d) -- 2000 is
-          an explicit, above-measured-ceiling design assumption, flagged in
-          docs/nitride_cavity_contract.md "Known limitations", not
-          presented as demonstrated.
-        anchor_id: taylor2010-cavity-q
-        note: "See design.provenance.ranges['nitride.cavity.Q'] for the headline grid axis [500, 2000, 10000]; nitride-sweep-results.md also runs a Q=167, purcell_enabled=false observed-ceiling reference."
-      nitride.cavity.mode_volume_norm:
-        value: 2.0
-        unit: "V/(lambda/n)^3"
-        tag: A
-        source: "[A] Normalized mode volume; not reported for any InGaN-QD cavity in the digest (../_goal/nitride_digests.md Sec. 5: 'Mode volume was not reported in any of these papers -- [E]'). Matches fsim_core.nitride_cavity.NitrideCavityParams' own class default."
-        note: "See design.provenance.ranges['nitride.cavity.mode_volume_norm'] for the one-at-a-time sensitivity axis [1, 2, 10]."
-      nitride.cavity.spatial_overlap:
+        source: "Matches nitride.nanowire.shell (identical across all four cards, per this round's binding card-content decision)."
+      nitride.surface.shell_multiplier:
         value: 1.0
         unit: dimensionless
         tag: A
-        source: "[A] Ideal (unity) spatial mode overlap; matches fsim_core.nitride_cavity.NitrideCavityParams' own class default."
-      nitride.cavity.eta_out:
-        value: 0.1
+        source: "Unity multiplier for shell='none' (no passivation reduction); the AlGaN shell_multiplier=0.1 partner is a sensitivity-only cut, never substituted here (identical on all four cards, per this round's binding decision)."
+      nitride.surface.reservoir_access:
+        value: 1.0
         unit: dimensionless
         tag: A
-        source: "[A] Out-coupling efficiency class value; matches fsim_core.nitride_cavity.NitrideCavityParams' own class default, restated explicitly."
-        note: "See design.provenance.ranges['nitride.cavity.eta_out'] for the one-at-a-time sensitivity axis [0.01, 0.1, 0.5]."
-      nitride.cavity.T_track:
-        value: 300.0
-        unit: K
+        source: "Conservative full access (contract 'Composition rules for the device piece' bullet 8); identical on all four cards."
+      nitride.surface.occupied_dot_access:
+        value: 0.05
+        unit: dimensionless
+        tag: DR
+        source: "Headline default (contract 'Provenance corrections': the J0 hard-wall ground-state probability in a 2 nm sidewall capture layer over the uniform-density value, at core_radius_nm=12.5); the declared conservative [A] partner is 1.0 (recorded here, never removed, as the sweep's declared partner value; 0.1 is kept only as a third sensitivity point). Neither default is tuned to reproduce the held-out 0.71/1.1/1.3 ns lifetime anchors. Identical on all four cards, per this round's binding decision."
+        anchor_id: deshpande2013_lifetimes
+      nitride.photonics.family:
+        value: vertical_photonic
+        unit: enum
         tag: A
-        source: "[A] Cavity-tracking reference temperature, fixed at 300 K across the full T_hs sweep (nitride-sweep-results.md: 'Fixed cavity T_track=300 K across T_hs')."
-      nitride.cavity.dEdT_cav_meV_K:
-        value: -0.04
-        unit: meV/K
+        source: "Mirrors nitride.nanowire.family (also re-set by the device piece itself at evaluation time)."
+      nitride.photonics.NA:
+        value: 0.5
+        unit: dimensionless
         tag: A
-        source: "[A] Cavity-mode thermo-optic walk; matches fsim_core.nitride_cavity.NitrideCavityParams' own class default (also the legacy CavityBlock.dEdT_cav value), restated explicitly. No InGaN/GaN cavity thermo-optic measurement is in the digest."
-      nitride.cavity.detuning_offset_meV:
+        source: "Objective numerical aperture (Deshpande 2013 reports a 50x objective but not its NA -- contract 'Family-specific interfaces': 'NA=0.5 [A] and its collection scale are card leaves'). Horizontal-consumed; inert for vertical_photonic (no free-space objective collection on the designed guided-wave family)."
+      nitride.photonics.n_wire:
+        value: null
+        unit: dimensionless
+        tag: E
+        source: "None: falls back to gan_ordinary_index(lambda_nm) (dispersion-tagged module default)."
+      nitride.photonics.n_group_override:
+        value: null
+        unit: dimensionless
+        tag: A
+        source: "None: falls back to the GaN dispersion shape for the beta(V) group-index estimator. Vertical-consumed only."
+      nitride.photonics.n_ambient:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Air ambient."
+      nitride.photonics.n_oxide:
+        value: null
+        unit: dimensionless
+        tag: V
+        source: "None: falls back to sio2_index(lambda_nm) (Malitson 1965). Horizontal-consumed only (the 100 nm thermal SiO2 the 2013 wire is dispersed on)."
+      nitride.photonics.oxide_thickness_nm:
+        value: 100.0
+        unit: nm
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): 100 nm thermal SiO2 on (001) Si substrate. Horizontal-consumed only."
+        anchor_id: deshpande2013_device_geometry
+      nitride.photonics.n_substrate:
+        value: null
+        unit: dimensionless
+        tag: E
+        source: "None: falls back to a 2-point Si n,k anchor table. Horizontal-consumed only."
+      nitride.photonics.dipole_weights:
+        value: (1/3, 1/3, 1/3), not set in YAML
+        unit: tuple (along_wire, transverse_inplane, vertical), dimensionless
+        tag: A
+        source: "NOT an explicit YAML key on this card: NitrideNanowirePhotonicsParams requires a Python tuple and rejects a YAML list (PyYAML safe_load always produces a list for a flow sequence, never a tuple), so this leaf is left at the dataclass's own class default, which already IS the isotropic (1/3,1/3,1/3) contract default -- no value is silently substituted. Orientation prior unknown (contract 'Composition rules for the device piece' bullet 9). The CPLANE_ONLY_DIPOLE_WEIGHTS (0.0,0.5,0.5) alternative predicts the WRONG-SIGN degree_of_linear_polarization against the deshpande2013_polarization 70 percent anchor and is kept only as a named, explicitly falsified sensitivity in the sweep script, never on this card."
+        anchor_id: deshpande2013_polarization
+      nitride.photonics.emitter_height_nm:
+        value: null
+        unit: nm
+        tag: A
+        source: "None: falls back to outer_radius_nm. Horizontal-consumed only."
+      nitride.photonics.collection_scale:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "No additional collection derating beyond the antenna/objective model. Horizontal-consumed only."
+      nitride.photonics.radiative_rate_factor:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Baseline independent envelope (contract: 'a high beta never multiplies gamma by that same fraction'); both families."
+      nitride.photonics.beta_scale:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Baseline independent envelope on the HE11 beta. Vertical-consumed only."
+      nitride.photonics.taper_transmission:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "No taper loss baseline. Vertical-consumed only."
+      nitride.photonics.bottom_reflectivity:
+        value: 0.0
+        unit: dimensionless
+        tag: A
+        source: "No bottom mirror baseline (contract Card schema default). Vertical-consumed only."
+      nitride.photonics.top_contact_transmission:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "No top-contact absorption baseline. Vertical-consumed only."
+      nitride.photonics.propagation_transmission:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "No propagation loss baseline. Vertical-consumed only."
+      nitride.photonics.unguided_collection_scale:
+        value: 0.0
+        unit: dimensionless
+        tag: A
+        source: "No unguided (above-cutoff) collection credit baseline. Vertical-consumed only."
+      nitride.photonics.taper_output_mfr_nm:
+        value: null
+        unit: nm
+        tag: A
+        source: "None: falls back to the bare-wire Marcuse mode-field radius. Vertical-consumed only."
+      nitride.wire_thermal.R_s_ohm:
+        value: 1.0e+6
+        unit: ohm
+        tag: A
+        source: "Designed-contact alternative (contract Card schema: 1.0e6 ohm sensitivity for horizontal, default for vertical_photonic); at drive.I_uA=0.02 this drops only ~0.02 V, unlike the as-built 2.38 GOhm wire."
+      nitride.wire_thermal.Rth_K_W:
+        value: 1.0e+7
+        unit: K/W
+        tag: A
+        source: "Wire thermal resistance (contract Card schema default; one decade each way is the sensitivity range)."
+      nitride.wire_thermal.f_Rs_local:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Fixed class default."
+      nitride.wire_thermal.eta_total:
+        value: 0.01
+        unit: dimensionless
+        tag: A
+        source: "Fixed baseline class default."
+      nitride.wire_thermal.C_parasitic_F:
+        value: 0.0
+        unit: F
+        tag: A
+        source: "Optimistic zero parasitic capacitance baseline (contract Card schema: sensitivity {1e-18,1e-16} F)."
+      nitride.injector.al_fraction:
+        value: 0.30
+        unit: dimensionless
+        tag: A
+        source: "Barrier Al fraction."
+      nitride.injector.electron_topology:
+        value: double_barrier
+        unit: enum
+        tag: A
+        source: "Class default topology."
+      nitride.injector.hole_topology:
+        value: double_barrier
+        unit: enum
+        tag: A
+        source: "Class default topology."
+      nitride.injector.electron_barrier_thickness_nm:
+        value: 2.0
+        unit: nm
+        tag: A
+        source: "Each barrier, class default."
+      nitride.injector.hole_barrier_thickness_nm:
+        value: 2.0
+        unit: nm
+        tag: A
+        source: "Each barrier, class default."
+      nitride.injector.electron_well_width_nm:
+        value: 4.0
+        unit: nm
+        tag: A
+        source: "double_barrier only, class default."
+      nitride.injector.hole_well_width_nm:
+        value: 4.0
+        unit: nm
+        tag: A
+        source: "double_barrier only, class default."
+      nitride.injector.growth_step_nm:
+        value: 0.2593
+        unit: nm
+        tag: V
+        source: "Bernardini, Phys. Rev. B 56, R10024 (1997): GaN c-axis bilayer spacing c/2."
+      nitride.injector.growth_tolerance_steps:
+        value: 1.0
+        unit: growth steps
+        tag: A
+        source: "Sensitivity class default."
+      nitride.injector.me_barrier_override:
+        value: null
+        unit: m0
+        tag: A
+        source: "None: VCA-interpolated barrier electron mass used."
+      nitride.injector.mh_barrier_override:
+        value: null
+        unit: m0
+        tag: A
+        source: "None: VCA-interpolated barrier hole mass used."
+      nitride.injector.dEc_eV_override:
+        value: null
+        unit: eV
+        tag: A
+        source: "None: VCA-interpolated conduction offset used."
+      nitride.injector.dEv_eV_override:
+        value: null
+        unit: eV
+        tag: A
+        source: "None: VCA-interpolated valence offset used."
+      nitride.injector.me_well:
+        value: 0.209
+        unit: m0
+        tag: V
+        source: "fsim_core.nitride_materials: GaN electron effective mass."
+      nitride.injector.mh_well:
+        value: 1.88
+        unit: m0
+        tag: V
+        source: "fsim_core.nitride_materials: GaN hole effective mass."
+      nitride.injector.delta_Ev_GaN_AlN_eV:
+        value: 0.70
+        unit: eV
+        tag: V
+        source: "Martin, Yu, Waldrop, Appl. Phys. Lett. 68, 2541 (1996): 0.70 +/- 0.24 eV valence-band offset; the 0.30 eV Tsai and Bayram partition is a sensitivity, not this card's default."
+      nitride.injector.n_cm3:
+        value: 3.0e+18
+        unit: cm^-3
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): n-GaN reservoir doping."
+        anchor_id: deshpande2013_geometry
+      nitride.injector.p_cm3:
+        value: 5.0e+17
+        unit: cm^-3
+        tag: V
+        source: "Deshpande et al., Nat. Commun. 4, 1675 (2013): p-GaN reservoir doping."
+        anchor_id: deshpande2013_geometry
+      nitride.injector.alignment_uncertainty_meV:
+        value: 15.0
+        unit: meV
+        tag: A
+        source: "Class default."
+      nitride.injector.degeneracy:
+        value: 2.0
+        unit: dimensionless
+        tag: A
+        source: "Spin/valley class default."
+      nitride.injector.reservoir_state_count_e:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Directive round e696bdd class default; overridden every call by the device piece with the levels module's own reservoir_state_count_e (this card's value is the constructor placeholder, never the value actually used)."
+      nitride.injector.reservoir_state_count_h:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Directive round e696bdd class default; overridden every call by the device piece with the levels module's own reservoir_state_count_h (this card's value is the constructor placeholder, never the value actually used)."
+      nitride.injector.mg_acceptor_energy_meV:
+        value: 170.0
+        unit: meV
+        tag: V
+        source: "Directive round e696bdd: Mg acceptor ionization energy, p-GaN free-hole fraction."
+      nitride.injector.include_polarization:
+        value: true
+        unit: bool
+        tag: DR
+        source: "Directive round e696bdd: pseudomorphic fixed-D polarization sheet-charge envelope at every AlGaN/GaN interface."
+      nitride.injector.bypass_prefactor:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Class default."
+      nitride.injector.polarity:
+        value: Ga
+        unit: enum
+        tag: A
+        source: "Fix 3 (commit 12b39cd): Ga-polar c-axis growth assumed for the catalyst-free PA-MBE wires; N is the opposite-sign sensitivity."
+      nitride.injector.field_leverarm:
+        value: 1.0
+        unit: dimensionless
+        tag: A
+        source: "Class default."
+      nitride.injector.slice_length_nm:
+        value: 0.2
+        unit: nm
+        tag: A
+        source: "Fix 3 (commit 12b39cd): staircase slice length for the tilted-profile transfer matrix; default bit-identical."
+      nitride.injector.min_slices_per_segment:
+        value: 8
+        unit: count
+        tag: A
+        source: "Fix 3 (commit 12b39cd): verifier-only knob; class default."
+      nitride.injector.alignment_tunable:
+        value: false
+        unit: bool
+        tag: A
+        source: "Class default."
+      nitride.injector.bias_tuning_range_meV:
         value: 0.0
         unit: meV
         tag: A
-        source: "[A] Zero design detuning at T_track; matches the class default."
-        note: "See design.provenance.ranges['nitride.cavity.detuning_offset_meV'] for the one-at-a-time sensitivity axis [0, +10] meV."
-      nitride.cavity.purcell_enabled:
-        value: true
+        source: "Class default (sensitivity when alignment_tunable=true)."
+      nitride.injector.occupancy_control_known:
+        value: false
         unit: bool
         tag: A
-        source: >
-          [A] Purcell enhancement enabled. Taylor et al. 2010 (../_goal/
-          nitride_digests.md Sec. 5a) explicitly report NO observed Purcell
-          effect at their much lower measured Q~50-170 -- flagged in
-          docs/nitride_cavity_contract.md "Known limitations" as an
-          assumption this paper does not support at this card's own,
-          higher, assumed Q.
-        anchor_id: taylor2010-no-purcell-observed
-        note: "See design.provenance.ranges['nitride.cavity.purcell_enabled'] for the one-at-a-time sensitivity axis [false, true]."
-
+        source: "Honest-failure flag, not a physics input: no second-occupation control is demonstrated for this platform."
+      nitride.injector.second_pair_control_known:
+        value: false
+        unit: bool
+        tag: A
+        source: "Honest-failure flag, not a physics input: no second-pair-exclusion control is demonstrated for this platform."
       nitride.tau_rad0_ns:
         value: 1.0
         unit: ns
         tag: A
-        source: >
-          [A] Field-free radiative lifetime default, deliberately distinct
-          from Deshpande et al., Appl. Phys. Lett. 105, 141109 (2014),
-          abstract, 300 K measured recombination lifetime 1.3 +/- 0.3 ns
-          (deshpande2014-lifetime) -- NOT a transferred measured
-          field-suppressed lifetime; fsim_core/nitride_levels.py's own
-          module default TAU_RAD0_DEFAULT_NS=1.3 ns already carries that
-          citation, and this card explicitly chooses a different, simpler
-          1.0 ns field-free assumption instead of inheriting it silently.
-        note: "See design.provenance.ranges['nitride.tau_rad0_ns'] for the one-at-a-time sensitivity axis [0.2, 1, 4] ns."
-      nitride.k_nr_ns:
-        value: 0.0
-        unit: "ns^-1"
+        source: "Field-free radiative lifetime default, deliberately distinct from the Deshpande 2014 measured 1.3 +/- 0.3 ns recombination lifetime -- not a transferred measured field-suppressed lifetime."
+        anchor_id: deshpande2014_abstract
+      nitride.tau_cap_ps:
+        value: 10.0
+        unit: ps
         tag: A
-        source: "[A optimistic] Zero non-radiative decay rate; an explicit, optimistic best-case assumption, not a measured InGaN non-radiative rate (none is in the digest at this platform/temperature)."
-        note: "See design.provenance.ranges['nitride.k_nr_ns'] for the one-at-a-time sensitivity axis [0, 1] ns^-1."
-      nitride.background_tau_ns:
-        value: 0.0
-        unit: ns
-        tag: A
-        source: "[A optimistic] No background afterglow past the pump pulse; an explicit, optimistic best-case assumption."
-        note: "See design.provenance.ranges['nitride.background_tau_ns'] for the one-at-a-time sensitivity axis [0, 1] ns."
-      nitride.eta_background:
-        value: 0.1
-        unit: dimensionless
-        tag: A
-        source: "[A] Background collection/acceptance efficiency; a round, explicitly-stated design assumption, not digest-sourced."
-        note: "See design.provenance.ranges['nitride.eta_background'] for the one-at-a-time sensitivity axis (not itself swept by nitride-sweep-results.md; recorded here as an explicit input)."
-
-    filter_unset_defaults: >
-      filter is left entirely at FilterBlock class defaults (enabled=true,
-      auto_w=true [A] -- the collection window equals the anchored
-      linewidth Gamma(T_j), the F-series operating convention -- w=2.0 meV
-      unused while auto_w=true, dx=0.0 meV [A] no filter offset, track=
-      "mode" and track_material="" both inert here (no legacy Varshni
-      tracking is exercised by the nitride evaluator), hold_window=false).
-      Recorded here per this contract's rule that a resolved default is
-      documented rather than left silently implicit.
-
-    diode_unset_defaults: >
-      NitrideDiode fields left unset on this card (fsim_core.
-      nitride_transport.NitrideDiode class defaults apply, resolved here
-      per this contract's rule that a factory default not exposed as an
-      accepted card override is still recorded): d_active_nm=3.0 nm [A],
-      area_um2=0.785 um^2 [A] (this NitrideDiode injection area is
-      independent of aperture.diameter_um=0.05 um and of thermal.
-      mesa_diameter_um=20 um -- fsim_core.device._evaluate_nitride does not
-      resolve it from either, unlike the legacy EL-transport diode path's
-      _diode_from_drive; a pre-existing module behaviour, not a defect
-      introduced by this card), R_s_ohm=100.0 ohm [A], n_ideality=2.0 [A],
-      tau_SRH_ns=1.0 ns [A], tau_cap0_ps=10.0 ps [A], tau_matrix_ns=1.0 ns
-      [A], eps_r=10.28 [E] (matches Strak et al., arXiv:2407.01134 (2024),
-      Table 3, p.38 static GaN dielectric constant 10.28, not independently
-      re-cited as a ledger anchor here), f_Rs_local=0.3 [E]. None of these
-      are overridden by this card; they are the module's own class
-      defaults, restated here for transparency rather than left implicit.
-
-    background_model_defaults: >
-      fsim_core.nitride_transport.evaluate_injection's eta_rad_matrix
-      (default 0.1 [A]) and E_urbach_meV (default None, module resolves
-      its own class value [E]) and eta_total (default 0.01 [A]) are NOT
-      forwarded from any card field by fsim_core.device._evaluate_nitride
-      (its own call site does not pass them through) -- they are resolved
-      module defaults, not accepted nitride card overrides. Recorded here
-      per this contract's instruction to record resolved default values in
-      provenance rather than inventing a new YAML field to expose them.
-
-    assumptions:
-      - platform
-      - dot.linewidth
-      - dot.lineshape
-      - dot.E_LO
-      - dot.delta_xx
-      - ret.mode
-      - ret.channel
-      - ret.b0
-      - ret.beta
-      - ret.tau_cap_scales_with_density
-      - drive.mode
-      - drive.diode.preset
-      - drive.finite_pulse
-      - drive.cycle_loading
-      - cavity.enabled
-      - cavity.type
-      - emission.type
-      - thermal.layers.0.name
-      - thermal.layers.1.name
-      - thermal.substrate.name
-      - dot.gamma0
-      - dot.a_ac
-      - dot.gamma300
-      - dot.r_xx
-      - ret.tau_cap_ps
-      - drive.diode.tau_pulse_ns
-      - drive.diode.d_i_nm
-      - drive.diode.x_in
-      - drive.diode.wl_thickness_nm
-      - drive.duty
-      - drive.gate_ns
-      - drive.I_uA
-      - drive.cw
-      - drive.b_res
-      - thermal.mesa_diameter_um
-      - thermal.layers.0.t_um
-      - thermal.layers.0.k300
-      - thermal.layers.0.alpha
-      - thermal.layers.0.spread
-      - thermal.layers.1.t_um
-      - thermal.layers.1.k300
-      - thermal.layers.1.alpha
-      - thermal.layers.1.spread
-      - thermal.substrate.k300
-      - thermal.substrate.alpha
-      - aperture.density_cm2
-      - aperture.diameter_um
-      - nitride.dot.height_nm
-      - nitride.dot.radius_nm
-      - nitride.dot.wl_thickness_nm
-      - nitride.dot.strain_fraction
-      - nitride.dot.screening_fraction
-      - nitride.dot.external_field_kVcm
-      - nitride.dot.strain_c_fraction
-      - nitride.cavity.Q
-      - nitride.cavity.mode_volume_norm
-      - nitride.cavity.spatial_overlap
-      - nitride.cavity.eta_out
-      - nitride.cavity.T_track
-      - nitride.cavity.dEdT_cav_meV_K
-      - nitride.cavity.detuning_offset_meV
-      - nitride.cavity.purcell_enabled
-      - nitride.tau_rad0_ns
-      - nitride.k_nr_ns
-      - nitride.background_tau_ns
-      - nitride.eta_background
+        source: "Carrier capture time into the dot; no InGaN-dot-specific measurement in the digest, matches the levels module's own class default."
 
     ranges:
-      # NOTE: this comparison card is NOT part of the headline Cartesian
-      # grid (docs/nitride_cavity_contract.md 'Deshpande comparison':
-      # "distinct from the headline 80 MHz grid"; the 3240-row headline
-      # count belongs only to cards/nitride-cavity-pulse-design.yaml and
-      # cards/nitride-cavity-set-design.yaml). The grid values below are
-      # reproduced for cross-reference only; this card's own
-      # radius_nm=12.5 nm and rep_rate_hz=2.0e8 fall OUTSIDE the headline
-      # radius_nm/T_hs=80MHz-grid axes entirely, by design.
+      nitride.nanowire.core_radius_nm:
+        values: [60.0, 80.0, 100.0, 120.0]
+        unit: nm
+        tag: A
+        source: "Contract main grid axis (docs/nitride_nanowire_contract.md 'Sweep grid, VERDICT format, and output paths'); this card's own value is the fixed reference row."
       nitride.dot.height_nm:
-        values: [1.0, 2.0, 3.0, 4.0, 5.0]
+        values: [1.5, 2.0, 3.0, 4.0]
         unit: nm
         tag: A
-        source: "Headline grid axis (docs/nitride_cavity_contract.md 'Sweep grid and cost'; nitride-sweep-results.md), reproduced for reference; this card's own value (2.0) happens to coincide with a grid point but this card is not itself a headline row."
-      nitride.dot.radius_nm:
-        values: [5.0, 10.0, 15.0]
-        unit: nm
-        tag: A
-        source: "Headline grid axis, reproduced for reference; this card's own value (12.5) is OUTSIDE this axis (it is the Deshpande-2013-transferred placeholder, not a headline grid point)."
+        source: "Contract main grid axis; this card's own value (2.0) coincides with a grid point and is the 2013/2014 [V] disc thickness."
       nitride.dot.x_in:
-        values: [0.15, 0.25, 0.40]
+        values: [0.25, 0.40]
         unit: dimensionless
         tag: A
-        source: "Headline grid axis, reproduced for reference; this card's own value (0.40) coincides with a grid point and is [V]-sourced from Deshpande 2014 (deshpande2014-x-in), distinct from the headline cards' own 0.25 (Deshpande 2013, deshpande2013-x-in)."
+        source: "Contract main grid axis; this card's own value (0.40) is the Deshpande 2014 [V] composition, distinct from 0.25 (Deshpande 2013)."
       thermal.T_hs:
         values: [230.0, 250.0, 273.0, 300.0]
         unit: K
         tag: A
-        source: "Headline grid axis, reproduced for reference; this card's own value (300.0) coincides with a grid point and is [V]-sourced from Deshpande 2014 (deshpande2014-temperature)."
-      nitride.cavity.Q:
-        values: [500.0, 2000.0, 10000.0]
-        unit: dimensionless
-        tag: A
-        source: "Headline grid axis; this card's own value (2000.0) is the fixed reference."
-      drive.I_uA:
-        values: [0.002, 0.02, 0.2]
-        unit: uA
-        tag: A
-        source: "Headline grid axis; this card's own value (0.02) is the fixed reference."
-      cycle_loading:
+        source: "Contract main grid axis; this card's own value (300.0) is the Deshpande 2014 [V] room-temperature condition."
+      drive.cycle_loading:
         values: [rectangular, deterministic_pair]
         unit: enum
         tag: A
-        source: "Both loading regimes (this card: rectangular; cards/nitride-cavity-set-design.yaml: deterministic_pair)."
-      nitride.dot.screening_fraction:
-        values: [0.0, 0.5, 1.0]
+        source: "Contract main grid axis (both regimes); this card is one row of the pair."
+      nitride.nanowire.strain_bound:
+        values: [unrelaxed, relaxed]
+        unit: enum
+        tag: A
+        source: "Contract main grid axis; this card's own value (relaxed) is the headline_upper bound row. The sweep script, not this card, produces the unrelaxed partner."
+      drive.rep_rate_hz:
+        values: [8.0e+7, 2.0e+8]
+        unit: Hz
+        tag: A
+        source: "Contract main grid axis; this card's own value (2.0e8) is the Deshpande 2014 [V] maximum reported rate. See the named 100 ps / 80 MHz operating row below for the reduced-rate point."
+      nitride.surface.S_cm_s:
+        values: [1.0e+2, 1.0e+3, 1.0e+4]
+        unit: cm/s
+        tag: A
+        source: "Contract sensitivity axis; this card's own value (1.0e3) is the [E] Deshpande 2013 secondary-attribution default."
+      nitride.nanowire.shell:
+        values: [none, AlGaN]
+        unit: enum
+        tag: A
+        source: "Contract sensitivity axis (with a declared 3 nm AlGaN shell thickness); this card's own value (none) is the core-grid default."
+      nitride.surface.occupied_dot_access:
+        values: [0.0, 0.05, 0.1, 1.0]
         unit: dimensionless
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md), not a headline Cartesian axis."
-      nitride.dot.strain_fraction:
-        values: [0.5, 1.0]
-        unit: dimensionless
+        source: "Contract sensitivity set; this card's own value (0.05) is the [DR] headline default, 1.0 the declared conservative [A] partner, 0.1 a third sensitivity point."
+      nitride.wire_thermal.R_s_ohm:
+        values: [1.0e+6, 2.38e+9]
+        unit: ohm
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      dot.gamma300:
-        values: [25.0, 35.0, 55.0]
-        unit: meV
+        source: "Contract sensitivity axis: this card's own value (1.0e6) is the designed-contact [A] default; 2.38e9 is the as-built [V] 2013 sensitivity (the horizontal card's own default)."
+      nitride.wire_thermal.Rth_K_W:
+        values: [1.0e+7]
+        unit: K/W
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md); NOT a fit to Wang 220 K data or to Tamariz 2020 -- see dot.gamma300's own source note."
-      dot.delta_xx:
-        values: [-10.0, 10.0, 16.0]
-        unit: meV
+        source: "One decade each way from this card's own default, per the contract Card schema."
+      nitride.wire_thermal.C_parasitic_F:
+        values: [0.0, 1.0e-18, 1.0e-16]
+        unit: F
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md), spanning both antibinding and binding InGaN-dot XX signs (Seguin et al. 2006's -3.5 to +16 meV range)."
-      ret.tau_cap_ps:
-        values: [1.0, 10.0, 100.0]
-        unit: ps
-        tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      ret.tau_cap_scales_with_density:
-        values: [false, true]
-        unit: bool
-        tag: A
-        source: "One-at-a-time sensitivity axis at density 1e9 cm^-2, including false at that same density (nitride-sweep-results.md)."
-      nitride.tau_rad0_ns:
-        values: [0.2, 1.0, 4.0]
-        unit: ns
-        tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.k_nr_ns:
-        values: [0.0, 1.0]
-        unit: "ns^-1"
-        tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.background_tau_ns:
-        values: [0.0, 1.0]
-        unit: ns
-        tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
+        source: "Contract sensitivity axis; this card's own value (0.0) is the optimistic default."
       drive.b_res:
-        values: [0.0, 0.1, 1.0]
+        values: [0.02, 0.1]
         unit: dimensionless
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.cavity.eta_out:
-        values: [0.01, 0.1, 0.5]
+        source: "0.02 sensitivity motivated by the 2013 corrected HBT g2 0.16 (design brief User answer 4); this card's own value (0.1) is the nitride-wide headline default."
+      nitride.injector.al_fraction:
+        values: [0.2, 0.3, 0.4]
         unit: dimensionless
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.cavity.mode_volume_norm:
-        values: [1.0, 2.0, 10.0]
-        unit: "V/(lambda/n)^3"
+        source: "Contract sensitivity axis; this card's own value (0.30) is the default."
+      nitride.injector.electron_barrier_thickness_nm / hole_barrier_thickness_nm:
+        values: [1.0, 2.0, 3.0]
+        unit: nm
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.cavity.detuning_offset_meV:
-        values: [0.0, 10.0]
-        unit: meV
+        source: "Contract sensitivity axis (each barrier); this card's own value (2.0) is the default."
+      nitride.injector.delta_Ev_GaN_AlN_eV:
+        values: [0.70, 0.30]
+        unit: eV
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md)."
-      nitride.cavity.purcell_enabled:
-        values: [false, true]
-        unit: bool
+        source: "0.30 eV is the Tsai and Bayram partition sensitivity; this card's own value (0.70) is the Martin/Yu/Waldrop 1996 [V] default."
+      operating_point_100ps_80MHz:
+        family: vertical_photonic
+        note: "Named 100 ps / 80 MHz operating row for this family (this round's binding card-content decision): drive.diode.tau_pulse_ns=0.1 ns, drive.rep_rate_hz=8.0e+7 Hz, drive.duty=0.008 (=0.1e-9*8e7), all other leaves as this card's own headline values. Reported by the sweep script as a labelled row, not a separate card."
+        tau_pulse_ns: 0.1
+        rep_rate_hz: 8.0e+7
+        duty: 0.008
         tag: A
-        source: "One-at-a-time sensitivity axis (nitride-sweep-results.md); also exercised at the observed-ceiling reference nitride.cavity.Q=167 [V Taylor2010, A device transfer]."
-        anchor_id: taylor2010-cavity-q
 
-    single_dot_selection:
-      aperture_um2: 0.0019634954084936207
-      density_cm2: 1.0e+10
-      n_expected: 0.19634954084936207
-
-    derived_fields:
-      - drive.b_e
-      - cavity.beta_sin
-
-    headline_grid_row_count: 0
+    not_consumed_by_nanowire_evaluator:
+      value: "thermal.mesa_diameter_um, thermal.layers, thermal.substrate (legacy planar Stack/t_junction spreading); ret.a_esc, ret.E_a, ret.b_p, ret.E_b, ret.b0, ret.beta, ret.preset, ret.system, ret.tau_rad_ns, ret.channel, ret.overrides, ret.n_dot_cm2, ret.tau_cap_ps (legacy proxy/confinement fields); dot.delta_xx, dot.gamma_scale, dot.r_xx, dot.gamma0, dot.a_ac, dot.E_LO, dot.phonon (legacy InP class defaults); filter.w, filter.track, filter.track_material, filter.hold_window (inert while filter.auto_w=true and no cavity/tracking chain is exercised); cavity.type, cavity.kappa, cavity.T_track, cavity.F_P, cavity.G, cavity.beta_sin, cavity.purcell_wire (inert while cavity.enabled=false)."
+      tag: A
 
     deshpande_comparison:
-      note: >
-        Non-gating, unfitted comparison table (docs/nitride_cavity_
-        contract.md "Deshpande comparison"). "measured_*" entries are the
-        paper's own published/abstract values, transcribed unmodified;
-        this card's own evaluate() output (a MODEL result, not reproduced
-        here as a static number -- see verify/verify_nitride_cards.py) is
-        never fitted to any of them, and a missing published quantity is
-        recorded as null, never invented or defaulted to zero.
-      measured_g2:
+      note: "Non-gating, held-out comparison anchors (design brief User answer 2: independent prediction, never fitted). This card's own evaluate() output is never adjusted toward any of these."
+      measured_g2_2014:
         value: 0.29
-        unit: "g2(0)"
-        anchor_id: deshpande2014-g2
-      measured_lifetime_ns:
+        anchor_id: deshpande2014_abstract
+      measured_lifetime_ns_2014:
         value: 1.3
         tolerance_ns: 0.3
-        anchor_id: deshpande2014-lifetime
-      measured_max_rep_rate_hz:
+        anchor_id: deshpande2014_abstract
+      measured_max_rep_rate_hz_2014:
         value: 2.0e+8
-        anchor_id: deshpande2014-max-rep-rate
-      measured_dot_size:
-        value: null
-        anchor_id: deshpande2014-geometry-missing
-      measured_drive_waveform:
-        value: null
-        anchor_id: deshpande2014-waveform-missing
-      measured_count_rate:
-        value: null
-        anchor_id: deshpande2014-count-rate-missing
-      measured_g2_repetition_rate:
-        value: null
-        anchor_id: deshpande2014-g2-measurement-rate-missing
-
-    provenance_note: >
-      This card is the docs/nitride_cavity_contract.md "Deshpande
-      comparison" non-headline card (comparison_status=
-      conditions_incomplete; headline_grid_row_count=0, distinct from the
-      3240-row headline grid the other two cards belong to). See that
-      contract for the acceptance-gate definitions and the class-
-      discipline statement (numerical verification vs. source
-      transcription vs. non-gating model comparison; no held-out
-      prediction claimed anywhere in this piece).
+        anchor_id: deshpande2014_abstract
+      measured_g2_2013_hbt:
+        value: {X_raw: 0.30, X_corrected: 0.16, XX_raw: 0.38, XX_corrected: 0.25}
+        anchor_id: deshpande2013_hbt
+      measured_lifetimes_ns_2013:
+        value: {TRPL_XX_ps: 711.0, HBT_X_ns: 1.1, HBT_XX_ns: 0.7}
+        anchor_id: deshpande2013_lifetimes
