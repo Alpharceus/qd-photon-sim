@@ -42,6 +42,27 @@ nitride.tau_cap_ps) and asserts every card leaf's value against the
 contract's own default/range/tag for the card's own family, so a future
 contract-table edit is picked up automatically instead of drifting out of
 sync with a second, hand-maintained copy.
+
+Fix round 3 (Opus re-review of 966d19a, HIGH verify:262 + 2 MEDIUM + 4 LOW):
+(1) check_contract_leaf compared the contract's bare "horizontal"/
+"vertical" leaf-cell suffix directly to the card's full family enum value
+("horizontal_as_built"/"vertical_photonic"), so all six family-qualified
+Card-schema rows always mismatched and silently skipped BOTH their value
+and provenance-tag checks -- see _FAMILY_SUFFIX_TO_FAMILY. (2) drive.diode.
+tau_pulse_ns and nitride.dot.k_intrinsic_ns had no value pin at all; both
+are now in DIRECT_DEFAULTS. (3) the provenance-entry loop's anchor check
+only fired when an anchor_id happened to be present (a deleted anchor_id
+silently passed) and a missing/invalid entry `continue`d past it entirely
+(shrinking the denominator); both are now unconditional, and a "V"-tagged
+entry with no anchor_id is a failure unless the leaf cites a materials-
+module constant, not a ledger anchor (LITERATURE_NO_ANCHOR_ALLOWLIST).
+(4) nitride.photonics.dipole_weights is now written explicitly on all four
+cards (isotropic, [A]; fsim_core/nitride_nanowire_device.py has coerced a
+YAML list to the required tuple since 90ab4cf) and is in PHOTONICS_LEAVES;
+check_contract_leaf special-cases it (a 3-tuple, not a scalar). (5)
+dot.gamma300 and thermal.T_hs move no evaluate() scalar at this round's
+T_grid, so DIRECT_DEFAULTS/DIRECT_DEFAULT_TAGS now pin their value and tag
+explicitly rather than relying on the mutation-set check to catch a swap.
 """
 import copy
 import math
@@ -65,6 +86,26 @@ LEDGER_PATH = os.path.join(ROOT, "verify", "data", "nitride_nanowire_anchors.yam
 
 VALID_TAGS = {"V", "DR", "E", "A"}
 
+# Fix round 3 (Opus re-review of 966d19a, LOW verify:539-542): a "V"
+# (verified/literature) provenance entry with no anchor_id is otherwise
+# unaccountable -- the anchor check at verify:588-... only fires when an
+# anchor_id string is PRESENT, so simply deleting one silently passed. The
+# seven paths below are the only V-tagged leaves that cite a materials-
+# module constant rather than a nanowire ledger anchor (Rinke 2008,
+# Malitson 1965, Bernardini PRB 1997, Martin/Yu/Waldrop APL 1996, the two
+# fsim_core.nitride_materials effective-mass constants, and the directive-
+# round Mg acceptor ionization energy): a missing anchor_id on any OTHER
+# V-tagged leaf is a failure, not a silent skip.
+LITERATURE_NO_ANCHOR_ALLOWLIST = {
+    "nitride.dot.vbo_InN_GaN_eV",             # Rinke et al., PRB 77, 075202 (2008)
+    "nitride.photonics.n_oxide",              # Malitson (1965), sio2_index
+    "nitride.injector.growth_step_nm",        # Bernardini, PRB 56, R10024 (1997)
+    "nitride.injector.delta_Ev_GaN_AlN_eV",   # Martin, Yu, Waldrop, APL 68, 2541 (1996)
+    "nitride.injector.me_well",               # fsim_core.nitride_materials
+    "nitride.injector.mh_well",               # fsim_core.nitride_materials
+    "nitride.injector.mg_acceptor_energy_meV",  # directive round e696bdd, Mg acceptor
+}
+
 # Card-schema leaf sets (docs/nitride_nanowire_contract.md "Card schema"),
 # independently transcribed here (not imported from the device module) so
 # this verifier catches a leaf silently added/removed from either side.
@@ -74,14 +115,16 @@ DOT_LEAVES = {"radius_nm", "height_nm", "x_in", "strain_fraction", "screening_fr
               "external_field_kVcm", "vbo_InN_GaN_eV", "strain_c_fraction",
               "k_intrinsic_ns"}  # k_intrinsic_ns: device-module addendum, not a contract leaf
 SURFACE_LEAVES = {"S_cm_s", "shell", "shell_multiplier", "reservoir_access", "occupied_dot_access"}
-# nitride.photonics: 18 of the dataclass's 19 fields; dipole_weights is
-# deliberately absent from the card YAML (PyYAML safe_load turns a flow
-# sequence into a list, and NitrideNanowirePhotonicsParams requires a
-# genuine tuple -- see design.provenance.sources['nitride.photonics.
-# dipole_weights'] on each card for the recorded reason) so the dataclass's
-# own isotropic-tuple class default applies unmutated.
+# nitride.photonics: all 19 of the dataclass's fields, including
+# dipole_weights (fix round 3): fsim_core/nitride_nanowire_device.py has
+# coerced a 3-element nitride.photonics.dipole_weights YAML list to a tuple
+# of floats at the card boundary since 90ab4cf, so the leaf is reachable
+# from a card and is now written explicitly (isotropic, [A]) instead of
+# relying on the dataclass's own class default -- see
+# design.provenance.sources['nitride.photonics.dipole_weights'] on each
+# card.
 PHOTONICS_LEAVES = {"family", "NA", "n_wire", "n_group_override", "n_ambient", "n_oxide",
-                     "oxide_thickness_nm", "n_substrate", "emitter_height_nm",
+                     "oxide_thickness_nm", "n_substrate", "dipole_weights", "emitter_height_nm",
                      "collection_scale", "radiative_rate_factor", "beta_scale",
                      "taper_transmission", "bottom_reflectivity", "top_contact_transmission",
                      "propagation_transmission", "unguided_collection_scale", "taper_output_mfr_nm"}
@@ -241,6 +284,18 @@ def _family_split_numbers(cell):
     return float(m_h.group(1)), float(m_v.group(1))
 
 
+# The contract's own leaf-cell parenthetical spells the family qualifier
+# "horizontal"/"vertical" (docs/nitride_nanowire_contract.md Card schema:
+# "`core_radius_nm` (horizontal)"), while the card's own nitride.nanowire.
+# family value is the full enum "horizontal_as_built"/"vertical_photonic".
+# Fix round 3 (Opus re-review of 966d19a, HIGH verify:262): comparing the
+# bare suffix to the full enum value directly always mismatched, so all six
+# family-qualified Card-schema rows (core_radius_nm and R_s_ohm horizontal/
+# vertical, dot.radius_nm horizontal/vertical) silently returned None and
+# were skipped for BOTH the value check and the provenance-tag check below.
+_FAMILY_SUFFIX_TO_FAMILY = {"horizontal": "horizontal_as_built", "vertical": "vertical_photonic"}
+
+
 class SchemaParseError(Exception):
     """A Card-schema row this module has no resolver for (should never fire
     for the leaves the four cards actually write; a new leaf added to the
@@ -259,8 +314,17 @@ def check_contract_leaf(section, name, family_suffix, default_cell, range_cell, 
     alternate value is."""
     dcell, rcell = default_cell.strip(), range_cell.strip()
     key = (section, name, family_suffix)
-    if family_suffix is not None and family_suffix != family:
+    if family_suffix is not None and _FAMILY_SUFFIX_TO_FAMILY.get(family_suffix, family_suffix) != family:
         return None
+
+    # dipole_weights is a 3-tuple, not a scalar: none of the generic
+    # numeric/enum parsing below applies to it (and the generic numeric
+    # fallback would crash trying to hash an unhashable list into a set).
+    # Both families share the same isotropic default and tag (contract Card
+    # schema "both"), so this is a flat equality check, not a family split.
+    if name == "dipole_weights":
+        expected = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+        return tuple(value) == expected, "isotropic " + repr(expected)
 
     if dcell.startswith("equal to") or dcell.startswith("mirrors"):
         if name == "outer_radius_nm":
@@ -351,11 +415,35 @@ SCHEMA_ROWS = parse_contract_card_schema()
 # spec "Common explicit defaults": I_uA design choice = 2 nA = 2.0e-3 uA,
 # tau_cap_ps=10) rather than a Card-schema table row, so parse_contract_
 # card_schema above never sees them.
+#
+# Fix round 3 (Opus re-review of 966d19a, MEDIUM verify:107-108/73-75) adds
+# two more: drive.diode.tau_pulse_ns (spec "Common explicit defaults":
+# tau_pulse_ns=0.1) and nitride.dot.k_intrinsic_ns (a device-module
+# addendum, not a Card-schema row -- see DOT_LEAVES above -- pinned to its
+# neutral zero-extra-loss default); neither had a value pin before, so a
+# mutated value applied to all four cards passed unnoticed.
 DIRECT_DEFAULTS = {
     "drive.b_res": 0.1,
     "drive.I_uA": 2.0e-3,
     "nitride.tau_rad0_ns": 1.0,
     "nitride.tau_cap_ps": 10.0,
+    "drive.diode.tau_pulse_ns": 0.1,
+    "nitride.dot.k_intrinsic_ns": 0.0,
+    "dot.gamma300": 35.0,
+    "thermal.T_hs": 300.0,
+}
+
+# Fix round 3 (Opus re-review of 966d19a, LOW "gamma300 / thermal.T_hs
+# unpinned (no scalar effect at T_grid)"): dot.gamma300 and thermal.T_hs
+# move no evaluate() scalar the mutation-set check (acceptance criterion 5)
+# samples, so DIRECT_DEFAULTS' value pin above is the only thing that can
+# catch a mutated value; this dict additionally pins the provenance tag
+# each of those two leaves carries on the card (dot.gamma300: A, design
+# choice; thermal.T_hs: V, deshpande2014_abstract room-temperature
+# condition), so a value-and-tag swap cannot pass either.
+DIRECT_DEFAULT_TAGS = {
+    "dot.gamma300": "A",
+    "thermal.T_hs": "V",
 }
 
 
@@ -528,18 +616,34 @@ def main():
                 path = f"{prefix}.{leaf}"
                 checks[0] += 1
                 entry = sources.get(path)
-                if entry is None or entry.get("tag") not in VALID_TAGS or not entry.get("source"):
+                entry_ok = entry is not None and entry.get("tag") in VALID_TAGS and entry.get("source")
+                if not entry_ok:
                     failures.append(f"{name}: provenance.sources missing/invalid entry for {path}")
-                    continue
-                # MEDIUM-3 fix: count this check unconditionally (not only
-                # when anchor_id happens to be present) so deleting an
-                # anchor_id line shrinks the failure count on the SAME
-                # denominator instead of silently shrinking the denominator
-                # too (the previous verifier's "552/552" bug).
+
+                # MEDIUM-3 fix (kept): count this check unconditionally (not
+                # only when anchor_id happens to be present) so deleting an
+                # anchor_id line cannot shrink the failure count on the SAME
+                # denominator (the previous verifier's "552/552" bug).
+                # Fix round 3 (LOW verify:531-533): also run it
+                # unconditionally when the entry itself is missing/invalid
+                # (previously a bare `continue` here skipped this second
+                # check entirely, shrinking the denominator by one relative
+                # to a present-but-anchor-bad entry) and (LOW verify:539-
+                # 542) require every "V"-tagged entry to cite a real
+                # anchor_id unless the leaf is on the materials-constant
+                # allow-list above.
                 checks[0] += 1
-                anchor = entry.get("anchor_id")
-                if anchor and anchor not in ledger.anchors:
-                    failures.append(f"{name}: {path} cites unknown anchor {anchor!r}")
+                if not entry_ok:
+                    failures.append(f"{name}: {path}: cannot check anchor rule, "
+                                     "provenance entry missing/invalid")
+                else:
+                    anchor = entry.get("anchor_id")
+                    if anchor:
+                        if anchor not in ledger.anchors:
+                            failures.append(f"{name}: {path} cites unknown anchor {anchor!r}")
+                    elif entry.get("tag") == "V" and path not in LITERATURE_NO_ANCHOR_ALLOWLIST:
+                        failures.append(f"{name}: {path} is V-tagged with no anchor_id and is "
+                                         "not on the materials-constant allow-list")
 
         set_params = design["drive"].get("set_params", {})
         is_set = design["drive"]["cycle_loading"] == "deterministic_pair"
@@ -724,6 +828,15 @@ def main():
             if not found or value != expected:
                 failures.append(f"{name}: {path}={value!r} must equal the round's pinned "
                                  f"default {expected!r}")
+
+        sources = design.get("provenance", {}).get("sources", {})
+        for path, expected_tag in DIRECT_DEFAULT_TAGS.items():
+            checks[0] += 1
+            entry = sources.get(path)
+            tag = entry.get("tag") if entry else None
+            if tag != expected_tag:
+                failures.append(f"{name}: provenance.sources[{path!r}].tag={tag!r} must equal "
+                                 f"the round's pinned tag {expected_tag!r}")
 
     # MEDIUM-2 fix: drive.duty is read directly by the nanowire device
     # (nitride_nanowire_device.py: duty = float(d.drive.duty)), not

@@ -96,6 +96,7 @@ design:
       n_oxide: null
       oxide_thickness_nm: 100.0
       n_substrate: null
+      dipole_weights: [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
       emitter_height_nm: null
       collection_scale: 1.0
       radiative_rate_factor: 1.0
@@ -523,10 +524,10 @@ design:
         tag: E
         source: "None: falls back to a 2-point Si n,k anchor table. Horizontal-consumed only."
       nitride.photonics.dipole_weights:
-        value: (1/3, 1/3, 1/3), not set in YAML
+        value: [0.3333333333333333, 0.3333333333333333, 0.3333333333333333]
         unit: tuple (along_wire, transverse_inplane, vertical), dimensionless
         tag: A
-        source: "NOT an explicit YAML key on this card: NitrideNanowirePhotonicsParams requires a Python tuple and rejects a YAML list (PyYAML safe_load always produces a list for a flow sequence, never a tuple), so this leaf is left at the dataclass's own class default, which already IS the isotropic (1/3,1/3,1/3) contract default -- no value is silently substituted. Orientation prior unknown (contract 'Composition rules for the device piece' bullet 9). The CPLANE_ONLY_DIPOLE_WEIGHTS (0.0,0.5,0.5) alternative predicts the WRONG-SIGN degree_of_linear_polarization against the deshpande2013_polarization 70 percent anchor and is kept only as a named, explicitly falsified sensitivity in the sweep script, never on this card."
+        source: "Explicit isotropic (1/3,1/3,1/3) YAML key, written to full double precision so it round-trips bit-identically through float(x) to the dataclass's own class default. NitrideNanowirePhotonicsParams requires a Python tuple and PyYAML safe_load always produces a list for a flow sequence, never a tuple; since 90ab4cf fsim_core/nitride_nanowire_device.py coerces a 3-element nitride.photonics.dipole_weights list to a tuple of floats at the card boundary before constructing NitrideNanowirePhotonicsParams, so this leaf is no longer unreachable from a card and is now written explicitly instead of relying on the implicit class default. Orientation prior unknown (contract 'Composition rules for the device piece' bullet 9). The CPLANE_ONLY_DIPOLE_WEIGHTS (0.0,0.5,0.5) alternative predicts the WRONG-SIGN degree_of_linear_polarization against the deshpande2013_polarization 70 percent anchor and is kept only as a named, explicitly falsified sensitivity in the sweep script, never on this card."
         anchor_id: deshpande2013_polarization
       nitride.photonics.emitter_height_nm:
         value: null
