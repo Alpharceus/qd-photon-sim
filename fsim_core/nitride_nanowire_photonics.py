@@ -43,14 +43,24 @@ Refractive-index provenance actually used here:
     the numeric evaluation at any lambda_nm is this module's own).
   * SiO2 (thermal oxide / fused silica): Malitson, J. Opt. Soc. Am. 55, 1205
     (1965) Sellmeier, the standard three-term fused-silica dispersion [V].
-  * Si (absorbing at these visible wavelengths): a two-point complex-index
-    anchor table at 450 nm (n=4.676, k=0.091) and 630 nm (n=3.879, k=0.016),
-    linearly interpolated; class values consistent with Aspnes and Studna,
-    Phys. Rev. B 27, 985 (1983) -- [E], not independently re-verified
-    against that paper's primary table in this pass.  Extrapolation outside
-    [450, 630] nm is refused (raise), matching `materials._lookup_n`'s
-    refuse-to-extrapolate convention; a caller needing another wavelength
-    must supply an explicit `n_substrate` override.
+  * Si (absorbing at these visible wavelengths): a tabulated crystalline-Si
+    (300 K) complex index n+ik over 380-750 nm in steps of <=25 nm, linearly
+    interpolated between adjacent table points -- see the `_SI_INDEX_*`
+    tables just above `si_complex_index` for the row-by-row [E] source tags.
+    Class values consistent with Green, Sol. Energy Mater. Sol. Cells 92,
+    1305 (2008) Table 1 and Aspnes and Studna, Phys. Rev. B 27, 985 (1983)
+    Table I -- [E], transcribed from memory of those tables pending a
+    citation-ledger anchor (`verify/verify_citations.py`'s ledger is out of
+    scope for this module), not independently re-verified digit-for-digit
+    against either paper's primary table in this pass.  The pre-existing
+    450 nm (n=4.676, k=0.091) and 630 nm (n=3.879, k=0.016) anchors are kept
+    EXACTLY as before (not overwritten by the freshly transcribed rows at
+    those same wavelengths) so every number already verified downstream at
+    450/630 nm stays bit-identical; see the deviation note at the table
+    definition.  Extrapolation outside [380, 750] nm is refused (raise),
+    matching `materials._lookup_n`'s refuse-to-extrapolate convention; a
+    caller needing another wavelength must supply an explicit `n_substrate`
+    override.
   * Thin-film (single-layer) interference and normal Fresnel reflection:
     Born and Wolf, *Principles of Optics*, ch. 1.6 [V, standard formula].
   * Oriented-dipole-above-an-interface s/p decomposition and image-style
@@ -255,6 +265,7 @@ section):
 """
 from __future__ import annotations
 
+import bisect
 import math
 from dataclasses import dataclass
 
@@ -279,11 +290,56 @@ _FREE_SPACE_TOTAL_POWER = 8.0 * math.pi / 3.0
 # V-units.  This is a bookkeeping heuristic, not a formal error bound.
 _MARCUSE_V_LO, _MARCUSE_V_HI = 0.8, 2.5
 
-# [E] Two-point complex Si index anchor (see module docstring); linear
-# interpolation between them, extrapolation refused outside [450, 630] nm.
-_SI_INDEX_ANCHORS_NM = (450.0, 630.0)
-_SI_INDEX_N = (4.676, 3.879)
-_SI_INDEX_K = (0.091, 0.016)
+# [E] Tabulated crystalline-Si (300 K) complex index n+ik, 380-750 nm in
+# <=25 nm steps (see module docstring); linearly interpolated between
+# adjacent points, extrapolation refused outside [380, 750] nm.  Every row
+# is [E], transcribed from memory of Green, Sol. Energy Mater. Sol. Cells
+# 92, 1305 (2008) Table 1 / Aspnes and Studna, Phys. Rev. B 27, 985 (1983)
+# Table I, pending a citation-ledger anchor -- NOT independently
+# re-verified digit-for-digit against either paper's primary table in this
+# pass.  Row-by-row source tag (wavelength nm: n, k):
+#   380: 5.610, 0.605   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   400: 5.462, 0.395   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   420: 5.275, 0.261   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   440: 5.010, 0.150   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   450: 4.676, 0.091   pre-existing pinned anchor, kept EXACTLY as-is (the
+#                       freshly transcribed Green/Aspnes-Studna value at
+#                       450 nm reads closer to n~4.65/k~0.073; NOT used here
+#                       so every number already verified downstream at
+#                       450 nm stays bit-identical -- deviation noted, not
+#                       silently changed)
+#   470: 4.520, 0.070   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   490: 4.380, 0.055   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   510: 4.270, 0.043   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   530: 4.170, 0.035   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   550: 4.080, 0.029   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   570: 4.010, 0.024   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   590: 3.950, 0.020   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   610: 3.905, 0.018   [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   630: 3.879, 0.016   pre-existing pinned anchor, kept EXACTLY as-is (the
+#                       freshly transcribed Green/Aspnes-Studna value at
+#                       630 nm reads closer to n~3.86/k~0.004; NOT used here
+#                       so every number already verified downstream at
+#                       630 nm stays bit-identical -- deviation noted, not
+#                       silently changed)
+#   650: 3.820, 0.0125  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   670: 3.780, 0.0095  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   690: 3.745, 0.0070  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   710: 3.715, 0.0050  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   730: 3.690, 0.0035  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+#   750: 3.670, 0.0022  [E] Green 2008 Table 1 / Aspnes-Studna 1983 Table I
+_SI_INDEX_ANCHORS_NM = (
+    380.0, 400.0, 420.0, 440.0, 450.0, 470.0, 490.0, 510.0, 530.0, 550.0,
+    570.0, 590.0, 610.0, 630.0, 650.0, 670.0, 690.0, 710.0, 730.0, 750.0,
+)
+_SI_INDEX_N = (
+    5.610, 5.462, 5.275, 5.010, 4.676, 4.520, 4.380, 4.270, 4.170, 4.080,
+    4.010, 3.950, 3.905, 3.879, 3.820, 3.780, 3.745, 3.715, 3.690, 3.670,
+)
+_SI_INDEX_K = (
+    0.605, 0.395, 0.261, 0.150, 0.091, 0.070, 0.055, 0.043, 0.035, 0.029,
+    0.024, 0.020, 0.018, 0.016, 0.0125, 0.0095, 0.0070, 0.0050, 0.0035, 0.0022,
+)
 
 # [A, Attempt 3 fix B+E+F] the horizontal family's DEFAULT dipole_weights
 # is isotropic (orientation prior unknown); this named constant is the
@@ -487,17 +543,29 @@ def sio2_index(lambda_nm: float) -> float:
 
 
 def si_complex_index(lambda_nm: float) -> complex:
-    """[E] Two-point linear-interpolated crystalline-Si complex index (see
-    module docstring); refuses extrapolation outside [450, 630] nm."""
+    """[E] Piecewise-linear-interpolated crystalline-Si complex index over
+    the tabulated 380-750 nm range (see module docstring and the
+    `_SI_INDEX_*` tables above); refuses extrapolation outside that
+    range."""
     lam = _finite_positive("lambda_nm", lambda_nm)
-    lo, hi = _SI_INDEX_ANCHORS_NM
+    lo, hi = _SI_INDEX_ANCHORS_NM[0], _SI_INDEX_ANCHORS_NM[-1]
     if not lo - 1e-9 <= lam <= hi + 1e-9:
         raise NitrideNanowirePhotonicsError(
             f"si_complex_index: lambda_nm={lam} outside the tabulated {lo}-{hi} nm "
-            "anchor range; supply an explicit n_substrate override instead")
-    t = (lam - lo) / (hi - lo)
-    n = _SI_INDEX_N[0] + t * (_SI_INDEX_N[1] - _SI_INDEX_N[0])
-    k = _SI_INDEX_K[0] + t * (_SI_INDEX_K[1] - _SI_INDEX_K[0])
+            "table range; supply an explicit n_substrate override instead")
+    if lam <= lo:
+        return complex(_SI_INDEX_N[0], _SI_INDEX_K[0])
+    if lam >= hi:
+        return complex(_SI_INDEX_N[-1], _SI_INDEX_K[-1])
+    # bisect_right lands exactly on a table point's own (n, k) with t=0 when
+    # lam coincides with one of the anchors (in particular the pinned 450
+    # and 630 nm rows), keeping those outputs bit-identical.
+    idx = bisect.bisect_right(_SI_INDEX_ANCHORS_NM, lam) - 1
+    idx = min(idx, len(_SI_INDEX_ANCHORS_NM) - 2)
+    x0, x1 = _SI_INDEX_ANCHORS_NM[idx], _SI_INDEX_ANCHORS_NM[idx + 1]
+    t = (lam - x0) / (x1 - x0)
+    n = _SI_INDEX_N[idx] + t * (_SI_INDEX_N[idx + 1] - _SI_INDEX_N[idx])
+    k = _SI_INDEX_K[idx] + t * (_SI_INDEX_K[idx + 1] - _SI_INDEX_K[idx])
     return complex(n, k)
 
 

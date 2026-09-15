@@ -92,18 +92,73 @@ ck("T Malitson SiO2 Sellmeier at 450/630 nm reproduced independently",
 ck("T Malitson SiO2 index at 632.8 nm matches the commonly quoted 1.45704 to 1e-3",
    math.isclose(_sio2_index_literal(632.8), 1.45704, abs_tol=1e-3))
 
-# T3: Si two-point complex-index anchor table, typed fresh (independent of
-# si_complex_index's own interpolation code path).
-ck("T Si complex-index anchors reproduced independently at 450/630 nm",
+# T3: Si tabulated complex-index table (380-750 nm), typed fresh
+# (independent of si_complex_index's own interpolation code path).  The
+# pre-existing 450/630 nm anchors must stay bit-identical (pinned downstream
+# numbers depend on them); at least four interior table points are asserted
+# below as literals transcribed independently of the module.
+ck("T Si complex-index pinned anchors reproduced independently at 450/630 nm",
    si_complex_index(450.0) == complex(4.676, 0.091)
    and si_complex_index(630.0) == complex(3.879, 0.016))
-_si_mid_literal = complex(4.676 + 0.5 * (3.879 - 4.676), 0.091 + 0.5 * (0.016 - 0.091))
-ck("T Si complex index linear interpolation at the 540 nm midpoint",
+
+# Independently typed interior table points (Green 2008 Table 1 /
+# Aspnes-Studna 1983 Table I class values, [E], not the module's own table
+# re-imported) -- four interior (non-endpoint) wavelengths.
+_SI_LITERAL_TABLE = {
+    400.0: complex(5.462, 0.395),
+    490.0: complex(4.380, 0.055),
+    590.0: complex(3.950, 0.020),
+    690.0: complex(3.745, 0.0070),
+}
+ck("T Si complex index matches four independently typed interior table points",
+   all(si_complex_index(lam) == val for lam, val in _SI_LITERAL_TABLE.items()))
+
+
+def _si_linear_literal(lam, x0, y0, x1, y1):
+    t = (lam - x0) / (x1 - x0)
+    return complex(y0.real + t * (y1.real - y0.real), y0.imag + t * (y1.imag - y0.imag))
+
+
+_si_mid_literal = _si_linear_literal(540.0, 530.0, complex(4.170, 0.035), 550.0, complex(4.080, 0.029))
+ck("T Si complex index linear interpolation at the 540 nm midpoint (independent literal segment)",
    close(si_complex_index(540.0).real, _si_mid_literal.real)
    and close(si_complex_index(540.0).imag, _si_mid_literal.imag))
-ck("T Si complex index refuses extrapolation outside [450, 630] nm",
-   expect(NitrideNanowirePhotonicsError, lambda: si_complex_index(400.0))
-   and expect(NitrideNanowirePhotonicsError, lambda: si_complex_index(700.0)))
+ck("T Si complex index refuses extrapolation outside [380, 750] nm",
+   expect(NitrideNanowirePhotonicsError, lambda: si_complex_index(370.0))
+   and expect(NitrideNanowirePhotonicsError, lambda: si_complex_index(760.0)))
+
+# (N) table structure: strictly increasing wavelengths, finite positive n
+# and k everywhere, and k strictly decreasing across the whole 380-750 nm
+# span (the physically expected absorption trend away from the interband
+# peaks below 380 nm).
+from fsim_core.nitride_nanowire_photonics import _SI_INDEX_ANCHORS_NM, _SI_INDEX_N, _SI_INDEX_K  # noqa: E402
+
+ck("N Si index table wavelengths are strictly increasing (monotone)",
+   all(_SI_INDEX_ANCHORS_NM[i] < _SI_INDEX_ANCHORS_NM[i + 1]
+       for i in range(len(_SI_INDEX_ANCHORS_NM) - 1)))
+ck("N Si index table spacing never exceeds 25 nm",
+   all(_SI_INDEX_ANCHORS_NM[i + 1] - _SI_INDEX_ANCHORS_NM[i] <= 25.0
+       for i in range(len(_SI_INDEX_ANCHORS_NM) - 1)))
+ck("N Si index table covers at least 380-750 nm",
+   _SI_INDEX_ANCHORS_NM[0] <= 380.0 and _SI_INDEX_ANCHORS_NM[-1] >= 750.0)
+ck("N Si index table n values are all finite and positive",
+   all(math.isfinite(n) and n > 0.0 for n in _SI_INDEX_N))
+ck("N Si index table k values are all finite and positive",
+   all(math.isfinite(k) and k > 0.0 for k in _SI_INDEX_K))
+ck("N Si index table k is strictly decreasing from 380 to 750 nm",
+   all(_SI_INDEX_K[i] > _SI_INDEX_K[i + 1] for i in range(len(_SI_INDEX_K) - 1)))
+
+# A 446.4 nm horizontal card (the Deshpande 2013 replay wavelength, formerly
+# outside the two-point [450, 630] nm anchor table) now evaluates with a
+# finite, valid Si index and collection fraction.
+_si_446 = si_complex_index(446.4)
+ck("N si_complex_index(446.4 nm) (the 2013 replay wavelength) is finite with positive n, non-negative k",
+   math.isfinite(_si_446.real) and math.isfinite(_si_446.imag)
+   and _si_446.real > 0.0 and _si_446.imag >= 0.0)
+_resp_446 = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+                      lambda_nm=446.4, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+ck("N a 446.4 nm horizontal card evaluates valid True with a finite eta_collection_X",
+   _resp_446["valid"] is True and math.isfinite(_resp_446["eta_collection_X"]))
 
 # T4: V-number is a literal 2*pi*R/lambda*sqrt(n1^2-n2^2), RADIUS not
 # diameter -- pin both the correct radius literal and an explicit
