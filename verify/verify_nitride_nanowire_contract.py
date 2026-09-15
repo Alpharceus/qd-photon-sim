@@ -35,16 +35,18 @@ CITATIONS_PY_PATH = ROOT / "verify" / "verify_citations.py"
 DEVICE_PY_PATH = ROOT / "fsim_core" / "device.py"
 SPEC_DIR = ROOT / ".workers" / "specs"
 
-# fix-2: bind the contract to the modules LIVE, not only to the specs. Only
-# the five modules committed at this revision are imported; the device/
-# sweep pieces (7/9) are not on disk yet, so their Module table rows stay
-# bound to spec text only (see check_module_table).
+# fix-2: bind the contract to the modules LIVE, not only to the specs.
+# fix-3 required change 6: the device module (piece 7) is committed as of
+# f877b46 and is added here too, so all six production modules this
+# contract names are now live-bound; the sweep piece (9) is a script, not
+# a fsim_core module, and has no Module table row of its own.
 LIVE_MODULE_NAMES = {
     "levels": "fsim_core.nitride_nanowire_levels",
     "photonics": "fsim_core.nitride_nanowire_photonics",
     "surface": "fsim_core.nitride_nanowire_surface",
     "transport": "fsim_core.nitride_nanowire_transport",
     "injector": "fsim_core.nitride_nanowire_injector",
+    "device": "fsim_core.nitride_nanowire_device",
 }
 LIVE_MODULES: dict[str, object] = {}
 for _key, _modname in LIVE_MODULE_NAMES.items():
@@ -280,9 +282,18 @@ def check_module_table(doc_text: str, ok) -> None:
         live_mod = LIVE_MODULES.get(spec_key)
         symbol_id_m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", symbol_display)
         symbol_id = symbol_id_m.group(0) if symbol_id_m else None
+        if spec_key == "device" and symbol_id == "platform":
+            # fix-3: "platform" describes fsim_core/device.py's dispatch
+            # recognition branch (`d.platform == "ingan_gan_nanowire"`), not
+            # a literal attribute on fsim_core/nitride_nanowire_device.py
+            # (now live-bound below for the other device-module rows);
+            # this row stays spec-text-bound only, same as before the
+            # device module existed.
+            continue
         if live_mod is None or symbol_id is None:
-            # device/sweep modules are not committed yet (piece 7/9); skip
-            # live binding for those two rows only.
+            # the sweep piece (9) is a script, not a fsim_core module, and
+            # has no Module table row; nothing else reaches this branch now
+            # that all six fsim_core modules are live-bound.
             continue
         obj = getattr(live_mod, symbol_id, None)
         ok(f"module_live_{symbol_display}_symbol_exists", obj is not None)
@@ -409,6 +420,89 @@ def check_dataclass_card_binding(doc_text: str, ok) -> None:
         else:
             ok(f"dataclass_binding_{class_name}_no_field_absent_from_card",
                mapped <= all_leaves)
+
+
+# fix-3 LOW 10: "every card Default cell that is a number equals the live
+# dataclass default." A Default cell counts as "a number" only when it is
+# a bare numeric literal, optionally followed by a short trailing
+# parenthetical note that itself contains no digits (e.g. "1.0 (air)",
+# "2.0 (each barrier)") -- a note that itself carries a competing number
+# (e.g. occupied_dot_access's documented "1.0 [A]" conservative-partner
+# override, or shell_multiplier's two conditional defaults) marks a
+# deliberate card-level override or family-conditioned value, not a plain
+# dataclass default, and is intentionally left unchecked here. Scoped to
+# the three dataclasses with a single, exact-name-set Card schema
+# subsection (photonics, surface, injector); NitrideNanowireSystem and
+# NitrideWireDiode have renamed/family-duplicated leaves spread across
+# several subsections (see DATACLASS_CARD_BINDING above) and are not
+# safely checkable by this simple per-subsection rule.
+_NUMBER_CELL_RE = re.compile(
+    r"^(?P<num>[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?)"
+    r"(?:\s*\((?P<note>[A-Za-z_ /\-`]*)\))?$"
+)
+
+
+def _parse_number_cell(cell: str):
+    """Return the float value of `cell` if it is a bare number (optionally
+    with a short, digit-free parenthetical note), else None."""
+    m = _NUMBER_CELL_RE.match(cell.strip())
+    if not m:
+        return None
+    try:
+        return float(m.group("num"))
+    except ValueError:
+        return None
+
+
+CARD_DEFAULT_LIVE_BINDING = [
+    (spec_key, class_name, subsection, rename)
+    for spec_key, class_name, subsection, rename in DATACLASS_CARD_BINDING
+    if subsection is not None
+]
+
+
+def check_card_defaults_match_live(doc_text: str, ok) -> None:
+    card_section = get_section(doc_text, "## Card schema\n", "## Row columns\n")
+    tables = find_all_subsection_tables(card_section, "### ")
+    by_subsection_rows: dict[str, tuple[list[str], list[list[str]]]] = {}
+    for name, header, rows in tables:
+        m = re.match(r"`([^`]+)`", name.strip())
+        key = m.group(1) if m else name.strip()
+        by_subsection_rows[key] = (header, rows)
+
+    for spec_key, class_name, subsection, rename in CARD_DEFAULT_LIVE_BINDING:
+        live_mod = LIVE_MODULES.get(spec_key)
+        cls = getattr(live_mod, class_name, None) if live_mod is not None else None
+        if cls is None or not dataclasses.is_dataclass(cls):
+            continue
+        live_defaults = {f.name: f.default for f in dataclasses.fields(cls)}
+        inverse_rename = {v: k for k, v in rename.items()}
+        header, rows = by_subsection_rows.get(subsection, (None, []))
+        if header is None or "Default" not in header:
+            ok(f"card_defaults_live_{class_name}_default_column_found", False)
+            continue
+        default_idx = header.index("Default")
+        for row in rows:
+            leaf = leaf_identifier(row[0])
+            if leaf is None:
+                continue
+            field_name = inverse_rename.get(leaf, leaf)
+            if field_name not in live_defaults:
+                continue
+            live_default = live_defaults[field_name]
+            if not isinstance(live_default, (int, float)) or isinstance(live_default, bool):
+                # only a plain int/float dataclass default is comparable to
+                # a "number" Default cell; None/str/tuple/bool defaults are
+                # skipped (they are never rendered as a bare number here).
+                continue
+            cell = row[default_idx] if default_idx < len(row) else ""
+            parsed = _parse_number_cell(cell)
+            if parsed is None:
+                # not a bare-number cell (a family-conditioned or
+                # documented-override default) -- not this check's target.
+                continue
+            ok(f"card_default_matches_live_{class_name}_{leaf}",
+               abs(parsed - float(live_default)) < 1e-9 * max(1.0, abs(float(live_default))))
 
 
 def check_row_columns(doc_text: str, ok) -> None:
@@ -715,6 +809,7 @@ def main() -> int:
     check_module_evidence_map(doc_text, anchors, ok)
     check_card_schema(doc_text, ok)
     check_dataclass_card_binding(doc_text, ok)
+    check_card_defaults_match_live(doc_text, ok)
     check_row_columns(doc_text, ok)
     check_verdict_and_grid(doc_text, ok)
     check_evidence_semantics(doc_text, ok)

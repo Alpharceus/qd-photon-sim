@@ -7,12 +7,15 @@ the planar contracts (`docs/nitride_cavity_contract.md`,
 `docs/nitride_geometry_stark_contract.md`), which remain unchanged. All
 nanowire predictions are independent predictions: the Deshpande 2013/2014
 results below are comparison anchors, never fit targets. This revision
-(round 3 of piece 1, "contract-fix2") replaces round 2 after a second Opus
-FAIL review (1 high, 5 medium, 7 low -- see `.workers/review/
-nitride-nanowire-contract-opus-findings.md`) and folds in the Opus physics
-coherence audit's H6 vertical-family correction and DEVICE-PIECE
-CONSTRAINTS 1-10 (`.workers/review/
-nitride-nanowire-physics-opus-coherence-findings.md`). It TRANSCRIBES every
+(round 4 of piece 1, "contract-fix3") replaces round 3 after a third Opus
+FAIL review (2 high, 7 medium, 4 low -- see `.workers/review/
+nitride-nanowire-contract-opus-findings.md`) and retains the round-3 H6
+vertical-family correction and DEVICE-PIECE CONSTRAINTS 1-10 folded in from
+the Opus physics coherence audit (`.workers/review/
+nitride-nanowire-physics-opus-coherence-findings.md`). The device module
+(`fsim_core/nitride_nanowire_device.py`) is committed as of this revision
+and is now live-bound like the other five (see "Module table" below). It
+TRANSCRIBES every
 module, function signature, card leaf, row key, VERDICT field, and output
 path from the nine specs' own "Interface or signature constraints" and
 "Acceptance criteria" sections -- it never invents or renames what a spec
@@ -43,11 +46,15 @@ headline substitution.
 `nitride.nanowire` leaves are `family` (`horizontal_as_built` or
 `vertical_photonic`), `core_radius_nm`, `outer_radius_nm`, `strain_bound`
 (`unrelaxed` or `relaxed`), `shell` (`none` or `AlGaN`), `barrier_left_nm`,
-and `barrier_right_nm`. `nitride.dot.radius_nm` equals `core_radius_nm`;
-`outer_radius_nm >= core_radius_nm`; shell `none` requires equality
-(`outer_radius_nm == core_radius_nm`); shell `AlGaN` uses a declared 3 nm
-shell thickness [A] (`outer_radius_nm = core_radius_nm + 3`). The disc
-fills the semiconductor core. The independently explicit
+and `barrier_right_nm`. `outer_radius_nm >= core_radius_nm`; shell `none`
+requires equality (`outer_radius_nm == core_radius_nm`); shell `AlGaN` uses
+a declared 3 nm shell thickness [A] (`outer_radius_nm = core_radius_nm +
+3`). `nitride.dot.radius_nm` equals `core_radius_nm` ONLY for the
+`horizontal_as_built` family, where the disc fills the semiconductor core;
+for `vertical_photonic`, `nitride.dot.radius_nm` is the separate, smaller
+disc radius (fixed at its 12.5 nm default while `core_radius_nm` is swept
+60-120 nm) -- see the H6 correction in "Family-specific interfaces" below.
+The independently explicit
 `drive.diode.conducting_radius_nm` is in `(0, core_radius_nm]` and defaults
 to the core; it is never an optical radius alias (piece 5's
 `0 < conducting_radius_nm <= core_radius_nm`). A radius sweep updates
@@ -67,11 +74,16 @@ spontaneous polarization discontinuity survives"). Screening is a separate
 (never an alias of the strain bound). Unrelaxed is labelled
 conservative/lower and relaxed headline/upper (the design brief's user
 answer 4), without asserting monotonic flux ordering between them -- a
-reversal must be reported, not hidden. The radial model is a hard-wall
-cylinder [A boundary envelope] with GaN axial reservoirs (piece 2's
+reversal must be reported, not hidden. The radial model is family-
+qualified: for `horizontal_as_built` it is a full-core hard-wall cylinder
+[A boundary envelope] with GaN axial reservoirs (piece 2's
 `E_perp(m,n)=hbar^2*j_(m,n)^2/(2*m_xy*R^2)` applied on both the InGaN disc
-and GaN axial sections); it must not model a full-core disc as laterally
-surrounded by infinite GaN. Dielectric self energy, sidewall band bending,
+and GaN axial sections), and it must not model that full-core disc as
+laterally surrounded by infinite GaN; for `vertical_photonic` the disc
+itself uses the finite InGaN/GaN radial barrier of the H6 correction below
+(never a hard wall at the disc boundary), while the GaN axial sections
+retain the same hard-wall `E_perp(m,n)` treatment. Dielectric self energy,
+sidewall band bending,
 elastic spatial variation, and lateral alloy localization remain
 unresolved systematic error (piece 2's own docstring carries the
 quantitative caveat).
@@ -108,13 +120,23 @@ radius, `NitrideNanowireSystem.disc_radius_nm` in
 `fsim_core/nitride_nanowire_levels.py`) is STRICTLY LESS than
 `nitride.nanowire.core_radius_nm` (the wire/reservoir radius) for this
 family -- default disc radius 12.5 nm inside a 60-120 nm core, laterally
-confined by the InGaN/GaN finite radial barrier (`nitride_levels.
-finite_disk_2d`-style matching), never by a full-core hard wall. The
-`horizontal_as_built` family keeps the pre-H6 convention, disc radius
+confined by the InGaN/GaN finite radial barrier (`fsim_core/dot_levels.py`'s
+`finite_disk_2d`-style BenDaniel-Duke matching, reused by
+`fsim_core/nitride_nanowire_levels.py`), never by a full-core hard wall.
+The `horizontal_as_built` family keeps the pre-H6 convention, disc radius
 equal to core radius (the as-measured 2013 device has no separate
 dot-in-wire structure). Surface loss uses the core radius (the dot sits
-far from the sidewall; access weight captures the evanescent overlap via
-`sidewall_overlap`, a `NanowireLevels` field); photonics uses the outer
+far from the sidewall); the access weight is ALWAYS the card's
+`occupied_dot_access` (0.05 [DR] headline, 1.0 [A] conservative partner --
+see "Card schema" and "Composition rules for the device piece" bullet 8
+below), never `sidewall_overlap`. `sidewall_overlap` (a `NanowireLevels`
+field, computed only for `vertical_photonic`) is a DIAGNOSTIC-ONLY column:
+the evanescent overlap of the disc's finite-barrier ground state with a
+2 nm sidewall layer at `core_radius_nm`, which underflows to between 1e-76
+and 1e-172 for a 12.5 nm disc inside a 60-120 nm core (independently
+confirmed against the live module) -- far too small to serve as a surface
+access weight, and it must never be used as one anywhere in the device
+piece. Photonics uses the outer
 radius. This replaces the pre-H6 vertical grid (which forced a 120-240 nm
 diameter InGaN quantum WELL, `E_perp` 0.11-0.44 meV vs kT, to stand in for
 a two-level emitter) and is the reason `nitride.dot.radius_nm`'s vertical
@@ -157,7 +179,16 @@ physics coherence review's DEVICE-PIECE CONSTRAINTS 1-10.
    drive.set_params.radius_nm` and reject an explicit `set_params.
    radius_nm` / `C_sigma_F` override that disagrees. Changing only
    `outer_radius_nm` must move `V_number`/`eta_collection` and nothing
-   else.
+   else. Consequently `drive.set_params.radius_nm` DEFAULTS to
+   `nitride.dot.radius_nm` (the disc radius), never to `core_radius_nm`
+   directly -- the two happen to coincide for `horizontal_as_built`, but
+   for `vertical_photonic` defaulting the SET radius to `core_radius_nm`
+   (100.0 nm) instead of the disc (12.5 nm) would silently substitute
+   `set_EC_over_kT`'s reference charging energy: E_C = 12.126 meV at
+   12.5 nm (the correct, disc-radius value, per
+   `deshpande2013_coulomb_reference` below) versus 1.5 meV at 100 nm (the
+   wrong, core-radius value) -- an order-of-magnitude difference that
+   would flip the Coulomb-blockade screen.
 2. **Units.** Rates crossing module boundaries are `ns^-1` EXCEPT
    transport's `r_*_s` outputs (`s^-1`) and the injector's `rti_*_Hz`
    outputs (`Hz`, i.e. `s^-1`). `available_pair_rate_Hz` (injector input)
@@ -168,7 +199,11 @@ physics coherence review's DEVICE-PIECE CONSTRAINTS 1-10.
    pass `evaluate_injection`'s surface-reservoir argument by keyword
    (`surface_reservoir_ns=` or `k_surface_reservoir_per_ns=`); never rely
    on `NitrideWireDiode.reservoir_surface_ns` (dead/absent on the
-   dataclass).
+   dataclass). `levels.rates(reservoir_length_nm=15.0)` is a PER-SIDE GaN
+   reservoir extent (e.g. Deshpande's 15 nm on each side of the disc); the
+   module internally doubles it to `L_total = 2 * reservoir_length_nm` for
+   the axial partition sum, since the disc has a flanking GaN reservoir on
+   BOTH sides -- callers pass the per-side value, never the doubled total.
 3. **Temperature flow.** Solve `wire_operating_point(T_hs_K=...)` first,
    take its `T_j_K`, and evaluate `levels`, `rates`, `surface_rates`,
    `photonics.response` (`lambda_nm` from `levels` at `T_j`),
@@ -179,14 +214,31 @@ physics coherence review's DEVICE-PIECE CONSTRAINTS 1-10.
    TRANSPORT-INVALID (an explicit invalid row, never NaN-propagated
    silently); the 2013 10 K replay is the one row where the kernel is
    valid (log-space `vbi`/`vj_of_j`, `_GaNJunctionKernel`).
-4. **Surface, no 4x biexciton double count.** Either (a) call
-   `rates(k_nr_ns=k_intrinsic + k_surface_X_ns)` and use the returned
-   `k_X_ns`/`k_XX_ns` UNCHANGED (`k_XX_ns` already carries `2 *
-   k_surface_X_ns` as `k_surface_XX_ns`), or (b) call `rates(k_nr_ns=
-   k_intrinsic)` and then add `k_surface_X_ns` to `k_X_ns` and
-   `k_surface_XX_ns` to `k_XX_ns` by hand. Never both in the same row.
-   `k_surface_reservoir_ns` goes ONLY into `evaluate_injection(
-   surface_reservoir_ns=)`, never into post-capture survival.
+4. **Surface, no 4x biexciton double count.** ONLY option (b) is valid:
+   call `rates(k_nr_ns=k_intrinsic)` and then add `k_surface_X_ns` to
+   `k_X_ns` and `k_surface_XX_ns` to `k_XX_ns` by hand. A prior
+   ("option (a)") formulation of this rule -- passing `rates(k_nr_ns=
+   k_intrinsic + k_surface_X_ns)` and using the returned `k_X_ns`/
+   `k_XX_ns` unchanged, on the assumption that `k_XX_ns` already carries
+   `2 * k_surface_X_ns` -- is not applicable to the committed
+   `fsim_core/nitride_nanowire_levels.py`: `rates()`'s own provenance
+   string is explicit that "occupied-dot `k_nr_ns` NOT doubled
+   (`k_XX_ns=2*k_escape+k_nr_ns`)" -- only the thermal-escape term doubles
+   for XX (two independent carriers each attempting escape), and any
+   `k_nr_ns` passed in (surface loss included) is added to `k_XX_ns` only
+   ONCE, not twice. Passing a combined `k_intrinsic + k_surface_X_ns` into
+   `k_nr_ns` therefore UNDER-COUNTS the biexciton surface channel by
+   exactly `k_surface_X_ns` relative to the intended `k_surface_XX_ns = 2 *
+   k_surface_X_ns`; only manual addition (option (b)) reproduces the
+   intended `k_surface_XX_ns` on `k_XX_ns`. This also reconciles the
+   access-1.0 lifetime-cap numbers quoted elsewhere in this document
+   (0.625 ns X, 0.3125 ns XX at `core_radius_nm=12.5`, "Composition rules
+   for the device piece" bullet 8 below): those are `1/k_surface_X_ns` and
+   `1/k_surface_XX_ns` computed the option-(b) way (`k_surface_XX_ns = 2 *
+   k_surface_X_ns` added by hand), independent of whatever `k_nr_ns` the
+   intrinsic channel contributes. `k_surface_reservoir_ns` goes ONLY into
+   `evaluate_injection(surface_reservoir_ns=)`, never into post-capture
+   survival.
 5. **Single strain-bound switch.** `nitride.nanowire.strain_bound` is the
    single source of truth, feeding `NitrideNanowireSystem.strain_bound`
    directly. `nitride.dot.strain_fraction` is DISPLAY-ONLY: validated
@@ -249,9 +301,22 @@ physics coherence review's DEVICE-PIECE CONSTRAINTS 1-10.
    named, explicitly falsified sensitivity rather than the headline.
    `eta_collection` is applied once per X/XX/background channel; `gamma`
    is never multiplied by `beta` or by `eta_collection` (they are
-   independent envelopes); the antenna screening factor is applied via its
-   own `antenna_rate_factor` output, never folded into `gamma` directly.
-10. **Results text obligations.** Every results table/figure states: the
+   independent envelopes). `antenna_rate_factor` matches the committed
+   `fsim_core/nitride_nanowire_photonics.py`: it is ALREADY folded into the
+   `gamma_X_ns`/`gamma_XX_ns` values `response()` returns (`gamma_X_ns =
+   gamma_X0_ns * radiative_rate_factor * antenna_rate_factor`, and likewise
+   for XX), and is ALSO reported as its own output key for diagnostics. The
+   device piece reads `antenna_rate_factor` for reporting only -- it must
+   apply it NOWHERE ELSE and never re-multiply `gamma_X_ns`/`gamma_XX_ns`
+   by it a second time.
+10. **Headline eligibility (vertical).** A `vertical_photonic` row is never
+    nominated as a headline unless `single_mode` is `True` AND
+    `approximation_error` equals `0` (restating the LP11-cutoff rule in
+    "Family-specific interfaces" above as a device-piece obligation);
+    `headline_eligible` (a device output, see "Row columns" below) is the
+    single flag callers check instead of re-deriving this condition from
+    `single_mode`/`approximation_error` themselves.
+11. **Results text obligations.** Every results table/figure states: the
     RC caveat (bullet 6), the access-1.0 lifetime cap (bullet 8), that the
     two strain-bound anchors (2013 relaxed-matched, 2014 unrelaxed-matched)
     are matched by OPPOSITE endpoints and are never averaged (one of
@@ -268,21 +333,23 @@ literal substring) from the named spec's own "Interface or signature
 constraints" section. A rename, a dropped parameter, or a changed default
 in either this table or the corresponding production module breaks that
 substring match, and `verify/verify_nitride_nanowire_contract.py` fails.
-This is now TRUE, not aspirational: for each of the five committed modules
-(levels, photonics, surface, transport, injector) the verifier additionally
-imports the live module and asserts, independently of the spec text, (a)
-the Symbol cell resolves via `getattr` (a Symbol rename is caught even if
-the Signature text is untouched -- fix-1 finding 12), and (b) for a
-function-symbol row the module's own `inspect.signature` (annotations
-stripped, defaults formatted, whitespace normalised) equals the row's
-Signature cell; for a dataclass-symbol row every constructor field name
-(`dataclasses.fields`) appears as a leaf in the corresponding Card schema
-table below (see "Card schema"). Four rows below intentionally have NO
-spec text at all (marked "module-only" in the Verifier cell): a
-fix/directive round added a keyword or a whole function to the live
-module after its spec was frozen, and the frozen row above each one is
-kept verbatim so the original spec-substring check keeps passing
-unchanged.
+This is now TRUE, not aspirational: for each of the six committed modules
+(levels, photonics, surface, transport, injector, and -- new this
+revision -- device) the verifier additionally imports the live module and
+asserts, independently of the spec text, (a) the Symbol cell resolves via
+`getattr` (a Symbol rename is caught even if the Signature text is
+untouched -- fix-1 finding 12), and (b) for a function-symbol row the
+module's own `inspect.signature` (annotations stripped, defaults
+formatted, whitespace normalised) equals the row's Signature cell; for a
+dataclass-symbol row every constructor field name (`dataclasses.fields`)
+appears as a leaf in the corresponding Card schema table below (see "Card
+schema"). Six rows below intentionally have NO spec text at all (marked
+"module-only" in the Verifier cell): a fix/directive round -- or, for the
+two device-module rows, the piece-7 fix-1 round that committed the module
+after its own spec text was frozen to a "does not exist yet" placeholder
+-- added a keyword or a whole function to the live module after its spec
+was frozen, and the frozen row above each one is kept verbatim so the
+original spec-substring check keeps passing unchanged.
 
 | Module | Symbol | Signature | Verifier |
 | --- | --- | --- | --- |
@@ -309,12 +376,19 @@ unchanged.
 | `fsim_core/nitride_nanowire_injector.py` | `injector_feasibility` (`gate_ns` keyword, directive round) | `injector_feasibility(params, *, T_K, rep_rate_hz, loading_window_ns, electron_level_eV, hole_level_eV, electron_spacing_meV, hole_spacing_meV, second_pair_addition_meV, available_pair_rate_Hz, field_kVcm=0.0, gate_ns=None) -> dict` | `verify/verify_nitride_nanowire_injector.py` (module-only: introspected live; commit `e696bdd` added an explicit `gate_ns` keyword separating the counting gate from `loading_window_ns`, postdating the frozen injector spec) |
 | `fsim_core/device.py` + `fsim_core/nitride_nanowire_device.py` | `platform` | `recognize platform='ingan_gan_nanowire'` | `verify/verify_nitride_nanowire_device.py` |
 | `fsim_core/device.py` + `fsim_core/nitride_nanowire_device.py` | `evaluate_nanowire` | `dispatch to evaluate_nanowire(design, T_grid=None) in the new module` | `verify/verify_nitride_nanowire_device.py` |
+| `fsim_core/device.py` + `fsim_core/nitride_nanowire_device.py` | `evaluate_nanowire` (piece-7 fix-1 committed module) | `evaluate_nanowire(design, T_grid=None)` | `verify/verify_nitride_nanowire_device.py` (module-only: introspected live; the frozen row above predates the module's commit at `f877b46` and is kept verbatim as the spec-text binding -- this row is the live-signature binding, fix-3 required change 6; renaming `evaluate_nanowire` on a copy of the live module fails this row's live symbol-exists check) |
+| `fsim_core/nitride_nanowire_device.py` | `evaluate_strain_pair` (piece-7 fix-1 committed module) | `evaluate_strain_pair(design, T_grid=None)` | `verify/verify_nitride_nanowire_device.py` (module-only: introspected live; a strain-bound-pair convenience wrapper with no frozen spec text of its own -- present at HEAD `f877b46`, the revision this document was finished against; a Sonnet coder was concurrently editing `fsim_core/nitride_nanowire_injector.py` at that same HEAD, not this module) |
 
-The device/sweep rows (piece 7/9) are not yet committed
-(`fsim_core/nitride_nanowire_device.py` does not exist on disk at this
-revision); the verifier binds them to their spec text only, exactly as
-before, and skips the live-module checks for those two rows until the
-module exists.
+The device module (`fsim_core/nitride_nanowire_device.py`) is committed as
+of `f877b46` and is now live-bound like the other five: the two rows above
+introspect `evaluate_nanowire` and `evaluate_strain_pair` directly against
+the module on disk, independent of the (necessarily stale, pre-commit)
+spec-text row kept above each for the substring check. The row-column
+binding for the device (i.e. asserting every "Row columns" key below is
+actually a key `evaluate_nanowire` returns) is NOT yet live-checked --
+that stays document-based (checked against this document's own text only,
+as for the sweep piece) until a future round adds it, and this is recorded
+here rather than left implicit.
 
 ### Module evidence map
 
@@ -331,7 +405,7 @@ for the required non-null companion.
 | `nitride_nanowire_photonics` | `maslov2004_he11` (null, documented gap), `claudon2010_extraction` (null, documented gap), `bleuse2011_claudon2010_beta_envelope` (non-null), `deshpande2013_polarization` (non-null), `deshpande2013_device_geometry` (non-null) |
 | `nitride_nanowire_surface` | `deshpande2013_surface_velocity` (non-null), `deshpande2013_thermal_and_pl` (non-null) |
 | `nitride_nanowire_transport` | `deshpande2013_geometry` (non-null), `deshpande2013_thermal_and_pl` (non-null) |
-| `nitride_nanowire_injector` | `kitamura2026_architecture` (null, documented gap), `deshpande2013_coulomb_reference` (non-null) |
+| `nitride_nanowire_injector` | `kitamura2026_architecture` (null, documented gap), `deshpande2013_coulomb_reference` (non-null), `encomendero2023_resonant_tunneling` (non-null device-structure/I-V values, identifier still null -- a recorded gap, see "Provenance corrections" below) |
 | `nitride_nanowire_device` | `deshpande2014_abstract` (non-null), `deshpande2013_hbt` (non-null), `deshpande2013_lifetimes` (non-null) |
 
 ## Card schema
@@ -376,8 +450,16 @@ leaf and its default/range apply identically to `horizontal_as_built` and
 | `S_cm_s` | cm/s | 1.0e3 | sensitivity `{1e2,1e3,1e4}` | E (secondary attribution, ref. 35 unread) |
 | `shell` | enum | `none` | `none`, `AlGaN` (mirrors `nitride.nanowire.shell`) | A |
 | `shell_multiplier` | dimensionless | 1.0 (`none`), 0.1 (`AlGaN`) | `[0,1]` | A |
-| `reservoir_access` | dimensionless | 1.0 | sensitivity `{0,0.1}` | A (conservative full access) |
+| `reservoir_access` | dimensionless | 1.0 | `[0,1]` (see note below) | A (conservative full access) |
 | `occupied_dot_access` | dimensionless | 0.05 (declared conservative partner 1.0 [A], see "Composition rules for the device piece" bullet 8) | sensitivity `{0,0.1,1.0}`; 0.1 kept only as a sensitivity; never tuned to the held-out 0.71/1.1/1.3 ns anchors | DR (M1: J0 hard-wall ground-state probability in a 2 nm sidewall capture layer over the uniform-density value, at `core_radius_nm=12.5`) |
+
+Note (`reservoir_access`, LOW 13): the Range cell is the full unit
+interval `[0,1]`, the field's actual allowed range; the sensitivity set
+actually swept is `{0,0.1}` (a one-at-a-time reduced cut, see "Sweep
+grid, VERDICT format, and output paths" below), which is narrower than
+the allowed range and is recorded here rather than in the Range cell so
+the Range column keeps reporting the field's real domain, not one
+sensitivity study's sample points.
 
 ### `nitride.photonics` (both families; some leaves apply to one family only, see Notes)
 
@@ -468,14 +550,14 @@ separate counting gate). The verifier asserts this leaf set equals
 | `p_cm3` | cm^-3 | 5.0e17 (p-GaN reservoir) | fixed | V (Deshpande et al. 2013) |
 | `alignment_uncertainty_meV` | meV | 15.0 | fixed | A |
 | `degeneracy` | dimensionless | 2.0 (spin/valley) | fixed | A |
-| `reservoir_state_count_e` | dimensionless | 2.0 | fixed | A (directive round, `e696bdd`) |
-| `reservoir_state_count_h` | dimensionless | 2.0 | fixed | A (directive round, `e696bdd`) |
+| `reservoir_state_count_e` | dimensionless | 1.0 (fix-3 correction: was documented 2.0, drifted from the live default; spin lives in `degeneracy`, not here) | fixed | A (directive round, `e696bdd`) |
+| `reservoir_state_count_h` | dimensionless | 1.0 (fix-3 correction: was documented 2.0, drifted from the live default; spin lives in `degeneracy`, not here) | fixed | A (directive round, `e696bdd`) |
 | `mg_acceptor_energy_meV` | meV | 170.0 | fixed | V (directive round, `e696bdd`; Mg acceptor ionization energy, p-GaN free-hole fraction) |
 | `include_polarization` | bool | `True` | `{True, False}` | DR (directive round, `e696bdd`; pseudomorphic fixed-D polarization sheet-charge envelope at every AlGaN/GaN interface) |
 | `bypass_prefactor` | dimensionless | 1.0 | fixed | A |
 | `polarity` | enum | `"Ga"` | `{"Ga", "N"}` | A (fix 3, `12b39cd`; Ga-polar c-axis growth assumed for the catalyst-free PA-MBE wires; N is the opposite-sign sensitivity) |
-| `slice_length_nm` | nm | module default | > 0 | A (fix 3, `12b39cd`; staircase slice length for the tilted-profile transfer matrix; default bit-identical) |
-| `min_slices_per_segment` | count | module default | >= 1 | A (fix 3, `12b39cd`; verifier-only knob to force a coarse staircase for the rti_numerics_ok False case) |
+| `slice_length_nm` | nm | 0.2 | > 0 | A (fix 3, `12b39cd`; staircase slice length for the tilted-profile transfer matrix; default bit-identical) |
+| `min_slices_per_segment` | count | 8 | >= 1 | A (fix 3, `12b39cd`; verifier-only knob to force a coarse staircase for the rti_numerics_ok False case) |
 | `field_leverarm` | dimensionless | 1.0 | fixed | A |
 | `alignment_tunable` | bool | `False` | `{False, True}` | A |
 | `bias_tuning_range_meV` | meV | 0.0 | sensitivity when `alignment_tunable=True` | A |
@@ -486,10 +568,19 @@ separate counting gate). The verifier asserts this leaf set equals
 
 | Leaf | Unit | Default | Range | Tag |
 | --- | --- | --- | --- | --- |
-| `radius_nm` | nm | equal to `nitride.nanowire.core_radius_nm` | derived, never independently resized by a geometry sweep | A |
+| `radius_nm` | nm | equal to `nitride.dot.radius_nm` (the disc radius; NEVER `nitride.nanowire.core_radius_nm` directly -- see "Composition rules for the device piece" bullet 1) | derived, never independently resized by a geometry sweep | A |
 | `eps_r` | dimensionless | 9.5 | fixed | E |
 | `ec_margin` | dimensionless | 10.0 | fixed | A |
 | `R_T_ohm` | ohm | 1.0e6 | fixed (unchanged SET convention) | A |
+
+`radius_nm`'s default equals `nitride.dot.radius_nm`, not
+`nitride.nanowire.core_radius_nm`: for `horizontal_as_built` the two are
+equal (H6 keeps the pre-H6 convention there), so this distinction is
+invisible; for `vertical_photonic` they diverge (disc 12.5 nm default vs.
+core 60-120 nm), and defaulting to the core radius would silently price
+`set_EC_over_kT` at E_C=1.5 meV (100 nm core) instead of the intended
+E_C=12.126 meV (12.5 nm disc) -- see "Composition rules for the device
+piece" bullet 1 and `deshpande2013_coulomb_reference` below.
 
 ## Row columns
 
@@ -510,7 +601,15 @@ Levels/optical (piece 2): `E_X_eV`, `lambda_nm`, `field_kVcm`,
 `gamma_XX0_ns`, `k_X_ns`, `k_XX_ns`, `escape_prefactor_ns`,
 `tau_cap_ps_used`, `reservoir_state_count_e`, `reservoir_state_count_h`,
 `sidewall_overlap` (coherence column, piece 2 levels directive round;
-`NanowireLevels.sidewall_overlap`).
+`NanowireLevels.sidewall_overlap`; DIAGNOSTIC ONLY, never a surface access
+weight -- see the H6 correction in "Family-specific interfaces" above).
+"z_points_used" (levels, `fsim_core/nitride_nanowire_levels.py`): NOT a
+row column and NOT a NanowireLevels dataclass field -- the axial grid
+size the adaptive doubling refinement inside `levels()` actually converged
+at, reported only as free text inside the `provenance` row column's own
+string ("...z_points_used=%d"). A diagnostic of the solve's own
+convergence, not a card input (the card leaf is `levels()`'s own starting
+z_points argument, default 1201).
 
 Photonics (piece 3): `radius_over_lambda`, `V_number`, `beta_HE11`,
 `eta_collection_X`, `eta_collection_XX`, `radiative_rate_factor`,
@@ -518,16 +617,28 @@ Photonics (piece 3): `radius_over_lambda`, `V_number`, `beta_HE11`,
 `beta_multimode_penalty` (both piece 3 directive round, H7 fix),
 `degree_of_linear_polarization` (piece 3 fix-1 round, non-gating against
 `deshpande2013_polarization`'s 70 percent anchor), `antenna_rate_factor`
-(piece 3 fix round, commit `5dccc4b`: the wire-antenna screening factor
-applied to the radiative rate, orientation-weighted by the card's own
-`dipole_weights`; never folded into `gamma` directly).
+(piece 3 fix round, commit `5dccc4b`: the wire-antenna screening factor,
+orientation-weighted by the card's own `dipole_weights`; ALREADY folded
+into the returned `gamma_X_ns`/`gamma_XX_ns` by `response()` and reported
+separately alongside them for diagnostics -- the device piece applies it
+nowhere else and never re-multiplies `gamma_X_ns`/`gamma_XX_ns` by it).
 
 Surface (piece 4): `k_side_ns`, `k_surface_reservoir_ns`,
 `k_surface_X_ns`, `k_surface_XX_ns`, `shell_multiplier_used`,
 `reservoir_access_used`, `occupied_dot_access_used`.
 
 Transport (piece 5): `area_cm2`, `J_A_cm2`, `V_j`, `V_terminal`,
-`depletion_field_kVcm`, `C_dep_F`, `eta_inj`, `f_capture`, `f_qfl_dot`,
+`depletion_field_kVcm`, `C_dep_F`, `V_bi_minus_Eg_mV` (output of
+`evaluate_injection(...)`: `(V_bi - E_g(reservoir_material, T)) * 1000`;
+the built-in-potential excess over the reservoir band gap, positive
+because the non-degenerate, full-ionisation `vbi()` formula exceeds
+`E_g/q` by roughly 6-11 mV below about 100 K -- see
+`fsim_core/nitride_nanowire_transport.py`'s own "vbi_formula" provenance
+string), `flat_band` (output of `evaluate_injection(...)`:
+`NitrideDiode.depletion`'s own punch-through boolean, `True` when
+the junction has no remaining depletion field), `depletion_regime`
+(output of `evaluate_injection(...)`: `"flat_band"` or `"depleted"`, the
+same condition as `flat_band` in words), `eta_inj`, `f_capture`, `f_qfl_dot`,
 `f_qfl_dot_thermodynamic_limit` (coherence column, piece 5 directive round
 H2 -- the delivered-vs-thermodynamic-ceiling QFL pair, see "Composition
 rules for the device piece" bullet 3; never averaged or substituted for
@@ -589,7 +700,7 @@ finished -- see this worker's STATUS `notes:` for the exact `git status`
 snapshot to reconcile against.
 
 Gates (piece 7): `optical_pass`, `hardware_qualified`, `rti_qualified`,
-`device_pass`, `rti_device_pass`.
+`device_pass`, `rti_device_pass`, `headline_eligible`.
 
 `optical_pass = valid AND counting_converged AND g2_op < 0.5 AND
 collected_flux_pulsed_s >= 1000 AND (one_pair_valid AND
@@ -601,6 +712,14 @@ rti_feasible`. Pulse-regime rows report the hardware fields
 the planar convention); `rti_device_pass` is a separate alias of
 `rti_qualified`. Neither hardware failure overwrites the idealized optical
 statistics (`g2_op`, `collected_flux_pulsed_s`) computed upstream of it.
+`headline_eligible` (device output, `fsim_core/nitride_nanowire_device.py`):
+`True` for the horizontal_as_built family whenever the row is `valid`; for
+the vertical_photonic family, `True` only when the row is `valid` AND
+`single_mode is True` AND `approximation_error == 0.0` -- the single flag
+"Composition rules for the device piece" bullet 10's coherence constraint
+requires callers to check before nominating a vertical headline row,
+instead of re-deriving the `single_mode`/`approximation_error` condition
+themselves.
 
 ## Sweep grid, VERDICT format, and output paths
 
@@ -801,6 +920,25 @@ Supplement retrieval was not established and is marked missing.
   original `claudon2010_extraction` (first-lens extraction efficiency, a
   DIFFERENT quantity from this beta-envelope point) remain separate,
   still-`missing` anchors; this addition does not resolve either gap.
+- `encomendero2023_resonant_tunneling`'s `evidence_status` stays `missing`
+  this revision (fix-3 decision, recorded here since the third Opus review
+  suggested `figure_reading`): `verify/verify_citations.py`'s "recorded
+  gap" auto-pass (`GAP` in its printed output) for a null-identifier
+  anchor requires `evidence_status == missing` (see
+  `skills/citation_gate/ledger.py`'s `verify_anchor`, out of scope for
+  this fix round); changing the status to `figure_reading` with
+  `doi_or_url` still null would make that same anchor FAIL the offline
+  citation gate instead of printing `GAP` (no quoted title is present in
+  its `citation` string for a title-search fallback, and the cached
+  `arxiv_id|2303.08352` lookup itself records the past network timeout,
+  not a resolvable match). The conservative choice keeps `evidence_status:
+  missing` so `verify/verify_citations.py --offline` keeps exiting 0 with
+  an honest `GAP` line for this anchor; the anchor's `location` (Sec. II
+  device structure, Fig. 2 I-V) and `value` (already non-null: barrier/
+  well thickness, doping, peak I-V) already carry the figure-transcribed
+  content this correction was aiming to make visible, so nothing about
+  the anchor's evidentiary content actually depends on the `evidence_status`
+  label itself.
 
 ## Evidence ledger schema
 
@@ -851,9 +989,10 @@ mixes a secondary-attributed number into a directly-measured one).
 
 `verify/verify_nitride_nanowire_contract.py` parses this document (markdown
 tables and the fenced VERDICT block; a small stdlib+yaml parser, no new
-dependency), the ledger, and (new this revision) LIVE-IMPORTS the five
-committed production modules (`fsim_core/nitride_nanowire_{levels,
-photonics,surface,transport,injector}.py`), and asserts:
+dependency), the ledger, and LIVE-IMPORTS the six committed production
+modules (`fsim_core/nitride_nanowire_{levels,photonics,surface,transport,
+injector,device}.py`; `device` is newly live-bound this revision, fix-3
+required change 6), and asserts:
 
 - Spec binding (unchanged since round 1): every module/function signature
   cell in the "Module table" appears verbatim in the corresponding spec
@@ -869,14 +1008,20 @@ photonics,surface,transport,injector}.py`), and asserts:
   symbol is a `@dataclass`, its `dataclasses.fields()` name set is checked
   against the Card schema instead (see below), since a full constructor
   signature would duplicate the Card schema table without adding
-  information. Four rows per fix/directive-round drift (the injector's
+  information. Six rows per fix/directive-round drift (the injector's
   `transmission`/`reflection` carrier keyword, the injector's
   `injector_feasibility` `gate_ns` keyword, transport's
-  `evaluate_injection` GaN-reservoir keywords) are marked "module-only" in
-  the Verifier cell and are bound ONLY to the live module, not to any spec
-  text (see "Module table" above); the device/sweep rows (piece 7/9) are
-  bound to spec text only, since `fsim_core/nitride_nanowire_device.py`
-  does not exist yet.
+  `evaluate_injection` GaN-reservoir keywords, and -- new this revision --
+  the device's `evaluate_nanowire`/`evaluate_strain_pair` committed-module
+  binding) are marked "module-only" in the Verifier cell and are bound
+  ONLY to the live module, not to any spec text (see "Module table"
+  above); the sweep row (piece 9) has no Module table row at all (the
+  sweep script is not a `fsim_core` module) and the device's `platform`
+  row stays bound to spec text only (`platform` describes a recognition
+  branch in `fsim_core/device.py`'s dispatch, not a literal symbol on
+  `fsim_core/nitride_nanowire_device.py`, so it is deliberately excluded
+  from the live-binding loop even though the device module is now live-
+  bound).
 - Card-to-dataclass binding (new this revision): for
   `NitrideNanowirePhotonicsParams`, `NitrideNanowireSurfaceParams`, and
   `NitrideNanowireInjectorParams`, the leaf-name set of the corresponding
