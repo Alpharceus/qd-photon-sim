@@ -110,6 +110,38 @@ def eligible(valid, g2, flux):
     return bool(valid and isfin(g2) and isfin(flux) and flux >= 1000.0)
 
 
+# H3 fix: quality_pass is a SCRIPT-computed gate orthogonal to the
+# contract's own optical_pass (one_pair_valid rewards faster emptying by
+# ADDED loss just as readily as by improved device quality -- see the
+# script's "Gate anti-monotonicity" results.md section). Transcribed
+# independently from scripts/run_nitride_nanowire.py's own
+# QUALITY_PHOTONS_PER_CYCLE_FLOOR/_attach_quality_columns, never by calling
+# the production routine being tested.
+QUALITY_PHOTONS_PER_CYCLE_FLOOR = 0.01
+
+
+def quality_pass(optical, photons_per_cycle):
+    return bool(optical and isfin(photons_per_cycle) and photons_per_cycle >= QUALITY_PHOTONS_PER_CYCLE_FLOOR)
+
+
+def photons_per_cycle_of(flux, rep_rate_hz):
+    if not (isfin(flux) and isfin(rep_rate_hz)) or rep_rate_hz <= 0:
+        return float("nan")
+    return flux / rep_rate_hz
+
+
+def headline_pass(optical, family, headline_eligible):
+    """H2 fix: a nomination (BEST_PASSING_FLUX(_300K) and the 16
+    per-family/regime/bound/rate nominations) additionally requires
+    headline_eligible -- vertical_photonic rows above the LP11 single-mode
+    cutoff are never nominated even if optical_pass."""
+    if not optical:
+        return False
+    if family == "vertical_photonic":
+        return headline_eligible is True
+    return True
+
+
 def rti_fabricated_pass(second_pair_control_known, rti_feasible):
     """Contract Composition-rules bullet 7: 'unsupported second-pair/hole-
     occupation controls produce an honest failed or unknown RT screen
@@ -200,6 +232,22 @@ def check_predicate_boundaries(checks):
     checks.append(("eligible: flux just under floor (999.999) is not eligible", eligible(True, 0.01, 999.999) is False))
     checks.append(("eligible: invalid row is never eligible", eligible(False, 0.01, 1e9) is False))
     checks.append(("eligible: NaN g2 is never eligible", eligible(True, float("nan"), 2000.) is False))
+    checks.append(("quality_pass: photons_per_cycle exactly at the 0.01 floor with optical_pass is accepted",
+                    quality_pass(True, 0.01) is True))
+    checks.append(("quality_pass: photons_per_cycle just under the 0.01 floor is rejected",
+                    quality_pass(True, 0.009999) is False))
+    checks.append(("quality_pass: a non-optical_pass row is never quality_pass regardless of photons_per_cycle",
+                    quality_pass(False, 100.0) is False))
+    checks.append(("quality_pass: NaN photons_per_cycle is never quality_pass", quality_pass(True, float("nan")) is False))
+    checks.append(("photons_per_cycle_of: flux/rate division matches a direct value", photons_per_cycle_of(2.0e6, 200.0e6) == 0.01))
+    checks.append(("photons_per_cycle_of: non-finite rate is nan-safe", math.isnan(photons_per_cycle_of(2.0e6, 0.0))))
+    checks.append(("headline_pass: horizontal_as_built never requires headline_eligible",
+                    headline_pass(True, "horizontal_as_built", False) is True))
+    checks.append(("headline_pass: vertical_photonic with headline_eligible=False is rejected even if optical_pass "
+                    "(H2 fix: never nominate a brighter multimode row)", headline_pass(True, "vertical_photonic", False) is False))
+    checks.append(("headline_pass: vertical_photonic with headline_eligible=True and optical_pass is accepted",
+                    headline_pass(True, "vertical_photonic", True) is True))
+    checks.append(("headline_pass: a non-optical_pass row is never headline_pass", headline_pass(False, "vertical_photonic", True) is False))
 
 
 def check_rti_fabrication_fixture(checks):
@@ -317,6 +365,17 @@ def check_reduced_cut_axes_declared(checks, detail):
     checks.append(("every declared-dropped axis in DROPPED_CUT_AXES is actually absent from the full-mode cuts",
                     all(name.split(" ")[0].split("(")[0].strip() not in by_axis for name in
                         ("reservoir_access", "gamma300", "tau_rad0_ns", "tau_cap_ps", "C_parasitic_F", "NA", "bottom_reflectivity"))))
+    checks.append(("the RESTORED current/pulse-width axis 'current_pulse_width' is not in DROPPED_CUT_AXES "
+                    "(M9-M10 fix: 'restore the current / pulse-width cut')",
+                    all("current_pulse_width" not in name and "current_uA" not in name and "tau_pulse_ns" not in name
+                        for name in m.DROPPED_CUT_AXES)))
+    pulse_cuts = [p for p in cuts if p.get("sensitivity_axis") == "current_pulse_width"]
+    checks.append(("current_pulse_width reduced cut is present with exactly 9 rows (I in {0.001,0.002,0.02} uA "
+                    "x tau_pulse in {0.01,0.1,1} ns, Cartesian, horizontal reference geometry)",
+                    len(pulse_cuts) == 9
+                    and {p["I_uA"] for p in pulse_cuts} == {0.001, 0.002, 0.02}
+                    and {p["tau_pulse_ns"] for p in pulse_cuts} == {0.01, 0.1, 1.0}
+                    and {p["family"] for p in pulse_cuts} == {"horizontal_as_built"}))
     detail.append("reduced_cut_rows(full)=%d axes=%s" % (len(cuts), sorted(by_axis)))
 
 
@@ -369,6 +428,7 @@ REQUIRED_ROW_COLUMNS = (
     "rti_feasible", "rti_status", "rti_level_margin_kT",
     "optical_pass", "hardware_qualified", "rti_qualified", "headline_eligible",
     "row_id", "row_kind", "card_file", "card_hash", "cache_hit", "cache_identity", "eligible",
+    "photons_per_cycle", "emission_probability_per_cycle", "quality_pass",
 )
 
 
@@ -461,6 +521,7 @@ VERDICT_RE = re.compile(
     r"^VERDICT: idealized_status=(?P<ideal>\S+) family=(?P<family>\S+) regime=(?P<regime>\S+) "
     r"strain_bound=(?P<sb>\S+) bound_role=(?P<role>\S+) rep_rate_hz=(?P<rate>\S+) "
     r"complete=(?P<complete>\S+) eligible=(?P<elig>\d+) paired_optical_pass=(?P<paired>\d+) "
+    r"quality_pass=(?P<quality>\d+) "
     r"hardware_qualified=(?P<hw>\d+) rti_qualified=(?P<rti>\d+) coverage=(?P<covn>\d+)/(?P<covd>\d+) "
     r"invalid=(?P<invalid>\d+) flux_floor=1000/s screening=(?P<screening>\S+) access=(?P<access>\S+)$")
 
@@ -491,7 +552,7 @@ def check_verdict_lines(text, core, quick, checks, detail):
         expected = [p for p in m.build_core(family, quick)
                     if p["regime"] == regime and p["strain_bound"] == sb and p["rep_rate_hz"] == rate]
 
-        n_invalid = n_elig = n_paired = n_hw = n_rti = 0
+        n_invalid = n_elig = n_paired = n_hw = n_rti = n_quality = 0
         for r in group:
             valid = as_bool(r["valid"]) is True
             g2v, fluxv = f(r.get("g2_op")), f(r.get("collected_flux_pulsed_s"))
@@ -508,13 +569,19 @@ def check_verdict_lines(text, core, quick, checks, detail):
             rti_feas = as_bool(r.get("rti_feasible"))
             n_hw += int(hardware_qualified(opt, regime, set_feas))
             n_rti += int(rti_qualified(opt, regime, rti_feas))
+            # H3 fix: quality_pass recomputed from flux/rep_rate_hz (raw
+            # columns), never trusting the CSV's own photons_per_cycle/
+            # quality_pass columns.
+            ppc = photons_per_cycle_of(fluxv, f(r.get("rep_rate_hz")))
+            n_quality += int(quality_pass(opt, ppc))
 
-        ok = (int(mo["elig"]) == n_elig and int(mo["paired"]) == n_paired and int(mo["hw"]) == n_hw
-              and int(mo["rti"]) == n_rti and int(mo["invalid"]) == n_invalid
+        ok = (int(mo["elig"]) == n_elig and int(mo["paired"]) == n_paired and int(mo["quality"]) == n_quality
+              and int(mo["hw"]) == n_hw and int(mo["rti"]) == n_rti and int(mo["invalid"]) == n_invalid
               and int(mo["covn"]) == len(group) and int(mo["covd"]) == len(expected))
         checks.append((f"VERDICT counts recomputed from sweep.csv match the line "
-                        f"({family}/{regime}/{sb}/{rate:g}Hz): eligible={n_elig} paired={n_paired} hw={n_hw} "
-                        f"rti={n_rti} invalid={n_invalid} coverage={len(group)}/{len(expected)}", ok))
+                        f"({family}/{regime}/{sb}/{rate:g}Hz): eligible={n_elig} paired={n_paired} "
+                        f"quality={n_quality} hw={n_hw} rti={n_rti} invalid={n_invalid} "
+                        f"coverage={len(group)}/{len(expected)}", ok))
         complete_expected = bool((not quick) and len(group) == len(expected))
         checks.append((f"VERDICT complete flag is consistent with coverage ({family}/{regime}/{sb}/{rate:g}Hz)",
                         (mo["complete"] == "True") == complete_expected or quick))
@@ -525,7 +592,11 @@ BEST_FLUX_RE = re.compile(r"^BEST_PASSING_FLUX family=(?P<family>\S+) value=(?P<
 BEST_FLUX_300K_RE = re.compile(r"^BEST_PASSING_FLUX_300K family=(?P<family>\S+) value=(?P<value>\S+) row_id=(?P<row_id>\S+)")
 
 
-def _best_passing_flux(core_rows, family, restrict_300k):
+def _best_passing_flux(core_rows, family, restrict_300k, require_headline=True):
+    """H2 fix: headline selection requires optical_pass AND (for
+    vertical_photonic) headline_eligible -- the brightest optical_pass row
+    is never nominated if it is headline-ineligible (single_mode False /
+    above the LP11 cutoff)."""
     cand = []
     for r in core_rows:
         if r["family"] != family:
@@ -536,9 +607,34 @@ def _best_passing_flux(core_rows, family, restrict_300k):
         g2v, fluxv = f(r.get("g2_op")), f(r.get("collected_flux_pulsed_s"))
         one = as_bool(r.get("one_pair_valid")) is True
         supply = as_bool(r.get("pair_supply_possible")) is True
-        if optical_pass(valid, g2v, fluxv, r["regime"], one, supply) and isfin(fluxv):
+        opt = optical_pass(valid, g2v, fluxv, r["regime"], one, supply)
+        if require_headline and not headline_pass(opt, family, as_bool(r.get("headline_eligible"))):
+            continue
+        if opt and isfin(fluxv):
             cand.append((fluxv, r["row_id"]))
     return max(cand, key=lambda z: z[0]) if cand else (None, None)
+
+
+def check_headline_selection_fixture(checks):
+    """H2 fix, mutation-sensitivity fixture: a synthetic row set where the
+    BRIGHTEST optical_pass row is deliberately headline-ineligible
+    (single_mode=False / above the LP11 cutoff); _best_passing_flux must
+    never select it, only the dimmer headline_eligible row."""
+    bright_ineligible = dict(family="vertical_photonic", regime="deterministic_pair", T_hs="230.0",
+                              valid="True", g2_op="0.17", collected_flux_pulsed_s="9000000",
+                              one_pair_valid="True", pair_supply_possible="True",
+                              headline_eligible="False", row_id="FIXA")
+    dim_eligible = dict(bright_ineligible, collected_flux_pulsed_s="5000000",
+                         headline_eligible="True", row_id="FIXB")
+    rows = [bright_ineligible, dim_eligible]
+    best_val, best_rid = _best_passing_flux(rows, "vertical_photonic", restrict_300k=False)
+    checks.append(("_best_passing_flux prefers a DIMMER headline_eligible row over a BRIGHTER "
+                    "headline_eligible=False row (H2 fix)", best_rid == "FIXB" and best_val == 5000000.0))
+    best_val_no_req, best_rid_no_req = _best_passing_flux(rows, "vertical_photonic", restrict_300k=False,
+                                                            require_headline=False)
+    checks.append(("_best_passing_flux WITHOUT the headline requirement would have picked the brighter "
+                    "ineligible row (confirms the fixture actually exercises the filter)",
+                    best_rid_no_req == "FIXA"))
 
 
 def check_best_passing_flux(text, core, checks):
@@ -637,9 +733,14 @@ RESULTS_TEXT_OBLIGATIONS = (
     "0.3125 ns",                                # access-1.0 lifetime cap (XX)
     "OPPOSITE endpoints",                       # opposite-endpoint anchor match
     "never averaged",
-    "E_C/kT wall", "fails on both",             # E_C/kT wall statement
+    # E_C/kT wall statement (M5 fix: the Coulomb wall is a demonstrated
+    # result; the RT injector screen is explicitly NOT, so the text no
+    # longer asserts "fails on both ... by EITHER charging mechanism").
+    "E_C/kT wall", "fails the Coulomb-blockade screen", "unknown_incomplete",
     "wrong sign against the +70%",             # c-plane dipole prior falsification
     "one_pair_valid",                           # 200 vs 80 MHz comparison
+    "quality_pass",                             # H3 gate anti-monotonicity fix
+    "photons_per_cycle",                        # H3 gate anti-monotonicity fix
 )
 
 
@@ -676,6 +777,7 @@ def main(argv=None):
     check_predicate_boundaries(checks)
     check_rti_fabrication_fixture(checks)
     check_bound_partner_and_duplicate_fixtures(checks)
+    check_headline_selection_fixture(checks)
     check_grid_self(checks, detail)
     check_reduced_cut_axes_declared(checks, detail)
     check_dry_run_cap(checks)

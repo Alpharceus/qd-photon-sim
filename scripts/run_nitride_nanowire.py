@@ -92,6 +92,28 @@ REF_GEOM = {
 }
 
 # ------------------------------------------------------------------ utils
+class _Tee:
+    """H1 fix: the runner writes its OWN log file INSIDE the run directory
+    (out/nitride_nanowire/<dir>/run.log) so manifest.json's output_hashes
+    (which hashes every file actually sitting in the resolved run dir, see
+    main()) always has a real, in-directory file to hash -- never a log the
+    orchestrator's own shell redirected somewhere OUTSIDE the run dir (the
+    prior failure: the artifact-mode verifier's hash check failed 171/172
+    because a "full-rerun.log" hash was recorded for a file that did not
+    exist inside out/nitride_nanowire/full/)."""
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+        return len(data)
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()
+
+
 def _safe(out):
     p = Path(out).resolve()
     base = (ROOT / "out" / "nitride_nanowire").resolve()
@@ -120,6 +142,23 @@ def _close(a, b, rtol=1e-6, atol=1e-9):
     if fa != fb:
         return False
     return math.isclose(a, b, rel_tol=rtol, abs_tol=atol)
+
+
+# Bookkeeping-only keys on a row's parameter dict (never a physics input):
+# excluding them from the cache/dedup identity (fix round: "make the cache
+# identity physics-only so duplicate evaluate() inputs deduplicate") lets a
+# reduced-cut row whose sampled value happens to equal the main-grid default
+# (e.g. the screening_fraction=0.0 cut, which duplicates 32 core-row inputs)
+# collapse onto the SAME real evaluate() call as its core-row twin, instead
+# of hashing separately just because its sensitivity_axis/sensitivity_value
+# labels differ. The row's OWN CSV content still carries its real
+# sensitivity_axis/sensitivity_value (row.update(p) uses the untouched p);
+# only the identity/cache KEY drops them.
+_NONPHYSICS_KEYS = ("sensitivity_axis", "sensitivity_value")
+
+
+def _physics_only(p):
+    return {k: v for k, v in p.items() if k not in _NONPHYSICS_KEYS}
 
 
 _CARD_CACHE = {}
@@ -187,7 +226,7 @@ def _job_identity(job):
     evaluate() call before dispatch, exactly as the serial cache did."""
     kind, payload = job
     if kind == "nanowire":
-        return json.dumps({"planar": None, **payload}, sort_keys=True, separators=(",", ":"), default=str)
+        return json.dumps({"planar": None, **_physics_only(payload)}, sort_keys=True, separators=(",", ":"), default=str)
     if kind == "planar":
         return json.dumps({"planar": payload}, sort_keys=True, separators=(",", ":"), default=str)
     return json.dumps({"deshpande2014_replay": True}, sort_keys=True)
@@ -343,8 +382,11 @@ def _row(rid, kind, p, seen, results, planar=None):
     set this function uses to reproduce the original in-process cache's
     `cache_hit` semantics (True iff an earlier row in THIS run already used
     the identical identity) without re-calling evaluate() -- the real
-    evaluate() call already happened once per unique identity, up front."""
-    ident = json.dumps({"planar": planar, **p} if planar is None else {"planar": planar},
+    evaluate() call already happened once per unique identity, up front.
+    The identity key is PHYSICS-ONLY (see `_physics_only`); the row's own
+    CSV content still carries the untouched `p` (sensitivity_axis/
+    sensitivity_value included) via `row.update(p)` below."""
+    ident = json.dumps({"planar": planar, **_physics_only(p)} if planar is None else {"planar": planar},
                         sort_keys=True, separators=(",", ":"), default=str)
     hit = ident in seen
     seen.add(ident)
@@ -366,6 +408,36 @@ def _row(rid, kind, p, seen, results, planar=None):
     row["headline_eligible"] = bool(s.get("headline_eligible", False))
     flux = s.get("collected_flux_pulsed_s")
     row["eligible"] = bool(row["valid"] and _finite(s.get("g2_op")) and _finite(flux) and flux >= FLUX_FLOOR)
+    _attach_quality_columns(row, s)
+    return row
+
+
+# H3 gate-anti-monotonicity fix: one_pair_valid (blocked_load_probability<=
+# 1e-9) can be satisfied by ADDING loss (faster occupied-dot emptying) as
+# readily as by improving device quality, so optical_pass alone is not a
+# throughput signal. photons_per_cycle/emission_probability_per_cycle are
+# script-computed columns (never re-deriving physics, only dividing/summing
+# evaluate()'s own reported outputs) and quality_pass is a script-computed
+# gate ORTHOGONAL to the contract's own optical_pass definition (no fsim_core
+# or contract change): quality_pass=optical_pass AND photons_per_cycle>=0.01
+# [A, orchestrator threshold: one collected photon per hundred cycles].
+QUALITY_PHOTONS_PER_CYCLE_FLOOR = 0.01
+
+
+def _attach_quality_columns(row, s):
+    flux = s.get("collected_flux_pulsed_s")
+    rep_hz = s.get("rep_rate_hz", row.get("rep_rate_hz"))
+    if _finite(flux) and _finite(rep_hz) and float(rep_hz) > 0:
+        ppc = float(flux) / float(rep_hz)
+    else:
+        ppc = float("nan")
+    row["photons_per_cycle"] = ppc
+    mcx, mcxx = s.get("mean_counts_x"), s.get("mean_counts_xx")
+    if _finite(mcx) and _finite(mcxx):
+        row["emission_probability_per_cycle"] = min(1.0, float(mcx) + float(mcxx))
+    else:
+        row["emission_probability_per_cycle"] = float("nan")
+    row["quality_pass"] = bool(row.get("optical_pass") and _finite(ppc) and ppc >= QUALITY_PHOTONS_PER_CYCLE_FLOOR)
     return row
 
 
@@ -384,6 +456,8 @@ def _deshpande2014_replay(rid, seen, results):
         row[k] = _primitive(v)
     row["valid"] = bool(s.get("valid"))
     row["invalid_reasons"] = json.dumps(s.get("invalid_reasons", []))
+    row["optical_pass"] = bool(s.get("optical_pass", False))
+    _attach_quality_columns(row, s)
     return row
 
 
@@ -446,11 +520,12 @@ def build_reduced_cuts(quick):
     # paragraph emphasis on that sensitivity. Each kept axis samples only
     # the ALTERNATIVE value(s), never re-testing a value that already
     # equals the main-grid default (redundant with the core grid).
+    # RESTORED this fix round (see the current_pulse_width axis below):
+    # current_uA/tau_pulse_ns pulse sensitivity, previously dropped.
     # DROPPED entirely this run (never Cartesian-producted against the
     # kept axes, simply not sampled): reservoir_access, gamma300
     # (linewidth), tau_rad0_ns, tau_cap_ps (capture), C_parasitic_F,
-    # current_uA/tau_pulse_ns pulse sensitivity (spec "Interface or
-    # signature constraints"), Rth_K_W (both families), R_s_ohm on the
+    # Rth_K_W (both families), R_s_ohm on the
     # vertical family, NA (horizontal)/bottom_reflectivity (vertical)
     # collection-envelope cuts. This is a real, reported coverage gap
     # against the contract's fuller "Sweep grid" reduced-cut list, not a
@@ -485,12 +560,35 @@ def build_reduced_cuts(quick):
         p.update(regime=reg, strain_bound=sb, T_hs=t, rep_rate_hz=rate, R_s_ohm=1.0e6)
         p["sensitivity_axis"] = "R_s_ohm"; p["sensitivity_value"] = 1.0e6
         out.append(p)
+
+    # RESTORED (fix round, H-block "Previous attempt failed because" M9-M10:
+    # "restore the current / pulse-width cut"): I in {0.001,0.002,0.02} uA x
+    # tau_pulse in {0.01,0.1,1} ns, Cartesian (3x3=9 rows), at the horizontal
+    # reference geometry only, rectangular regime (the 100 ps headline lives
+    # on this regime), relaxed headline strain bound, T_hs=300 K, the
+    # horizontal card's own 200 MHz default rate -- "preserving the 100 ps
+    # headline" (one of the 9 combos, I=0.002/tau=0.1, IS the headline
+    # point itself, kept in the declared cut list rather than skipped, per
+    # spec "as separate cuts"; the physics-only cache identity (see
+    # _physics_only) collapses it onto whichever existing row already has
+    # identical physics inputs, so it costs zero EXTRA real evaluate() calls
+    # even though it is declared/counted as one of the 9). duty=tau*rep and
+    # the pair supply move together automatically inside _design() (spec:
+    # "Coupled duty and pair supply change consistently").
+    for i_ua in (0.001, 0.002, 0.02):
+        for tau_ns in (0.01, 0.1, 1.0):
+            p = full_defaults("horizontal_as_built")
+            p.update(regime="rectangular", strain_bound="relaxed", T_hs=300.0, rep_rate_hz=200.0e6,
+                      I_uA=i_ua, tau_pulse_ns=tau_ns)
+            p["sensitivity_axis"] = "current_pulse_width"
+            p["sensitivity_value"] = f"I={i_ua}uA_tau={tau_ns}ns"
+            out.append(p)
     return out
 
 
 DROPPED_CUT_AXES = (
     "reservoir_access", "gamma300 (linewidth)", "tau_rad0_ns", "tau_cap_ps (capture)",
-    "C_parasitic_F", "current_uA/tau_pulse_ns pulse sensitivity", "Rth_K_W (both families)",
+    "C_parasitic_F", "Rth_K_W (both families)",
     "R_s_ohm (vertical family)", "NA (horizontal)/bottom_reflectivity (vertical) collection envelope",
 )
 
@@ -611,11 +709,17 @@ def _leg(ax, **kw):
 BOUND_STYLE = {"unrelaxed": ("--s", "unrelaxed (conservative_lower)"), "relaxed": ("-o", "relaxed (headline_upper)")}
 
 
-def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), ylog=None, guide=None):
+def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), ylog=None, guide=None,
+                  caption=None, mark_multimode=False):
     """One figure, subplot per (family, y_key); traces are (strain_bound,
     <group_extra combo>), x-axis swept, all other coordinates held at
     `fixed` (dict of family-independent fixed values) -- never a merged
-    trace across different fixed coordinates (house style)."""
+    trace across different fixed coordinates (house style). `caption`
+    (L18: "annotate every exported figure with a one-line qualification")
+    is printed as a figure-level footer; `mark_multimode` (L18: "mark
+    multimode / non-resetting rows") overlays vertical_photonic points with
+    single_mode=False (headline-ineligible, above the LP11 cutoff) as
+    distinct gray x-markers, never joined into the headline trace."""
     import matplotlib.pyplot as plt
     contract = {}
     n_rows_plot = len(FAMILIES)
@@ -651,6 +755,14 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
                     lab = label if not ev else f"{label} {ev}"
                     ax.plot(xv, yv, style, ms=4, lw=1.3, label=lab)
                     contract[f"{family}|{y_key}|{lab}"] = {"row_ids": [z["row_id"] for z in rr], "x": xv, "y": yv}
+            if mark_multimode and family == "vertical_photonic":
+                mm = [r for r in pool if r.get("single_mode") in (False, "False")
+                      and _finite_num(r.get(x_key)) and _finite_num(r.get(y_key))]
+                if mm:
+                    mm = sorted(mm, key=lambda z: float(z[x_key]))
+                    mxv = [float(z[x_key]) for z in mm]; myv = [float(z[y_key]) for z in mm]
+                    ax.scatter(mxv, myv, marker="x", c="0.5", s=22, label="multimode (headline_eligible=False)")
+                    contract[f"{family}|{y_key}|multimode"] = {"row_ids": [z["row_id"] for z in mm], "x": mxv, "y": myv}
             if guide is not None and y_key == guide[0]:
                 ax.axhline(guide[1], color="k", lw=0.9, ls="--", label=guide[2])
             use_ylog = (y_key in ("collected_flux_pulsed_s", "collected_flux_delivered_s")) if ylog is None else ylog
@@ -659,73 +771,115 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
             ax.set(xlabel=x_key, ylabel=y_key, title=f"{family} {y_key}")
             _leg(ax)
     fig.suptitle(title, fontsize=9)
-    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    if caption:
+        fig.text(0.5, 0.005, caption, ha="center", fontsize=6.5, wrap=True)
+    fig.tight_layout(rect=(0, 0.03 if caption else 0, 1, 0.95))
     fig.savefig(out / name, dpi=120, bbox_inches="tight")
     plt.close(fig)
     return contract
 
 
 def plot_delivered_vs_commanded(out, core):
+    """M6 fix: the prior version plotted ONLY the R_s_ohm=1e6 sensitivity
+    rows, so the as-built 2.38 GOhm branch (both families' CORE-grid
+    default) never appeared and the figure showed delivered==commanded only.
+    Both as-built core rows (per family, at their own default R_s_ohm) AND
+    the horizontal R_s_ohm=1e6 designed-contact sensitivity rows are plotted
+    here, labelled separately."""
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(6.4, 4.6))
+    fig, ax = plt.subplots(figsize=(6.8, 4.8))
     contract = {}
-    rr = [r for r in core if r.get("row_kind") == "sensitivity" and r.get("sensitivity_axis") == "R_s_ohm"
-          and r.get("family") == "horizontal_as_built" and r.get("regime") == "deterministic_pair"
-          and _finite_num(r.get("collected_flux_pulsed_s")) and _finite_num(r.get("collected_flux_delivered_s"))]
-    for r_s_val, marker in ((2.38e9, "o"), (1.0e6, "s")):
-        pts = [r for r in rr if _close(float(r.get("R_s_ohm", -1)), r_s_val)]
-        if not pts:
-            continue
+    series = []
+    for family in FAMILIES:
+        pts = [r for r in core if r.get("row_kind") == "core" and r.get("family") == family
+               and r.get("regime") == "deterministic_pair"
+               and _finite_num(r.get("collected_flux_pulsed_s")) and _finite_num(r.get("collected_flux_delivered_s"))]
+        if pts:
+            r_s_val = pts[0].get("R_s_ohm")
+            series.append((f"{family} as-built core default (R_s_ohm={float(r_s_val):.3g})",
+                            pts, "^" if family == "horizontal_as_built" else "v"))
+    sens_pts = [r for r in core if r.get("row_kind") == "sensitivity" and r.get("sensitivity_axis") == "R_s_ohm"
+                and r.get("family") == "horizontal_as_built" and r.get("regime") == "deterministic_pair"
+                and _finite_num(r.get("collected_flux_pulsed_s")) and _finite_num(r.get("collected_flux_delivered_s"))]
+    if sens_pts:
+        series.append(("horizontal_as_built designed contact (R_s_ohm=1e6, sensitivity)", sens_pts, "s"))
+    all_x = []
+    for label, pts, marker in series:
         commanded = [float(z["collected_flux_pulsed_s"]) for z in pts]
         delivered = [float(z["collected_flux_delivered_s"]) for z in pts]
-        ax.scatter(commanded, delivered, marker=marker, label=f"R_s_ohm={r_s_val:.3g}")
-        contract[f"R_s_ohm={r_s_val:.3g}"] = {"row_ids": [z["row_id"] for z in pts], "x": commanded, "y": delivered}
-    lims = ax.get_xlim()
-    ax.plot(lims, lims, "k--", lw=0.8, label="delivered == commanded")
+        all_x += commanded + delivered
+        ax.scatter(commanded, delivered, marker=marker, alpha=0.6, s=18, label=label)
+        contract[label] = {"row_ids": [z["row_id"] for z in pts], "x": commanded, "y": delivered}
+    if all_x:
+        lo, hi = min(v for v in all_x if v > 0), max(all_x)
+        ax.plot([lo, hi], [lo, hi], "k--", lw=0.8, label="delivered == commanded")
     ax.set(xlabel="collected_flux_pulsed_s (commanded/idealized)", ylabel="collected_flux_delivered_s (RC-limited)",
-           xscale="log", yscale="log", title="delivered vs commanded flux (horizontal, SET regime, RC diagnostic)")
+           xscale="log", yscale="log", title="delivered vs commanded flux (SET regime, RC diagnostic)")
     _leg(ax)
-    fig.tight_layout(); fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120); plt.close(fig)
+    fig.text(0.5, 0.005, "RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps step "
+             "(see 'RC caveat' section); only the R_s_ohm=1e6 designed contact and the vertical family's own "
+             "1e6 default approach delivered==commanded.", ha="center", fontsize=6.5, wrap=True)
+    fig.tight_layout(rect=(0, 0.05, 1, 1))
+    fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120); plt.close(fig)
     return contract
 
 
+def _max_over_radius(rr, y_key):
+    """Group `rr` by core_radius_nm and take the row that MAXIMIZES y_key at
+    each radius; returns (xs, ys, ids) with `ids` the row_id that actually
+    PRODUCED each y value (L12 fix: the prior version plotted the max but
+    recorded the FIRST row's id at that radius, a traceability mismatch)."""
+    seen = {}
+    for r in rr:
+        seen.setdefault(float(r["core_radius_nm"]), []).append(r)
+    xs = sorted(seen)
+    best_rows = [max(seen[x], key=lambda z: float(z[y_key])) for x in xs]
+    ys = [float(z[y_key]) for z in best_rows]
+    ids = [z["row_id"] for z in best_rows]
+    return xs, ys, ids
+
+
 def plot_hardware_screens(out, core):
+    """M5 fix: the RTI panel's original `rti_level_margin_kT` is identically
+    0 on every priced SET row (a flat, non-informative line -- see results.md
+    "Gate anti-monotonicity"/E_C/kT wall sections); it is DROPPED here and
+    replaced with two VARYING RTI diagnostics, `rti_bypass_fraction` and
+    `rti_alignment_error_e_meV`, so the figure actually shows something."""
     import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4))
+    fig, axes = plt.subplots(1, 3, figsize=(16.0, 4.4))
     contract = {}
     ax = axes[0]
     for family in FAMILIES:
         rr = [r for r in core if r.get("row_kind") == "core" and r.get("family") == family
               and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
               and _finite_num(r.get("core_radius_nm")) and _finite_num(r.get("set_EC_over_kT"))]
-        seen = {}
-        for r in rr:
-            seen.setdefault(float(r["core_radius_nm"]), []).append(r)
-        xs = sorted(seen)
-        ys = [max(float(z["set_EC_over_kT"]) for z in seen[x]) for x in xs]
-        ids = [seen[x][0]["row_id"] for x in xs]
-        ax.plot(xs, ys, "o-", label=family)
-        contract[f"set_EC_over_kT|{family}"] = {"row_ids": ids, "x": xs, "y": ys}
+        xs, ys, ids = _max_over_radius(rr, "set_EC_over_kT")
+        if xs:
+            ax.plot(xs, ys, "o-", label=family)
+            contract[f"set_EC_over_kT|{family}"] = {"row_ids": ids, "x": xs, "y": ys}
     ax.axhline(10.0, color="k", ls="--", lw=0.9, label="ec_margin threshold (10 kT)")
     ax.set(xlabel="core_radius_nm", ylabel="set_EC_over_kT", title="Coulomb-blockade screen", yscale="log")
     _leg(ax)
-    ax = axes[1]
-    for family in FAMILIES:
-        rr = [r for r in core if r.get("row_kind") == "core" and r.get("family") == family
-              and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
-              and _finite_num(r.get("core_radius_nm")) and _finite_num(r.get("rti_level_margin_kT"))]
-        seen = {}
-        for r in rr:
-            seen.setdefault(float(r["core_radius_nm"]), []).append(r)
-        xs = sorted(seen)
-        ys = [max(float(z["rti_level_margin_kT"]) for z in seen[x]) for x in xs]
-        ids = [seen[x][0]["row_id"] for x in xs]
-        if xs:
-            ax.plot(xs, ys, "o-", label=family)
-            contract[f"rti_level_margin_kT|{family}"] = {"row_ids": ids, "x": xs, "y": ys}
-    ax.set(xlabel="core_radius_nm", ylabel="rti_level_margin_kT", title="resonant-tunnelling injector screen")
-    _leg(ax)
-    fig.tight_layout(); fig.savefig(out / "hardware_screens.png", dpi=120); plt.close(fig)
+    for ci, (y_key, title) in enumerate((("rti_bypass_fraction", "RT injector bypass fraction"),
+                                          ("rti_alignment_error_e_meV", "RT injector electron alignment error"))):
+        ax = axes[ci + 1]
+        for family in FAMILIES:
+            rr = [r for r in core if r.get("row_kind") == "core" and r.get("family") == family
+                  and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
+                  and _finite_num(r.get("core_radius_nm")) and _finite_num(r.get(y_key))]
+            xs, ys, ids = _max_over_radius(rr, y_key)
+            if xs:
+                ax.plot(xs, ys, "o-", label=family)
+                contract[f"{y_key}|{family}"] = {"row_ids": ids, "x": xs, "y": ys}
+        ax.set(xlabel="core_radius_nm", ylabel=y_key, title=title)
+        _leg(ax)
+    fig.suptitle("Non-gating hardware screens (conditional engineering screens, not measured devices)", fontsize=9)
+    fig.text(0.5, 0.005, "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen at "
+             "every priced core_radius_nm>=10 nm; the RT injector screen is rti_status=unknown_incomplete on "
+             "every SET row (conditional-engineering screens, neither is a demonstrated hardware result).",
+             ha="center", fontsize=6.5, wrap=True)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.95))
+    fig.savefig(out / "hardware_screens.png", dpi=120); plt.close(fig)
     return contract
 
 
@@ -756,7 +910,13 @@ def plot_reversal_map(out, core):
                yticks=range(len(temps)), yticklabels=[f"{v:g}" for v in temps],
                xlabel="core_radius_nm", ylabel="T_hs K", title=f"{family} strain-pair reversal map")
         contract[family] = cellmap
-    fig.tight_layout(); fig.savefig(out / "strain_reversal_map.png", dpi=120); plt.close(fig)
+    fig.suptitle("Strain-bound reversal map (M11: legend for not_comparable)", fontsize=9)
+    fig.text(0.5, 0.005, "White/blank cells = not_comparable (no pair where BOTH strain-bound rows clear the "
+             "1000/s optical floor); colored cells are 0=not reversed, 1=reversed on mu/collected_flux_pulsed_s/"
+             "g2_op (never averaged with unreversed cells). Opposite endpoints: never averaged.",
+             ha="center", fontsize=6.5, wrap=True)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.93))
+    fig.savefig(out / "strain_reversal_map.png", dpi=120); plt.close(fig)
     return contract
 
 
@@ -804,6 +964,7 @@ def verdict_lines(core, quick):
                             continue
                         if _bound_partner(r, all_core) is not None:
                             paired += 1
+                    quality = sum(1 for r in group if r.get("quality_pass"))
                     hw_q = sum(1 for r in group if r.get("hardware_qualified"))
                     rti_q = sum(1 for r in group if r.get("rti_qualified"))
                     any_optical = any(r.get("optical_pass") for r in group)
@@ -823,16 +984,28 @@ def verdict_lines(core, quick):
                     access = group[0].get("occupied_dot_access", 0.05) if group else 0.05
                     v = dict(idealized_status=ideal, family=family, regime=regime, strain_bound=strain_bound,
                              bound_role=BOUND_ROLE[strain_bound], rep_rate_hz=rate, complete=complete,
-                             eligible=eligible, paired_optical_pass=paired, hardware_qualified=hw_q,
-                             rti_qualified=rti_q, coverage=f"{n}/{total}", invalid=invalid,
+                             eligible=eligible, paired_optical_pass=paired, quality_pass=quality,
+                             hardware_qualified=hw_q, rti_qualified=rti_q, coverage=f"{n}/{total}", invalid=invalid,
                              screening=screening, access=access)
                     verdicts.append(v)
+                    # quality_pass (H3 fix) is printed BESIDE paired_optical_pass:
+                    # optical_pass/paired_optical_pass alone can be satisfied by
+                    # a row that empties its dot faster only because it LOSES
+                    # more photons (surface loss, tight access), so quality_pass
+                    # =optical_pass AND photons_per_cycle>=0.01 is a second,
+                    # independent throughput screen -- see the "Gate
+                    # anti-monotonicity" results.md section. This field is a
+                    # script/orchestrator addition; it does NOT change the
+                    # contract's own frozen optical_pass definition or its
+                    # VERDICT template (docs/nitride_nanowire_contract.md is
+                    # out of scope for this piece).
                     lines.append(
                         "VERDICT: idealized_status=%s family=%s regime=%s strain_bound=%s bound_role=%s "
-                        "rep_rate_hz=%g complete=%s eligible=%d paired_optical_pass=%d hardware_qualified=%d "
-                        "rti_qualified=%d coverage=%s invalid=%d flux_floor=1000/s screening=%g access=%g" % (
+                        "rep_rate_hz=%g complete=%s eligible=%d paired_optical_pass=%d quality_pass=%d "
+                        "hardware_qualified=%d rti_qualified=%d coverage=%s invalid=%d flux_floor=1000/s "
+                        "screening=%g access=%g" % (
                             ideal, family, regime, strain_bound, BOUND_ROLE[strain_bound], rate, complete,
-                            eligible, paired, hw_q, rti_q, f"{n}/{total}", invalid,
+                            eligible, paired, quality, hw_q, rti_q, f"{n}/{total}", invalid,
                             float(screening), float(access)))
     return lines, verdicts
 
@@ -880,23 +1053,62 @@ def attach_bound_reversal(core_rows):
         partner["bound_reversal_pair"] = reversal
 
 
+def _headline_eligible_of(r):
+    return r.get("headline_eligible") in (True, "True")
+
+
 def best_passing_flux_lines(core):
+    """H2 fix: headline selection requires optical_pass AND headline_eligible
+    (a vertical_photonic row above the LP11 single-mode cutoff is never
+    nominated, even if it is the brightest optical_pass row); optical-only
+    counts are kept and printed SEPARATELY so the eligibility filter's
+    effect is visible, not hidden. Every BEST line prints the row's full
+    geometry/rate/bound, BOTH commanded and RC-delivered flux,
+    headline_eligible, hardware_qualified/rti_qualified (False on every
+    idealized-loading row), blocked_load_probability (H3: "report
+    blocked_load_probability on every SET nomination"), and the row's
+    unrelaxed strain-bound partner's row_id/flux/bound_reversal_pair value
+    (never just the commanded-flux number in isolation)."""
     lines = []
     all_core = [r for r in core if r.get("row_kind") == "core"]
     for family in FAMILIES:
         for label, pred in (("BEST_PASSING_FLUX", lambda r: True),
                              ("BEST_PASSING_FLUX_300K", lambda r: _close(float(r.get("T_hs", -1)), 300.0))):
-            cand = [r for r in all_core if r.get("family") == family and r.get("optical_pass")
-                    and pred(r) and _finite_num(r.get("collected_flux_pulsed_s"))]
-            if not cand:
-                lines.append(f"{label} family={family} value=none row_id=none")
+            optical_cand = [r for r in all_core if r.get("family") == family and r.get("optical_pass")
+                             and pred(r) and _finite_num(r.get("collected_flux_pulsed_s"))]
+            elig_cand = [r for r in optical_cand if _headline_eligible_of(r)]
+            n_optical, n_elig = len(optical_cand), len(elig_cand)
+            if not elig_cand:
+                lines.append(f"{label} family={family} value=none row_id=none "
+                              f"optical_pass_candidates={n_optical} headline_eligible_candidates={n_elig}")
                 continue
-            best = max(cand, key=lambda r: float(r["collected_flux_pulsed_s"]))
+            best = max(elig_cand, key=lambda r: float(r["collected_flux_pulsed_s"]))
+            partner = _bound_partner(best, all_core)
+            delivered = best.get("collected_flux_delivered_s")
+            delivered_txt = f"{float(delivered):.6g}" if _finite_num(delivered) else "n/a"
+            blocked_txt = (f"{float(best.get('blocked_load_probability')):.6g}"
+                            if _finite_num(best.get("blocked_load_probability")) else "n/a")
+            if partner is not None:
+                p_flux = partner.get("collected_flux_pulsed_s")
+                p_flux_txt = f"{float(p_flux):.6g}" if _finite_num(p_flux) else "n/a"
+                partner_txt = (f"unrelaxed_partner_row_id={partner['row_id']} "
+                                f"unrelaxed_partner_flux={p_flux_txt} "
+                                f"bound_reversal={best.get('bound_reversal_pair', 'not_computed')}")
+            else:
+                partner_txt = "unrelaxed_partner_row_id=none unrelaxed_partner_flux=n/a bound_reversal=not_comparable"
             lines.append(
                 f"{label} family={family} value={float(best['collected_flux_pulsed_s']):.6g} "
-                f"row_id={best['row_id']} T_hs={float(best['T_hs']):g} "
+                f"row_id={best['row_id']} core_radius_nm={float(best.get('core_radius_nm', float('nan'))):g} "
+                f"height_nm={float(best.get('height_nm', float('nan'))):g} "
+                f"x_in={float(best.get('x_in', float('nan'))):g} T_hs={float(best['T_hs']):g} "
+                f"rep_rate_hz={float(best['rep_rate_hz']):g} strain_bound={best['strain_bound']} "
                 f"screening={float(best.get('screening_fraction', 0.0)):g} regime={best['regime']} "
-                f"strain_bound={best['strain_bound']} rep_rate_hz={float(best['rep_rate_hz']):g}")
+                f"commanded_flux={float(best['collected_flux_pulsed_s']):.6g} delivered_flux={delivered_txt} "
+                f"headline_eligible={_headline_eligible_of(best)} "
+                f"hardware_qualified={bool(best.get('hardware_qualified'))} "
+                f"rti_qualified={bool(best.get('rti_qualified'))} blocked_load_probability={blocked_txt} "
+                f"quality_pass={bool(best.get('quality_pass'))} {partner_txt} "
+                f"optical_pass_candidates={n_optical} headline_eligible_candidates={n_elig}")
     return lines
 
 
@@ -936,7 +1148,9 @@ _SI_RANGE_LAMBDA_RE = re.compile(r"si_complex_index: lambda_nm=([0-9.eE+-]+) out
 def _diagnostic_lambda_from_invalid_reasons(row):
     """When a row is invalid ONLY because the DOWNSTREAM photonics
     Si-substrate complex-index table (fsim_core/nitride_nanowire_photonics.py,
-    piece 3) covers only 450-630 nm, the bare-dot emission wavelength that
+    piece 3) covers only its own tabulated range (read at call sites from
+    the module's own `_SI_INDEX_ANCHORS_NM`, 380-750 nm as committed --
+    never hardcoded here), the bare-dot emission wavelength that
     fsim_core/nitride_nanowire_levels.py (piece 2) already computed upstream
     is still recoverable from the row's own invalid_reasons diagnostic
     string -- a read of an already-computed, already-reported number, never
@@ -970,6 +1184,325 @@ def _optical_pass_of(r):
     return bool(r.get("optical_pass") in (True, "True"))
 
 
+def _pick(rows, **filters):
+    m = _group(rows, **filters)
+    return m[0] if m else None
+
+
+# ------------------------------------------- H3/M9-M10 new results.md sections
+def _gate_anti_monotonicity_section(core, all_core):
+    """H3 fix: one_pair_valid (blocked_load_probability<=1e-9) can be
+    cleared by ADDING sidewall loss (faster occupied-dot emptying) as
+    readily as by improving device quality -- demonstrated with the S_cm_s
+    and occupied_dot_access reduced-cut rows at the horizontal reference
+    geometry, plus the temperature/composition pattern of which core rows
+    actually pass, all read from the rows themselves, never hardcoded."""
+    lines = ["## Gate anti-monotonicity (H3 obligation)", "",
+             "one_pair_valid can be satisfied by ADDING sidewall loss (faster occupied-dot emptying) as "
+             "readily as by improving device quality -- optical_pass/paired_optical_pass alone therefore do "
+             "NOT certify throughput. quality_pass=optical_pass AND photons_per_cycle>=0.01 [A, orchestrator "
+             "threshold: one collected photon per hundred cycles] is reported beside optical_pass/"
+             "paired_optical_pass in every VERDICT line and the per-temperature tables below.", ""]
+    sens = [r for r in core if r.get("row_kind") == "sensitivity"]
+    fam = "horizontal_as_built"
+    ref = REF_GEOM[fam]
+    base_filter = dict(family=fam, regime="deterministic_pair", strain_bound="relaxed",
+                        T_hs=300.0, rep_rate_hz=200.0e6, core_radius_nm=ref["core_radius_nm"],
+                        height_nm=ref["height_nm"], x_in=ref["x_in"])
+    ref_row = _pick(all_core, **base_filter)
+    s_lo = _pick(sens, sensitivity_axis="S_cm_s", sensitivity_value=100.0, **base_filter)
+    s_hi = _pick(sens, sensitivity_axis="S_cm_s", sensitivity_value=10000.0, **base_filter)
+    acc_hi = _pick(sens, sensitivity_axis="occupied_dot_access", sensitivity_value=1.0, **base_filter)
+
+    def _fmt(r, label):
+        if r is None:
+            return f"{label}: not in this run's coverage"
+        return (f"{label} (row {r.get('row_id')}): one_pair_valid={r.get('one_pair_valid')} "
+                f"g2_op={r.get('g2_op')} flux={r.get('collected_flux_pulsed_s')} "
+                f"quality_pass={r.get('quality_pass')}")
+
+    lines.append("S_cm_s and occupied_dot_access pairs at the horizontal reference geometry "
+                 "(300K, 200MHz, deterministic_pair, relaxed):")
+    lines.append("- " + _fmt(s_lo, "S_cm_s=100 (lower surface loss)"))
+    lines.append("- " + _fmt(ref_row, "S_cm_s=1000 (main-grid default)"))
+    lines.append("- " + _fmt(s_hi, "S_cm_s=10000 (higher surface loss)"))
+    lines.append("- " + _fmt(ref_row, "occupied_dot_access=0.05 (main-grid default, lower loss)"))
+    lines.append("- " + _fmt(acc_hi, "occupied_dot_access=1.0 (higher loss)"))
+    lines.append("")
+
+    lines.append("Per-T_hs optical_pass counts, horizontal_as_built (both regimes), with x_in composition "
+                 "(read from the rows, never hardcoded):")
+    for regime in REGIMES:
+        parts = []
+        for t in T_HS:
+            grp = [r for r in all_core if r.get("family") == fam and r.get("regime") == regime
+                   and _close(float(r.get("T_hs", -1)), t)]
+            passing = [r for r in grp if r.get("optical_pass")]
+            n25 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.25))
+            n40 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.40))
+            parts.append(f"T={t:g}K:{len(passing)}(x_in0.25={n25},x_in0.40={n40})")
+        lines.append(f"- {fam}/{regime}: " + " ".join(parts))
+    lines.append("")
+
+    x40_relaxed_pass = [r for r in all_core if r.get("optical_pass") and _close(float(r.get("x_in", -1)), 0.40)
+                         and r.get("strain_bound") == "relaxed"]
+    x40_unrelaxed_pass = [r for r in all_core if r.get("optical_pass") and _close(float(r.get("x_in", -1)), 0.40)
+                           and r.get("strain_bound") == "unrelaxed"]
+    fluxes_u40 = sorted(float(r["collected_flux_pulsed_s"]) for r in x40_unrelaxed_pass
+                         if _finite_num(r.get("collected_flux_pulsed_s")))
+    ids_u40 = ",".join(r["row_id"] for r in x40_unrelaxed_pass[:8]) + ("..." if len(x40_unrelaxed_pass) > 8 else "")
+    if x40_relaxed_pass:
+        ids_r40 = ",".join(r["row_id"] for r in x40_relaxed_pass[:8]) + ("..." if len(x40_relaxed_pass) > 8 else "")
+        lines.append(f"x_in=0.40 RELAXED (2014 composition, headline strain bound) optical passes: "
+                     f"{len(x40_relaxed_pass)} in either family this run (row_ids={ids_r40}) -- the reduced "
+                     "quick-mode coverage is NOT the full main grid; see the full run's own count here for "
+                     "the mandated-coverage statement.")
+    else:
+        lines.append("x_in=0.40 RELAXED (2014 composition, headline strain bound) optical passes: 0 in either "
+                     "family this run -- the 2014 composition yields no optical pass at the headline relaxed "
+                     "bound in this run's coverage.")
+    if x40_unrelaxed_pass:
+        rates_u40 = sorted({float(r.get("rep_rate_hz", -1)) for r in x40_unrelaxed_pass})
+        lines.append(f"x_in=0.40 UNRELAXED optical passes: {len(x40_unrelaxed_pass)}, "
+                     f"collected_flux_pulsed_s spans {fluxes_u40[0]:.4g}-{fluxes_u40[-1]:.4g} /s, "
+                     f"rep_rate_hz values present: {rates_u40}, row_ids={ids_u40} -- these are the ONLY "
+                     "x_in=0.40 optical passes in either family this run.")
+    else:
+        lines.append("x_in=0.40 UNRELAXED optical passes: 0.")
+    lines.append("")
+    return lines
+
+
+def _per_temperature_count_tables(all_core):
+    """M9-M10 obligation: per-temperature count tables."""
+    lines = ["## Per-temperature counts (M9-M10 obligation)", "",
+             "| family | regime | T_hs K | n_core | n_eligible | n_optical_pass | n_quality_pass |",
+             "|---|---|---|---|---|---|---|"]
+    for family in FAMILIES:
+        for regime in REGIMES:
+            for t in T_HS:
+                grp = [r for r in all_core if r.get("family") == family and r.get("regime") == regime
+                       and _close(float(r.get("T_hs", -1)), t)]
+                n = len(grp)
+                n_elig = sum(1 for r in grp if r.get("eligible"))
+                n_opt = sum(1 for r in grp if r.get("optical_pass"))
+                n_qual = sum(1 for r in grp if r.get("quality_pass"))
+                lines.append(f"| {family} | {regime} | {t:g} | {n} | {n_elig} | {n_opt} | {n_qual} |")
+    lines.append("")
+    return lines
+
+
+def _headline_nominations_16(core, all_core):
+    """M9-M10 obligation: 'the 16 per-family/regime/bound/rate nominations'
+    -- one nominated reference-headline row per (family,regime,strain_bound,
+    rep_rate_hz) combination, distinct from the aggregated 4-line
+    BEST_PASSING_FLUX(_300K) summary above."""
+    lines = ["## 16 per-family/regime/bound/rate reference-headline nominations (M9-M10 obligation)", "",
+             "One nominated row per (family,regime,strain_bound,rep_rate_hz) group -- the brightest "
+             "optical_pass row in that group (headline_eligible additionally required for vertical_photonic, "
+             "H2/bullet 10); 'none' if the group has no such row.", "",
+             "| family | regime | strain_bound | rep_rate_hz | row_id | commanded_flux/s | g2_op | "
+             "headline_eligible | quality_pass |", "|---|---|---|---|---|---|---|---|---|"]
+    for family in FAMILIES:
+        for regime in REGIMES:
+            for sb in STRAIN_BOUNDS:
+                for rate in REP_RATES:
+                    grp = _group(all_core, family=family, regime=regime, strain_bound=sb, rep_rate_hz=rate)
+                    cand = [r for r in grp if r.get("optical_pass")
+                            and (family != "vertical_photonic" or _headline_eligible_of(r))
+                            and _finite_num(r.get("collected_flux_pulsed_s"))]
+                    if not cand:
+                        lines.append(f"| {family} | {regime} | {sb} | {rate:.3g} | none | | | False | |")
+                        continue
+                    best = max(cand, key=lambda r: float(r["collected_flux_pulsed_s"]))
+                    lines.append(f"| {family} | {regime} | {sb} | {rate:.3g} | {best['row_id']} | "
+                                 f"{float(best['collected_flux_pulsed_s']):.6g} | {best.get('g2_op')} | "
+                                 f"{_headline_eligible_of(best)} | {best.get('quality_pass')} |")
+    lines.append("")
+    return lines
+
+
+def _ensemble_yield_proxy_section(core):
+    """M9-M10 obligation: independent ensemble-yield proxy at 10K/300K via
+    the surface module's own yield_ratio helper, non-gating, printed next to
+    the measured 0.52 ensemble ratio -- never fit to it."""
+    lines = ["## Ensemble-yield proxy at 10K/300K vs measured 0.52 (M9-M10 obligation, non-gating)", ""]
+    import fsim_core.nitride_nanowire_surface as _nw_surface
+    d13 = [r for r in core if r.get("row_kind") == "sensitivity"
+           and r.get("sensitivity_axis") == "deshpande2013_comparison"]
+    row10 = _pick(d13, family="horizontal_as_built", core_radius_nm=12.5, I_uA=0.002)
+    all_core = [r for r in core if r.get("row_kind") == "core"]
+    row300 = _pick(all_core, family="horizontal_as_built", regime="rectangular", strain_bound="relaxed",
+                    T_hs=300.0, rep_rate_hz=80.0e6, core_radius_nm=12.5, height_nm=2.0, x_in=0.25)
+    if row10 is None or row300 is None:
+        lines.append("Matching 10K/300K row pair (horizontal_as_built, R=12.5nm, h=2nm, x_in=0.25, relaxed, "
+                     "2nA pulses/80MHz) not both present in this run's coverage -- proxy not computed.")
+        lines.append("")
+        return lines
+
+    def _gamma_loss(r):
+        # gamma_X_ns (radiative, antenna-corrected) and k_X_ns (nonradiative/
+        # surface/escape competition) are ADDITIVE, separate rate channels
+        # (levels.rates()'s own convention: total decay = gamma_X_ns +
+        # k_X_ns, never k_X_ns already containing gamma_X_ns) -- so
+        # loss_ns is k_X_ns directly, never (k_X_ns - gamma_X_ns), which
+        # can go negative whenever the antenna-boosted radiative rate
+        # exceeds the (small, low-T) nonradiative rate.
+        g, k = r.get("gamma_X_ns"), r.get("k_X_ns")
+        if not (_finite_num(g) and _finite_num(k)):
+            return None, None
+        return float(g), float(k)
+
+    g300, l300 = _gamma_loss(row300)
+    g10, l10 = _gamma_loss(row10)
+    if None in (g300, l300, g10, l10):
+        lines.append(f"gamma_X_ns/k_X_ns not finite on row {row300.get('row_id')} (300K) or "
+                     f"{row10.get('row_id')} (10K) -- proxy not computed.")
+        lines.append("")
+        return lines
+    lines.append(f"Inputs (this run's own gamma_X_ns radiative / k_X_ns nonradiative additive rate pair, "
+                 f"rows {row300.get('row_id')} 300K / {row10.get('row_id')} 10K): gamma_300_ns={g300:.6g}, "
+                 f"loss_300_ns={l300:.6g}, gamma_10_ns={g10:.6g}, loss_10_ns={l10:.6g}.")
+    try:
+        result = _nw_surface.yield_ratio(gamma_300_ns=g300, loss_300_ns=l300, gamma_10_ns=g10, loss_10_ns=l10)
+    except _nw_surface.NitrideNanowireSurfaceError as exc:
+        lines.append(f"yield_ratio rejected these inputs this run: {exc} -- proxy not computed (never "
+                     "silently repaired/clamped).")
+        lines.append("")
+        return lines
+    if result.get("defined"):
+        lines.append(f"yield_300K={result['yield_300K']:.6g}, yield_10K={result['yield_10K']:.6g}, MODEL "
+                     f"PROXY ratio={result['ratio']:.6g} -- vs measured ensemble PL ratio 0.52 (Deshpande "
+                     "2013, ledger deshpande2013_thermal_and_pl). This proxy assumes equal absorption/"
+                     "capture/collection between 10K and 300K [A] and is a SINGLE-DOT proxy, never "
+                     "verification of the ensemble (many-wire) PL measurement; no channel in this model was "
+                     "fit to reproduce 0.52, and none does.")
+    else:
+        lines.append(f"yield_ratio undefined this run: {result.get('reason')}.")
+    lines.append("")
+    return lines
+
+
+def _planar_reference_section(core):
+    """M9-M10 obligation: print the 16 planar_reference rows plus a
+    reconciliation paragraph against the nanowire tier's own flux range."""
+    lines = ["## Planar-reference rows and cross-round reconciliation (M9-M10 obligation)", "",
+             "| family_tag | regime | T_hs K | screening | g2_op | collected_flux_pulsed_s | valid | row_id |",
+             "|---|---|---|---|---|---|---|---|"]
+    planar_rows = [r for r in core if r.get("row_kind") == "planar_reference"]
+    for r in sorted(planar_rows, key=lambda z: (str(z.get("family", "")), str(z.get("regime", "")),
+                                                   float(z.get("T_hs", 0) or 0), float(z.get("screening_fraction", 0) or 0))):
+        lines.append(f"| {r.get('family')} | {r.get('regime')} | {r.get('T_hs')} | "
+                     f"{r.get('screening_fraction')} | {r.get('g2_op')} | {r.get('collected_flux_pulsed_s')} | "
+                     f"{r.get('valid')} | {r.get('row_id')} |")
+    lines.append("")
+    cplane_300_screened = _pick(planar_rows, family="c_plane", regime="deterministic_pair",
+                                 T_hs=300.0, screening_fraction=1.0)
+    all_core = [r for r in core if r.get("row_kind") == "core"]
+    nanowire_flux = sorted(float(r["collected_flux_pulsed_s"]) for r in all_core if r.get("optical_pass")
+                            and _finite_num(r.get("collected_flux_pulsed_s")))
+    lines.append("Reconciliation: planar c-plane SET, screening=1, 300 K (row "
+                 f"{cplane_300_screened.get('row_id') if cplane_300_screened else 'n/a'}): "
+                 f"{cplane_300_screened.get('collected_flux_pulsed_s') if cplane_300_screened else 'n/a'} /s "
+                 "(round 2's own optimized headline was a DIFFERENT, separately optimized design point ~28 "
+                 "kHz/s, not this screened-default card row -- the two must not be conflated) vs this run's "
+                 "nanowire optical_pass collected_flux_pulsed_s range "
+                 + (f"{nanowire_flux[0]:.4g}-{nanowire_flux[-1]:.4g} /s" if nanowire_flux else "n/a")
+                 + ". The nanowire tier's higher flux is attributed to: a single-wire supply without the "
+                 "planar aperture partition, relaxed (piezoelectric-field-free) strain raising overlap and "
+                 "suppressing surface escape, and antenna/waveguide collection geometry differing from the "
+                 "planar cavity -- qualitative mechanism attributions, not a controlled one-parameter "
+                 "comparison between the two platforms.")
+    lines.append("")
+    return lines
+
+
+def _sensitivity_ranking_table(core, all_core):
+    """M9-M10 obligation: a numerical sensitivity table for every reduced
+    cut, ranked by headline leverage."""
+    lines = ["## Numerical sensitivity table, ranked by headline leverage (M9-M10 obligation)", "",
+             "Expected ranking order (orchestrator decision): occupied_dot_access, tau_rad0_ns/dipole prior "
+             "(proxied below by the c-plane dipole-prior falsification rows -- tau_rad0_ns itself is not "
+             "sampled this run, see 'Reduced-cut coverage'), contact R_s_ohm (C_parasitic_F not sampled "
+             "this run), S_cm_s, shell, screening_fraction; b_res is expected to move g2 only, not flux "
+             "(verified in the table below: its flux_ratio_to_reference is 1.0).", "",
+             "| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | one_pair_valid | "
+             "optical_pass | quality_pass | row_id |", "|---|---|---|---|---|---|---|---|---|"]
+    sens = [r for r in core if r.get("row_kind") == "sensitivity"]
+    fam = "horizontal_as_built"
+    ref = REF_GEOM[fam]
+    base_filter = dict(family=fam, regime="deterministic_pair", strain_bound="relaxed",
+                        T_hs=300.0, rep_rate_hz=200.0e6, core_radius_nm=ref["core_radius_nm"],
+                        height_nm=ref["height_nm"], x_in=ref["x_in"])
+    ref_row = _pick(all_core, **base_filter)
+    ref_flux = (float(ref_row["collected_flux_pulsed_s"])
+                if ref_row and _finite_num(ref_row.get("collected_flux_pulsed_s")) else None)
+    if ref_row:
+        lines.append(f"| (reference) | main-grid default | {ref_row.get('g2_op')} | "
+                     f"{ref_row.get('collected_flux_pulsed_s')} | 1.0 | {ref_row.get('one_pair_valid')} | "
+                     f"{ref_row.get('optical_pass')} | {ref_row.get('quality_pass')} | {ref_row.get('row_id')} |")
+    axes_present = sorted({r.get("sensitivity_axis") for r in sens
+                            if r.get("sensitivity_axis") not in ("", "deshpande2013_comparison", "current_pulse_width")})
+    for axis in axes_present:
+        rows_axis = [r for r in sens if r.get("sensitivity_axis") == axis and r.get("family") == fam
+                     and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
+                     and _close(float(r.get("T_hs", -1)), 300.0) and _close(float(r.get("rep_rate_hz", -1)), 200.0e6)]
+        for r in sorted(rows_axis, key=lambda z: str(z.get("sensitivity_value"))):
+            flux = r.get("collected_flux_pulsed_s")
+            ratio = (f"{float(flux) / ref_flux:.4g}" if ref_flux and _finite_num(flux) else "n/a")
+            lines.append(f"| {axis} | {r.get('sensitivity_value')} | {r.get('g2_op')} | {flux} | {ratio} | "
+                         f"{r.get('one_pair_valid')} | {r.get('optical_pass')} | {r.get('quality_pass')} | "
+                         f"{r.get('row_id')} |")
+    lines.append("")
+    lines.append("tau_rad0_ns/dipole-prior leverage proxy (from the c-plane dipole-prior falsification rows "
+                 "above): switching dipole_weights from isotropic to CPLANE_ONLY materially changes "
+                 "antenna_rate_factor/tau_rad_photonic_ns/commanded flux (see that section's row values) -- "
+                 "a qualitative leverage indicator, not a numeric ranking-table entry, since it sweeps an "
+                 "orientation prior rather than the tau_rad0_ns magnitude (not sampled this run).")
+    lines.append("")
+    lines.append("Restored current/pulse-width cut (I x tau_pulse, 9 rows, horizontal reference geometry, "
+                 "rectangular regime, relaxed, 300K, 200MHz -- preserves the 100 ps headline point):")
+    lines.append("")
+    lines.append("| I_uA | tau_pulse_ns | g2_op | commanded_flux/s | valid | row_id |")
+    lines.append("|---|---|---|---|---|---|")
+    pulse_rows = [r for r in sens if r.get("sensitivity_axis") == "current_pulse_width"]
+    for r in sorted(pulse_rows, key=lambda z: (float(z.get("I_uA", 0)), float(z.get("tau_pulse_ns", 0)))):
+        lines.append(f"| {r.get('I_uA')} | {r.get('tau_pulse_ns')} | {r.get('g2_op')} | "
+                     f"{r.get('collected_flux_pulsed_s')} | {r.get('valid')} | {r.get('row_id')} |")
+    lines.append("")
+    return lines
+
+
+def _definitions_section():
+    """L17 obligation: define `eligible` and mention `device_pass`."""
+    return ["## Column/gate definitions (L17 obligation)", "",
+            "`eligible` = valid AND finite g2_op AND finite collected_flux_pulsed_s AND "
+            "collected_flux_pulsed_s>=1000/s (flux_floor) -- NOT the same as `headline_eligible` (the "
+            "vertical_photonic single_mode AND approximation_error==0 check, bullet 10) or `optical_pass` "
+            "(which additionally requires g2_op<0.5 and, for deterministic_pair rows, one_pair_valid AND "
+            "pair_supply_possible). `device_pass` (a device-module output column, sweep.csv) mirrors the "
+            "planar convention's Coulomb-screen alias; it is reported as a row column alongside "
+            "`set_feasible`/`hardware_qualified` but this results text does not gate any VERDICT/BEST/"
+            "quality_pass computation on it beyond the `set_feasible`/`hardware_qualified` values already "
+            "discussed above.", ""]
+
+
+def _fitted_inputs_disclosure():
+    """L14 obligation: disclose the transport module's fitted electrical/
+    thermal inputs as distinct from the unfitted optical prediction."""
+    return ["## Fitted electrical/thermal transport inputs (L14 obligation)", "",
+            "Distinct from the unfitted optical prediction (levels/photonics/surface: no parameter there is "
+            "chosen to reproduce a held-out optical anchor): fsim_core/nitride_nanowire_transport.py's "
+            "NitrideWireDiode.tau_SRH_ns default (0.01 ns, 10 ps) is [A, back-solved] so the GaN-kernel dark "
+            "current reproduces the empirically inferred 2.6-3.1 V junction-voltage window at 1 nA/300 K "
+            "(Deshpande 2013 terminal range minus the IR drop) -- used in EVERY row's V_j solve this run, "
+            "not a measured SRH lifetime. WIRE_RTH_PRESETS_K_W['deshpande_fig4_replay']=2.8e9 K/W is [DR, "
+            "re-fit] to both Deshpande 2013 Fig.4 heating rises under the H2 GaN-kernel V_j, at the paper's "
+            "10 K bath -- a SEPARATE replay anchor from this sweep's own Rth_K_W card defaults (1.0e9 "
+            "horizontal, 1.0e7 vertical, see the Card schema), which are NOT re-fit to Fig.4 and are the "
+            "values this sweep's core/sensitivity rows actually use.", ""]
+
+
 def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kind, dipole_rows, decisions):
     all_core = [r for r in core if r.get("row_kind") == "core"]
     lines = ["# Nitride nanowire sweep results", "",
@@ -1001,37 +1534,73 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     lines.append("")
     lines += bounds_table(core)
     lines.append("")
+    # M11 fix: print the comparable-pair count/legend and the reversal
+    # mechanism across the FULL core grid (not just the 16-row reference
+    # table above), independently tallied from each relaxed row's own
+    # bound_reversal_pair field (attach_bound_reversal already computed it).
+    relaxed_rows = [r for r in all_core if r.get("strain_bound") == "relaxed"]
+    n_reversed = sum(1 for r in relaxed_rows if r.get("bound_reversal_pair") == "True")
+    n_not_reversed = sum(1 for r in relaxed_rows if r.get("bound_reversal_pair") == "False")
+    n_not_comparable = sum(1 for r in relaxed_rows if r.get("bound_reversal_pair") == "not_comparable")
+    mech_counts = {"mu": 0, "collected_flux_pulsed_s": 0, "g2_op": 0}
+    for r in relaxed_rows:
+        if r.get("bound_reversal_pair") != "True":
+            continue
+        partner = _bound_partner(r, all_core)
+        if partner is None:
+            continue
+        for key, higher_is_headline in (("mu", True), ("collected_flux_pulsed_s", True), ("g2_op", False)):
+            rv, uv = r.get(key), partner.get(key)
+            if not (_finite_num(rv) and _finite_num(uv)):
+                continue
+            cond = float(rv) < float(uv) if higher_is_headline else float(rv) > float(uv)
+            if cond:
+                mech_counts[key] += 1
+    lines.append(f"Comparable pairs (relaxed count): {n_reversed + n_not_reversed}/{len(relaxed_rows)} "
+                 f"({n_reversed} reversed, {n_not_reversed} not reversed); not_comparable="
+                 f"{n_not_comparable}/{len(relaxed_rows)} (no pair where BOTH strain-bound rows clear the "
+                 f"1000/s optical floor -- the legend value for every 'not_comparable' cell/entry elsewhere "
+                 f"in this report and in strain_reversal_map.png). Reversal-trigger tally among the "
+                 f"{n_reversed} reversed pairs: mu={mech_counts['mu']}, "
+                 f"collected_flux_pulsed_s={mech_counts['collected_flux_pulsed_s']}, g2_op={mech_counts['g2_op']} -- "
+                 + ("every reversed pair triggers on g2_op ONLY, never on mu or collected_flux_pulsed_s."
+                    if n_reversed > 0 and mech_counts["g2_op"] == n_reversed and mech_counts["mu"] == 0
+                    and mech_counts["collected_flux_pulsed_s"] == 0
+                    else "mixed triggers this run; see bound_reversal_pair per row in sweep.csv."))
+    lines.append("")
 
     # ---- 200 MHz vs 80 MHz SET one_pair_valid (results obligation). Both
     # T_hs in {230,300} K are reported (not just 300 K): the two families
     # behave ASYMMETRICALLY at 80 MHz -- vertical_photonic's disc-in-wire
     # geometry clears one_pair_valid at 80 MHz at BOTH temperatures (a real
-    # optical_pass), while horizontal_as_built's larger full-core disc
-    # fails one_pair_valid at 80 MHz too (it would need an off-grid rate
-    # near ~60 MHz), passing only its own g2/flux thresholds in isolation.
+    # optical_pass). L16 fix: the prior "~60 MHz" claim named an off-grid
+    # rate never evaluated this run and is REMOVED (no row backs it); the
+    # per-row loop below is also de-templated -- it now reports each row's
+    # OWN blocked_load_probability (a real number) instead of repeating an
+    # identical boilerplate sentence four times.
     lines.append("## Repetition-rate sensitivity: 80 MHz vs 200 MHz SET one_pair_valid (family-asymmetric)")
     lines.append("")
-    lines.append("vertical_photonic's 80 MHz SET row clears one_pair_valid (and hence optical_pass) at BOTH "
-                 "230 K and 300 K; horizontal_as_built's 80 MHz SET row fails one_pair_valid at both "
-                 "temperatures too (it would need an off-grid rate near ~60 MHz to clear the loading "
-                 "window), passing only its own g2<0.5 and flux>=1000/s thresholds in isolation -- "
-                 "collected_flux_pulsed_s is the idealized/commanded flux, collected_flux_delivered_s is "
-                 "the RC-limited delivered flux (bullet 6).")
+    lines.append("one_pair_valid requires blocked_load_probability<=1e-9 (the disc must empty between "
+                 "cycles); a shorter 200 MHz period leaves less time per cycle for that reset than 80 MHz, "
+                 "so a one_pair_valid failure at 200 MHz where it holds at 80 MHz is a loading-window/period "
+                 "effect, not a fit. collected_flux_pulsed_s is the idealized/commanded flux, "
+                 "collected_flux_delivered_s is the RC-limited delivered flux (bullet 6). No row at any "
+                 "off-grid rate (e.g. the main grid's 80/200 MHz only) was evaluated this run.")
     lines.append("")
     for family in FAMILIES:
         for t_hs in (230.0, 300.0):
             pair = _rate_pair_rows(all_core, family, T_hs=t_hs)
             if 80.0e6 in pair and 200.0e6 in pair:
                 r80, r200 = pair[80.0e6], pair[200.0e6]
+                b80 = r80.get("blocked_load_probability"); b200 = r200.get("blocked_load_probability")
                 lines.append(f"{family} T_hs={t_hs:g}K: at 80 MHz one_pair_valid={r80.get('one_pair_valid')} "
-                              f"optical_pass={_optical_pass_of(r80)} (row {r80.get('row_id')}, g2={r80.get('g2_op')}, "
+                              f"optical_pass={_optical_pass_of(r80)} blocked_load_probability={b80} "
+                              f"(row {r80.get('row_id')}, g2={r80.get('g2_op')}, "
                               f"flux={r80.get('collected_flux_pulsed_s')}, delivered={r80.get('collected_flux_delivered_s')}); "
                               f"at 200 MHz one_pair_valid={r200.get('one_pair_valid')} optical_pass={_optical_pass_of(r200)} "
+                              f"blocked_load_probability={b200} "
                               f"(row {r200.get('row_id')}, g2={r200.get('g2_op')}, flux={r200.get('collected_flux_pulsed_s')}, "
-                              f"delivered={r200.get('collected_flux_delivered_s')}). "
-                              "The 200 MHz period leaves less time per cycle for the deterministic-pair "
-                              "loading window, so a one_pair_valid failure there is a loading-window/period "
-                              "effect, not a fit.")
+                              f"delivered={r200.get('collected_flux_delivered_s')}).")
             else:
                 lines.append(f"{family} T_hs={t_hs:g}K: rate-pair rows not found in this run's coverage (quick={quick}).")
     lines.append("")
@@ -1075,21 +1644,51 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                   "drive_mismatch -- never substituted for a predicted CW g2.")
     lines.append("")
     d2013 = [r for r in core if r.get("row_kind") == "sensitivity" and r.get("sensitivity_axis") == "deshpande2013_comparison"]
-    lines.append("| R nm | I uA | lambda_nm (predicted) | tau_rad_bare_ns | g2_op (drive_mismatch) | flux/s | valid | row_id |")
-    lines.append("|---|---|---|---|---|---|---|---|")
+    # L13 fix: print bare, photonic, AND total lifetimes together (the prior
+    # table printed tau_rad_bare_ns alone, inviting a false "matches the 1.1
+    # ns anchor" read); bare's relation to the [A] tau_rad0_ns input is
+    # stated as a RATIO computed from the row itself, never hardcoded.
+    lines.append("| R nm | I uA | lambda_nm (predicted) | tau_rad_bare_ns | tau_rad_photonic_ns | tau_total_X_ns | "
+                 "g2_op (drive_mismatch) | commanded_flux/s | time_avg_current_pA | valid | row_id |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for r in sorted(d2013, key=lambda z: (float(z.get("core_radius_nm", 0)), float(z.get("I_uA", 0)))):
+        i_ua, tau_ns, rep = r.get("I_uA"), r.get("tau_pulse_ns"), r.get("rep_rate_hz")
+        if _finite_num(i_ua) and _finite_num(tau_ns) and _finite_num(rep):
+            duty = float(tau_ns) * 1e-9 * float(rep)
+            time_avg_pA = f"{float(i_ua) * 1e6 * duty:.4g}"
+        else:
+            time_avg_pA = "n/a"
         lines.append(f"| {r.get('core_radius_nm')} | {r.get('I_uA')} | {r.get('lambda_nm')} | {r.get('tau_rad_bare_ns')} | "
-                      f"{r.get('g2_op')} (drive_mismatch) | {r.get('collected_flux_pulsed_s')} | {r.get('valid')} | {r.get('row_id')} |")
+                      f"{r.get('tau_rad_photonic_ns')} | {r.get('tau_total_X_ns')} | "
+                      f"{r.get('g2_op')} (drive_mismatch) | {r.get('collected_flux_pulsed_s')} | {time_avg_pA} | "
+                      f"{r.get('valid')} | {r.get('row_id')} |")
+    lines.append("")
+    d2013_bare_ratio = [(float(r["tau_rad_bare_ns"]) / float(r["tau_rad0_ns"]))
+                         for r in d2013 if _finite_num(r.get("tau_rad_bare_ns")) and _finite_num(r.get("tau_rad0_ns"))
+                         and float(r["tau_rad0_ns"]) != 0.0]
+    if d2013_bare_ratio:
+        lines.append(f"tau_rad_bare_ns / tau_rad0_ns (this run's own [A] input) ratio: "
+                     f"{min(d2013_bare_ratio):.4g}-{max(d2013_bare_ratio):.4g} across these rows -- the bare "
+                     "radiative lifetime's closeness to the 1.1 ns anchor reflects this fixed [A] input times "
+                     "a near-unity geometry factor, NOT an independently verified radiative-rate prediction; "
+                     "tau_rad_photonic_ns (after antenna suppression) and tau_total_X_ns (after nonradiative/"
+                     "surface competition) are the physically relevant, larger, device-level lifetimes and are "
+                     "reported alongside it, never substituted for it.")
+    lines.append("Drive AND heating mismatch: these rows run 100 ps rectangular pulses at 80 MHz (this run's "
+                 "own I_uA/tau_pulse_ns/rep_rate_hz columns above give the time-average current column), "
+                 "roughly 2 orders of magnitude below the paper's CW 1 nA -- both the counting statistics "
+                 "(pulsed vs CW g2) and the junction/thermal operating point (heating scales with time-average "
+                 "power) differ from the measured device; g2_op above is published as drive_mismatch, never a "
+                 "predicted CW g2.")
     lines.append("")
     # Label invalid rows MISSING with their reason, never silently repaired
     # (spec: "Label invalid low-T material/transport rows missing, not
-    # silently repaired"). All four 2013 rows above are invalid this run
-    # NOT because of the T_j numerical-floor issue the contract anticipates,
-    # but because the relaxed-strain-bound geometry's predicted ~446 nm
-    # emission falls just below fsim_core/nitride_nanowire_photonics.py's
-    # tabulated 450-630 nm Si-substrate complex-index anchor range (a
-    # dependency-module data-table coverage gap, not a physics failure);
-    # see this run's own STATUS notes for the interface coordination item.
+    # silently repaired"). The actual reason(s) are read from each row's own
+    # invalid_reasons below -- never assumed/hardcoded here (H4 fix: an
+    # earlier draft of this comment wrongly assumed the Si-substrate table
+    # cause; the table is actually 380-750 nm, see _SI_INDEX_ANCHORS_NM, and
+    # ~446 nm sits INSIDE that range, so if these rows are invalid it is for
+    # a different, row-reported reason).
     invalid_d2013 = [r for r in d2013 if not r.get("valid")]
     if invalid_d2013:
         seen_reasons = set()
@@ -1117,10 +1716,17 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         lam2013_text = (f"{lam2013_diag:.6g} (DIAGNOSTIC ONLY: the row itself is invalid -- its bare-dot "
                          f"emission wavelength, already computed upstream by the levels module, is recovered "
                          f"from the row's own invalid_reasons message, not a repaired/assumed value; the "
-                         f"downstream photonics step fails because fsim_core/nitride_nanowire_photonics.py's "
-                         f"Si-substrate index table covers only 450-630 nm and 446 nm falls just below it -- "
-                         f"see the 'Deshpande 2013 comparison' section's MISSING line and this run's STATUS "
-                         f"notes for the interface coordination item)")
+                         f"downstream photonics step fails because this wavelength falls outside the "
+                         f"photonics module's own tabulated Si-substrate index range -- see the 'Deshpande "
+                         f"2013 comparison' section's MISSING line for the row's actual reason string)")
+    elif r2013 is not None and not r2013.get("valid"):
+        try:
+            _reasons_2013 = json.loads(r2013.get("invalid_reasons", "[]"))
+        except (TypeError, json.JSONDecodeError):
+            _reasons_2013 = []
+        lam2013_text = (f"{lam2013} (row {r2013.get('row_id')} is INVALID this run for a reason OTHER than "
+                         f"the Si-substrate index table range: "
+                         + ("; ".join(_reasons_2013) if _reasons_2013 else "unknown") + ")")
     else:
         lam2013_text = f"{lam2013}"
     lines.append(f"2013 relaxed predicted lambda_nm={lam2013_text} vs measured ~437 nm (X=2.84 eV, [V] Fig. 3c). "
@@ -1152,6 +1758,12 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         lines.append(f"Designed-contact R_s_ohm=1e6 (sensitivity rows): tau_RC_ns spans "
                       f"{tau_rc_d[0]:.4g}-{tau_rc_d[-1]:.4g}, delivered_step_fraction spans "
                       f"{dsf_d[0]:.4g}-{dsf_d[-1]:.4g} -- only this designed contact can deliver the 100 ps step.")
+    if rc_as_built or rc_designed:
+        lines.append("These numbers are THIS RUN's own tau_RC_ns/delivered_step_fraction, recomputed from "
+                     "sweep.csv rows, not restated from the contract: docs/nitride_nanowire_contract.md "
+                     "bullet 6 quotes tau_RC_ns 0.82-1.19 / delivered_step_fraction 0.08-0.12 for the as-built "
+                     "device, which this run's own as-built range above SUPERSEDES (the contract text is out "
+                     "of scope for this piece and is not edited here).")
     lines.append("")
 
     # ---- access-1.0 lifetime cap (bullet 8)
@@ -1188,9 +1800,26 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         lines.append(f"Across every deterministic_pair core row with core_radius_nm>=10 nm at 230-300 K: "
                       f"set_EC_over_kT spans {min(ecs):.4g}-{max(ecs):.4g} (required ec_margin=10), "
                       f"set_feasible=True count={n_pass_coulomb}/{len(wall_rows)}; rti_feasible=True count="
-                      f"{n_pass_rti}/{len(rti_margin_rows)}. Deterministic loading at 230-300 K fails on both "
-                      "the Coulomb-blockade and resonant-tunnelling-injector screens for every core_radius_nm>=10 "
-                      "nm priced in this tier -- by EITHER charging mechanism.")
+                      f"{n_pass_rti}/{len(rti_margin_rows)}. Deterministic loading at 230-300 K fails the "
+                      "Coulomb-blockade screen for every core_radius_nm>=10 nm priced in this tier.")
+        # M5 fix: rti_feasible=False is NOT itself a demonstrated hardware
+        # result -- rti_status is unknown_incomplete on essentially every
+        # SET row this run (the RT injector screen is a conditional
+        # engineering screen, not a measured device; contract "Composition
+        # rules for the device piece" bullet 7: "rti_feasible=False must not
+        # be reported as a demonstrated physics result"). Counted from the
+        # rows, never asserted.
+        set_rows = [r for r in all_core if r.get("regime") == "deterministic_pair"]
+        n_unknown_incomplete = sum(1 for r in set_rows if r.get("rti_status") == "unknown_incomplete")
+        n_transport_infeasible = sum(1 for r in set_rows if r.get("rti_transport_feasible") is False)
+        lines.append(f"The RT injector screen is SEPARATELY reported, not folded into the Coulomb wall above: "
+                      f"rti_status=unknown_incomplete on {n_unknown_incomplete}/{len(set_rows)} deterministic_pair "
+                      f"rows, rti_transport_feasible=False on {n_transport_infeasible}/{len(set_rows)} -- these "
+                      "are conditional engineering screens on an unsupported occupation/second-pair control, "
+                      "NOT a demonstrated hardware failure by either charging mechanism; deterministic loading "
+                      "at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an "
+                      "incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/"
+                      "g2_op/collected_flux_pulsed_s computed upstream of it.")
     else:
         lines.append("No deterministic_pair core rows with finite set_EC_over_kT at core_radius_nm>=10 nm.")
     lines.append("")
@@ -1211,6 +1840,15 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     else:
         lines.append("dipole falsification rows not evaluated this run.")
     lines.append("")
+
+    lines += _gate_anti_monotonicity_section(core, all_core)
+    lines += _per_temperature_count_tables(all_core)
+    lines += _headline_nominations_16(core, all_core)
+    lines += _ensemble_yield_proxy_section(core)
+    lines += _planar_reference_section(core)
+    lines += _sensitivity_ranking_table(core, all_core)
+    lines += _definitions_section()
+    lines += _fitted_inputs_disclosure()
 
     lines.append("## Invalid rows (all kinds)")
     lines.append("")
@@ -1239,18 +1877,88 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
             lines.append(f"- {key}: {n}")
         top_key, top_n = max(reason_counts.items(), key=lambda kv: kv[1])
         invalid_total = sum(invalid_by_kind.values())
+        # H4 fix: this NOTE is now generated FROM THE ROWS (family/bound/
+        # x_in/height composition, recovered wavelength range, and the
+        # table range read from the photonics module's own
+        # _SI_INDEX_ANCHORS_NM), never hardcoded prose -- the prior version
+        # hardcoded "covers only 450-630 nm" / "x_in=0.25 ... blue-shifts
+        # below 450 nm", both wrong (the real table is 380-750 nm and the
+        # affected rows are x_in=0.40 h=3-4nm UNRELAXED rows RED-shifted
+        # past 750 nm by QCSE).
         if invalid_total > 0 and top_n / invalid_total > 0.5:
+            import fsim_core.nitride_nanowire_photonics as _photonics
+            si_lo = float(_photonics._SI_INDEX_ANCHORS_NM[0])
+            si_hi = float(_photonics._SI_INDEX_ANCHORS_NM[-1])
+            si_rows = []
+            for r in core:
+                if r.get("row_kind") != "core" or r.get("valid"):
+                    continue
+                try:
+                    reasons = json.loads(r.get("invalid_reasons", "[]"))
+                except (TypeError, json.JSONDecodeError):
+                    reasons = []
+                if not any(reason.startswith(top_key) for reason in reasons):
+                    continue
+                lam, recovered = _diagnostic_lambda_from_invalid_reasons(r)
+                if recovered:
+                    si_rows.append((r, lam))
             lines.append("")
-            lines.append(f"NOTE: '{top_key}' alone accounts for {top_n}/{invalid_total} "
-                         f"({100.0 * top_n / invalid_total:.0f} percent) of all invalid rows this run -- a "
-                         "single dependency-module data-table coverage gap (fsim_core/nitride_nanowire_"
-                         "photonics.py's Si-substrate complex-index table covers only 450-630 nm; the "
-                         "horizontal_as_built family's x_in=0.25 rows, whose predicted emission blue-shifts "
-                         "below 450 nm, hit this on every T_hs/height/regime/bound/rate combination), not a "
-                         "physics failure this sweep introduces or can fix within its own three scoped files. "
-                         "This is reported as the interface coordination item for the orchestrator/reviewer, "
-                         "not silently repaired by this run (no n_substrate override was invented to force "
-                         "these rows valid).")
+            if si_rows:
+                lambdas = [lam for _, lam in si_rows]
+                families = sorted({r.get("family") for r, _ in si_rows})
+                bounds = sorted({r.get("strain_bound") for r, _ in si_rows})
+                x_ins = sorted({float(r.get("x_in", -1)) for r, _ in si_rows})
+                heights = sorted({float(r.get("height_nm", -1)) for r, _ in si_rows})
+                direction = ("red-shifted ABOVE" if min(lambdas) > si_hi
+                             else ("blue-shifted BELOW" if max(lambdas) < si_lo else "outside"))
+                lines.append(f"NOTE: '{top_key}' alone accounts for {top_n}/{invalid_total} "
+                             f"({100.0 * top_n / invalid_total:.0f} percent) of all invalid rows this run -- a "
+                             "single dependency-module data-table coverage gap, generated from the rows "
+                             "themselves: fsim_core/nitride_nanowire_photonics.py's Si-substrate complex-index "
+                             f"table covers {si_lo:g}-{si_hi:g} nm (read from the module's own "
+                             "_SI_INDEX_ANCHORS_NM table). The affected core rows (recovered from their own "
+                             f"invalid_reasons diagnostic, never a repaired/assumed value) span "
+                             f"lambda_nm={min(lambdas):.6g}-{max(lambdas):.6g} nm ({direction} the table) and "
+                             f"are composed of family={families}, strain_bound={bounds}, x_in={x_ins}, "
+                             f"height_nm={heights} -- not a physics failure this sweep introduces or can fix "
+                             "within its own three scoped files. Reported as the interface coordination item "
+                             "for the orchestrator/reviewer, not silently repaired (no n_substrate override was "
+                             "invented to force these rows valid).")
+                lines.append("")
+                lines.append("### QCSE excursion physics paragraph (H4 obligation)")
+                lines.append("")
+                sample = si_rows[0][0]
+                field_txt = (f"{float(sample.get('field_kVcm')):.4g} kV/cm"
+                              if _finite_num(sample.get("field_kVcm")) else "n/a")
+                partner_stats = {"valid": 0, "invalid": 0, "missing": 0}
+                for r, _ in si_rows:
+                    partner = _bound_partner(r, all_core)
+                    if partner is None:
+                        partner_stats["missing"] += 1
+                    elif partner.get("valid"):
+                        partner_stats["valid"] += 1
+                    else:
+                        partner_stats["invalid"] += 1
+                lines.append(f"The {len(si_rows)} rows above are the unrelaxed (conservative_lower), "
+                             f"x_in=0.40, height_nm in {heights} disc geometries: the built-in piezoelectric "
+                             f"field this strain bound carries (this run's own field_kVcm on a representative "
+                             f"row, {sample.get('row_id')}: {field_txt}) drives the quantum-confined Stark "
+                             f"effect (QCSE) far enough to red-shift emission to "
+                             f"{min(lambdas)/1000.0:.3g}-{max(lambdas)/1000.0:.3g} um, past the photonics "
+                             f"module's own {si_hi:g} nm table ceiling -- an excursion this run reports as "
+                             f"MISSING (invalid), never silently repaired. Their relaxed strain-bound partner "
+                             f"(strain_fraction=0, no piezoelectric field) is valid for "
+                             f"{partner_stats['valid']}/{len(si_rows)} of these rows and invalid/absent for "
+                             f"{partner_stats['invalid'] + partner_stats['missing']}/{len(si_rows)} -- i.e. the "
+                             "conservative (unrelaxed) bound is ABSENT at exactly these x_in=0.40, thick-disc "
+                             "geometries where only the relaxed bound is computable this run, an asymmetry "
+                             "the bounds table and headline selection must not paper over by silently "
+                             "reporting only the relaxed side.")
+            else:
+                lines.append(f"NOTE: '{top_key}' accounts for {top_n}/{invalid_total} "
+                             f"({100.0 * top_n / invalid_total:.0f} percent) of all invalid rows this run; no "
+                             "row's invalid_reasons carried a recoverable diagnostic wavelength for this "
+                             "specific reason this run.")
         lines.append("")
 
     if decisions:
@@ -1326,30 +2034,49 @@ def main(argv=None):
 
     t0 = time.time()
 
-    # Phase A: build every planned row's (kind, payload) job up front (pure
-    # parameter-dict construction, no evaluate() calls) so the dedup+
-    # dispatch phase below sees the whole run's identity set at once.
-    core_jobs = {f: build_core(f, a.quick) for f in FAMILIES}
-    cut_jobs = build_reduced_cuts(a.quick)
-    dipole_p = build_dipole_falsification()
-    d2013_jobs = build_deshpande2013(a.quick)
-    planar_jobs = build_planar_reference(a.quick)
+    # H1 fix: tee stdout/stderr into run.log INSIDE the run directory for
+    # the noisy part of the run (progress lines from _evaluate_all); closed
+    # and restored BEFORE output_hashes is computed below so the recorded
+    # hash matches the final, static file content. ASCII-only, explicit
+    # newline (spec: "ASCII-only ... never print non-ASCII").
+    log_path = out / "run.log"
+    log_f = open(log_path, "w", encoding="ascii", errors="replace", newline="\n")
+    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(_orig_stdout, log_f), _Tee(_orig_stderr, log_f)
+    try:
+        # Phase A: build every planned row's (kind, payload) job up front
+        # (pure parameter-dict construction, no evaluate() calls) so the
+        # dedup+dispatch phase below sees the whole run's identity set at
+        # once.
+        core_jobs = {f: build_core(f, a.quick) for f in FAMILIES}
+        cut_jobs = build_reduced_cuts(a.quick)
+        dipole_p = build_dipole_falsification()
+        d2013_jobs = build_deshpande2013(a.quick)
+        planar_jobs = build_planar_reference(a.quick)
 
-    all_jobs = []
-    for family in FAMILIES:
-        all_jobs += [("nanowire", p) for p in core_jobs[family]]
-    all_jobs += [("nanowire", p) for p in cut_jobs]
-    all_jobs += [("nanowire", p) for p in dipole_p]
-    all_jobs += [("nanowire", p) for p in d2013_jobs]
-    all_jobs += [("planar", planar) for planar in planar_jobs]
-    all_jobs.append(("deshpande2014", None))
+        all_jobs = []
+        for family in FAMILIES:
+            all_jobs += [("nanowire", p) for p in core_jobs[family]]
+        all_jobs += [("nanowire", p) for p in cut_jobs]
+        all_jobs += [("nanowire", p) for p in dipole_p]
+        all_jobs += [("nanowire", p) for p in d2013_jobs]
+        all_jobs += [("planar", planar) for planar in planar_jobs]
+        all_jobs.append(("deshpande2014", None))
 
-    # Phase B: evaluate every UNIQUE job once, across a process pool (see
-    # N_WORKERS/_evaluate_all above -- the per-call cost of this device's
-    # injector resonance search makes serial evaluation of the mandated
-    # 2560-row core grid alone exceed the operational time budget).
-    results = _evaluate_all(all_jobs, n_workers=N_WORKERS)
-    counter = {"evaluate_calls": len({_job_identity(j) for j in all_jobs})}
+        # Phase B: evaluate every UNIQUE job once, across a process pool
+        # (see N_WORKERS/_evaluate_all above -- the per-call cost of this
+        # device's injector resonance search makes serial evaluation of the
+        # mandated 2560-row core grid alone exceed the operational time
+        # budget). The physics-only job identity (_physics_only) means a
+        # reduced-cut job whose sampled value equals the main-grid default
+        # collapses onto the SAME unique identity as its core-row twin.
+        results = _evaluate_all(all_jobs, n_workers=N_WORKERS)
+        counter = {"evaluate_calls": len({_job_identity(j) for j in all_jobs})}
+        print("evaluate_calls (unique, physics-only identity)=%d total_jobs=%d" % (
+            counter["evaluate_calls"], len(all_jobs)), file=sys.stderr, flush=True)
+    finally:
+        sys.stdout, sys.stderr = _orig_stdout, _orig_stderr
+        log_f.close()
 
     # Phase C: reassemble rows in the ORIGINAL enumeration order, reading
     # each row's scalars back out of `results` (seen/_row reproduces the
@@ -1411,13 +2138,21 @@ def main(argv=None):
     figs = [
         ("g2_flux_vs_core_radius.png", plot_vs_axis,
          (out, "g2_flux_vs_core_radius.png", core_only, "core_radius_nm", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs core radius, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300), {}),
+          "g2 and flux vs core radius, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
+         dict(caption="Opposite endpoints: 2013/2014 anchors are matched by opposite strain bounds, never averaged; "
+                       "'x' points are vertical_photonic rows with single_mode=False (headline_eligible=False, "
+                       "never a nominated headline).", mark_multimode=True)),
         ("g2_flux_vs_disc_thickness.png", plot_vs_axis,
          (out, "g2_flux_vs_disc_thickness.png", core_only, "height_nm", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs disc thickness, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300), {}),
+          "g2 and flux vs disc thickness, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
+         dict(caption="Access cap: occupied_dot_access=1.0 (not plotted here, default 0.05 shown) caps tau_X/"
+                       "tau_XX at 0.625/0.3125 ns at core_radius_nm=12.5 (see 'Access-1.0 lifetime cap' section).")),
         ("g2_flux_vs_ths.png", plot_vs_axis,
          (out, "g2_flux_vs_ths.png", core_only, "T_hs", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs T_hs, both strain bounds (x_in=0.40, rep_rate_hz=200MHz, SET regime, reference geometry)", fixed_common), {}),
+          "g2 and flux vs T_hs, both strain bounds (x_in=0.40, rep_rate_hz=200MHz, SET regime, reference geometry)", fixed_common),
+         dict(caption="Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen for "
+                       "every core_radius_nm>=10 nm priced here; RC caveat applies to the as-built horizontal "
+                       "contact (see 'RC caveat' section).")),
     ]
     for name, fn, args, kwargs in figs:
         result = _safe_plot(name, plot_fail_log, fn, *args, **kwargs)
@@ -1453,13 +2188,20 @@ def main(argv=None):
         "(screening {0,1}; occupied_dot_access's 1.0 partner; S {1e2,1e4}; shell AlGaN; the spec-named "
         "injector cuts -- barrier thickness/Al fraction/alignment/growth tolerance/occupation-control "
         "uncertainty; R_s designed 1e6 on the horizontal family) plus one b_res=0.02 point, each sampling "
-        "only its alternative (non-default) value(s) -- see DROPPED_CUT_AXES in scripts/"
-        "run_nitride_nanowire.py and results.md's 'Reduced-cut coverage' section for the axes this drops "
-        "relative to the contract's fuller reduced-cut list (reservoir_access, gamma300, tau_rad0_ns, "
-        "tau_cap_ps, C_parasitic_F, current/tau_pulse sensitivity, Rth_K_W, vertical R_s_ohm, NA/"
-        "bottom_reflectivity). Rejected alternative: the contract's full one-at-a-time axis list (~1350 "
-        "extra calls), which single-benchmark projections put close to or beyond the 40-minute stop "
-        "threshold once added to the core grid's own runtime; the core/main grid itself is NEVER reduced.",
+        "only its alternative (non-default) value(s), PLUS this fix round's restored current_pulse_width "
+        "cut (I in {0.001,0.002,0.02} uA x tau_pulse in {0.01,0.1,1} ns, 9 rows, horizontal reference "
+        "geometry, rectangular regime, relaxed bound, 300 K, 200 MHz) -- see DROPPED_CUT_AXES in scripts/"
+        "run_nitride_nanowire.py and results.md's 'Reduced-cut coverage' section for the axes still "
+        "dropped relative to the contract's fuller reduced-cut list (reservoir_access, gamma300, "
+        "tau_rad0_ns, tau_cap_ps, C_parasitic_F, Rth_K_W, vertical R_s_ohm, NA/bottom_reflectivity). "
+        "Rejected alternative: the contract's full one-at-a-time axis list (~1350 extra calls), which "
+        "single-benchmark projections put close to or beyond the 40-minute stop threshold once added to "
+        "the core grid's own runtime; the core/main grid itself is NEVER reduced. The job/cache identity "
+        "(_physics_only) was also changed this round to exclude the bookkeeping sensitivity_axis/"
+        "sensitivity_value labels, so a reduced-cut row whose sampled value equals the main-grid default "
+        "(e.g. the screening_fraction=0.0 cut) now correctly deduplicates onto its core-row twin's real "
+        "evaluate() call instead of hashing separately -- rejected alternative: leave the identity as-is "
+        "and simply accept the ~32 redundant real evaluate() calls it caused.",
         "bound_reversal is computed as a declared post-hoc transform over paired core rows "
         "(bound_reversal_pair column) rather than via a second evaluate_strain_pair() call, to avoid "
         "doubling the core-grid evaluate() count; the device module's own per-row bound_reversal field "
