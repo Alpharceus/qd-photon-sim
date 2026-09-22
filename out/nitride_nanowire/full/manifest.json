@@ -110,18 +110,19 @@
   "max_evaluations": 10000,
   "n_workers": 16,
   "output_hashes": {
-    "delivered_vs_commanded_flux.png": "1712d90bfbc5c389366def931a92e962ea8a11b9103706ab37766452f34fe12e",
-    "g2_flux_vs_core_radius.png": "a7b378e3e74552c6db7ca32e57d43d8662e35e9fd21affdcab15688218771f80",
-    "g2_flux_vs_disc_thickness.png": "7f3b8d710c609ad2d5f3a9c000fe466fbbba866d6d240330703d7acdc1d9b138",
-    "g2_flux_vs_ths.png": "ad5bd2e9cb4721320141c05130505d670012f3ea1e66f0c35988deb832568ab6",
-    "hardware_screens.png": "5cbcc07c8aa7b0421bc684d57d645121c48697d2700c3fd73d4289c912e7b474",
-    "results.md": "98ce353876558e635ecbe33d9280e0d9932692ece01edafee00d9c83658815a7",
-    "run.log": "7bff0ebc2c2b7060069db6dfbe83179bf5f66aa125d21873075308034e19a2e4",
-    "strain_reversal_map.png": "bd60d0f57ec5a3aa192ce078adb600fb743d75863b439a0b288b46fcfa7caae2",
+    "delivered_vs_commanded_flux.png": "7352d9630be4c3b93277a5958fc74d0426f745f2426c50a331f7c5076c700abe",
+    "g2_flux_vs_core_radius.png": "4fa5458624294214387c6f941073d5d7a996a8157dae5f8b37bc536b9a185977",
+    "g2_flux_vs_disc_thickness.png": "511d643d25ec9b50f9b827dacceb0cf1b3f6abc5e397260c53c20c8cf877afee",
+    "g2_flux_vs_ths.png": "aa7cf4c9aa426432c96fdd05c3b1788fe150c20d2a258ea29bb8dafefa515503",
+    "hardware_screens.png": "74992a1169bef8019822135a4a825f418724abc1b58e9572980dcaac508098b0",
+    "results.md": "f1e9831a34f47091d96e1138330e0edecf00f3b33af401ee9fe787ebbb046b0d",
+    "run.log": "5133f8e8d5821ed356af8aec91915d0d22c6ab5299e5b5ca28f1bbcb9551d6f1",
+    "strain_reversal_map.png": "866d5f71de5e884cfce858efadd8aad30072fca22e76327676a991b0c2ca8387",
     "sweep.csv": "60727e513e51f21f5258ac53a90ab0593acfe00b74bcc43f8ad9c9e0bc3f731a"
   },
   "plot_row_mapping": {
     "delivered_vs_commanded_flux.png": {
+      "__caption__": "RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps step; only the R_s_ohm=1e6 designed contact and the vertical family's own 1e6 default approach delivered==commanded. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
       "horizontal_as_built as-built core default (R_s_ohm=2.38e+09)": {
         "row_ids": [
           "CO00005",
@@ -2178,7 +2179,7 @@
           8657207.554713154
         ]
       },
-      "vertical_photonic as-built core default (R_s_ohm=1e+06)": {
+      "vertical_photonic designed core default (R_s_ohm=1e+06)": {
         "row_ids": [
           "CO01541",
           "CO01542",
@@ -3724,6 +3725,33 @@
       }
     },
     "g2_flux_vs_core_radius.png": {
+      "__caption__": "Opposite endpoints: 2013/2014 anchors are matched by opposite strain bounds, never averaged; 'x' points are vertical_photonic rows with single_mode=False (headline_eligible=False, never a nominated headline); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
+        "row_ids": [
+          "CO00128",
+          "CO00384",
+          "CO00640",
+          "CO00896",
+          "CO01152",
+          "CO01408"
+        ],
+        "x": [
+          10.0,
+          12.5,
+          15.0,
+          20.0,
+          25.0,
+          40.0
+        ],
+        "y": [
+          8371152.504982121,
+          8657131.143435951,
+          8819584.441415409,
+          8922954.92173231,
+          8846816.182170488,
+          8071441.317684802
+        ]
+      },
       "horizontal_as_built|collected_flux_pulsed_s|relaxed (headline_upper)": {
         "row_ids": [
           "CO00128",
@@ -3774,6 +3802,32 @@
           109.72417485032533,
           68.92593954349567,
           25.754329048553902
+        ]
+      },
+      "horizontal_as_built|g2_op|one_pair_valid_False": {
+        "row_ids": [
+          "CO00128",
+          "CO00384",
+          "CO00640",
+          "CO00896",
+          "CO01152",
+          "CO01408"
+        ],
+        "x": [
+          10.0,
+          12.5,
+          15.0,
+          20.0,
+          25.0,
+          40.0
+        ],
+        "y": [
+          0.30485387201690306,
+          0.3165284147670757,
+          0.32462570024044113,
+          0.3348004287448002,
+          0.3405063846580272,
+          0.34562336167777896
         ]
       },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
@@ -3845,44 +3899,49 @@
           10524895.054753706
         ]
       },
-      "vertical_photonic|collected_flux_pulsed_s|relaxed (headline_upper)": {
+      "vertical_photonic|collected_flux_pulsed_s|one_pair_valid_False": {
         "row_ids": [
           "CO01664",
-          "CO01920",
-          "CO02176",
-          "CO02432"
+          "CO01920"
         ],
         "x": [
           60.0,
-          80.0,
-          100.0,
-          120.0
+          80.0
         ],
         "y": [
           6994082.408948299,
-          9716146.139613492,
-          10764214.433565913,
-          10524895.054753706
+          9716146.139613492
+        ]
+      },
+      "vertical_photonic|collected_flux_pulsed_s|relaxed (headline_upper)": {
+        "row_ids": [
+          "CO01664",
+          "CO01920"
+        ],
+        "x": [
+          60.0,
+          80.0
+        ],
+        "y": [
+          6994082.408948299,
+          9716146.139613492
         ]
       },
       "vertical_photonic|collected_flux_pulsed_s|unrelaxed (conservative_lower)": {
         "row_ids": [
           "CO01662",
           "CO01918",
-          "CO02174",
-          "CO02430"
+          "CO02174"
         ],
         "x": [
           60.0,
           80.0,
-          100.0,
-          120.0
+          100.0
         ],
         "y": [
           13.23713834675209,
           12.676243623410885,
-          10.035383199510692,
-          7.574734154770541
+          10.035383199510692
         ]
       },
       "vertical_photonic|g2_op|multimode": {
@@ -3902,48 +3961,74 @@
           0.18054872152804768
         ]
       },
-      "vertical_photonic|g2_op|relaxed (headline_upper)": {
+      "vertical_photonic|g2_op|one_pair_valid_False": {
         "row_ids": [
           "CO01664",
-          "CO01920",
-          "CO02176",
-          "CO02432"
+          "CO01920"
         ],
         "x": [
           60.0,
-          80.0,
-          100.0,
-          120.0
+          80.0
         ],
         "y": [
           0.1847336380386756,
-          0.18360081169386988,
-          0.1821367710373657,
-          0.18054872152804768
+          0.18360081169386988
+        ]
+      },
+      "vertical_photonic|g2_op|relaxed (headline_upper)": {
+        "row_ids": [
+          "CO01664",
+          "CO01920"
+        ],
+        "x": [
+          60.0,
+          80.0
+        ],
+        "y": [
+          0.1847336380386756,
+          0.18360081169386988
         ]
       },
       "vertical_photonic|g2_op|unrelaxed (conservative_lower)": {
         "row_ids": [
           "CO01662",
           "CO01918",
-          "CO02174",
-          "CO02430"
+          "CO02174"
         ],
         "x": [
           60.0,
           80.0,
-          100.0,
-          120.0
+          100.0
         ],
         "y": [
           0.17355371900826455,
           0.17355371900826455,
-          0.17355371900826455,
-          0.17355371900826433
+          0.17355371900826455
         ]
       }
     },
     "g2_flux_vs_disc_thickness.png": {
+      "__caption__": "Access cap: occupied_dot_access=1.0 (not plotted here, default 0.05 shown) caps tau_X/tau_XX at 0.625/0.3125 ns at core_radius_nm=12.5 (see 'Access-1.0 lifetime cap' section); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
+        "row_ids": [
+          "CO00320",
+          "CO00384",
+          "CO00448",
+          "CO00512"
+        ],
+        "x": [
+          1.5,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "y": [
+          8286771.182940861,
+          8657131.143435951,
+          8805759.526149508,
+          8604904.022845164
+        ]
+      },
       "horizontal_as_built|collected_flux_pulsed_s|relaxed (headline_upper)": {
         "row_ids": [
           "CO00320",
@@ -3978,6 +4063,26 @@
           294.1896059761477
         ]
       },
+      "horizontal_as_built|g2_op|one_pair_valid_False": {
+        "row_ids": [
+          "CO00320",
+          "CO00384",
+          "CO00448",
+          "CO00512"
+        ],
+        "x": [
+          1.5,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "y": [
+          0.3217184893390066,
+          0.3165284147670757,
+          0.31942964792388817,
+          0.3474853756863493
+        ]
+      },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
         "row_ids": [
           "CO00320",
@@ -4010,6 +4115,26 @@
         "y": [
           0.17355371900826455,
           0.17355371900826455
+        ]
+      },
+      "vertical_photonic|collected_flux_pulsed_s|one_pair_valid_False": {
+        "row_ids": [
+          "CO01856",
+          "CO01920",
+          "CO01984",
+          "CO02048"
+        ],
+        "x": [
+          1.5,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "y": [
+          9689373.123786345,
+          9716146.139613492,
+          9334665.282173794,
+          8962626.238112384
         ]
       },
       "vertical_photonic|collected_flux_pulsed_s|relaxed (headline_upper)": {
@@ -4050,6 +4175,26 @@
           12.676243623410885,
           0.14190734809685984,
           1.1218433525079408e-05
+        ]
+      },
+      "vertical_photonic|g2_op|one_pair_valid_False": {
+        "row_ids": [
+          "CO01856",
+          "CO01920",
+          "CO01984",
+          "CO02048"
+        ],
+        "x": [
+          1.5,
+          2.0,
+          3.0,
+          4.0
+        ],
+        "y": [
+          0.18227403232871564,
+          0.18360081169386988,
+          0.18647633791240936,
+          0.2008401859144573
         ]
       },
       "vertical_photonic|g2_op|relaxed (headline_upper)": {
@@ -4094,6 +4239,27 @@
       }
     },
     "g2_flux_vs_ths.png": {
+      "__caption__": "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen for every core_radius_nm>=10 nm priced here; RC caveat applies to the as-built horizontal contact (see 'RC caveat' section); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
+        "row_ids": [
+          "CO00360",
+          "CO00368",
+          "CO00376",
+          "CO00384"
+        ],
+        "x": [
+          230.0,
+          250.0,
+          273.0,
+          300.0
+        ],
+        "y": [
+          8630544.613331493,
+          8642618.486565394,
+          8654600.368518412,
+          8657131.143435951
+        ]
+      },
       "horizontal_as_built|collected_flux_pulsed_s|relaxed (headline_upper)": {
         "row_ids": [
           "CO00360",
@@ -4132,6 +4298,26 @@
           638.0008455433658,
           434.5870730668384,
           294.1896059761477
+        ]
+      },
+      "horizontal_as_built|g2_op|one_pair_valid_False": {
+        "row_ids": [
+          "CO00360",
+          "CO00368",
+          "CO00376",
+          "CO00384"
+        ],
+        "x": [
+          230.0,
+          250.0,
+          273.0,
+          300.0
+        ],
+        "y": [
+          0.3168346309252512,
+          0.3168910970832902,
+          0.31689177953423453,
+          0.3165284147670757
         ]
       },
       "horizontal_as_built|g2_op|relaxed (headline_upper)": {
@@ -4174,6 +4360,26 @@
           0.17355371900826455
         ]
       },
+      "vertical_photonic|collected_flux_pulsed_s|one_pair_valid_False": {
+        "row_ids": [
+          "CO01896",
+          "CO01904",
+          "CO01912",
+          "CO01920"
+        ],
+        "x": [
+          230.0,
+          250.0,
+          273.0,
+          300.0
+        ],
+        "y": [
+          10398117.084807843,
+          10356774.991158297,
+          10234140.428766225,
+          9716146.139613492
+        ]
+      },
       "vertical_photonic|collected_flux_pulsed_s|relaxed (headline_upper)": {
         "row_ids": [
           "CO01896",
@@ -4212,6 +4418,26 @@
           27.058034714168212,
           18.58132851365777,
           12.676243623410885
+        ]
+      },
+      "vertical_photonic|g2_op|one_pair_valid_False": {
+        "row_ids": [
+          "CO01896",
+          "CO01904",
+          "CO01912",
+          "CO01920"
+        ],
+        "x": [
+          230.0,
+          250.0,
+          273.0,
+          300.0
+        ],
+        "y": [
+          0.1867292085013761,
+          0.1866762716322804,
+          0.18618425545369466,
+          0.18360081169386988
         ]
       },
       "vertical_photonic|g2_op|relaxed (headline_upper)": {
@@ -4256,6 +4482,7 @@
       }
     },
     "hardware_screens.png": {
+      "__caption__": "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen at every priced core_radius_nm>=10 nm; the RT injector screen is rti_status=unknown_incomplete on every SET row (conditional-engineering screens, neither is a demonstrated hardware result). Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
       "rti_alignment_error_e_meV|horizontal_as_built": {
         "row_ids": [
           "CO00199",
@@ -4396,6 +4623,7 @@
       }
     },
     "strain_reversal_map.png": {
+      "__caption__": "White/blank cells = not_comparable (no pair where BOTH strain-bound rows clear the 1000/s optical floor); colored cells are 0=not reversed, 1=reversed on mu/collected_flux_pulsed_s/g2_op (never averaged with unreversed cells). Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
       "horizontal_as_built": {
         "r10_T230": [
           "CO00005",
@@ -5764,6 +5992,9 @@
   },
   "plot_trace_failures": [],
   "quick": false,
+  "report_only": true,
+  "report_only_runtime_s": 8.214493751525879,
+  "report_only_source_sweep_sha256": "60727e513e51f21f5258ac53a90ab0593acfe00b74bcc43f8ad9c9e0bc3f731a",
   "resolved_out_dir": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\out\\nitride_nanowire\\full",
   "row_counts": {
     "core": 2560,

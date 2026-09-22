@@ -664,6 +664,50 @@ def _write_csv(path, rows):
         w.writerows(rows)
 
 
+# --report-only fix (sweep fix 1): the closed set of row columns this
+# script's OWN downstream logic (never fsim_core, which only ever sees
+# csv-string columns through THIS module's row dicts) compares against the
+# literal Python singleton True/False -- `_above_floor`'s `valid is True`,
+# results.md's `set_feasible is True`/`rti_feasible is True`, and every
+# plain-truthiness `if row.get("optical_pass")` / `if not row.get("valid")`
+# check throughout _results_md/verdict_lines/the plot functions. Every
+# OTHER csv column, in particular the `bound_reversal_pair`/`bound_reversal`
+# STRING sentinels ("True"/"False"/"not_comparable"/"not_computed",
+# compared with `== "True"` throughout -- NEVER coerced to bool, or those
+# comparisons silently go permanently False), is left as the raw CSV string
+# or opportunistically float-converted (every numeric column is already
+# consumed via float()/_finite_num() at its use sites, which are tolerant
+# of strings too -- this is a belt-and-suspenders exact-type match, not a
+# functional requirement for the numeric columns).
+_CSV_BOOL_COLUMNS = frozenset((
+    "valid", "optical_pass", "hardware_qualified", "rti_qualified", "headline_eligible",
+    "eligible", "quality_pass", "cache_hit", "single_mode", "one_pair_valid",
+    "pair_supply_possible", "rti_feasible", "rti_transport_feasible", "set_feasible",
+    "thermal_converged", "device_pass", "rti_device_pass",
+))
+
+
+def _coerce_csv_row(row):
+    out = {}
+    for k, v in row.items():
+        if v == "":
+            out[k] = None
+        elif k in _CSV_BOOL_COLUMNS:
+            out[k] = (v == "True") if isinstance(v, str) else bool(v)
+        else:
+            try:
+                out[k] = float(v)
+            except (TypeError, ValueError):
+                out[k] = v
+    return out
+
+
+def _read_csv_rows(path):
+    import csv
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return [_coerce_csv_row(r) for r in csv.DictReader(f)]
+
+
 # ---------------------------------------------------------------- grouping
 def _group(rows, **filters):
     out = []
@@ -708,6 +752,27 @@ def _leg(ax, **kw):
 
 BOUND_STYLE = {"unrelaxed": ("--s", "unrelaxed (conservative_lower)"), "relaxed": ("-o", "relaxed (headline_upper)")}
 
+# M7 fix: the SAME one-line qualification is now printed on EVERY exported
+# figure (previously distributed piecemeal across only some of the six
+# PNGs) -- results obligation bullet 11's RC caveat / access-1.0 lifetime
+# cap / opposite-endpoint anchor match / E_C/kT charging wall, all in one
+# sentence. Any figure-specific caption is APPENDED to it, never replaces
+# it. The exact string used is also recorded into each figure's own
+# plot_row_mapping contract dict under "__caption__" so the artifact
+# verifier can assert every figure actually carries it (never trusting the
+# PNG's own pixels for this).
+COMMON_FIGURE_QUALIFICATION = (
+    "Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot "
+    "deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see "
+    "'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by "
+    "OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails "
+    "set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall')."
+)
+
+
+def _figure_footer(caption):
+    return f"{caption} {COMMON_FIGURE_QUALIFICATION}" if caption else COMMON_FIGURE_QUALIFICATION
+
 
 def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), ylog=None, guide=None,
                   caption=None, mark_multimode=False):
@@ -715,11 +780,17 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
     <group_extra combo>), x-axis swept, all other coordinates held at
     `fixed` (dict of family-independent fixed values) -- never a merged
     trace across different fixed coordinates (house style). `caption`
-    (L18: "annotate every exported figure with a one-line qualification")
-    is printed as a figure-level footer; `mark_multimode` (L18: "mark
-    multimode / non-resetting rows") overlays vertical_photonic points with
-    single_mode=False (headline-ineligible, above the LP11 cutoff) as
-    distinct gray x-markers, never joined into the headline trace."""
+    (L18: "annotate every exported figure with a one-line qualification",
+    M7: always combined with COMMON_FIGURE_QUALIFICATION) is printed as a
+    figure-level footer; `mark_multimode` (L18: "mark multimode / non-
+    resetting rows") DROPS vertical_photonic points with single_mode=False
+    from the joined strain-bound trace (M7 fix: they used to be plotted
+    TWICE, once joined into the relaxed line and again as an overlay
+    cross) and instead overlays them ONLY as distinct gray x-markers,
+    never joined into any trace. Points with one_pair_valid=False are
+    additionally overlaid once per subplot with a distinct open-circle
+    marker and a single legend entry (M7: "mark one_pair_valid False
+    points with a distinct marker and legend entry")."""
     import matplotlib.pyplot as plt
     contract = {}
     n_rows_plot = len(FAMILIES)
@@ -741,6 +812,7 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
         extra_vals = sorted({tuple(r.get(k) for k in group_extra) for r in pool}) if group_extra else [()]
         for ci, y_key in enumerate(y_keys):
             ax = axes[fi][ci]
+            opv_false_pts = []
             for sb in STRAIN_BOUNDS:
                 style, label = BOUND_STYLE[sb]
                 for ev in extra_vals:
@@ -748,6 +820,13 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
                     rr = [r for r in pool if r.get("strain_bound") == sb
                           and all(r.get(k) == v for k, v in ef.items())
                           and _finite_num(r.get(x_key)) and _finite_num(r.get(y_key))]
+                    if mark_multimode and family == "vertical_photonic":
+                        # M7 fix: multimode (headline_eligible False)
+                        # points are DROPPED from the joined line trace --
+                        # they are drawn ONLY as the distinct cross
+                        # overlay below, never joined into the relaxed/
+                        # unrelaxed trace beneath it.
+                        rr = [r for r in rr if r.get("single_mode") not in (False, "False")]
                     if not rr:
                         continue
                     rr = sorted(rr, key=lambda z: float(z[x_key]))
@@ -755,6 +834,13 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
                     lab = label if not ev else f"{label} {ev}"
                     ax.plot(xv, yv, style, ms=4, lw=1.3, label=lab)
                     contract[f"{family}|{y_key}|{lab}"] = {"row_ids": [z["row_id"] for z in rr], "x": xv, "y": yv}
+                    opv_false_pts += [r for r in rr if r.get("one_pair_valid") in (False, "False")]
+            if opv_false_pts:
+                oxv = [float(z[x_key]) for z in opv_false_pts]; oyv = [float(z[y_key]) for z in opv_false_pts]
+                ax.scatter(oxv, oyv, marker="o", facecolors="none", edgecolors="red", s=55, linewidths=1.1,
+                           label="one_pair_valid=False", zorder=5)
+                contract[f"{family}|{y_key}|one_pair_valid_False"] = {
+                    "row_ids": [z["row_id"] for z in opv_false_pts], "x": oxv, "y": oyv}
             if mark_multimode and family == "vertical_photonic":
                 mm = [r for r in pool if r.get("single_mode") in (False, "False")
                       and _finite_num(r.get(x_key)) and _finite_num(r.get(y_key))]
@@ -771,9 +857,10 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
             ax.set(xlabel=x_key, ylabel=y_key, title=f"{family} {y_key}")
             _leg(ax)
     fig.suptitle(title, fontsize=9)
-    if caption:
-        fig.text(0.5, 0.005, caption, ha="center", fontsize=6.5, wrap=True)
-    fig.tight_layout(rect=(0, 0.03 if caption else 0, 1, 0.95))
+    footer_text = _figure_footer(caption)
+    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    contract["__caption__"] = footer_text
+    fig.tight_layout(rect=(0, 0.08, 1, 0.94))
     fig.savefig(out / name, dpi=120, bbox_inches="tight")
     plt.close(fig)
     return contract
@@ -796,7 +883,12 @@ def plot_delivered_vs_commanded(out, core):
                and _finite_num(r.get("collected_flux_pulsed_s")) and _finite_num(r.get("collected_flux_delivered_s"))]
         if pts:
             r_s_val = pts[0].get("R_s_ohm")
-            series.append((f"{family} as-built core default (R_s_ohm={float(r_s_val):.3g})",
+            # M7 fix: only horizontal_as_built's core default is genuinely
+            # "as-built" (the Deshpande device); vertical_photonic's core
+            # default is a DESIGNED contact (R_s_ohm=1e6), never fabricated
+            # -- the legend must not call it "as-built" too.
+            tag = "as-built" if family == "horizontal_as_built" else "designed"
+            series.append((f"{family} {tag} core default (R_s_ohm={float(r_s_val):.3g})",
                             pts, "^" if family == "horizontal_as_built" else "v"))
     sens_pts = [r for r in core if r.get("row_kind") == "sensitivity" and r.get("sensitivity_axis") == "R_s_ohm"
                 and r.get("family") == "horizontal_as_built" and r.get("regime") == "deterministic_pair"
@@ -816,11 +908,13 @@ def plot_delivered_vs_commanded(out, core):
     ax.set(xlabel="collected_flux_pulsed_s (commanded/idealized)", ylabel="collected_flux_delivered_s (RC-limited)",
            xscale="log", yscale="log", title="delivered vs commanded flux (SET regime, RC diagnostic)")
     _leg(ax)
-    fig.text(0.5, 0.005, "RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps step "
-             "(see 'RC caveat' section); only the R_s_ohm=1e6 designed contact and the vertical family's own "
-             "1e6 default approach delivered==commanded.", ha="center", fontsize=6.5, wrap=True)
-    fig.tight_layout(rect=(0, 0.05, 1, 1))
-    fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120); plt.close(fig)
+    footer_text = _figure_footer("RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps "
+                                   "step; only the R_s_ohm=1e6 designed contact and the vertical family's own "
+                                   "1e6 default approach delivered==commanded.")
+    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    contract["__caption__"] = footer_text
+    fig.tight_layout(rect=(0, 0.09, 1, 1))
+    fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
 
@@ -874,12 +968,14 @@ def plot_hardware_screens(out, core):
         ax.set(xlabel="core_radius_nm", ylabel=y_key, title=title)
         _leg(ax)
     fig.suptitle("Non-gating hardware screens (conditional engineering screens, not measured devices)", fontsize=9)
-    fig.text(0.5, 0.005, "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen at "
-             "every priced core_radius_nm>=10 nm; the RT injector screen is rti_status=unknown_incomplete on "
-             "every SET row (conditional-engineering screens, neither is a demonstrated hardware result).",
-             ha="center", fontsize=6.5, wrap=True)
-    fig.tight_layout(rect=(0, 0.03, 1, 0.95))
-    fig.savefig(out / "hardware_screens.png", dpi=120); plt.close(fig)
+    footer_text = _figure_footer("Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade "
+                                   "screen at every priced core_radius_nm>=10 nm; the RT injector screen is "
+                                   "rti_status=unknown_incomplete on every SET row (conditional-engineering "
+                                   "screens, neither is a demonstrated hardware result).")
+    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    contract["__caption__"] = footer_text
+    fig.tight_layout(rect=(0, 0.10, 1, 0.93))
+    fig.savefig(out / "hardware_screens.png", dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
 
@@ -911,12 +1007,14 @@ def plot_reversal_map(out, core):
                xlabel="core_radius_nm", ylabel="T_hs K", title=f"{family} strain-pair reversal map")
         contract[family] = cellmap
     fig.suptitle("Strain-bound reversal map (M11: legend for not_comparable)", fontsize=9)
-    fig.text(0.5, 0.005, "White/blank cells = not_comparable (no pair where BOTH strain-bound rows clear the "
-             "1000/s optical floor); colored cells are 0=not reversed, 1=reversed on mu/collected_flux_pulsed_s/"
-             "g2_op (never averaged with unreversed cells). Opposite endpoints: never averaged.",
-             ha="center", fontsize=6.5, wrap=True)
-    fig.tight_layout(rect=(0, 0.05, 1, 0.93))
-    fig.savefig(out / "strain_reversal_map.png", dpi=120); plt.close(fig)
+    footer_text = _figure_footer("White/blank cells = not_comparable (no pair where BOTH strain-bound rows "
+                                   "clear the 1000/s optical floor); colored cells are 0=not reversed, "
+                                   "1=reversed on mu/collected_flux_pulsed_s/g2_op (never averaged with "
+                                   "unreversed cells).")
+    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    contract["__caption__"] = footer_text
+    fig.tight_layout(rect=(0, 0.10, 1, 0.92))
+    fig.savefig(out / "strain_reversal_map.png", dpi=120, bbox_inches="tight"); plt.close(fig)
     return contract
 
 
@@ -1088,6 +1186,21 @@ def best_passing_flux_lines(core):
             delivered_txt = f"{float(delivered):.6g}" if _finite_num(delivered) else "n/a"
             blocked_txt = (f"{float(best.get('blocked_load_probability')):.6g}"
                             if _finite_num(best.get("blocked_load_probability")) else "n/a")
+            # M4 fix: photons_per_cycle/quality_pass use COMMANDED flux
+            # (collected_flux_pulsed_s) -- printed here explicitly, beside
+            # a REPORT-derived photons_per_cycle_delivered (delivered
+            # flux/rep_rate_hz, never written back into sweep.csv) so the
+            # BEST line never implies the commanded per-cycle number is
+            # what an RC-limited detector would actually see.
+            ppc_commanded = best.get("photons_per_cycle")
+            ppc_commanded_txt = f"{float(ppc_commanded):.6g}" if _finite_num(ppc_commanded) else "n/a"
+            rep_hz_best = best.get("rep_rate_hz")
+            if _finite_num(delivered) and _finite_num(rep_hz_best) and float(rep_hz_best) > 0:
+                ppc_delivered = float(delivered) / float(rep_hz_best)
+                ppc_delivered_txt = f"{ppc_delivered:.6g}"
+                cycles_per_photon_txt = f"{1.0 / ppc_delivered:.4g}" if ppc_delivered > 0 else "inf"
+            else:
+                ppc_delivered_txt = "n/a"; cycles_per_photon_txt = "n/a"
             if partner is not None:
                 p_flux = partner.get("collected_flux_pulsed_s")
                 p_flux_txt = f"{float(p_flux):.6g}" if _finite_num(p_flux) else "n/a"
@@ -1104,6 +1217,8 @@ def best_passing_flux_lines(core):
                 f"rep_rate_hz={float(best['rep_rate_hz']):g} strain_bound={best['strain_bound']} "
                 f"screening={float(best.get('screening_fraction', 0.0)):g} regime={best['regime']} "
                 f"commanded_flux={float(best['collected_flux_pulsed_s']):.6g} delivered_flux={delivered_txt} "
+                f"photons_per_cycle_commanded={ppc_commanded_txt} photons_per_cycle_delivered={ppc_delivered_txt} "
+                f"(one delivered photon per {cycles_per_photon_txt} cycles) "
                 f"headline_eligible={_headline_eligible_of(best)} "
                 f"hardware_qualified={bool(best.get('hardware_qualified'))} "
                 f"rti_qualified={bool(best.get('rti_qualified'))} blocked_load_probability={blocked_txt} "
@@ -1143,6 +1258,49 @@ def bounds_table(core):
 
 
 _SI_RANGE_LAMBDA_RE = re.compile(r"si_complex_index: lambda_nm=([0-9.eE+-]+) outside")
+
+
+def _qcse_levels_replay(row):
+    """H2 fix: `field_kVcm` stored on an INVALID row is the transport
+    DEPLETION field alone -- fsim_core/nitride_nanowire_device.py's
+    exception-path fallback sets `_field_kVcm = inj["depletion_field_kVcm"]`
+    before the row goes invalid (see its own comment there) -- NEVER the
+    built-in piezoelectric/polarization field, so quoting it as "the
+    built-in piezoelectric field" is wrong by orders of magnitude. This
+    replays ONLY fsim_core.nitride_nanowire_levels (never scripts/
+    run_nitride_nanowire.py's own evaluate() path, never a second
+    evaluate_nanowire() call -- a read-only replay of an already-committed
+    dependency module, not this piece's own production routine) at the
+    row's own x_in/height_nm/core_radius_nm/outer_radius_nm/
+    screening_fraction, the UNRELAXED strain bound, with
+    external_field_kVcm set to the row's OWN recorded field_kVcm --
+    reproducing device.py's own post-feedback sysB convention
+    (external_field_kVcm = ext_field_kVcm(0.0 [A] card default) +
+    depletion_field_kVcm, and depletion_field_kVcm IS this row's own
+    field_kVcm) -- so this recovers the row's OWN true total field, not a
+    new physics result. Returns the NanowireLevels replay object, or None
+    if the row is not horizontal_as_built (the only family with an
+    affected invalid row this piece has ever seen; disc_radius_nm for
+    vertical_photonic is not carried as its own sweep.csv column) or the
+    replay itself fails to converge."""
+    if row.get("family") != "horizontal_as_built":
+        return None
+    depletion = row.get("field_kVcm")
+    if not _finite_num(depletion):
+        return None
+    try:
+        from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem, levels
+        sys_ = NitrideNanowireSystem(
+            height_nm=float(row.get("height_nm")), core_radius_nm=float(row.get("core_radius_nm")),
+            outer_radius_nm=float(row.get("outer_radius_nm") or row.get("core_radius_nm")),
+            disc_radius_nm=None, x_in=float(row.get("x_in")), strain_bound="unrelaxed",
+            screening_fraction=float(row.get("screening_fraction") or 0.0),
+            external_field_kVcm=float(depletion))
+        t_k = float(row.get("T_j")) if _finite_num(row.get("T_j")) else float(row.get("T_hs", 300.0))
+        lv = levels(sys_, T_K=t_k)
+    except Exception:
+        return None
+    return lv if lv.valid else None
 
 
 def _diagnostic_lambda_from_invalid_reasons(row):
@@ -1190,7 +1348,36 @@ def _pick(rows, **filters):
 
 
 # ------------------------------------------- H3/M9-M10 new results.md sections
-def _gate_anti_monotonicity_section(core, all_core):
+def _find_axis_flip_pair(sens, family, axis, lo_val, hi_val, strain_bound="relaxed"):
+    """M3 fix: search PROGRAMMATICALLY across (T_hs, rep_rate_hz) at the
+    family's reference geometry (never hardcode the rate/T that happens to
+    demonstrate it) for the `axis` cut pair (lo_val, hi_val) where
+    one_pair_valid flips False->True while collected_flux_pulsed_s FALLS
+    -- the actual gate anti-monotonicity evidence. A pair where
+    one_pair_valid is False (or True) at BOTH endpoints demonstrates
+    nothing and is skipped. Returns (T_hs, rep_rate_hz, lo_row, hi_row) or
+    (None, None, None, None) if no combination in this run's coverage
+    demonstrates the flip."""
+    ref = REF_GEOM[family]
+    for t in CUT_T_HS:
+        for rate in REP_RATES:
+            filt = dict(family=family, regime="deterministic_pair", strain_bound=strain_bound,
+                        T_hs=t, rep_rate_hz=rate, core_radius_nm=ref["core_radius_nm"],
+                        height_nm=ref["height_nm"], x_in=ref["x_in"])
+            lo = _pick(sens, sensitivity_axis=axis, sensitivity_value=lo_val, **filt)
+            hi = _pick(sens, sensitivity_axis=axis, sensitivity_value=hi_val, **filt)
+            if lo is None or hi is None:
+                continue
+            lo_opv = lo.get("one_pair_valid") in (True, "True")
+            hi_opv = hi.get("one_pair_valid") in (True, "True")
+            if (not lo_opv) and hi_opv and _finite_num(lo.get("collected_flux_pulsed_s")) \
+               and _finite_num(hi.get("collected_flux_pulsed_s")) \
+               and float(hi["collected_flux_pulsed_s"]) < float(lo["collected_flux_pulsed_s"]):
+                return t, rate, lo, hi
+    return None, None, None, None
+
+
+def _gate_anti_monotonicity_section(core, all_core, quick):
     """H3 fix: one_pair_valid (blocked_load_probability<=1e-9) can be
     cleared by ADDING sidewall loss (faster occupied-dot emptying) as
     readily as by improving device quality -- demonstrated with the S_cm_s
@@ -1202,7 +1389,12 @@ def _gate_anti_monotonicity_section(core, all_core):
              "readily as by improving device quality -- optical_pass/paired_optical_pass alone therefore do "
              "NOT certify throughput. quality_pass=optical_pass AND photons_per_cycle>=0.01 [A, orchestrator "
              "threshold: one collected photon per hundred cycles] is reported beside optical_pass/"
-             "paired_optical_pass in every VERDICT line and the per-temperature tables below.", ""]
+             "paired_optical_pass in every VERDICT line and the per-temperature tables below. M4 fix: "
+             "photons_per_cycle (sweep.csv column) and quality_pass BOTH use COMMANDED flux "
+             "(collected_flux_pulsed_s/rep_rate_hz), never the RC-limited delivered flux -- the BEST lines "
+             "below additionally print a report-derived photons_per_cycle_delivered "
+             "(collected_flux_delivered_s/rep_rate_hz) beside it so the commanded per-cycle number is never "
+             "mistaken for what an RC-limited detector would actually see.", ""]
     sens = [r for r in core if r.get("row_kind") == "sensitivity"]
     fam = "horizontal_as_built"
     ref = REF_GEOM[fam]
@@ -1221,8 +1413,41 @@ def _gate_anti_monotonicity_section(core, all_core):
                 f"g2_op={r.get('g2_op')} flux={r.get('collected_flux_pulsed_s')} "
                 f"quality_pass={r.get('quality_pass')}")
 
-    lines.append("S_cm_s and occupied_dot_access pairs at the horizontal reference geometry "
-                 "(300K, 200MHz, deterministic_pair, relaxed):")
+    # M3 fix: the 300K/200MHz reference-condition S_cm_s triple below does
+    # NOT demonstrate the flip (one_pair_valid is False at all three
+    # S_cm_s values there) -- the pair that DOES is found programmatically
+    # across (T_hs, rep_rate_hz) and quoted FIRST, never the non-
+    # demonstrating triple alone.
+    t_flip, rate_flip, s_lo_flip, s_hi_flip = _find_axis_flip_pair(sens, fam, "S_cm_s", 100.0, 10000.0)
+    lines.append("S_cm_s pair that actually DEMONSTRATES the anti-monotonicity (selected programmatically: "
+                 "the (T_hs, rep_rate_hz) combination at the horizontal reference geometry where "
+                 "one_pair_valid flips False->True while collected_flux_pulsed_s FALLS; the 300K/200MHz "
+                 "reference-condition triple below does NOT demonstrate it -- one_pair_valid is False at "
+                 "all three S_cm_s values there):")
+    if s_lo_flip is not None:
+        lines.append("- " + _fmt(s_lo_flip, f"S_cm_s={s_lo_flip.get('sensitivity_value')} (lower surface loss, "
+                                             f"T_hs={t_flip:g}K, {rate_flip/1.0e6:g}MHz)"))
+        lines.append("- " + _fmt(s_hi_flip, f"S_cm_s={s_hi_flip.get('sensitivity_value')} (higher surface loss, "
+                                             f"T_hs={t_flip:g}K, {rate_flip/1.0e6:g}MHz)"))
+        flux_lo = float(s_lo_flip["collected_flux_pulsed_s"]); flux_hi = float(s_hi_flip["collected_flux_pulsed_s"])
+        s_lo_val = float(s_lo_flip.get("sensitivity_value")); s_hi_val = float(s_hi_flip.get("sensitivity_value"))
+        ratio = flux_lo / flux_hi if flux_hi > 0 else float("nan")
+        # M5 fix: quality_pass removes only ABSOLUTELY DIM optical passes;
+        # it does NOT repair this loss-induced ordering (the row that
+        # newly optical_passes here is the one that lost more flux).
+        lines.append(f"quality_pass (photons_per_cycle>=0.01) removes only ABSOLUTELY DIM optical passes; it "
+                     f"does NOT repair this loss-induced ordering: row {s_hi_flip.get('row_id')} "
+                     f"(S_cm_s={s_hi_flip.get('sensitivity_value')}) keeps quality_pass="
+                     f"{s_hi_flip.get('quality_pass')} even though the "
+                     f"{(s_hi_val / s_lo_val if s_lo_val else float('nan')):.0f}x surface-recombination "
+                     f"increase (S_cm_s {s_lo_flip.get('sensitivity_value')}->{s_hi_flip.get('sensitivity_value')}) "
+                     f"cut its commanded flux {ratio:.2g}x ({flux_lo:.4g}->{flux_hi:.4g} /s).")
+    else:
+        lines.append("- no (T_hs, rep_rate_hz) combination in this run's coverage demonstrates the S_cm_s flip.")
+    lines.append("")
+
+    lines.append("S_cm_s and occupied_dot_access triple/pair at the 300K/200MHz reference condition, for "
+                 "context only (S_cm_s here does NOT flip; occupied_dot_access DOES):")
     lines.append("- " + _fmt(s_lo, "S_cm_s=100 (lower surface loss)"))
     lines.append("- " + _fmt(ref_row, "S_cm_s=1000 (main-grid default)"))
     lines.append("- " + _fmt(s_hi, "S_cm_s=10000 (higher surface loss)"))
@@ -1230,45 +1455,89 @@ def _gate_anti_monotonicity_section(core, all_core):
     lines.append("- " + _fmt(acc_hi, "occupied_dot_access=1.0 (higher loss)"))
     lines.append("")
 
-    lines.append("Per-T_hs optical_pass counts, horizontal_as_built (both regimes), with x_in composition "
-                 "(read from the rows, never hardcoded):")
+    # L fix: split by strain_bound too (the prior table mixed both bounds
+    # into one x_in-only breakdown per T_hs).
+    lines.append("Per-T_hs optical_pass counts, horizontal_as_built (both regimes, split by strain_bound), "
+                 "with x_in composition (read from the rows, never hardcoded):")
     for regime in REGIMES:
-        parts = []
-        for t in T_HS:
-            grp = [r for r in all_core if r.get("family") == fam and r.get("regime") == regime
-                   and _close(float(r.get("T_hs", -1)), t)]
-            passing = [r for r in grp if r.get("optical_pass")]
-            n25 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.25))
-            n40 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.40))
-            parts.append(f"T={t:g}K:{len(passing)}(x_in0.25={n25},x_in0.40={n40})")
-        lines.append(f"- {fam}/{regime}: " + " ".join(parts))
+        for sb in STRAIN_BOUNDS:
+            parts = []
+            for t in T_HS:
+                grp = [r for r in all_core if r.get("family") == fam and r.get("regime") == regime
+                       and r.get("strain_bound") == sb and _close(float(r.get("T_hs", -1)), t)]
+                passing = [r for r in grp if r.get("optical_pass")]
+                n25 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.25))
+                n40 = sum(1 for r in passing if _close(float(r.get("x_in", -1)), 0.40))
+                parts.append(f"T={t:g}K:{len(passing)}(x_in0.25={n25},x_in0.40={n40})")
+            lines.append(f"- {fam}/{regime}/{sb}: " + " ".join(parts))
     lines.append("")
 
-    x40_relaxed_pass = [r for r in all_core if r.get("optical_pass") and _close(float(r.get("x_in", -1)), 0.40)
-                         and r.get("strain_bound") == "relaxed"]
-    x40_unrelaxed_pass = [r for r in all_core if r.get("optical_pass") and _close(float(r.get("x_in", -1)), 0.40)
-                           and r.get("strain_bound") == "unrelaxed"]
-    fluxes_u40 = sorted(float(r["collected_flux_pulsed_s"]) for r in x40_unrelaxed_pass
-                         if _finite_num(r.get("collected_flux_pulsed_s")))
-    ids_u40 = ",".join(r["row_id"] for r in x40_unrelaxed_pass[:8]) + ("..." if len(x40_unrelaxed_pass) > 8 else "")
-    if x40_relaxed_pass:
-        ids_r40 = ",".join(r["row_id"] for r in x40_relaxed_pass[:8]) + ("..." if len(x40_relaxed_pass) > 8 else "")
-        lines.append(f"x_in=0.40 RELAXED (2014 composition, headline strain bound) optical passes: "
-                     f"{len(x40_relaxed_pass)} in either family this run (row_ids={ids_r40}) -- the reduced "
-                     "quick-mode coverage is NOT the full main grid; see the full run's own count here for "
-                     "the mandated-coverage statement.")
-    else:
-        lines.append("x_in=0.40 RELAXED (2014 composition, headline strain bound) optical passes: 0 in either "
-                     "family this run -- the 2014 composition yields no optical pass at the headline relaxed "
-                     "bound in this run's coverage.")
-    if x40_unrelaxed_pass:
-        rates_u40 = sorted({float(r.get("rep_rate_hz", -1)) for r in x40_unrelaxed_pass})
-        lines.append(f"x_in=0.40 UNRELAXED optical passes: {len(x40_unrelaxed_pass)}, "
-                     f"collected_flux_pulsed_s spans {fluxes_u40[0]:.4g}-{fluxes_u40[-1]:.4g} /s, "
-                     f"rep_rate_hz values present: {rates_u40}, row_ids={ids_u40} -- these are the ONLY "
-                     "x_in=0.40 optical passes in either family this run.")
-    else:
-        lines.append("x_in=0.40 UNRELAXED optical passes: 0.")
+    # H1 fix: composition statements are generated PER (family, strain_
+    # bound, x_in) COUNT FROM THE ROWS (never hardcoded numbers). The
+    # prior text's "these are the ONLY x_in=0.40 optical passes in either
+    # family this run" claim was FALSE (the vertical_photonic family
+    # passes at x_in=0.40 under the RELAXED bound too) -- this is
+    # rewritten per family, never claiming exclusivity across families.
+    def _xin_tag(v):
+        if not _finite_num(v):
+            return None
+        fv = float(v)
+        if _close(fv, 0.25):
+            return 0.25
+        if _close(fv, 0.40):
+            return 0.40
+        return fv
+
+    pass_counts = {}
+    for r in all_core:
+        if not r.get("optical_pass"):
+            continue
+        key = (r.get("family"), r.get("strain_bound"), _xin_tag(r.get("x_in")))
+        pass_counts.setdefault(key, []).append(r)
+
+    def _n(family, sb, xin):
+        return len(pass_counts.get((family, sb, xin), []))
+
+    lines.append("Composition of optical passes, per family (counted from the rows; see the definition of "
+                 "'entirely'/'both compositions' inline):")
+    for family in FAMILIES:
+        n_rel25, n_rel40 = _n(family, "relaxed", 0.25), _n(family, "relaxed", 0.40)
+        n_unrel40 = _n(family, "unrelaxed", 0.40)
+        n_rel = n_rel25 + n_rel40
+        tag = "HORIZONTAL" if family == "horizontal_as_built" else "VERTICAL"
+        if n_rel == 0:
+            lines.append(f"{tag} ({family}) RELAXED optical passes: 0 total (x_in=0.25: 0, x_in=0.40: 0).")
+        elif n_rel40 == 0:
+            lines.append(f"{tag} ({family}) RELAXED optical passes: {n_rel} total (x_in=0.25: {n_rel25}, "
+                         f"x_in=0.40: {n_rel40}) -- ENTIRELY x_in=0.25, no relaxed x_in=0.40 optical pass "
+                         "this run.")
+        elif n_rel25 == 0:
+            lines.append(f"{tag} ({family}) RELAXED optical passes: {n_rel} total (x_in=0.25: {n_rel25}, "
+                         f"x_in=0.40: {n_rel40}) -- ENTIRELY x_in=0.40.")
+        else:
+            lines.append(f"{tag} ({family}) RELAXED optical passes: {n_rel} total (x_in=0.25: {n_rel25}, "
+                         f"x_in=0.40: {n_rel40}) -- this family passes at BOTH compositions this run.")
+        rows40 = pass_counts.get((family, "unrelaxed", 0.40), [])
+        if n_unrel40:
+            fluxes40 = sorted(float(r["collected_flux_pulsed_s"]) for r in rows40
+                               if _finite_num(r.get("collected_flux_pulsed_s")))
+            ids40 = ",".join(r["row_id"] for r in rows40[:8]) + ("..." if n_unrel40 > 8 else "")
+            excl = " (the only x_in=0.40 passes in THIS family)" if n_rel40 == 0 else ""
+            lines.append(f"{tag} ({family}) x_in=0.40 UNRELAXED optical passes: {n_unrel40} total{excl}, "
+                         f"collected_flux_pulsed_s spans {fluxes40[0]:.4g}-{fluxes40[-1]:.4g} /s, "
+                         f"row_ids={ids40}.")
+        else:
+            lines.append(f"{tag} ({family}) x_in=0.40 UNRELAXED optical passes: 0 total.")
+    total_40 = sum(_n(f_, sb, 0.40) for f_ in FAMILIES for sb in STRAIN_BOUNDS)
+    total_all = sum(_n(f_, sb, x) for f_ in FAMILIES for sb in STRAIN_BOUNDS for x in (0.25, 0.40))
+    lines.append(f"Across BOTH families this run: {total_40}/{total_all} optical passes are x_in=0.40 -- "
+                 "the horizontal family's x_in=0.40 passes are UNRELAXED-only, while the vertical family also "
+                 "passes at x_in=0.40 under the RELAXED bound (see the per-family lines above); the earlier "
+                 "'these are the only x_in=0.40 passes in either family' claim was HORIZONTAL-only and is not "
+                 "repeated here.")
+    if quick:
+        lines.append("Quick-mode coverage note: this run used --quick (a declared deterministic subset); the "
+                     "counts above are NOT the full main grid's coverage.")
     lines.append("")
     return lines
 
@@ -1301,8 +1570,9 @@ def _headline_nominations_16(core, all_core):
              "One nominated row per (family,regime,strain_bound,rep_rate_hz) group -- the brightest "
              "optical_pass row in that group (headline_eligible additionally required for vertical_photonic, "
              "H2/bullet 10); 'none' if the group has no such row.", "",
-             "| family | regime | strain_bound | rep_rate_hz | row_id | commanded_flux/s | g2_op | "
-             "headline_eligible | quality_pass |", "|---|---|---|---|---|---|---|---|---|"]
+             "| family | regime | strain_bound | rep_rate_hz | row_id | commanded_flux/s | "
+             "photons_per_cycle_delivered | blocked_load_probability | g2_op | headline_eligible | "
+             "quality_pass |", "|---|---|---|---|---|---|---|---|---|---|---|"]
     for family in FAMILIES:
         for regime in REGIMES:
             for sb in STRAIN_BOUNDS:
@@ -1312,12 +1582,17 @@ def _headline_nominations_16(core, all_core):
                             and (family != "vertical_photonic" or _headline_eligible_of(r))
                             and _finite_num(r.get("collected_flux_pulsed_s"))]
                     if not cand:
-                        lines.append(f"| {family} | {regime} | {sb} | {rate:.3g} | none | | | False | |")
+                        lines.append(f"| {family} | {regime} | {sb} | {rate:.3g} | none | | | | | False | |")
                         continue
                     best = max(cand, key=lambda r: float(r["collected_flux_pulsed_s"]))
+                    delivered = best.get("collected_flux_delivered_s")
+                    ppc_d = (float(delivered) / rate) if _finite_num(delivered) and rate > 0 else float("nan")
+                    ppc_d_txt = f"{ppc_d:.4g}" if math.isfinite(ppc_d) else "n/a"
+                    blocked_txt = (f"{float(best.get('blocked_load_probability')):.4g}"
+                                    if _finite_num(best.get("blocked_load_probability")) else "n/a")
                     lines.append(f"| {family} | {regime} | {sb} | {rate:.3g} | {best['row_id']} | "
-                                 f"{float(best['collected_flux_pulsed_s']):.6g} | {best.get('g2_op')} | "
-                                 f"{_headline_eligible_of(best)} | {best.get('quality_pass')} |")
+                                 f"{float(best['collected_flux_pulsed_s']):.6g} | {ppc_d_txt} | {blocked_txt} | "
+                                 f"{best.get('g2_op')} | {_headline_eligible_of(best)} | {best.get('quality_pass')} |")
     lines.append("")
     return lines
 
@@ -1418,42 +1693,89 @@ def _planar_reference_section(core):
 
 
 def _sensitivity_ranking_table(core, all_core):
-    """M9-M10 obligation: a numerical sensitivity table for every reduced
-    cut, ranked by headline leverage."""
-    lines = ["## Numerical sensitivity table, ranked by headline leverage (M9-M10 obligation)", "",
-             "Expected ranking order (orchestrator decision): occupied_dot_access, tau_rad0_ns/dipole prior "
-             "(proxied below by the c-plane dipole-prior falsification rows -- tau_rad0_ns itself is not "
-             "sampled this run, see 'Reduced-cut coverage'), contact R_s_ohm (C_parasitic_F not sampled "
-             "this run), S_cm_s, shell, screening_fraction; b_res is expected to move g2 only, not flux "
-             "(verified in the table below: its flux_ratio_to_reference is 1.0).", "",
-             "| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | one_pair_valid | "
-             "optical_pass | quality_pass | row_id |", "|---|---|---|---|---|---|---|---|---|"]
+    """M9-M10/L obligation: a numerical sensitivity table for every reduced
+    cut, ranked by MEASURED leverage (never a single narrative-ordered
+    'expected ranking' sentence, which mixed commanded flux, delivered
+    flux, g2 and an unsampled tau_rad0_ns axis together) -- three SEPARATE
+    rankings (commanded flux, delivered flux, g2_op), reported PER FAMILY
+    at that family's own reference geometry."""
+    lines = ["## Numerical sensitivity table, ranked by MEASURED leverage (M9-M10/L obligation)", "",
+             "Ranking is measured from this run's own rows, separately per family and per observable -- "
+             "never a single mixed narrative ordering.", ""]
     sens = [r for r in core if r.get("row_kind") == "sensitivity"]
-    fam = "horizontal_as_built"
-    ref = REF_GEOM[fam]
-    base_filter = dict(family=fam, regime="deterministic_pair", strain_bound="relaxed",
-                        T_hs=300.0, rep_rate_hz=200.0e6, core_radius_nm=ref["core_radius_nm"],
-                        height_nm=ref["height_nm"], x_in=ref["x_in"])
-    ref_row = _pick(all_core, **base_filter)
-    ref_flux = (float(ref_row["collected_flux_pulsed_s"])
-                if ref_row and _finite_num(ref_row.get("collected_flux_pulsed_s")) else None)
-    if ref_row:
-        lines.append(f"| (reference) | main-grid default | {ref_row.get('g2_op')} | "
-                     f"{ref_row.get('collected_flux_pulsed_s')} | 1.0 | {ref_row.get('one_pair_valid')} | "
-                     f"{ref_row.get('optical_pass')} | {ref_row.get('quality_pass')} | {ref_row.get('row_id')} |")
-    axes_present = sorted({r.get("sensitivity_axis") for r in sens
-                            if r.get("sensitivity_axis") not in ("", "deshpande2013_comparison", "current_pulse_width")})
-    for axis in axes_present:
-        rows_axis = [r for r in sens if r.get("sensitivity_axis") == axis and r.get("family") == fam
-                     and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
-                     and _close(float(r.get("T_hs", -1)), 300.0) and _close(float(r.get("rep_rate_hz", -1)), 200.0e6)]
-        for r in sorted(rows_axis, key=lambda z: str(z.get("sensitivity_value"))):
-            flux = r.get("collected_flux_pulsed_s")
-            ratio = (f"{float(flux) / ref_flux:.4g}" if ref_flux and _finite_num(flux) else "n/a")
-            lines.append(f"| {axis} | {r.get('sensitivity_value')} | {r.get('g2_op')} | {flux} | {ratio} | "
-                         f"{r.get('one_pair_valid')} | {r.get('optical_pass')} | {r.get('quality_pass')} | "
-                         f"{r.get('row_id')} |")
-    lines.append("")
+    for fam in FAMILIES:
+        ref = REF_GEOM[fam]
+        base_filter = dict(family=fam, regime="deterministic_pair", strain_bound="relaxed",
+                            T_hs=300.0, rep_rate_hz=200.0e6, core_radius_nm=ref["core_radius_nm"],
+                            height_nm=ref["height_nm"], x_in=ref["x_in"])
+        ref_row = _pick(all_core, **base_filter)
+        ref_flux = (float(ref_row["collected_flux_pulsed_s"])
+                    if ref_row and _finite_num(ref_row.get("collected_flux_pulsed_s")) else None)
+        ref_flux_d = (float(ref_row["collected_flux_delivered_s"])
+                      if ref_row and _finite_num(ref_row.get("collected_flux_delivered_s")) else None)
+        ref_g2 = float(ref_row["g2_op"]) if ref_row and _finite_num(ref_row.get("g2_op")) else None
+
+        lines.append(f"### {fam}")
+        lines.append("")
+        if ref_row:
+            lines.append(f"Reference row: {ref_row.get('row_id')} g2_op={ref_row.get('g2_op')} "
+                         f"commanded_flux={ref_row.get('collected_flux_pulsed_s')} "
+                         f"delivered_flux={ref_row.get('collected_flux_delivered_s')}")
+        else:
+            lines.append("Reference row: not in this run's coverage.")
+        lines.append("")
+
+        axes_present = sorted({r.get("sensitivity_axis") for r in sens
+                                if r.get("family") == fam
+                                and r.get("sensitivity_axis") not in ("", "deshpande2013_comparison", "current_pulse_width")})
+        rows_by_axis = {}
+        leverage = {}
+        for axis in axes_present:
+            rows_axis = [r for r in sens if r.get("sensitivity_axis") == axis and r.get("family") == fam
+                         and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
+                         and _close(float(r.get("T_hs", -1)), 300.0) and _close(float(r.get("rep_rate_hz", -1)), 200.0e6)]
+            rows_by_axis[axis] = rows_axis
+            lev_flux = lev_flux_d = lev_g2 = 0.0
+            for r in rows_axis:
+                flux, fluxd, g2v = (r.get("collected_flux_pulsed_s"), r.get("collected_flux_delivered_s"),
+                                     r.get("g2_op"))
+                if ref_flux and _finite_num(flux):
+                    lev_flux = max(lev_flux, abs(float(flux) / ref_flux - 1.0))
+                if ref_flux_d and _finite_num(fluxd):
+                    lev_flux_d = max(lev_flux_d, abs(float(fluxd) / ref_flux_d - 1.0))
+                if ref_g2 is not None and _finite_num(g2v):
+                    lev_g2 = max(lev_g2, abs(float(g2v) - ref_g2))
+            leverage[axis] = {"flux": lev_flux, "flux_delivered": lev_flux_d, "g2": lev_g2}
+
+        for label, key in (("commanded flux |ratio-1| (measured leverage)", "flux"),
+                            ("delivered flux |ratio-1| (measured leverage)", "flux_delivered"),
+                            ("g2_op |delta| (measured leverage)", "g2")):
+            ranked = sorted(axes_present, key=lambda a: -leverage[a][key])
+            lines.append(f"Ranked by {label}: " + ", ".join(f"{a}({leverage[a][key]:.3g})" for a in ranked)
+                         if ranked else f"Ranked by {label}: (no reduced-cut axes this family this run).")
+        lines.append("")
+        lines.append("(the contact R_s_ohm row has ratio~1.0 on commanded flux -- it only changes delivered "
+                     "flux via the RC time constant, never the idealized/commanded flux.)"
+                     if "R_s_ohm" in axes_present else "")
+        lines.append("")
+
+        lines.append("| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | "
+                     "delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        if ref_row:
+            lines.append(f"| (reference) | main-grid default | {ref_row.get('g2_op')} | "
+                         f"{ref_row.get('collected_flux_pulsed_s')} | 1.0 | "
+                         f"{ref_row.get('collected_flux_delivered_s')} | 1.0 | {ref_row.get('one_pair_valid')} | "
+                         f"{ref_row.get('optical_pass')} | {ref_row.get('quality_pass')} | {ref_row.get('row_id')} |")
+        for axis in sorted(axes_present, key=lambda a: -leverage[a]["flux"]):
+            for r in sorted(rows_by_axis[axis], key=lambda z: str(z.get("sensitivity_value"))):
+                flux, fluxd = r.get("collected_flux_pulsed_s"), r.get("collected_flux_delivered_s")
+                ratio = (f"{float(flux) / ref_flux:.4g}" if ref_flux and _finite_num(flux) else "n/a")
+                ratio_d = (f"{float(fluxd) / ref_flux_d:.4g}" if ref_flux_d and _finite_num(fluxd) else "n/a")
+                lines.append(f"| {axis} | {r.get('sensitivity_value')} | {r.get('g2_op')} | {flux} | {ratio} | "
+                             f"{fluxd} | {ratio_d} | {r.get('one_pair_valid')} | {r.get('optical_pass')} | "
+                             f"{r.get('quality_pass')} | {r.get('row_id')} |")
+        lines.append("")
     lines.append("tau_rad0_ns/dipole-prior leverage proxy (from the c-plane dipole-prior falsification rows "
                  "above): switching dipole_weights from isotropic to CPLANE_ONLY materially changes "
                  "antenna_rate_factor/tau_rad_photonic_ns/commanded flux (see that section's row values) -- "
@@ -1585,7 +1907,8 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                  "so a one_pair_valid failure at 200 MHz where it holds at 80 MHz is a loading-window/period "
                  "effect, not a fit. collected_flux_pulsed_s is the idealized/commanded flux, "
                  "collected_flux_delivered_s is the RC-limited delivered flux (bullet 6). No row at any "
-                 "off-grid rate (e.g. the main grid's 80/200 MHz only) was evaluated this run.")
+                 "OFF-GRID repetition rate was evaluated this run -- only this run's own main-grid values, "
+                 "80 MHz and 200 MHz, were ever sampled.")
     lines.append("")
     for family in FAMILIES:
         for t_hs in (230.0, 300.0):
@@ -1635,7 +1958,7 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     lines.append("")
 
     # ---- Deshpande 2013 comparison (10 K)
-    lines.append("## Deshpande 2013 comparison (10 K CW-equivalent, drive_mismatch)")
+    lines.append("## Deshpande 2013 comparison (pulsed replay of a CW measurement, 10 K, drive_mismatch)")
     lines.append("")
     lines.append("Measured (CW electrical, 10 K, [V]): X g2 raw/corrected 0.30/0.16, XX 0.38/0.25 at 1 nA; "
                   "g2-fit lifetimes X 1.1 ns, XX 0.7 ns; TRPL XX 711 ps; emission X=2.84 eV (436.56 nm). This "
@@ -1820,6 +2143,23 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                       "at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an "
                       "incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/"
                       "g2_op/collected_flux_pulsed_s computed upstream of it.")
+        # M6 fix (contract bullets 7/280 and 11/325): both priced
+        # charging-based loading mechanisms share the SAME insufficient
+        # disc E_C/kT -- the RT-injector screen's own
+        # second_pair_addition_meV input IS set_E_C_meV, the identical
+        # Coulomb charging energy the set_EC_over_kT wall above already
+        # reports failing at every core_radius_nm>=10 nm priced here.
+        # Stated as a CONDITIONAL MODEL LIMITATION shared by both screens'
+        # inputs, never a demonstrated hardware failure of the RT-injector
+        # mechanism itself.
+        lines.append("Both priced charging-based loading mechanisms share the SAME insufficient disc "
+                     "E_C/kT: the RT-injector screen's own second_pair_addition_meV input is set_E_C_meV -- "
+                     "the identical Coulomb charging energy the set_EC_over_kT wall above already reports as "
+                     "an E_C/kT<10 failure at every core_radius_nm>=10 nm priced here. This is a CONDITIONAL "
+                     "MODEL LIMITATION shared by both screens' inputs (contract bullet 11's E_C/kT wall "
+                     "statement covers 'any charging mechanism priced in this tier'), never a demonstrated "
+                     "hardware failure of the RT-injector mechanism specifically (contract bullet 7: "
+                     "rti_feasible=False must not be reported as a demonstrated physics result).")
     else:
         lines.append("No deterministic_pair core rows with finite set_EC_over_kT at core_radius_nm>=10 nm.")
     lines.append("")
@@ -1841,7 +2181,7 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         lines.append("dipole falsification rows not evaluated this run.")
     lines.append("")
 
-    lines += _gate_anti_monotonicity_section(core, all_core)
+    lines += _gate_anti_monotonicity_section(core, all_core, quick)
     lines += _per_temperature_count_tables(all_core)
     lines += _headline_nominations_16(core, all_core)
     lines += _ensemble_yield_proxy_section(core)
@@ -1927,9 +2267,32 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                 lines.append("")
                 lines.append("### QCSE excursion physics paragraph (H4 obligation)")
                 lines.append("")
-                sample = si_rows[0][0]
-                field_txt = (f"{float(sample.get('field_kVcm')):.4g} kV/cm"
-                              if _finite_num(sample.get("field_kVcm")) else "n/a")
+                # H2 fix: pick the representative row DETERMINISTICALLY --
+                # the smallest row_id among the affected rows (documented
+                # here, never the previous `si_rows[0][0]` with no stated
+                # rule -- si_rows already iterates in row-id-ascending
+                # order since `core` is built that way, so this min() is a
+                # no-op on today's data but is now an explicit, checkable
+                # rule rather than an accident of iteration order).
+                sample = min((r for r, _ in si_rows), key=lambda r: r["row_id"])
+                depletion_txt = (f"{float(sample.get('field_kVcm')):.4g} kV/cm"
+                                  if _finite_num(sample.get("field_kVcm")) else "n/a")
+                # H2 fix: field_kVcm on an INVALID row is the transport
+                # DEPLETION field alone (fsim_core/nitride_nanowire_
+                # device.py's exception-path fallback), NEVER the built-in
+                # piezoelectric/polarization field -- the actual
+                # polarization/total field is obtained from a separate
+                # levels-only replay (_qcse_levels_replay), never by
+                # relabelling field_kVcm.
+                lv_replay = _qcse_levels_replay(sample)
+                if lv_replay is not None:
+                    replay_txt = (f"a levels-only replay (fsim_core.nitride_nanowire_levels, unrelaxed bound, "
+                                  f"this row's own x_in/height_nm/core_radius_nm, external_field_kVcm set to "
+                                  f"this row's OWN recorded field_kVcm as the resolved depletion field, per "
+                                  f"device.py's own post-feedback convention) gives F_pz_kVcm="
+                                  f"{lv_replay.F_pz_kVcm:.6g}, total_field_kVcm={lv_replay.field_kVcm:.6g}")
+                else:
+                    replay_txt = "the levels-only replay could not be computed for this row this run"
                 partner_stats = {"valid": 0, "invalid": 0, "missing": 0}
                 for r, _ in si_rows:
                     partner = _bound_partner(r, all_core)
@@ -1940,10 +2303,15 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                     else:
                         partner_stats["invalid"] += 1
                 lines.append(f"The {len(si_rows)} rows above are the unrelaxed (conservative_lower), "
-                             f"x_in=0.40, height_nm in {heights} disc geometries: the built-in piezoelectric "
-                             f"field this strain bound carries (this run's own field_kVcm on a representative "
-                             f"row, {sample.get('row_id')}: {field_txt}) drives the quantum-confined Stark "
-                             f"effect (QCSE) far enough to red-shift emission to "
+                             f"x_in=0.40, height_nm in {heights} disc geometries. field_kVcm on an INVALID row "
+                             "like these is the transport DEPLETION field alone (fsim_core/nitride_nanowire_"
+                             "device.py's invalid-row fallback captures inj['depletion_field_kVcm'] before the "
+                             "row goes invalid), NOT the built-in piezoelectric field -- this run's own "
+                             f"field_kVcm on the representative row (deterministic rule: smallest row_id among "
+                             f"the {len(si_rows)} affected rows), {sample.get('row_id')}: {depletion_txt} "
+                             f"depletion field. The actual polarization field driving QCSE is reported "
+                             f"separately: {replay_txt}. This field drives the quantum-confined Stark effect "
+                             f"(QCSE) far enough to red-shift emission to "
                              f"{min(lambdas)/1000.0:.3g}-{max(lambdas)/1000.0:.3g} um, past the photonics "
                              f"module's own {si_hi:g} nm table ceiling -- an excursion this run reports as "
                              f"MISSING (invalid), never silently repaired. Their relaxed strain-bound partner "
@@ -1998,14 +2366,151 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     return "\n".join(lines) + "\n"
 
 
+# --------------------------------------------------- shared figure/results
+def _build_figures_and_results(out, core, quick, complete, runtime_s, evaluate_calls,
+                                 invalid_by_kind, dipole_rows, decisions):
+    """Shared between the full/quick evaluate path and --report-only mode:
+    builds every figure from `core` and writes results.md. NEVER touches
+    sweep.csv (the caller owns that). Kept as a single function so the two
+    callers cannot silently diverge in which figures/captions get produced."""
+    plots = {}
+    plot_fail_log = []
+    core_only = [r for r in core if r.get("row_kind") == "core"]
+    # rep_rate_hz is a nonswept coordinate for all three of these traces and
+    # MUST be pinned (spec: "Traces must fix all nonswept coordinates; no
+    # joining different radii, temperatures or regimes") -- without it a
+    # single (family, strain_bound) trace silently interleaved 80 MHz and
+    # 200 MHz rows at the same x value, merging two different fixed
+    # coordinates into one line (caught by verify_nitride_nanowire_sweep.py's
+    # trace_shares_fixed_coords check). Pinned at 200 MHz, the Deshpande
+    # 2014-comparison headline rate.
+    fixed_common = {"regime": "deterministic_pair", "x_in": 0.40, "rep_rate_hz": 200.0e6}
+    fixed_common_t300 = dict(fixed_common, T_hs=300.0)
+
+    figs = [
+        ("g2_flux_vs_core_radius.png", plot_vs_axis,
+         (out, "g2_flux_vs_core_radius.png", core_only, "core_radius_nm", ("g2_op", "collected_flux_pulsed_s"),
+          "g2 and flux vs core radius, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
+         dict(caption="Opposite endpoints: 2013/2014 anchors are matched by opposite strain bounds, never averaged; "
+                       "'x' points are vertical_photonic rows with single_mode=False (headline_eligible=False, "
+                       "never a nominated headline); open red circles are one_pair_valid=False points.", mark_multimode=True)),
+        ("g2_flux_vs_disc_thickness.png", plot_vs_axis,
+         (out, "g2_flux_vs_disc_thickness.png", core_only, "height_nm", ("g2_op", "collected_flux_pulsed_s"),
+          "g2 and flux vs disc thickness, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
+         dict(caption="Access cap: occupied_dot_access=1.0 (not plotted here, default 0.05 shown) caps tau_X/"
+                       "tau_XX at 0.625/0.3125 ns at core_radius_nm=12.5 (see 'Access-1.0 lifetime cap' section); "
+                       "open red circles are one_pair_valid=False points.")),
+        ("g2_flux_vs_ths.png", plot_vs_axis,
+         (out, "g2_flux_vs_ths.png", core_only, "T_hs", ("g2_op", "collected_flux_pulsed_s"),
+          "g2 and flux vs T_hs, both strain bounds (x_in=0.40, rep_rate_hz=200MHz, SET regime, reference geometry)", fixed_common),
+         dict(caption="Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen for "
+                       "every core_radius_nm>=10 nm priced here; RC caveat applies to the as-built horizontal "
+                       "contact (see 'RC caveat' section); open red circles are one_pair_valid=False points.")),
+    ]
+    for name, fn, args, kwargs in figs:
+        result = _safe_plot(name, plot_fail_log, fn, *args, **kwargs)
+        if result is not None:
+            plots[name] = result
+
+    plots["delivered_vs_commanded_flux.png"] = _safe_plot("delivered_vs_commanded_flux.png", plot_fail_log,
+                                                            plot_delivered_vs_commanded, out, core) or {}
+    plots["hardware_screens.png"] = _safe_plot("hardware_screens.png", plot_fail_log,
+                                                plot_hardware_screens, out, core) or {}
+    plots["strain_reversal_map.png"] = _safe_plot("strain_reversal_map.png", plot_fail_log,
+                                                   plot_reversal_map, out, core) or {}
+
+    text = _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kind, dipole_rows, decisions)
+    return plots, plot_fail_log, text
+
+
+def _main_report_only(out, a):
+    """Sweep fix 1 (Attempt 2, reporting-only round): regenerate
+    results.md, the PNGs and manifest.json from the EXISTING sweep.csv in
+    `out` -- NO evaluate() call, NO physics change, sweep.csv itself is
+    NEVER rewritten (its sha256 before/after this mode is asserted
+    identical below). manifest.json records report_only=True and the
+    sweep.csv sha256 it consumed; output_hashes are recomputed for every
+    file actually in the run dir; run.log is APPENDED to, never
+    truncated, so the original run's own log survives underneath this
+    mode's own lines."""
+    if not out.is_dir():
+        raise SystemExit("--report-only requires an existing --out-dir from a prior run")
+    sweep_path = out / "sweep.csv"
+    manifest_path = out / "manifest.json"
+    if not sweep_path.is_file() or not manifest_path.is_file():
+        raise SystemExit("--report-only requires an existing sweep.csv AND manifest.json in --out-dir")
+    prior_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    sweep_hash_before = hashlib.sha256(sweep_path.read_bytes()).hexdigest()
+
+    t0 = time.time()
+    log_f = open(out / "run.log", "a", encoding="ascii", errors="replace", newline="\n")
+    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = _Tee(_orig_stdout, log_f), _Tee(_orig_stderr, log_f)
+    try:
+        print("--report-only: regenerating results.md/figures/manifest.json from the existing "
+              "sweep.csv (sha256=%s) -- no evaluate() call this run" % sweep_hash_before, flush=True)
+        core = _read_csv_rows(sweep_path)
+        # attach_bound_reversal is a declared post-hoc transform, a pure
+        # function of already-written sweep.csv columns (see its own
+        # docstring) -- recomputing it here reproduces the SAME values
+        # already on disk; it mutates the in-memory `core` list only,
+        # never sweep.csv itself (sweep.csv is not rewritten in this mode).
+        attach_bound_reversal(core)
+    finally:
+        sys.stdout, sys.stderr = _orig_stdout, _orig_stderr
+        log_f.close()
+
+    sweep_hash_after = hashlib.sha256(sweep_path.read_bytes()).hexdigest()
+    if sweep_hash_after != sweep_hash_before:
+        raise SystemExit("--report-only must never modify sweep.csv (hash changed unexpectedly)")
+
+    invalid_by_kind = {}
+    for r in core:
+        if not r.get("valid"):
+            invalid_by_kind[r.get("row_kind", "unknown")] = invalid_by_kind.get(r.get("row_kind", "unknown"), 0) + 1
+    dipole_rows = [r for r in core if str(r.get("row_id", "")).startswith("DW")]
+
+    quick = bool(prior_manifest.get("quick", False))
+    complete = bool(prior_manifest.get("complete", False))
+    runtime_s = float(prior_manifest.get("runtime_s", 0.0))
+    evaluate_calls = int(prior_manifest.get("evaluate_calls", 0))
+    decisions = list(prior_manifest.get("decisions", []))
+
+    plots, plot_fail_log, text = _build_figures_and_results(
+        out, core, quick, complete, runtime_s, evaluate_calls, invalid_by_kind, dipole_rows, decisions)
+    (out / "results.md").write_text(text, encoding="utf-8")
+
+    files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]
+    hashes = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in files}
+    report_only_runtime_s = time.time() - t0
+    manifest = dict(prior_manifest)
+    manifest.update({
+        "report_only": True,
+        "report_only_source_sweep_sha256": sweep_hash_before,
+        "report_only_runtime_s": report_only_runtime_s,
+        "plot_row_mapping": plots,
+        "plot_trace_failures": plot_fail_log,
+        "output_hashes": hashes,
+    })
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    print("report_only=True sweep_csv_sha256=%s report_only_runtime_s=%.2f core_rows=%d invalid_total=%d" % (
+        sweep_hash_before, report_only_runtime_s,
+        len([r for r in core if r["row_kind"] == "core"]), sum(invalid_by_kind.values())))
+    return 0
+
+
 # -------------------------------------------------------------------- main
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--out-dir", default=str(ROOT / "out" / "nitride_nanowire"))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--report-only", action="store_true")
     ap.add_argument("--max-evaluations", type=int, default=10000)
     a = ap.parse_args(argv)
+
+    if a.report_only:
+        return _main_report_only(_safe(a.out_dir), a)
 
     counts = planned_counts(a.quick)
     horiz_core = len(build_core("horizontal_as_built", a.quick))
@@ -2121,51 +2626,6 @@ def main(argv=None):
 
     _write_csv(out / "sweep.csv", core)
 
-    plots = {}
-    plot_fail_log = []
-    core_only = [r for r in core if r.get("row_kind") == "core"]
-    # rep_rate_hz is a nonswept coordinate for all three of these traces and
-    # MUST be pinned (spec: "Traces must fix all nonswept coordinates; no
-    # joining different radii, temperatures or regimes") -- without it a
-    # single (family, strain_bound) trace silently interleaved 80 MHz and
-    # 200 MHz rows at the same x value, merging two different fixed
-    # coordinates into one line (caught by verify_nitride_nanowire_sweep.py's
-    # trace_shares_fixed_coords check). Pinned at 200 MHz, the Deshpande
-    # 2014-comparison headline rate.
-    fixed_common = {"regime": "deterministic_pair", "x_in": 0.40, "rep_rate_hz": 200.0e6}
-    fixed_common_t300 = dict(fixed_common, T_hs=300.0)
-
-    figs = [
-        ("g2_flux_vs_core_radius.png", plot_vs_axis,
-         (out, "g2_flux_vs_core_radius.png", core_only, "core_radius_nm", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs core radius, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
-         dict(caption="Opposite endpoints: 2013/2014 anchors are matched by opposite strain bounds, never averaged; "
-                       "'x' points are vertical_photonic rows with single_mode=False (headline_eligible=False, "
-                       "never a nominated headline).", mark_multimode=True)),
-        ("g2_flux_vs_disc_thickness.png", plot_vs_axis,
-         (out, "g2_flux_vs_disc_thickness.png", core_only, "height_nm", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs disc thickness, both strain bounds (T_hs=300K, x_in=0.40, rep_rate_hz=200MHz, SET regime)", fixed_common_t300),
-         dict(caption="Access cap: occupied_dot_access=1.0 (not plotted here, default 0.05 shown) caps tau_X/"
-                       "tau_XX at 0.625/0.3125 ns at core_radius_nm=12.5 (see 'Access-1.0 lifetime cap' section).")),
-        ("g2_flux_vs_ths.png", plot_vs_axis,
-         (out, "g2_flux_vs_ths.png", core_only, "T_hs", ("g2_op", "collected_flux_pulsed_s"),
-          "g2 and flux vs T_hs, both strain bounds (x_in=0.40, rep_rate_hz=200MHz, SET regime, reference geometry)", fixed_common),
-         dict(caption="Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen for "
-                       "every core_radius_nm>=10 nm priced here; RC caveat applies to the as-built horizontal "
-                       "contact (see 'RC caveat' section).")),
-    ]
-    for name, fn, args, kwargs in figs:
-        result = _safe_plot(name, plot_fail_log, fn, *args, **kwargs)
-        if result is not None:
-            plots[name] = result
-
-    plots["delivered_vs_commanded_flux.png"] = _safe_plot("delivered_vs_commanded_flux.png", plot_fail_log,
-                                                            plot_delivered_vs_commanded, out, core) or {}
-    plots["hardware_screens.png"] = _safe_plot("hardware_screens.png", plot_fail_log,
-                                                plot_hardware_screens, out, core) or {}
-    plots["strain_reversal_map.png"] = _safe_plot("strain_reversal_map.png", plot_fail_log,
-                                                   plot_reversal_map, out, core) or {}
-
     runtime_s = time.time() - t0
     complete = bool((not a.quick) and counter["evaluate_calls"] <= a.max_evaluations and runtime_s < 1800.0
                      and len([r for r in core if r["row_kind"] == "core"]) == 2560)
@@ -2210,8 +2670,8 @@ def main(argv=None):
         "CW/HBT path), per the contract's own instruction, never substituted for a predicted CW g2.",
     ]
 
-    text = _results_md(core, a.quick, complete, runtime_s, counter["evaluate_calls"], invalid_by_kind,
-                        dipole_rows, decisions)
+    plots, plot_fail_log, text = _build_figures_and_results(
+        out, core, a.quick, complete, runtime_s, counter["evaluate_calls"], invalid_by_kind, dipole_rows, decisions)
     (out / "results.md").write_text(text, encoding="utf-8")
 
     files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]

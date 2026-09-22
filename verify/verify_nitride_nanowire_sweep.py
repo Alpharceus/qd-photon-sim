@@ -693,6 +693,135 @@ def check_rti_fabrication_real(core, checks):
                     "second_pair_control_known=False (Composition rules bullet 7)", len(fab) == 0))
 
 
+def check_composition_counts(text, core, checks):
+    """H1 fix fixture: independently recompute per-(family,strain_bound,
+    x_in) optical_pass counts from sweep.csv (this file's OWN
+    independently-transcribed optical_pass() predicate above, never the
+    production routine) and cross-check them against the exact counts
+    results.md prints -- a regression guard against the fixed false claim
+    "these are the ONLY x_in=0.40 optical passes in either family this
+    run" (64 vertical relaxed x_in=0.40 rows pass too)."""
+    for fam in ("horizontal_as_built", "vertical_photonic"):
+        n_rel25 = n_rel40 = n_unrel40 = 0
+        for r in core:
+            if r.get("row_kind") != "core" or r.get("family") != fam:
+                continue
+            valid = as_bool(r.get("valid")) is True
+            g2v, fluxv = f(r.get("g2_op")), f(r.get("collected_flux_pulsed_s"))
+            one = as_bool(r.get("one_pair_valid")) is True
+            supply = as_bool(r.get("pair_supply_possible")) is True
+            if not optical_pass(valid, g2v, fluxv, r.get("regime"), one, supply):
+                continue
+            xin = f(r.get("x_in"))
+            if r.get("strain_bound") == "relaxed":
+                if close_nan_safe(xin, 0.25):
+                    n_rel25 += 1
+                elif close_nan_safe(xin, 0.40):
+                    n_rel40 += 1
+            elif r.get("strain_bound") == "unrelaxed" and close_nan_safe(xin, 0.40):
+                n_unrel40 += 1
+        n_rel = n_rel25 + n_rel40
+        mo = re.search(rf"\({re.escape(fam)}\) RELAXED optical passes: (\d+) total \(x_in=0\.25: (\d+), "
+                        rf"x_in=0\.40: (\d+)\)", text)
+        line_ok = bool(mo) and int(mo.group(1)) == n_rel and int(mo.group(2)) == n_rel25 and int(mo.group(3)) == n_rel40
+        checks.append((f"results.md's {fam} RELAXED composition line matches an independent recount "
+                        f"(n_rel={n_rel}, x_in0.25={n_rel25}, x_in0.40={n_rel40})", line_ok))
+        mo2 = re.search(rf"\({re.escape(fam)}\) x_in=0\.40 UNRELAXED optical passes: (\d+) total", text)
+        line2_ok = bool(mo2) and int(mo2.group(1)) == n_unrel40
+        checks.append((f"results.md's {fam} x_in=0.40 UNRELAXED composition line matches an independent "
+                        f"recount (n={n_unrel40})", line2_ok))
+    checks.append(("results.md no longer claims horizontal-only x_in=0.40 unrelaxed passes are the ONLY ones "
+                    "in EITHER family (the unqualified false claim this fix removed)",
+                    "these are the ONLY x_in=0.40 optical passes in either family this run" not in text))
+
+
+def check_qcse_field_label(text, core, checks):
+    """H2 fix fixture: field_kVcm on an invalid row is the transport
+    DEPLETION field alone (never the built-in piezoelectric/polarization
+    field) -- the paragraph must label it as such and must not repeat the
+    old false 'the built-in piezoelectric field this strain bound
+    carries' framing attached to field_kVcm's own value; it must also
+    report a separate levels-only F_pz/total-field replay."""
+    parts = text.split("### QCSE excursion physics paragraph", 1)
+    ok_present = len(parts) > 1
+    body = parts[1] if ok_present else ""
+    checks.append(("results.md's QCSE excursion physics paragraph exists", ok_present))
+    checks.append(("QCSE paragraph labels field_kVcm as the depletion field, never the piezoelectric field",
+                    ok_present and "depletion field" in body
+                    and "the built-in piezoelectric field this strain bound carries" not in body))
+    checks.append(("QCSE paragraph reports a levels-only F_pz/total-field replay",
+                    ok_present and "F_pz_kVcm=" in body and "total_field_kVcm=" in body))
+    mo = re.search(r"F_pz_kVcm=(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?), "
+                    r"total_field_kVcm=(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)", body)
+    checks.append(("the replayed F_pz_kVcm/total_field_kVcm values are finite numbers",
+                    bool(mo) and isfin(mo.group(1)) and isfin(mo.group(2))))
+    if mo:
+        # numeric cross-check: replay fsim_core.nitride_nanowire_levels
+        # directly (a DEPENDENCY module, never scripts/run_nitride_
+        # nanowire.py itself -- the routine under test) at the paragraph's
+        # own cited representative row's geometry.
+        rid_mo = re.search(r"representative row \(deterministic rule[^)]*\), (\S+?):", body)
+        row = next((r for r in core if r.get("row_id") == (rid_mo.group(1) if rid_mo else None)), None)
+        if row is not None:
+            try:
+                sys.path.insert(0, str(ROOT))
+                from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem, levels
+                depletion = f(row.get("field_kVcm"))
+                sys_ = NitrideNanowireSystem(
+                    height_nm=f(row.get("height_nm")), core_radius_nm=f(row.get("core_radius_nm")),
+                    outer_radius_nm=f(row.get("outer_radius_nm")) or f(row.get("core_radius_nm")),
+                    disc_radius_nm=None, x_in=f(row.get("x_in")), strain_bound="unrelaxed",
+                    screening_fraction=f(row.get("screening_fraction")) or 0.0,
+                    external_field_kVcm=depletion)
+                lv = levels(sys_, T_K=f(row.get("T_j")) if isfin(row.get("T_j")) else f(row.get("T_hs")))
+                replay_ok = (lv.valid and close_nan_safe(lv.F_pz_kVcm, f(mo.group(1)), rtol=1e-4)
+                             and close_nan_safe(lv.field_kVcm, f(mo.group(2)), rtol=1e-4))
+            except Exception:
+                replay_ok = False
+            checks.append((f"an independent levels-only replay of row {row.get('row_id')} reproduces the "
+                            "printed F_pz_kVcm/total_field_kVcm numbers", replay_ok))
+
+
+def check_figure_captions(out, man, checks):
+    """M7 fix fixture: every exported figure carries the SAME one-line
+    qualification footer (recorded into plot_row_mapping's own
+    "__caption__" entry) and round-trips through matplotlib.image.imread
+    without error -- "open the PNGs (matplotlib reads them back) and
+    assert the footer text exists"."""
+    mapping = man.get("plot_row_mapping", {})
+    expected_figs = ("g2_flux_vs_core_radius.png", "g2_flux_vs_disc_thickness.png", "g2_flux_vs_ths.png",
+                      "delivered_vs_commanded_flux.png", "hardware_screens.png", "strain_reversal_map.png")
+    ok_caption = True
+    ok_common = True
+    ok_readable = True
+    for figname in expected_figs:
+        contract = mapping.get(figname) or {}
+        caption = contract.get("__caption__")
+        if not isinstance(caption, str) or len(caption) < 40:
+            ok_caption = False
+        if not isinstance(caption, str) or "Qualification (applies to every figure this run)" not in caption:
+            ok_common = False
+        p = out / figname
+        if not p.is_file():
+            ok_readable = False
+            continue
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.image as mpimg
+            img = mpimg.imread(str(p))
+            if img is None or img.shape[0] < 10 or img.shape[1] < 10:
+                ok_readable = False
+        except Exception:
+            ok_readable = False
+    checks.append(("every exported figure's plot_row_mapping carries a non-empty '__caption__' footer string "
+                    "(M7/L18: one-line qualification on every figure)", ok_caption))
+    checks.append(("every exported figure's caption carries the SAME common qualification sentence "
+                    "(M7: not distributed piecemeal)", ok_common))
+    checks.append(("every exported figure PNG round-trips through matplotlib.image.imread without error",
+                    ok_readable))
+
+
 def check_plots(out, man, core, checks):
     mapping = man.get("plot_row_mapping", {})
     checks.append(("plot_row_mapping is non-empty", len(mapping) > 0))
@@ -707,24 +836,46 @@ def check_plots(out, man, core, checks):
     x_key_for_fig = {"g2_flux_vs_core_radius.png": "core_radius_nm", "g2_flux_vs_disc_thickness.png": "height_nm",
                       "g2_flux_vs_ths.png": "T_hs"}
     n_traced = 0
+    n_points_checked = 0
     for figname, x_key in x_key_for_fig.items():
         contract = mapping.get(figname)
         if not contract:
             checks.append((f"plot-construction contract present: {figname}", False))
             continue
         xy_ok = True
-        for label, entry in contract.items():
+        for key, entry in contract.items():
+            if key == "__caption__":
+                continue
+            # L fix: `key` is the contract's OWN "family|y_key|label"
+            # construction (see scripts/run_nitride_nanowire.py's
+            # plot_vs_axis), so the plotted y column is read directly from
+            # the key structure -- never guessed from the label text (the
+            # prior `"g2_op" if "g2" in label.lower() or True else None`
+            # was a tautology: `or True` makes the condition always True,
+            # and the computed `ykey` was then never even used, so no
+            # plotted y VALUE was ever checked against sweep.csv here).
+            parts = key.split("|", 2)
+            ykey = parts[1] if len(parts) >= 2 else None
             for rid, xv, yv in zip(entry["row_ids"], entry["x"], entry["y"]):
                 row = all_rows.get(rid)
                 if row is None:
-                    xy_ok = False; continue
-                ykey = ("g2_op" if "g2" in label.lower() or True else None)
+                    xy_ok = False
+                    continue
+                if not close_nan_safe(row.get(x_key), xv):
+                    xy_ok = False
+                if ykey is not None and not close_nan_safe(f(row.get(ykey)), yv):
+                    xy_ok = False
+                n_points_checked += 1
             if not trace_shares_fixed_coords({"row_ids": entry["row_ids"]}, all_rows, x_key):
                 xy_ok = False
-        checks.append((f"plot-construction contract's traces all share fixed (non-swept) coordinates: {figname} "
-                        "(a merged trace with different fixed coordinates fails this)", xy_ok))
+        checks.append((f"plot-construction contract's traces all share fixed (non-swept) coordinates AND every "
+                        f"plotted x/y value matches its row_id's sweep.csv columns: {figname} (a merged trace "
+                        "or a corrupted plotted value fails this)", xy_ok))
         n_traced += 1
     checks.append(("at least one grouped figure's trace-fixed-coordinate contract was actually checked", n_traced > 0))
+    checks.append((f"plotted x/y values checked against sweep.csv for {n_points_checked} points across traced "
+                    "figures (L fix: the y value is now actually compared, not just computed and discarded)",
+                    n_points_checked > 0))
 
 
 RESULTS_TEXT_OBLIGATIONS = (
@@ -741,6 +892,14 @@ RESULTS_TEXT_OBLIGATIONS = (
     "one_pair_valid",                           # 200 vs 80 MHz comparison
     "quality_pass",                             # H3 gate anti-monotonicity fix
     "photons_per_cycle",                        # H3 gate anti-monotonicity fix
+    "photons_per_cycle_delivered",              # M4 fix: delivered per-cycle beside commanded
+    "depletion field",                          # H2 fix: field_kVcm on invalid rows is the depletion field
+    "F_pz_kVcm",                                # H2 fix: levels-only polarization-field replay
+    "DEMONSTRATES the anti-monotonicity",       # M3 fix: the pair that actually flips
+    "does NOT repair this loss-induced ordering",  # M5 fix
+    "share the SAME insufficient disc E_C/kT", # M6 fix
+    "pulsed replay of a CW measurement",        # L fix: renamed heading
+    "MEASURED leverage",                        # L fix: sensitivity ranking table
 )
 
 
@@ -800,6 +959,9 @@ def main(argv=None):
         check_invalid_preserved(core, checks)
         check_rti_fabrication_real(core, checks)
         check_plots(out, man, core, checks)
+        check_figure_captions(out, man, checks)
+        check_composition_counts(text, core, checks)
+        check_qcse_field_label(text, core, checks)
         check_results_text_obligations(text, checks)
         check_caps(man, quick, checks)
 

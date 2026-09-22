@@ -25,10 +25,10 @@ VERDICT: idealized_status=pass_hardware_infeasible family=vertical_photonic regi
 
 ## Best passing flux per family
 
-BEST_PASSING_FLUX family=horizontal_as_built value=2.27654e+06 row_id=CO00407 core_radius_nm=12.5 height_nm=3 x_in=0.25 T_hs=273 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=2.27654e+06 delivered_flux=84941.3 headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=7.40345e-10 quality_pass=True unrelaxed_partner_row_id=CO00405 unrelaxed_partner_flux=1.7782 bound_reversal=not_comparable optical_pass_candidates=94 headline_eligible_candidates=94
-BEST_PASSING_FLUX_300K family=horizontal_as_built value=1.97467e+06 row_id=CO00223 core_radius_nm=10 height_nm=4 x_in=0.25 T_hs=300 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=1.97467e+06 delivered_flux=116045 headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=4.29242e-11 quality_pass=True unrelaxed_partner_row_id=CO00221 unrelaxed_partner_flux=0.0450371 bound_reversal=not_comparable optical_pass_candidates=39 headline_eligible_candidates=39
-BEST_PASSING_FLUX family=vertical_photonic value=5.97635e+06 row_id=CO01992 core_radius_nm=80 height_nm=4 x_in=0.25 T_hs=230 rep_rate_hz=2e+08 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=5.97635e+06 delivered_flux=5.46023e+06 headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=5.77172e-11 quality_pass=True unrelaxed_partner_row_id=CO01990 unrelaxed_partner_flux=0.00530137 bound_reversal=not_comparable optical_pass_candidates=190 headline_eligible_candidates=79
-BEST_PASSING_FLUX_300K family=vertical_photonic value=4.35616e+06 row_id=CO02239 core_radius_nm=100 height_nm=3 x_in=0.4 T_hs=300 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=4.35616e+06 delivered_flux=3.5296e+06 headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=1.67158e-16 quality_pass=True unrelaxed_partner_row_id=CO02237 unrelaxed_partner_flux=0.0674613 bound_reversal=not_comparable optical_pass_candidates=48 headline_eligible_candidates=22
+BEST_PASSING_FLUX family=horizontal_as_built value=2.27654e+06 row_id=CO00407 core_radius_nm=12.5 height_nm=3 x_in=0.25 T_hs=273 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=2.27654e+06 delivered_flux=84941.3 photons_per_cycle_commanded=0.0284568 photons_per_cycle_delivered=0.00106177 (one delivered photon per 941.8 cycles) headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=7.40345e-10 quality_pass=True unrelaxed_partner_row_id=CO00405 unrelaxed_partner_flux=1.7782 bound_reversal=not_comparable optical_pass_candidates=94 headline_eligible_candidates=94
+BEST_PASSING_FLUX_300K family=horizontal_as_built value=1.97467e+06 row_id=CO00223 core_radius_nm=10 height_nm=4 x_in=0.25 T_hs=300 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=1.97467e+06 delivered_flux=116045 photons_per_cycle_commanded=0.0246834 photons_per_cycle_delivered=0.00145056 (one delivered photon per 689.4 cycles) headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=4.29242e-11 quality_pass=True unrelaxed_partner_row_id=CO00221 unrelaxed_partner_flux=0.0450371 bound_reversal=not_comparable optical_pass_candidates=39 headline_eligible_candidates=39
+BEST_PASSING_FLUX family=vertical_photonic value=5.97635e+06 row_id=CO01992 core_radius_nm=80 height_nm=4 x_in=0.25 T_hs=230 rep_rate_hz=2e+08 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=5.97635e+06 delivered_flux=5.46023e+06 photons_per_cycle_commanded=0.0298817 photons_per_cycle_delivered=0.0273012 (one delivered photon per 36.63 cycles) headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=5.77172e-11 quality_pass=True unrelaxed_partner_row_id=CO01990 unrelaxed_partner_flux=0.00530137 bound_reversal=not_comparable optical_pass_candidates=190 headline_eligible_candidates=79
+BEST_PASSING_FLUX_300K family=vertical_photonic value=4.35616e+06 row_id=CO02239 core_radius_nm=100 height_nm=3 x_in=0.4 T_hs=300 rep_rate_hz=8e+07 strain_bound=relaxed screening=0 regime=deterministic_pair commanded_flux=4.35616e+06 delivered_flux=3.5296e+06 photons_per_cycle_commanded=0.054452 photons_per_cycle_delivered=0.04412 (one delivered photon per 22.67 cycles) headline_eligible=True hardware_qualified=False rti_qualified=False blocked_load_probability=1.67158e-16 quality_pass=True unrelaxed_partner_row_id=CO02237 unrelaxed_partner_flux=0.0674613 bound_reversal=not_comparable optical_pass_candidates=48 headline_eligible_candidates=22
 
 ## Bounds table (conservative unrelaxed vs headline relaxed, reference geometry)
 
@@ -55,7 +55,7 @@ Comparable pairs (relaxed count): 17/1280 (17 reversed, 0 not reversed); not_com
 
 ## Repetition-rate sensitivity: 80 MHz vs 200 MHz SET one_pair_valid (family-asymmetric)
 
-one_pair_valid requires blocked_load_probability<=1e-9 (the disc must empty between cycles); a shorter 200 MHz period leaves less time per cycle for that reset than 80 MHz, so a one_pair_valid failure at 200 MHz where it holds at 80 MHz is a loading-window/period effect, not a fit. collected_flux_pulsed_s is the idealized/commanded flux, collected_flux_delivered_s is the RC-limited delivered flux (bullet 6). No row at any off-grid rate (e.g. the main grid's 80/200 MHz only) was evaluated this run.
+one_pair_valid requires blocked_load_probability<=1e-9 (the disc must empty between cycles); a shorter 200 MHz period leaves less time per cycle for that reset than 80 MHz, so a one_pair_valid failure at 200 MHz where it holds at 80 MHz is a loading-window/period effect, not a fit. collected_flux_pulsed_s is the idealized/commanded flux, collected_flux_delivered_s is the RC-limited delivered flux (bullet 6). No row at any OFF-GRID repetition rate was evaluated this run -- only this run's own main-grid values, 80 MHz and 200 MHz, were ever sampled.
 
 horizontal_as_built T_hs=230K: at 80 MHz one_pair_valid=False optical_pass=False blocked_load_probability=5.752516105036039e-08 (row CO00359, g2=0.179324136421946, flux=3457024.318770842, delivered=122866.09454133948); at 200 MHz one_pair_valid=False optical_pass=False blocked_load_probability=0.0014040041293181974 (row CO00360, g2=0.3168346309252512, flux=8630544.613331493, delivered=306776.87976046297).
 horizontal_as_built T_hs=300K: at 80 MHz one_pair_valid=False optical_pass=False blocked_load_probability=5.647793631516201e-08 (row CO00383, g2=0.1792890886443651, flux=3467714.52640254, delivered=128792.56555700889); at 200 MHz one_pair_valid=False optical_pass=False blocked_load_probability=0.0013932024440156097 (row CO00384, g2=0.3165284147670757, flux=8657131.143435951, delivered=321566.51162706804).
@@ -73,7 +73,7 @@ Measured (abstract-only [V], CONDITIONS INCOMPLETE): lambda~630 nm, lifetime 1.3
 
 Untouched OLD planar 2014 comparison replay (non-gating, unchanged from the prior piece): row LI02992, g2=0.9980609340138185, flux=0.018999124213812685 vs measured g2=0.29.
 
-## Deshpande 2013 comparison (10 K CW-equivalent, drive_mismatch)
+## Deshpande 2013 comparison (pulsed replay of a CW measurement, 10 K, drive_mismatch)
 
 Measured (CW electrical, 10 K, [V]): X g2 raw/corrected 0.30/0.16, XX 0.38/0.25 at 1 nA; g2-fit lifetimes X 1.1 ns, XX 0.7 ns; TRPL XX 711 ps; emission X=2.84 eV (436.56 nm). This evaluator has no CW/HBT drive path (pulsed rectangular / deterministic_pair only); the rows below are the pulsed model's own prediction at the paper's geometry/current, published as drive_mismatch -- never substituted for a predicted CW g2.
 
@@ -104,7 +104,8 @@ occupied_dot_access=1.0 at core_radius_nm=12.5 (row SN02753): 1/k_surface_X_ns=0
 ## E_C/kT wall (bullet 11 obligation)
 
 Across every deterministic_pair core row with core_radius_nm>=10 nm at 230-300 K: set_EC_over_kT spans 0.1464-0.7643 (required ec_margin=10), set_feasible=True count=0/1184; rti_feasible=True count=0/1136. Deterministic loading at 230-300 K fails the Coulomb-blockade screen for every core_radius_nm>=10 nm priced in this tier.
-The RT injector screen is SEPARATELY reported, not folded into the Coulomb wall above: rti_status=unknown_incomplete on 1184/1280 deterministic_pair rows, rti_transport_feasible=False on 1184/1280 -- these are conditional engineering screens on an unsupported occupation/second-pair control, NOT a demonstrated hardware failure by either charging mechanism; deterministic loading at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/g2_op/collected_flux_pulsed_s computed upstream of it.
+The RT injector screen is SEPARATELY reported, not folded into the Coulomb wall above: rti_status=unknown_incomplete on 1184/1280 deterministic_pair rows, rti_transport_feasible=False on 1280/1280 -- these are conditional engineering screens on an unsupported occupation/second-pair control, NOT a demonstrated hardware failure by either charging mechanism; deterministic loading at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/g2_op/collected_flux_pulsed_s computed upstream of it.
+Both priced charging-based loading mechanisms share the SAME insufficient disc E_C/kT: the RT-injector screen's own second_pair_addition_meV input is set_E_C_meV -- the identical Coulomb charging energy the set_EC_over_kT wall above already reports as an E_C/kT<10 failure at every core_radius_nm>=10 nm priced here. This is a CONDITIONAL MODEL LIMITATION shared by both screens' inputs (contract bullet 11's E_C/kT wall statement covers 'any charging mechanism priced in this tier'), never a demonstrated hardware failure of the RT-injector mechanism specifically (contract bullet 7: rti_feasible=False must not be reported as a demonstrated physics result).
 
 ## c-plane dipole prior falsification (Composition rules bullet 9)
 
@@ -112,21 +113,32 @@ isotropic default (row DW02970): degree_of_linear_polarization=0.839943532111586
 
 ## Gate anti-monotonicity (H3 obligation)
 
-one_pair_valid can be satisfied by ADDING sidewall loss (faster occupied-dot emptying) as readily as by improving device quality -- optical_pass/paired_optical_pass alone therefore do NOT certify throughput. quality_pass=optical_pass AND photons_per_cycle>=0.01 [A, orchestrator threshold: one collected photon per hundred cycles] is reported beside optical_pass/paired_optical_pass in every VERDICT line and the per-temperature tables below.
+one_pair_valid can be satisfied by ADDING sidewall loss (faster occupied-dot emptying) as readily as by improving device quality -- optical_pass/paired_optical_pass alone therefore do NOT certify throughput. quality_pass=optical_pass AND photons_per_cycle>=0.01 [A, orchestrator threshold: one collected photon per hundred cycles] is reported beside optical_pass/paired_optical_pass in every VERDICT line and the per-temperature tables below. M4 fix: photons_per_cycle (sweep.csv column) and quality_pass BOTH use COMMANDED flux (collected_flux_pulsed_s/rep_rate_hz), never the RC-limited delivered flux -- the BEST lines below additionally print a report-derived photons_per_cycle_delivered (collected_flux_delivered_s/rep_rate_hz) beside it so the commanded per-cycle number is never mistaken for what an RC-limited detector would actually see.
 
-S_cm_s and occupied_dot_access pairs at the horizontal reference geometry (300K, 200MHz, deterministic_pair, relaxed):
+S_cm_s pair that actually DEMONSTRATES the anti-monotonicity (selected programmatically: the (T_hs, rep_rate_hz) combination at the horizontal reference geometry where one_pair_valid flips False->True while collected_flux_pulsed_s FALLS; the 300K/200MHz reference-condition triple below does NOT demonstrate it -- one_pair_valid is False at all three S_cm_s values there):
+- S_cm_s=100.0 (lower surface loss, T_hs=230K, 80MHz) (row SN02681): one_pair_valid=False g2_op=0.18766432896768592 flux=4124930.72172916 quality_pass=False
+- S_cm_s=10000.0 (higher surface loss, T_hs=230K, 80MHz) (row SN02682): one_pair_valid=True g2_op=0.17355443393845815 flux=1319877.5375752521 quality_pass=True
+quality_pass (photons_per_cycle>=0.01) removes only ABSOLUTELY DIM optical passes; it does NOT repair this loss-induced ordering: row SN02682 (S_cm_s=10000.0) keeps quality_pass=True even though the 100x surface-recombination increase (S_cm_s 100.0->10000.0) cut its commanded flux 3.1x (4.125e+06->1.32e+06 /s).
+
+S_cm_s and occupied_dot_access triple/pair at the 300K/200MHz reference condition, for context only (S_cm_s here does NOT flip; occupied_dot_access DOES):
 - S_cm_s=100 (lower surface loss) (row SN02687): one_pair_valid=False g2_op=0.3656546763984454 flux=10297783.614345277 quality_pass=False
 - S_cm_s=1000 (main-grid default) (row CO00384): one_pair_valid=False g2_op=0.3165284147670757 flux=8657131.143435951 quality_pass=False
 - S_cm_s=10000 (higher surface loss) (row SN02688): one_pair_valid=False g2_op=0.17797379959021353 flux=3312159.633154987 quality_pass=False
 - occupied_dot_access=0.05 (main-grid default, lower loss) (row CO00384): one_pair_valid=False g2_op=0.3165284147670757 flux=8657131.143435951 quality_pass=False
 - occupied_dot_access=1.0 (higher loss) (row SN02768): one_pair_valid=True g2_op=0.1736349147052857 flux=1963808.9310572965 quality_pass=False
 
-Per-T_hs optical_pass counts, horizontal_as_built (both regimes), with x_in composition (read from the rows, never hardcoded):
-- horizontal_as_built/rectangular: T=230K:0(x_in0.25=0,x_in0.40=0) T=250K:0(x_in0.25=0,x_in0.40=0) T=273K:0(x_in0.25=0,x_in0.40=0) T=300K:0(x_in0.25=0,x_in0.40=0)
-- horizontal_as_built/deterministic_pair: T=230K:10(x_in0.25=3,x_in0.40=7) T=250K:16(x_in0.25=11,x_in0.40=5) T=273K:29(x_in0.25=26,x_in0.40=3) T=300K:39(x_in0.25=37,x_in0.40=2)
+Per-T_hs optical_pass counts, horizontal_as_built (both regimes, split by strain_bound), with x_in composition (read from the rows, never hardcoded):
+- horizontal_as_built/rectangular/unrelaxed: T=230K:0(x_in0.25=0,x_in0.40=0) T=250K:0(x_in0.25=0,x_in0.40=0) T=273K:0(x_in0.25=0,x_in0.40=0) T=300K:0(x_in0.25=0,x_in0.40=0)
+- horizontal_as_built/rectangular/relaxed: T=230K:0(x_in0.25=0,x_in0.40=0) T=250K:0(x_in0.25=0,x_in0.40=0) T=273K:0(x_in0.25=0,x_in0.40=0) T=300K:0(x_in0.25=0,x_in0.40=0)
+- horizontal_as_built/deterministic_pair/unrelaxed: T=230K:7(x_in0.25=0,x_in0.40=7) T=250K:5(x_in0.25=0,x_in0.40=5) T=273K:3(x_in0.25=0,x_in0.40=3) T=300K:2(x_in0.25=0,x_in0.40=2)
+- horizontal_as_built/deterministic_pair/relaxed: T=230K:3(x_in0.25=3,x_in0.40=0) T=250K:11(x_in0.25=11,x_in0.40=0) T=273K:26(x_in0.25=26,x_in0.40=0) T=300K:37(x_in0.25=37,x_in0.40=0)
 
-x_in=0.40 RELAXED (2014 composition, headline strain bound) optical passes: 64 in either family this run (row_ids=CO01575,CO01583,CO01591,CO01599,CO01639,CO01647,CO01655,CO01663...) -- the reduced quick-mode coverage is NOT the full main grid; see the full run's own count here for the mandated-coverage statement.
-x_in=0.40 UNRELAXED optical passes: 17, collected_flux_pulsed_s spans 1014-5290 /s, rep_rate_hz values present: [80000000.0, 200000000.0], row_ids=CO00037,CO00038,CO00045,CO00046,CO00054,CO00062,CO00102,CO00110... -- these are the ONLY x_in=0.40 optical passes in either family this run.
+Composition of optical passes, per family (counted from the rows; see the definition of 'entirely'/'both compositions' inline):
+HORIZONTAL (horizontal_as_built) RELAXED optical passes: 77 total (x_in=0.25: 77, x_in=0.40: 0) -- ENTIRELY x_in=0.25, no relaxed x_in=0.40 optical pass this run.
+HORIZONTAL (horizontal_as_built) x_in=0.40 UNRELAXED optical passes: 17 total (the only x_in=0.40 passes in THIS family), collected_flux_pulsed_s spans 1014-5290 /s, row_ids=CO00037,CO00038,CO00045,CO00046,CO00054,CO00062,CO00102,CO00110....
+VERTICAL (vertical_photonic) RELAXED optical passes: 190 total (x_in=0.25: 126, x_in=0.40: 64) -- this family passes at BOTH compositions this run.
+VERTICAL (vertical_photonic) x_in=0.40 UNRELAXED optical passes: 0 total.
+Across BOTH families this run: 81/284 optical passes are x_in=0.40 -- the horizontal family's x_in=0.40 passes are UNRELAXED-only, while the vertical family also passes at x_in=0.40 under the RELAXED bound (see the per-family lines above); the earlier 'these are the only x_in=0.40 passes in either family' claim was HORIZONTAL-only and is not repeated here.
 
 ## Per-temperature counts (M9-M10 obligation)
 
@@ -153,24 +165,24 @@ x_in=0.40 UNRELAXED optical passes: 17, collected_flux_pulsed_s spans 1014-5290 
 
 One nominated row per (family,regime,strain_bound,rep_rate_hz) group -- the brightest optical_pass row in that group (headline_eligible additionally required for vertical_photonic, H2/bullet 10); 'none' if the group has no such row.
 
-| family | regime | strain_bound | rep_rate_hz | row_id | commanded_flux/s | g2_op | headline_eligible | quality_pass |
-|---|---|---|---|---|---|---|---|---|
-| horizontal_as_built | rectangular | unrelaxed | 8e+07 | none | | | False | |
-| horizontal_as_built | rectangular | unrelaxed | 2e+08 | none | | | False | |
-| horizontal_as_built | rectangular | relaxed | 8e+07 | none | | | False | |
-| horizontal_as_built | rectangular | relaxed | 2e+08 | none | | | False | |
-| horizontal_as_built | deterministic_pair | unrelaxed | 8e+07 | CO00037 | 2124.32 | 0.17355371900826455 | True | False |
-| horizontal_as_built | deterministic_pair | unrelaxed | 2e+08 | CO00038 | 5290.03 | 0.17355371900826455 | True | False |
-| horizontal_as_built | deterministic_pair | relaxed | 8e+07 | CO00407 | 2.27654e+06 | 0.17491140858775645 | True | True |
-| horizontal_as_built | deterministic_pair | relaxed | 2e+08 | CO00992 | 1.91507e+06 | 0.17487446045397337 | True | False |
-| vertical_photonic | rectangular | unrelaxed | 8e+07 | none | | | False | |
-| vertical_photonic | rectangular | unrelaxed | 2e+08 | none | | | False | |
-| vertical_photonic | rectangular | relaxed | 8e+07 | none | | | False | |
-| vertical_photonic | rectangular | relaxed | 2e+08 | none | | | False | |
-| vertical_photonic | deterministic_pair | unrelaxed | 8e+07 | none | | | False | |
-| vertical_photonic | deterministic_pair | unrelaxed | 2e+08 | none | | | False | |
-| vertical_photonic | deterministic_pair | relaxed | 8e+07 | CO02279 | 4.59824e+06 | 0.17363770828071723 | True | True |
-| vertical_photonic | deterministic_pair | relaxed | 2e+08 | CO01992 | 5.97635e+06 | 0.17413411911590182 | True | True |
+| family | regime | strain_bound | rep_rate_hz | row_id | commanded_flux/s | photons_per_cycle_delivered | blocked_load_probability | g2_op | headline_eligible | quality_pass |
+|---|---|---|---|---|---|---|---|---|---|---|
+| horizontal_as_built | rectangular | unrelaxed | 8e+07 | none | | | | | False | |
+| horizontal_as_built | rectangular | unrelaxed | 2e+08 | none | | | | | False | |
+| horizontal_as_built | rectangular | relaxed | 8e+07 | none | | | | | False | |
+| horizontal_as_built | rectangular | relaxed | 2e+08 | none | | | | | False | |
+| horizontal_as_built | deterministic_pair | unrelaxed | 8e+07 | CO00037 | 2124.32 | 1.421e-06 | 0 | 0.17355371900826455 | True | False |
+| horizontal_as_built | deterministic_pair | unrelaxed | 2e+08 | CO00038 | 5290.03 | 1.415e-06 | 0 | 0.17355371900826455 | True | False |
+| horizontal_as_built | deterministic_pair | relaxed | 8e+07 | CO00407 | 2.27654e+06 | 0.001062 | 7.403e-10 | 0.17491140858775645 | True | True |
+| horizontal_as_built | deterministic_pair | relaxed | 2e+08 | CO00992 | 1.91507e+06 | 0.0001517 | 6.815e-10 | 0.17487446045397337 | True | False |
+| vertical_photonic | rectangular | unrelaxed | 8e+07 | none | | | | | False | |
+| vertical_photonic | rectangular | unrelaxed | 2e+08 | none | | | | | False | |
+| vertical_photonic | rectangular | relaxed | 8e+07 | none | | | | | False | |
+| vertical_photonic | rectangular | relaxed | 2e+08 | none | | | | | False | |
+| vertical_photonic | deterministic_pair | unrelaxed | 8e+07 | none | | | | | False | |
+| vertical_photonic | deterministic_pair | unrelaxed | 2e+08 | none | | | | | False | |
+| vertical_photonic | deterministic_pair | relaxed | 8e+07 | CO02279 | 4.59824e+06 | 0.04571 | 1.747e-13 | 0.17363770828071723 | True | True |
+| vertical_photonic | deterministic_pair | relaxed | 2e+08 | CO01992 | 5.97635e+06 | 0.0273 | 5.772e-11 | 0.17413411911590182 | True | True |
 
 ## Ensemble-yield proxy at 10K/300K vs measured 0.52 (M9-M10 obligation, non-gating)
 
@@ -200,26 +212,62 @@ yield_300K=0.362864, yield_10K=0.81843, MODEL PROXY ratio=0.443367 -- vs measure
 
 Reconciliation: planar c-plane SET, screening=1, 300 K (row PR02983): 25642.788985855634 /s (round 2's own optimized headline was a DIFFERENT, separately optimized design point ~28 kHz/s, not this screened-default card row -- the two must not be conflated) vs this run's nanowire optical_pass collected_flux_pulsed_s range 1014-6.154e+06 /s. The nanowire tier's higher flux is attributed to: a single-wire supply without the planar aperture partition, relaxed (piezoelectric-field-free) strain raising overlap and suppressing surface escape, and antenna/waveguide collection geometry differing from the planar cavity -- qualitative mechanism attributions, not a controlled one-parameter comparison between the two platforms.
 
-## Numerical sensitivity table, ranked by headline leverage (M9-M10 obligation)
+## Numerical sensitivity table, ranked by MEASURED leverage (M9-M10/L obligation)
 
-Expected ranking order (orchestrator decision): occupied_dot_access, tau_rad0_ns/dipole prior (proxied below by the c-plane dipole-prior falsification rows -- tau_rad0_ns itself is not sampled this run, see 'Reduced-cut coverage'), contact R_s_ohm (C_parasitic_F not sampled this run), S_cm_s, shell, screening_fraction; b_res is expected to move g2 only, not flux (verified in the table below: its flux_ratio_to_reference is 1.0).
+Ranking is measured from this run's own rows, separately per family and per observable -- never a single mixed narrative ordering.
 
-| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |
-|---|---|---|---|---|---|---|---|---|
-| (reference) | main-grid default | 0.3165284147670757 | 8657131.143435951 | 1.0 | False | False | False | CO00384 |
-| R_s_ohm | 1000000.0 | 0.31653394196232165 | 8657207.554713154 | 1 | False | False | False | SN02960 |
-| S_cm_s | 100.0 | 0.3656546763984454 | 10297783.614345277 | 1.19 | False | False | False | SN02687 |
-| S_cm_s | 10000.0 | 0.17797379959021353 | 3312159.633154987 | 0.3826 | False | False | False | SN02688 |
-| al_fraction | 0.2 | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02800 |
-| alignment_uncertainty_meV | 30.0 | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02864 |
-| b_res | 0.02 | 0.2184923908909121 | 8657131.143435951 | 1 | False | False | False | SN02640 |
-| growth_tolerance_steps | 2.0 | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02832 |
-| injector_barrier_thickness_nm | 1.0 | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02928 |
-| occupation_control_uncertainty | True | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02896 |
-| occupied_dot_access | 1.0 | 0.1736349147052857 | 1963808.9310572965 | 0.2268 | True | True | False | SN02768 |
-| screening_fraction | 0.0 | 0.3165284147670757 | 8657131.143435951 | 1 | False | False | False | SN02591 |
-| screening_fraction | 1.0 | 0.3153438449500987 | 8671952.281091604 | 1.002 | False | False | False | SN02592 |
-| shell | AlGaN | 0.3656546763984454 | 10171773.983798828 | 1.175 | False | False | False | SN02736 |
+### horizontal_as_built
+
+Reference row: CO00384 g2_op=0.3165284147670757 commanded_flux=8657131.143435951 delivered_flux=321566.51162706804
+
+Ranked by commanded flux |ratio-1| (measured leverage): occupied_dot_access(0.773), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), R_s_ohm(8.83e-06), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by delivered flux |ratio-1| (measured leverage): R_s_ohm(25.9), occupied_dot_access(0.773), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by g2_op |delta| (measured leverage): occupied_dot_access(0.143), S_cm_s(0.139), b_res(0.098), shell(0.0491), screening_fraction(0.00118), R_s_ohm(5.53e-06), al_fraction(0), alignment_uncertainty_meV(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+
+(the contact R_s_ohm row has ratio~1.0 on commanded flux -- it only changes delivered flux via the RC time constant, never the idealized/commanded flux.)
+
+| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |
+|---|---|---|---|---|---|---|---|---|---|---|
+| (reference) | main-grid default | 0.3165284147670757 | 8657131.143435951 | 1.0 | 321566.51162706804 | 1.0 | False | False | False | CO00384 |
+| occupied_dot_access | 1.0 | 0.1736349147052857 | 1963808.9310572965 | 0.2268 | 72945.08735044302 | 0.2268 | True | True | False | SN02768 |
+| S_cm_s | 100.0 | 0.3656546763984454 | 10297783.614345277 | 1.19 | 382508.05024089216 | 1.19 | False | False | False | SN02687 |
+| S_cm_s | 10000.0 | 0.17797379959021353 | 3312159.633154987 | 0.3826 | 123029.16538271548 | 0.3826 | False | False | False | SN02688 |
+| shell | AlGaN | 0.3656546763984454 | 10171773.983798828 | 1.175 | 377827.46071823477 | 1.175 | False | False | False | SN02736 |
+| screening_fraction | 0.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02591 |
+| screening_fraction | 1.0 | 0.3153438449500987 | 8671952.281091604 | 1.002 | 322117.0382682204 | 1.002 | False | False | False | SN02592 |
+| R_s_ohm | 1000000.0 | 0.31653394196232165 | 8657207.554713154 | 1 | 8657207.554713154 | 26.92 | False | False | False | SN02960 |
+| al_fraction | 0.2 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02800 |
+| alignment_uncertainty_meV | 30.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02864 |
+| b_res | 0.02 | 0.2184923908909121 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02640 |
+| growth_tolerance_steps | 2.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02832 |
+| injector_barrier_thickness_nm | 1.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02928 |
+| occupation_control_uncertainty | True | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02896 |
+
+### vertical_photonic
+
+Reference row: CO01920 g2_op=0.18360081169386988 commanded_flux=9716146.139613492 delivered_flux=8935111.502103966
+
+Ranked by commanded flux |ratio-1| (measured leverage): occupied_dot_access(0.192), S_cm_s(0.101), shell(0.0425), screening_fraction(0.0205), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by delivered flux |ratio-1| (measured leverage): occupied_dot_access(0.192), S_cm_s(0.101), shell(0.0425), screening_fraction(0.0205), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by g2_op |delta| (measured leverage): b_res(0.132), occupied_dot_access(0.00697), S_cm_s(0.00431), screening_fraction(0.000585), shell(0.000577), al_fraction(0), alignment_uncertainty_meV(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+
+
+
+| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |
+|---|---|---|---|---|---|---|---|---|---|---|
+| (reference) | main-grid default | 0.18360081169386988 | 9716146.139613492 | 1.0 | 8935111.502103966 | 1.0 | False | False | False | CO01920 |
+| occupied_dot_access | 1.0 | 0.17663266881313455 | 7851673.319151593 | 0.8081 | 7220514.757253847 | 0.8081 | False | False | False | SN02784 |
+| S_cm_s | 100.0 | 0.1841778750087586 | 9826678.12954954 | 1.011 | 9036758.352659397 | 1.011 | False | False | False | SN02719 |
+| S_cm_s | 10000.0 | 0.17929547780047272 | 8733757.21437212 | 0.8989 | 8031692.136098741 | 0.8989 | False | False | False | SN02720 |
+| shell | AlGaN | 0.18417787500875837 | 10128721.810067073 | 1.042 | 9314522.182592627 | 1.042 | False | False | False | SN02752 |
+| screening_fraction | 0.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02623 |
+| screening_fraction | 1.0 | 0.18418554198214543 | 9915424.030337261 | 1.021 | 9118370.39384097 | 1.021 | False | False | False | SN02624 |
+| al_fraction | 0.2 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02816 |
+| alignment_uncertainty_meV | 30.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02880 |
+| b_res | 0.02 | 0.051433710524236065 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02656 |
+| growth_tolerance_steps | 2.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02848 |
+| injector_barrier_thickness_nm | 1.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02944 |
+| occupation_control_uncertainty | True | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02912 |
 
 tau_rad0_ns/dipole-prior leverage proxy (from the c-plane dipole-prior falsification rows above): switching dipole_weights from isotropic to CPLANE_ONLY materially changes antenna_rate_factor/tau_rad_photonic_ns/commanded flux (see that section's row values) -- a qualitative leverage indicator, not a numeric ranking-table entry, since it sweeps an orientation prior rather than the tau_rad0_ns magnitude (not sampled this run).
 
@@ -258,7 +306,7 @@ NOTE: 'si_complex_index' alone accounts for 192/205 (94 percent) of all invalid 
 
 ### QCSE excursion physics paragraph (H4 obligation)
 
-The 192 rows above are the unrelaxed (conservative_lower), x_in=0.40, height_nm in [3.0, 4.0] disc geometries: the built-in piezoelectric field this strain bound carries (this run's own field_kVcm on a representative row, CO00161: 43.43 kV/cm) drives the quantum-confined Stark effect (QCSE) far enough to red-shift emission to 0.898-1.74 um, past the photonics module's own 750 nm table ceiling -- an excursion this run reports as MISSING (invalid), never silently repaired. Their relaxed strain-bound partner (strain_fraction=0, no piezoelectric field) is valid for 192/192 of these rows and invalid/absent for 0/192 -- i.e. the conservative (unrelaxed) bound is ABSENT at exactly these x_in=0.40, thick-disc geometries where only the relaxed bound is computable this run, an asymmetry the bounds table and headline selection must not paper over by silently reporting only the relaxed side.
+The 192 rows above are the unrelaxed (conservative_lower), x_in=0.40, height_nm in [3.0, 4.0] disc geometries. field_kVcm on an INVALID row like these is the transport DEPLETION field alone (fsim_core/nitride_nanowire_device.py's invalid-row fallback captures inj['depletion_field_kVcm'] before the row goes invalid), NOT the built-in piezoelectric field -- this run's own field_kVcm on the representative row (deterministic rule: smallest row_id among the 192 affected rows), CO00161: 43.43 kV/cm depletion field. The actual polarization field driving QCSE is reported separately: a levels-only replay (fsim_core.nitride_nanowire_levels, unrelaxed bound, this row's own x_in/height_nm/core_radius_nm, external_field_kVcm set to this row's OWN recorded field_kVcm as the resolved depletion field, per device.py's own post-feedback convention) gives F_pz_kVcm=-6582.28, total_field_kVcm=-6426.02. This field drives the quantum-confined Stark effect (QCSE) far enough to red-shift emission to 0.898-1.74 um, past the photonics module's own 750 nm table ceiling -- an excursion this run reports as MISSING (invalid), never silently repaired. Their relaxed strain-bound partner (strain_fraction=0, no piezoelectric field) is valid for 192/192 of these rows and invalid/absent for 0/192 -- i.e. the conservative (unrelaxed) bound is ABSENT at exactly these x_in=0.40, thick-disc geometries where only the relaxed bound is computable this run, an asymmetry the bounds table and headline selection must not paper over by silently reporting only the relaxed side.
 
 ## Decisions (conservative choices under ambiguity)
 
