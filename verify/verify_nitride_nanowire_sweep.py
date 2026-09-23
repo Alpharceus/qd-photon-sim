@@ -259,6 +259,49 @@ def check_rti_fabrication_fixture(checks):
                     rti_fabricated_pass(True, True) is False))
 
 
+def check_csv_nan_bool_coercion_fixture(checks):
+    """H1 fix, mutation-sensitivity fixture: a boolean column's underlying
+    scalar can be a real Python None/float('nan') on rows where the
+    predicate does not apply (e.g. rti_transport_feasible on rti_status=
+    not_applicable rows); csv.DictWriter's str() rendering turns that into
+    the literal CSV token "nan" (or "NaN"/"None"), which the OLD
+    scripts.run_nitride_nanowire._coerce_csv_row's `v == ""` guard did NOT
+    catch, so it fell through to `(v == "True")` and silently became False.
+    Exercised entirely in memory -- a csv.DictReader row is already just a
+    dict of strings, so no temp CSV file is needed to reproduce this."""
+    checks.append(("_coerce_csv_row maps the CSV token 'nan' in a boolean column to None, never False (H1 fix)",
+                    m._coerce_csv_row({"rti_transport_feasible": "nan"})["rti_transport_feasible"] is None))
+    for token in ("NaN", "NAN", "None", "none", ""):
+        checks.append((f"_coerce_csv_row maps the CSV token {token!r} in a boolean column to None",
+                        m._coerce_csv_row({"set_feasible": token})["set_feasible"] is None))
+    checks.append(("_coerce_csv_row still correctly parses a genuine 'False' token in a boolean column",
+                    m._coerce_csv_row({"optical_pass": "False"})["optical_pass"] is False))
+    checks.append(("_coerce_csv_row still correctly parses a genuine 'True' token in a boolean column",
+                    m._coerce_csv_row({"valid": "True"})["valid"] is True))
+    g2_coerced = m._coerce_csv_row({"g2_op": "nan"})["g2_op"]
+    checks.append(("_coerce_csv_row leaves a NON-boolean numeric column's 'nan' token as a float NaN (only "
+                    "boolean columns get the None treatment)", isinstance(g2_coerced, float) and math.isnan(g2_coerced)))
+
+    # Regression count: a small synthetic row set, exactly as csv.DictReader
+    # would hand it back (every value a string), mixing applicable (False)
+    # and not_applicable (nan-token) rti_transport_feasible rows -- the OLD
+    # bug counted ALL FOUR as False; the fix must count only the two
+    # genuinely-applicable ones.
+    synth = [
+        {"rti_status": "unknown_incomplete", "rti_transport_feasible": "False"},
+        {"rti_status": "unknown_incomplete", "rti_transport_feasible": "False"},
+        {"rti_status": "not_applicable", "rti_transport_feasible": "nan"},
+        {"rti_status": "not_applicable", "rti_transport_feasible": "nan"},
+    ]
+    coerced = [m._coerce_csv_row(r) for r in synth]
+    n_false = sum(1 for r in coerced if r.get("rti_transport_feasible") is False)
+    n_not_na = sum(1 for r in coerced if r.get("rti_status") != "not_applicable")
+    checks.append(("synthetic fixture: rti_transport_feasible=False count EXCLUDES the not_applicable/'nan'-"
+                    "token rows (2 of 4, not the old bug's 4 of 4)", n_false == 2))
+    checks.append(("synthetic fixture: the False count equals the count of rows whose rti_status is NOT "
+                    "not_applicable (the H1 denominator invariant)", n_false == n_not_na))
+
+
 def check_bound_partner_and_duplicate_fixtures(checks):
     """Synthetic (no artifacts) exercise of find_bound_partner/
     duplicate_core_coords -- directly demonstrates the 'dropping a bound'
@@ -782,18 +825,86 @@ def check_qcse_field_label(text, core, checks):
                             "printed F_pz_kVcm/total_field_kVcm numbers", replay_ok))
 
 
+def check_rti_transport_feasible_denominator(text, core, checks):
+    """H1 fix, artifact-mode regression check: independently recompute, from
+    sweep.csv's own deterministic_pair core rows via THIS file's own
+    as_bool() (never scripts/run_nitride_nanowire.py's _coerce_csv_row),
+    the rti_transport_feasible=False count and cross-check it against
+    results.md's printed 'rti_transport_feasible=False on N/M' line -- a
+    regression guard against the fixed bug where the 96 rti_status=
+    not_applicable rows (a 'nan' CSV token in that boolean column) were
+    silently counted as False, inflating N to M. The printed denominator M
+    equals the total deterministic_pair core row count; the correct
+    numerator N equals the number of those rows whose rti_status is NOT
+    not_applicable (contract: the artifact-mode check the H1 fix requires)."""
+    set_rows = [r for r in core if r.get("row_kind") == "core" and r.get("regime") == "deterministic_pair"]
+    n_total = len(set_rows)
+    n_not_na = sum(1 for r in set_rows if r.get("rti_status") != "not_applicable")
+    n_false = sum(1 for r in set_rows if as_bool(r.get("rti_transport_feasible")) is False)
+    checks.append(("rti_transport_feasible=False count equals the number of deterministic_pair core rows whose "
+                    "rti_status is NOT not_applicable (H1 fix denominator invariant: the not_applicable/'nan' "
+                    f"rows must never be counted as False; n_false={n_false} n_not_applicable_excluded="
+                    f"{n_total - n_not_na})", n_false == n_not_na))
+    mo = re.search(r"rti_transport_feasible=False on (\d+)/(\d+)", text)
+    checks.append(("results.md's printed rti_transport_feasible=False count/total matches an independent "
+                    f"recount from sweep.csv (expected {n_false}/{n_total})",
+                    bool(mo) and int(mo.group(1)) == n_false and int(mo.group(2)) == n_total))
+
+
+def _footer_bbox_ok(bbox):
+    """L4 fix: a recorded footer bbox (scripts/run_nitride_nanowire.py's
+    _footer_bbox_fraction, stored per figure at plot_row_mapping[fig]
+    ["__footer_bbox__"]) is a fraction of the FINAL saved PNG -- it is only
+    valid, i.e. the footer is NOT clipped, if fully inside that image: 0 <=
+    x0 < x1 <= 1 and 0 <= y0 < y1 <= 1. This is a real geometric assertion
+    on where matplotlib actually rendered the footer, never just an
+    imread() round-trip (which succeeds on a badly clipped image too)."""
+    if not isinstance(bbox, dict):
+        return False
+    try:
+        x0, x1 = float(bbox["x0_frac"]), float(bbox["x1_frac"])
+        y0, y1 = float(bbox["y0_frac"]), float(bbox["y1_frac"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if not all(math.isfinite(v) for v in (x0, x1, y0, y1)):
+        return False
+    return 0.0 <= x0 < x1 <= 1.0 and 0.0 <= y0 < y1 <= 1.0
+
+
+def check_footer_bbox_fixture(checks):
+    """L4 fix, mutation-sensitivity fixture (no artifacts needed): a footer
+    bbox whose right/left/bottom edge falls outside the saved PNG (a
+    clipped footer) must be REJECTED by _footer_bbox_ok, not silently
+    accepted the way a bare imread() success would accept it."""
+    good = {"x0_frac": 0.08, "x1_frac": 0.92, "y0_frac": 0.95, "y1_frac": 0.995}
+    checks.append(("_footer_bbox_ok accepts a footer bbox fully inside the saved PNG", _footer_bbox_ok(good) is True))
+    checks.append(("_footer_bbox_ok rejects a footer whose RIGHT edge falls outside the saved PNG (clipped)",
+                    _footer_bbox_ok(dict(good, x1_frac=1.15)) is False))
+    checks.append(("_footer_bbox_ok rejects a footer whose LEFT edge falls outside the saved PNG (clipped)",
+                    _footer_bbox_ok(dict(good, x0_frac=-0.05)) is False))
+    checks.append(("_footer_bbox_ok rejects a footer extending past the BOTTOM of the saved PNG (clipped)",
+                    _footer_bbox_ok(dict(good, y1_frac=1.02)) is False))
+    checks.append(("_footer_bbox_ok rejects a missing/malformed bbox",
+                    _footer_bbox_ok(None) is False and _footer_bbox_ok({}) is False))
+
+
 def check_figure_captions(out, man, checks):
     """M7 fix fixture: every exported figure carries the SAME one-line
     qualification footer (recorded into plot_row_mapping's own
     "__caption__" entry) and round-trips through matplotlib.image.imread
     without error -- "open the PNGs (matplotlib reads them back) and
-    assert the footer text exists"."""
+    assert the footer text exists". L4 fix: additionally assert the
+    footer's own recorded bbox (__footer_bbox__) is fully inside the saved
+    PNG -- i.e. the footer's rightmost/bottommost pixel column/row is
+    inside the PNG's actual pixel dimensions -- never just that the file
+    decodes."""
     mapping = man.get("plot_row_mapping", {})
     expected_figs = ("g2_flux_vs_core_radius.png", "g2_flux_vs_disc_thickness.png", "g2_flux_vs_ths.png",
                       "delivered_vs_commanded_flux.png", "hardware_screens.png", "strain_reversal_map.png")
     ok_caption = True
     ok_common = True
     ok_readable = True
+    ok_bbox = True
     for figname in expected_figs:
         contract = mapping.get(figname) or {}
         caption = contract.get("__caption__")
@@ -804,6 +915,7 @@ def check_figure_captions(out, man, checks):
         p = out / figname
         if not p.is_file():
             ok_readable = False
+            ok_bbox = False
             continue
         try:
             import matplotlib
@@ -812,14 +924,32 @@ def check_figure_captions(out, man, checks):
             img = mpimg.imread(str(p))
             if img is None or img.shape[0] < 10 or img.shape[1] < 10:
                 ok_readable = False
+                png_w = png_h = None
+            else:
+                png_h, png_w = img.shape[0], img.shape[1]
         except Exception:
             ok_readable = False
+            png_w = png_h = None
+        bbox = contract.get("__footer_bbox__")
+        if not _footer_bbox_ok(bbox):
+            ok_bbox = False
+        elif png_w is not None:
+            # Literal L4 ask: "the footer's rightmost pixel column is
+            # inside the PNG width from a stored bbox" -- convert the
+            # recorded fraction to actual pixel columns/rows of THIS run's
+            # own saved PNG and check both edges land inside it.
+            x1_px = bbox["x1_frac"] * png_w
+            y1_px = bbox["y1_frac"] * png_h
+            if not (0.0 <= x1_px <= png_w and 0.0 <= y1_px <= png_h):
+                ok_bbox = False
     checks.append(("every exported figure's plot_row_mapping carries a non-empty '__caption__' footer string "
                     "(M7/L18: one-line qualification on every figure)", ok_caption))
     checks.append(("every exported figure's caption carries the SAME common qualification sentence "
                     "(M7: not distributed piecemeal)", ok_common))
     checks.append(("every exported figure PNG round-trips through matplotlib.image.imread without error",
                     ok_readable))
+    checks.append(("every exported figure's recorded footer bbox is fully inside its saved PNG's actual pixel "
+                    "dimensions (L4 fix: a real clipped-footer detector, not just an imread round-trip)", ok_bbox))
 
 
 def check_plots(out, man, core, checks):
@@ -844,7 +974,7 @@ def check_plots(out, man, core, checks):
             continue
         xy_ok = True
         for key, entry in contract.items():
-            if key == "__caption__":
+            if key in ("__caption__", "__footer_bbox__"):
                 continue
             # L fix: `key` is the contract's OWN "family|y_key|label"
             # construction (see scripts/run_nitride_nanowire.py's
@@ -873,8 +1003,62 @@ def check_plots(out, man, core, checks):
                         "or a corrupted plotted value fails this)", xy_ok))
         n_traced += 1
     checks.append(("at least one grouped figure's trace-fixed-coordinate contract was actually checked", n_traced > 0))
+
+    # L3 fix: the RC figure (plot_delivered_vs_commanded) and the hardware
+    # figure (plot_hardware_screens) use their OWN contract key shapes,
+    # neither of which is the "family|y_key|label" convention the loop
+    # above parses -- they were previously entirely unchecked. Extend the
+    # y-value comparison to both so every mapped point across every figure
+    # is compared, not just the three plot_vs_axis figures.
+    rc_contract = mapping.get("delivered_vs_commanded_flux.png") or {}
+    rc_ok = True
+    n_rc_checked = 0
+    for key, entry in rc_contract.items():
+        if key in ("__caption__", "__footer_bbox__"):
+            continue
+        for rid, xv, yv in zip(entry["row_ids"], entry["x"], entry["y"]):
+            row = all_rows.get(rid)
+            if row is None:
+                rc_ok = False
+                continue
+            if not close_nan_safe(f(row.get("collected_flux_pulsed_s")), xv):
+                rc_ok = False
+            if not close_nan_safe(f(row.get("collected_flux_delivered_s")), yv):
+                rc_ok = False
+            n_rc_checked += 1
+    checks.append((f"delivered_vs_commanded_flux.png: every plotted (commanded, delivered) point matches its "
+                    f"row_id's own sweep.csv columns ({n_rc_checked} points checked)",
+                    rc_ok and n_rc_checked > 0))
+    n_points_checked += n_rc_checked
+
+    hw_contract = mapping.get("hardware_screens.png") or {}
+    hw_ok = True
+    n_hw_checked = 0
+    for key, entry in hw_contract.items():
+        if key in ("__caption__", "__footer_bbox__"):
+            continue
+        # hardware_screens' own contract key is "y_key|family" (the
+        # y_key/family order is REVERSED from plot_vs_axis's "family|
+        # y_key|label" convention -- see plot_hardware_screens).
+        ykey = key.split("|", 1)[0]
+        for rid, xv, yv in zip(entry["row_ids"], entry["x"], entry["y"]):
+            row = all_rows.get(rid)
+            if row is None:
+                hw_ok = False
+                continue
+            if not close_nan_safe(row.get("core_radius_nm"), xv):
+                hw_ok = False
+            if not close_nan_safe(f(row.get(ykey)), yv):
+                hw_ok = False
+            n_hw_checked += 1
+    checks.append((f"hardware_screens.png: every plotted (core_radius_nm, {{set_EC_over_kT,rti_bypass_fraction,"
+                    f"rti_alignment_error_e_meV}}) point matches its row_id's own sweep.csv columns "
+                    f"({n_hw_checked} points checked)", hw_ok and n_hw_checked > 0))
+    n_points_checked += n_hw_checked
+
     checks.append((f"plotted x/y values checked against sweep.csv for {n_points_checked} points across traced "
-                    "figures (L fix: the y value is now actually compared, not just computed and discarded)",
+                    "figures (L fix: the y value is now actually compared, not just computed and discarded; L3 "
+                    "fix: the RC and hardware figures are now included, not just the three plot_vs_axis figures)",
                     n_points_checked > 0))
 
 
@@ -901,6 +1085,46 @@ RESULTS_TEXT_OBLIGATIONS = (
     "pulsed replay of a CW measurement",        # L fix: renamed heading
     "MEASURED leverage",                        # L fix: sensitivity ranking table
 )
+
+
+def check_dipole_weights_ranking(text, core, checks):
+    """M2 fix: build_dipole_falsification() evaluates DW02970/DW02971 ONLY
+    in the rectangular regime (it never overrides full_defaults'
+    regime="rectangular" default); the sensitivity-ranking table's
+    per-axis filter used to hardcode regime="deterministic_pair" for every
+    axis, so dipole_weights matched zero rows there and was printed with a
+    leverage of 0. Independently recompute its commanded-flux leverage
+    from sweep.csv (against the SAME family's rectangular-regime reference
+    row at the reference geometry) and cross-check it is printed, nonzero,
+    in the horizontal_as_built commanded-flux ranking line."""
+    dw = [r for r in core if r.get("sensitivity_axis") == "dipole_weights"]
+    checks.append(("dipole_weights rows are present to check the M2 ranking fix on", len(dw) > 0))
+    if not dw:
+        return
+    ref_row = next((r for r in core if r.get("row_kind") == "core" and r.get("family") == "horizontal_as_built"
+                     and r.get("regime") == "rectangular" and r.get("strain_bound") == "relaxed"
+                     and close_nan_safe(r.get("T_hs"), 300.0) and close_nan_safe(r.get("rep_rate_hz"), 200.0e6)
+                     and close_nan_safe(r.get("core_radius_nm"), f(dw[0].get("core_radius_nm")))
+                     and close_nan_safe(r.get("height_nm"), f(dw[0].get("height_nm")))
+                     and close_nan_safe(r.get("x_in"), f(dw[0].get("x_in")))), None)
+    checks.append(("dipole_weights' own rectangular-regime reference row is present in this run's core coverage",
+                    ref_row is not None))
+    if ref_row is None or not isfin(ref_row.get("collected_flux_pulsed_s")):
+        return
+    ref_flux = f(ref_row.get("collected_flux_pulsed_s"))
+    fluxes = [f(r.get("collected_flux_pulsed_s")) for r in dw if isfin(r.get("collected_flux_pulsed_s"))]
+    lev = max(abs(v / ref_flux - 1.0) for v in fluxes) if fluxes else 0.0
+    sec = text.split("### horizontal_as_built", 1)
+    body = sec[1].split("### vertical_photonic", 1)[0] if len(sec) > 1 else ""
+    mo = re.search(r"Ranked by commanded flux \|ratio-1\| \(measured leverage\): ([^\n]+)", body)
+    lev_pat = re.escape(f"{lev:.3g}")
+    checks.append((f"results.md's horizontal_as_built commanded-flux ranking line lists dipole_weights with a "
+                    f"NONZERO leverage matching an independent recount from sweep.csv (expected {lev:.3g}, "
+                    "not the old bug's 0)",
+                    bool(mo) and re.search(rf"dipole_weights\({lev_pat}\)", mo.group(1)) is not None
+                    and lev > 0.0))
+    checks.append(("results.md states the per-axis regime used for the sensitivity ranking (M2 fix)",
+                    "Regime used per axis for this ranking" in body and "dipole_weights=rectangular" in body))
 
 
 def check_results_text_obligations(text, checks):
@@ -937,6 +1161,8 @@ def main(argv=None):
     check_rti_fabrication_fixture(checks)
     check_bound_partner_and_duplicate_fixtures(checks)
     check_headline_selection_fixture(checks)
+    check_footer_bbox_fixture(checks)
+    check_csv_nan_bool_coercion_fixture(checks)
     check_grid_self(checks, detail)
     check_reduced_cut_axes_declared(checks, detail)
     check_dry_run_cap(checks)
@@ -962,6 +1188,8 @@ def main(argv=None):
         check_figure_captions(out, man, checks)
         check_composition_counts(text, core, checks)
         check_qcse_field_label(text, core, checks)
+        check_rti_transport_feasible_denominator(text, core, checks)
+        check_dipole_weights_ranking(text, core, checks)
         check_results_text_obligations(text, checks)
         check_caps(man, quick, checks)
 

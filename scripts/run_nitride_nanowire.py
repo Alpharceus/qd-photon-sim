@@ -687,13 +687,32 @@ _CSV_BOOL_COLUMNS = frozenset((
 ))
 
 
+# sweep fix 2, attempt 3, H1: a boolean column's underlying scalar is a
+# real Python None/float('nan') on rows where the predicate does not apply
+# (e.g. rti_transport_feasible on the 96 rti_status=not_applicable
+# deterministic_pair rows) -- csv.DictWriter's str() rendering turns that
+# into the literal token "nan" (or "NaN"/"None" from other producers), and
+# the OLD `v == ""` guard only ever caught an empty string, so every one of
+# those non-empty null tokens fell through to `(v == "True")`, silently
+# becoming False. Map every one of these tokens (and a genuinely missing/
+# empty field) to None for EVERY boolean column, so a downstream `is True`/
+# `is False` check correctly treats "not applicable" as neither, exactly
+# like the CSV's own bound_reversal_pair sentinel strings are already left
+# uncoerced rather than forced into True/False.
+_CSV_NULL_BOOL_TOKENS = frozenset(("", "nan", "NaN", "NAN", "none", "None", "NONE", "null", "NULL"))
+
+
 def _coerce_csv_row(row):
     out = {}
     for k, v in row.items():
-        if v == "":
+        if k in _CSV_BOOL_COLUMNS:
+            if v is None or (isinstance(v, str) and v.strip() in _CSV_NULL_BOOL_TOKENS) or \
+                    (isinstance(v, float) and math.isnan(v)):
+                out[k] = None
+            else:
+                out[k] = (v == "True") if isinstance(v, str) else bool(v)
+        elif v == "":
             out[k] = None
-        elif k in _CSV_BOOL_COLUMNS:
-            out[k] = (v == "True") if isinstance(v, str) else bool(v)
         else:
             try:
                 out[k] = float(v)
@@ -772,6 +791,41 @@ COMMON_FIGURE_QUALIFICATION = (
 
 def _figure_footer(caption):
     return f"{caption} {COMMON_FIGURE_QUALIFICATION}" if caption else COMMON_FIGURE_QUALIFICATION
+
+
+# L4 fix: `pad_inches` passed to every fig.savefig(..., bbox_inches="tight")
+# call below MUST match this constant -- it is also used, unmodified, in
+# _footer_bbox_fraction's reproduction of matplotlib's own tight-bbox crop
+# math, so the two stay in lockstep by construction rather than by
+# convention.
+_FOOTER_PAD_INCHES = 0.1
+
+
+def _footer_bbox_fraction(fig, artist):
+    """L4 fix: record the footer text artist's bounding box as a fraction
+    of the FINAL SAVED PNG, reproducing the exact crop that
+    fig.savefig(..., bbox_inches="tight", pad_inches=_FOOTER_PAD_INCHES)
+    performs, so verify_nitride_nanowire_sweep.py can assert the footer is
+    actually inside the saved image instead of only checking that
+    matplotlib.image.imread succeeds (which passes even on a fully clipped
+    footer, since imread just reads whatever raster bytes are on disk).
+    Must be called AFTER the figure's own tight_layout/subplot adjustments
+    are finalized and BEFORE fig.savefig, with the SAME pad_inches value."""
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    full_bbox = fig.get_tightbbox(renderer)  # inches -- the bbox_inches="tight" crop box
+    footer_bbox = artist.get_window_extent(renderer).transformed(fig.dpi_scale_trans.inverted())  # inches
+    pad = _FOOTER_PAD_INCHES
+    w = full_bbox.width + 2 * pad
+    h = full_bbox.height + 2 * pad
+    x0f = (footer_bbox.x0 - full_bbox.x0 + pad) / w
+    x1f = (footer_bbox.x1 - full_bbox.x0 + pad) / w
+    # matplotlib inches-y grows UPWARD from the bottom; PNG pixel rows grow
+    # DOWNWARD from the top, so the footer's inches y1 (its TOP edge) maps
+    # to the smaller from-top fraction.
+    y_top_f = 1.0 - (footer_bbox.y1 - full_bbox.y0 + pad) / h
+    y_bot_f = 1.0 - (footer_bbox.y0 - full_bbox.y0 + pad) / h
+    return {"x0_frac": x0f, "x1_frac": x1f, "y0_frac": y_top_f, "y1_frac": y_bot_f}
 
 
 def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), ylog=None, guide=None,
@@ -858,10 +912,11 @@ def plot_vs_axis(out, name, core, x_key, y_keys, title, fixed, group_extra=(), y
             _leg(ax)
     fig.suptitle(title, fontsize=9)
     footer_text = _figure_footer(caption)
-    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    footer_artist = fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
     contract["__caption__"] = footer_text
     fig.tight_layout(rect=(0, 0.08, 1, 0.94))
-    fig.savefig(out / name, dpi=120, bbox_inches="tight")
+    contract["__footer_bbox__"] = _footer_bbox_fraction(fig, footer_artist)
+    fig.savefig(out / name, dpi=120, bbox_inches="tight", pad_inches=_FOOTER_PAD_INCHES)
     plt.close(fig)
     return contract
 
@@ -911,10 +966,12 @@ def plot_delivered_vs_commanded(out, core):
     footer_text = _figure_footer("RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps "
                                    "step; only the R_s_ohm=1e6 designed contact and the vertical family's own "
                                    "1e6 default approach delivered==commanded.")
-    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    footer_artist = fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
     contract["__caption__"] = footer_text
     fig.tight_layout(rect=(0, 0.09, 1, 1))
-    fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120, bbox_inches="tight"); plt.close(fig)
+    contract["__footer_bbox__"] = _footer_bbox_fraction(fig, footer_artist)
+    fig.savefig(out / "delivered_vs_commanded_flux.png", dpi=120, bbox_inches="tight", pad_inches=_FOOTER_PAD_INCHES)
+    plt.close(fig)
     return contract
 
 
@@ -968,14 +1025,26 @@ def plot_hardware_screens(out, core):
         ax.set(xlabel="core_radius_nm", ylabel=y_key, title=title)
         _leg(ax)
     fig.suptitle("Non-gating hardware screens (conditional engineering screens, not measured devices)", fontsize=9)
+    # L5 fix: "on every SET row" was an unqualified/false-sounding claim --
+    # rti_status is unknown_incomplete on the deterministic_pair rows where
+    # the RT screen APPLIES; rti_status=not_applicable rows (screen never
+    # ran) are excluded, never silently folded into "every". Counted from
+    # the rows, never hardcoded.
+    set_rows_all = [r for r in core if r.get("row_kind") == "core" and r.get("regime") == "deterministic_pair"]
+    n_total_set = len(set_rows_all)
+    n_na_set = sum(1 for r in set_rows_all if r.get("rti_status") == "not_applicable")
+    n_applicable_set = n_total_set - n_na_set
     footer_text = _figure_footer("Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade "
                                    "screen at every priced core_radius_nm>=10 nm; the RT injector screen is "
-                                   "rti_status=unknown_incomplete on every SET row (conditional-engineering "
-                                   "screens, neither is a demonstrated hardware result).")
-    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+                                   f"rti_status=unknown_incomplete on {n_applicable_set} of {n_total_set} SET "
+                                   f"rows ({n_na_set} not_applicable) (conditional-engineering screens, "
+                                   "neither is a demonstrated hardware result).")
+    footer_artist = fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
     contract["__caption__"] = footer_text
     fig.tight_layout(rect=(0, 0.10, 1, 0.93))
-    fig.savefig(out / "hardware_screens.png", dpi=120, bbox_inches="tight"); plt.close(fig)
+    contract["__footer_bbox__"] = _footer_bbox_fraction(fig, footer_artist)
+    fig.savefig(out / "hardware_screens.png", dpi=120, bbox_inches="tight", pad_inches=_FOOTER_PAD_INCHES)
+    plt.close(fig)
     return contract
 
 
@@ -1011,10 +1080,12 @@ def plot_reversal_map(out, core):
                                    "clear the 1000/s optical floor); colored cells are 0=not reversed, "
                                    "1=reversed on mu/collected_flux_pulsed_s/g2_op (never averaged with "
                                    "unreversed cells).")
-    fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
+    footer_artist = fig.text(0.5, 0.01, footer_text, ha="center", fontsize=6.5, wrap=True)
     contract["__caption__"] = footer_text
     fig.tight_layout(rect=(0, 0.10, 1, 0.92))
-    fig.savefig(out / "strain_reversal_map.png", dpi=120, bbox_inches="tight"); plt.close(fig)
+    contract["__footer_bbox__"] = _footer_bbox_fraction(fig, footer_artist)
+    fig.savefig(out / "strain_reversal_map.png", dpi=120, bbox_inches="tight", pad_inches=_FOOTER_PAD_INCHES)
+    plt.close(fig)
     return contract
 
 
@@ -1705,9 +1776,10 @@ def _sensitivity_ranking_table(core, all_core):
     sens = [r for r in core if r.get("row_kind") == "sensitivity"]
     for fam in FAMILIES:
         ref = REF_GEOM[fam]
-        base_filter = dict(family=fam, regime="deterministic_pair", strain_bound="relaxed",
-                            T_hs=300.0, rep_rate_hz=200.0e6, core_radius_nm=ref["core_radius_nm"],
-                            height_nm=ref["height_nm"], x_in=ref["x_in"])
+        base_filter_common = dict(family=fam, strain_bound="relaxed", T_hs=300.0, rep_rate_hz=200.0e6,
+                                    core_radius_nm=ref["core_radius_nm"], height_nm=ref["height_nm"],
+                                    x_in=ref["x_in"])
+        base_filter = dict(base_filter_common, regime="deterministic_pair")
         ref_row = _pick(all_core, **base_filter)
         ref_flux = (float(ref_row["collected_flux_pulsed_s"])
                     if ref_row and _finite_num(ref_row.get("collected_flux_pulsed_s")) else None)
@@ -1715,12 +1787,34 @@ def _sensitivity_ranking_table(core, all_core):
                       if ref_row and _finite_num(ref_row.get("collected_flux_delivered_s")) else None)
         ref_g2 = float(ref_row["g2_op"]) if ref_row and _finite_num(ref_row.get("g2_op")) else None
 
+        # M2 fix: build_dipole_falsification() never overrides
+        # full_defaults' regime="rectangular" default, so the dipole_
+        # weights sensitivity rows (DW02970/DW02971) exist ONLY in the
+        # rectangular regime -- ranking them against the deterministic_pair
+        # reference above (which has zero dipole_weights rows to compare)
+        # silently zeroed their leverage. Cache a reference row PER REGIME
+        # so any axis built in a regime other than deterministic_pair (only
+        # dipole_weights, today) is ranked against ITS OWN regime's
+        # reference, never the deterministic_pair one.
+        ref_cache = {"deterministic_pair": (ref_row, ref_flux, ref_flux_d, ref_g2)}
+
+        def _reference_for(regime):
+            if regime not in ref_cache:
+                rr = _pick(all_core, regime=regime, **base_filter_common)
+                rf = (float(rr["collected_flux_pulsed_s"])
+                      if rr and _finite_num(rr.get("collected_flux_pulsed_s")) else None)
+                rfd = (float(rr["collected_flux_delivered_s"])
+                       if rr and _finite_num(rr.get("collected_flux_delivered_s")) else None)
+                rg2 = float(rr["g2_op"]) if rr and _finite_num(rr.get("g2_op")) else None
+                ref_cache[regime] = (rr, rf, rfd, rg2)
+            return ref_cache[regime]
+
         lines.append(f"### {fam}")
         lines.append("")
         if ref_row:
             lines.append(f"Reference row: {ref_row.get('row_id')} g2_op={ref_row.get('g2_op')} "
                          f"commanded_flux={ref_row.get('collected_flux_pulsed_s')} "
-                         f"delivered_flux={ref_row.get('collected_flux_delivered_s')}")
+                         f"delivered_flux={ref_row.get('collected_flux_delivered_s')} (regime=deterministic_pair)")
         else:
             lines.append("Reference row: not in this run's coverage.")
         lines.append("")
@@ -1729,22 +1823,32 @@ def _sensitivity_ranking_table(core, all_core):
                                 if r.get("family") == fam
                                 and r.get("sensitivity_axis") not in ("", "deshpande2013_comparison", "current_pulse_width")})
         rows_by_axis = {}
+        axis_regime = {}
         leverage = {}
         for axis in axes_present:
+            # M2 fix: rank each axis on the regime ITS OWN rows actually
+            # use -- prefer deterministic_pair (every standard reduced-cut
+            # axis has it) and fall back to whatever regime the axis was
+            # actually built in (rectangular, for dipole_weights).
+            regimes_here = {r.get("regime") for r in sens
+                             if r.get("sensitivity_axis") == axis and r.get("family") == fam}
+            reg = "deterministic_pair" if "deterministic_pair" in regimes_here else sorted(regimes_here)[0]
+            axis_regime[axis] = reg
+            _, a_ref_flux, a_ref_flux_d, a_ref_g2 = _reference_for(reg)
             rows_axis = [r for r in sens if r.get("sensitivity_axis") == axis and r.get("family") == fam
-                         and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == "relaxed"
+                         and r.get("regime") == reg and r.get("strain_bound") == "relaxed"
                          and _close(float(r.get("T_hs", -1)), 300.0) and _close(float(r.get("rep_rate_hz", -1)), 200.0e6)]
             rows_by_axis[axis] = rows_axis
             lev_flux = lev_flux_d = lev_g2 = 0.0
             for r in rows_axis:
                 flux, fluxd, g2v = (r.get("collected_flux_pulsed_s"), r.get("collected_flux_delivered_s"),
                                      r.get("g2_op"))
-                if ref_flux and _finite_num(flux):
-                    lev_flux = max(lev_flux, abs(float(flux) / ref_flux - 1.0))
-                if ref_flux_d and _finite_num(fluxd):
-                    lev_flux_d = max(lev_flux_d, abs(float(fluxd) / ref_flux_d - 1.0))
-                if ref_g2 is not None and _finite_num(g2v):
-                    lev_g2 = max(lev_g2, abs(float(g2v) - ref_g2))
+                if a_ref_flux and _finite_num(flux):
+                    lev_flux = max(lev_flux, abs(float(flux) / a_ref_flux - 1.0))
+                if a_ref_flux_d and _finite_num(fluxd):
+                    lev_flux_d = max(lev_flux_d, abs(float(fluxd) / a_ref_flux_d - 1.0))
+                if a_ref_g2 is not None and _finite_num(g2v):
+                    lev_g2 = max(lev_g2, abs(float(g2v) - a_ref_g2))
             leverage[axis] = {"flux": lev_flux, "flux_delivered": lev_flux_d, "g2": lev_g2}
 
         for label, key in (("commanded flux |ratio-1| (measured leverage)", "flux"),
@@ -1754,33 +1858,44 @@ def _sensitivity_ranking_table(core, all_core):
             lines.append(f"Ranked by {label}: " + ", ".join(f"{a}({leverage[a][key]:.3g})" for a in ranked)
                          if ranked else f"Ranked by {label}: (no reduced-cut axes this family this run).")
         lines.append("")
+        lines.append("Regime used per axis for this ranking (M2 fix: an axis built in only ONE regime is "
+                     "ranked, and its ratio columns below are computed, against THAT regime's own reference "
+                     "row, never the deterministic_pair reference printed above): "
+                     + ", ".join(f"{a}={axis_regime[a]}" for a in axes_present) + ".")
+        lines.append("")
         lines.append("(the contact R_s_ohm row has ratio~1.0 on commanded flux -- it only changes delivered "
                      "flux via the RC time constant, never the idealized/commanded flux.)"
                      if "R_s_ohm" in axes_present else "")
         lines.append("")
 
-        lines.append("| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | "
-                     "delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |")
-        lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        lines.append("| axis | regime | value | g2_op | commanded_flux/s | flux_ratio_to_reference | "
+                     "delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | "
+                     "quality_pass | row_id | reference_row_id |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
         if ref_row:
-            lines.append(f"| (reference) | main-grid default | {ref_row.get('g2_op')} | "
+            lines.append(f"| (reference) | deterministic_pair | main-grid default | {ref_row.get('g2_op')} | "
                          f"{ref_row.get('collected_flux_pulsed_s')} | 1.0 | "
                          f"{ref_row.get('collected_flux_delivered_s')} | 1.0 | {ref_row.get('one_pair_valid')} | "
-                         f"{ref_row.get('optical_pass')} | {ref_row.get('quality_pass')} | {ref_row.get('row_id')} |")
+                         f"{ref_row.get('optical_pass')} | {ref_row.get('quality_pass')} | {ref_row.get('row_id')} | "
+                         f"{ref_row.get('row_id')} |")
         for axis in sorted(axes_present, key=lambda a: -leverage[a]["flux"]):
+            reg = axis_regime[axis]
+            a_ref_row, a_ref_flux, a_ref_flux_d, _ = _reference_for(reg)
+            a_ref_rid = a_ref_row.get("row_id") if a_ref_row else "n/a"
             for r in sorted(rows_by_axis[axis], key=lambda z: str(z.get("sensitivity_value"))):
                 flux, fluxd = r.get("collected_flux_pulsed_s"), r.get("collected_flux_delivered_s")
-                ratio = (f"{float(flux) / ref_flux:.4g}" if ref_flux and _finite_num(flux) else "n/a")
-                ratio_d = (f"{float(fluxd) / ref_flux_d:.4g}" if ref_flux_d and _finite_num(fluxd) else "n/a")
-                lines.append(f"| {axis} | {r.get('sensitivity_value')} | {r.get('g2_op')} | {flux} | {ratio} | "
+                ratio = (f"{float(flux) / a_ref_flux:.4g}" if a_ref_flux and _finite_num(flux) else "n/a")
+                ratio_d = (f"{float(fluxd) / a_ref_flux_d:.4g}" if a_ref_flux_d and _finite_num(fluxd) else "n/a")
+                lines.append(f"| {axis} | {reg} | {r.get('sensitivity_value')} | {r.get('g2_op')} | {flux} | {ratio} | "
                              f"{fluxd} | {ratio_d} | {r.get('one_pair_valid')} | {r.get('optical_pass')} | "
-                             f"{r.get('quality_pass')} | {r.get('row_id')} |")
+                             f"{r.get('quality_pass')} | {r.get('row_id')} | {a_ref_rid} |")
         lines.append("")
-    lines.append("tau_rad0_ns/dipole-prior leverage proxy (from the c-plane dipole-prior falsification rows "
-                 "above): switching dipole_weights from isotropic to CPLANE_ONLY materially changes "
-                 "antenna_rate_factor/tau_rad_photonic_ns/commanded flux (see that section's row values) -- "
-                 "a qualitative leverage indicator, not a numeric ranking-table entry, since it sweeps an "
-                 "orientation prior rather than the tau_rad0_ns magnitude (not sampled this run).")
+    lines.append("dipole_weights leverage (M2 fix): dipole_weights IS now a numeric ranking-table entry above "
+                 "-- build_dipole_falsification() evaluates it only in the rectangular regime (it never "
+                 "overrides full_defaults' rectangular default), so it is ranked, per family/axis above, "
+                 "against that family's OWN rectangular-regime reference row rather than the deterministic_"
+                 "pair reference row printed at the top of the section; see the 'regime used per axis' line "
+                 "and the table's regime/reference_row_id columns for exactly which reference each row uses.")
     lines.append("")
     lines.append("Restored current/pulse-width cut (I x tau_pulse, 9 rows, horizontal reference geometry, "
                  "rectangular regime, relaxed, 300K, 200MHz -- preserves the 100 ps headline point):")

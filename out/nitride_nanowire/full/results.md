@@ -104,7 +104,7 @@ occupied_dot_access=1.0 at core_radius_nm=12.5 (row SN02753): 1/k_surface_X_ns=0
 ## E_C/kT wall (bullet 11 obligation)
 
 Across every deterministic_pair core row with core_radius_nm>=10 nm at 230-300 K: set_EC_over_kT spans 0.1464-0.7643 (required ec_margin=10), set_feasible=True count=0/1184; rti_feasible=True count=0/1136. Deterministic loading at 230-300 K fails the Coulomb-blockade screen for every core_radius_nm>=10 nm priced in this tier.
-The RT injector screen is SEPARATELY reported, not folded into the Coulomb wall above: rti_status=unknown_incomplete on 1184/1280 deterministic_pair rows, rti_transport_feasible=False on 1280/1280 -- these are conditional engineering screens on an unsupported occupation/second-pair control, NOT a demonstrated hardware failure by either charging mechanism; deterministic loading at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/g2_op/collected_flux_pulsed_s computed upstream of it.
+The RT injector screen is SEPARATELY reported, not folded into the Coulomb wall above: rti_status=unknown_incomplete on 1184/1280 deterministic_pair rows, rti_transport_feasible=False on 1184/1280 -- these are conditional engineering screens on an unsupported occupation/second-pair control, NOT a demonstrated hardware failure by either charging mechanism; deterministic loading at 230-300 K fails on the Coulomb-blockade wall (set_feasible) and separately carries an incomplete/unresolved RT-injector screen, and neither screen overwrites optical_pass/g2_op/collected_flux_pulsed_s computed upstream of it.
 Both priced charging-based loading mechanisms share the SAME insufficient disc E_C/kT: the RT-injector screen's own second_pair_addition_meV input is set_E_C_meV -- the identical Coulomb charging energy the set_EC_over_kT wall above already reports as an E_C/kT<10 failure at every core_radius_nm>=10 nm priced here. This is a CONDITIONAL MODEL LIMITATION shared by both screens' inputs (contract bullet 11's E_C/kT wall statement covers 'any charging mechanism priced in this tier'), never a demonstrated hardware failure of the RT-injector mechanism specifically (contract bullet 7: rti_feasible=False must not be reported as a demonstrated physics result).
 
 ## c-plane dipole prior falsification (Composition rules bullet 9)
@@ -218,58 +218,64 @@ Ranking is measured from this run's own rows, separately per family and per obse
 
 ### horizontal_as_built
 
-Reference row: CO00384 g2_op=0.3165284147670757 commanded_flux=8657131.143435951 delivered_flux=321566.51162706804
+Reference row: CO00384 g2_op=0.3165284147670757 commanded_flux=8657131.143435951 delivered_flux=321566.51162706804 (regime=deterministic_pair)
 
-Ranked by commanded flux |ratio-1| (measured leverage): occupied_dot_access(0.773), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), R_s_ohm(8.83e-06), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
-Ranked by delivered flux |ratio-1| (measured leverage): R_s_ohm(25.9), occupied_dot_access(0.773), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
-Ranked by g2_op |delta| (measured leverage): occupied_dot_access(0.143), S_cm_s(0.139), b_res(0.098), shell(0.0491), screening_fraction(0.00118), R_s_ohm(5.53e-06), al_fraction(0), alignment_uncertainty_meV(0), dipole_weights(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by commanded flux |ratio-1| (measured leverage): occupied_dot_access(0.773), dipole_weights(0.632), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), R_s_ohm(8.83e-06), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by delivered flux |ratio-1| (measured leverage): R_s_ohm(25.9), occupied_dot_access(0.773), dipole_weights(0.632), S_cm_s(0.617), shell(0.175), screening_fraction(0.00171), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+Ranked by g2_op |delta| (measured leverage): occupied_dot_access(0.143), S_cm_s(0.139), b_res(0.098), dipole_weights(0.0685), shell(0.0491), screening_fraction(0.00118), R_s_ohm(5.53e-06), al_fraction(0), alignment_uncertainty_meV(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
+
+Regime used per axis for this ranking (M2 fix: an axis built in only ONE regime is ranked, and its ratio columns below are computed, against THAT regime's own reference row, never the deterministic_pair reference printed above): R_s_ohm=deterministic_pair, S_cm_s=deterministic_pair, al_fraction=deterministic_pair, alignment_uncertainty_meV=deterministic_pair, b_res=deterministic_pair, dipole_weights=rectangular, growth_tolerance_steps=deterministic_pair, injector_barrier_thickness_nm=deterministic_pair, occupation_control_uncertainty=deterministic_pair, occupied_dot_access=deterministic_pair, screening_fraction=deterministic_pair, shell=deterministic_pair.
 
 (the contact R_s_ohm row has ratio~1.0 on commanded flux -- it only changes delivered flux via the RC time constant, never the idealized/commanded flux.)
 
-| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |
-|---|---|---|---|---|---|---|---|---|---|---|
-| (reference) | main-grid default | 0.3165284147670757 | 8657131.143435951 | 1.0 | 321566.51162706804 | 1.0 | False | False | False | CO00384 |
-| occupied_dot_access | 1.0 | 0.1736349147052857 | 1963808.9310572965 | 0.2268 | 72945.08735044302 | 0.2268 | True | True | False | SN02768 |
-| S_cm_s | 100.0 | 0.3656546763984454 | 10297783.614345277 | 1.19 | 382508.05024089216 | 1.19 | False | False | False | SN02687 |
-| S_cm_s | 10000.0 | 0.17797379959021353 | 3312159.633154987 | 0.3826 | 123029.16538271548 | 0.3826 | False | False | False | SN02688 |
-| shell | AlGaN | 0.3656546763984454 | 10171773.983798828 | 1.175 | 377827.46071823477 | 1.175 | False | False | False | SN02736 |
-| screening_fraction | 0.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02591 |
-| screening_fraction | 1.0 | 0.3153438449500987 | 8671952.281091604 | 1.002 | 322117.0382682204 | 1.002 | False | False | False | SN02592 |
-| R_s_ohm | 1000000.0 | 0.31653394196232165 | 8657207.554713154 | 1 | 8657207.554713154 | 26.92 | False | False | False | SN02960 |
-| al_fraction | 0.2 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02800 |
-| alignment_uncertainty_meV | 30.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02864 |
-| b_res | 0.02 | 0.2184923908909121 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02640 |
-| growth_tolerance_steps | 2.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02832 |
-| injector_barrier_thickness_nm | 1.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02928 |
-| occupation_control_uncertainty | True | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02896 |
+| axis | regime | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id | reference_row_id |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| (reference) | deterministic_pair | main-grid default | 0.3165284147670757 | 8657131.143435951 | 1.0 | 321566.51162706804 | 1.0 | False | False | False | CO00384 | CO00384 |
+| occupied_dot_access | deterministic_pair | 1.0 | 0.1736349147052857 | 1963808.9310572965 | 0.2268 | 72945.08735044302 | 0.2268 | True | True | False | SN02768 | CO00384 |
+| dipole_weights | rectangular | cplane_only_falsified | 0.6072039356432425 | 3071763.2836264675 | 0.3683 | 114099.7158635892 | 0.3683 | False | False | False | DW02971 | CO00380 |
+| dipole_weights | rectangular | isotropic_default | 0.6757369210026002 | 8341278.017765789 | 1 | 309834.24303537974 | 1 | False | False | False | DW02970 | CO00380 |
+| S_cm_s | deterministic_pair | 100.0 | 0.3656546763984454 | 10297783.614345277 | 1.19 | 382508.05024089216 | 1.19 | False | False | False | SN02687 | CO00384 |
+| S_cm_s | deterministic_pair | 10000.0 | 0.17797379959021353 | 3312159.633154987 | 0.3826 | 123029.16538271548 | 0.3826 | False | False | False | SN02688 | CO00384 |
+| shell | deterministic_pair | AlGaN | 0.3656546763984454 | 10171773.983798828 | 1.175 | 377827.46071823477 | 1.175 | False | False | False | SN02736 | CO00384 |
+| screening_fraction | deterministic_pair | 0.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02591 | CO00384 |
+| screening_fraction | deterministic_pair | 1.0 | 0.3153438449500987 | 8671952.281091604 | 1.002 | 322117.0382682204 | 1.002 | False | False | False | SN02592 | CO00384 |
+| R_s_ohm | deterministic_pair | 1000000.0 | 0.31653394196232165 | 8657207.554713154 | 1 | 8657207.554713154 | 26.92 | False | False | False | SN02960 | CO00384 |
+| al_fraction | deterministic_pair | 0.2 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02800 | CO00384 |
+| alignment_uncertainty_meV | deterministic_pair | 30.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02864 | CO00384 |
+| b_res | deterministic_pair | 0.02 | 0.2184923908909121 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02640 | CO00384 |
+| growth_tolerance_steps | deterministic_pair | 2.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02832 | CO00384 |
+| injector_barrier_thickness_nm | deterministic_pair | 1.0 | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02928 | CO00384 |
+| occupation_control_uncertainty | deterministic_pair | True | 0.3165284147670757 | 8657131.143435951 | 1 | 321566.51162706804 | 1 | False | False | False | SN02896 | CO00384 |
 
 ### vertical_photonic
 
-Reference row: CO01920 g2_op=0.18360081169386988 commanded_flux=9716146.139613492 delivered_flux=8935111.502103966
+Reference row: CO01920 g2_op=0.18360081169386988 commanded_flux=9716146.139613492 delivered_flux=8935111.502103966 (regime=deterministic_pair)
 
 Ranked by commanded flux |ratio-1| (measured leverage): occupied_dot_access(0.192), S_cm_s(0.101), shell(0.0425), screening_fraction(0.0205), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
 Ranked by delivered flux |ratio-1| (measured leverage): occupied_dot_access(0.192), S_cm_s(0.101), shell(0.0425), screening_fraction(0.0205), al_fraction(0), alignment_uncertainty_meV(0), b_res(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
 Ranked by g2_op |delta| (measured leverage): b_res(0.132), occupied_dot_access(0.00697), S_cm_s(0.00431), screening_fraction(0.000585), shell(0.000577), al_fraction(0), alignment_uncertainty_meV(0), growth_tolerance_steps(0), injector_barrier_thickness_nm(0), occupation_control_uncertainty(0)
 
+Regime used per axis for this ranking (M2 fix: an axis built in only ONE regime is ranked, and its ratio columns below are computed, against THAT regime's own reference row, never the deterministic_pair reference printed above): S_cm_s=deterministic_pair, al_fraction=deterministic_pair, alignment_uncertainty_meV=deterministic_pair, b_res=deterministic_pair, growth_tolerance_steps=deterministic_pair, injector_barrier_thickness_nm=deterministic_pair, occupation_control_uncertainty=deterministic_pair, occupied_dot_access=deterministic_pair, screening_fraction=deterministic_pair, shell=deterministic_pair.
 
 
-| axis | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id |
-|---|---|---|---|---|---|---|---|---|---|---|
-| (reference) | main-grid default | 0.18360081169386988 | 9716146.139613492 | 1.0 | 8935111.502103966 | 1.0 | False | False | False | CO01920 |
-| occupied_dot_access | 1.0 | 0.17663266881313455 | 7851673.319151593 | 0.8081 | 7220514.757253847 | 0.8081 | False | False | False | SN02784 |
-| S_cm_s | 100.0 | 0.1841778750087586 | 9826678.12954954 | 1.011 | 9036758.352659397 | 1.011 | False | False | False | SN02719 |
-| S_cm_s | 10000.0 | 0.17929547780047272 | 8733757.21437212 | 0.8989 | 8031692.136098741 | 0.8989 | False | False | False | SN02720 |
-| shell | AlGaN | 0.18417787500875837 | 10128721.810067073 | 1.042 | 9314522.182592627 | 1.042 | False | False | False | SN02752 |
-| screening_fraction | 0.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02623 |
-| screening_fraction | 1.0 | 0.18418554198214543 | 9915424.030337261 | 1.021 | 9118370.39384097 | 1.021 | False | False | False | SN02624 |
-| al_fraction | 0.2 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02816 |
-| alignment_uncertainty_meV | 30.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02880 |
-| b_res | 0.02 | 0.051433710524236065 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02656 |
-| growth_tolerance_steps | 2.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02848 |
-| injector_barrier_thickness_nm | 1.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02944 |
-| occupation_control_uncertainty | True | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02912 |
 
-tau_rad0_ns/dipole-prior leverage proxy (from the c-plane dipole-prior falsification rows above): switching dipole_weights from isotropic to CPLANE_ONLY materially changes antenna_rate_factor/tau_rad_photonic_ns/commanded flux (see that section's row values) -- a qualitative leverage indicator, not a numeric ranking-table entry, since it sweeps an orientation prior rather than the tau_rad0_ns magnitude (not sampled this run).
+| axis | regime | value | g2_op | commanded_flux/s | flux_ratio_to_reference | delivered_flux/s | delivered_flux_ratio_to_reference | one_pair_valid | optical_pass | quality_pass | row_id | reference_row_id |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| (reference) | deterministic_pair | main-grid default | 0.18360081169386988 | 9716146.139613492 | 1.0 | 8935111.502103966 | 1.0 | False | False | False | CO01920 | CO01920 |
+| occupied_dot_access | deterministic_pair | 1.0 | 0.17663266881313455 | 7851673.319151593 | 0.8081 | 7220514.757253847 | 0.8081 | False | False | False | SN02784 | CO01920 |
+| S_cm_s | deterministic_pair | 100.0 | 0.1841778750087586 | 9826678.12954954 | 1.011 | 9036758.352659397 | 1.011 | False | False | False | SN02719 | CO01920 |
+| S_cm_s | deterministic_pair | 10000.0 | 0.17929547780047272 | 8733757.21437212 | 0.8989 | 8031692.136098741 | 0.8989 | False | False | False | SN02720 | CO01920 |
+| shell | deterministic_pair | AlGaN | 0.18417787500875837 | 10128721.810067073 | 1.042 | 9314522.182592627 | 1.042 | False | False | False | SN02752 | CO01920 |
+| screening_fraction | deterministic_pair | 0.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02623 | CO01920 |
+| screening_fraction | deterministic_pair | 1.0 | 0.18418554198214543 | 9915424.030337261 | 1.021 | 9118370.39384097 | 1.021 | False | False | False | SN02624 | CO01920 |
+| al_fraction | deterministic_pair | 0.2 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02816 | CO01920 |
+| alignment_uncertainty_meV | deterministic_pair | 30.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02880 | CO01920 |
+| b_res | deterministic_pair | 0.02 | 0.051433710524236065 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02656 | CO01920 |
+| growth_tolerance_steps | deterministic_pair | 2.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02848 | CO01920 |
+| injector_barrier_thickness_nm | deterministic_pair | 1.0 | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02944 | CO01920 |
+| occupation_control_uncertainty | deterministic_pair | True | 0.18360081169386988 | 9716146.139613492 | 1 | 8935111.502103966 | 1 | False | False | False | SN02912 | CO01920 |
+
+dipole_weights leverage (M2 fix): dipole_weights IS now a numeric ranking-table entry above -- build_dipole_falsification() evaluates it only in the rectangular regime (it never overrides full_defaults' rectangular default), so it is ranked, per family/axis above, against that family's OWN rectangular-regime reference row rather than the deterministic_pair reference row printed at the top of the section; see the 'regime used per axis' line and the table's regime/reference_row_id columns for exactly which reference each row uses.
 
 Restored current/pulse-width cut (I x tau_pulse, 9 rows, horizontal reference geometry, rectangular regime, relaxed, 300K, 200MHz -- preserves the 100 ps headline point):
 

@@ -114,15 +114,21 @@
     "g2_flux_vs_core_radius.png": "4fa5458624294214387c6f941073d5d7a996a8157dae5f8b37bc536b9a185977",
     "g2_flux_vs_disc_thickness.png": "511d643d25ec9b50f9b827dacceb0cf1b3f6abc5e397260c53c20c8cf877afee",
     "g2_flux_vs_ths.png": "aa7cf4c9aa426432c96fdd05c3b1788fe150c20d2a258ea29bb8dafefa515503",
-    "hardware_screens.png": "74992a1169bef8019822135a4a825f418724abc1b58e9572980dcaac508098b0",
-    "results.md": "f1e9831a34f47091d96e1138330e0edecf00f3b33af401ee9fe787ebbb046b0d",
-    "run.log": "5133f8e8d5821ed356af8aec91915d0d22c6ab5299e5b5ca28f1bbcb9551d6f1",
+    "hardware_screens.png": "74a483edca4fd8c7019c29c034ab1f9ebc90acb5798b983005919608ad095b00",
+    "results.md": "e2b34b4c44b1edbf68453bca5354b02b7814686cbcd661c525548b7d63f24aa5",
+    "run.log": "3dffcdfa07e0405967ebf461e8af95f2f158d4dc10c2b77125c4a2092134ebf5",
     "strain_reversal_map.png": "866d5f71de5e884cfce858efadd8aad30072fca22e76327676a991b0c2ca8387",
     "sweep.csv": "60727e513e51f21f5258ac53a90ab0593acfe00b74bcc43f8ad9c9e0bc3f731a"
   },
   "plot_row_mapping": {
     "delivered_vs_commanded_flux.png": {
       "__caption__": "RC caveat: the as-built 2.38 GOhm horizontal contact cannot deliver a 100 ps step; only the R_s_ohm=1e6 designed contact and the vertical family's own 1e6 default approach delivered==commanded. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.01437717623273054,
+        "x1_frac": 0.9856228237672694,
+        "y0_frac": 0.8554014244105477,
+        "y1_frac": 0.9793077379714117
+      },
       "horizontal_as_built as-built core default (R_s_ohm=2.38e+09)": {
         "row_ids": [
           "CO00005",
@@ -3726,6 +3732,12 @@
     },
     "g2_flux_vs_core_radius.png": {
       "__caption__": "Opposite endpoints: 2013/2014 anchors are matched by opposite strain bounds, never averaged; 'x' points are vertical_photonic rows with single_mode=False (headline_eligible=False, never a nominated headline); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.008217559898307697,
+        "x1_frac": 0.9917824401016924,
+        "y0_frac": 0.9308911446624666,
+        "y1_frac": 0.9880650090642183
+      },
       "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
         "row_ids": [
           "CO00128",
@@ -4009,6 +4021,12 @@
     },
     "g2_flux_vs_disc_thickness.png": {
       "__caption__": "Access cap: occupied_dot_access=1.0 (not plotted here, default 0.05 shown) caps tau_X/tau_XX at 0.625/0.3125 ns at core_radius_nm=12.5 (see 'Access-1.0 lifetime cap' section); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.00820523340042821,
+        "x1_frac": 0.9917947665995718,
+        "y0_frac": 0.9451846107629045,
+        "y1_frac": 0.9880650090642183
+      },
       "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
         "row_ids": [
           "CO00320",
@@ -4240,6 +4258,12 @@
     },
     "g2_flux_vs_ths.png": {
       "__caption__": "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen for every core_radius_nm>=10 nm priced here; RC caveat applies to the as-built horizontal contact (see 'RC caveat' section); open red circles are one_pair_valid=False points. Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.008217559898307697,
+        "x1_frac": 0.9917824401016924,
+        "y0_frac": 0.9308911446624666,
+        "y1_frac": 0.9880650090642183
+      },
       "horizontal_as_built|collected_flux_pulsed_s|one_pair_valid_False": {
         "row_ids": [
           "CO00360",
@@ -4482,7 +4506,13 @@
       }
     },
     "hardware_screens.png": {
-      "__caption__": "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen at every priced core_radius_nm>=10 nm; the RT injector screen is rti_status=unknown_incomplete on every SET row (conditional-engineering screens, neither is a demonstrated hardware result). Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__caption__": "Charging wall: deterministic loading at 230-300K fails the Coulomb-blockade screen at every priced core_radius_nm>=10 nm; the RT injector screen is rti_status=unknown_incomplete on 1184 of 1280 SET rows (96 not_applicable) (conditional-engineering screens, neither is a demonstrated hardware result). Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.006206180968358174,
+        "x1_frac": 0.993793819031642,
+        "y0_frac": 0.8979081629505836,
+        "y1_frac": 0.977771476828673
+      },
       "rti_alignment_error_e_meV|horizontal_as_built": {
         "row_ids": [
           "CO00199",
@@ -4624,6 +4654,12 @@
     },
     "strain_reversal_map.png": {
       "__caption__": "White/blank cells = not_comparable (no pair where BOTH strain-bound rows clear the 1000/s optical floor); colored cells are 0=not reversed, 1=reversed on mu/collected_flux_pulsed_s/g2_op (never averaged with unreversed cells). Qualification (applies to every figure this run): RC caveat -- the as-built horizontal contact cannot deliver a 100 ps step (see 'RC caveat'); access cap -- occupied_dot_access=1.0 caps tau_X/tau_XX (see 'Access-1.0 lifetime cap'); opposite endpoints -- the 2013/2014 strain-bound anchors are matched by OPPOSITE bounds, never averaged; charging wall -- deterministic loading at 230-300K fails set_EC_over_kT for every core_radius_nm>=10 nm priced here (see 'E_C/kT wall').",
+      "__footer_bbox__": {
+        "x0_frac": 0.007822144000782214,
+        "x1_frac": 0.9921778559992178,
+        "y0_frac": 0.9021286998108642,
+        "y1_frac": 0.9786904171093614
+      },
       "horizontal_as_built": {
         "r10_T230": [
           "CO00005",
@@ -5993,7 +6029,7 @@
   "plot_trace_failures": [],
   "quick": false,
   "report_only": true,
-  "report_only_runtime_s": 8.214493751525879,
+  "report_only_runtime_s": 9.026245594024658,
   "report_only_source_sweep_sha256": "60727e513e51f21f5258ac53a90ab0593acfe00b74bcc43f8ad9c9e0bc3f731a",
   "resolved_out_dir": "C:\\Users\\rama4\\Downloads\\quantum dot\\qd-photon-sim\\out\\nitride_nanowire\\full",
   "row_counts": {
