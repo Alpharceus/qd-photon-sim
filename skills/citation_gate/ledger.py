@@ -10,7 +10,8 @@ project's other verify_* scripts: a top-level `anchors:` mapping keyed by
 anchor id, each entry carrying at least `citation` (a free-text citation
 string) and `doi_or_url` (a DOI, `arXiv:<id>`, `OSTI <id>`, `PMC<id>`, a
 `https://doi.org/...` URL, or null). `evidence_status` (when present) is
-read only for the null-identifier "recorded gap" rule below.
+read only for the null-identifier "recorded gap" rules below (`missing`
+always; `figure_reading` when no title is parseable either).
 
 Citation strings in this project's ledgers follow the common physics-
 journal style with NO title ("Author, Author2, Journal Vol, Page
@@ -107,6 +108,13 @@ def parse_identifier(doi_or_url: str | None) -> tuple[str | None, str | None]:
     return "unknown", s
 
 
+# evidence_status values (besides `missing`) for which a null identifier
+# with no parseable title is a recorded GAP instead of a FAIL. Deliberately
+# NOT full_text / abstract_only: an anchor that claims the text was read
+# must carry a resolvable identifier or a title.
+GAP_WHEN_UNIDENTIFIABLE = frozenset({"figure_reading"})
+
+
 def verify_anchor(
     anchor_id: str, anchor: dict[str, Any], *, cache=None, offline: bool = False,
     clients: dict[str, Any] | None = None,
@@ -127,6 +135,18 @@ def verify_anchor(
     if kind is None:
         if evidence_status == "missing":
             return True, identifier_display, "recorded gap (null identifier, evidence_status=missing)"
+        # Review follow-up: never for a [V]-tagged anchor -- a V tag claims the
+        # value was verified against the source, which needs an identifier.
+        if (evidence_status in GAP_WHEN_UNIDENTIFIABLE and not parsed["title"]
+                and str(anchor.get("tag", "")).strip().upper() != "V"):
+            # Audit C4 (contract review L12): a figure-reading anchor with no
+            # parseable identifier AND no parseable title has nothing the
+            # resolvers could check; report it as a recorded GAP (printed
+            # GAP, never PASS) rather than a FAIL that would push the ledger
+            # toward the less accurate evidence_status=missing. A parseable
+            # title is still title-searched below (never auto-passed).
+            return True, identifier_display, (
+                f"recorded gap (null identifier, no parseable title, evidence_status={evidence_status})")
         if parsed["title"]:
             # A null identifier with a digest-printed title (the ledger rule
             # forbids inventing a DOI) is resolved by title search only,
@@ -138,7 +158,7 @@ def verify_anchor(
             return False, identifier_display, "; ".join(outcome["trace"]) or "no title match"
         return False, identifier_display, (
             f"null identifier, no parseable title, and evidence_status={evidence_status!r} "
-            "(only evidence_status=missing auto-passes with no identifier and no title)"
+            "(only evidence_status=missing or figure_reading records a gap with no identifier and no title)"
         )
 
     if kind == "doi":

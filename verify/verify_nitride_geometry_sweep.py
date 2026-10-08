@@ -753,6 +753,40 @@ def check_invalid_completeness(text, man, checks):
                     all(f"{k}={v}" in text for k, v in by_kind.items())))
 
 
+def check_c4_prose(text, core, geo, checks):
+    """Audit C4 pins, recomputed independently from the CSVs: (1) the
+    per-card reservoir table prints the ACTUAL reservoir_kind distribution
+    (not a stale single sample) -- in particular the c-plane QW-fluctuation
+    cards' mixed gan_barrier/ingan_qw/mixed counts; (2) the E_a span over
+    radius is reported as the computed min-max/median, not '~11 meV'."""
+    import re as _re
+    counts = {}
+    for r in core + geo:
+        if r.get("reservoir_kind", "") == "": continue
+        key = (r.get("card_file"), r.get("orientation"), r.get("geometry_type"))
+        counts.setdefault(key, {}); counts[key][r["reservoir_kind"]] = counts[key].get(r["reservoir_kind"], 0) + 1
+    ok = bool(counts)
+    for (card, ori, gt), cnt in counts.items():
+        want = f"| {card} | {ori} | {gt} | " + ", ".join(f"{k}={v}" for k, v in sorted(cnt.items())) + f" | {sum(cnt.values())} |"
+        ok = ok and want in text
+    checks.append(("C4: per-card reservoir table carries the full reservoir_kind distribution recomputed from the CSVs", ok))
+    checks.append(("C4: the stale single-sample '(sample)' reservoir column is gone", "reservoir_kind (sample)" not in text))
+    spans = {}
+    for r in core:
+        try: ea = float(r.get("E_a_meV", "nan"))
+        except ValueError: continue
+        if ea == ea:
+            spans.setdefault((r["orientation"], r["height_nm"], r["T_hs"], r["screening_fraction"], r["regime"]), []).append(ea)
+    sp = sorted(max(v) - min(v) for v in spans.values() if len(v) >= 2)
+    n = len(sp); med = (sp[n // 2] if n % 2 else 0.5 * (sp[n // 2 - 1] + sp[n // 2])) if n else float("nan")
+    m = _re.search(r"is ([0-9.eE+-]+)-([0-9.eE+-]+) meV, median ([0-9.eE+-]+) meV, over (\d+) groups", text)
+    checks.append(("C4: E_a span over radius reported as the recomputed range/median (not '~11 meV')",
+                   bool(m) and n > 0 and "~11 meV" not in text
+                   and abs(float(m.group(1)) - sp[0]) <= 5e-3 * max(1., sp[0])
+                   and abs(float(m.group(2)) - sp[-1]) <= 5e-3 * max(1., sp[-1])
+                   and abs(float(m.group(3)) - med) <= 5e-3 * max(1., med) and int(m.group(4)) == n))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true")
@@ -787,6 +821,7 @@ def main(argv=None):
     check_mutation_fixtures(checks)
     check_literature(lit_csv, comp, checks)
     check_results_md(text, core, checks)
+    check_c4_prose(text, core, geo, checks)
 
     passed = sum(1 for _, ok in checks if ok)
     total = len(checks)

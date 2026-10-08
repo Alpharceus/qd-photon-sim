@@ -113,13 +113,16 @@ def _parse_param(name: str, raw: dict) -> Param:
 def load_card(path: str | Path) -> Card:
     path = Path(path)
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    params = {n: _parse_param(n, raw) for n, raw in doc.get("params", {}).items()}
+    params = {n: _parse_param(n, raw) for n, raw in (doc.get("params") or {}).items()}
     datasets = {}
-    for n, raw in doc.get("data", {}).items():
+    for n, raw in (doc.get("data") or {}).items():
         rows = [dict(r) for r in raw["points"]]
         cols = sorted({k for r in rows for k in r})
+        # Device-tier cards (device: block) carry one source line in meta, not one per
+        # dataset: fall back to meta.source. Cards whose datasets name a source are unchanged.
+        src = raw["source"] if "source" in raw else doc["meta"].get("source", "")
         datasets[n] = DataSet(
-            name=n, tag=Tag[raw["tag"]], source=str(raw["source"]),
+            name=n, tag=Tag[raw["tag"]], source=str(src),
             columns=cols, rows=rows,
         )
     return Card(

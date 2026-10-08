@@ -31,6 +31,8 @@ from fsim_core import design_meta, presets  # noqa: E402
 from fsim_core.device import (DeviceDesign, evaluate, evaluate_envelope,  # noqa: E402
                               _legacy_density_cm2)
 from fsim_core.loading import f8_g2_load, f8b_thin_fano, granularity_N  # noqa: E402
+from fsim_theme import load_tokens  # noqa: E402
+from fsim_theme.dpg import bind_theme  # noqa: E402
 
 DESIGN_PATH = ROOT / "cards" / "staged-device-design.yaml"
 LAYERS = []          # live fab-stack rows (list of dicts)
@@ -59,12 +61,36 @@ _BASELINE_DESIGN = DeviceDesign()
 # reset False by apply_design() (a re-population, not a user edit).
 _DENSITY_EDITED = False
 
-GREEN = (86, 166, 50)
-AMBER = (227, 162, 26)
-RED = (215, 25, 28)
-BLUE = (60, 120, 216)
-PURPLE = (120, 90, 200)
-TAG_COLOR = {"V": GREEN, "DR": AMBER, "E": AMBER, "A": RED}
+# Colours come from fsim_theme/tokens.json (dark), never hard-coded hexes.
+# GREEN/AMBER/RED are the STATUS pair (verdicts / warnings only, always with a
+# word); BLUE/PURPLE are categorical series slots. Provenance is NOT a hue:
+# TAG_COLOR is one ink tone for every tag, the tag itself is carried by the
+# chip text "[A]" (studio-02 / DIRECTION.md line-form grammar).
+_TOK = load_tokens()
+_C = _TOK["color"]["dark"]
+
+
+def _rgb(hexv: str) -> tuple:
+    h = hexv.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _rgba_css(css: str) -> tuple:
+    """'rgba(r,g,b,a)' -> DPG 0-255 RGBA."""
+    r, g, b, a = (float(v) for v in css[css.index("(") + 1:css.index(")")].split(","))
+    return (int(r), int(g), int(b), int(round(255 * a)))
+
+
+SERIES = [_rgb(h) for h in _C["series"]]
+INK1, INK2, MUTED, REF = _rgb(_C["ink-1"]), _rgb(_C["ink-2"]), _rgb(_C["muted"]), _rgb(_C["ref"])
+REF_WASH = _rgba_css(_C["ref-wash"])
+GREEN = _rgb(_C["status"]["pass"])
+AMBER = _rgb(_C["status"]["warn"])
+RED = _rgb(_C["status"]["fail"])
+BLUE = SERIES[0]
+PURPLE = SERIES[6]
+TAG_COLOR = {"V": INK2, "DR": INK2, "E": INK2, "A": INK2}
+FONTS = {"ui": None, "mono": None, "theme": None}   # filled by bind_theme() in main()
 
 # ---- D3: comparison slots. LAST_RUN is the most recent successful RUN
 # (point or envelope), same shape as a designer_report() entry minus
@@ -74,7 +100,7 @@ TAG_COLOR = {"V": GREEN, "DR": AMBER, "E": AMBER, "A": RED}
 LAST_RUN = None
 SLOTS = {}
 SLOT_LABELS = ("A", "B", "C")
-SLOT_COLOR = {"A": AMBER, "B": BLUE, "C": PURPLE}
+SLOT_COLOR = {"A": SERIES[0], "B": SERIES[1], "C": SERIES[2]}   # comparison set, slots 1-3
 DELTA_SCALARS = ["T_j_op", "dT_J", "eps_op", "rho_op", "g2_op", "brightness_per_pulse",
                 "T_c", "F_eff", "N_w", "aperture_g2_penalty"]
 
@@ -112,8 +138,8 @@ def _tag_bullet(path):
     meta = design_meta.META.get(path)
     if meta is None:
         return
-    color = TAG_COLOR.get(meta["tag"], AMBER)
-    b = dpg.add_text("*", color=color)
+    color = TAG_COLOR.get(meta["tag"], INK2)
+    b = dpg.add_text(f"[{meta['tag']}]", color=color)
     with dpg.tooltip(b):
         dpg.add_text(f"[{meta['tag']}] {meta['unit']}  |  band {meta['lo']:g}-{meta['hi']:g}"
                      f"  |  {meta['source']}")
@@ -145,6 +171,13 @@ def _toggle_range(path):
     on = dpg.get_value(f"rng.{path}")
     dpg.configure_item(f"rng.{path}.lo", show=on)
     dpg.configure_item(f"rng.{path}.hi", show=on)
+    # the caption shortens to "range" beside the lo/hi fields (studio-08 R3:
+    # the fields get the width; the checkbox tooltip keeps the full meaning)
+    dpg.set_value(f"rng.{path}.cap", _range_caption(on))
+
+
+def _range_caption(on):
+    return "range" if on else "range (envelope)"
 
 
 def _range_controls(path, extra=None):
@@ -169,11 +202,16 @@ def _range_controls(path, extra=None):
     with dpg.group(horizontal=True):
         dpg.add_checkbox(label="~", tag=f"rng.{path}", default_value=on,
                          callback=_toggle_cb)
-        dpg.add_input_float(tag=f"rng.{path}.lo", width=68, default_value=lo,
-                            show=on, callback=extra)
-        dpg.add_input_float(tag=f"rng.{path}.hi", width=68, default_value=hi,
-                            show=on, callback=extra)
-        dpg.add_text("range (envelope)", color=(150, 150, 150))
+        with dpg.tooltip(f"rng.{path}"):
+            dpg.add_text("range (envelope): sweep this input between lo and hi")
+        # 96 px + %.4g: lo/hi read in full next to the -/+ steppers
+        # (1.5, 0.001, 2e+10); studio-08 R3
+        dpg.add_input_float(tag=f"rng.{path}.lo", width=96, default_value=lo,
+                            format="%.4g", show=on, callback=extra)
+        dpg.add_input_float(tag=f"rng.{path}.hi", width=96, default_value=hi,
+                            format="%.4g", show=on, callback=extra)
+        dpg.add_text(_range_caption(on), tag=f"rng.{path}.cap",
+                     color=(150, 150, 150))
 
 
 def _reset_range_controls(d: DeviceDesign):
@@ -196,6 +234,7 @@ def _reset_range_controls(d: DeviceDesign):
         dpg.set_value(f"{tag}.hi", hi)
         dpg.configure_item(f"{tag}.lo", show=on)
         dpg.configure_item(f"{tag}.hi", show=on)
+        dpg.set_value(f"{tag}.cap", _range_caption(on))
 
 
 def _collect_ranged() -> dict:
@@ -543,6 +582,72 @@ def _derived_result_lines(s: dict) -> list:
     ]
 
 
+# ------------------------------------------- static (non-headline) labelling
+#
+# Spec audit-edge-cards-label (user decision Q2, 2026-09-23): the RT edge
+# cards (cards/edge-inp-gainp-design.yaml, cards/edge-inp-gaasp-design.yaml)
+# ship drive.finite_pulse=false, so a card-level evaluate() uses the static
+# per-pulse loading that the post-peer-review verdict rejected as the
+# headline model (headline = drive.finite_pulse=true with the tau_cap density
+# law off, scripts/run_rt_edge.py HEADLINE_MODEL). The cards are NOT switched;
+# every card-level g2/brightness this panel emits for such a design is labelled
+# "static (non-headline)" and the headline finite-pulse g2 is named next to
+# it. Labelling only: no emitted static number changes.
+STATIC_LABEL = "static (non-headline)"
+
+
+def _is_static_edge(d: DeviceDesign) -> bool:
+    """True for an RT edge-emitter design evaluated with the static per-pulse
+    loading (emission.type='edge', drive.finite_pulse false) -- the case
+    whose g2/brightness is not the headline model's."""
+    return (getattr(d.emission, "type", "none") == "edge"
+            and not bool(getattr(d.drive, "finite_pulse", False)))
+
+
+def _headline_g2(d: DeviceDesign) -> float:
+    """Headline-model g2_op at this design's own thermal.T_hs: a straight
+    pass-through of a fresh evaluate() on a copy with the headline switches
+    (drive.finite_pulse=True, ret.tau_cap_scales_with_density=False; the CW
+    diagnostic is skipped, it does not enter g2_op). Never changes `d` or
+    the static numbers; NaN if the headline evaluation cannot run."""
+    dh = copy.deepcopy(d)
+    dh.drive.finite_pulse = True
+    dh.ret.tau_cap_scales_with_density = False
+    dh.drive.cw = False
+    try:
+        return float(evaluate(dh, T_grid=[dh.thermal.T_hs])["scalars"]["g2_op"])
+    except Exception:  # noqa: BLE001 -- a label must never break the panel
+        return float("nan")
+
+
+def _static_label_lines(d: DeviceDesign, headline_g2: float) -> list:
+    """The label block appended below the results for a static edge design:
+    names the static loading, the headline model and its g2 at this point."""
+    hv = "n/a" if headline_g2 != headline_g2 else f"{headline_g2:.4f}"
+    return [
+        "",
+        f"NOTE: g2(0)/brightness above are {STATIC_LABEL}: drive.finite_pulse=false "
+        "(static per-pulse loading).",
+        "headline model = drive.finite_pulse=true (scripts/run_rt_edge.py HEADLINE_MODEL); "
+        f"headline finite-pulse g2_op at T_hs {d.thermal.T_hs:.0f} K = {hv}",
+    ]
+
+
+def _f_eff_label(d: DeviceDesign) -> str:
+    """Audit H5 (2026-09-23): the F_eff line is the SINGLE-MODE F_P input
+    (device.py: F_P kappa/(kappa+Gamma)), never a planar-DBR total-rate
+    enhancement (dbr.planar_total_rate ~1.0 for a planar lambda cavity;
+    Bjork et al., PRA 44, 669 (1991)). Label only; no number changes."""
+    pl = presets.CAVITY_PRESETS.get("planar-lambda", {})
+    is_planar_preset = (bool(d.cavity.enabled) and d.cavity.type == pl.get("type")
+                        and float(d.cavity.F_P) == float(pl.get("F_P", float("nan")))
+                        and float(d.cavity.kappa) == float(pl.get("kappa", float("nan")))
+                        and float(d.cavity.G) == float(pl.get("G", float("nan"))))
+    if is_planar_preset:
+        return "F_eff (mode-only F_P [A]; planar DBR total rate ~1.0)"
+    return "F_eff (single-mode F_P input, not a planar total rate)"
+
+
 # ------------------------------------------------------------------------- run
 
 def run_device():
@@ -570,15 +675,14 @@ def _run_point(d: DeviceDesign):
     dpg.set_value("s_rho2", [Ts, list(map(float, c["rho2"]))])
     dpg.set_value("s_half", [[Ts[0], Ts[-1]], [0.5, 0.5]])
     tc = s["T_c"]
-    dpg.set_value("s_tc", [[tc, tc], [0.0, 1.0]] if tc == tc else [[], []])
+    _set_tc_marks(tc, tc, Ts, point=True)
     dpg.set_value("s_tj", [Ts, [tj - t for tj, t in zip(map(float, c["Tj"]), Ts)]])
     dpg.set_value("s_gam", [Ts, list(map(float, c["gamma"]))])
     dpg.set_value("s_g2_band", [[], [], []])
     dpg.set_value("s_rho2_band", [[], [], []])
     dpg.set_value("s_tj_band", [[], [], []])
     dpg.set_value("envelope_header", "")
-    dpg.fit_axis_data("xax1"); dpg.fit_axis_data("yax1")
-    dpg.fit_axis_data("xax2"); dpg.fit_axis_data("yax2")
+    _fit_result_axes()
 
     dpg.set_value("warn_runaway",
                   "!!!  THERMAL RUNAWAY -- no operating point  !!!" if s["runaway"] else "")
@@ -586,6 +690,8 @@ def _run_point(d: DeviceDesign):
                   "!!!  CAVITY SELECTS XX (eps > 1) -- retune tracking/filter  !!!"
                   if s["eps_op"] > 1 else "")
 
+    static_edge = _is_static_edge(d)
+    static_tag = f"   [{STATIC_LABEL}]" if static_edge else ""
     lines = [
         f"tag chain {s['tag_chain']}  (unmeasured inputs -> conditional numbers;"
         f" envelopes: run_phase3)",
@@ -595,14 +701,16 @@ def _run_point(d: DeviceDesign):
         f"Gamma(T_j)               {s['gamma_op']:.2f} meV",
         f"eps = t_XX/t_X           {s['eps_op']:.4f}",
         f"rho (signal purity)      {s['rho_op']:.3f}",
-        f"g2(0) at operating point {s['g2_op']:.3f}",
-        f"brightness/pulse (t_X)   {s['brightness_per_pulse']:.3f}",
+        f"g2(0) at operating point {s['g2_op']:.3f}" + static_tag,
+        f"brightness/pulse (t_X)   {s['brightness_per_pulse']:.3f}" + static_tag,
         f"master ceiling T_c       "
         + (f"{s['T_c']:.0f} K" if s["T_c"] == s["T_c"] else "not crossed in range"),
-        f"F_eff (cavity)           "
+        f"{_f_eff_label(d)}  "
         + (f"{s['F_eff']:.1f}" if s["F_eff"] == s["F_eff"] else "-- (cavity off)"),
         f"aperture: N_w = {s['N_w']:.2f}  ->  F5 g2 penalty {s['aperture_g2_penalty']:.3f}",
     ] + _derived_result_lines(s) + _f8_result_lines(d)
+    if static_edge:
+        lines += _static_label_lines(d, _headline_g2(d))
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
     _refresh_delta_table()
@@ -643,7 +751,9 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
     dpg.set_value("s_eps", [Ts, list(map(float, mid["eps"]))])
     dpg.set_value("s_rho2", [Ts, list(map(float, mid["rho2"]))])
     dpg.set_value("s_half", [[Ts[0], Ts[-1]], [0.5, 0.5]])
-    dpg.set_value("s_tc", [[], []])  # a single marker can't honestly show a band -- see text
+    # a single marker can't honestly show a band: draw the T_c INTERVAL from
+    # scalar_bands (or the "not crossed in range" note) instead
+    _set_tc_marks(sb["T_c"][0], sb["T_c"][1], Ts, point=False)
     dTj_mid = [tj - t for tj, t in zip(map(float, mid["Tj"]), Ts)]
     dpg.set_value("s_tj", [Ts, dTj_mid])
     dpg.set_value("s_gam", [Ts, list(map(float, mid["gamma"]))])
@@ -656,15 +766,14 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
     dpg.set_value("s_g2_band", [Ts, g2_lo, g2_hi])
     dpg.set_value("s_rho2_band", [Ts, rho2_lo, rho2_hi])
     dpg.set_value("s_tj_band", [Ts, dTj_lo, dTj_hi])
-    dpg.fit_axis_data("xax1"); dpg.fit_axis_data("yax1")
-    dpg.fit_axis_data("xax2"); dpg.fit_axis_data("yax2")
+    _fit_result_axes()
 
     dpg.set_value("warn_runaway", "")
     dpg.set_value("warn_eps", "")
 
     dpg.set_value("envelope_header",
-                  f"ENVELOPE over {env['n_samples']} samples: [A] inputs swept "
-                  "(honest mode); uncheck ~ to explore point designs")
+                  f"ENVELOPE over {env['n_samples']} samples (honest mode):\n"
+                  "[A] inputs swept; uncheck ~ for point designs")
 
     baseline = "T_c" if sb["T_c"][0] == sb["T_c"][0] else "g2_op"
     b_unit = "K" if baseline == "T_c" else ""
@@ -682,7 +791,8 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
         f"tag chain [A]  (envelope over {env['n_samples']} [A]-swept samples;"
         f" mid line = all ranges at their midpoint)",
         "",
-        f"g2(0) at op:               {_interval(*sb['g2_op'])}",
+        f"g2(0) at op:               {_interval(*sb['g2_op'])}"
+        + (f"   [{STATIC_LABEL}]" if _is_static_edge(d) else ""),
         f"eps = t_XX/t_X at op:      {_interval(*sb['eps_op'])}",
         f"rho (signal purity) at op: {_interval(*sb['rho_op'])}",
         f"dT_J at op:                {_interval(*sb['dT_J'], fmt='{:.2f}', unit='K')}",
@@ -693,6 +803,10 @@ def _run_envelope(d: DeviceDesign, ranged: dict):
     f8_lines = _f8_result_lines(dm)
     if f8_lines:
         lines += [""] + f8_lines
+    if _is_static_edge(d):
+        # headline g2 at the mid design (all ranges at their midpoint), the
+        # same point mid_scalars above reports.
+        lines += _static_label_lines(dm, _headline_g2(dm))
     dpg.set_value("results_text", "\n".join(lines))
     draw_cross_section()
     _refresh_delta_table()
@@ -751,6 +865,88 @@ def _build_slot_themes():
         dpg.bind_item_theme(band_tag, bt)
 
 
+def _series_theme(item, rgb, *, alpha=1.0, weight=None, shade=False):
+    """Bind one series' colour (line, or shade fill) from the token palette."""
+    if not dpg.does_item_exist(item) or dpg.get_item_theme(item):
+        return  # missing, or already themed (expand copies refresh every RUN)
+    r, g, b = rgb[:3]
+    a = int(round(255 * alpha)) if len(rgb) == 3 else rgb[3]
+    with dpg.theme() as th:
+        with dpg.theme_component(dpg.mvShadeSeries if shade else dpg.mvLineSeries):
+            dpg.add_theme_color(dpg.mvPlotCol_Fill if shade else dpg.mvPlotCol_Line,
+                                (r, g, b, a), category=dpg.mvThemeCat_Plots)
+            if weight is not None and not shade:
+                dpg.add_theme_style(dpg.mvPlotStyleVar_LineWeight, float(weight),
+                                    category=dpg.mvThemeCat_Plots)
+    dpg.bind_item_theme(item, th)
+
+
+def _build_series_themes(prefix=""):
+    """02-charts encodings for the live-run series: g2 slot 1, eps slot 2,
+    rho^2 slot 3; the 0.5 ceiling and T_c are `ref` ink at 1 px (references,
+    not series); bands at 12% of their series hue; the T_c interval is the
+    neutral ref-wash. `prefix` themes the expand-window copies ("x_")."""
+    band = _TOK["mark"]["band_opacity"]
+    line_w = _TOK["mark"]["line"]
+    _series_theme(prefix + "s_g2", SERIES[0], weight=line_w)
+    _series_theme(prefix + "s_eps", SERIES[1], weight=line_w)
+    _series_theme(prefix + "s_rho2", SERIES[2], weight=line_w)
+    _series_theme(prefix + "s_half", REF, weight=_TOK["mark"]["ref"])
+    _series_theme(prefix + "s_tc", REF, weight=_TOK["mark"]["ref"])
+    _series_theme(prefix + "s_g2_band", SERIES[0], alpha=band, shade=True)
+    _series_theme(prefix + "s_rho2_band", SERIES[2], alpha=band, shade=True)
+    _series_theme(prefix + "s_tc_band", REF_WASH, shade=True)
+    _series_theme(prefix + "s_tj", SERIES[0], weight=line_w)
+    _series_theme(prefix + "s_tj_band", SERIES[0], alpha=band, shade=True)
+    _series_theme(prefix + "s_gam", SERIES[0], weight=line_w)
+
+
+def _g2_axis_limits(yaxis_tag="yax1"):
+    """g2 axis fixed to 0..1 (the 0.5 ceiling always visible); only widened
+    when a plotted value really exceeds 1 (e.g. eps > 1), never autoscaled
+    down to a sliver."""
+    top = 1.0
+    for tag in ("s_g2", "s_eps", "s_rho2", "s_g2_band", "s_rho2_band"):
+        if dpg.does_item_exist(tag):
+            for arr in dpg.get_value(tag)[1:3]:
+                vals = [v for v in arr if v == v]
+                if vals:
+                    top = max(top, max(vals))
+    if dpg.does_item_exist(yaxis_tag):
+        dpg.set_axis_limits(yaxis_tag, 0.0, top * 1.02 if top > 1.0 else 1.0)
+
+
+def _set_tc_marks(tc_lo, tc_hi, Ts, point: bool):
+    """T_c reference on the g2 plot. Point run: 1px ref rule labelled with
+    the value. Envelope run: ref-wash span between scalar_bands['T_c'] lo/hi,
+    or the 'not crossed in range' note (mirrors _interval())."""
+    finite = tc_lo == tc_lo and tc_hi == tc_hi
+    dpg.set_value("s_tc_band", [[], [], []])
+    dpg.set_value("s_tc", [[], []])
+    dpg.configure_item("tc_note", show=False)
+    if point:
+        if finite:
+            dpg.set_value("s_tc", [[tc_lo, tc_lo], [0.0, 1.0]])
+            dpg.configure_item("s_tc", label=f"T_c = {tc_lo:.0f} K")
+        else:
+            dpg.configure_item("s_tc", label="T_c")
+    elif finite:
+        dpg.set_value("s_tc_band", [[tc_lo, tc_hi], [0.0, 0.0], [1.0, 1.0]])
+        dpg.configure_item("s_tc_band", label=f"T_c {tc_lo:.0f} - {tc_hi:.0f} K")
+        dpg.configure_item("s_tc", label="T_c")
+    if not finite and Ts:
+        dpg.set_value("tc_note", (float(Ts[0]) + 0.02 * (float(Ts[-1]) - float(Ts[0])), 0.95))
+        dpg.configure_item("tc_note", label="T_c: not crossed in range", show=True)
+
+
+def _fit_result_axes():
+    dpg.fit_axis_data("xax1")
+    _g2_axis_limits("yax1")
+    for ax in ("xax2", "yax2", "xax3", "yax3"):
+        if dpg.does_item_exist(ax):
+            dpg.fit_axis_data(ax)
+
+
 def _refresh_slot_overlay():
     """Push every stored slot's g2 curve (+ band, if it has one) onto the
     pre-created hidden series on the main plot; hide a slot's series when it
@@ -777,7 +973,7 @@ def _refresh_slot_overlay():
             dpg.set_value(band_tag, [[], [], []])
             dpg.configure_item(band_tag, show=False)
     dpg.fit_axis_data("xax1")
-    dpg.fit_axis_data("yax1")
+    _g2_axis_limits("yax1")
 
 
 def store_slot(label: str):
@@ -812,7 +1008,7 @@ EXPAND_SPECS = {
         "xaxis_tag": "x_xax1", "yaxis_tag": "x_yax1",
         "xlabel": "heatsink T (K)", "ylabel": "g2 / fractions",
         "lines": ["s_g2", "s_eps", "s_rho2", "s_half", "s_tc"],
-        "shades": ["s_g2_band", "s_rho2_band"],
+        "shades": ["s_tc_band", "s_g2_band", "s_rho2_band"],
         # D3 slot overlays: only copied once populated (see _copy_one_series)
         "slot_lines": [_slot_tags(lbl)[0] for lbl in SLOT_LABELS],
         "slot_shades": [_slot_tags(lbl)[1] for lbl in SLOT_LABELS],
@@ -821,9 +1017,12 @@ EXPAND_SPECS = {
         "window_tag": "expand_win_secondary",
         "title": "dT_J / Gamma vs heatsink T -- full detail",
         "xaxis_tag": "x_xax2", "yaxis_tag": "x_yax2",
-        "xlabel": "heatsink T (K)", "ylabel": "dT_J (K) / Gamma (meV)",
-        "lines": ["s_tj", "s_gam"],
+        "xlabel": "heatsink T (K)", "ylabel": "dT_J (K)",
+        "lines": ["s_tj"],
         "shades": ["s_tj_band"],
+        # second stacked panel (own units, linked x): Gamma in meV
+        "panel2": {"xaxis_tag": "x_xax3", "yaxis_tag": "x_yax3", "ylabel": "Gamma (meV)",
+                   "lines": ["s_gam"]},
         "slot_lines": [],
         "slot_shades": [],
     },
@@ -878,8 +1077,18 @@ def _refresh_expand_window(kind: str):
         _copy_one_series(tag, yax, is_shade=True, skip_if_empty=True)
     for tag in spec["slot_lines"]:
         _copy_one_series(tag, yax, is_shade=False, skip_if_empty=True)
+    p2 = spec.get("panel2")
+    if p2:
+        for tag in p2["lines"]:
+            _copy_one_series(tag, p2["yaxis_tag"], is_shade=False, skip_if_empty=False)
+        dpg.fit_axis_data(p2["xaxis_tag"])
+        dpg.fit_axis_data(p2["yaxis_tag"])
+    _build_series_themes(prefix="x_")
     dpg.fit_axis_data(spec["xaxis_tag"])
-    dpg.fit_axis_data(yax)
+    if kind == "main":
+        _g2_axis_limits(yax)
+    else:
+        dpg.fit_axis_data(yax)
 
 
 def _open_expand_window(kind: str):
@@ -895,10 +1104,28 @@ def _open_expand_window(kind: str):
     else:
         with dpg.window(tag=win_tag, label=spec["title"], width=1200, height=700,
                         pos=(120, 60)):
-            with dpg.plot(height=-1, width=-1):
-                dpg.add_plot_legend()
-                dpg.add_plot_axis(dpg.mvXAxis, label=spec["xlabel"], tag=spec["xaxis_tag"])
-                dpg.add_plot_axis(dpg.mvYAxis, label=spec["ylabel"], tag=spec["yaxis_tag"])
+            p2 = spec.get("panel2")
+            if p2 is None:
+                with dpg.plot(height=-1, width=-1):
+                    dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
+                    dpg.add_plot_axis(dpg.mvXAxis, label=spec["xlabel"],
+                                      tag=spec["xaxis_tag"])
+                    dpg.add_plot_axis(dpg.mvYAxis, label=spec["ylabel"],
+                                      tag=spec["yaxis_tag"])
+            else:  # two stacked panels, linked x, each with its own units
+                with dpg.subplots(2, 1, height=-1, width=-1, link_all_x=True):
+                    with dpg.plot():
+                        dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
+                        dpg.add_plot_axis(dpg.mvXAxis, label="", tag=spec["xaxis_tag"],
+                                          no_tick_labels=True)
+                        dpg.add_plot_axis(dpg.mvYAxis, label=spec["ylabel"],
+                                          tag=spec["yaxis_tag"])
+                    with dpg.plot():
+                        dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
+                        dpg.add_plot_axis(dpg.mvXAxis, label=spec["xlabel"],
+                                          tag=p2["xaxis_tag"])
+                        dpg.add_plot_axis(dpg.mvYAxis, label=p2["ylabel"],
+                                          tag=p2["yaxis_tag"])
     _refresh_expand_window(kind)
 
 
@@ -1013,9 +1240,9 @@ def build_ui():
             dpg.add_button(label="Save As...", callback=lambda: dpg.show_item("save_file_dialog"))
             dpg.add_button(label="Load...", callback=lambda: dpg.show_item("load_file_dialog"))
             dpg.add_button(label="Export bundle", callback=export_bundle)
-            dpg.add_button(label="  RUN  ", callback=run_device)
+            dpg.add_button(label="  RUN  ", callback=run_device, tag="run_button")
             dpg.add_text("tag chain [A] - every result inherits unmeasured inputs",
-                         color=RED)
+                         color=INK2)
         with dpg.group(horizontal=True):
             dpg.add_text("Compare:")
             dpg.add_button(label="Store A", callback=lambda: store_slot("A"))
@@ -1040,8 +1267,10 @@ def build_ui():
         dpg.add_text("", tag="param_warning", color=AMBER)
 
         with dpg.group(horizontal=True):
-            # ---------------- left: block diagram
-            with dpg.child_window(width=760, height=640):
+            # ---------------- left: block diagram (node columns 320 px apart so
+            # the widest rows, "[E]" tags and "range (envelope)", are not
+            # clipped by the next column; studio-07 F8)
+            with dpg.child_window(width=900, height=640):
                 with dpg.node_editor(width=-1, height=620, tag="editor",
                                      minimap=False):
                     with dpg.node(label="ELECTRICAL DRIVE", pos=(10, 20)):
@@ -1153,7 +1382,7 @@ def build_ui():
                                                 tag="th_out"):
                             dpg.add_text("T_j")
 
-                    with dpg.node(label="QD EMITTER", pos=(270, 20)):
+                    with dpg.node(label="QD EMITTER", pos=(330, 20)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Input,
                                                 tag="dot_in"):
                             dpg.add_text("carriers @ T_j")
@@ -1178,12 +1407,12 @@ def build_ui():
                                                     callback=_mk_cb("dot.r_xx"))
                                 _tag_bullet("dot.r_xx")
                             dpg.add_text("Gamma(T), retention: class proxy [A]",
-                                         color=RED)
+                                         color=INK2)
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Output,
                                                 tag="dot_out"):
                             dpg.add_text("X + XX photons")
 
-                    with dpg.node(label="CAVITY (F6)", pos=(270, 330)):
+                    with dpg.node(label="CAVITY (F6)", pos=(330, 330)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Input,
                                                 tag="cav_in"):
                             dpg.add_text("photons")
@@ -1240,7 +1469,7 @@ def build_ui():
                                                 tag="cav_out"):
                             dpg.add_text("filtered + boosted")
 
-                    with dpg.node(label="SLIT FILTER", pos=(530, 20)):
+                    with dpg.node(label="SLIT FILTER", pos=(650, 20)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Input,
                                                 tag="fil_in"):
                             dpg.add_text("spectrum")
@@ -1269,7 +1498,7 @@ def build_ui():
                                                 tag="fil_out"):
                             dpg.add_text("to detector")
 
-                    with dpg.node(label="APERTURE / ENSEMBLE (F5)", pos=(530, 330)):
+                    with dpg.node(label="APERTURE / ENSEMBLE (F5)", pos=(650, 330)):
                         with dpg.node_attribute(attribute_type=dpg.mvNode_Attr_Static):
                             with dpg.group(horizontal=True):
                                 dpg.add_input_float(label="log10 density", tag="ap.log_density",
@@ -1315,10 +1544,13 @@ def build_ui():
             with dpg.child_window(width=-1, height=640):
                 dpg.add_text("", tag="envelope_header", color=AMBER)
                 dpg.add_button(label="[ expand ]", callback=expand_main)
-                with dpg.plot(height=270, width=-1):
-                    dpg.add_plot_legend()
+                with dpg.plot(height=270, width=-1, tag="plot_main"):
+                    dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
                     dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax1")
                     with dpg.plot_axis(dpg.mvYAxis, label="g2 / fractions", tag="yax1"):
+                        # T_c interval (envelope runs): ref-wash span lo..hi
+                        dpg.add_shade_series([], [], y2=[], label="T_c interval",
+                                             tag="s_tc_band")
                         dpg.add_shade_series([], [], y2=[], label="g2 band", tag="s_g2_band")
                         dpg.add_shade_series([], [], y2=[], label="rho^2 band", tag="s_rho2_band")
                         dpg.add_line_series([], [], label="g2(0)", tag="s_g2")
@@ -1333,22 +1565,47 @@ def build_ui():
                             dpg.add_shade_series([], [], y2=[], label=f"{_lbl} band",
                                                  tag=_bt, show=False)
                             dpg.add_line_series([], [], label=_lbl, tag=_lt, show=False)
+                    dpg.add_plot_annotation(label="", default_value=(0.0, 0.95), tag="tc_note",
+                                            color=(0, 0, 0, 0), show=False)
                 dpg.add_button(label="[ expand ]", callback=expand_secondary)
-                with dpg.plot(height=180, width=-1):
-                    dpg.add_plot_legend()
-                    dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax2")
-                    with dpg.plot_axis(dpg.mvYAxis, label="dT_J (K) / Gamma (meV)",
-                                       tag="yax2"):
-                        dpg.add_shade_series([], [], y2=[], label="dT_J band", tag="s_tj_band")
-                        dpg.add_line_series([], [], label="dT_J", tag="s_tj")
-                        dpg.add_line_series([], [], label="Gamma(T_j)", tag="s_gam")
+                # dT_J (K) and Gamma (meV) have different units: two stacked
+                # plots on one linked x axis, never one shared y axis
+                with dpg.subplots(2, 1, height=230, width=-1, link_all_x=True,
+                                  row_ratios=[1.0, 1.0]):
+                    with dpg.plot():
+                        dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
+                        dpg.add_plot_axis(dpg.mvXAxis, label="", tag="xax2",
+                                          no_tick_labels=True)
+                        with dpg.plot_axis(dpg.mvYAxis, label="dT_J (K)", tag="yax2"):
+                            dpg.add_shade_series([], [], y2=[], label="dT_J band",
+                                                 tag="s_tj_band")
+                            dpg.add_line_series([], [], label="dT_J", tag="s_tj")
+                    with dpg.plot():
+                        dpg.add_plot_legend(outside=True, location=dpg.mvPlot_Location_East)
+                        dpg.add_plot_axis(dpg.mvXAxis, label="heatsink T (K)", tag="xax3")
+                        with dpg.plot_axis(dpg.mvYAxis, label="Gamma (meV)", tag="yax3"):
+                            dpg.add_line_series([], [], label="Gamma(T_j)", tag="s_gam")
                 dpg.add_text("zoom: scroll | box: right-drag | reset: double-click",
                              color=(150, 150, 150))
                 dpg.add_text("", tag="warn_runaway", color=RED)
                 dpg.add_text("", tag="warn_eps", color=RED)
                 dpg.add_text("press RUN", tag="results_text")
-                dpg.add_text("", tag="delta_text", color=(200, 200, 200))
+                dpg.add_text("", tag="delta_text", color=INK2)
     _build_slot_themes()
+    _build_series_themes()
+    _g2_axis_limits("yax1")
+    # RUN is the one filled control: beam ink (DIRECTION.md, reserved colour)
+    with dpg.theme() as run_theme:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button, _rgb(_C["beam"]))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, _rgb(_C["beam"]))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, _rgb(_C["beam"]))
+            dpg.add_theme_color(dpg.mvThemeCol_Text, _rgb(_C["ground"]))
+    dpg.bind_item_theme("run_button", run_theme)
+    # numeric readouts in the mono face (columns line up, tabular digits)
+    if FONTS.get("mono") is not None:
+        for tag in ("results_text", "delta_text"):
+            dpg.bind_item_font(tag, FONTS["mono"])
 
 
 def _run_selftest(outdir: Path) -> bool:
@@ -1458,13 +1715,14 @@ def main(frames=None, selftest_outdir=None, roundtrip_check=False, *,
     the event loop -- both without importing anything the GUI doesn't
     already use (three-layer rule)."""
     dpg.create_context()
+    FONTS.update(bind_theme(dpg, "dark"))
     build_ui()
     dpath = Path(design_path) if design_path is not None else DESIGN_PATH
     default = DeviceDesign()
     if dpath.exists():
         default = DeviceDesign.load(dpath)
     apply_design(default)
-    dpg.create_viewport(title="FSIM device designer", width=1520, height=760)
+    dpg.create_viewport(title="FSIM device designer", width=1720, height=760)
     dpg.setup_dearpygui()
     dpg.show_viewport()
     dpg.set_primary_window("main", True)

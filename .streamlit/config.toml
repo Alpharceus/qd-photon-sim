@@ -1,0 +1,67 @@
+# fsim Streamlit theme (studio-02). Colours are the DARK set of
+# fsim_theme/tokens.json (ground, plate, rim, ink-1, ink-2, surface, series[0]);
+# primaryColor is NEUTRAL ink-2 (studio-07 F8): Streamlit paints sliders,
+# radios, checkboxes, the tab underline and slider values with it, and the
+# beam red is reserved for the primary button only (app.py CSS sets it).
+# edit tokens.json first and mirror the change here. Fonts are the vendored
+# woff2 copies under fsim_gui/static/fonts/ (Streamlit serves ./static/ next
+# to the main script at app/static/ when enableStaticServing is on).
+
+[server]
+enableStaticServing = true
+
+[theme]
+base = "dark"
+primaryColor = "#c3c2b7"
+backgroundColor = "#0E1012"
+secondaryBackgroundColor = "#181A1F"
+textColor = "#f2f2ef"
+borderColor = "#2C2F35"
+linkColor = "#3987e5"
+codeBackgroundColor = "#15171c"
+baseRadius = "2px"
+font = "Barlow, Segoe UI, system-ui, sans-serif"
+headingFont = "Barlow Semi Condensed, Barlow, Segoe UI, sans-serif"
+codeFont = "B612 Mono, Consolas, monospace"
+
+[[theme.fontFaces]]
+family = "Barlow"
+url = "app/static/fonts/barlow-latin-400-normal.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow"
+url = "app/static/fonts/barlow-latin-500-normal.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow"
+url = "app/static/fonts/barlow-latin-600-normal.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow Semi Condensed"
+url = "app/static/fonts/barlow-semi-condensed-latin-500-normal.woff2"
+weight = 500
+style = "normal"
+
+[[theme.fontFaces]]
+family = "Barlow Semi Condensed"
+url = "app/static/fonts/barlow-semi-condensed-latin-600-normal.woff2"
+weight = 600
+style = "normal"
+
+[[theme.fontFaces]]
+family = "B612 Mono"
+url = "app/static/fonts/b612-mono-latin-400-normal.woff2"
+weight = 400
+style = "normal"
+
+[[theme.fontFaces]]
+family = "B612 Mono"
+url = "app/static/fonts/b612-mono-latin-700-normal.woff2"
+weight = 700
+style = "normal"

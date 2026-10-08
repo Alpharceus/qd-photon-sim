@@ -440,6 +440,11 @@ def _one_raw(d, T_hs):
     branch.  _one() (below) is the public per-row entry point: it adds the
     NaN pre-fill for the full row-key set on top of this function's result."""
     family, core, disc, outer, conducting, regime, rep, strain_bound, bound_role, screening, shell, ext_field_kVcm = _validate(d)
+    # Optional Lindblad path (audit Phase C item 2): None (the default, off)
+    # adds no key; a malformed DeviceDesign.quantum block raises here, as a
+    # card-shape error. Local import (see the module docstring).
+    from .device import _quantum_settings
+    qset = _quantum_settings(d)
     n = d.nitride
     thermal = n["wire_thermal"]
 
@@ -473,6 +478,18 @@ def _one_raw(d, T_hs):
     if pulse >= period:
         return inv(["invalid pulse/rep-rate"])
     gate = float(d.drive.gate_ns if d.drive.gate_ns is not None else period)
+    # Audit C6 (2026-09-23, M3; user decision Q6: the loading window is
+    # arbitrary): the injector loading window is its own card leaf,
+    # drive.diode.loading_window_ns [A], no longer tied to the electrical
+    # pulse. Absent (every committed card), it defaults to tau_pulse_ns,
+    # which reproduces the pre-C6 rows bit for bit. It prices the RT
+    # injector's missed load in both regimes and, in the rectangular
+    # regime, the second-carrier gate; it is NOT the pulse_counting pump
+    # duration (still tau_pulse_ns). Contract bullet 7: strictly < period.
+    lw_raw = d.drive.diode.get("loading_window_ns")
+    loading_window = pulse if lw_raw is None else float(lw_raw)
+    if not math.isfinite(loading_window) or loading_window <= 0 or loading_window >= period:
+        return inv(["invalid loading window"])
 
     height_nm = _req(n["dot"], "height_nm", "nitride.dot")
     x_in = _req(n["dot"], "x_in", "nitride.dot")
@@ -488,7 +505,7 @@ def _one_raw(d, T_hs):
     # schema]; H4: R_s_ohm, f_Rs_local, eta_total and C_parasitic_F are
     # all read from nitride.wire_thermal and threaded through below.
     diode_raw = dict(d.drive.diode)
-    for k in ("preset", "tau_pulse_ns", "conducting_radius_nm"): diode_raw.pop(k, None)
+    for k in ("preset", "tau_pulse_ns", "conducting_radius_nm", "loading_window_ns"): diode_raw.pop(k, None)
     # LOW 13 (fix-2 round 2): drive.diode.R_s_ohm silently overrode
     # nitride.wire_thermal.R_s_ohm with no contradiction check; reject a
     # card that states both, disagreeing, instead of silently picking one.
@@ -605,7 +622,7 @@ def _one_raw(d, T_hs):
         # LOW 10 (fix-3): no pre-feedback rates() gate here any more -- this
         # used to call rates(lv, ...) purely to bail out early on an invalid
         # rate solve before evaluate_injection() ran, but evaluate_injection
-        # never consumes that result (only lv.dE_e/h_meV and lv.overlap_sq,
+        # never consumes that result (only lv.dE_e/h_meV; S_dot is 1.0 since audit H1,
         # both already available), and the SAME validity check runs again,
         # unconditionally, on rr2 below (from the post-field-feedback lv2)
         # moments later. Removed the redundant duplicate solve; rr2's own
@@ -617,7 +634,7 @@ def _one_raw(d, T_hs):
         # tagged helper -- not an untagged E_X+0.05 offset.  Local import:
         # avoids a module-load-time cycle with fsim_core.device, which
         # dispatches here locally in the other direction.
-        from .device import _nitride_reservoir_energy_eV, _nitride_flat_background_acceptance
+        from .device import _nitride_reservoir_energy_eV
         # MEDIUM 4 (fix-3): an explicit nitride.reservoir_energy_eV card
         # override is honored through the SAME planar helper/"background"
         # dict convention device.py's own nitride path uses (including its
@@ -630,7 +647,14 @@ def _one_raw(d, T_hs):
             E_X_eV=lv.E_X_eV, reservoir_energy_eV=reservoir_energy_eV,
             barrier_e_eV=lv.dE_e_meV / 1000, barrier_h_eV=lv.dE_h_meV / 1000,
             surface_reservoir_ns=surf["k_surface_reservoir_ns"], tau_cap_ps=tau_cap_ps,
-            S_dot=lv.overlap_sq, w_meV=float(d.dot.gamma300),
+            # audit H1 (2026-09-23): S_dot is a capture RETENTION, not the e-h
+            # overlap. overlap_sq already sets the radiative rate (gamma_X0 =
+            # overlap_sq/tau_rad0, nitride_nanowire_levels.py:227) and capture
+            # into the dot does not depend on it; post-capture escape is
+            # carried by k_X_ns in pulse_counting, so no separate retention
+            # applies here. [A] S_dot = 1.0 (contract Composition rules
+            # bullet 12). Previously the overlap itself was passed here (counted twice).
+            S_dot=1.0, w_meV=float(d.dot.gamma300),
             eta_rad_matrix=1.0,  # [A] no separate card leaf; conservative fully-radiative reservoir matrix assumption
             eta_total=eta_total)
         if not inj["valid"]: return inv(list(inj["reasons"]), T_j=tj, thermal_iterations=op["iterations"], thermal_converged=bool(op["valid"]))
@@ -677,25 +701,18 @@ def _one_raw(d, T_hs):
         else:
             w_val = (d.dot.gamma300 * d.filter.auto_w_scale) if d.filter.auto_w else d.filter.w
             eta_out = float(epsilon(0.0, d.dot.gamma300, d.dot.gamma300, w=w_val, kappa=None, dx=d.filter.dx).t_x)
-            # LOW 6 (fix-3): the reservoir background sits reservoir_offset_meV
-            # away from the X line (typically hundreds of meV -- the GaN
-            # barrier edge vs. the confined transition), so it must NOT be
-            # attenuated by the on-resonance X-line eta_out (that made rho/g2
-            # filter-invariant to the reservoir's own detuning, i.e. wrong
-            # whenever the filter is on). Reused from the planar path's own
-            # detuning-aware flat-spectrum acceptance helper
-            # (device._nitride_flat_background_acceptance) instead of an
-            # invented closed form. This platform's own filter has no cavity
-            # kappa (kappa=None, a plain top-hat slit above); [A] substitute
-            # kappa_meV=w_val (the slit's own width, the only spectral scale
-            # this platform's filter has) and detuning_meV=0.0 (no cavity
-            # mode to detune from) so the SAME Lorentzian-kernel average-
-            # acceptance math the planar cavity path uses still correctly
-            # rejects the far-detuned reservoir once the filter narrows below
-            # the reservoir offset.
-            reservoir_offset_meV = (reservoir_energy_eV - lv2.E_X_eV) * 1e3
-            bg_accept = float(_nitride_flat_background_acceptance(
-                w_val, w_val, d.filter.dx, 0.0, reservoir_offset_meV))
+            # audit device-M (nitride_nanowire_device.py:696, 2026-09-23):
+            # SINGLE spectral selection. evaluate_injection's
+            # accepted_background_s is ALREADY restricted to the X-centred
+            # collection window (transport.xi_window, background_window_
+            # fraction), so the filter acceptance applied here is the flat-
+            # spectrum acceptance of that SAME X-centred window, i.e. at
+            # reservoir offset 0 -- never a second window at the reservoir
+            # offset (the LOW 6 fix-3 version did that and suppressed the
+            # background a further ~3e3x). [A] kappa_meV=w_val (the slit's
+            # own width stands in for the missing cavity linewidth),
+            # detuning 0. See _background_acceptance.
+            bg_accept = _background_acceptance(w_val, d.filter.dx)
         ecx, ecxx = ph["eta_collection_X"], ph["eta_collection_XX"]
 
         # H3 fix: eta_collection_X/XX is passed as the pulse-counting
@@ -744,7 +761,7 @@ def _one_raw(d, T_hs):
         ip = replace(injector_params_base,
                      reservoir_state_count_e=rr2["reservoir_state_count_e"],
                      reservoir_state_count_h=rr2["reservoir_state_count_h"])
-        rti = injector_feasibility(ip, T_K=tj, rep_rate_hz=rep_v, loading_window_ns=pulse,
+        rti = injector_feasibility(ip, T_K=tj, rep_rate_hz=rep_v, loading_window_ns=loading_window,
             electron_level_eV=-lv2.dE_e_meV / 1000, hole_level_eV=-lv2.dE_h_meV / 1000,
             electron_spacing_meV=lv2.sp_split_e_meV, hole_spacing_meV=lv2.sp_split_h_meV,
             second_pair_addition_meV=st["E_C_meV"], available_pair_rate_Hz=inj["r_captured_s"],
@@ -756,7 +773,7 @@ def _one_raw(d, T_hs):
             # not an omission to "fix" into consistency with the levels
             # feedback convention.
             field_kVcm=inj["depletion_field_kVcm"],
-            gate_ns=(gate if regime == "deterministic_pair" else pulse))
+            gate_ns=(gate if regime == "deterministic_pair" else loading_window))
 
         delivery = pulse_delivery(diode, V_j=inj["V_j"], T_K=tj, tau_pulse_ns=pulse, rep_rate_hz=rep_v, C_parasitic_F=float(thermal["C_parasitic_F"]))
 
@@ -830,6 +847,38 @@ def _one_raw(d, T_hs):
                            "transport": inj["provenance"], "photonics": ph["provenance"],
                            "injector": rti.get("provenance"), "set": st.get("notes")},
         })
+        if qset is not None:
+            # Optional Lindblad diagnostics, NEW keys only (no existing key or
+            # verdict changes). CW pump = the pulse-on captured rate
+            # (rectangular loading only); X and XX both at the dot.gamma300
+            # linewidth and at the same energy (delta_xx = 0, as the rate
+            # path's epsilon call above); filter FWHM = the SAME window w_val
+            # (None when filter.enabled is False). The rate path's Bernoulli
+            # eps is eta_collection_XX/eta_collection_X (the spectral t_x ==
+            # t_xx cancel).
+            from .device import _quantum_diagnostics, QUANTUM_PROVENANCE_NOTE
+            w_q = (((d.dot.gamma300 * d.filter.auto_w_scale) if d.filter.auto_w else d.filter.w)
+                   if d.filter.enabled else None)
+            q = _quantum_diagnostics(
+                r_ns=inj["r_captured_s"] * 1e-9, gamma_X_ns=gamma_x, gamma_XX_ns=gamma_xx,
+                k_X=kx, k_XX=kxx, pump_ratio=d.drive.cw_pump_ratio,
+                fwhm_X_meV=float(d.dot.gamma300), fwhm_XX_meV=float(d.dot.gamma300),
+                delta_xx_meV=0.0, dx_meV=float(d.filter.dx), w_meV=w_q,
+                eps_rate=(ecxx / ecx if ecx > 0 else _nan()),
+                cw=(regime == "rectangular"), **qset)
+            q["quantum_note"] = ("nanowire: quantum filter = the FilterBlock window w only; the "
+                                 "geometric collection eta_collection_X/XX is not part of the "
+                                 "quantum filter (the source field weights X and XX by their "
+                                 "radiative rates only) [A]. At delta_xx = 0 the X and XX "
+                                 "lines share the filter, so quantum_g2_cw0_filter_shift_* here is "
+                                 "X/XX spectral correlation and two-photon interference inside the "
+                                 "shared filter, NOT filter memory (the dip rate is far below w); it "
+                                 "depends strongly on the dephasing model (horizontal pulse card: "
+                                 "corr +0.084 vs indep +0.251)"
+                                 + ("" if ecx == ecxx else
+                                    "; eta_collection_XX != eta_collection_X at this row"))
+            row.update(q)
+            row["provenance"]["quantum"] = QUANTUM_PROVENANCE_NOTE
         return row
     except (ValueError, ZeroDivisionError) as exc:
         # Numerical/physics invalidity ONLY (unbound state, non-convergence,
@@ -848,17 +897,51 @@ def _one_raw(d, T_hs):
         return inv([str(exc)], **_extra)
 
 
+def _background_acceptance(w_val, dx):
+    """Filter acceptance for the already-windowed reservoir background
+    (audit single-selection fix, 2026-09-23): the flat-spectrum average of
+    the Lorentzian kernel (kappa=w_val [A]) across the X-centred window of
+    width w_val, i.e. device._nitride_flat_background_acceptance at
+    reservoir offset 0. Closed form [DR]: (1/2)[atan((1 - 2 dx/w)) +
+    atan((1 + 2 dx/w))], = pi/4 at dx=0. Deliberately independent of the
+    reservoir offset: transport.xi_window already applied the spectral
+    selection once."""
+    from .device import _nitride_flat_background_acceptance
+    return float(_nitride_flat_background_acceptance(w_val, w_val, dx, 0.0, 0.0))
+
+
 def _one(d, T_hs):
     """Public per-row entry point: the raw physics result (_one_raw),
     pre-filled with NaN for the full row-key set (_row_keys()) so that
     invalid rows carry EXACTLY the same keys a valid row would (HIGH 1)."""
     raw = _one_raw(d, T_hs)
     row = {k: _nan() for k in _row_keys()}
+    if "quantum_model" not in raw:
+        # Optional Lindblad path on an invalid row: the SAME quantum_* key
+        # set as a valid row, NaN-filled with an explicit reason. Off (the
+        # default): nothing is added.
+        from .device import _quantum_settings, _quantum_diagnostics
+        qset = _quantum_settings(d)
+        if qset is not None:
+            row.update(_quantum_diagnostics(
+                r_ns=_nan(), gamma_X_ns=_nan(), gamma_XX_ns=_nan(), k_X=_nan(), k_XX=_nan(),
+                pump_ratio=d.drive.cw_pump_ratio, fwhm_X_meV=float(d.dot.gamma300),
+                fwhm_XX_meV=float(d.dot.gamma300), delta_xx_meV=0.0, dx_meV=float(d.filter.dx),
+                w_meV=None, eps_rate=_nan(), **qset))
+            row["quantum_note"] = "nanowire: invalid row, quantum path not evaluated"
     row.update(raw)
     return row
 
 
-def evaluate_nanowire(design, T_grid=None):
+def evaluate_nanowire(design, T_grid=None, *, loading_window_ns=None):
+    """loading_window_ns (audit C6): optional override of the card leaf
+    drive.diode.loading_window_ns (ns) on a copy of the design; None (the
+    default) leaves the card untouched, so the window is the card leaf if
+    present, else tau_pulse_ns (pre-C6 behaviour, bit-identical)."""
+    if loading_window_ns is not None:
+        import copy
+        design = copy.deepcopy(design)
+        design.drive.diode["loading_window_ns"] = float(loading_window_ns)
     Ts = np.asarray(T_grid if T_grid is not None else [design.thermal.T_hs], dtype=float)
     rows = [_one(design, float(t)) for t in Ts]
     scalars = min(rows, key=lambda r: abs(r["T_hs"] - design.thermal.T_hs)).copy()
@@ -900,7 +983,7 @@ def _bound_reversal(relaxed_scalars, unrelaxed_scalars):
     return any(checks) if checks else "not_comparable"
 
 
-def evaluate_strain_pair(design, T_grid=None):
+def evaluate_strain_pair(design, T_grid=None, *, loading_window_ns=None):
     """Evaluate both physical strain bounds without mutating the card [DR].
     Sets bound_reversal True/False/"not_comparable" on both scalars dicts
     (see _bound_reversal); the per-row single-evaluator bound_reversal stays
@@ -911,7 +994,7 @@ def evaluate_strain_pair(design, T_grid=None):
         d = copy.deepcopy(design)
         d.nitride["nanowire"]["strain_bound"] = bound
         d.nitride["dot"]["strain_fraction"] = (0.0 if bound == "relaxed" else 1.0)
-        out[bound] = evaluate_nanowire(d, T_grid)
+        out[bound] = evaluate_nanowire(d, T_grid, loading_window_ns=loading_window_ns)
     reversal = _bound_reversal(out["relaxed"]["scalars"], out["unrelaxed"]["scalars"])
     for value in out.values():
         value["scalars"]["bound_reversal"] = reversal

@@ -1,0 +1,4 @@
+# generated theme files are byte-compared by verify/verify_theme.py: keep LF on every checkout
+fsim_theme/*.json text eol=lf
+fsim_theme/*.mplstyle text eol=lf
+fsim_studio/web/css/tokens.css text eol=lf

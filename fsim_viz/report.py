@@ -10,15 +10,20 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.patheffects
 import matplotlib.pyplot as plt
 
-from .figures import _write_csv
+import fsim_theme
 
-# fixed slot colors match the designer GUI's SLOT_COLOR/GREEN palette exactly
-# (A amber, B blue, C purple, "current" the live/unstored run in green); any
-# other label falls back to a small qualitative cycle.
-_FIXED_COLORS = {"current": "#56a632", "A": "#e3a21a", "B": "#3c78d8", "C": "#785ac8"}
-_FALLBACK_COLORS = ["#2166ac", "#e66101", "#5e3c99", "#d7191c", "#1a9641", "#e3a21a"]
+from .figures import _band, _ref_h, _themed, _title, _write_csv
+
+# Slot colours come from the token palette (light, report PNGs): A/B/C are the
+# categorical comparison set (series slots 1-3, the same slots the designer
+# GUI's SLOT_COLOR uses), "current" (the live/unstored run) is slot 7; any
+# other label falls back to the remaining slots.
+_SERIES = fsim_theme.load_tokens()["color"]["light"]["series"]
+_FIXED_COLORS = {"current": _SERIES[6], "A": _SERIES[0], "B": _SERIES[1], "C": _SERIES[2]}
+_FALLBACK_COLORS = [_SERIES[3], _SERIES[4], _SERIES[5], _SERIES[7]]
 
 SCALAR_ROWS = ["T_j_op", "dT_J", "eps_op", "rho_op", "g2_op", "brightness_per_pulse",
               "T_c", "F_eff", "N_w", "aperture_g2_penalty"]
@@ -71,45 +76,86 @@ def _write_scalars_csv(path: Path, entries: list) -> None:
 
 
 def _plot(entries: list, outdir: Path, title: str) -> None:
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8.5, 8.0))
-    ax2b = ax2.twinx()
+    """Three rows on one shared x (no twin axes): g2 with envelope bands and
+    T_c references, dT_J, Gamma. Envelope rule from fsim_viz.figures._band."""
+    with _themed("light") as P:
+        fig, (ax1, ax2, ax3) = plt.subplots(
+            3, 1, figsize=(8.5, 9.6), sharex=True,
+            gridspec_kw={"height_ratios": [1.6, 1.0, 1.0]})
+        n_banded = sum(1 for e in entries if e.get("bands") and "g2" in e["bands"])
+        n_tc = sum(1 for e in entries if e.get("scalar_bands") and "T_c" in e["scalar_bands"])
+        # stacked T_c intervals share one wash budget, so overlaps never go grey-black
+        tc_wash = (*P.ref_wash[:3], P.ref_wash[3] / max(n_tc, 1))
+        halo = [matplotlib.patheffects.withStroke(linewidth=2.5, foreground=P.surface)]
+        g2_top = 1.0
 
-    for i, e in enumerate(entries):
-        label, c = e["label"], e["curves"]
-        color = _color_for(label, i)
-        name_tag = f"{label}: {e['name']}"
-        Ts = c["T_hs"]
+        for i, e in enumerate(entries):
+            label, c = e["label"], e["curves"]
+            color = _color_for(label, i)
+            Ts = c["T_hs"]
 
-        bands = e.get("bands")
-        if bands and "g2" in bands:
-            lo, hi = bands["g2"]
-            ax1.fill_between(Ts, lo, hi, color=color, alpha=0.22, lw=0)
-        ax1.plot(Ts, c["g2"], color=color, lw=2, label=name_tag)
+            bands = e.get("bands")
+            if bands and "g2" in bands:
+                lo, hi = bands["g2"]
+                _band(ax1, Ts, lo, hi, color, P, overlap=n_banded > 1,
+                      label=f"{label} band (swept inputs, lo/hi edges)")
+                ax1.plot(Ts, c["g2"], color=color, lw=2,
+                         label=f"{label}: {e['name']} (design at range midpoints)")
+                g2_top = max(g2_top, max((float(v) for v in hi if v == v), default=0.0))
+            else:
+                ax1.plot(Ts, c["g2"], color=color, lw=2, label=f"{label}: {e['name']}")
+            g2_top = max(g2_top, max((float(v) for v in c["g2"] if v == v), default=0.0))
 
-        dTj = [tj - t for tj, t in zip(c["Tj"], Ts)]
-        ax2.plot(Ts, dTj, color=color, lw=1.8, ls="-", label=f"{label} dT_J")
-        ax2b.plot(Ts, c["gamma"], color=color, lw=1.8, ls="--", label=f"{label} Gamma")
+            # T_c as a reference (not a verdict): interval for banded entries,
+            # a rule for point entries; labels stacked so entries never collide
+            sb = e.get("scalar_bands")
+            y_lab = 0.97 - 0.075 * i
+            if sb and "T_c" in sb:
+                tlo, thi = sb["T_c"]
+                if tlo == tlo and thi == thi:
+                    ax1.axvspan(tlo, thi, color=tc_wash, lw=0, zorder=0.5)
+                    txt, x_lab = f"{label}: T$_c$ {tlo:.0f}–{thi:.0f} K", thi
+                else:
+                    txt, x_lab = f"{label}: T$_c$ not crossed in range", None
+            else:
+                tc = e["scalars"].get("T_c", float("nan"))
+                if tc == tc:
+                    ax1.axvline(tc, color=P.ref, lw=P.ref_w, zorder=1.5)
+                    txt, x_lab = f"{label}: T$_c$ = {tc:.0f} K", tc
+                else:
+                    txt, x_lab = f"{label}: T$_c$ not crossed in range", None
+            if x_lab is None:
+                ax1.annotate(txt, xy=(0.99, y_lab), xycoords="axes fraction", ha="right",
+                             va="top", fontsize=8, color=P.ink2, path_effects=halo, zorder=8)
+            else:
+                ax1.annotate(txt, xy=(x_lab, y_lab), xycoords=("data", "axes fraction"),
+                             xytext=(3, 0), textcoords="offset points", ha="left", va="top",
+                             fontsize=8, color=P.ink1, path_effects=halo, zorder=8)
 
-    ax1.axhline(0.5, color="#888888", ls=":", lw=1)
-    ax1.set_xlabel("heatsink T (K)")
-    ax1.set_ylabel("$g^{(2)}(0)$")
-    ax1.legend(frameon=False, fontsize=8)
-    ax1.set_title("g$^{(2)}(0)$ vs heatsink T (shaded: swept-input band)", fontsize=10)
+            dTj = [tj - t for tj, t in zip(c["Tj"], Ts)]
+            ax2.plot(Ts, dTj, color=color, lw=1.8, label=f"{label}")
+            ax3.plot(Ts, c["gamma"], color=color, lw=1.8, label=f"{label}")
 
-    ax2.set_xlabel("heatsink T (K)")
-    ax2.set_ylabel("dT_J = T_j - T_hs (K)  [solid]")
-    ax2b.set_ylabel(r"$\Gamma(T_j)$ (meV)  [dashed]")
-    h1, l1 = ax2.get_legend_handles_labels()
-    h2, l2 = ax2b.get_legend_handles_labels()
-    ax2.legend(h1 + h2, l1 + l2, frameon=False, fontsize=8, ncol=2)
-    ax2.set_title("junction overheat and linewidth vs heatsink T", fontsize=10)
+        _ref_h(ax1, 0.5, "$g^{(2)}(0)$ = 0.5 ceiling", P, va="top")
+        ax1.set_ylim(0, g2_top * 1.02 if g2_top > 1.0 else 1.0)
+        ax1.set_ylabel("$g^{(2)}(0)$")
+        ax1.legend(fontsize=7.5, loc="upper left")
+        ax1.set_title("g$^{(2)}(0)$ vs heatsink T (shaded: swept-input band)", fontsize=10)
 
-    fig.suptitle(f"{title}   |   tag chain [A]: unmeasured inputs shape every curve above",
-                fontsize=11, color="#d7191c", y=1.0)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"report.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        ax2.set_ylabel("dT_J = T_j - T_hs (K)")
+        ax2.set_title("junction overheat vs heatsink T", fontsize=10)
+        ax3.set_ylabel(r"$\Gamma(T_j)$ (meV)")
+        ax3.set_xlabel("heatsink T (K)")
+        ax3.set_title("linewidth at the junction vs heatsink T", fontsize=10)
+        if len(entries) > 1:
+            ax2.legend(fontsize=7.5, ncol=min(len(entries), 4))
+
+        fig.tight_layout()
+        _title(fig, f"{title}   |   tag chain [A]: unmeasured inputs shape every curve above",
+               "A", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"report.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def designer_report(entries: list, outdir, title: str = "design review") -> Path:

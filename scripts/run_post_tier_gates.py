@@ -1,5 +1,5 @@
-"""Post-tier work order v2 gates: T-3b (transparency), T-R (corner
-retarget), T-1 (slit-held staging comparison). 2026-08-12.
+"""Post-tier gates: T-3b (transparency), T-R (corner retarget), T-1
+(slit-held staging comparison). 2026-08-12.
 
 T-3b: Adachi-model transparency scan at 668 nm [E, verify vs Gehrsitz --
 work-order pull #2]. Result: the transparent pair bracket is
@@ -16,8 +16,8 @@ kappa ~ 3 meV under the quiet rail. Regression: on baseline inputs this
 must reproduce the sweep's verdict (10-12 pairs = the admissible cavity
 rungs; slit-only also passes) from the solver itself.
 
-T-1: slit-held staging comparison at the corner-region cavity (12-pair per
-the work order; 10-pair rows included). filter.track='hold': slit centered
+T-1: slit-held staging comparison at the corner-region cavity (12-pair;
+10-pair rows included). filter.track='hold': slit centered
 ON X at each operating T (the lab monochromator convention -- the reading
 of 'slit-fixed' under which the F6 inversion can actually be killed, which
 is T-1's stated purpose; a slit frozen at the absolute design energy keeps

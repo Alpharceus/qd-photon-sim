@@ -13,9 +13,14 @@ objective -- micropillar/CBG numbers stay COMSOL/MEEP property (SIM-B2).
 Its job is pre-screening and analytic inversion. Every number produced
 here carries the tag [E->analytic-1D, confirm: SIM-B]; the first COMSOL
 SIM-B1 result becomes a permanent cross-check the day it lands. The
-planar_purcell() output in particular is a 1-D LDOS estimate, NOT a 3-D
-V_eff / Purcell factor (energy-normalized conventions only; no
-participation-ratio proxies are used anywhere in this module).
+planar_purcell() output in particular is a 1-D, ON-AXIS LDOS estimate,
+NOT a 3-D V_eff / Purcell factor, and must never be passed as F_P
+(energy-normalized conventions only; no participation-ratio proxies are
+used anywhere in this module). The one oblique-incidence extension is
+planar_total_rate(): the angle-integrated total emission rate of a
+dipole in the same planar stack (spacer-propagating part), a TOTAL-RATE
+MULTIPLIER OVER ALL CHANNELS (cavity cone, leaky, guided); do NOT pass it
+through purcell_eff or use it as a cavity-mode F_P (audit H5, 2026-09-23).
 
 Conventions (uniform through the module):
   * Units: energies meV, lengths nm, temperatures K.
@@ -423,7 +428,11 @@ def planar_purcell(top_layers, bottom_layers, n_c, d_c_nm, z_dot_nm,
     HONESTY WALL: this is the 1-D/planar estimate of the emission-rate
     modification -- it integrates no transverse mode profile and is NOT a
     3-D energy-normalized V_eff Purcell factor. Use it for trend
-    pre-screening only. Tag: [E->analytic-1D, confirm: SIM-B].
+    pre-screening only. It is neither a cavity-mode F_P nor the total
+    emission rate; the total rate is planar_total_rate() (at the antinode
+    of the 10-18-pair ladders the on-axis value is 1e2-1e3 while the total
+    rate is ~1.0).
+    Tag: [E->analytic-1D, confirm: SIM-B].
     Limits: r1 = r2 = 0 gives F = 1 exactly; a symmetric high-R cavity on
     resonance gives F ~ (1+r)/(1-r) ~ 4/(1-R) at an antinode and F < 1 at
     a node (both exercised in verify/verify_dbr.py)."""
@@ -438,6 +447,174 @@ def planar_purcell(top_layers, bottom_layers, n_c, d_c_nm, z_dot_nm,
     e1, e2 = np.exp(2j * phi1), np.exp(2j * phi2)
     F = (1.0 + r1 * e1) * (1.0 + r2 * e2) / (1.0 - r1 * r2 * e1 * e2)
     return float(np.real(F))
+
+
+# ---------------------------------------- oblique TMM + total planar rate
+
+def _r_oblique(layers, lambda_nm, n_in, n_out, s, pol):
+    """Tangential-E reflection amplitude of a stack at oblique incidence,
+    vectorized over the in-plane effective index s = k_par/k0 (array;
+    complex s is allowed, for the deformed path of planar_total_rate).
+
+    Same D/P transfer-matrix construction as _m_elems, generalized from
+    indices to tangential optical admittances (Macleod, *Thin-Film Optical
+    Filters*, ch. 2; Born & Wolf ch. 1.6) [DR]:
+        cos_j = sqrt(1 - (s/n_j)^2)  (branch Im >= 0: decaying evanescent),
+        eta_j = n_j cos_j (TE / 's')  or  n_j / cos_j (TM / 'p'),
+        r_ij = (eta_i - eta_j)/(eta_i + eta_j), t_ij = 2 eta_i/(eta_i+eta_j),
+        delta_j = 2 pi n_j d_j cos_j / lambda.
+    r is the ratio of reflected to incident TANGENTIAL E (for TM this is
+    minus the H-field Fresnel r_p), referenced to the front interface. At
+    s = 0 both polarizations reduce exactly to rt_amplitudes (checked in
+    verify/verify_dbr.py)."""
+    s = np.asarray(s, dtype=complex)
+    lam = float(lambda_nm)
+    if lam <= 0:
+        raise ValueError("wavelength must be positive")
+    if pol not in ("s", "p"):
+        raise ValueError("pol must be 's' or 'p'")
+
+    def eta_cos(n):
+        c = np.sqrt(1.0 - (s / float(n)) ** 2 + 0j)
+        c = np.where(c.imag < 0.0, -c, c)
+        return (float(n) * c if pol == "s" else float(n) / c), c
+
+    one = np.ones_like(s, dtype=complex)
+    m11, m12, m21, m22 = one.copy(), 0 * one, 0 * one, one.copy()
+    eta_prev, _ = eta_cos(n_in)
+    for L in list(layers) + [None]:
+        if L is None:
+            eta_j, c_j = eta_cos(n_out)
+            n_j, d_j = float(n_out), 0.0
+        else:
+            if float(L.n) <= 0:
+                raise ValueError("refractive indices must be positive")
+            eta_j, c_j = eta_cos(L.n)
+            n_j, d_j = float(L.n), float(L.d_nm)
+        r = (eta_prev - eta_j) / (eta_prev + eta_j)
+        t = 2.0 * eta_prev / (eta_prev + eta_j)
+        m11, m12 = (m11 + m12 * r) / t, (m11 * r + m12) / t
+        m21, m22 = (m21 + m22 * r) / t, (m21 * r + m22) / t
+        if L is not None:
+            delta = 2.0 * np.pi * n_j * d_j * c_j / lam
+            pf, pb = np.exp(-1j * delta), np.exp(+1j * delta)
+            m11, m12 = m11 * pf, m12 * pb
+            m21, m22 = m21 * pf, m22 * pb
+        eta_prev = eta_j
+    return m21 / m11
+
+
+def planar_total_rate(top_layers, bottom_layers, n_c, d_c_nm, z_dot_nm,
+                      lambda_nm, n_in=1.0, n_out=1.0, orientation="inplane",
+                      n_theta=20000, contour_depth=0.05):
+    """Angle-integrated TOTAL spontaneous-emission rate enhancement
+    Gamma/Gamma_bulk(n_c) of a point dipole at depth z_dot_nm inside the
+    spacer of the same planar stack planar_purcell() takes (same
+    arguments, same geometry conventions: z from the top-mirror/spacer
+    interface, top_layers ordered outside -> spacer, bottom_layers
+    spacer -> n_out).
+
+    USE: this is a TOTAL-RATE MULTIPLIER OVER ALL CHANNELS (cavity cone,
+    leaky, guided). Do NOT pass it through purcell_eff (kappa/(kappa+Gamma))
+    and do NOT use it as a cavity-mode F_P (device.py's d.cavity.F_P is a
+    mode-only single-Lorentzian extra rate; feeding this there either fakes
+    a suppression or double-counts free space). For a dot in a PLANAR DBR
+    microcavity it is the whole rate change, to be applied (if at all) as
+    Gamma = F_total * Gamma_bulk.
+
+    planar_purcell() is only the normal-incidence (on-axis, 1-D LDOS)
+    value of the TE integrand below; in a planar cavity the
+    large on-axis enhancement is offset by a resonant emission cone whose
+    solid angle shrinks roughly as 1/F, so the total rate changes only
+    modestly (Bjork et al., Phys. Rev. A 44, 669 (1991); Benisty et al.,
+    IEEE J. Quantum Electron. 34, 1612 (1998)) [V: qualitative conclusion
+    of both papers; no number is taken from them].
+
+    Method [DR] (plane-wave expansion of the dipole field in a multilayer,
+    Chance, Prock & Silbey, Adv. Chem. Phys. 37, 1 (1978) class): with
+    theta the propagation angle in the spacer, u = cos(theta),
+    s = n_c sin(theta) = k_par/k0, r1(s), r2(s) the tangential-E
+    reflection amplitudes of the top / bottom stacks seen from the spacer
+    (_r_oblique), e1 = exp(2i k0 n_c u z), e2 = exp(2i k0 n_c u (d_c-z)),
+        G_pm(pol) = (1 pm r1 e1)(1 pm r2 e2) / (1 - r1 r2 e1 e2),
+      in-plane dipole (azimuth-averaged):
+        Gamma/Gamma_bulk = (3/4) Re int_0^{pi/2} sin(theta)
+                           [G_+(TE) + cos^2(theta) G_+(TM)] dtheta,
+      vertical (z) dipole:
+        Gamma/Gamma_bulk = (3/2) Re int_0^{pi/2} sin^3(theta) G_-(TM) dtheta,
+      orientation='isotropic' returns (2/3) in-plane + (1/3) vertical.
+
+    Contour [DR]: in a lossless stack the spacer supports (quasi-)guided
+    slab modes with k_par < n_c k0 (TIR at the low-index mirror layers and
+    at the air side), i.e. poles of G on or within ~1e-10 of the real
+    axis. A real-axis quadrature aliases them (the result then depends on
+    the grid). The integrand is analytic, so the path is deformed into
+    theta(t) = t - i*contour_depth*sin(2t), t in [0, pi/2] (same end
+    points; Im s < 0 on the way). With the decaying branch Im(cos) >= 0
+    used throughout, this passes BELOW the poles, which is exactly the
+    vanishing-absorption limit (Paulus et al., Phys. Rev. E 62, 5797
+    (2000) contour class). verify/verify_dbr.py checks it against an
+    independent real-axis integration with a small absorption.
+
+    SCOPE [A] (explicit): the integral runs over k_par < n_c k0, the part
+    of the emission that PROPAGATES in the spacer, INCLUDING the spacer-
+    guided slab modes above (lateral, not vertical, emission). EXCLUDED:
+    k_par > n_c k0, i.e. modes guided only in layers of index above n_c
+    and near-field quenching (zero in this lossless tier). For the 3.5/3.0
+    mirrors around a 3.4 spacer the excluded part is ~2e-4 [E: small-
+    absorption scratch integration, audit-fix 2026-09-22], so the result
+    is a (tight) lower bound on the total rate.
+
+    Units/limits: lengths nm, dimensionless result.
+      * homogeneous medium (no layers, n_in = n_out = n_c): 1;
+      * in-plane dipole at distance d from a perfect mirror (Drexhage /
+        Chance-Prock-Silbey): 1 - (3/2)[sin x/x + cos x/x^2 - sin x/x^3],
+        x = 2 n_c k0 d; vertical: 1 + 3[sin x/x^3 - cos x/x^2];
+      * inserting a spacer-index layer of thickness t at a mirror equals
+        widening the spacer by t (translation identity; tests the
+        reflection-phase convention).
+    Quadrature: midpoint rule in t with n_theta points; checked n vs 2n
+    in verify/verify_dbr.py.
+    Tag: [E->analytic-1D-planar, confirm: SIM-B] (no lateral confinement,
+    no absorption; micropillar/CBG F_P stays SIM-B/COMSOL property)."""
+    if not 0.0 <= z_dot_nm <= d_c_nm:
+        raise ValueError("dot must sit inside the spacer")
+    if orientation not in ("inplane", "vertical", "isotropic"):
+        raise ValueError("orientation must be 'inplane', 'vertical' or 'isotropic'")
+    N = int(n_theta)
+    if N < 10:
+        raise ValueError("n_theta too small")
+    a = float(contour_depth)
+    if a < 0.0:
+        raise ValueError("contour_depth must be >= 0 (path below the real axis)")
+    n_c = float(n_c)
+    dt = 0.5 * np.pi / N
+    t = (np.arange(N) + 0.5) * dt
+    th = t - 1j * a * np.sin(2.0 * t)
+    dth = (1.0 - 2j * a * np.cos(2.0 * t)) * dt
+    u, sn = np.cos(th), np.sin(th)
+    s = n_c * sn
+    top_rev = list(reversed(top_layers))
+    k0 = 2.0 * np.pi / float(lambda_nm)
+    e1 = np.exp(2j * k0 * n_c * u * z_dot_nm)
+    e2 = np.exp(2j * k0 * n_c * u * (d_c_nm - z_dot_nm))
+
+    def G(pol, sign):
+        r1 = _r_oblique(top_rev, lambda_nm, n_c, n_in, s, pol)
+        r2 = _r_oblique(bottom_layers, lambda_nm, n_c, n_out, s, pol)
+        return ((1.0 + sign * r1 * e1) * (1.0 + sign * r2 * e2)
+                / (1.0 - r1 * r2 * e1 * e2))
+
+    res = {}
+    if orientation in ("inplane", "isotropic"):
+        res["inplane"] = 0.75 * float(np.real(np.sum(
+            sn * (G("s", 1.0) + u**2 * G("p", 1.0)) * dth)))
+    if orientation in ("vertical", "isotropic"):
+        res["vertical"] = 1.5 * float(np.real(np.sum(
+            sn**3 * G("p", -1.0) * dth)))
+    if orientation == "isotropic":
+        return (2.0 * res["inplane"] + res["vertical"]) / 3.0
+    return res[orientation]
 
 
 # ---------------------------------------------------------------- inversion

@@ -28,24 +28,81 @@ for x in (.25,.4):
    ok("residual field small",abs(r["accounting_residual_s"])<=max(1.,r["r_supply_s"])*1e-10)
 r=evaluate_injection(d15,I_uA=1.,**a);ok("surface capture competition",math.isclose(r["f_capture"],100/(100+.2+.8+1),rel_tol=1e-12));ok("dot qfl capture",math.isclose(r["r_captured_s"],(r["r_supply_s"]-r["r_leakage_s"])*r["f_capture"]*.8*r["f_qfl_dot"],rel_tol=1e-12))
 
-# B: the module computes r_e_leak_ratio/r_h_leak_ratio as
-# exp(-barrier_{e,h}_eV / (KB_EV*T)) (nitride_nanowire_transport.py,
-# evaluate_injection: re/rh lines).  Compare against that literal formula
-# evaluated independently with math.exp from the SAME barrier_e_eV=0.21 /
-# barrier_h_eV=0.08 literals passed in `a`, so a barrier swap inside the
-# module changes which value math.exp(-0.21/kT) is compared against and
-# the check fails (unlike comparing r_e to a swapped-run's r_h, which is
-# invariant under a global e/h swap).
+# B (re-pinned, audit H2 2026-09-23): there is NO pre-capture leak channel.
+# barrier_e/h_eV are the dot's escape depths; escape over them is post-
+# capture thermal escape, priced ONLY by levels.rates in k_X_ns. So the
+# transport leak ratios are identically 0 and eta_inj identically 1 for
+# ANY barrier (was: exp(-barrier/kT) with prefactor 1, which double-counted
+# escape and broke detailed balance).
 kT300=KB_EV*a["T_K"]
-ok("r_e formula",math.isclose(r["r_e_leak_ratio"],math.exp(-.21/kT300),rel_tol=1e-12))
-ok("r_h formula",math.isclose(r["r_h_leak_ratio"],math.exp(-.08/kT300),rel_tol=1e-12))
-swap=evaluate_injection(d15,I_uA=1.,**dict(a,barrier_e_eV=.08,barrier_h_eV=.21));ok("barrier paths observable",r["r_e_leak_ratio"]!=r["r_h_leak_ratio"] and r["r_e_leak_ratio"]==swap["r_h_leak_ratio"])
+ok("H2 r_e_leak_ratio is identically 0 (escape priced in levels.rates only)",r["r_e_leak_ratio"]==0.)
+ok("H2 r_h_leak_ratio is identically 0 (escape priced in levels.rates only)",r["r_h_leak_ratio"]==0.)
+ok("H2 eta_inj is identically 1 and r_leakage_s is 0",r["eta_inj"]==1. and r["r_leakage_s"]==0.)
+swap=evaluate_injection(d15,I_uA=1.,**dict(a,barrier_e_eV=.08,barrier_h_eV=.21));ok("H2 barriers do not enter the transport partition",swap["r_captured_s"]==r["r_captured_s"] and swap["r_leakage_s"]==0.)
+
+# H2 NEW EXPECTATION (detailed balance between the transport partition and
+# levels.rates at the SAME barrier and T): for a real Deshpande-geometry dot
+# at 230 K and 300 K, levels.rates' escape/capture ratio must equal the
+# detailed-balance closed form (N_res/2) exp(-E_a/kT) built here from the
+# reservoir state count and the escape depth alone, while the transport
+# partition, fed the SAME escape depths dE_e/dE_h as its barriers, carries
+# exactly zero leak (so thermal escape is priced once, by levels, with the
+# detailed-balance prefactor; the former prefactor-1 leak would have given
+# leak/capture ratios != 0 here).
+from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem,levels,rates
+_sys_db=NitrideNanowireSystem(x_in=.25,strain_bound='relaxed')
+for T_db in (230.,300.):
+ _lv=levels(_sys_db,T_db);_rr=rates(_lv,T_db,tau_rad0_ns=1.,tau_cap_ps=10.,reservoir_length_nm=15.,k_nr_ns=0.)
+ _ea=min(_lv.dE_e_meV,_lv.dE_h_meV);_nres=_rr["reservoir_state_count_e"] if _lv.dE_e_meV<=_lv.dE_h_meV else _rr["reservoir_state_count_h"]
+ _ratio_expected=(_nres/2.)*math.exp(-_ea/1000./(KB_EV*T_db))
+ _ratio_levels=_rr["k_X_ns"]/(1000./10.)
+ ok("H2 detailed balance: levels escape/capture == (N_res/2)exp(-E_a/kT) at %gK"%T_db,_lv.valid and _rr["valid"] and math.isclose(_ratio_levels,_ratio_expected,rel_tol=1e-12))
+ _ri=evaluate_injection(d15,I_uA=.001,**dict(a,T_K=T_db,E_X_eV=_lv.E_X_eV,barrier_e_eV=_lv.dE_e_meV/1000.,barrier_h_eV=_lv.dE_h_meV/1000.,tau_cap_ps=10.))
+ ok("H2 detailed balance: transport leak over the SAME escape depths is exactly 0 at %gK (escape not double-counted)"%T_db,_ri["valid"] and _ri["r_leakage_s"]==0. and _ri["r_e_leak_ratio"]==0. and _ri["r_h_leak_ratio"]==0. and _ri["eta_inj"]==1.)
+ ok("H2 detailed balance: the old prefactor-1 leak would have disagreed with levels at %gK"%T_db,not math.isclose(math.exp(-_ea/1000./(KB_EV*T_db)),_ratio_expected,rel_tol=1e-3))
+
+# H1 (transport side): S_dot is a capture retention, not the e-h overlap --
+# r_captured_s is linear in S_dot with everything else fixed, and the
+# provenance says so.
+_r1=evaluate_injection(d15,I_uA=.001,**dict(a,S_dot=1.));_r05=evaluate_injection(d15,I_uA=.001,**dict(a,S_dot=.5))
+ok("H1 r_captured_s is linear in S_dot (retention factor)",math.isclose(_r05["r_captured_s"],.5*_r1["r_captured_s"],rel_tol=1e-12))
+ok("H1 S_dot provenance says retention, not e-h overlap","NOT the electron-hole overlap" in _r1["provenance"]["S_dot"])
+
+# M4 NEW EXPECTATION: V_j ceiling min(V_bi, E_g(GaN,T)/q). At 10 uA/300 K
+# the ideal SRH diode gives V_j above E_g/q (audit: 3.5626 V vs 3.4376 V);
+# at 1 uA/300 K it is above V_bi (flat band). Both rows must be reported
+# invalid with an out_of_model reason (numbers kept as diagnostics); the
+# Deshpande 10 K 1 nA replay row (V_j below both) stays valid.
+_eg300=bandgap(binary("GaN"),300.)
+_r10u=evaluate_injection(d15,I_uA=10.,**a)
+ok("M4 10uA/300K: V_j exceeds E_g/q (precondition)",_r10u["V_j"]>_eg300)
+ok("M4 10uA/300K: row flagged out_of_model, not valid",_r10u["valid"] is False and any(x.startswith("out_of_model") for x in _r10u["reasons"]))
+ok("M4 1uA/300K (V_j > V_bi, flat band): row flagged out_of_model",r["valid"] is False and r["V_j"]>r["V_bi"] and any(x.startswith("out_of_model") for x in r["reasons"]))
+_r10k=evaluate_injection(d15,I_uA=.001,**dict(a,T_K=10.))
+ok("M4 10K 1nA replay stays valid below min(V_bi,E_g/q)",_r10k["valid"] is True and _r10k["V_j"]<min(_r10k["V_bi"],bandgap(binary("GaN"),10.)))
+# C4 (Phase B deferred list): Deshpande 10 K replay MARGIN below the V_j
+# ceiling min(V_bi, E_g(GaN,T)/q). The committed D13 replay row at 12.5 nm /
+# 2 nA sits only ~1.37 kT below it, so a small V_j or E_g(T) drift would flip
+# the headline 10 K replay to out_of_model silently. Every replay point the
+# sweep uses (conducting radius 12.5 / 15 nm, Deshpande et al., Nat Commun
+# 2013, 25-30 nm diameter wires [V]; 1 and 2 nA, the paper's currents [V])
+# must stay valid with a margin of at least 1 kT at the 10 K bath [A margin].
+_margins=[]
+for _rad in (12.5,15.):
+ _dm=wire_pin(preset="deshpande_2013_30nm",core_radius_nm=_rad,conducting_radius_nm=_rad)
+ for _i in (.001,.002):
+  _rm=evaluate_injection(_dm,I_uA=_i,**dict(a,T_K=10.))
+  _ceil=min(_rm["V_bi"],bandgap(binary("GaN"),10.))
+  _margins.append(((_ceil-_rm["V_j"])/(KB_EV*10.),_rad,_i,_rm["valid"]))
+print("C4 Deshpande 10 K replay V_j margin below min(V_bi,E_g/q), in kT: "+", ".join("R%g/%gnA %.3f"%(r,i*1e3,m) for m,r,i,_v in _margins))
+ok("C4 Deshpande 10 K replay: every point valid and >= 1 kT below the V_j ceiling (tightest %.3f kT)"%min(m for m,*_ in _margins),
+   all(v is True and m>=1. for m,_r,_i,v in _margins))
 
 # MEDIUM 5: propagate NitrideDiode.depletion's own punch-through/flat-band
 # boolean. r is I_uA 1.0 / T_K 300 (the `a` default) on the 30 nm preset --
 # the same point the Opus re-review computed independently (V_j 3.4435 V
-# > V_bi 3.3657 V): above flat band the row must stay valid with a
-# reason-free flag, depletion_field_kVcm pinned to 0, and the SAME words
+# > V_bi 3.3657 V): above flat band the flag is set (and, since audit M4,
+# the row is out_of_model -- checked above), depletion_field_kVcm pinned to 0, and the SAME words
 # the planar Stark module (nitride_stark.py) uses for the identical
 # condition.
 ok("M5 flat_band True above V_bi at I_uA 1.0/300K",r["flat_band"] is True and r["depletion_regime"]=="flat_band" and r["V_j"]>r["V_bi"])
@@ -127,7 +184,7 @@ below=evaluate_injection(d15,I_uA=1.,**dict(a,reservoir_energy_eV=1.9));ok("belo
 # r_captured_s must both read exactly 0, and the row stays valid (this is
 # a degenerate but well-defined capture-competition limit, not a
 # temperature-floor failure).
-zero_cap=evaluate_injection(d15,I_uA=1.,**dict(a,tau_cap_ps=0.))
+zero_cap=evaluate_injection(d15,I_uA=.001,**dict(a,tau_cap_ps=0.)) # audit M4 repin: I_uA 1.0 -> 0.001 (1 uA/300 K is now out_of_model above V_bi)
 ok("tau_cap_ps 0 guarded",zero_cap["valid"] and zero_cap["f_capture"]==0. and zero_cap["r_captured_s"]==0.)
 
 ok("minimum pair current",math.isclose(r["ideal_min_pair_current_A"],Q_SI/1e-10,rel_tol=1e-12))

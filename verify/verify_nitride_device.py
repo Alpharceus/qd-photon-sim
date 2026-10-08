@@ -141,7 +141,14 @@ def capture_legacy():
     way that could change legacy numerics -- it evaluates the LEGACY module
     (git show LEGACY_COMMIT), never the current fsim_core.device, so it is
     safe to (re-)run at any time without ever baking a post-edit number into
-    the fixture."""
+    the fixture.
+
+    WARNING (2026-09-23): the 16 edge-inp-* cases were deliberately
+    RE-CAPTURED from the post-fix evaluator (waveguide beta fix + aperture
+    rho_eff fix; see the fixture's "repins" field and RECAPTURED_2026_09_23).
+    Re-running --capture-legacy against LEGACY_COMMIT would silently RESTORE
+    the pre-waveguide values for those cases and make them fail. Do not
+    re-run it without re-applying that re-capture."""
     mod = _legacy_module()
     cases = _legacy_cases(mod)
     baseline = {
@@ -163,6 +170,38 @@ def capture_legacy():
     BASELINE_PATH.write_text(json.dumps(baseline, indent=1, sort_keys=True) + "\n",
                              encoding="utf-8")
     print(f"captured {len(cases)} legacy baseline cases -> {BASELINE_PATH}")
+
+
+# Cases RE-CAPTURED from the post-fix evaluator on 2026-09-23 (audit Phase B,
+# spec audit-device-composition; see the fixture's "repins" field): the 16
+# edge-inp-* cases. Every other case (default_legacy, default_legacy_cavity)
+# is still the LEGACY_COMMIT capture and is compared FULL-DICT, with only the
+# named new diagnostic keys below allowed as additions.
+RECAPTURED_2026_09_23 = frozenset(
+    f"{Path(c).stem}_T{T}_fp{fp}_scale{sc}"
+    for c in CARD_PATHS for T in (230, 300) for fp in (0, 1) for sc in (0, 1))
+# The ONLY keys evaluate() gained since LEGACY_COMMIT on the legacy path
+# (audit 2026-09-23 device composition), as ("scalars", key) or
+# ("scalars", "provenance", key). Checked to be EXACTLY the extra keys.
+LEGACY_ALLOWED_NEW_KEYS = frozenset({
+    ("scalars", "brightness_convention"), ("scalars", "g2_op_valid"),
+    ("scalars", "g2_op_invalid_reason"), ("scalars", "F_eff_wire_op"),
+    ("scalars", "cavity_detuning_op_meV"), ("scalars", "rho_g2_op"),
+    ("scalars", "provenance", "brightness"),
+})
+
+
+def _strip_allowed(got):
+    """Return (got without the allow-listed new keys, set of allow-listed
+    paths actually present). Everything else is left for FULL-DICT equality."""
+    out = copy.deepcopy(got); present = set()
+    for path in LEGACY_ALLOWED_NEW_KEYS:
+        node = out
+        for k in path[:-1]:
+            node = node.get(k, {}) if isinstance(node, dict) else {}
+        if isinstance(node, dict) and path[-1] in node:
+            del node[path[-1]]; present.add(path)
+    return out, present
 
 
 def check_legacy_regression():
@@ -193,7 +232,21 @@ def check_legacy_regression():
             continue
         out = evaluate(d, [d.thermal.T_hs])
         got = {"scalars": _encode(out["scalars"]), "curves": _encode(out["curves"])}
-        ok(f"legacy bit-identical: {label}", got == expected)
+        if label in RECAPTURED_2026_09_23:
+            # Re-captured post-fix: full-dict equality, plus an explicit
+            # key-set coverage check so the capture cannot silently shrink.
+            ok(f"legacy bit-identical: {label} (re-captured 2026-09-23, full dict)",
+               got == expected)
+            ok(f"re-captured {label}: captured scalar key set equals the current "
+               f"evaluator's scalar key set",
+               set(expected["scalars"]) == set(got["scalars"]))
+        else:
+            # LEGACY_COMMIT capture: full-dict equality after removing ONLY the
+            # named allow-listed new keys, which must be exactly the additions.
+            stripped, present = _strip_allowed(got)
+            ok(f"legacy bit-identical: {label} (full dict; only the allow-listed "
+               f"new keys {sorted(k[-1] for k in LEGACY_ALLOWED_NEW_KEYS)} added)",
+               stripped == expected and present == set(LEGACY_ALLOWED_NEW_KEYS))
 
 
 # ---------------------------------------------------------- nitride fixture
@@ -487,8 +540,60 @@ def check_reservoir_energy_and_acceptance():
         devmod._nitride_flat_background_acceptance = original
     expected_offset = (devmod._nitride_reservoir_energy_eV(
         d_lo.nitride["dot"], s["T_j"], {}) - s["E_X_eV"]) * 1e3
-    ok("flat-spectrum background acceptance is evaluated at reservoir energy",
-      len(captured) == 1 and math.isclose(captured[0], expected_offset, rel_tol=1e-12))
+    # Re-pinned by audit H3 (2026-09-23): rate_bg_window already carries
+    # xi_window (the X-window share of the reservoir tail), so the flat-
+    # spectrum acceptance is averaged over the SAME X-centred window (offset
+    # 0), never re-centred on the reservoir peak (double selection). The
+    # reservoir offset itself is still reported (and must stay nonzero here,
+    # so this check distinguishes the two conventions).
+    ok("flat-spectrum background acceptance is evaluated on the X-centred window "
+       "(offset 0; single spectral selection, audit H3)",
+      len(captured) == 1 and captured[0] == 0.0 and abs(expected_offset) > 1.0
+      and math.isclose(s["reservoir_offset_meV"], expected_offset, rel_tol=1e-12))
+
+
+def _closed_form_flat_acceptance(kappa, w, off):
+    """Average over [-w/2, w/2] of the peak-normalised cavity Lorentzian
+    (FWHM kappa, centred at off): (kappa/2w)[atan(2(w/2-off)/kappa) -
+    atan(2(-w/2-off)/kappa)] [DR, elementary integral -- not quad]."""
+    return (kappa / (2.0 * w)) * (math.atan(2.0 * (w / 2.0 - off) / kappa)
+                                  - math.atan(2.0 * (-w / 2.0 - off) / kappa))
+
+
+def check_single_spectral_selection():
+    """Audit H3 (2026-09-23): background counts = (in-window rate) x
+    (X-centred flat acceptance) x
+    eta_background x window, ONE spectral selection, to 1e-9 relative; and
+    the QW-fluctuation SET card lands at the audit's single-selection value
+    g2_op ~ 0.4542 (was 0.1736 with the double selection).
+    Re-pinned 2026-09-23 (physics audit, nitride_levels:339): with the exact
+    erfcx Coulomb term E_X moves on this card and the single-selection
+    value becomes g2_op 0.476881 / rho 0.723270 (was 0.454230 / 0.738763
+    with the quadrature Coulomb form); tolerance unchanged (1e-3).
+    Re-pinned again 2026-09-23 (strain-mass audit: corrected Rinke 2008
+    electron-mass axes, Yan 2014 anisotropic strain shift): g2_op 0.228949
+    / rho 0.878095 (was 0.476881 / 0.723270); the card's reservoir is now
+    'mixed' (was 'gan_barrier'). Tolerance unchanged (1e-3)."""
+    d = design("rectangular")
+    d.drive.b_res = 0.0; d.nitride["background_tau_ns"] = 0.0   # flat reservoir only
+    out = evaluate(d, [300.]); s = out["scalars"]
+    w = float(out["curves"]["gamma"][0])          # auto_w: w = Gamma(T_j)
+    assert d.filter.auto_w
+    off = d.filter.dx - s["detuning_meV"]
+    acc = _closed_form_flat_acceptance(s["kappa_meV"], w, off)
+    ok("H3: background acceptance equals the X-centred closed form (atan) to 1e-9",
+       math.isclose(s["background_acceptance"], acc, rel_tol=1e-9))
+    want = (s["background_rate_window_s"] * 1e-9 * s["background_window_ns"]
+            * s["eta_background"] * acc) * s["rep_rate_hz"]
+    ok("H3: background_flux_s == rate_bg_window x X-centred acceptance x eta_bg x "
+       "window x rep to 1e-9 (single selection)",
+       want > 0 and math.isclose(s["background_flux_s"], want, rel_tol=1e-9))
+    card = DeviceDesign.load(str(ROOT / "cards" / "nitride-qw-fluctuation-set-design.yaml"))
+    sc = evaluate(card, [card.thermal.T_hs])["scalars"]
+    print(f"     QW-fluctuation SET card: g2_op = {sc['g2_op']:.6f}, "
+          f"rho = {sc['rho_pulsed']:.6f} (single-selection, strain-mass audit: 0.228949 / 0.878095)")
+    ok("H3: QW-fluctuation SET card g2_op near the single-selection, strain-mass-audit 0.2289 (|diff| < 1e-3)",
+       abs(sc["g2_op"] - 0.228949) < 1e-3)
 
 
 def check_purcell_invariance():
@@ -607,7 +712,10 @@ def check_finite_and_invalid_states():
     """Unbound dot / impossible field is reported as an explicit invalid
     row, not a silent fallback."""
     d = design("rectangular")
-    d.nitride["dot"] = {"height_nm": 0.3, "radius_nm": 1.0, "x_in": .9}
+    # radius 1.0 -> 0.5 nm (2026-09-23, strain-mass audit): with the
+    # corrected, heavier in-plane electron mass the 0.3 nm / 1.0 nm / x 0.9
+    # dot became laterally bound (valid); 0.5 nm is unbound again.
+    d.nitride["dot"] = {"height_nm": 0.3, "radius_nm": 0.5, "x_in": .9}
     out = evaluate(d, [300.])
     s = out["scalars"]
     ok("an unbound/impossible-geometry dot is reported invalid, not silently substituted",
@@ -646,6 +754,47 @@ _REQUIRED_SCALAR_KEYS = (
 )
 
 
+def check_flat_acceptance_closed_form():
+    """Audit C0/D2 (2026-09-23): the flat-spectrum cavity acceptance equals
+    the closed-form arctan average of a Lorentzian (half width g = kappa/2)
+    over the top-hat window [off0 - w/2, off0 + w/2], computed here
+    independently [DR]:
+        A = (g/w) [atan((off0 + w/2 - c)/g) - atan((off0 - w/2 - c)/g)],
+        c = dx - detuning,
+    to 1e-9 rel, and neither it nor a full planar evaluation raises
+    scipy's IntegrationWarning (warnings promoted to errors in the check).
+    The narrow-line case (kappa = 1e-3 meV, window 0.2 meV, 0.3 meV off
+    line) is the regime in which the replaced quad warned."""
+    import warnings
+    from scipy.integrate import IntegrationWarning
+
+    def closed(kappa, w, dx, det, off0):
+        g = kappa / 2.0; c = dx - det
+        return g / w * (math.atan((off0 + w / 2.0 - c) / g)
+                        - math.atan((off0 - w / 2.0 - c) / g))
+
+    cases = [(1.0, 1.0, 0.5, 0.0, 0.0), (6.4084, 25.0, 0.0, -2.1e-8, 0.0),
+             (0.35, 25.0, 3.0, 1.2, 0.0), (1e-3, 0.2, 0.0, 0.3, 0.0),
+             (2.0, 5.0, 0.0, 0.0, 400.0)]
+    raised = False; agree = True
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", IntegrationWarning)
+        try:
+            for cse in cases:
+                got = devmod._nitride_flat_background_acceptance(*cse)
+                agree = agree and math.isclose(got, closed(*cse), rel_tol=1e-9)
+            evaluate(design("rectangular"), [230., 300.])
+        except IntegrationWarning:
+            raised = True
+    ok("D2 flat background acceptance equals the closed-form arctan Lorentzian/top-hat average (1e-9 rel, 5 cases incl. narrow line)",
+       agree and not raised)
+    ok("D2 no IntegrationWarning from the acceptance or a full planar evaluation (warnings as errors)",
+       not raised)
+    ok("D2 at dx=detuning=0, kappa=w the acceptance is pi/4 (analytic identity)",
+       math.isclose(devmod._nitride_flat_background_acceptance(1.3, 1.3, 0.0, 0.0, 0.0),
+                    math.pi / 4.0, rel_tol=1e-12))
+
+
 def main():
     if "--capture-legacy" in sys.argv:
         capture_legacy()
@@ -661,6 +810,8 @@ def main():
     check_malformed_opt_ins()
     check_background_variants()
     check_reservoir_energy_and_acceptance()
+    check_single_spectral_selection()
+    check_flat_acceptance_closed_form()
     check_purcell_invariance()
     check_b_res_and_density_scaling()
     check_analytic_limits_and_citations()

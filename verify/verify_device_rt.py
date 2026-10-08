@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import fsim_core.device as devmod
+from fsim_core import lindblad as lb
 from fsim_core.device import (DeviceDesign, EmissionBlock, evaluate, evaluate_envelope,
                               _stack, _resolve_edge, _compose_aperture_g2, _aperture_lambda,
                               _tracked_material, _diode_from_drive, _confinement_params)
@@ -426,19 +427,30 @@ ok("edge emission is eligible at the pinned 668 nm design point",
    not sc_edge["invalid_reasons"] and np.isfinite(sc_edge["edge_eta_total"]))
 
 # Independent delegation anchor: device.py's OWN _resolve_edge, exercised
-# directly (mirrors verify_waveguide.py's ".003 < b < .03" ridge beta class
+# directly (mirrors verify_waveguide.py's ridge beta class check
 # and its own facet_transmission()/beta_factor() checks -- never against
 # device.py's own arithmetic in-line).
 edge_direct, lam_direct = _resolve_edge(d_edge.ret, d_edge.emission, sc_edge["T_j_op"])
-ok("2 um ridge fixture beta sits in the supported ~1% class envelope [E]",
-   0.003 < edge_direct.beta < 0.03)
+# Audit H4 (2026-09-22):
+# F_wg now uses the energy-normalised Purcell area (Lecamp, Lalanne &
+# Hugonin, PRL 99, 023902 (2007)), which for a Gaussian is exactly half the
+# old nonlinear (int I)^2/int I^2 area [DR] (this fixture: beta 0.0261 ->
+# 0.0454). Spec audit-edge-cards-label task 2 (2026-09-23): the bound is the
+# ONE shared [E] envelope verify/data/rt_edge_anchors.yaml
+# envelopes.ridge_guided_beta (0.0060, 0.067; derivation there, re-derived
+# in verify_waveguide.py), replacing this file's separate (0.006, 0.06).
+_BETA_ENV = yaml.safe_load(
+    (ROOT / "verify" / "data" / "rt_edge_anchors.yaml").read_text(encoding="utf-8")
+)["envelopes"]["ridge_guided_beta"]
+ok(f"2 um ridge fixture beta sits in the shared ({_BETA_ENV['lo']}, {_BETA_ENV['hi']}) "
+   "ridge class envelope [E] (envelopes.ridge_guided_beta, Purcell-area rescaled)",
+   _BETA_ENV["lo"] < edge_direct.beta < _BETA_ENV["hi"])
 ok("device.py edge scalars match a fresh _resolve_edge call bit-for-bit",
    edge_direct.eta_total == sc_edge["edge_eta_total"] and lam_direct == sc_edge["edge_lambda_nm"])
 T_recomputed = waveguide.facet_transmission(sc_edge["edge_n_eff"])
 ok("T_facet matches an independent facet_transmission(n_eff) recomputation",
    abs(T_recomputed - sc_edge["edge_T_facet"]) < 1e-9)
-# Facet convention (peer-review pkg2 facet fix, 2026-09-07,
-# .workers/specs/pr-pkg2-facet-fix.md item 2): the old structural identity
+# Facet convention (peer-review fix, 2026-09-07): the old structural identity
 # eta_total == beta * 0.5 * T_facet * eta_prop * eta_NA is obsolete --
 # propagation is now folded entirely into the facet ray-series (eta_facet),
 # never applied again as a separate eta_prop factor. The new decomposition
@@ -560,10 +572,33 @@ lam = sc_on["aperture_lambda_op"]
 _, P1_on, P2_on = loading_probs(sc_on["mu_resolved"])
 denom_on = P1_on + P2_on * (1.0 + sc_on["eps_op"])
 g_target = 2.0 * P2_on * sc_on["eps_op"] / denom_on ** 2 if denom_on > 0 else 0.0
-g_mix_independent = (g_target + 2.0 * lam + lam * lam) / (1.0 + lam) ** 2
-g2_op_independent = g2_from(g_mix_independent, sc_on["rho_op"])
-ok("independent factorial-moment recomputation matches the composed g2_op",
+# Re-pinned (audit 2026-09-23, device.py:2128): target counts s, Poisson
+# bath lam*s and uncorrelated background b are three independent sources, so
+# the exact factorial-moment result is 1 - s^2 (1-g_t)/((1+lam)s + b)^2 --
+# written with s = rho_op, b = 1 - rho_op (rho_op is the target-only signal
+# fraction). The pre-fix g2_from(g_mix, rho_op) double-counted the bath x
+# background cross term.
+def _three_source_g2(g_t, lam_, s_, b_):
+    return 1.0 - s_ * s_ * (1.0 - g_t) / ((1.0 + lam_) * s_ + b_) ** 2
+g2_op_independent = _three_source_g2(g_target, lam, sc_on["rho_op"], 1.0 - sc_on["rho_op"])
+ok("independent factorial-moment recomputation matches the composed g2_op "
+   "(exact three-source form, audit 2026-09-23)",
    abs(g2_op_independent - sc_on["g2_op"]) < 1e-9)
+
+# Audit 2026-09-23 acceptance 2: device.py's aperture composition
+# (_compose_aperture_g2 mix, then g2_from at rho_eff = (1+lam)rho/(1+lam rho))
+# equals the closed form 1 - s^2(1-g_t)/((1+lam)s+b)^2 on synthetic cases to
+# 1e-12, and the exposed rho_g2_op is that rho_eff at the op point.
+_ap_synth_ok = True
+for _gt, _lam, _s, _b in ((0.02, 0.0339, 0.75, 0.25), (0.3, 1.0, 0.5, 0.5),
+                          (0.0, 0.25, 2.0e-4, 7.0e-5), (0.6, 3.0, 1.0, 0.0)):
+    _rho = _s / (_s + _b)
+    _dev = g2_from(_compose_aperture_g2(_gt, _lam), devmod._aperture_rho_eff(_rho, _lam))
+    _ap_synth_ok &= abs(_dev - _three_source_g2(_gt, _lam, _s, _b)) < 1e-12
+_rho_eff_op = (1.0 + lam) * sc_on["rho_op"] / ((1.0 + lam) * sc_on["rho_op"] + 1.0 - sc_on["rho_op"])
+ok("aperture composition equals the closed form 1 - s^2(1-g_t)/((1+lam)s+b)^2 "
+   "on synthetic cases to 1e-12 (audit 2026-09-23); rho_g2_op == (1+lam)s/((1+lam)s+b)",
+   _ap_synth_ok and abs(sc_on["rho_g2_op"] - _rho_eff_op) < 1e-12)
 
 # Monte-Carlo second method: an exactly brightness-1 target (mean = 1,
 # <n(n-1)> = g_target, the two moments _compose_aperture_g2 assumes -- the
@@ -639,8 +674,9 @@ sc_s = evaluate(staged, [250.])["scalars"]
 _, P1, P2 = loading_probs(sc_s["mu_resolved"])
 denom = P1 + P2 * (1.0 + sc_s["eps_op"])
 g2_dot_recomputed = 2.0 * P2 * sc_s["eps_op"] / denom ** 2 if denom > 0 else 0.0
-g2_dot_mixed = _compose_aperture_g2(g2_dot_recomputed, sc_s["aperture_lambda_op"])
-g2_op_recomputed = g2_from(g2_dot_mixed, sc_s["rho_op"])
+# re-pinned (audit 2026-09-23): exact three-source background law.
+g2_op_recomputed = _three_source_g2(g2_dot_recomputed, sc_s["aperture_lambda_op"],
+                                    sc_s["rho_op"], 1.0 - sc_s["rho_op"])
 ok("filter/loading/aperture/background losses are each applied exactly once",
    abs(g2_op_recomputed - sc_s["g2_op"]) < 1e-9)
 
@@ -815,8 +851,9 @@ d_cw_ap = copy.deepcopy(d_cw); d_cw_ap.aperture.compose = True
 sc_cw_ap = evaluate(d_cw_ap, [200.])["scalars"]
 lam_cw = sc_cw_ap["aperture_lambda_op"]
 tau_cw = report_cw["curves"]["tau"]
-g_mix_cw = _compose_aperture_g2(report_cw["curves"]["g2_dot"], lam_cw)
-g_meas_cw = cw_g2.g2_with_background(g_mix_cw, rho_cw_expected)
+# re-pinned (audit 2026-09-23): exact three-source law pointwise in tau.
+g_meas_cw = _three_source_g2(np.asarray(report_cw["curves"]["g2_dot"]), lam_cw,
+                             rho_cw_expected, 1.0 - rho_cw_expected)
 g_raw_cw = cw_g2.convolve_irf(tau_cw, g_meas_cw, d_cw.drive.cw_irf_fwhm_ps, d_cw.drive.cw_irf_shape)
 g2_cw0_expected = float(np.interp(0.0, tau_cw, g_meas_cw))
 g2_cw0_raw_expected = float(np.interp(0.0, tau_cw, g_raw_cw))
@@ -856,8 +893,12 @@ assert d_cw_gainp.drive.cw, "edge-inp-gainp-design.yaml must ship drive.cw=true 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     sc_cw_gainp = evaluate(d_cw_gainp)["scalars"]
-CW_GAINP_G2_CW0 = 0.7624234413164181
-CW_GAINP_G2_CW0_RAW = 0.9991637853703624
+# Re-pinned 2026-09-23 (audit device composition, device.py:2117): the CW
+# aperture composition now uses rho_eff = (1+lam)rho/(1+lam rho) (exact
+# three-source law); was 0.7624234413164181 / 0.9991637853703624. cw_rho_op
+# (target-only) is unchanged.
+CW_GAINP_G2_CW0 = 0.7601106076524684
+CW_GAINP_G2_CW0_RAW = 0.9991556447299034
 CW_GAINP_CW_RHO_OP = 0.8527446400441377
 ok("CW-path regression fixture: edge-inp-gainp-design.yaml's own operating "
    "point reproduces g2_cw0 (1e-9 relative)",
@@ -1672,6 +1713,332 @@ ok("item 2 (pr-pkg4-fix3): unconverged finite_pulse leaves "
    np.isnan(sc_unconv["finite_pulse_gate_ns_used"])
    and "requested; operating point invalid" in
        sc_unconv["provenance"]["finite_pulse_waveform"]["note"])
+
+# ============================================ audit 2026-09-23 (device composition)
+# Q1 (user decision): the legacy non-diode brightness omits S BY DESIGN and is
+# labelled "pre-retention" (module docstring note + result label); no number
+# moves (the legacy fixture comparisons above stay bit-identical).
+_q1 = DeviceDesign(); _q1.thermal.T_hs = 300.0
+_q1s = evaluate(_q1, [300.0])["scalars"]
+_q1_P = loading_probs(_q1s["mu_resolved"])
+ok("Q1: device.py module docstring notes that retention S is intentionally omitted "
+   "on the legacy non-diode brightness path (diode path carries it)",
+   "retention factor S is intentionally omitted on the legacy non-diode brightness path"
+   in (devmod.__doc__ or "") and "diode path carries it" in (devmod.__doc__ or ""))
+ok("Q1: legacy non-diode brightness is labelled pre-retention (brightness_convention "
+   "and provenance), and still equals (P1+P2)*t_x with no S factor",
+   _q1s["brightness_convention"].startswith("pre-retention")
+   and _q1s["provenance"]["brightness"]["note"].startswith("pre-retention")
+   and _q1s["S_resolved"] < 1.0
+   and _q1s["brightness_per_pulse"] == float(_q1_P[1] + _q1_P[2]) * _q1s["t_x_op"])
+
+# Audit item 4 (device.py:1860): a static per-pulse g2_op > 1 carries an
+# explicit invalid flag. (a) the real static f8 path at a super-Poissonian
+# pump (mu=0.05, F_p=1.9): g2_load = 1 + (F_p-1)/mu = 19 pushes g2_op past 1;
+# (b) the pre-fix small-mu artefact form of f1b (P2 = 1 - P0 - P1, catastrophic
+# cancellation) reproduced by monkeypatch at mu = 5.4e-10 (audit: g2_op ~ 111).
+_i4 = DeviceDesign(); _i4.thermal.T_hs = 80.0; _i4.drive.b_e = 0.0
+_i4.drive.mu = 0.05; _i4.drive.F_p = 1.9
+_i4s = evaluate(_i4, [80.0])["scalars"]
+_orig_f1b = devmod.f1b_g2
+def _f1b_prefix(mu, eps):
+    P0 = np.exp(-mu); P1 = mu * np.exp(-mu); P2 = 1.0 - P0 - P1
+    den = P1 + P2 * (1.0 + eps)
+    return np.where(den > 0, 2.0 * P2 * eps / den ** 2, 0.0)
+_i4b = DeviceDesign(); _i4b.thermal.T_hs = 80.0; _i4b.drive.b_e = 0.0; _i4b.drive.mu = 5.4e-10
+devmod.f1b_g2 = _f1b_prefix
+try:
+    _i4bs = evaluate(_i4b, [80.0])["scalars"]
+finally:
+    devmod.f1b_g2 = _orig_f1b
+_i4c = evaluate(_set_thermal(DeviceDesign(), 80.0), [80.0])["scalars"]
+ok("item 4: a static-path g2_op > 1 carries g2_op_valid=False and a reason "
+   f"(f8 F_p=1.9: g2_op={_i4s['g2_op']:.4g}; pre-fix f1b artefact: g2_op={_i4bs['g2_op']:.4g}); "
+   "an ordinary point stays valid with an empty reason",
+   _i4s["g2_op"] > 1.0 and _i4s["g2_op_valid"] is False and "g2_op > 1" in _i4s["g2_op_invalid_reason"]
+   and _i4bs["g2_op"] > 1.0 and _i4bs["g2_op_valid"] is False
+   and _i4c["g2_op"] <= 1.0 and _i4c["g2_op_valid"] is True and _i4c["g2_op_invalid_reason"] == "")
+
+# ============================================ audit Phase C item 2 (optional Lindblad path)
+# DeviceDesign.quantum (default {}, OFF) wires fsim_core.lindblad into
+# evaluate(): the cascaded-filter CW g2(0) and the HOM indistinguishability
+# at the operating point, as NEW quantum_* scalars only. Expectations are
+# the Phase A audit's independent prototype numbers (edge300 exact
+# 0.8879 (indep) / 0.9821 (corr) against a memoryless 0.7959; filter-memory
+# shift +0.05..+0.08 at 230 K, +0.09..+0.19 at 300 K) and the
+# closed form I = Gamma/(Gamma + 2 gamma*) = hbar Gamma / FWHM (Grange et al.,
+# PRL 114, 193601 (2015), Eq. 1), never this code's own output.
+_HBAR_MEV_NS_V = 6.582119569e-4   # [V] CODATA 2018 hbar (Tiesinga et al., RMP 93, 025010 (2021))
+
+
+def _canon(x):
+    """Canonical, NaN-safe form of a result dict for exact equality."""
+    if isinstance(x, dict):
+        return {k: _canon(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_canon(v) for v in x]
+    if isinstance(x, np.ndarray):
+        return ["ndarray", str(x.dtype), [repr(v) for v in x.ravel().tolist()]]
+    if isinstance(x, (float, np.floating)):
+        return ["float", repr(float(x))]
+    return [type(x).__name__, repr(x)]
+
+
+def _strip_quantum(result):
+    out = copy.deepcopy(result)
+    sc = out["scalars"]
+    for k in [k for k in sc if k.startswith("quantum_")]:
+        del sc[k]
+    sc["provenance"].pop("quantum", None)
+    return out
+
+
+_qc = DeviceDesign.load(ROOT / "cards" / "edge-inp-gainp-design.yaml")
+ok("C2: DeviceDesign.quantum defaults to {} (optional quantum path off)",
+   DeviceDesign().quantum == {} and _qc.quantum == {})
+_q_off = evaluate(_qc, [300.0])
+_qc_on = copy.deepcopy(_qc); _qc_on.quantum = {"enabled": True}
+_q_on = evaluate(_qc_on, [300.0])
+_qs = _q_on["scalars"]
+ok("C2: flag off adds no quantum_* key and no provenance['quantum'] entry (gainp card)",
+   not any(k.startswith("quantum_") for k in _q_off["scalars"])
+   and "quantum" not in _q_off["scalars"]["provenance"])
+ok("C2: flag on changes NO existing key or value: the flag-on result minus its quantum_* "
+   "keys equals the flag-off result exactly (curves and scalars, NaN-safe)",
+   _canon(_strip_quantum(_q_on)) == _canon(_q_off))
+ok("C2: flag on reports the quantum_* keys with a [DR] provenance entry",
+   _qs["provenance"]["quantum"]["tag"] == "DR"
+   and all(k in _qs for k in ("quantum_g2_cw0_filtered", "quantum_g2_cw0_filtered_dot",
+                              "quantum_hom_indistinguishability", "quantum_hom_gamma_ns",
+                              "quantum_hom_gamma_star_ns"))
+   and _qs["quantum_invalid_reasons"] == [])
+ok("C2: quantum filter FWHM is the SAME window the rate path uses (w_resolved)",
+   _qs["quantum_filter_fwhm_meV"] == _qs["w_resolved"] and _qs["quantum_linewidth_X_meV"] == _qs["gamma_op"])
+_f, _fd = _qs["quantum_g2_cw0_filtered"], _qs["quantum_g2_cw0_filtered_dot"]
+ok(f"C2 AC1: gainp 300 K filtered CW g2(0) in [0,1] and above the rate-equation g2_cw0 "
+   f"(filter memory fills the dip): filtered {_f:.4f} (dot {_fd:.4f}) vs g2_cw0 {_qs['g2_cw0']:.4f}",
+   0.0 <= _f <= 1.0 and 0.0 <= _fd <= 1.0 and _f > _qs["g2_cw0"]
+   and _fd > _qs["quantum_g2_cw0_rate_dot"])
+ok("C2 AC1: gainp 300 K exact filtered cascade reproduces the audit prototype "
+   f"(corr {_qs['quantum_g2_cw0_filtered_dot_corr']:.4f} vs 0.9821, indep "
+   f"{_qs['quantum_g2_cw0_filtered_dot_indep']:.4f} vs 0.8879, memoryless Lorentzian "
+   f"{_qs['quantum_g2_cw0_rate_dot_lorentzian']:.4f} vs 0.7959; tol 1e-3)",
+   abs(_qs["quantum_g2_cw0_filtered_dot_corr"] - 0.9821) <= 1e-3
+   and abs(_qs["quantum_g2_cw0_filtered_dot_indep"] - 0.8879) <= 1e-3
+   and abs(_qs["quantum_g2_cw0_rate_dot_lorentzian"] - 0.7959) <= 1e-3)
+ok("C2 AC1: gainp 300 K filter shift (filtered - memoryless Lorentzian) lies in the audit's "
+   f"+0.05..+0.19 range (corr {_qs['quantum_g2_cw0_filter_shift_corr']:+.4f}, indep "
+   f"{_qs['quantum_g2_cw0_filter_shift_indep']:+.4f})",
+   all(0.05 <= _qs[f"quantum_g2_cw0_filter_shift_{m}"] <= 0.19 for m in ("corr", "indep")))
+ok("C2: gainp 300 K correction against the REPORTED top-hat g2_cw0: "
+   f"quantum_g2_cw0_shift_vs_reported = {_qs['quantum_g2_cw0_shift_vs_reported']:+.6f} "
+   "== filtered - g2_cw0 exactly, pinned at +0.227575 (tol 1e-5), larger than the audit's "
+   "memory-only +0.05..+0.19 (it includes the top-hat -> Lorentzian shape change); dot level "
+   f"{_qs['quantum_g2_cw0_filtered_dot'] - _qs['quantum_g2_cw0_rate_dot']:+.4f} (about +0.33)",
+   _qs["quantum_g2_cw0_shift_vs_reported"] == _qs["quantum_g2_cw0_filtered"] - _qs["g2_cw0"]
+   and abs(_qs["quantum_g2_cw0_shift_vs_reported"] - 0.227575) <= 1e-5
+   and _qs["quantum_g2_cw0_shift_vs_reported"] > 0.19
+   and abs((_qs["quantum_g2_cw0_filtered_dot"] - _qs["quantum_g2_cw0_rate_dot"]) - 0.33) <= 0.01)
+# wiring: the measured filtered value uses the SAME background law and aperture
+# bath as g2_cw0 (recomputed from exposed scalars through cw_g2/device helpers).
+_lam = _qs["aperture_lambda_op"]
+_gmix = _compose_aperture_g2(_fd, _lam) if _qs["aperture_compose"] else _fd
+_rho_e = devmod._aperture_rho_eff(_qs["cw_rho_op"], _lam) if _qs["aperture_compose"] else _qs["cw_rho_op"]
+ok("C2: quantum_g2_cw0_filtered == g2_with_background(aperture-composed filtered dot g2, "
+   "the SAME cw_rho_op) (rel 1e-12)",
+   abs(float(cw_g2.g2_with_background(_gmix, _rho_e)) / _f - 1.0) <= 1e-12)
+_G, _gs, _I = _qs["quantum_hom_gamma_ns"], _qs["quantum_hom_gamma_star_ns"], _qs["quantum_hom_indistinguishability"]
+_I_closed = _HBAR_MEV_NS_V * _G / _qs["gamma_op"]
+ok(f"C2 AC1: HOM I = {_I:.6f} in [0,1], equals Gamma/(Gamma+2 gamma*) for the reported numbers "
+   f"(rel 1e-9) and hbar Gamma/FWHM = {_I_closed:.6f} (rel 1e-9; audit ~0.29 at 300 K)",
+   0.0 <= _I <= 1.0 and abs(_I / (_G / (_G + 2.0 * _gs)) - 1.0) <= 1e-9
+   and abs(_I / _I_closed - 1.0) <= 1e-9 and abs(_I - 0.29) <= 0.01
+   and _G > _qs["cw_gamma_X_ns"])
+_qc230 = copy.deepcopy(_qc_on); _qc230.thermal.T_hs = 230.0
+_qs230 = evaluate(_qc230, [230.0])["scalars"]
+ok("C2: gainp 230 K filter shift lies in the audit's +0.05..+0.08 range "
+   f"(corr {_qs230['quantum_g2_cw0_filter_shift_corr']:+.4f}, indep "
+   f"{_qs230['quantum_g2_cw0_filter_shift_indep']:+.4f}) and HOM matches hbar Gamma/FWHM (audit ~0.071)",
+   all(0.05 <= _qs230[f"quantum_g2_cw0_filter_shift_{m}"] <= 0.08 for m in ("corr", "indep"))
+   and abs(_qs230["quantum_hom_indistinguishability"]
+           / (_HBAR_MEV_NS_V * _qs230["quantum_hom_gamma_ns"] / _qs230["gamma_op"]) - 1.0) <= 1e-9
+   and abs(_qs230["quantum_hom_indistinguishability"] - 0.071) <= 0.005)
+_qnocw = copy.deepcopy(_qc_on); _qnocw.drive.cw = False
+_qsn = evaluate(_qnocw, [300.0])["scalars"]
+ok("C2: flag on without drive.cw reports NaN quantum values with an explicit reason (never a guess)",
+   np.isnan(_qsn["quantum_g2_cw0_filtered"]) and np.isnan(_qsn["quantum_hom_indistinguishability"])
+   and any("drive.cw" in r for r in _qsn["quantum_invalid_reasons"]))
+
+
+def _bad_quantum(block):
+    def _f():
+        dq = copy.deepcopy(_qc); dq.quantum = block
+        evaluate(dq, [300.0])
+    return _f
+
+
+raises("C2: unknown quantum key rejected", _bad_quantum({"enabled": True, "filter": 1}))
+raises("C2: bad quantum.dephasing rejected", _bad_quantum({"enabled": True, "dephasing": "x"}))
+raises("C2: non-bool quantum.enabled rejected", _bad_quantum({"enabled": "yes"}))
+_dq = DeviceDesign(); _dq.quantum = {"enabled": True, "dephasing": "indep"}
+with tempfile.NamedTemporaryFile(dir=ROOT, suffix=".yaml", delete=False) as tmp:
+    _qpath = Path(tmp.name)
+try:
+    _dq.save(_qpath); _dq2 = DeviceDesign.load(_qpath)
+finally:
+    os.unlink(_qpath)
+ok("C2: YAML round trip preserves the quantum block", _dq2.quantum == _dq.quantum and _dq2 == _dq)
+_dq0 = DeviceDesign()
+with tempfile.NamedTemporaryFile(dir=ROOT, suffix=".yaml", delete=False) as tmp:
+    _qpath0 = Path(tmp.name)
+try:
+    _dq0.save(_qpath0); _qtext0 = _qpath0.read_text(encoding="utf-8"); _dq0b = DeviceDesign.load(_qpath0)
+finally:
+    os.unlink(_qpath0)
+ok("C2: a flag-off design saves no 'quantum:' key (saved text unchanged) and reloads with quantum == {}",
+   "quantum" not in yaml.safe_load(_qtext0)["design"] and _dq0b == _dq0 and _dq0b.quantum == {})
+
+# Planar nitride path (same optional wiring, NEW keys only).
+_pn = DeviceDesign.load(ROOT / "cards" / "nitride-cavity-pulse-design.yaml")
+_pn_off = evaluate(_pn, [_pn.thermal.T_hs])
+_pn_on_d = copy.deepcopy(_pn); _pn_on_d.quantum = {"enabled": True}
+_pn_on = evaluate(_pn_on_d, [_pn.thermal.T_hs])
+_pq = _pn_on["scalars"]
+_pG = _pq["gamma_X_ns"] + _pq["k_X_ns"]
+ok("C2: planar nitride flag off adds no quantum_* key; flag on changes no existing key or value",
+   not any(k.startswith("quantum_") for k in _pn_off["scalars"])
+   and _canon(_strip_quantum(_pn_on)) == _canon(_pn_off))
+ok(f"C2: planar nitride pulse card: filtered CW g2(0) {_pq['quantum_g2_cw0_filtered_dot']:.4f} in [0,1] "
+   f"above the memoryless rate value {_pq['quantum_g2_cw0_rate_dot']:.4f}; HOM I = "
+   f"{_pq['quantum_hom_indistinguishability']:.4f} == Gamma/(Gamma+2 gamma*) == hbar Gamma/FWHM "
+   "(Gamma = the row's gamma_X_ns + k_X_ns; rel 1e-9)",
+   _pq["valid"] is True and 0.0 <= _pq["quantum_g2_cw0_filtered_dot"] <= 1.0
+   and _pq["quantum_g2_cw0_filtered_dot"] > _pq["quantum_g2_cw0_rate_dot"]
+   and abs(_pq["quantum_hom_gamma_ns"] / _pG - 1.0) <= 1e-12
+   and abs(_pq["quantum_hom_indistinguishability"]
+           / (_pG / (_pG + 2.0 * _pq["quantum_hom_gamma_star_ns"])) - 1.0) <= 1e-9
+   and abs(_pq["quantum_hom_indistinguishability"]
+           / (_HBAR_MEV_NS_V * _pG / _pq["quantum_linewidth_X_meV"]) - 1.0) <= 1e-9)
+
+# =========================================================== quantum tier Q2/Q3/Q4
+# Cascade-weighted, filtered and phonon-partitioned HOM.
+# Separate block; every check below tests a number the diagnostic did not produce.
+
+# ---- Q2: cascade-weighted HOM (exact identity I_XX->X = I_X Gamma_XX/(Gamma_XX+Gamma_X))
+_I_x, _I_xx = _qs["quantum_hom_indistinguishability"], _qs["quantum_hom_indistinguishability_from_XX"]
+_cf = _qs["quantum_hom_cascade_factor"]
+_Gx = _qs["quantum_hom_gamma_ns"]                       # gamma_X + k_X
+_gX_q = _qs["cw_gamma_X_ns"]                            # gamma_X; gamma_XX = 2 gamma_X, k_XX = 2 k_X on this path
+_GXX_q = 2.0 * _Gx
+ok(f"Q2: gainp 300 K: I(XX->X)/I(X) = {_I_xx / _I_x:.9f} == quantum_hom_cascade_factor = {_cf:.9f} (rel 1e-9)",
+   abs(_I_xx / _I_x / _cf - 1.0) <= 1e-9)
+ok(f"Q2: cascade factor == Gamma_XX/(Gamma_XX+Gamma_X) from the reported rates "
+   f"(Gamma_X = {_Gx:.3f} ns^-1, Gamma_XX = 2 Gamma_X; rel 1e-12)",
+   abs(_cf / (_GXX_q / (_GXX_q + _Gx)) - 1.0) <= 1e-12)
+_, _P1q, _P2q = loading_probs(_qs["mu_resolved"])
+_Iload = (_P1q * _I_x + _P2q * _I_xx) / (_P1q + _P2q)
+ok(f"Q2: loaded HOM = {_qs['quantum_hom_indistinguishability_loaded']:.6f} == [P1 I_X + P2 I_XX->X]/(P1+P2) "
+   f"with the cap-2 loading_probs(mu_resolved = {_qs['mu_resolved']:.4f}) (rel 1e-12) and lies between "
+   "I_XX->X and I_X",
+   abs(_qs["quantum_hom_indistinguishability_loaded"] / _Iload - 1.0) <= 1e-12
+   and _I_xx < _qs["quantum_hom_indistinguishability_loaded"] < _I_x)
+_Ie = _qs["quantum_hom_indistinguishability_loaded_exact"]
+_kXq = _Gx - _gX_q
+_s3q = lb.build_system(levels=3, gamma_X_ns=_gX_q, gamma_XX_ns=2.0 * _gX_q, k_X=_kXq, k_XX=2.0 * _kXq,
+                       deph=[(2.0 * _qs["quantum_hom_gamma_star_ns"], (0.0, 1.0, 0.0))])
+_rmix = np.zeros((_s3q.dim, _s3q.dim), dtype=complex)
+_rmix[1, 1] = _P1q / (_P1q + _P2q); _rmix[2, 2] = _P2q / (_P1q + _P2q)
+_Idir = float(lb.indistinguishability(_s3q.L, _s3q.dim, _rmix, np.sqrt(_gX_q) * _s3q.ops["c_X"]))
+ok(f"F-review 5: exact loaded HOM = {_Ie:.6f} <= linear mixture {_qs['quantum_hom_indistinguishability_loaded']:.6f} "
+   f"(upper bound) and == a direct lindblad.indistinguishability call on (P1 rho_X + P2 rho_XX)/(P1+P2) (rel 1e-12)",
+   np.isfinite(_Ie) and _Ie <= _qs["quantum_hom_indistinguishability_loaded"] * (1.0 + 1e-12)
+   and abs(_Ie / _Idir - 1.0) <= 1e-12)
+ok(f"Q2: gainp 230 K audit values: I_X = {_qs230['quantum_hom_indistinguishability']:.4f} (0.0712), "
+   f"I_XX->X = {_qs230['quantum_hom_indistinguishability_from_XX']:.4f} (0.0475); 300 K: "
+   f"{_I_x:.4f} (0.2928), {_I_xx:.4f} (0.1952) (the work order figures are 4-decimal; tol 1e-4)",
+   abs(_qs230["quantum_hom_indistinguishability"] - 0.0712) <= 1e-4
+   and abs(_qs230["quantum_hom_indistinguishability_from_XX"] - 0.0475) <= 1e-4
+   and abs(_I_x - 0.2928) <= 1e-4 and abs(_I_xx - 0.1952) <= 1e-4)
+ok("Q2: flag on changes no existing key (re-check with the new keys present: stripped result == flag-off)",
+   _canon(_strip_quantum(_q_on)) == _canon(_q_off))
+
+# ---- Q3: filtered HOM
+_qw = copy.deepcopy(_qc_on); _qw.filter.auto_w_scale = 1.0e3     # w = 1e3 x line FWHM
+_qsw = evaluate(_qw, [300.0])["scalars"]
+ok(f"Q3: w = 1e3 x line FWHM ({_qsw['quantum_filter_fwhm_meV']:.0f} meV): filtered HOM "
+   f"{_qsw['quantum_hom_indistinguishability_filtered']:.6f} == unfiltered "
+   f"{_qsw['quantum_hom_indistinguishability']:.6f} (rel 1e-2)",
+   abs(_qsw["quantum_filter_fwhm_meV"] / _qsw["quantum_linewidth_X_meV"] - 1e3) <= 1e-6
+   and abs(_qsw["quantum_hom_indistinguishability_filtered"]
+           / _qsw["quantum_hom_indistinguishability"] - 1.0) <= 1e-2)
+ok(f"Q3: own w: filtered HOM {_qs['quantum_hom_indistinguishability_filtered']:.6f} >= unfiltered "
+   f"{_I_x:.6f}; photons per excitation {_qs['quantum_hom_filtered_photons_per_excitation']:.3e} in (0, 1] "
+   f"(230 K: {_qs230['quantum_hom_indistinguishability_filtered']:.6f} >= "
+   f"{_qs230['quantum_hom_indistinguishability']:.6f})",
+   _qs["quantum_hom_indistinguishability_filtered"] >= _I_x
+   and 0.0 < _qs["quantum_hom_filtered_photons_per_excitation"] <= 1.0
+   and _qs230["quantum_hom_indistinguishability_filtered"] >= _qs230["quantum_hom_indistinguishability"]
+   and 0.0 < _qs230["quantum_hom_filtered_photons_per_excitation"] <= 1.0)
+_Nmax = _gX_q / _Gx                                      # gamma_X/Gamma_X: wide-filter photon number
+ok(f"Q3: wide filter photons per excitation {_qsw['quantum_hom_filtered_photons_per_excitation']:.6e} == "
+   f"gamma_X/(gamma_X+k_X) = {_Nmax:.6e} (rel 1e-2) and the own-w filter collects fewer",
+   abs(_qsw["quantum_hom_filtered_photons_per_excitation"] / _Nmax - 1.0) <= 1e-2
+   and _qs["quantum_hom_filtered_photons_per_excitation"] < _qsw["quantum_hom_filtered_photons_per_excitation"])
+_qn = copy.deepcopy(_qc_on); _qn.filter.auto_w_scale = 0.25
+_qsn = evaluate(_qn, [300.0])["scalars"]
+ok("Q3: trade-off at the operating point: a narrower window (auto_w_scale 0.25 vs 1) raises the "
+   "filtered HOM and lowers photons per excitation",
+   _qsn["quantum_hom_indistinguishability_filtered"] > _qs["quantum_hom_indistinguishability_filtered"]
+   and _qsn["quantum_hom_filtered_photons_per_excitation"]
+   < _qs["quantum_hom_filtered_photons_per_excitation"])
+ok("Q3: planar nitride pulse card: filtered HOM >= unfiltered and photons per excitation in (0, 1]",
+   _pq["quantum_hom_indistinguishability_filtered"] >= _pq["quantum_hom_indistinguishability"]
+   and 0.0 < _pq["quantum_hom_filtered_photons_per_excitation"] <= 1.0)
+
+# ---- Q4: consistent ZPL/sideband partition
+from fsim_core import qd_gf as _qdgf
+_pp = _qdgf.PhononParams(**_qc_on.dot.phonon)
+ok(f"Q4: quantum_hom_zpl_weight = {_qs['quantum_hom_zpl_weight']:.4f} == exp(-huang_rhys(PhononParams, T_j)) "
+   "at 300 K and 230 K (rel 1e-12; ~0.092 and ~0.161)",
+   abs(_qs["quantum_hom_zpl_weight"] / np.exp(-_qdgf.huang_rhys(_pp, _qs["T_j_op"])) - 1.0) <= 1e-12
+   and abs(_qs230["quantum_hom_zpl_weight"] / np.exp(-_qdgf.huang_rhys(_pp, _qs230["T_j_op"])) - 1.0) <= 1e-12
+   and abs(_qs["quantum_hom_zpl_weight"] - 0.092) <= 5e-4 and abs(_qs230["quantum_hom_zpl_weight"] - 0.161) <= 5e-4)
+ok("Q4: default dot.width_kind == total -> phonon HOM is NaN and the reason string is reported "
+   "(quantum_hom_phonon_reason; quantum_invalid_reasons stays empty on a valid point)",
+   _qc.dot.width_kind == "total" and np.isnan(_qs["quantum_hom_indistinguishability_phonon"])
+   and "cannot be partitioned" in _qs["quantum_hom_phonon_reason"]
+   and _qs["quantum_invalid_reasons"] == [])
+_qz = copy.deepcopy(_qc_on); _qz.dot.width_kind = "zpl"
+_qsz = evaluate(_qz, [300.0])["scalars"]
+ok(f"Q4: width_kind zpl: phonon HOM {_qsz['quantum_hom_indistinguishability_phonon']:.6f} == Z^2 I_X "
+   "(rel 1e-12); the other quantum keys equal the total-width result",
+   abs(_qsz["quantum_hom_indistinguishability_phonon"]
+       / (_qsz["quantum_hom_zpl_weight"] ** 2 * _qsz["quantum_hom_indistinguishability"]) - 1.0) <= 1e-12
+   and _qsz["quantum_hom_phonon_reason"] == ""
+   and _qsz["quantum_hom_indistinguishability"] == _I_x
+   and _qsz["quantum_g2_cw0_filtered"] == _qs["quantum_g2_cw0_filtered"])
+_qz_off = copy.deepcopy(_qc); _qz_off.dot.width_kind = "zpl"
+ok("Q4: width_kind does not touch the legacy outputs: zpl flag-off result == default flag-off result",
+   _canon(evaluate(_qz_off, [300.0])) == _canon(_q_off))
+raises("Q4: unknown dot.width_kind rejected at construction (card parsing)",
+       lambda: devmod.DotBlock(width_kind="both"))
+
+
+def _bad_width_eval():
+    dq = copy.deepcopy(_qc_on); dq.dot.width_kind = "both"; evaluate(dq, [300.0])
+
+
+raises("Q4: unknown dot.width_kind rejected at evaluate (design mutated after construction)", _bad_width_eval)
+_wfd, _wname = tempfile.mkstemp(suffix=".yaml"); os.close(_wfd); _wpath = Path(_wname)
+try:
+    _qz.save(_wpath); _wtext = _wpath.read_text(encoding="utf-8"); _qz2 = DeviceDesign.load(_wpath)
+    _qc.save(_wpath); _wtext0 = _wpath.read_text(encoding="utf-8")
+finally:
+    os.unlink(_wpath)
+ok("Q4: YAML round trip keeps width_kind zpl; the default total is not written (saved text unchanged)",
+   _qz2.dot.width_kind == "zpl" and "width_kind: zpl" in _wtext and "width_kind" not in _wtext0)
+ok("Q4: planar nitride: phonon HOM NaN by default, zpl weight finite in (0, 1]",
+   np.isnan(_pq["quantum_hom_indistinguishability_phonon"]) and 0.0 < _pq["quantum_hom_zpl_weight"] <= 1.0)
 
 print(f"{sum(checks)}/{len(checks)} device RT checks passed")
 sys.exit(0 if all(checks) else 1)

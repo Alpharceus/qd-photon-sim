@@ -190,10 +190,16 @@ def _scan_roots(f, xs, n_max=4):
     """Sign-change scan + brentq on a grid; skips non-finite samples."""
     vals = np.asarray(f(xs), float)
     roots = []
-    for i in range(len(xs) - 1):
+    # studio-p2c: the sign-change test is evaluated on whole arrays (same
+    # IEEE products and comparisons) and the loop below visits only the
+    # candidate intervals, in the same order -- bit-identical to the
+    # per-sample scan it replaces.
+    a_all, b_all = vals[:-1], vals[1:]
+    with np.errstate(over="ignore", invalid="ignore"):
+        cand = (np.isfinite(a_all) & np.isfinite(b_all)
+                & ((a_all == 0.0) | (a_all * b_all < 0.0)))
+    for i in np.flatnonzero(cand).tolist():
         a, b = vals[i], vals[i + 1]
-        if not (np.isfinite(a) and np.isfinite(b)):
-            continue
         if a == 0.0:
             roots.append(float(xs[i]))
         elif a * b < 0.0:

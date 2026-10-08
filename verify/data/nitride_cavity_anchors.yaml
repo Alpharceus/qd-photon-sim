@@ -51,19 +51,165 @@ anchors:
   rinke2008-gan-electron-mass:
     citation: "Rinke, Winkelnkemper, Qteish, Bimberg, Neugebauer, Scheffler, Phys. Rev. B 77, 075202 (2008)"
     doi_or_url: "arXiv:0801.0421"
-    location: "Table V"
+    location: "Table V row m_e-parallel; axis from Appendix A Eq. (A5) (1/m_e-parallel multiplies kz^2)"
     evidence_status: full_text
     tag: V
     platform: GaN_bulk_G0W0
     excitation: none
-    observable: electron_effective_mass_perp
+    observable: electron_effective_mass_parallel_c
     value: 0.186
     unit: m0
     tolerance: {value: 0.0, meaning: "point G0W0-recommended value; no reported uncertainty"}
     transfer_notes: >
-      Background band-structure constant consumed internally by
-      nitride_materials.py/nitride_levels.py (out of scope for this piece);
-      not a card-set field.
+      Mass ALONG the wurtzite c axis (nitride_materials me_z).  Same row:
+      InN 0.065, AlN 0.322.  Observable relabelled 2026-09-23 (audit
+      nitride-strain-mass): it previously read electron_effective_mass_perp,
+      which mislabelled the axis; the value was always right.  Background
+      band-structure constant consumed internally by
+      nitride_materials.py/nitride_levels.py; not a card-set field.
+
+  rinke2008-gan-electron-mass-perp-c:
+    citation: "Rinke, Winkelnkemper, Qteish, Bimberg, Neugebauer, Scheffler, Phys. Rev. B 77, 075202 (2008)"
+    doi_or_url: "arXiv:0801.0421"
+    location: "Table V row m_e-perp"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_G0W0
+    excitation: none
+    observable: electron_effective_mass_perp_c
+    value: 0.209
+    unit: m0
+    tolerance: {value: 0.0, meaning: "point G0W0-recommended value as tabulated; no reported uncertainty"}
+    transfer_notes: >
+      Mass in the c plane (nitride_materials me_xy).  Same row: InN 0.068,
+      AlN 0.329.
+
+  rinke2008-gan-volume-gap-deformation:
+    citation: "Rinke, Winkelnkemper, Qteish, Bimberg, Neugebauer, Scheffler, Phys. Rev. B 77, 075202 (2008)"
+    doi_or_url: "arXiv:0801.0421"
+    location: "Table IV, wurtzite rows, OEPx(cLDA)+G0W0 column"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_G0W0
+    excitation: none
+    observable: volume_gap_deformation_potential_a_V
+    value: -7.6
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point value as tabulated; no reported uncertainty"}
+    transfer_notes: >
+      InN -4.2, AlN -9.8 eV (same column).  Hydrostatic only; since the
+      2026-09-23 fix nitride_materials keeps it as aV_eV for a cross-check
+      of the anisotropic Yan 2014 set (GaN isotropic equivalent -7.94 eV)
+      and no longer uses it for the biaxial A-gap shift.
+
+  yan2014-gan-acz-minus-d1:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, GaN HSE (alpha = 0.30) (recommended) row, column acz - D1; sign convention Eqs. (2)-(3)"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_HSE
+    excitation: none
+    observable: gap_deformation_potential_acz_minus_D1
+    value: -6.07
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT value as tabulated; expt range -9.6..-3.1 in the same table"}
+    transfer_notes: >
+      InN -3.64 (HSE alpha=0.25 recommended), AlN -4.36 (HSE alpha=0.34
+      recommended).  Equals Vurgaftman & Meyer's a1.  Consumed by
+      nitride_materials.strained_gap_shift_eV (acz_D1_eV).  DOI read from
+      the primary PDF (MPG PuRe open-access copy), not from the digest.
+
+  yan2014-gan-act-minus-d2:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, GaN HSE (alpha = 0.30) (recommended) row, column act - D2"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_HSE
+    excitation: none
+    observable: gap_deformation_potential_act_minus_D2
+    value: -8.88
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT value as tabulated; expt range -11.8..-8.1 in the same table"}
+    transfer_notes: "InN -4.58, AlN -12.35 (recommended rows). Equals VM a2. nitride_materials act_D2_eV."
+
+  yan2014-gan-d3:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, GaN HSE (alpha = 0.30) (recommended) row, column D3"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_HSE
+    excitation: none
+    observable: valence_deformation_potential_D3
+    value: 5.38
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT value as tabulated; expt range 1.4..8.2 in the same table"}
+    transfer_notes: "InN 2.68, AlN 9.17 (recommended rows). nitride_materials D3_eV."
+
+  yan2014-gan-d4:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, GaN HSE (alpha = 0.30) (recommended) row, column D4"
+    evidence_status: full_text
+    tag: V
+    platform: GaN_bulk_HSE
+    excitation: none
+    observable: valence_deformation_potential_D4
+    value: -2.69
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT value as tabulated; expt range -4.1..-0.7 in the same table"}
+    transfer_notes: "InN -1.78, AlN -3.72 (recommended rows). nitride_materials D4_eV."
+
+  yan2014-inn-deformation-set:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, InN HSE (alpha = 0.25) (recommended) row"
+    evidence_status: full_text
+    tag: V
+    platform: InN_bulk_HSE
+    excitation: none
+    observable: gap_and_valence_deformation_potentials_acz-D1_act-D2_D3_D4
+    value: {acz_minus_D1: -3.64, act_minus_D2: -4.58, D3: 2.68, D4: -1.78}
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT values as tabulated; no InN experiment exists per the source"}
+    transfer_notes: >
+      Same row: D5 -2.07 eV.  Linear (Vegard) interpolation GaN-InN to
+      InGaN is an [A] of nitride_materials.ingaN.
+
+  yan2014-aln-deformation-set:
+    citation: "Yan, Rinke, Janotti, Scheffler, Van de Walle, Phys. Rev. B 90, 125118 (2014)"
+    doi_or_url: "10.1103/PhysRevB.90.125118"
+    location: "Table III, AlN HSE (alpha = 0.34) (recommended) row"
+    evidence_status: full_text
+    tag: V
+    platform: AlN_bulk_HSE
+    excitation: none
+    observable: gap_and_valence_deformation_potentials_acz-D1_act-D2_D3_D4
+    value: {acz_minus_D1: -4.36, act_minus_D2: -12.35, D3: 9.17, D4: -3.72}
+    unit: eV
+    tolerance: {value: 0.0, meaning: "point DFT values as tabulated"}
+    transfer_notes: "Used only for AlN strained on a non-AlN substrate (nitride_materials AlN binary)."
+
+  vm2003-gan-deformation-via-yan:
+    citation: "Vurgaftman & Meyer, J. Appl. Phys. 94, 3675 (2003)"
+    doi_or_url: "10.1063/1.1600519"
+    location: "primary NOT read (AIP/ResearchGate 403); values as reprinted in Yan et al. PRB 90, 125118 (2014) Table III row 'Vurgaftman and Meyer' and Yan et al. APL 95, 121111 (2009) Table II column VM"
+    evidence_status: estimate
+    tag: E
+    platform: GaN_bulk_recommended
+    excitation: none
+    observable: gap_and_valence_deformation_potentials_a1_a2_D3_D4
+    value: {a1: -4.90, a2: -11.30, D3: 8.20, D4: -4.10}
+    unit: eV
+    tolerance: {value: 0.0, meaning: "secondary transcription; both secondary copies agree"}
+    transfer_notes: >
+      Sensitivity/comparison set only, NOT used by the code.  Same
+      secondary row: D5 -4.60 eV.  VM recommend the GaN values for InN (per
+      the Yan text).  Its isotropic equivalent (-9.17 eV) disagrees with the
+      Rinke a_V -7.6 eV; with it the x=0.25 coherent A-gap shift would be
+      +164.0 meV against +114.0 meV for the Yan 2014 set.
 
   wu2003-ingan-bowing:
     citation: "Wu et al., 'Universal bandgap bowing in group III nitride alloys', LBNL/OSTI 835986 (~2003)"

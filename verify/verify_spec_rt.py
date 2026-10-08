@@ -191,10 +191,16 @@ def _():
        "and scales only the raw-unit budget by two")
 def _():
     d = _device()
+    # per-X-photon (EL-transport) background convention: b_e_resolved is a
+    # ratio per X photon, so a common collection factor scales the injection
+    # background together with S (audit fix spec.py:573 -- the legacy Arrhenius
+    # channel is RAW and does not scale with S, so it is not Lemma 1's setting).
+    d.drive.mode = "EL-transport"
 
     base_scalars = dict(
         T_j_op=300.0, gamma_op=10.0, eps_op=0.4, mu_resolved=0.5,
-        rho_op=0.6, b_e_resolved=0.02, invalid_reasons=[],
+        rho_op=0.6, b_e_resolved=0.02, t_x_op=0.5, duty_resolved=0.01,
+        P_junction_W=1.0e-6, invalid_reasons=[],
     )
 
     def make_fake(S):
@@ -217,6 +223,130 @@ def _():
         assert abs(s1[key] - s2[key]) < 1e-12, (key, s1[key], s2[key])
     assert s1["b_e_budget"] > 0.0
     assert abs(s2["b_e_budget"] - 2.0 * s1["b_e_budget"]) < 1e-9 * abs(s1["b_e_budget"])
+
+
+# ------------------------------------ audit fix spec.py:573 (background B0)
+
+def _fake_evaluate(scalars):
+    def fake_evaluate(design, T_grid=None):
+        return {"curves": {}, "scalars": dict(scalars)}
+    return fake_evaluate
+
+
+def _recovered_B0(s):
+    """B0_raw recovered from the adapter's OUTPUTS only, through b_e_budget's
+    closing condition B_max = S(1-rho_req)/rho_req = B0 + b_e_budget."""
+    rho_req = s["rho_required"]
+    return s["S_op"] * (1.0 - rho_req) / rho_req - s["b_e_budget"]
+
+
+def _roundtrip_known_B0(mode, S, t_x, b_e, B0_known):
+    """Forward model written here from device.evaluate()'s background law
+    (NOT from spec.py): EL-transport adds S*b_e/t_x (b_e per unfiltered X
+    photon -> per collected X), the legacy path adds b_e raw."""
+    B_inj = S * b_e / t_x if mode == "EL-transport" else b_e
+    rho = S / (S + B0_known + B_inj)
+    scalars = dict(T_j_op=300.0, gamma_op=5.0, eps_op=0.05, mu_resolved=0.5,
+                   S_resolved=S, rho_op=rho, b_e_resolved=b_e, t_x_op=t_x,
+                   duty_resolved=0.01, P_junction_W=1.0e-6, invalid_reasons=[])
+    d = _device()
+    d.drive.mode = mode
+    orig = device_mod.evaluate
+    device_mod.evaluate = _fake_evaluate(scalars)
+    try:
+        return spec_sheet_from_device(d, 0.9)
+    finally:
+        device_mod.evaluate = orig
+
+
+@check("audit spec.py:573 round trip (EL-transport): a device result built with a "
+       "KNOWN B0_raw and injection S*b_e/t_x gives back B0_raw to 1e-9 rel, and "
+       "b_e_budget_norm is per collected X (rho(B0 + S*norm) == rho_required)")
+def _():
+    S, t_x, b_e, B0 = 1.873e-4, 0.5, 0.0984, 2.554e-5  # gainp-like magnitudes [A]
+    s = _roundtrip_known_B0("EL-transport", S, t_x, b_e, B0)
+    assert np.isfinite(s["rho_required"]) and s["rho_required"] < 1.0, s["rho_required"]
+    B0_rec = _recovered_B0(s)
+    assert abs(B0_rec - B0) <= 1e-9 * B0, (B0_rec, B0)
+    # the pre-fix inversion (S*b_e backed out, no 1/t_x) would give this:
+    B0_old = S * (1.0 - s["rho_op"]) / s["rho_op"] - S * b_e
+    assert abs(B0_old - B0) > 1e-3 * B0, "fixture must discriminate the t_x factor"
+    rho_at_budget = S / (S + B0 + S * s["b_e_budget_norm"])
+    assert abs(rho_at_budget - s["rho_required"]) < 1e-9, (rho_at_budget, s["rho_required"])
+
+
+@check("audit spec.py:573 round trip (legacy drive): the raw Arrhenius injection "
+       "background (added unscaled by device.evaluate) is backed out, B0_raw "
+       "recovered to 1e-9 rel")
+def _():
+    S, t_x, b_e, B0 = 0.3, 0.5, 0.01, 0.02
+    s = _roundtrip_known_B0("EL", S, t_x, b_e, B0)
+    B0_rec = _recovered_B0(s)
+    assert abs(B0_rec - B0) <= 1e-9 * B0, (B0_rec, B0)
+
+
+@check("audit spec.py:573 round trip (gainp card, pulsed): recovered B0_raw equals "
+       "the device's own injection-free background b0 + beta(1-S) + S*b_res "
+       "(identity on the evaluator's own scalars, not a pinned number) to 1e-9 rel")
+def _():
+    d = DeviceDesign.load(Path(__file__).resolve().parents[1] / "cards" / "edge-inp-gainp-design.yaml")
+    d.drive.cw = False
+    assert d.drive.mode == "EL-transport"
+    sc = device_mod.evaluate(d, T_grid=[d.thermal.T_hs])["scalars"]
+    rp = sc["retention_params_used"]
+    S = sc["S_resolved"]
+    B0_device = rp["b0"] + rp["beta"] * (1.0 - S) + S * d.drive.b_res
+    s = spec_sheet_from_device(d, 0.9)
+    assert np.isfinite(s["rho_required"]) and s["rho_required"] < 1.0, s["rho_required"]
+    B0_rec = _recovered_B0(s)
+    assert abs(B0_rec - B0_device) <= 1e-9 * B0_device, (B0_rec, B0_device)
+    print(f"        gainp: B0_raw recovered {B0_rec:.4e} vs device {B0_device:.4e}")
+
+
+# Pre-edit value of B0_raw recovered on cards/edge-inp-gainp-design.yaml
+# (pulsed, finite_pulse=false), measured 2026-09-23 before the finite_pulse
+# guard was added; the guard must leave the finite_pulse=false path unchanged.
+_GAINP_B0_PRE_GUARD = 2.5540830297201628e-05
+
+
+@check("spec-bg-norm review (spec.py:600): a finite_pulse=true design raises "
+       "ValueError naming 'finite_pulse' (rho is rebuilt from signal_fp, not S), "
+       "and the finite_pulse=false gainp card still returns B0_raw = 2.5541e-05 "
+       "(pre-guard value) to 1e-12 rel")
+def _():
+    card = Path(__file__).resolve().parents[1] / "cards" / "edge-inp-gainp-design.yaml"
+    d = DeviceDesign.load(card)
+    d.drive.cw = False
+    assert d.drive.finite_pulse is False
+    s = spec_sheet_from_device(d, 0.9)
+    B0 = _recovered_B0(s)
+    assert abs(B0 - _GAINP_B0_PRE_GUARD) <= 1e-12 * _GAINP_B0_PRE_GUARD, (B0, _GAINP_B0_PRE_GUARD)
+    d_fp = DeviceDesign.load(card)
+    d_fp.drive.cw = False
+    d_fp.drive.finite_pulse = True
+    assert_raises_naming(spec_sheet_from_device, "finite_pulse", d_fp, 0.9)
+    d_fp2 = _device()
+    d_fp2.drive.finite_pulse = True
+    assert_raises_naming(spec_sheet_from_device, "finite_pulse", d_fp2, 0.5)
+
+
+@check("audit spec.py:584: mesa_min uses the evaluator's own heat load "
+       "duty_resolved * P_junction_W")
+def _():
+    d = _device()
+    d.drive.mode = "EL-transport"
+    scalars = dict(T_j_op=300.0, gamma_op=5.0, eps_op=0.05, mu_resolved=0.5,
+                   S_resolved=0.3, rho_op=0.9, b_e_resolved=0.01, t_x_op=0.5,
+                   duty_resolved=0.02, P_junction_W=3.0e-3, invalid_reasons=[])
+    orig = device_mod.evaluate
+    device_mod.evaluate = _fake_evaluate(scalars)
+    try:
+        s = spec_sheet_from_device(d, 0.9)
+    finally:
+        device_mod.evaluate = orig
+    expected = spec_mod.mesa_min(0.02 * 3.0e-3, device_mod._stack(d.thermal),
+                                 d.thermal.T_hs, dT_max=s["dT_max"])
+    assert nan_eq(float(s["mesa_min_um"]), float(expected)), (s["mesa_min_um"], expected)
 
 
 @check("rejection: metric other than 'g2_pulsed' raises ValueError naming 'metric', "
@@ -251,11 +381,14 @@ def _():
     d_cw.drive.cw = True
     d_hot = _device()
     d_hot.drive.I_uA, d_hot.drive.V = 1.0e5, 50.0
+    d_fp = _device()
+    d_fp.drive.finite_pulse = True
     for fn, args, kwargs in (
         (spec_sheet_from_device, (_device(), 0.5), dict(metric="g2_cw0")),
         (spec_sheet_from_device, (_device(), 0.5), dict(metric="g2_cw0_raw")),
         (spec_sheet_from_device, (d_cw, 0.5), {}),
         (spec_sheet_from_device, (d_hot, 0.5), {}),
+        (spec_sheet_from_device, (d_fp, 0.5), {}),
     ):
         try:
             result = fn(*args, **kwargs)

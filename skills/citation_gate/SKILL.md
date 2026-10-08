@@ -26,9 +26,9 @@ arbitrary id, each entry carrying at least:
   string is fine).
 - `doi_or_url`: a DOI (`10.xxxx/...`), `arXiv:<id>`, `OSTI <id>`,
   `PMC<id>`, a `https://doi.org/...` URL, or `null`.
-- `evidence_status` (optional): only `missing` is read, to auto-pass a
-  citation that is deliberately recorded with no identifier (see
-  Outcomes below).
+- `evidence_status` (optional): only `missing` and `figure_reading` are
+  read, to record a GAP for a citation that is deliberately recorded with
+  no identifier (see Outcomes below).
 
 Prints one line per anchor:
 
@@ -54,6 +54,11 @@ passed.
 - **`doi_or_url: null` with `evidence_status: missing`**: passes as a
   "recorded gap" -- the ledger has already documented that no identifier
   is available for this claim, so there is nothing to verify.
+- **`doi_or_url: null` with `evidence_status: figure_reading` and no
+  parseable title** (audit C4): also a recorded gap (GAP) -- the values
+  were read off a figure, and there is neither an identifier nor a title
+  for a resolver to check. With a parseable title it is title-searched
+  like any other null-identifier anchor.
 - **Anything else** (a null identifier with any other evidence_status,
   or an unrecognized identifier form): fails with a reason. This project
   never edits a ledger to make a citation pass; a failure here is

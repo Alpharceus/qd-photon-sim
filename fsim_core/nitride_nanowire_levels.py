@@ -9,7 +9,7 @@ import math
 import numpy as np
 from scipy.special import jn_zeros,jv,kve
 from .nitride_materials import EPS0_SI,band_edges,binary,ingaN,KB_EV
-from .nitride_levels import _z_state,_coulomb_binding_eV
+from .nitride_levels import _z_state,_coulomb_binding_eV,_field_drop_exceeds_gap,ZENER_REASON
 from .dot_levels import finite_disk_2d,HB2_2M0
 HB=1.054571817e-34 # [V] CODATA 2018
 M0=9.1093837015e-31 # [V] CODATA 2018
@@ -181,6 +181,16 @@ def _solve(s,T,n,pad):
   if abs(q[18]-a[18])*1000>tol_mev:return _bad([tag+' refinement: electron escape depth exceeds rate tolerance'],F)
   if abs(q[19]-a[19])*1000>tol_mev:return _bad([tag+' refinement: hole escape depth exceeds rate tolerance'],F)
  ex,ov,F,fs,fp,d,g,de,ee,eh,ce,ch,te,th,r_e,r_h,se,sh,de_e,de_h,sw,geom=a
+ # Zener / field-collapse validity floor (audit C4, same rule and reason
+ # string as the planar nitride_levels._field_drop_exceeds_gap) [DR/A]:
+ # invalid when the electrostatic drop |F|*height across the disc reaches
+ # the strained InGaN gap Ec-Ev. `de` is band_edges() at THIS system's own
+ # strain state (strain_fraction 0 relaxed / 1 unrelaxed), so the gap is the
+ # nanowire's own, not the planar card's. Checked last, after every
+ # pre-existing levels-stage reason and the refinement gates, so those are
+ # unchanged; levels() does not escalate z_points on this reason (it is
+ # grid-independent).
+ if _field_drop_exceeds_gap(F,s.height_nm,de['Ec_eV']-de['Ev_eV']):return _bad([ZENER_REASON],F)
  if geom.startswith('disc'):
   meta='[E] separable BDD axial well + finite-barrier radial disk (H6: adiabatic decoupling, radial well sees the axial escape depth as its barrier, dot_levels.finite_disk_2d BenDaniel-Duke matching); [A] evanescent sidewall tail truncated (not renormalized) at core_radius_nm, no dielectric images or alloy localization; refinement passed (z_points, exterior_nm and dE_e/dE_h rate-equivalent tolerance gated separately)'
  else:
@@ -196,13 +206,18 @@ def levels(system,T_K=300.,*,z_points=1201,exterior_nm=45.):
  cap=9601 # [A] resolution-policy cap: double z_points on a gate failure and re-test; give up only here
  while True:
   res=_solve(system,T,n,pad)
-  if res.valid or n>=cap:return res
+  if res.valid or n>=cap or ZENER_REASON in res.invalid_reasons:return res
   n=min(cap,2*n+1) # stay odd (n%2==0 is rejected by _solve)
+@lru_cache(maxsize=512)
+def _jn_zeros(m,nt):
+ # studio-p2c: pure function of (m,nt); scipy recomputes identical zeros on
+ # every _part call (one per T/mass/radius), so cache them read-only.
+ z=jn_zeros(m,nt);z.setflags(write=False);return z
 @lru_cache(maxsize=32)
 def _part(mz,mxy,r,L,T):
  base=L*1e-9*math.sqrt(mz*M0*KB*T/(2*math.pi*HB**2));tot=0.
  for m in range(400):
-  add=0.;zs=jn_zeros(m,300)
+  add=0.;zs=_jn_zeros(m,300)
   for j in zs:
    x=math.exp(-(_ep(mxy,r,j)-_ep(mxy,r))/1000/(KB_EV*T));add+=(1 if m==0 else 2)*x
    if x<max(tot+add,1)*1e-10:break

@@ -495,6 +495,20 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
     rho=1/(1+b_e) shortcut, which would silently drop any biexciton leakage
     the evaluator already folded into its own signal/background accounting.
 
+    LOADING MODEL (deferred, audit spec.py:560-562): g2dot/eps_budget/
+    rho_required still invert the capped-Poisson f1b_g2 even when the
+    evaluator itself used f8_g2 (loading_model / F_p != 1) or the
+    finite-pulse waveform; the evaluator does not yet expose its own
+    pre-composition dot g2 or thinned Fano factor, so this adapter does not
+    re-derive them. [A]
+    FINITE-PULSE DESIGNS ARE REJECTED until that inversion exists (spec-bg-
+    norm review, low finding at spec.py:600, 2026-09-23): with
+    design.drive.finite_pulse=True, device.evaluate() rebuilds rho_op from
+    its finite-pulse gated signal (signal_fp), not from S_resolved, so the
+    background inversion B_total_raw = S(1-rho)/rho and B0_raw below would
+    be silently wrong. Such a design raises ValueError rather than being
+    approximated.
+
     Returns a flat dict reusing spec_sheet's key names wherever the meaning
     is identical (T_op, target_g2, delta_xx, mu, gamma_op, gamma_xx_op,
     S_op, eps_budget, t_x_floor, rho_required, G_required, kappa_max,
@@ -521,6 +535,15 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
         raise ValueError(
             "spec_sheet_from_device: design.drive.cw=True requests CW operation, "
             "which this adapter cannot invert (pulsed-only)")
+    if design.drive.finite_pulse:
+        # device.evaluate() builds rho_op from signal_fp (the finite-pulse
+        # gated signal) rather than S_resolved on this path, so the S-based
+        # background inversion below does not hold. [A]
+        raise ValueError(
+            "spec_sheet_from_device: design.drive.finite_pulse=True is not supported "
+            "-- device.evaluate() rebuilds rho from the finite-pulse signal (signal_fp), "
+            "not from S_resolved, so the background inversion (B_total_raw/B0_raw) would "
+            "be wrong; see the LOADING MODEL deferral note in this function's docstring")
 
     from .device import _stack, evaluate  # local import: avoids spec<->device cycle
 
@@ -536,6 +559,7 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
     T_j, gam, eps_op = scalars["T_j_op"], scalars["gamma_op"], scalars["eps_op"]
     mu, S, rho_op = scalars["mu_resolved"], scalars["S_resolved"], scalars["rho_op"]
     b_e_resolved = scalars["b_e_resolved"]
+    t_x_op = scalars["t_x_op"]
 
     for name, value in (("T_j_op", T_j), ("gamma_op", gam),
                         ("mu_resolved", mu), ("S_resolved", S)):
@@ -551,6 +575,13 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
     if not np.isfinite(b_e_resolved) or b_e_resolved < 0.0:
         raise ValueError(f"spec_sheet_from_device: evaluator scalar 'b_e_resolved' "
                          f"is invalid ({b_e_resolved!r})")
+    diode_path = design.drive.mode == "EL-transport"  # the SAME gate device.
+                                                      # evaluate() uses to build
+                                                      # its transport Diode
+    if diode_path and (not np.isfinite(t_x_op) or t_x_op <= 0.0):
+        raise ValueError(f"spec_sheet_from_device: evaluator scalar 't_x_op' is "
+                         f"non-finite or non-positive ({t_x_op!r}); the per-collected-X "
+                         "background normalization divides by it")
 
     prov = scalars.get("provenance", {}) or {}
 
@@ -568,9 +599,27 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
     g2dot = float(f1b_g2(mu, eps_op))
 
     # ---- background normalization (see docstring); the ONE conversion point.
+    # Audit fix (2026-09-22) [DR]: back out EXACTLY the injection term
+    # device.evaluate()
+    # added to its raw background B, in the evaluator's own units:
+    #  * transport path (drive.mode == "EL-transport"): b_e_resolved (== inj_bg)
+    #    is per UNFILTERED X photon (transport rate_x carries no t_X);
+    #    device.evaluate() adds G*S*(inj_bg/t_x_op + drive.b_res), i.e.
+    #    S*b_e_resolved/t_x_op of injection background (G == 1 here). The old
+    #    S*b_e_resolved omitted the 1/t_x_op and overestimated B0_raw
+    #    (4.397e-5 vs the true 2.554e-5 on cards/edge-inp-gainp-design.yaml,
+    #    pulsed, t_x_op = 0.5).
+    #  * legacy path: device.evaluate() adds inj_bg (the Arrhenius
+    #    b_injection channel) RAW, unscaled by S or t_x.
+    # drive.b_res is a residual (non-injection) background and stays in B0_raw,
+    # alongside b0 + beta*(1-S).
     S_collect = S  # evaluator's own collected-X scale factor (G == 1 here)
     B_total_raw = S_collect * (1.0 - rho_op) / rho_op       # total raw background
-    B0_raw = B_total_raw - S_collect * b_e_resolved          # baseline (injection backed out)
+    if diode_path:
+        B_inj_raw = S_collect * b_e_resolved / t_x_op
+    else:
+        B_inj_raw = b_e_resolved
+    B0_raw = B_total_raw - B_inj_raw                         # baseline (injection backed out)
     G_req = G_required(rho_req, S, B_total_raw)
     b_e_bud_raw = b_e_budget(rho_req, S, B0_raw)
     b_e_bud_norm = (b_e_bud_raw / S_collect) if np.isfinite(b_e_bud_raw) else b_e_bud_raw
@@ -581,7 +630,11 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
     v_tilde_req = v_tilde_required(F_eff_target, kappa_min, gam, design.cavity.E_X0)
 
     stack_worst = _stack(design.thermal)
-    P = design.drive.duty * design.drive.I_uA * 1e-6 * design.drive.V
+    # Audit fix (spec.py:584) [DR]: the evaluator's own time-averaged heat
+    # load, duty_eff * P_junction (device.evaluate()'s self-heating loop),
+    # not the raw drive.duty * I * V (which ignores rep_rate_hz-derived duty
+    # and the transport diode's junction power).
+    P = scalars["duty_resolved"] * scalars["P_junction_W"]
     mesa_um = mesa_min(P, stack_worst, T_hs, dT_max=dT_max)
 
     w_ap = gam  # legacy auto_w operating-window convention (same [A] assumption
@@ -606,7 +659,9 @@ def spec_sheet_from_device(design, target, *, T_op=None, metric="g2_pulsed",
         "b_e_budget": b_e_bud_raw, "b_e_budget_norm": b_e_bud_norm,
         "b_e_units": ("raw: same convention as retention S (rho = S/(S+B)); norm: "
                      "background counts in the detection window per collected X "
-                     "photon (docs/rt_edge_contract.md b_e)"),
+                     "photon (docs/rt_edge_contract.md b_e) = raw/S_op; on the "
+                     "EL-transport path b_e_resolved is per UNFILTERED X photon, so "
+                     "compare b_e_resolved/t_x_op against b_e_budget_norm"),
         "kappa_max": kappa_max, "w_floor": w_floor, "kappa_min": kappa_min,
         "v_tilde_required": v_tilde_req, "F_eff_target": F_eff_target,
         "density_limit_cm2": dens_lim, "penalty_budget": penalty_budget,

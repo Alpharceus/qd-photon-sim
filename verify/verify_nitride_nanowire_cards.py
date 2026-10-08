@@ -1,8 +1,7 @@
 """Mechanical + physics checks for the four gated nitride nanowire cards
 (piece 8, rewritten from the contract's own Card schema tables).
 
-Per docs/nitride_nanowire_contract.md "Card schema" and
-.workers/specs/nitride-nanowire-cards.md acceptance criteria 1-5:
+Per docs/nitride_nanowire_contract.md "Card schema":
 
   1. DeviceDesign.load + evaluate() for all four cards, both temperature
      endpoints (230/300 K) and both strain bounds (relaxed as-shipped,

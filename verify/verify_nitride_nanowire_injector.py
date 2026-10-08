@@ -35,6 +35,61 @@ def check(label, value):
         print("FAIL", label)
 
 
+# ---------------------------------------------------------------------
+# Independent carrier-statistics helpers (audit M1, 2026-09-23), written
+# fresh here and NOT imported from the module under test: the normalized
+# complete Fermi-Dirac integral F_1/2(eta) = (2/sqrt(pi)) int_0^inf
+# sqrt(x)/(1+exp(x-eta)) dx by scipy.integrate.quad [DR; Blakemore,
+# Solid-State Electron. 25, 1067 (1982)], N_c = 2 (2 pi m k T / h^2)^(3/2)
+# [DR; Sze & Ng, "Physics of Semiconductor Devices" 3rd ed. (2007) Ch. 1],
+# the ellipsoidal DOS mass (me_xy^2 me_z)^(1/3) from nitride_materials'
+# [V] Rinke PRB 77, 075202 (2008) GaN masses, and the T=0 degenerate
+# electron-gas level (hbar^2/2m)(3 pi^2 n)^(2/3) [DR; Ashcroft & Mermin
+# (1976) Ch. 2 Eq. 2.33].
+from scipy.integrate import quad as _quad_indep  # noqa: E402
+
+_H_JS_INDEP = 6.62607015e-34        # [V] CODATA 2018, exact
+_KB_J_INDEP = 1.380649e-23          # [V] CODATA 2018, exact
+
+
+def _f_half_indep(eta):
+    val = _quad_indep(lambda x: math.sqrt(x) / (1.0 + math.exp(min(x - eta, 700.0))),
+                      0.0, max(eta, 0.0) + 80.0, points=[eta] if eta > 0 else None,
+                      limit=500, epsabs=0.0, epsrel=1e-12)[0]
+    return 2.0 / math.sqrt(math.pi) * val
+
+
+def _nc_indep_m3(m_ratio, T_K):
+    return 2.0 * (2.0 * math.pi * m_ratio * M0_KG * _KB_J_INDEP * T_K / _H_JS_INDEP ** 2) ** 1.5
+
+
+def _mdos_e_indep(me_z=None):
+    """Bulk n-GaN emitter DOS mass from independently typed Rinke et al.,
+    PRB 77, 075202 (2008) Table V literals (m_e-perp 0.209 in the c plane,
+    m_e-par 0.186 along c): (0.209^2 * 0.186)^(1/3) = 0.2010.  The argument
+    is accepted and IGNORED on purpose (strain-mass audit, 2026-09-23): the
+    emitter mass must not follow a me_well (well tunnelling mass) override."""
+    return (0.209 ** 2 * 0.186) ** (1.0 / 3.0)
+
+
+def _mu_t0_indep_eV(n_m3, m_ratio):
+    k_f = (3.0 * math.pi ** 2 * n_m3) ** (1.0 / 3.0)
+    return HBAR_JS ** 2 * k_f ** 2 / (2.0 * m_ratio * M0_KG) / EV_J
+
+
+def _n_cm3_for_mu_fd_indep(mu_eV, me_z, T_K):
+    """Forward Fermi-Dirac density (no root solve): n = N_c F_1/2(mu/kT)."""
+    kT_eV = _KB_J_INDEP * T_K / EV_J
+    return _nc_indep_m3(_mdos_e_indep(me_z), T_K) * _f_half_indep(mu_eV / kT_eV) / 1e6
+
+
+def _mu_fd_indep_eV(n_cm3, me_z, T_K):
+    kT_eV = _KB_J_INDEP * T_K / EV_J
+    ratio = n_cm3 * 1e6 / _nc_indep_m3(_mdos_e_indep(me_z), T_K)
+    eta = brentq(lambda e: _f_half_indep(e) - ratio, -60.0, 400.0, xtol=1e-13, rtol=1e-14)
+    return eta * kT_eV
+
+
 # =====================================================================
 # 1. Published structure/transmission benchmark (source-matched conditions)
 # =====================================================================
@@ -83,8 +138,11 @@ check("benchmark_numbers_match_the_evidence_ledger_anchor",
       and _encomendero_anchor.get("value", {}).get("barrier_nm") == _ENCOMENDERO_BARRIER_NM
       and _encomendero_anchor.get("value", {}).get("well_nm") == _ENCOMENDERO_WELL_NM)
 
-m_w = 0.209   # [V] GaN conduction mass, Rinke PRB 2008 (via nitride_materials)
-m_b = 0.329   # [V] AlN conduction mass, Rinke PRB 2008 (via nitride_materials)
+# Along-c (tunnelling-axis) electron masses, Rinke PRB 2008 Table V row
+# m_e-par [V]; re-pinned 2026-09-23 (strain-mass audit) from 0.209 / 0.329,
+# which were the in-plane (m_e-perp) values under the old swapped axes.
+m_w = 0.186   # [V] GaN conduction mass along c, Rinke PRB 2008 (via nitride_materials)
+m_b = 0.322   # [V] AlN conduction mass along c, Rinke PRB 2008 (via nitride_materials)
 
 
 def _independent_ground_state_eV(m_w, m_b, V0_eV, L_m):
@@ -476,10 +534,22 @@ for field_kVcm in (0.0, 50.0, 200.0):
     dense_grid = np.linspace(max(well_floor_f, 1e-9), lower_top_f * 0.999999, 20000)
     T_dense = transmission(p_field, dense_grid, field_kVcm=field_kVcm, carrier="electron")
     dense_peak_i = None
+    # Strain-mass audit (2026-09-23): with the corrected along-c masses the
+    # 200 kV/cm profile has a shallow non-resonant bump near 5 meV (T ~3e-6)
+    # below the true ground resonance; a candidate counts only if it stands
+    # at least 2x above BOTH flanking valleys (lowest sample between it and
+    # the nearest higher sample, or the window edge) -- the same prominence
+    # rule the production finder applies, re-coded here on the dense grid.
     for _j in range(1, len(T_dense) - 1):
         if T_dense[_j] > 1e-9 and T_dense[_j] >= T_dense[_j - 1] and T_dense[_j] >= T_dense[_j + 1]:
-            dense_peak_i = _j
-            break
+            _above_r = np.nonzero(T_dense[_j + 1:] > T_dense[_j])[0]
+            _r_end = _j + 1 + (_above_r[0] if len(_above_r) else len(T_dense) - _j - 1)
+            _above_l = np.nonzero(T_dense[:_j] > T_dense[_j])[0]
+            _l_start = (_above_l[-1] + 1) if len(_above_l) else 0
+            _valley_d = max(float(np.min(T_dense[_j:_r_end])), float(np.min(T_dense[_l_start:_j + 1])))
+            if _valley_d <= 0.0 or T_dense[_j] >= 2.0 * _valley_d:
+                dense_peak_i = _j
+                break
     # The 20000-point coarse grid alone under-samples a resonance whose
     # FWHM (~0.02-0.04 meV here) is comparable to its own point spacing --
     # zoom in on the neighborhood it locates, using only the PUBLIC
@@ -559,11 +629,22 @@ check("production_find_resonance_matches_dense_scan_for_hole_at_defaults",
       and abs(found_hole_default[1] / _hole_T0 - 1.0) < 0.05)
 
 # The electron path is UNCHANGED by the HIGH 1 fix (its window's upper
-# bound was already the correct barrier top): still 268.920 meV.
+# bound was already the correct barrier top): 268.920 meV with the old
+# masses.  Re-pinned 2026-09-23 (strain-mass audit): with the along-c masses
+# (well 0.186, barrier 0.2268) the ground resonance is at 291.104 meV
+# (T 0.170).  The same transmission also has a shallow NON-resonant bump
+# at ~7 meV (T 1.28e-7 over a 1.17e-7 valley); the production finder must
+# not report it (resonance-contrast rule, _RESONANCE_MIN_CONTRAST).
 found_electron_default = _find_resonance(p_hole_default, "electron", 0.0, 0.0)
-check("electron_resonance_at_defaults_unchanged_by_high1_fix_268.920meV",
+check("electron_resonance_at_defaults_291.104meV_after_mass_axis_fix",
       found_electron_default is not None
-      and abs(found_electron_default[0] * 1000.0 - 268.920) < 0.1)
+      and abs(found_electron_default[0] * 1000.0 - 291.104) < 0.1)
+_E_bump = np.linspace(0.001, 0.04, 400)
+_T_bump = transmission(p_hole_default, _E_bump, carrier="electron")
+_i_bump = int(np.argmax(_T_bump[:200]))
+check("electron_finder_skips_the_7meV_background_bump_(dense_scan_shows_a_local_max_with_contrast_below_2)",
+      0 < _i_bump < 199 and _T_bump[_i_bump] < 2.0 * float(np.min(_T_bump[_i_bump:]))
+      and found_electron_default is not None and found_electron_default[0] > 0.1)
 
 # MEDIUM 4 fix: a non-finite E_center must return a NaN rate, never a
 # silent fallback to mu (direct unit-style probe of the private
@@ -846,9 +927,11 @@ check("rep_rate_changes_second_pair_probability_when_gate_clipped",
 # used ONLY for the informational rti_well_to_dot_drop_meV.  Misalignment
 # is instead constructed by choosing n_cm3 (electron reservoir doping) so
 # that mu_e sits a KNOWN distance from the zero-field resonance E_res0,
-# inverting the SAME degenerate free-electron-gas formula fresh here
-# (mu = hbar^2 k_f^2/2m, k_f=(3 pi^2 n)^(1/3)) -- never by calling the
-# production _degenerate_mu_eV to manufacture the target.
+# via the finite-T Fermi-Dirac forward formula n = N_c F_1/2(mu/kT) (DOS
+# mass) evaluated fresh here at the call's own T_K (audit M1, 2026-09-23:
+# the production emitter level is now that Fermi-Dirac inversion, no
+# longer the T=0 formula this fixture used to invert) -- never by calling
+# the production _electron_quasi_fermi_eV to manufacture the target.
 p_align_probe = NitrideNanowireInjectorParams(
     hole_topology="single_barrier", hole_barrier_thickness_nm=thick_nom,
     mh_barrier_override=0.30, dEv_eV_override=-0.30,
@@ -865,8 +948,8 @@ def _n_cm3_for_mu_hand(mu_eV, m_ratio):
 
 
 _me_well_probe = p_align_probe.me_well
-_n_cm3_big = _n_cm3_for_mu_hand(E_res_probe + 0.146, _me_well_probe)
-_n_cm3_small = _n_cm3_for_mu_hand(E_res_probe + 0.002, _me_well_probe)
+_n_cm3_big = _n_cm3_for_mu_fd_indep(E_res_probe + 0.146, _me_well_probe, 230.0)
+_n_cm3_small = _n_cm3_for_mu_fd_indep(E_res_probe + 0.002, _me_well_probe, 230.0)
 
 align_call = dict(T_K=230.0, rep_rate_hz=80e6, loading_window_ns=12.4,
                    hole_level_eV=0.005, electron_level_eV=0.02,
@@ -925,8 +1008,10 @@ p_ballistic = NitrideNanowireInjectorParams(
     dEc_eV_override=0.0, me_barrier_override=NitrideNanowireInjectorParams().me_well,
     n_cm3=3.0e18,
 )
-path_b = _resolve_path(p_ballistic, "electron")
-mu_b = path_b.mu_eV
+# audit M1 (2026-09-23): the production emitter level is the Fermi-Dirac
+# inversion with the DOS mass; at 4 K it equals the T=0 degenerate level
+# with that mass (checked separately below), computed fresh here.
+mu_b = _mu_t0_indep_eV(p_ballistic.n_cm3 * 1e6, _mdos_e_indep(p_ballistic.me_well))
 kT_cold = KB_EV * 4.0  # near-T=0 so Fermi-Dirac approximates a hard step
 from fsim_core.nitride_nanowire_injector import H_EVS as _H_EVS  # noqa: E402
 
@@ -1071,9 +1156,19 @@ for _polarity in ("Ga", "N"):
                                   if k.startswith("rti_") or k == "valid")
                 print(f"designed stack polarity={_polarity} partition={_delta_ev:.2f}eV "
                       f"T={_T:.0f}K rep={_rep/1e6:.0f}MHz | {_cols}")
-check("designed_stack_double_barrier_both_carriers_both_partitions_finite_diagnostics",
+# Strain-mass audit (2026-09-23): under the Tsai 0.30 eV partition the
+# hole window tops out at 90 meV and its transmission has no resolvable
+# resonance (the 54.5 meV "peak" the old first-local-max rule accepted is a
+# 1.06x ripple, T 7.7e-9 over a 7.1e-9 valley), so the Tsai-partition
+# bypass is honestly NaN (unknown), never a fabricated number.  The check
+# therefore requires finiteness OR a hole path the production finder
+# reports as unresolved under that partition.
+check("designed_stack_double_barrier_both_carriers_both_partitions_finite_diagnostics_or_explicitly_unresolved",
       all(math.isfinite(_r["rti_bypass_fraction_tsai_partition"])
-          for _r in _designed_results.values()))
+          or _find_resonance(replace(NitrideNanowireInjectorParams(polarity=_k[0]),
+                                     delta_Ev_GaN_AlN_eV=_TSAI_BAYRAM_DELTA_EV_EV), "hole", 0.0, 0.0) is None
+          for _k, _r in _designed_results.items())
+      and all(math.isfinite(_r["rti_bypass_fraction"]) for _k, _r in _designed_results.items() if _k[1] == 0.70))
 check("designed_stack_rate_or_resonance_unresolved_is_explicit_never_silently_zero_error",
       all(math.isfinite(_r["rti_e_rate_Hz"]) or "electron_resonance_unresolved" in _r["rti_failed_checks"]
           for _r in _designed_results.values())
@@ -1091,9 +1186,22 @@ check("designed_stack_second_pair_reload_tag_fires_with_plausible_supply_rate",
 # stack's electron alignment error -- |E_res - mu_e| at the default 0.70 eV
 # partition, Ga polarity, 230 K -- against the reviewer's independently
 # derived literal (232.63 meV), not merely printed and never asserted.
+# audit M1 re-pin (2026-09-23): 232.63 meV was |E_res - mu_e| with the old
+# T=0 me_z emitter level (36.29 meV at every T), so the reviewer's literal
+# fixes E_res = 232.63 meV + mu_T0(me_z).  With the Fermi-Dirac emitter
+# level (DOS mass) the expected error is E_res - mu_FD(T), both terms
+# computed fresh in this file: 240.00 meV at 230 K and 247.51 meV at 300 K.
+# Strain-mass audit re-pin (2026-09-23): the along-c electron masses move
+# the designed stack's ground resonance to E_res = 291.104 meV (pinned above,
+# was 268.92) and the bulk-GaN DOS mass (0.2010, was 0.1934) moves mu_FD to
+# 26.98 / 19.21 meV, so the expected error is 264.12 / 271.90 meV at 230 /
+# 300 K (was 240.00 / 247.51).
 _r_designed_default = _designed_results[("Ga", 0.70, 230.0, 80e6)]
-check("designed_stack_electron_alignment_error_matches_pinned_literal_232.63meV",
-      abs(_r_designed_default["rti_alignment_error_e_meV"] - 232.63) < 0.01)
+_E_res_designed_meV = 291.104
+for _T_al in (230.0, 300.0):
+    _exp_al = _E_res_designed_meV - _mu_fd_indep_eV(3.0e18, NitrideNanowireInjectorParams().me_well, _T_al) * 1e3
+    check(f"designed_stack_electron_alignment_error_matches_E_res_minus_FD_mu_{_T_al:.0f}K",
+          abs(_designed_results[("Ga", 0.70, _T_al, 80e6)]["rti_alignment_error_e_meV"] - _exp_al) < 0.01)
 
 # HIGH 2 fix (Opus re-review of 12b39cd, 2026-09-14): pin the designed
 # stack's overall thermionic-bypass fraction (0.70 eV partition, Ga
@@ -1106,6 +1214,174 @@ check("designed_stack_bypass_matches_pinned_literal_230K_0.0021",
       abs(_designed_results[("Ga", 0.70, 230.0, 80e6)]["rti_bypass_fraction"] / 0.0021 - 1.0) < 0.02)
 check("designed_stack_bypass_matches_pinned_literal_300K_0.0151",
       abs(_designed_results[("Ga", 0.70, 300.0, 80e6)]["rti_bypass_fraction"] / 0.0151 - 1.0) < 0.02)
+
+# --- AUDIT M1 (2026-09-23): electron emitter quasi-Fermi level ------------
+# The production level must satisfy n = N_c F_1/2(mu/kT) with the DOS mass
+# (F_1/2 evaluated independently by quad above) to 1e-4 relative at 230 and
+# 300 K, match the Fermi-Dirac values 26.98 / 19.21 meV (strain-mass audit
+# re-pin, 2026-09-23: bulk GaN DOS mass (0.209^2*0.186)^(1/3) = 0.2010 from
+# the corrected Rinke axes, computed independently by _mu_fd_indep_eV; the
+# transport audit M1 values were 28.9 / 21.4 meV with the old 0.1934), and
+# reduce to the T=0 degenerate formula
+# within 1 % at 4 K for strongly degenerate densities.
+from fsim_core.nitride_nanowire_injector import _electron_quasi_fermi_eV  # noqa: E402
+_p_fd = NitrideNanowireInjectorParams()
+_mdos_fd = _mdos_e_indep(_p_fd.me_well)
+for _T_fd, _audit_meV in ((230.0, 26.98), (300.0, 19.21)):
+    _mu_prod = _electron_quasi_fermi_eV(_p_fd, _T_fd)
+    _kT_fd = _KB_J_INDEP * _T_fd / EV_J
+    _n_back = _nc_indep_m3(_mdos_fd, _T_fd) * _f_half_indep(_mu_prod / _kT_fd)
+    check(f"M1_electron_mu_satisfies_n_eq_Nc_F12_{_T_fd:.0f}K_1e-4",
+          abs(_n_back / (_p_fd.n_cm3 * 1e6) - 1.0) < 1e-4)
+    check(f"M1_electron_mu_matches_FD_value_{_audit_meV}meV_{_T_fd:.0f}K",
+          abs(_mu_prod * 1e3 - _audit_meV) < 0.01
+          and abs(_mu_fd_indep_eV(_p_fd.n_cm3, None, _T_fd) * 1e3 - _audit_meV) < 0.01)
+    # Checker condition (2026-09-23): the emitter is bulk n-GaN, so a
+    # me_well (well tunnelling mass) override must not move its level.
+    check(f"emitter_mu_independent_of_me_well_override_{_T_fd:.0f}K",
+          _electron_quasi_fermi_eV(replace(_p_fd, me_well=0.35), _T_fd) == _mu_prod
+          and _electron_quasi_fermi_eV(replace(_p_fd, me_well=0.10), _T_fd) == _mu_prod)
+for _n_deg in (3.0e18, 2.0e19):
+    _p_deg = replace(_p_fd, n_cm3=_n_deg)
+    _mu4 = _electron_quasi_fermi_eV(_p_deg, 4.0)
+    _mu0 = _mu_t0_indep_eV(_n_deg * 1e6, _mdos_fd)
+    check(f"M1_electron_mu_reduces_to_T0_formula_within_1pct_at_4K_n{_n_deg:.0e}",
+          abs(_mu4 / _mu0 - 1.0) < 0.01)
+
+# --- AUDIT M2 (2026-09-23): unitarity scan covers the Landauer window -----
+# Instrument the module's quad (records the rate integral's upper limit)
+# and _transmission_scalar (records every energy the numerics scan visits)
+# on the designed hole path at 230 K; the scan must reach exactly the
+# integral's upper bound, which the audit computed independently as
+# max(tilted top, mu_h) + 15 kT = 0.802 eV (flat-band bound was 0.507 eV).
+import fsim_core.nitride_nanowire_injector as _mod_m2  # noqa: E402
+_p_m2 = NitrideNanowireInjectorParams()
+_kT_m2 = KB_EV * 230.0
+_ph_m2 = _resolve_path(_p_m2, "hole")
+_mu_h_m2 = _mod_m2._hole_quasi_fermi_eV(_p_m2, 230.0)[1]
+_res_h_m2 = _find_resonance(_p_m2, "hole", 0.0, 0.0)
+_Ec_h_m2 = _res_h_m2[0] if _res_h_m2 is not None else float("nan")
+_w_m2 = _p_m2.alignment_uncertainty_meV / 1000.0
+_quad_uppers = []
+_orig_quad = _mod_m2.quad
+_orig_ts = _mod_m2._transmission_scalar
+
+
+def _rec_quad(f, a, b, *args, **kw):
+    _quad_uppers.append(b)
+    return _orig_quad(f, a, b, *args, **kw)
+
+
+_scan_Es = []
+
+
+def _rec_ts(params, E, *args, **kw):
+    _scan_Es.append(E)
+    return _orig_ts(params, E, *args, **kw)
+
+
+try:
+    _mod_m2.quad = _rec_quad
+    _mod_m2._forward_rate_hz(_p_m2, "hole", 0.0, 0.0, _Ec_h_m2, _w_m2, _kT_m2, _mu_h_m2)
+    _mod_m2.quad = _orig_quad
+    _mod_m2._transmission_scalar = _rec_ts
+    _scan_ok_m2 = _mod_m2._numerics_scan_ok(_p_m2, "hole", 0.0, _mu_h_m2, _w_m2, _kT_m2,
+                                            E_center=_Ec_h_m2)
+finally:
+    _mod_m2.quad = _orig_quad
+    _mod_m2._transmission_scalar = _orig_ts
+_landauer_hi = _quad_uppers[0] if _quad_uppers else float("nan")
+_scan_hi = max(_scan_Es) if _scan_Es else float("nan")
+print(f"M2 hole 230 K: Landauer upper {_landauer_hi:.4f} eV, scan upper {_scan_hi:.4f} eV, "
+      f"flat-band bound {max(_ph_m2.barrier_height_eV, _mu_h_m2) + 15 * _kT_m2:.4f} eV")
+check("M2_numerics_scan_upper_bound_equals_landauer_upper_bound_hole_230K",
+      math.isfinite(_landauer_hi) and abs(_scan_hi - _landauer_hi) < 1e-12 and _scan_ok_m2 is True)
+check("M2_scan_upper_bound_matches_audit_0.802eV_not_flat_band_0.507eV",
+      abs(_scan_hi - 0.802) < 0.001
+      and _scan_hi > max(_ph_m2.barrier_height_eV, _mu_h_m2) + 15 * _kT_m2 + 0.2)
+
+# --- AUDIT L6 (2026-09-23): tsai-partition max() is NaN-safe --------------
+_src_l6 = Path(_mod_m2.__file__).read_text(encoding="utf-8")
+check("L6_tsai_partition_bypass_uses_nan_safe_max",
+      "float(max(e_tsai" not in _src_l6 and "_nan_safe_max(e_tsai[\"bypass_fraction\"]" in _src_l6)
+# Behavioural L6 case: at the vertical-photonic depletion field (~79.8
+# kV/cm, 300 K) the Tsai-partition HOLE resonance is unresolvable (no
+# resonance, so its rate and bypass are NaN) while the electron path is
+# finite; max(finite, nan) used to return the electron value and hide the
+# missing hole number.  Expectation: NaN (a missing carrier is missing).
+_p_l6 = NitrideNanowireInjectorParams(occupancy_control_known=True, second_pair_control_known=True)
+_p_l6_tsai = replace(_p_l6, delta_Ev_GaN_AlN_eV=_TSAI_BAYRAM_DELTA_EV_EV)
+_r_l6 = injector_feasibility(_p_l6, T_K=300.0, rep_rate_hz=80e6, loading_window_ns=0.1,
+                             electron_level_eV=-0.7, hole_level_eV=-0.42,
+                             electron_spacing_meV=600.0, hole_spacing_meV=600.0,
+                             second_pair_addition_meV=12.126, available_pair_rate_Hz=1e9,
+                             field_kVcm=79.8)
+check("L6_tsai_partition_bypass_is_nan_when_tsai_hole_resonance_unresolved",
+      _find_resonance(_p_l6_tsai, "hole", 0.0, 79.8) is None
+      and _find_resonance(_p_l6_tsai, "electron", 0.0, 79.8) is not None
+      and math.isnan(_r_l6["rti_bypass_fraction_tsai_partition"])
+      and math.isfinite(_r_l6["rti_bypass_fraction"]))
+
+# --- AUDIT C6 (2026-09-23, M3): loading window is an explicit parameter ----
+# User decision Q6: the loading window is arbitrary (single photons in ANY
+# window).  Expectation (internal audit): the second-carrier probability
+# over a window t is 1 - exp(-r_2 t) with
+# r_2 = r_e * exp(-E_C/kT), r_e = 4.85e7 Hz [E] (the sweep row's electron
+# supply, audit), E_C = 12.126 meV [DR] (isolated-sphere e^2/C of the
+# 12.5 nm GaN disc, drive_mech convention), T = 300 K -> 0.0030 / 0.0299 /
+# 0.1408 at 0.1 / 1 / 5 ns (audit's printed values, pinned literally too).
+# Fixture [A]: single-barrier paths with a negligible (1e-6 meV) alignment
+# width so the charging energy is not width-subtracted (the audit's w = 0),
+# available_pair_rate_Hz = r_e caps the (much faster) electron tunnel rate
+# at the audit's r_e, and p_cm3 = 1e14 puts the hole supply at ~2.6e3 Hz
+# (the audit's r_h 1.8e3 Hz class) so the second-HOLE term is < 1e-4.
+_E_C_C6_MEV = 12.126017244990036
+_R_E_C6_HZ = 4.85e7
+_kT300_c6_eV = _KB_J_INDEP * 300.0 / 1.602176634e-19   # [V] CODATA 2018, exact
+_r2_c6 = _R_E_C6_HZ * math.exp(-(_E_C_C6_MEV / 1000.0) / _kT300_c6_eV)
+_AUDIT_C6 = {0.1: 0.0030, 1.0: 0.0299, 5.0: 0.1408}
+_p_c6 = NitrideNanowireInjectorParams(electron_topology="single_barrier", hole_topology="single_barrier",
+                                      alignment_uncertainty_meV=1e-6, growth_tolerance_steps=0.0,
+                                      p_cm3=1e14)
+
+
+def _c6(window_ns, gate_ns=None):
+    kw = {} if gate_ns is None else {"gate_ns": gate_ns}
+    return injector_feasibility(_p_c6, T_K=300.0, rep_rate_hz=80e6, loading_window_ns=window_ns,
+                                electron_level_eV=-0.2, hole_level_eV=-0.2,
+                                electron_spacing_meV=float("nan"), hole_spacing_meV=float("nan"),
+                                second_pair_addition_meV=_E_C_C6_MEV, available_pair_rate_Hz=_R_E_C6_HZ,
+                                **kw)
+
+
+_c6_rows = {t: _c6(t) for t in (0.1, 1.0, 5.0)}
+check("C6_audit_r2_closed_form_reproduces_audit_values_0.0030_0.0299_0.1408",
+      all(abs((1.0 - math.exp(-_r2_c6 * t * 1e-9)) - v) < 1e-3 for t, v in _AUDIT_C6.items()))
+check("C6_second_pair_probability_over_loading_window_equals_1_minus_exp_r2_t (0.1/1/5 ns, 1e-3 abs)",
+      all(abs(_c6_rows[t]["rti_second_pair_probability"] - (1.0 - math.exp(-_r2_c6 * t * 1e-9))) < 1e-3
+          and abs(_c6_rows[t]["rti_second_pair_probability"] - _AUDIT_C6[t]) < 1e-3
+          and _c6_rows[t]["rti_gate_ns"] == t
+          for t in _AUDIT_C6))
+check("C6_second_pair_probability_strictly_monotone_in_window",
+      _c6_rows[0.1]["rti_second_pair_probability"] < _c6_rows[1.0]["rti_second_pair_probability"]
+      < _c6_rows[5.0]["rti_second_pair_probability"])
+# Missed load is priced over the LOADING window, never the counting gate:
+# at a fixed 0.1 ns window it is bit-identical whatever gate_ns is, and it
+# equals the Poisson closed form 1-(1-e^{-r_e t})(1-e^{-r_h t}).  With the
+# hole supply at ~kHz the pair-missed-load FAILURE is window-independent
+# over 0.1..5 ns (a 99 % hole load needs -ln(0.01)/r_h ~ ms; audit M3).
+_c6_gate = [_c6(0.1, gate_ns=g) for g in (0.1, 1.0, 5.0)]
+check("C6_missed_load_independent_of_counting_gate_at_fixed_loading_window",
+      len({r["rti_missed_load_probability"] for r in _c6_gate}) == 1
+      and _c6_gate[0]["rti_second_pair_probability"] < _c6_gate[2]["rti_second_pair_probability"])
+check("C6_missed_load_is_poisson_closed_form_and_fails_at_every_window (hole-limited, window-independent)",
+      all(abs(r["rti_missed_load_probability"]
+              - (1.0 - (1.0 - math.exp(-r["rti_e_rate_Hz"] * t * 1e-9))
+                 * (1.0 - math.exp(-r["rti_h_rate_Hz"] * t * 1e-9)))) < 1e-12
+          and r["rti_missed_load_probability"] > 0.99
+          and "pair_missed_load_window" in r["rti_failed_checks"]
+          and -math.log(0.01) / r["rti_h_rate_Hz"] > 1e-6
+          for t, r in _c6_rows.items()))
 
 # --- No production routine used to derive its own expected value ----------
 import fsim_core.nitride_nanowire_injector as _mod  # noqa: E402

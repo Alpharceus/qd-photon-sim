@@ -87,6 +87,9 @@ ENUM_CHOICES = {
     # pr-pkg6-stale-text C5 item; a pre-existing gap this fixture's
     # ENUM_CHOICES needs regardless, or this check cannot run at all).
     "drive.loading_model": "capped_poisson",  # default "auto"
+    # work-order Q4: DotBlock.width_kind is validated ("total" | "zpl"), so the generic
+    # string bump ("total-probe") would be rejected the same way.
+    "dot.width_kind": "zpl",  # default "total"
 }
 
 
@@ -194,6 +197,13 @@ def _compare_designs(expected: DeviceDesign, actual: DeviceDesign, tmp_out: Path
             _cmp_value("provenance", expected.provenance, actual.provenance, False, errors, tmp_out)
             continue
         exp_block, act_block = getattr(expected, block_name), getattr(actual, block_name)
+        if not dataclasses.is_dataclass(exp_block):
+            # Non-dataclass top-level fields (e.g. `platform` str, `nitride`
+            # dict added with the nitride tier) are compared exactly;
+            # build_non_default_design() leaves them at their defaults, so
+            # they must round-trip unchanged.
+            _cmp_value(block_name, exp_block, act_block, False, errors, tmp_out)
+            continue
         for f in dataclasses.fields(exp_block):
             if block_name == "thermal" and f.name in ("layers", "substrate"):
                 continue
@@ -293,6 +303,151 @@ def _():
     assert r.returncode == 0, f"exit {r.returncode}\nSTDOUT:\n{r.stdout}\nSTDERR:\n{r.stderr}"
     m = re.search(r"(\d+)/(\d+) checks passed", r.stdout)
     assert m and m.group(1) == m.group(2), r.stdout
+
+
+# ------------------------------------- (7)-(9) static (non-headline) labelling
+#
+# Spec audit-edge-cards-label (user decision Q2, 2026-09-23): the RT edge
+# cards keep drive.finite_pulse=false; every card-level g2/brightness the
+# designer emits for them must carry "static (non-headline)" and name the
+# headline finite-pulse g2 in the same panel. The real _run_point /
+# _run_envelope code runs headlessly in a subprocess (this file still never
+# imports dearpygui); only the T grid is narrowed to the card's own T_hs
+# (g2_op/brightness are evaluated AT T_hs either way, so the emitted
+# operating-point numbers are identical to a full-grid run).
+
+EDGE_CARDS = {
+    "edge-inp-gainp-design": ROOT / "cards" / "edge-inp-gainp-design.yaml",
+    "edge-inp-gaasp-design": ROOT / "cards" / "edge-inp-gaasp-design.yaml",
+}
+# Card-level (static, drive.finite_pulse=false) g2_op and brightness_per_pulse
+# at each card's own thermal.T_hs, captured with DeviceDesign.load + evaluate
+# on 2026-09-23 immediately BEFORE the labelling edit (after the reviewed
+# waveguide Purcell-area and aperture cross-term fixes). The labelling must
+# not move them.
+PRE_LABEL_CARD_VALUES = {
+    "edge-inp-gainp-design": {"g2_op": 0.7698721127665349,
+                              "brightness_per_pulse": 1.4199538816091535e-06},
+    "edge-inp-gaasp-design": {"g2_op": 0.9787218623195735,
+                              "brightness_per_pulse": 5.41092896804776e-08},
+}
+# Headline finite-pulse g2_op at the gainp card point (300 K): finite_pulse
+# gives g2_op 0.99911 against 0.77363 for the static model; the static half
+# has since moved -0.004 with the aperture cross-term fix, the finite-pulse
+# half is saturated near 1.
+AUDIT_HEADLINE_G2_GAINP_300K = 0.99911
+
+_PROBE = r"""
+import sys, warnings
+warnings.filterwarnings("ignore")
+sys.path.insert(0, sys.argv[1]); sys.path.insert(0, sys.argv[1] + "/fsim_gui")
+import designer as g
+import dearpygui.dearpygui as dpg
+from fsim_core.device import DeviceDesign
+_ev, _env = g.evaluate, g.evaluate_envelope
+g.evaluate = lambda d, T_grid=None: _ev(d, T_grid=[d.thermal.T_hs])
+g.evaluate_envelope = lambda d, r, T_grid=None, **kw: _env(d, r, T_grid=[d.thermal.T_hs], **kw)
+dpg.create_context(); g.build_ui()
+for spec in sys.argv[2:]:
+    mode, path = spec.split("=", 1)
+    g.apply_design(DeviceDesign.load(path))
+    if mode == "point":
+        g._run_point(g.collect_design())
+    else:
+        g._run_envelope(g.collect_design(), g._collect_ranged())
+    print("<<<" + mode + " " + path + ">>>")
+    print(dpg.get_value("results_text"))
+dpg.destroy_context()
+"""
+
+_PROBE_CACHE = {}
+
+
+def _probe(specs):
+    key = tuple(specs)
+    if key not in _PROBE_CACHE:
+        r = subprocess.run([PY, "-c", _PROBE, str(ROOT), *specs], cwd=str(ROOT),
+                           capture_output=True, text=True, timeout=900)
+        assert r.returncode == 0, f"probe exited {r.returncode}\nSTDERR:\n{r.stderr[-3000:]}"
+        panels = {}
+        for chunk in r.stdout.split("<<<")[1:]:
+            head, _, body = chunk.partition(">>>")
+            panels[head.strip()] = body
+        _PROBE_CACHE[key] = panels
+    return _PROBE_CACHE[key]
+
+
+def _edge_panels():
+    specs = [f"point={p}" for p in EDGE_CARDS.values()]
+    specs.append(f"envelope={EDGE_CARDS['edge-inp-gainp-design']}")
+    return _probe(specs)
+
+
+_HEADLINE_RE = re.compile(
+    r"headline model = drive\.finite_pulse=true .*headline finite-pulse g2_op at T_hs "
+    r"\d+ K = ([0-9.]+)")
+
+
+@check("audit-edge-cards-label: designer point output for BOTH RT edge cards labels "
+       "g2(0) and brightness 'static (non-headline)' and names the headline "
+       "finite-pulse g2 (drive.finite_pulse=true) in the same panel; the gainp "
+       "envelope output carries the same label; the gainp headline g2 equals the "
+       "device audit's independent 0.99911 (1e-3)")
+def _():
+    panels = _edge_panels()
+    for name, path in EDGE_CARDS.items():
+        text = panels[f"point {path}"]
+        for key in ("g2(0) at operating point", "brightness/pulse (t_X)"):
+            line = next((ln for ln in text.splitlines() if ln.startswith(key)), "")
+            assert "[static (non-headline)]" in line, f"{name}: {key!r} line unlabelled: {line!r}"
+        m = _HEADLINE_RE.search(text)
+        assert m, f"{name}: no headline-model pointer with a numeric g2 in:\n{text}"
+        if name == "edge-inp-gainp-design":
+            assert abs(float(m.group(1)) - AUDIT_HEADLINE_G2_GAINP_300K) < 1e-3, m.group(0)
+    env = panels[f"envelope {EDGE_CARDS['edge-inp-gainp-design']}"]
+    line = next((ln for ln in env.splitlines() if ln.startswith("g2(0) at op:")), "")
+    assert "[static (non-headline)]" in line, f"envelope g2 line unlabelled: {line!r}"
+    assert _HEADLINE_RE.search(env), f"envelope panel has no headline pointer:\n{env}"
+
+
+@check("audit-edge-cards-label: labelling changes no number -- card-level g2_op and "
+       "brightness_per_pulse of both edge cards equal the values captured before the "
+       "edit (rel 1e-12), and the designer's printed g2(0) equals them to its 3 decimals")
+def _():
+    import warnings
+    from fsim_core.device import evaluate
+    panels = _edge_panels()
+    for name, path in EDGE_CARDS.items():
+        d = DeviceDesign.load(path)
+        assert d.drive.finite_pulse is False, f"{name}: drive.finite_pulse changed"
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sc = evaluate(d, T_grid=[d.thermal.T_hs])["scalars"]
+        for key, pinned in PRE_LABEL_CARD_VALUES[name].items():
+            got = float(sc[key])
+            assert abs(got - pinned) <= 1e-12 * abs(pinned), f"{name}: {key} {got!r} != {pinned!r}"
+        m = re.search(r"g2\(0\) at operating point ([0-9.]+)", panels[f"point {path}"])
+        assert m and m.group(1) == f"{PRE_LABEL_CARD_VALUES[name]['g2_op']:.3f}", (
+            f"{name}: designer printed {m.group(1) if m else None}")
+
+
+@check("audit H5 / audit-edge-cards-label task 4: the F_eff result line is labelled as "
+       "the single-mode F_P input, never a planar-DBR total rate -- planar-lambda "
+       "preset design shows 'F_eff (mode-only F_P [A]; planar DBR total rate ~1.0)', "
+       "edge cards show 'F_eff (single-mode F_P input, not a planar total rate)'; a "
+       "non-edge (legacy) design gets no static label")
+def _():
+    from fsim_core.presets import preset_device
+    with tempfile.TemporaryDirectory() as td:
+        planar = Path(td) / "planar-lambda.yaml"
+        preset_device("staged-inp-gaasp", "GaAs", "planar-lambda", "cw-electrical").save(planar)
+        panels = _probe([f"point={planar}"])
+    text = panels[f"point {planar}"]
+    assert "F_eff (mode-only F_P [A]; planar DBR total rate ~1.0)" in text, text
+    assert "static (non-headline)" not in text, "legacy planar design wrongly labelled static"
+    for name, path in EDGE_CARDS.items():
+        assert ("F_eff (single-mode F_P input, not a planar total rate)"
+                in _edge_panels()[f"point {path}"]), name
 
 
 # --------------------------------------------------------- (5)-(6) fsim_core untouched

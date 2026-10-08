@@ -17,9 +17,15 @@ dark ("off") windows of one pulse period and reads off the per-period photon
 statistics directly, retaining nonradiative (escape) transitions in the
 generator without counting them as photons. [DR] moment hierarchy built on
 the existing cw_g2 three-state generator; [A] rectangular pump waveform (the
-diode's actual current pulse shape is not modeled here). Cite Hanschke et
-al., npj Quantum Inf. 4, 43 (2018) for re-excitation during a finite pulse,
-and Reischle et al., Optics Express 16, 12771 (2008) (DOI
+diode's actual current pulse shape is not modeled here). Re-excitation
+during a finite pulse: the INCOHERENT-pump moment hierarchy used here is
+derived in this module [DR]; its limits for a two-level dot under a strong
+fast rectangular pump (g2 -> 2 G tau_on) and a weak one (g2 -> G tau_on/3)
+are pinned in verify/verify_pulse_counting.py check (h). Hanschke et al.,
+npj Quantum Inf. 4, 43 (2018) is a QUALITATIVE pointer only: that paper
+treats COHERENT (resonant two-photon) pi-pulse driving, whose re-excitation
+scaling differs from the incoherent rectangular pump modelled here, so no
+number transfers from it. Reischle et al., Optics Express 16, 12771 (2008) (DOI
 10.1364/OE.16.012771) / Appl. Phys. Lett. 97, 143513 (2010) for the cascade
 rate conventions (gamma_XX = 2 gamma_X, cap-2 ladder) this module shares
 with cw_g2.py and loading.py. (Hanschke et al., "Origin of antibunching in
@@ -65,10 +71,39 @@ in p and do not feed back into it, so the periodic p-map is exactly the
 3x3 map cw_g2.generator already gives). The fixed point is found by
 iterating Phi from the ground state to a tolerance of 1e-12 (max 10000
 iterations), matching the review's independent reproduction. The returned
-g2 = sum(m2)/sum(m1)**2 and mean_counts = sum(m1) are therefore per-PULSE-
-PERIOD quantities (the peak-area convention loading.f1b_g2 also uses, but
-now including re-excitation instead of assuming an isolated instantaneous
-load).
+g2 = sum(m2)/sum(m1)**2 = <m(m-1)>/<m>^2 and mean_counts = sum(m1) are
+therefore per-PULSE-PERIOD quantities (the same all-pairs normalisation
+loading.f1b_g2 also uses, but now including re-excitation instead of
+assuming an isolated instantaneous load).
+
+Normalisation (audit D2). The denominator <m>^2 is the area of an
+UNCORRELATED side peak of a pulsed HBT histogram, i.e. the long-delay
+(|k| -> infinity) peak, where m_n and m_(n+k) are independent. It is NOT in
+general the ADJACENT (k = 1) peak: when the dot carries occupancy from one
+period into the next, the adjacent peak area is <m_n m_(n+1)>, which differs
+from <m>^2. The returned "g2" is therefore "g2 normalised to the long-delay
+(uncorrelated) peak" [DR]. The adjacent-peak-normalised quantity
+
+    g2_adj = <m(m-1)> / <m_n m_(n+1)>                              [DR]
+
+is available with adjacent=True (pulse_g2 and deterministic_cycle_g2): the
+joint moment is obtained by carrying the state-resolved first moment m1 at
+the END of period n (m1[s] = E[m_n ; state s at period end]) through the
+next period as its initial p-block and summing that period's m1, which is
+E[m_n m_(n+1)] because m_(n+1) depends on the past only through the state
+at the period boundary (Markov). adjacent_peak_factor = <m_n m_(n+1)>/<m>^2
+is also returned; g2_adj = g2 / adjacent_peak_factor, and both coincide
+when the period is long compared with every relaxation time (the dot
+restarts from the same state regardless of m_n). Which normalisation a
+device verdict uses is decided by its caller; the device evaluators still
+consume "g2" (<m>^2 normalisation).
+
+Validity guard (audit D11). r_ns is an INCOHERENT capture/pump rate (above-
+band optical or electrical injection, dephasing >> Rabi coupling). This
+ladder is NOT valid for resonant coherent drive: there a rate equation
+cannot describe Rabi oscillation, the CW population saturates at 1/2 (not
+r/(r+G) -> 1 as here), and pi-pulse re-excitation does not follow the
+2 G tau_on scaling of this incoherent model.
 
 Counting gate (pr-pkg4-fix, gate-consistent counting). pulse_g2's optional
 gate_ns restricts WHEN a jump counts, not the period being propagated: after
@@ -210,7 +245,7 @@ def _propagate_period(M_on, M_off, J, p0, tau_on_ns, tau_dark_ns, gate_ns=None):
 
 def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
             tau_on_ns, tau_dark_ns, pump_ratio=1.0, split=False,
-            gate_ns=None) -> dict:
+            gate_ns=None, adjacent=False) -> dict:
     """Per-pulse-period g2 and mean detected counts of the filtered X/XX
     cascade under a rectangular pump of duration tau_on_ns at rate r_ns,
     followed by a dark window of duration tau_dark_ns (see module
@@ -222,7 +257,16 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
     the X-line count alone, undiluted by the XX contribution) -- the
     XX-only share is recovered as mean_counts - mean_counts_x by linearity
     of the m1 ODE in J (p's own trajectory does not depend on J), so only
-    one extra gated propagation is needed, not two."""
+    one extra gated propagation is needed, not two.
+
+    Normalisation: "g2" = <m(m-1)>/<m>^2, normalised to the long-delay
+    (uncorrelated) peak, not the adjacent peak (module docstring,
+    "Normalisation"). adjacent=True additionally returns
+    "mean_adjacent_product" = <m_n m_(n+1)>, "adjacent_peak_factor" =
+    <m_n m_(n+1)>/<m>^2 and "g2_adj" = <m(m-1)>/<m_n m_(n+1)> [DR]; the
+    default (adjacent=False) returns exactly the pre-existing keys and
+    values. Valid for incoherent pumping only (module docstring, "Validity
+    guard"); r_ns is not a coherent Rabi drive."""
     M_on = cw_g2.generator(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     M_off = cw_g2.generator(0.0, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     p_ss, converged = _periodic_steady_state(M_on, M_off, tau_on_ns, tau_dark_ns)
@@ -246,7 +290,24 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
         result["mean_counts_x"] = float(np.sum(m1_x))
         result["mean_counts_xx"] = mean_counts - result["mean_counts_x"]
 
+    if adjacent:
+        # E[m_n m_(n+1)]: the end-of-period state-resolved m1 is the next
+        # period's (unnormalised) initial p-block [DR, module docstring].
+        _, m1_next, _ = _propagate_period(M_on, M_off, J, m1, tau_on_ns, tau_dark_ns, gate_ns)
+        result.update(_adjacent_fields(float(np.sum(m2)), mean_counts, float(np.sum(m1_next))))
+
     return result
+
+
+def _adjacent_fields(factorial2, mean, adjacent_product):
+    """Adjacent-peak outputs (audit D2) from <m(m-1)>, <m>, <m_n m_(n+1)>."""
+    if mean < 1e-300 or adjacent_product < 1e-300:
+        factor = g2_adj = float("nan")
+    else:
+        factor = float(adjacent_product / mean ** 2)
+        g2_adj = float(factorial2 / adjacent_product)
+    return {"mean_adjacent_product": float(adjacent_product),
+            "adjacent_peak_factor": factor, "g2_adj": g2_adj}
 
 
 # ---------------------------------------------------------------- deterministic electrical cycle
@@ -295,20 +356,32 @@ def _deterministic_propagate(M_off, J, p_after_load, period_ns, gate_ns):
 
 def deterministic_cycle_g2(gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
                            period_ns, *, eta_load=1.0, gate_ns=None,
-                           split=False) -> dict:
+                           split=False, adjacent=False) -> dict:
     """Exact filtered factorial moments for one deterministic electrical load.
 
     At t=0 a single e-h pair is attempted, then pump r=0 for the entire
     cycle.  Occupancy is retained between cycles, so a residual X can be
     promoted to XX and emit a cascade; this is not a reset-to-ground model.
-    The moment hierarchy follows Hanschke et al., npj Quantum Information 4,
-    43 (2018) [DR transfer].  The externally specified 300 K lifetime anchor
+    The moment hierarchy is the incoherent-pump hierarchy derived in this
+    module [DR]; Hanschke et al., npj Quantum Information 4, 43 (2018) treats
+    coherent (resonant two-photon) driving and is a qualitative pointer only,
+    no number transfers from it.  The externally specified 300 K lifetime anchor
     is Deshpande et al., Applied Physics Letters 105, 141109 (2014), DOI
     10.1063/1.4897640, abstract tau=1.3 +/- 0.3 ns [V abstract-only].
 
     Rates use 1/ns and times ns.  This idealized model excludes hardware
     feasibility, co-tunnelling, timing jitter, reservoir recapture, and extra
     pairs beyond eta_load [A].
+
+    "g2" = <m(m-1)>/<m>^2 is normalised to the long-delay (uncorrelated)
+    peak, not the adjacent one: occupancy retained between cycles correlates
+    m_n with m_(n+1) (module docstring, "Normalisation", audit D2).
+    adjacent=True adds "mean_adjacent_product" = <m_n m_(n+1)>,
+    "adjacent_peak_factor" = <m_n m_(n+1)>/<m>^2 and "g2_adj" =
+    <m(m-1)>/<m_n m_(n+1)> [DR]; the default returns exactly the
+    pre-existing keys and values.  The load map is an incoherent (electrical)
+    carrier delivery, not a coherent pi-pulse (module docstring, "Validity
+    guard").
     """
     values = (gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX, period_ns,
               eta_load)
@@ -362,4 +435,10 @@ def deterministic_cycle_g2(gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
                                                float(period_ns), gate)
         result["mean_counts_x"] = float(np.sum(m1_x))
         result["mean_counts_xx"] = mean - result["mean_counts_x"]
+    if adjacent:
+        # E[m_n m_(n+1)]: carry the end-of-cycle state-resolved m1 through
+        # the next load and cycle [DR, module docstring "Normalisation"].
+        _, m1_next, _ = _deterministic_propagate(M_off, J, load_map @ m1,
+                                                 float(period_ns), gate)
+        result.update(_adjacent_fields(factorial2, mean, float(np.sum(m1_next))))
     return result

@@ -22,7 +22,10 @@ _PROVENANCE={
  "reservoir_qfl":"[A] f_qfl_background (reservoir-energy occupancy) is reported for diagnostic completeness only in this round; it does NOT suppress the reservoir radiative/nonradiative/surface/other split, which is partitioned by capture-competition rate ratios alone -- f_qfl_dot (source QFL) is the channel that actually suppresses r_captured_s.",
  "qfl_pair":"[DR, H2] f_qfl_dot is evaluated at the diode's actual, current-limited junction voltage V_j -- the DELIVERED quasi-Fermi separation. f_qfl_dot_thermodynamic_limit is the identical Boltzmann-tail expression evaluated at V_bi instead -- the maximum quasi-Fermi separation the junction can thermodynamically support. This is a delivered-vs-thermodynamic-ceiling pair, not two independent physical channels; only f_qfl_dot suppresses r_captured_s (see 'reservoir_qfl').",
  "naming":"[L1] surface_reservoir_ns (and its alias keyword k_surface_reservoir_per_ns) is a RATE in ns^-1, not a lifetime, despite the _ns suffix reading like a time constant next to tau_pulse_ns/tau_matrix_ns/tau_cap_ps (which ARE times) elsewhere in this module's keyword list -- a naming hazard carried over from piece 4's k_surface_reservoir_ns convention.",
- "background":"[A] raw_background_radiative_s equals r_matrix_radiative_s by definition -- the QFL-suppressed matrix radiative rate before the spectral window; accepted_background_s = raw * background_window_fraction is the distinct, window-filtered quantity."}
+ "background":"[A] raw_background_radiative_s equals r_matrix_radiative_s by definition -- the QFL-suppressed matrix radiative rate before the spectral window; accepted_background_s = raw * background_window_fraction is the distinct, window-filtered quantity.",
+ "leak":"[DR, audit H2 2026-09-23] NO leak channel: barrier_e_eV/barrier_h_eV are the dot's own confinement (escape) depths dE_e/dE_h (docs/nitride_nanowire_contract.md, Composition rules bullet 12), so loss over them is POST-capture THERMAL ESCAPE, which nitride_nanowire_levels.rates already prices in k_X_ns/k_XX_ns with the detailed-balance prefactor (1000/tau_cap_ps)*(N_res/2)*exp(-E_a/kT) (nitride_nanowire_levels.py:227-233). The former pre-capture ratio exp(-barrier/kT) (prefactor 1) counted the same escape twice with a prefactor that broke detailed balance. eta_inj is therefore identically 1 and r_e_leak_ratio, r_h_leak_ratio and r_leakage_s are identically 0; the columns are kept for interface stability only. barrier_e_eV/barrier_h_eV are still validated but no longer enter any rate.",
+ "S_dot":"[A, audit H1 2026-09-23] S_dot is a capture-retention fraction applied to the captured flux; it is NOT the electron-hole overlap. The e-h overlap enters only the radiative rate (gamma_X0 = overlap_sq/tau_rad0, nitride_nanowire_levels.py:227); capture into the dot does not depend on it. Post-capture escape is carried by k_X_ns in photon counting, so the device passes S_dot = 1.0 (no separate retention physics exists for the wire; applying one here would count escape twice).",
+ "vj_ceiling":"[DR/A, audit M4 2026-09-23] the ideal SRH n=2 diode law has no ceiling; a row whose V_j exceeds min(V_bi, E_g(GaN,T)/q) is outside the model (above flat band the SRH-only depletion law is invalid, and a quasi-Fermi separation above E_g/q is unphysical without degenerate/high-injection and series terms, Sze & Ng, Physics of Semiconductor Devices 3rd ed. 2007, ch. 2). Such rows are returned valid=False with reason 'out_of_model: V_j above min(V_bi, E_g/q)'; evaluate_injection's own dict keeps its numbers as diagnostics, but the device-level sweep row built from it is NaN-filled like every other invalid row (the numbers are not carried to sweep.csv). min(...) rather than E_g/q - 3kT [rejected]: the latter invalidates the Deshpande 2013 10 K replay at 1 nA (V_j 3.5070 V vs E_g/q 3.5099 V, 3.4 kT)."}
 WIRE_PRESETS={"deshpande_2013_30nm":{"core_radius_nm":15.,"conducting_radius_nm":15.},"horizontal_designed_contact":{"R_s_ohm":1e6},"vertical_designed_contact":{"R_s_ohm":1e6}}
 WIRE_RTH_PRESETS_K_W={"horizontal":1e9,"vertical":1e7,"deshpande_fig4_replay":2.8e9} # [DR, re-fit to both Fig.4 rises under the H2 GaN-kernel V_j] -- see _PROVENANCE['thermal'] for the value's derivation and the M8 sign-of-transfer-error note (previously 3.1e9 under the pre-H2 InGaN-alloy kernel).
 T_FLOOR_PHYSICAL_K=10. # [A, MEDIUM 3] disclosed physical-validity floor for _GaNJunctionKernel.vbi()'s non-degenerate Boltzmann formula: below this bath, Mg acceptor freeze-out and Si donor degeneracy (neither modelled -- see _GaNJunctionKernel's docstring) would matter and are not accounted for. Set to the lowest Deshpande 2013 Fig.4 bath (10 K) that this round still treats as physically meaningful; rows at T_K < T_FLOOR_PHYSICAL_K return valid=False, reason 'below_physical_validity_floor', not a silently-computed number.
@@ -196,15 +199,20 @@ def evaluate_injection(diode,*,I_uA,T_K,tau_pulse_ns,E_X_eV,reservoir_energy_eV,
  if any(float(x)>1 for x in (S_dot,eta_rad_matrix,eta_total)): raise ValueError("efficiencies must be in [0, 1]")
  I=Iu*1e-6; vt,v,dep,reason=_kernel(diode,I,T)
  if reason: return _invalid(diode,I,reason)
- re=math.exp(-float(barrier_e_eV)/(KB_EV*T)); rh=math.exp(-float(barrier_h_eV)/(KB_EV*T)); eta=1/(1+re+rh)
- supply=I/Q_SI; leak=supply*(1-eta); usable=supply-leak
+ # [DR, audit H2] no pre-capture leak channel: barrier_e/h_eV are the dot's
+ # escape depths, and escape over them is post-capture thermal escape already
+ # priced by levels.rates in k_X_ns (detailed-balance prefactor
+ # (1000/tau_cap_ps)*(N_res/2), nitride_nanowire_levels.py:227-233). Pricing it
+ # here as well double-counted it. The leak columns are kept, identically 0.
+ re=0.; rh=0.; eta=1.
+ supply=I/Q_SI; leak=0.; usable=supply
  fd=qfl_suppression(float(E_X_eV),v,KB_EV*T); fd_lim=(1.0 if dep.flat_band else qfl_suppression(float(E_X_eV),dep.V_bi,KB_EV*T)) # [DR] on flat-band rows the delivered ceiling is the saturated value; V_bi is retained in V_bi.
  fbg=qfl_suppression(float(reservoir_energy_eV),v,KB_EV*T)
  kc=0. if float(tau_cap_ps)<=0 else 1000/float(tau_cap_ps) # [DR] tau_cap_ps<=0 guarded to k_cap=0 (no dot-capture channel) instead of a ZeroDivisionError; conservative -- does not assume instantaneous, certain capture at the limit.
  kr=float(eta_rad_matrix)/diode.tau_matrix_ns; knr=(1-float(eta_rad_matrix))/diode.tau_matrix_ns
  ks=float(surface_reservoir_ns) # [DR] surface_reservoir_ns is already a RATE in ns^-1 (piece 4's k_surface_reservoir_ns convention), not a lifetime to invert
  fc=kc/(kc+kr+knr+ks)
- cap=usable*fc*float(S_dot)*fd; res=usable-cap; kres=kr+knr+ks
+ cap=usable*fc*float(S_dot)*fd; res=usable-cap; kres=kr+knr+ks # S_dot: capture retention, NOT the e-h overlap (_PROVENANCE['S_dot'], audit H1)
  # kres=kr+knr+ks is always >0: kr+knr=1/tau_matrix_ns alone is >0
  # (tau_matrix_ns is validated positive), so the reservoir split never
  # reaches kres==0 and r_other_declared_loss_s stays 0 by construction,
@@ -223,7 +231,11 @@ def evaluate_injection(diode,*,I_uA,T_K,tau_pulse_ns,E_X_eV,reservoir_energy_eV,
  # V_j >= V_bi condition -- no separate re-derivation.
  eg_reservoir=bandgap(binary(diode._kernel().reservoir_material),T)
  if not math.isfinite(residual): return _invalid(diode,I,"non_finite_row")
- return {"valid":True,"reasons":[],"provenance":dict(_PROVENANCE),"area_cm2":diode.area_cm2,"J_A_cm2":I/diode.area_cm2,"V_j":v,"V_bi":dep.V_bi,"V_terminal":vt,"depletion_field_kVcm":dep.F_kVcm,"C_dep_F":dep.C_dep_pF*1e-12,"V_bi_minus_Eg_mV":(dep.V_bi-eg_reservoir)*1e3,"flat_band":dep.flat_band,"depletion_regime":"flat_band" if dep.flat_band else "depleted","eta_inj":eta,"r_e_leak_ratio":re,"r_h_leak_ratio":rh,"f_capture":fc,"f_qfl_dot":fd,"f_qfl_dot_thermodynamic_limit":fd_lim,"f_qfl_background":fbg,"r_supply_s":supply,"r_captured_s":cap,"r_matrix_radiative_s":rad,"r_matrix_nonradiative_s":nr,"r_surface_reservoir_s":surf,"r_leakage_s":leak,"r_other_declared_loss_s":other,"raw_background_radiative_s":rad,"accepted_background_s":rad*xi,"background_window_fraction":xi,"mu":cap*tp*1e-9,"ideal_min_pair_current_A":ideal,"ideal_min_pair_current_uA":ideal*1e6,"power_on_W":power,"accounting_residual_s":residual}
+ # [DR/A, audit M4] V_j ceiling: see _PROVENANCE['vj_ceiling']. Numbers are
+ # kept (diagnostic) but the row is out of model, never reported valid.
+ vj_ceiling=min(dep.V_bi,eg_reservoir)
+ ok_vj=not (v>vj_ceiling)
+ return {"valid":ok_vj,"reasons":[] if ok_vj else ["out_of_model: V_j above min(V_bi, E_g/q)"],"provenance":dict(_PROVENANCE),"area_cm2":diode.area_cm2,"J_A_cm2":I/diode.area_cm2,"V_j":v,"V_bi":dep.V_bi,"V_terminal":vt,"depletion_field_kVcm":dep.F_kVcm,"C_dep_F":dep.C_dep_pF*1e-12,"V_bi_minus_Eg_mV":(dep.V_bi-eg_reservoir)*1e3,"flat_band":dep.flat_band,"depletion_regime":"flat_band" if dep.flat_band else "depleted","eta_inj":eta,"r_e_leak_ratio":re,"r_h_leak_ratio":rh,"f_capture":fc,"f_qfl_dot":fd,"f_qfl_dot_thermodynamic_limit":fd_lim,"f_qfl_background":fbg,"r_supply_s":supply,"r_captured_s":cap,"r_matrix_radiative_s":rad,"r_matrix_nonradiative_s":nr,"r_surface_reservoir_s":surf,"r_leakage_s":leak,"r_other_declared_loss_s":other,"raw_background_radiative_s":rad,"accepted_background_s":rad*xi,"background_window_fraction":xi,"mu":cap*tp*1e-9,"ideal_min_pair_current_A":ideal,"ideal_min_pair_current_uA":ideal*1e6,"power_on_W":power,"accounting_residual_s":residual}
 
 def wire_operating_point(diode,*,I_uA,T_hs_K,duty,Rth_K_W,eta_total,h_nu_eV):
  if not isinstance(diode,NitrideWireDiode): raise TypeError("diode must be NitrideWireDiode")

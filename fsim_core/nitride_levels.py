@@ -80,6 +80,7 @@ from functools import lru_cache
 import math
 import numpy as np
 from scipy.linalg import eigh_tridiagonal
+from scipy.special import erfcx
 from .nitride_materials import binary, ingaN, band_edges, polarization_field, orientation_factor, KB_EV
 from .dot_levels import finite_disk_2d
 
@@ -330,15 +331,64 @@ def _radial(remaining_offset, radius, md, mb):
 def _coulomb_binding_eV(l_e_xy, l_h_xy, z_sep_nm, eps_r):
     """Screened e-h Coulomb binding, frozen-orbital Gaussian envelopes [E]
     (same in-plane method as dot_levels._gauss_binding, Bernardini/BenDaniel
-    geometry aside) with the field-driven z separation added in quadrature
-    to the relative-coordinate width, so QCSE separation SUPPRESSES (never
-    hard-zeroes) the binding as the carriers are pulled apart:
-        E_b = e^2/(4 pi eps0 eps_r) * sqrt(pi) / sqrt(l_e^2 + l_h^2 + 2 z_sep^2)
+    geometry aside). The in-plane relative-coordinate density is the 2D
+    Gaussian exp(-rho^2/L^2)/(pi L^2) with L^2 = l_e^2 + l_h^2, and the
+    field-driven e-h z separation d = z_sep enters as a fixed offset, so the
+    exact frozen-orbital expectation of 1/sqrt(rho^2 + d^2) is [DR]
+        <1/r> = (2/L^2) e^{d^2/L^2} int_d^inf e^{-t^2/L^2} dt
+              = sqrt(pi)/L * erfcx(d/L),
+        E_b = e^2/(4 pi eps0 eps_r) * sqrt(pi)/L * erfcx(z_sep/L)
+    (erfcx(x) = exp(x^2) erfc(x), Abramowitz & Stegun, Handbook of
+    Mathematical Functions, 1964, 7.1.2). QCSE separation SUPPRESSES (never
+    hard-zeroes) the binding; z_sep -> 0 gives sqrt(pi)/L exactly
+    (erfcx(0) = 1) and z_sep >> L gives the point-charge limit 1/z_sep.
+    Replaces the earlier quadrature form sqrt(pi)/sqrt(L^2 + 2 z_sep^2),
+    which overbound by 22-35% at d/L = 0.25-1 (physics audit 2026-09-23,
+    Monte-Carlo confirmed).
     Evaluated from the normalized envelopes actually solved above, not
-    fitted to any target wavelength."""
-    L2 = l_e_xy*l_e_xy + l_h_xy*l_h_xy + 2.*z_sep_nm*z_sep_nm
-    if L2 <= 0.: return float('nan')
-    return math.sqrt(math.pi) * _E2_4PIEPS0_EV_NM / (eps_r * math.sqrt(L2))
+    fitted to any target wavelength.
+    [E] z extent neglected: each carrier is treated as a sheet at its mean z
+    (only the separation d = z_sep enters), so the finite z spread of the
+    solved envelopes, which lowers <1/r> and weakens its d dependence, is
+    dropped. The field (Stark) dependence of E_b is therefore overstated: the
+    full-screening Stark slope (2.2985 meV/V after the strain/mass update,
+    2.507 before) is an UPPER BOUND by about 0.2 meV/V [E] (no thickness term
+    added here)."""
+    L2 = l_e_xy*l_e_xy + l_h_xy*l_h_xy
+    d = abs(z_sep_nm)
+    if L2 <= 0.:
+        # point-charge limit of the same expression (L -> 0) [DR]
+        return _E2_4PIEPS0_EV_NM / (eps_r * d) if d > 0. else float('nan')
+    L = math.sqrt(L2)
+    return (math.sqrt(math.pi) * _E2_4PIEPS0_EV_NM / (eps_r * L)
+            * float(erfcx(d / L)))
+
+ZENER_REASON = 'field_collapse (|F|*h_eff >= strained InGaN gap: interband Zener breakdown, unscreened field not self-consistent)'
+
+def _field_drop_exceeds_gap(field_kVcm, h_eff_nm, gap_eV):
+    """Physical validity floor on the polarization field (audit C0/D1) [DR].
+
+    Inside the dot the conduction and valence edges tilt together by the
+    electrostatic drop |F|*h_eff (e*(kV/cm)*nm = 1e-4 eV, the same clipped
+    tilt `_z_potential` applies).  The real-space (spatially indirect) gap
+    between the conduction-band minimum at one face and the valence-band
+    maximum at the opposite face is therefore E_g - |F|*h_eff [DR, uniform-
+    field slab].  When that is <= 0 the filled valence states at one face are
+    degenerate with empty conduction states at the other: interband (Zener)
+    tunnelling transfers charge until the field is screened, so the fixed
+    unscreened polarization field assumed by this single-particle solve is not
+    self-consistent and the neutral-exciton picture fails.  This is the
+    mechanism of polarization-induced interband tunnel junctions: Simon et
+    al., PRL 103, 026801 (2009) (GaN/AlN/GaN) and Krishnamoorthy et al., APL
+    97, 203502 (2010) (GaN/InGaN/GaN, drop across a few-nm InGaN layer
+    exceeding its gap) [E, mechanism cited; not a transcribed number].  The
+    threshold itself (declare the row invalid at E_g - |F|*h_eff <= 0,
+    rather than modelling the self-screened state) is [A].  All three inputs
+    are quantities the solver already computes: F (total field incl. any
+    external bias), the effective field length h_eff and the strained InGaN
+    gap Ec-Ev.  Rows it removes are the high-x, thick, unscreened dots whose
+    E_X collapsed toward zero (E_X ~ 0.5 meV at x=0.4, h=5 nm, 230 K)."""
+    return abs(field_kVcm) * 1e-4 * h_eff_nm >= gap_eV
 
 def _resolved_pair_overlap(overlap_sq):
     """Return whether a bound pair has a resolvable radiative overlap [A].
@@ -386,6 +436,13 @@ def _qw_levels(s,d,m,de,Ve,Vh,F,ee,eh,ce,ch,le,lh,ze,pe,zh,ph,de_pad,dh_pad,n,pa
         return _invalid(s,['nonphysical E_X'],F)
     if not _resolved_pair_overlap(ov):
         return _invalid(s,['overlap_unresolved (QCSE-separated pair)'],F)
+    # Physical validity floor (audit C0/D1) [DR/A]; see _field_drop_exceeds_gap.
+    # Checked last, so every pre-existing LEVELS-STAGE invalid reason is
+    # unchanged; this does not hold at device level: 12 cavity rows that were
+    # previously invalid for device-level reasons now carry the field_collapse
+    # reason instead (the levels stage now rejects them first).
+    if _field_drop_exceeds_gap(F,h_eff,de['Ec_eV']-de['Ev_eV']):
+        return _invalid(s,[ZENER_REASON],F)
     # First excited state = min(z, radial) for the DOT COLUMN, same rule as
     # the isolated branch (Opus fix-round finding: ee1/eh1 were computed by
     # the caller but discarded here, hardwiring zg_e=zg_h=inf). Admission is
@@ -488,6 +545,13 @@ def _levels_cached(s,T_K,n,pad):
         return _invalid(s,['nonphysical E_X'],F)
     if not _resolved_pair_overlap(ov):
         return _invalid(s,['overlap_unresolved (QCSE-separated pair)'],F)
+    # Physical validity floor (audit C0/D1) [DR/A]; see _field_drop_exceeds_gap.
+    # Checked last, so every pre-existing LEVELS-STAGE invalid reason is
+    # unchanged; this does not hold at device level: 12 cavity rows that were
+    # previously invalid for device-level reasons now carry the field_collapse
+    # reason instead (the levels stage now rejects them first).
+    if _field_drop_exceeds_gap(F,h_eff,de['Ec_eV']-de['Ev_eV']):
+        return _invalid(s,[ZENER_REASON],F)
     # First excited state = min(z-excitation, radial p-shell excitation),
     # each admitted only if it is itself bound below the local continuum.
     zg_e = (ee1-ee) if (math.isfinite(ee1) and ee1<ce) else float('inf')
@@ -544,6 +608,62 @@ def levels(system, T_K=300.0, *, z_points=1201, exterior_nm=45.0):
     if system.geometry_type == 'isolated_dot' and math.isfinite(system.wl_thickness_nm) and system.wl_thickness_nm>0:
         raise ValueError('nonzero wl_thickness_nm is unsupported: no wetting-layer continuum is implemented')
     return _levels_cached(system,float(T_K),int(z_points),float(exterior_nm))
+
+def z_profile(system, T=None, *, z_points=1201, exterior_nm=45.0):
+    """Public read-only view of the growth-axis (z) solve behind `levels`.
+
+    Additive wrapper (FSIM Studio band view, 2026-10-07): it repeats the
+    exact material/field resolution of `_levels_cached` and calls the
+    private `_z_potential`/`_z_state` with the same arguments, so nothing
+    here is a new physics path.  `T=None` means `levels`' own default,
+    300 K.  Energies are absolute band-edge energies in eV on the scale of
+    `nitride_materials.band_edges` (electron energy upward):
+
+        cb_eV(z) = Ec_dot + V_e(z),  V_e from _z_potential(h, Ve, F, -1, z)
+        vb_eV(z) = Ev_dot - V_h(z),  V_h from _z_potential(h, Vh, F, +1, z)
+
+    `psi_e`/`psi_h` are the normalized (int psi^2 dz = 1) z ground states
+    on the shared grid `z_nm`; their sign is the eigensolver's (arbitrary).
+    `E_e_z_eV`/`E_h_z_eV` place the z-subband ground levels on that same
+    absolute scale (the radial in-plane energy that `levels` adds is NOT
+    included).  `overlap_sq = (int psi_e psi_h dz)**2`, clipped to [0, 1],
+    is the expression `levels` reports as `NitrideLevels.overlap_sq`.
+    For a `qw_fluctuation` system this is the dot-column solve.
+    """
+    if not isinstance(system, NitrideDotSystem): raise TypeError('system must be NitrideDotSystem')
+    T_K = 300.0 if T is None else float(T)
+    n, pad = int(z_points), float(exterior_nm)
+    bad = _validate(system)
+    if not math.isfinite(T_K) or T_K <= 0: bad.append('T_K must be positive and finite')
+    if bad: raise ValueError('; '.join(bad))
+    s = system
+    d, m = ingaN(s.x_in), binary('GaN')
+    d_ez, d_exy, d_hz, d_hxy = _growth_masses(d, s.orientation)
+    m_ez, m_exy, m_hz, m_hxy = _growth_masses(m, s.orientation)
+    h_eff, r_eff, volume, geometry_label = _geometry(s)
+    de = band_edges(d, T_K, substrate=m, strain_fraction=s.strain_fraction, vbo_InN_GaN_eV=s.vbo_InN_GaN_eV, strain_c_fraction=s.strain_c_fraction)
+    be = band_edges(m, T_K, substrate=m)
+    Ve = be['Ec_eV'] - de['Ec_eV']; Vh = de['Ev_eV'] - be['Ev_eV']
+    F = polarization_field(d, m, T_K, strain_fraction=s.strain_fraction, screening_fraction=s.screening_fraction, external_field_kVcm=s.external_field_kVcm, orientation=s.orientation, polarization_factor=s.polarization_factor)
+    if Ve <= 0 or Vh <= 0: raise ValueError('nonpositive band offset: no confined z profile')
+    ee, ee1, ce, le, ze, pe = _z_state(h_eff, Ve, d_ez, m_ez, F, -1, n, pad)
+    eh, eh1, ch, lh, zh, ph = _z_state(h_eff, Vh, d_hz, m_hz, F, +1, n, pad)
+    pot_e = _z_potential(h_eff, Ve, F, -1, ze)
+    pot_h = _z_potential(h_eff, Vh, F, +1, zh)
+    ov = float(np.trapezoid(pe * ph, ze) ** 2); ov = max(0., min(1., ov))
+    return dict(
+        z_nm=ze, cb_eV=de['Ec_eV'] + pot_e, vb_eV=de['Ev_eV'] - pot_h,
+        psi_e=pe, psi_h=ph, E_e_z_eV=de['Ec_eV'] + ee, E_h_z_eV=de['Ev_eV'] - eh,
+        E_e_z_meV=ee * 1000., E_h_z_meV=eh * 1000.,
+        electron_in_dot_probability=le, hole_in_dot_probability=lh,
+        overlap_sq=ov, field_kVcm=float(F), T_K=T_K,
+        effective_height_nm=h_eff, effective_radius_nm=r_eff,
+        Ec_dot_eV=float(de['Ec_eV']), Ev_dot_eV=float(de['Ev_eV']),
+        Ec_GaN_eV=float(be['Ec_eV']), Ev_GaN_eV=float(be['Ev_eV']),
+        Ve_eV=float(Ve), Vh_eV=float(Vh), geometry=geometry_label,
+        provenance='z_profile: wrapper over nitride_levels._z_potential/_z_state '
+                   '(same inputs as levels()); see levels() provenance for tags')
+
 
 def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.,tau_cap_scales_with_density=False,channel='min',k_nr_ns=0.):
     """Absolute detailed-balance escape rates in 1/ns; no cavity/Purcell input.

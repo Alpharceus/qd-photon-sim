@@ -1,8 +1,7 @@
 """Builds the non-technical qd-photon-sim / rt-edge-emitter presentation from
 real repository outputs (docs/rt_edge_contract.md's acceptance sweep,
-out/rt_edge/*, ../_goal/materials_research.md) plus a handful of explanatory
-diagrams this script draws itself with matplotlib, using numbers read
-straight out of fsim_core at build time.
+out/rt_edge/*) plus a handful of explanatory diagrams this script draws itself
+with matplotlib, using numbers read straight out of fsim_core at build time.
 
 WHY THIS FILE IS SHAPED THIS WAY. Every number that ends up on a slide has to
 trace to something the repository actually produced: the acceptance sweep
@@ -22,17 +21,28 @@ OUTPUTS.
   out/presentation/index.html        -- the same slide sequence as scrollable
       sections, same figures embedded as base64 data URIs, no external
       scripts, light theme with a prefers-color-scheme dark variant.
-  out/presentation/figures/*.png     -- the 5 matplotlib diagrams this script
+  out/presentation/figures/*.png     -- the 8 matplotlib figures this script
       draws (band diagram, p-i-n cartoon, exciton/biexciton overlap, ridge
-      waveguide mode, g2(0) dip); every other figure used is an existing
-      repository file (out/rt_edge/envelope.png, out/rt_edge/gui-smoke.png).
+      waveguide mode, g2(0) dip, headline-model g2 vs linewidth, collected
+      flux vs heat-sink temperature, finite-pulse vs static (non-headline)
+      g2); the only other figure used is the existing repository file
+      out/rt_edge/gui-smoke.png.
 
-CLI: python scripts/make_presentation.py [--no-gui]
-  --no-gui skips regenerating out/rt_edge/gui-smoke.png (fsim_gui/designer.py
-  --frames 10 --screenshot ...) and uses the existing screenshot as-is; the
-  default (no flag) regenerates it first so the GUI slide reflects a live
-  render. Both outputs are otherwise rebuilt deterministically: no timestamps
-  or randomness are introduced by this script itself.
+Short-deck refresh (2026-09-24): 19 slides carrying the current VERDICT line,
+flux clearing the floor at 230 K,
+pulsed g2 ~0.98 from re-excitation within the pump pulse, no Purcell
+recovery from a planar cavity (+1.3 %), the post-H4 beta, the "static
+(non-headline)" label on every card-level (drive.finite_pulse: false)
+number, and the commit hash on the verdict slides. Headline numbers are
+taken only from the verdict's own headline-model rows of sweep.csv.
+
+CLI: python scripts/make_presentation.py [--gui | --no-gui]
+  Default (and --no-gui): use the committed out/rt_edge/gui-smoke.png as-is,
+  so the script writes nothing outside out/presentation/. --gui first
+  regenerates that screenshot (fsim_gui/designer.py --frames 10 --screenshot
+  ...). Outputs are otherwise rebuilt deterministically: no timestamps or
+  randomness are introduced by this script itself (the deck does quote the
+  read-only git commit hashes of verdict.md and HEAD).
 """
 from __future__ import annotations
 
@@ -149,12 +159,144 @@ def parse_verdict_md(path: Path) -> dict:
         "Verified 6.5 meV anchor (Chatzarakis et al., Phys. Rev. Applied 20, 034011, 2023)", "")
     anchor_lines = [line.strip() for line in anchor_section.splitlines()
                     if "at gamma300 = 6.5 meV" in line]
+    # P10 short-deck refresh: the per-temperature table, the flux floor, the
+    # model-sensitivity table and the convention-matched Reischle comparison,
+    # all parsed from the same committed verdict.md (never typed in here).
+    per_T = {}
+    for m in re.finditer(r"^\| (\d+) \| (\d+)/(\d+) \| (\d+)/\d+ \| [^|]+ \| ([^|]+) \| ([^|]+) \|",
+                         sections.get("Per-temperature acceptance", ""), re.MULTILINE):
+        per_T[int(m.group(1))] = dict(eligible=int(m.group(2)), total=int(m.group(3)),
+                                      passes=int(m.group(4)), g2_min=m.group(5).strip(),
+                                      flux_max=m.group(6).strip())
+    floor_m = re.search(r"eligibility floor \[A\]: ([0-9.eE+]+) photons/s",
+                        sections.get("Coverage", ""))
+    model_sens = {}
+    for m in re.finditer(r"^\| (finite_pulse:\w+,tau_cap_density:\w+)[^|]* \| (\d+)/(\d+) \| (\d+) \| "
+                         r"([^|]+) \| ([^|]+) \|", sections.get("Model sensitivity", ""),
+                         re.MULTILINE):
+        model_sens[m.group(1)] = dict(eligible=int(m.group(2)), total=int(m.group(3)),
+                                      passes=int(m.group(4)), g2_min=m.group(5).strip(),
+                                      flux_max=m.group(6).strip())
+
+    def _grab(pattern):
+        m = re.search(pattern, ceiling)
+        return m.group(1) if m else "n/a"
+
+    reischle = dict(raw=_grab(r"g2\(0\) = ([0-9.]+) raw"),
+                    corrected=_grab(r"([0-9.]+) after background correction"),
+                    deconv=_grab(r"g2_b\(0\) = ([0-9.]+) \[V\]"),
+                    deconv_err=_grab(r"g2_b\(0\) = [0-9.]+ \[V\] \+/- ([0-9.]+)"),
+                    factor=_grab(r"about ([0-9.]+)x better"))
     return dict(verdict_line=verdict_line, card_lines=card_lines, cards=cards, ceiling=ceiling,
                 missing_claims=missing_claims, fail_reasons=fail_reasons,
                 generated=generated, metrics=metrics,
                 gamma300_threshold=metrics.get("gamma300_threshold", ""),
                 flux_margin=metrics.get("flux_margin", ""), facet_model_note=facet_note,
-                gamma300_anchor_lines=anchor_lines)
+                gamma300_anchor_lines=anchor_lines, per_T=per_T,
+                flux_floor=float(floor_m.group(1)) if floor_m else float("nan"),
+                model_sensitivity=model_sens, reischle=reischle)
+
+
+def headline_model_rows(rows: list[dict], verdict: dict) -> list[dict]:
+    """sweep.csv rows of the verdict's own headline model (the VERDICT
+    line's `model=finite_pulse:<b>,tau_cap_density:<b>` token), so every
+    headline number on a slide comes from the same model the verdict gates
+    on. The other three model combinations are non-headline diagnostics."""
+    token = verdict["metrics"].get("model", "finite_pulse:true,tau_cap_density:false")
+    fp = "finite_pulse:true" in token
+    tcd = "tau_cap_density:true" in token
+    return [r for r in rows
+            if (r.get("model_finite_pulse") == "True") == fp
+            and (r.get("model_tau_cap_density") == "True") == tcd]
+
+
+def static_model_rows(rows: list[dict]) -> list[dict]:
+    """The card-level static-loading model (drive.finite_pulse: false,
+    tau_cap density law off): what both edge cards ship with, so every number
+    from these rows is labelled "static (non-headline)"."""
+    return [r for r in rows if r.get("model_finite_pulse") == "False"
+            and r.get("model_tau_cap_density") == "False"]
+
+
+STATIC_LABEL = "static (non-headline)"
+
+SWEEP_KEY_COLS = ("card_id", "delta_xx_meV", "gamma300_meV", "irf_ps", "T_hs_K",
+                  "emission_NA", "emission_R_back", "emission_L_um")
+
+
+def best_row_comparison(rows: list[dict], verdict: dict) -> dict:
+    """The headline model's lowest-g2 ELIGIBLE row and the static-loading
+    row at the identical configuration -- the difference between the two is
+    the re-excitation effect fsim_core.pulse_counting models (a dot re-fills
+    and re-emits within one finite pump pulse)."""
+    hl = [r for r in headline_model_rows(rows, verdict) if r["eligible_row"] == "True"]
+    best = min(hl, key=lambda r: float(r["g2_pulsed"]))
+    key = tuple(best[c] for c in SWEEP_KEY_COLS)
+    static = next(r for r in static_model_rows(rows)
+                  if tuple(r[c] for c in SWEEP_KEY_COLS) == key)
+    return dict(best=best, static=static, eligible_rows=hl,
+                eligible_cards=sorted(set(r["card_id"] for r in hl)),
+                eligible_T=sorted(set(float(r["T_hs_K"]) for r in hl)))
+
+
+def git_hashes() -> dict:
+    """Read-only git lookups: the commit that last wrote out/rt_edge/
+    verdict.md (the commit the verdict was computed and committed at) and
+    the current HEAD. Falls back to 'unknown' outside a git checkout."""
+    def run(args):
+        try:
+            out = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True,
+                                 text=True, check=True).stdout.strip()
+            return out or "unknown"
+        except (OSError, subprocess.CalledProcessError):
+            return "unknown"
+    return dict(verdict=run(["log", "-1", "--format=%h", "--", "out/rt_edge/verdict.md"]),
+                head=run(["rev-parse", "--short", "HEAD"]))
+
+
+def anchor_values(path: Path) -> dict:
+    ledger = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return {a["id"]: float(a["value"]) for a in ledger["anchors"] if a.get("value") is not None}
+
+
+def planar_cavity_numbers() -> dict:
+    """Audit H5, 'no Purcell recovery': the angle-integrated TOTAL emission-
+    rate multiplier of an in-plane dipole in the 300 K-tracked planar DBR
+    lambda-cavity, evaluated live with fsim_core.dbr exactly as
+    scripts/run_rt_campaign.py's rt_cavity() does. That script runs its whole
+    campaign at import time, so its design constants (N_H, N_L, N_C, the
+    emitter_energy E0, the pair counts) are read out of its source text with
+    ast/regex instead of being copied here. The 1-D on-axis LDOS and the
+    120 K total rate come from the committed out/tier_geometry/
+    geometry_sweep.csv."""
+    import ast
+    from fsim_core.cavity import emitter_energy
+    from fsim_core.dbr import cavity_stack, planar_total_rate
+
+    src = (ROOT / "scripts" / "run_rt_campaign.py").read_text(encoding="utf-8")
+    consts = {}
+    for node in ast.parse(src).body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Tuple)):
+            names = [t.id for t in node.targets[0].elts]
+            if names == ["N_H", "N_L", "N_C"]:
+                consts = dict(zip(names, ast.literal_eval(node.value)))
+    e0 = float(re.search(r"emitter_energy\(300\.0,\s*([0-9.]+)\)", src).group(1))
+    pairs = int(re.search(r"^cav_rt = rt_cavity\((\d+)\)", src, re.MULTILINE).group(1))
+    extra = int(re.search(r"cavity_stack\(N_H, N_L, N_C, pairs, pairs \+ (\d+), lam0\)", src).group(1))
+    lam0 = 1239.841984 / emitter_energy(300.0, e0)   # hc in eV nm, as run_rt_campaign.py
+    top, sp, bot = cavity_stack(consts["N_H"], consts["N_L"], consts["N_C"], pairs,
+                                pairs + extra, lam0)
+    f_total_300 = float(planar_total_rate(top, bot, consts["N_C"], sp.d_nm, 0.5 * sp.d_nm,
+                                          lam0, n_out=consts["N_H"]))
+    geo = load_sweep_rows(ROOT / "out" / "tier_geometry" / "geometry_sweep.csv")
+    cav = [r for r in geo if r["cavity_top_pairs"] != "none"]
+    return dict(pairs=pairs, lam0=lam0, f_total_300=f_total_300,
+                pct_300=100.0 * (f_total_300 - 1.0),
+                onaxis_max=max(float(r["F_planar_1d_onaxis"]) for r in cav),
+                onaxis_min=min(float(r["F_planar_1d_onaxis"]) for r in cav),
+                f_total_120_max=max(float(r["F_total_planar"]) for r in cav
+                                    if float(r["T_hs_K"]) == 120.0))
 
 
 def load_sweep_rows(path: Path) -> list[dict]:
@@ -207,6 +349,8 @@ def material_switch_numbers() -> dict:
 
 
 def diode_numbers(sweep_rows: list[dict]) -> dict:
+    """sweep_rows should be the headline-model rows (headline_model_rows),
+    so the quoted V_j is not a static (non-headline) row's."""
     diode = TR.hkust_preset()
     row = first_row_for_card(sweep_rows, "edge-inp-gaasp-design")
     return dict(diode=diode, V_j=float(row["V_j_pulsed_V"]), I_uA=float(row["I_uA"]),
@@ -449,10 +593,11 @@ def draw_waveguide_mode(path: Path, stack: list[WG.Layer], mode: WG.SlabMode,
 
 def draw_g2_dip(path: Path, g2_best: float, g2_ceiling: float) -> None:
     """Schematic antibunching dip: the depth (g2 at zero delay) is the real
-    pooled pulsed minimum from out/rt_edge/verdict.md; the published 300 K
-    ceiling from docs/rt_edge_contract.md is drawn for comparison. The delay
-    axis is illustrative (the sweep reports the scalar g2(0), not a measured
-    g2(tau) trace)."""
+    pooled pulsed minimum from out/rt_edge/verdict.md (headline finite-pulse
+    model); the best published 300 K single-dot value (optically pumped,
+    Laferriere et al. 2023, read from the evidence ledger) is drawn for
+    comparison. The delay axis is illustrative (the sweep reports the scalar
+    g2(0), not a measured g2(tau) trace)."""
     tau = np.linspace(-4, 4, 800)
 
     def dip(g0, width):
@@ -460,9 +605,9 @@ def draw_g2_dip(path: Path, g2_best: float, g2_ceiling: float) -> None:
 
     fig, ax = plt.subplots(figsize=(8.2, 4.6), dpi=FIG_DPI)
     ax.plot(tau, dip(g2_best, 0.7), color=LIGHT["cb"], lw=2.2,
-            label=f"this design's best corner, g2(0) = {g2_best:.2f}")
+            label=f"this design's best eligible corner (finite-pulse headline), g2(0) = {g2_best:.4f}")
     ax.plot(tau, dip(g2_ceiling, 1.0), color=LIGHT["muted"], lw=1.8, linestyle="--",
-            label=f"published 300 K ceiling, g2(0) ≈ {g2_ceiling:.2f}")
+            label=f"best published 300 K dot (optical pump), g2(0) = {g2_ceiling:.2f}")
     ax.axhline(0.5, color=LIGHT["vb"], lw=1.2, linestyle=":", label="single-photon threshold (0.5)")
     ax.axhline(1.0, color=LIGHT["ax"], lw=1.0, linestyle=":", alpha=0.6)
     ax.text(3.6, 1.02, "ordinary lamp", fontsize=8, color=LIGHT["ax"], ha="right")
@@ -479,42 +624,120 @@ def draw_g2_dip(path: Path, g2_best: float, g2_ceiling: float) -> None:
 
 
 def draw_linewidth_sweep(path: Path, rows: list[dict]) -> dict:
-    """Plot the CSV's pulsed g2 landscape at the largest X-XX splitting.
+    """Plot the CSV's pulsed g2 landscape at the largest X-XX splitting, one
+    line per heat-sink temperature. `rows` must be the headline-model rows
+    only (headline_model_rows): mixing in the three non-headline model
+    combinations would put their lower g2 on a headline figure. The
+    diagnostic column diag_g2_pulsed is used so that rows below the flux
+    floor still show their physics value.
 
     The two reference linewidths are read from the shared evidence ledger,
     rather than copied into this presentation source.
     """
-    ledger = yaml.safe_load(ANCHORS_YAML.read_text(encoding="utf-8"))
-    anchor = {a["id"]: float(a["value"]) for a in ledger["anchors"]
-              if a.get("value") is not None}
+    anchor = anchor_values(ANCHORS_YAML)
     best_split = max(float(r["delta_xx_meV"]) for r in rows)
     selected = [r for r in rows if float(r["delta_xx_meV"]) == best_split]
-    points = {}
+    by_T: dict[float, dict[float, list[float]]] = {}
     for row in selected:
-        gamma = float(row["gamma300_meV"])
-        points.setdefault(gamma, []).append(float(row["g2_pulsed"]))
-    gamma = sorted(points)
-    g2 = [min(points[x]) for x in gamma]
+        g = float(row["diag_g2_pulsed"])
+        if not np.isfinite(g):
+            continue
+        by_T.setdefault(float(row["T_hs_K"]), {}).setdefault(
+            float(row["gamma300_meV"]), []).append(g)
     low = anchor["chatzarakis23-gamma300-class"]
     mid = anchor["matsuda01-gamma300-class"]
     fig, ax = plt.subplots(figsize=(8.2, 4.6), dpi=FIG_DPI)
-    ax.plot(gamma, g2, "o-", color=LIGHT["cb"], lw=2.4,
-            label=f"best splitting: {best_split:g} meV")
+    colors = [LIGHT["cb"], LIGHT["accent"], "#1a7f37", LIGHT["muted"]]
+    all_g2 = []
+    for color, T in zip(colors, sorted(by_T)):
+        gam = sorted(by_T[T])
+        g2 = [min(by_T[T][x]) for x in gam]
+        all_g2 += g2
+        ax.plot(gam, g2, "o-", color=color, lw=2.0, label=f"T_hs = {T:g} K")
     ax.axhline(0.5, color=LIGHT["vb"], lw=1.5, linestyle="--",
                label="pulsed g2 threshold = 0.5")
-    for value, label, color in ((low, "verified anchor 6.5 meV", LIGHT["vb"]),
-                                (mid, "verified anchor 12 meV", LIGHT["accent"])):
-        ax.axvline(value, color=color, lw=1.5, linestyle=":", label=label)
-    ax.set_xlabel("300 K exciton linewidth (meV)")
-    ax.set_ylabel("pulsed intrinsic g2(0)")
-    ax.set_title("Acceptance sweep at the best X-XX splitting")
-    ax.set_ylim(0, max(1.05, max(g2) + 0.1))
-    ax.legend(fontsize=8, frameon=False)
+    for value, label, color in ((low, f"verified anchor {low:g} meV", LIGHT["vb"]),
+                                (mid, f"verified anchor {mid:g} meV", LIGHT["accent"])):
+        ax.axvline(value, color=color, lw=1.2, linestyle=":", label=label)
+    ax.set_xlabel("300 K exciton linewidth gamma300 (meV)")
+    ax.set_ylabel("pulsed intrinsic g2(0), best lever combination")
+    ax.set_title(f"Headline finite-pulse model, X-XX splitting {best_split:g} meV: "
+                 "g2 stays near 1 at every linewidth")
+    ax.set_ylim(0, 1.1)
+    ax.legend(fontsize=8, frameon=False, loc="lower right", ncol=2)
     _style_ax(ax)
     fig.tight_layout()
     fig.savefig(path, facecolor=LIGHT["fig"])
     plt.close(fig)
-    return {"split": best_split, "low": low, "mid": mid, "g2": dict(zip(gamma, g2))}
+    gammas = sorted({float(r["gamma300_meV"]) for r in rows})
+    return {"split": best_split, "low": low, "mid": mid, "gamma_lo": gammas[0],
+            "gamma_hi": gammas[-1], "g2_lo": min(all_g2), "g2_hi": max(all_g2)}
+
+
+def draw_flux_vs_T(path: Path, rows: list[dict], floor: float) -> dict:
+    """Maximum collected pulsed flux per heat-sink temperature and card,
+    headline-model rows of out/rt_edge/sweep.csv, against the collected-flux
+    eligibility floor parsed from verdict.md."""
+    by = {}
+    for r in rows:
+        by.setdefault(r["card_id"], {}).setdefault(float(r["T_hs_K"]), []).append(
+            float(r["collected_flux_pulsed_s"]))
+    fig, ax = plt.subplots(figsize=(8.2, 4.6), dpi=FIG_DPI)
+    for color, card in zip((LIGHT["cb"], LIGHT["vb"]), sorted(by)):
+        T = sorted(by[card])
+        f = [max(by[card][t]) for t in T]
+        ax.plot(T, f, "o-", color=color, lw=2.2, label=card)
+        for t, v in zip(T, f):
+            ax.annotate(f"{v:.0f}", xy=(t, v), xytext=(0, 7), textcoords="offset points",
+                        ha="center", fontsize=8, color=color)
+    ax.axhline(floor, color=LIGHT["ax"], lw=1.4, linestyle="--",
+               label=f"eligibility floor {floor:g} photons/s")
+    ax.set_yscale("log")
+    ax.set_xlabel("heat-sink temperature T_hs (K)")
+    ax.set_ylabel("max collected pulsed flux (photons/s)")
+    ax.set_title("Headline finite-pulse model: the floor is cleared only at the coldest T_hs")
+    ax.legend(fontsize=8, frameon=False, loc="lower left")
+    _style_ax(ax)
+    fig.tight_layout()
+    fig.savefig(path, facecolor=LIGHT["fig"])
+    plt.close(fig)
+    return by
+
+
+def draw_reexcitation(path: Path, headline: list[dict], static: list[dict], card: str) -> None:
+    """Lowest pulsed intrinsic g2(0) per heat-sink temperature on one card,
+    headline finite-pulse model (re-excitation within the pump pulse kept,
+    fsim_core.pulse_counting) versus the card-level static-loading model
+    (labelled static (non-headline)). Both from out/rt_edge/sweep.csv's
+    diag_g2_pulsed column (valid rows, including rows below the flux floor)."""
+    def curve(rows):
+        by = {}
+        for r in rows:
+            g = float(r["diag_g2_pulsed"])
+            if r["card_id"] == card and np.isfinite(g):
+                by.setdefault(float(r["T_hs_K"]), []).append(g)
+        T = sorted(by)
+        return T, [min(by[t]) for t in T]
+
+    fig, ax = plt.subplots(figsize=(8.2, 4.6), dpi=FIG_DPI)
+    for rows, color, style, label, dy in (
+            (headline, LIGHT["cb"], "o-", "finite-pulse model (headline): re-excitation kept", 7),
+            (static, LIGHT["muted"], "s--", f"static loading, {STATIC_LABEL}", -14)):
+        T, g = curve(rows)
+        ax.plot(T, g, style, color=color, lw=2.2, label=label)
+        for t, v in zip(T, g):
+            ax.annotate(f"{v:.3f}", xy=(t, v), xytext=(0, dy), textcoords="offset points",
+                        ha="center", fontsize=8, color=color)
+    ax.axhline(0.5, color=LIGHT["vb"], lw=1.5, linestyle=":", label="single-photon threshold 0.5")
+    ax.set_ylim(0, 1.12)
+    ax.set_xlabel("heat-sink temperature T_hs (K)")
+    ax.set_ylabel("lowest pulsed intrinsic g2(0)")
+    ax.set_title(f"{card}: re-excitation during the pulse pushes g2 toward 1")
+    ax.legend(fontsize=8, frameon=False, loc="lower left")
+    _style_ax(ax)
+    fig.tight_layout()
+    fig.savefig(path, facecolor=LIGHT["fig"])
+    plt.close(fig)
 
 
 def verdict_brightness_factors() -> dict:
@@ -551,31 +774,45 @@ class Slide:
 def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
                  mat_sw: dict, diode_info: dict, wg_info: dict, lw_info: dict,
                  evidence: dict, anchors: dict, figures: dict, linewidth_sweep: dict,
-                 brightness: dict) -> list[Slide]:
+                 brightness: dict, cmp: dict, planar: dict, hashes: dict,
+                 anchor_vals: dict) -> list[Slide]:
+    """The 19-slide short deck. Every number is parsed from out/rt_edge/* and
+    out/tier_geometry/* or computed live from fsim_core; nothing physical is
+    typed in here."""
     def cite(claim, idx=0, default=""):
         srcs = anchors.get(claim, [])
         return srcs[idx] if idx < len(srcs) else default
 
+    m = verdict["metrics"]
     beta_lo, beta_hi = min(wg_info["beta_pct_range"]), max(wg_info["beta_pct_range"])
-    fallback_card = verdict["cards"]["edge-inp-gainp-design"]
-    # pkg5b: a card with zero eligible rows (the current headline model's own
-    # result) prints diag_g2_min/median instead of g2_pulsed_min/median
-    # (scripts/run_rt_edge.py's card_line()); fall back to the diagnostic
-    # value rather than crashing on the now-absent eligible-only key.
-    best_g2_pulsed = fallback_card.get("g2_pulsed_min", fallback_card.get("diag_g2_min"))
-    best_g2_eligible = "g2_pulsed_min" in fallback_card
-    threshold = verdict["gamma300_threshold"]
+    beta_range = (f"{beta_lo:.2f}%" if f"{beta_lo:.2f}" == f"{beta_hi:.2f}"
+                  else f"{beta_lo:.2f}-{beta_hi:.2f}%")
     flux_margin = verdict["flux_margin"]
+    floor = verdict["flux_floor"]
     anchor_text = " ".join(verdict["gamma300_anchor_lines"])
     loading_key = next(key for key in brightness if key.startswith("loading = 1 - e^-mu"))
-    # pkg5b-fix2 item 5: the finite-pulse chain's own keys -- mean_counts is
-    # only printed for a finite-pulse row (always true here: the headline
-    # model this deck reads is HEADLINE_MODEL, drive.finite_pulse=True), so
-    # this falls back to None (looked up with .get() below) rather than
-    # raising if a future run's headline model ever flips back to static.
     mean_counts_key = next((key for key in brightness
                             if key.startswith("finite_pulse_mean_counts")), None)
     eta_total_key = next(key for key in brightness if key.startswith("eta_total"))
+    beta_key = next(key for key in brightness if key.startswith("beta"))
+    best, static = cmp["best"], cmp["static"]
+    static_g2 = float(static["diag_g2_pulsed"])
+    static_flux = float(static["collected_flux_pulsed_s"])
+    pulse_ps = 1000.0 * float(best["pulse_width_ns"])
+    rep_mhz = float(best["rep_rate_hz"]) / 1e6
+    elig_T = ", ".join(f"{t:g}" for t in cmp["eligible_T"])
+    elig_cards = ", ".join(cmp["eligible_cards"])
+    per_T = verdict["per_T"]
+    flux_by_T = ", ".join(f"{per_T[t]['flux_max']} at {t} K" for t in sorted(per_T))
+    n_missing = len(verdict["missing_claims"])
+    fail_reasons = ", ".join(verdict["fail_reasons"])
+    static_sens = verdict["model_sensitivity"].get("finite_pulse:false,tau_cap_density:false", {})
+    reis = verdict["reischle"]
+    chatz_g2 = anchor_vals["chatzarakis23-g2-temperature"]
+    laf_g2 = anchor_vals["laferriere23-g2-temperature"]
+    pct = planar["pct_300"]
+    commit_line = (f"verdict.md computed and committed at {hashes['verdict']} "
+                   f"(deck built at HEAD {hashes['head']})")
 
     slides = []
 
@@ -586,9 +823,15 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
          "This deck reports what the simulator found, including where the design falls short"],
         "Project: qd-photon-sim, branch rt-edge-emitter. This is a computational design study "
         "produced by the simulator's own pipeline and acceptance sweep; no author or institution "
-        "is claimed beyond the repository itself. Every number quoted later in this deck traces to "
-        f"a real file the repository generated ({VERDICT_MD.name}, {SWEEP_CSV.name}) or to a live "
-        "call into the simulator's physics modules made while building this deck."))
+        "is claimed beyond the repository itself. The question it answers is narrow and practical: "
+        "can an electrically driven, edge-emitting indium-phosphide quantum dot emit single photons "
+        "without a cryostat, at a heat-sink temperature of 230 K or warmer? The short answer, "
+        "which the last third of the deck builds up step by step, is no: the corrected model "
+        "collects enough light at 230 K but the photons are not single. Every number quoted "
+        "later in this deck traces to a real file the repository generated "
+        f"({VERDICT_MD.name}, {SWEEP_CSV.name}, the geometry sweep) or to a live call into the "
+        "simulator's physics modules made while building this deck, so the slides refresh "
+        "automatically whenever the sweep is re-run."))
 
     slides.append(Slide(
         "What is a quantum dot?",
@@ -601,7 +844,11 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "electronic band gap than the crystal around it, an electron and a hole that wander into "
         "the dot get trapped there, just as an electron is trapped around a nucleus in a real "
         "atom -- hence 'artificial atom'. When the trapped electron and hole recombine they give "
-        "up their energy as one photon."))
+        "up their energy as one photon. Because the dot holds only a few discrete states, it "
+        "cannot emit a second identical photon until it has been refilled, and that refilling "
+        "delay is what makes the output arrive one photon at a time. The rest of this deck asks "
+        "whether that delay survives at room temperature, where heat shakes carriers out of the "
+        "dot and broadens its emission lines."))
 
     slides.append(Slide(
         "Why one photon at a time matters",
@@ -614,7 +861,10 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "close a source comes to 'exactly one photon' is the second-order correlation function "
         "g2(0): a perfect single-photon source gives g2(0) = 0, while an ordinary lamp (many "
         "photons, uncorrelated) gives g2(0) = 1. This design study's target is g2(0) < 0.5, the "
-        "usual working definition of 'single-photon' behaviour."))
+        "usual working definition of 'single-photon' behaviour. Keep that scale in mind: every "
+        "later slide that reports a g2 value is really saying how far the device sits between "
+        "a perfect single-photon emitter and a light bulb, and the headline value this deck "
+        "arrives at sits very close to the light-bulb end."))
 
     slides.append(Slide(
         "Why room temperature and electrical driving matter",
@@ -626,7 +876,10 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "that instead runs at room temperature (300 K) and is turned on and off with an ordinary "
         "p-i-n diode current -- the same physics as an LED -- removes both the cryostat and the "
         "laser, which is what would actually make a single-photon source practical to deploy "
-        "outside a physics lab."))
+        "outside a physics lab. The acceptance rule used here is already relaxed from that ideal: "
+        "it accepts any heat-sink temperature from 230 K upward, which a small thermoelectric "
+        "cooler can reach, so a pass at 230 K would still count as a deployable, cryostat-free "
+        "device. Even with that relaxation, the design fails, as the verdict slide shows."))
 
     slides.append(Slide(
         "Why edge (in-plane) emission matters",
@@ -638,7 +891,11 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "detector but not a photonic circuit. An edge-emitting, in-plane design instead guides "
         "the light sideways through a ridge waveguide etched into the chip, so it can be coupled "
         "directly into an on-chip waveguide network or into an optical fibre butted against the "
-        "cleaved facet -- the geometry a real photonic-integrated single-photon source would need."))
+        "cleaved facet -- the geometry a real photonic-integrated single-photon source would need. "
+        "The price of this geometry is collection efficiency: only the few percent of the dot's "
+        "light that couples into the guided mode ever reaches the facet, so brightness, not only "
+        "purity, becomes a gate the design has to clear. The brightness slide later shows "
+        "exactly how much of the light survives that path."))
 
     slides.append(Slide(
         "What this software does",
@@ -653,7 +910,9 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "companion module (verify/verify_rt_edge_papers.py) independently re-checks every cited "
         "literature number for unit errors, out-of-range values, and duplicated or unsourced "
         f"citations; the current evidence ledger passes {evidence['passed']}/{evidence['total']} "
-        "such checks."))
+        "such checks. The simulator is therefore only as good as its inputs, and the deck flags "
+        "every input that is an estimate or an assumption rather than a measurement, so the "
+        "audience can see which conclusions rest on data."))
 
     slides.append(Slide(
         "How it works: the pipeline",
@@ -662,17 +921,16 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
          "Every conclusion is a range swept over the uncertain inputs, not one confident number"],
         "The pipeline: (1) materials.py supplies band gaps, lattice constants and band offsets from "
         "Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001); (2) dot_levels.py solves the confined "
-        "electron/hole levels of the actual dot-in-a-well-in-a-barrier stack; (3) transport.py "
-        "models the p-i-n diode's current-voltage behaviour and carrier injection into the dot; "
-        "(4) thermal.py self-consistently raises the junction temperature under drive; (5) "
-        "linewidth.py gives the exciton/biexciton linewidths at that temperature; (6) the spectral "
-        "overlap between exciton and biexciton lines sets how much biexciton light leaks through a "
-        "filter tuned to the exciton; (7) waveguide.py computes how much light the edge waveguide "
-        "collects; (8) cw_g2.py / the device evaluator combine all of this into g2(0) and "
-        "brightness. Every number in the chain carries a provenance tag ([V] verified against a "
-        "cited paper, [DR] derived, [E] class estimate, [A] assumption, per CLAUDE.md's "
-        "conventions), and the acceptance sweep varies the tagged-uncertain inputs over their "
-        "literature-supported ranges rather than picking one value."))
+        "electron/hole levels of the dot-in-a-well-in-a-barrier stack; (3) transport.py "
+        "models the p-i-n diode and carrier injection into the dot; (4) thermal.py raises the "
+        "junction temperature under drive; (5) linewidth.py gives the exciton/biexciton "
+        "linewidths at that temperature; (6) the spectral overlap sets how much biexciton light "
+        "leaks through a filter tuned to the exciton; (7) waveguide.py computes how much light the "
+        "edge waveguide collects; (8) the device evaluator combines all of this into g2(0) and "
+        "brightness, and for pulsed drive pulse_counting.py follows the dot through the whole "
+        "finite pump pulse. Every number carries a provenance tag ([V] verified, [DR] derived, "
+        "[E] class estimate, [A] assumption), and the acceptance sweep varies the uncertain "
+        "inputs over their literature ranges rather than picking one value."))
 
     slides.append(Slide(
         "Anatomy of the artificial atom",
@@ -686,7 +944,10 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         f"E_h = {lv.E_h:.0f} meV inside those wells, giving an exciton transition energy "
         f"E_X = {lv.E_X_eV:.3f} eV ({lv.lambda_nm:.0f} nm). This is dot_levels.py's separable-disk "
         "model, honestly documented as accurate to tens of meV for this geometry class, not a "
-        "full k.p calculation.", image=figures["band"]))
+        "full k.p calculation. The escape energies printed on the figure matter later: the "
+        "shallower they are, the faster heat empties the dot and the faster it has to be "
+        "refilled, which is what drives the re-excitation problem on the verdict slides.",
+        image=figures["band"]))
 
     slides.append(Slide(
         "The material swap: fixing an inverted design",
@@ -697,17 +958,15 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         f"materials database this is physically inverted: InP's 300 K band gap is "
         f"{mat_sw['eg_inp_eV']:.2f} eV versus GaAs0.6P0.4's {mat_sw['eg_gaasp_eV']:.2f} eV "
         "(fsim_core.materials.bandgap), so InP is the narrower-gap material and cannot act as a "
-        "confining cladding around a wider-gap GaAsP active layer -- the carriers would collect in "
-        f"the InP, not the GaAsP. Separately, GaAsP is {mat_sw['mismatch_pct']:.1f}% lattice-"
-        "mismatched to InP (fsim_core.materials.mismatch, Vurgaftman et al. 2001 lattice "
-        "constants), too large to grow a coherent strained layer of useful thickness. "
-        "../_goal/materials_research.md documents both problems and identifies the platform that "
-        "does exist in the literature: InP self-assembled quantum dots grown inside a GaAs1-xPx "
-        "quantum well, clad by (Al,Ga)InP or AlGaAs, emitting in the 660-755 nm range depending on "
-        "composition (Gu et al., Optics Express 33, 23732 (2025), HKUST class; Reischle et al., "
-        "Optics Express 16, 12771 (2008), Stuttgart InP/GaInP class). This design study uses that "
-        "platform -- dot and matrix swapped relative to the literal brief -- as both its primary "
-        "(GaAsP-well) and fallback (GaInP-well) design cards.", image=figures["band"]))
+        "confining cladding around a wider-gap GaAsP active layer. Separately, GaAsP is "
+        f"{mat_sw['mismatch_pct']:.1f}% lattice-mismatched to InP (fsim_core.materials.mismatch, "
+        "Vurgaftman et al. 2001), too large to grow a coherent strained layer of useful "
+        "thickness. The platform that does exist in the literature is InP self-assembled quantum "
+        "dots grown inside a GaAs1-xPx quantum well, clad by (Al,Ga)InP or AlGaAs, emitting in "
+        "the 660-755 nm range (Gu et al., Optics Express 33, 23732 (2025), HKUST class; Reischle "
+        "et al., Optics Express 16, 12771 (2008), Stuttgart InP/GaInP class). This study uses "
+        "that platform as both its primary (GaAsP-well) and fallback (GaInP-well) design cards.",
+        image=figures["band"]))
 
     slides.append(Slide(
         "Turning on the light: the p-i-n diode",
@@ -723,7 +982,10 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "the bands so electrons flow in from the n-side and holes from the p-side and both are "
         "captured by the dot in the middle. At the single-dot-scale drive current this design uses "
         f"(I = {diode_info['I_uA']*1000:.1f} nA), fsim_core.transport's own I-V solver puts the "
-        f"junction voltage at V_j ≈ {diode_info['V_j']:.2f} V at 300 K.", image=figures["pin"]))
+        f"junction voltage at V_j ≈ {diode_info['V_j']:.2f} V (first headline-model sweep row of "
+        "the primary card). In pulsed operation this current is switched on for "
+        f"{pulse_ps:.0f} ps at {rep_mhz:.0f} MHz; how fast the dot refills during that window is "
+        "the crux of the verdict.", image=figures["pin"]))
 
     slides.append(Slide(
         "Two lines, one at a time: exciton and biexciton",
@@ -736,155 +998,177 @@ def build_slides(verdict: dict, sweep_rows: list[dict], lv: DL.DotLevels,
         "literature-anchored model (Matsuda et al., Phys. Rev. B 63, 121304(R) (2001); Laferriere "
         "et al., Nano Letters 23, 962 (2023); Chatzarakis et al., Phys. Rev. Applied 20, 034011 "
         f"(2023)) gives Γ(4 K) ≈ {lw_info['gamma_4K']:.2f} meV, far narrower than the "
-        "X-XX splitting; but Γ(300 K) is anchored to a 6-20 meV class range (no InP/GaAsP "
-        "single-dot 300 K linewidth has ever been published), which is comparable to or larger "
-        "than the 3-7 meV X-XX splittings seen across the InP-dot literature (Reischle et al. "
-        "2008; Bommer et al., J. Appl. Phys. 110, 063108 (2011)). At 300 K the two lines overlap "
-        "for essentially every published dot -- this is the quantitative reason every 300 K "
-        "single-photon result in the literature saturates near g2 ≈ 0.5.", image=figures["overlap"]))
+        "X-XX splitting; but Γ(300 K) is anchored to a class range (no InP/GaAsP single-dot "
+        "300 K linewidth has been published), comparable to or larger than the X-XX splittings "
+        "seen across the InP-dot literature (Reischle et al. 2008; Bommer et al., J. Appl. Phys. "
+        "110, 063108 (2011)). At 300 K the two lines overlap for essentially every published "
+        "dot. This slide explains why purity is hard at room temperature; the results slides "
+        "show that, in the corrected model, it is not even the dominant problem.",
+        image=figures["overlap"]))
 
     slides.append(Slide(
         "Getting light out: the edge waveguide",
         ["A ridge waveguide guides light sideways, to the chip edge, not straight up",
-         f"This design's mode captures about {beta_lo:.1f}-{beta_hi:.1f}% of the dot's light (beta)",
+         f"After the audit's beta fix (H4), the mode captures about {beta_range} of the dot's light",
          f"An uncoated facet lets about {100*wg_info['edge'].T_facet:.0f}% of that light escape the chip"],
-        "fsim_core.waveguide.py solves the actual guided optical mode of the ridge stack (an "
+        "fsim_core.waveguide.py solves the guided optical mode of the ridge stack (an "
         "(Al,Ga)InP core around the GaAsP well, on a GaAs substrate) with a scalar effective-index "
         "model (Lecamp, Lalanne & Hugonin, Phys. Rev. Lett. 99, 023902 (2007)). For this design's "
-        f"stack at 668 nm the solved mode has n_eff = {wg_info['edge'].n_eff:.2f} and a beta factor "
-        f"(fraction of the dot's spontaneous emission that couples into the guided mode) of "
-        f"{100*wg_info['edge'].beta:.2f}%, sweeping to {beta_hi:.1f}% across the acceptance-sweep "
-        f"grid; an uncoated facet then transmits {100*wg_info['edge'].T_facet:.0f}% of the guided "
-        "light out of the chip (Fresnel reflection at the semiconductor-air interface). Per Lemma 1 "
-        "of docs/rt_edge_contract.md, none of this changes the intrinsic multiphoton probability -- "
-        "it only sets how much of the light that is emitted is actually collected.", image=figures["wg"]))
+        f"stack at {wg_info['lambda_nm']:.0f} nm the solved mode has n_eff = {wg_info['edge'].n_eff:.2f} "
+        f"and a beta factor (fraction of the dot's spontaneous emission that couples into the "
+        f"guided mode) of {100*wg_info['edge'].beta:.2f}%, ranging {beta_range} "
+        "across the acceptance-sweep grid. Audit finding H4 corrected the mode area used in the "
+        "guided Purcell factor to the energy-normalised area at the dot, which roughly doubled "
+        "beta; the verdict's best row now reports beta = "
+        f"{brightness[beta_key]}. An uncoated facet then transmits "
+        f"{100*wg_info['edge'].T_facet:.0f}% of the guided light out of the chip (Fresnel "
+        "reflection). Per Lemma 1 of docs/rt_edge_contract.md, none of this changes the "
+        "intrinsic multiphoton probability; it only sets how much emitted light is collected.",
+        image=figures["wg"]))
 
     slides.append(Slide(
         "g2(0): the number that matters",
         ["g2(0): how often two photons arrive together. 0 = perfect single photon, 1 = ordinary lamp",
          "0.5 is the usual single-photon threshold",
-         (f"This design's best pulsed corner reaches {best_g2_pulsed:.4f}, only at the narrow-line, wide-splitting extreme"
-          if best_g2_eligible else
-          f"Under the corrected finite-pulse loading model, the best DIAGNOSTIC corner reaches {best_g2_pulsed:.4f} -- above threshold and below the flux floor")],
-        "g2(0) is the only equation this deck states explicitly, and even it is explained rather "
-        "than derived: it is the probability of detecting two photons at (almost) the same instant, "
-        "normalized so that a classical, many-photon source gives 1 and a perfect single-photon "
-        "emitter gives 0. The dashed curve on this slide is the published 300 K ceiling (no "
-        "electrically or optically driven III-V dot has ever demonstrated g2(0) < 0.5 at 300 K, "
-        "docs/rt_edge_contract.md); the solid curve is this design's own best pulsed-drive corner "
-        f"from the acceptance sweep, g2 = {best_g2_pulsed:.4f}" + (
-            " -- better than the published ceiling, but only at the extreme corner of the swept "
-            "range (narrowest linewidth, widest X-XX splitting) and only under pulsed, not "
-            "continuous, drive." if best_g2_eligible else
-            " -- WORSE than the published ceiling under the corrected finite-pulse loading model "
-            "(peer-review-triage.md finding 1), and this corner does not clear the collected-flux "
-            "eligibility floor either, so it is a diagnostic value, not a measurable one."),
+         f"Headline finite-pulse model: the best eligible corner reaches only {m['g2_min']} -- close to a lamp"],
+        "g2(0) is the only equation-like quantity this deck relies on, and even it is explained "
+        "rather than derived: it is the probability of detecting two photons at (almost) the same "
+        "instant, normalised so that a classical, many-photon source gives 1 and a perfect "
+        "single-photon emitter gives 0. The dashed curve is the best published 300 K single-dot "
+        f"value in the evidence ledger, g2(0) = {laf_g2:g} (Laferriere et al. 2023, optically "
+        "pumped InAsP/InP nanowire dot). The solid curve is this design's best eligible corner "
+        f"under the headline finite-pulse model: g2(0) = {m['g2_min']} (pooled median over the "
+        f"eligible rows {m['g2_median_eligible']}). That is worse than the published optical "
+        "result and nowhere near the 0.5 threshold. The delay axis of the figure is "
+        "illustrative: the sweep reports the scalar g2(0), not a measured g2(tau) trace, so only "
+        "the depth of each dip carries data. The next slides show where that value comes from.",
         image=figures["g2"]))
 
     slides.append(Slide(
         "Results: the room-temperature acceptance sweep",
-        [f"At the best {linewidth_sweep['split']:g} meV splitting, pulsed g2 rises with linewidth",
-         f"Under the corrected finite-pulse loading model, no sampled corner clears the flux floor (gamma300 threshold={threshold})",
-         "No T_hs, card, or lever combination passes the headline gate; evidence is also still incomplete",
-         "The 6.5 meV per-card anchor now fails on both cards under the corrected model",
-         f"Verified class anchors: {linewidth_sweep['low']:g} and {linewidth_sweep['mid']:g} meV"],
-        f"{verdict['verdict_line']}\nThe sweep was generated by scripts/run_rt_edge.py "
-        f"({verdict['generated']}) over the full contract-declared grid (docs/rt_edge_contract.md): "
-        "dot.delta_xx in [4.0, 8.0] meV, dot.gamma300 sampled at the finer values present in sweep.csv, and the detector response "
-        "(IRF) in [50, 200] ps, evaluated for both the primary (GaAsP-well) and fallback (GaInP-"
-        "well) design cards. This plot is constructed directly from out/rt_edge/sweep.csv at the "
-        f"largest splitting; the Chatzarakis 2023 and Matsuda 2001 anchors are read from the shared "
-        f"evidence ledger. At the 6.5 meV anchor: {anchor_text} The linewidth is unmeasured for this InP platform. "
-        f"Facet-model note: {verdict['facet_model_note']}",
-        image=figures["linewidth"], verbatim=[verdict["verdict_line"]]))
+        [f"Flux clears the {floor:g} photons/s floor only at T_hs = {elig_T} K: max {m['flux_max']} photons/s, "
+         f"{m['eligible']} rows eligible, all on {elig_cards}",
+         f"Pulsed g2(0) at those rows: min {m['g2_min']}, median {m['g2_median_eligible']} -- far above 0.5",
+         f"Across the swept 300 K linewidth ({linewidth_sweep['gamma_lo']:g}-{linewidth_sweep['gamma_hi']:g} meV) "
+         f"g2 stays at {linewidth_sweep['g2_lo']:.3f}-{linewidth_sweep['g2_hi']:.3f}",
+         "The 6.5 meV linewidth anchor fails on both cards"],
+        "The VERDICT line printed at the bottom of this slide is copied verbatim from "
+        f"out/rt_edge/verdict.md ({commit_line}). The sweep was generated by "
+        f"scripts/run_rt_edge.py ({verdict['generated']}) over the full contract grid "
+        "(docs/rt_edge_contract.md): X-XX splitting, 300 K linewidth, detector response, "
+        "heat-sink temperature and the collection levers, for both the primary (GaAsP-well) and "
+        "fallback (GaInP-well) cards, with the corrected finite-pulse model as the headline. "
+        f"Only {m['eligible']} rows clear the collected-flux floor, all at the coldest heat sink; "
+        f"there the lowest pulsed g2 is {m['g2_min']}. The figure plots, from sweep.csv at the "
+        f"widest {linewidth_sweep['split']:g} meV splitting, the lowest g2 at each linewidth and "
+        "temperature: the curves are flat and near 1, so a narrower line would not rescue the "
+        f"design. At the 6.5 meV anchor: {anchor_text} The verified class anchors "
+        f"{linewidth_sweep['low']:g} and {linewidth_sweep['mid']:g} meV come from the evidence ledger.",
+        image=figures["linewidth"], verbatim=[verdict["verdict_line"], commit_line]))
 
     slides.append(Slide(
-        "Why brightness changes the answer",
-        [f"Flux margin is {flux_margin}; values above 1 clear the 1000 photons/s floor, below 1 do not",
-         "The corrected circular-NA model raises collected flux, but not enough under the corrected loading model",
-         f"Maximum collected flux across the grid is {verdict['metrics']['flux_max']} photons/s; "
-         f"the best-diagnostic (lowest-g2) row reaches "
-         f"{brightness['reported collected_flux_pulsed_s']}"],
-        f"The factor table is read from out/rt_edge/verdict.md's finite-pulse chain (pkg5b-fix2 "
-        f"item 5: the headline model's own formula, not the superseded static loading/t_X/S "
-        f"product): finite_pulse_mean_counts={brightness.get(mean_counts_key, 'n/a')}, "
-        f"eta_total={brightness[eta_total_key]}, and repetition rate={brightness['rep rate (Hz)']} "
-        "Hz -- mean_counts x eta_total x rep_rate reproduces the reported collected flux; "
-        f"loading={brightness[loading_key]}, t_X={brightness['t_X (spectral transmission)']} and "
-        f"retention={brightness['S (confinement retention)']} are shown in the verdict for "
-        "reference only and are NOT part of this row's finite-pulse flux formula (already folded "
-        "into finite_pulse_mean_counts). These levers no longer buy enough collection at any "
-        "sampled corner under the corrected finite-pulse loading model; they do not improve "
-        "intrinsic g2 either way. The floor, factors, and lever values are the acceptance "
-        "artifact's brightness decomposition. "
-        f"Facet-model note from the verdict: {verdict['facet_model_note']}",
-        image=ENVELOPE_PNG))
+        "Brightness: the flux floor is cleared only at 230 K",
+        [f"Flux margin (flux_max / floor) is {flux_margin}: above 1, so the floor is cleared",
+         f"Flux falls as the heat sink warms: {flux_by_T} photons/s",
+         f"Post-H4 waveguide coupling at the best row: beta = {brightness[beta_key]}",
+         f"No Purcell recovery: a {planar['pairs']}-pair planar DBR cavity adds only +{pct:.1f}% to the total emission rate at 300 K"],
+        "The figure plots the maximum collected pulsed flux per heat-sink temperature and card "
+        "from the headline-model rows of out/rt_edge/sweep.csv, against the floor parsed from "
+        "verdict.md. The best row's flux chain, read from verdict.md: "
+        f"finite_pulse_mean_counts = {brightness.get(mean_counts_key, 'n/a')}, "
+        f"eta_total = {brightness[eta_total_key]}, repetition rate = {brightness['rep rate (Hz)']} "
+        f"Hz, giving {brightness['reported collected_flux_pulsed_s']}. The dominant limiter is "
+        f"confinement retention S = {brightness['S (confinement retention)']}: heat empties the "
+        f"dot. (Static factors loading = {brightness[loading_key]} and t_X = "
+        f"{brightness['t_X (spectral transmission)']} are reference only.) A cavity cannot fix "
+        f"this: its 1-D on-axis LDOS reaches {planar['onaxis_min']:.0f}-{planar['onaxis_max']:.0f}x "
+        "(out/tier_geometry/geometry_sweep.csv), but the angle-integrated total rate, computed "
+        f"live with fsim_core.dbr.planar_total_rate at {planar['lam0']:.0f} nm, is "
+        f"{planar['f_total_300']:.4f} at 300 K (+{pct:.1f}%; the 120 K geometry sweep gives at "
+        f"most {planar['f_total_120_max']:.4f}). A planar cavity redistributes emission, it does "
+        "not speed it up.", image=figures["flux"]))
 
     slides.append(Slide(
         "Validation: 80 K and 230 K comparisons",
-        ["Reischle like-for-like: 0.25 +/- 0.05 deconvolved vs the model's best intrinsic corner",
-         "Reischle 2008 also reports raw g2(0)=0.43 and corrected g2(0)=0.03",
-         "230 K model comparison: g2(0)=0.36, matching Chatzarakis 2023"],
-        "verify/verify_rt_edge_papers.py is a self-contained hallucination check: it re-derives "
-        "every anchored literature claim from the shared evidence ledger "
-        "(verify/data/rt_edge_anchors.yaml), confirms each has a real DOI or figure locator, checks "
-        "units and plausible magnitude, and distinguishes raw-versus-background-corrected numbers "
-        "(a documented failure mode where a paper's own raw, deconvolved and fully-corrected values "
-        f"could be swapped). It currently passes {evidence['passed']}/{evidence['total']} checks. "
-        "Two claims still lack the required second, independent verified source and are reported "
-        "as incomplete rather than silently accepted: " +
+        [f"Reischle 2008 (80 K, electrical): g2(0) = {reis['raw']} raw, {reis['deconv']} +/- {reis['deconv_err']} "
+         f"IRF-deconvolved, {reis['corrected']} background-corrected",
+         f"Convention-matched, that 80 K device is about {reis['factor']}x better than this design's best 230 K corner",
+         f"Chatzarakis 2023 measured g2(0) = {chatz_g2:g} at 230 K (optical pump); the headline model gives {m['g2_min']} here",
+         f"Evidence ledger: {evidence['passed']}/{evidence['total']} automated checks pass; "
+         f"{n_missing} claims still lack a second source"],
+        "The comparisons on this slide are read from verdict.md's literature-ceiling section and "
+        "from the shared evidence ledger (verify/data/rt_edge_anchors.yaml). The convention-"
+        "matched comparison uses Reischle's IRF-deconvolved but background-included value, "
+        "because the sweep's pulsed g2 is likewise background-included and never IRF-convolved. "
+        "The 230 K Chatzarakis value is an optically pumped InAs/GaAs measurement, so it is "
+        "context, not a like-for-like test. verify/verify_rt_edge_papers.py is a self-contained "
+        "hallucination check: it re-derives every anchored claim from the ledger, confirms each "
+        "has a real DOI or figure locator, checks units and magnitude, and distinguishes raw "
+        "from background-corrected numbers. It currently passes "
+        f"{evidence['passed']}/{evidence['total']} checks. {n_missing} claims still lack the "
+        "required second, independent verified source and are reported as incomplete rather "
+        "than silently accepted: " +
         "; ".join(f"{claim} ({reason})" for claim, reason in verdict["missing_claims"]) + ". " +
-        f"For context, the 80 K claim's only source is {cite('reischle2008_g2_80K')}, and the "
-        f"wavelength claim's only source is {cite('hkust_inp_gaasp_wavelength')}."))
+        f"For context, the 80 K claim's only source is {cite('reischle2008_g2_80K')}."))
 
     slides.append(Slide(
         "The design GUI",
         ["Engineers explore designs interactively -- sliders for the dot, the drive, the waveguide",
          "The same evaluate() pipeline runs live behind the GUI as behind this sweep",
-         "This screenshot is a real render of the running tool"],
+         f"GUI readouts are card-level numbers: {STATIC_LABEL}, not the finite-pulse headline"],
         "fsim_gui/designer.py is a live GUI (Dear PyGui) over the identical fsim_core.device "
         "evaluator used by the acceptance sweep and by verify/verify_rt_edge_cards.py: moving a "
         "slider re-runs the full materials-to-g2 pipeline and redraws the results panel and g2(0) "
-        "curve immediately, so a designer can explore the same trade-offs this deck reports "
-        "interactively rather than only reading a static sweep. The screenshot on this slide "
-        "(out/rt_edge/gui-smoke.png) is captured directly from a running instance of the tool via "
-        "fsim_gui/designer.py --frames 10 --screenshot, not a mockup.", image=GUI_PNG))
+        "curve immediately, so a designer can explore the same trade-offs this deck reports. The "
+        "screenshot on this slide (out/rt_edge/gui-smoke.png) is captured from a running instance "
+        "of the tool via fsim_gui/designer.py --frames 10 --screenshot, not a mockup. One caution: "
+        "the GUI evaluates a design card as shipped, and both edge cards ship with the static "
+        "per-pulse loading model (drive.finite_pulse: false). Every g2 the GUI shows for them is "
+        f"therefore a card-level value, labelled {STATIC_LABEL}; the headline finite-pulse model "
+        "that the verdict gates on gives g2 near 1 at the same points. Use the GUI to explore "
+        "trends, and the verdict for the answer.", image=GUI_PNG))
 
     slides.append(Slide(
         "The honest verdict",
-        ["Under the corrected finite-pulse loading model, NO sampled corner passes at any T_hs",
-         f"Pooled gamma300 threshold is {threshold}; neither card's own 6.5 meV anchor passes either",
-         "Evidence is also still incomplete: this is a double FAIL, not a conditional PASS",
-         "No published dot has broken the g2 ≈ 0.5, 300 K ceiling -- electrical or optical"],
-        f"{verdict['verdict_line']}\nFail reasons: " + ", ".join(verdict["fail_reasons"]) + ". "
-        "The relaxed stop rule requires g2(0) < 0.5 with working electrical injection, "
-        "in-plane out-coupling, and every claim cross-checked against at least two independent "
-        "papers, at T_hs >= 230 K. Under the corrected finite-pulse loading calculation (peer-"
-        "review-triage.md finding 1), replacing the legacy static per-pulse loading approximation "
-        "every earlier package used, no sampled corner anywhere in the grid clears even the "
-        "collected-flux eligibility floor, let alone the g2(0) gate. This is not a conditional "
-        "PASS pending evidence completion: the verdict now fails BOTH on evidence "
-        "(docs/rt_edge_contract.md requires completeness) AND on having no eligible row at all -- "
-        "closing the evidence gaps alone would not flip this sweep to PASS.",
-        verbatim=[verdict["verdict_line"]]))
+        [f"1. Flux clears the floor at {elig_T} K: {m['flux_max']} > {floor:g} photons/s",
+         f"2. But pulsed g2(0) = {m['g2_min']}: the dot is re-excited during the {pulse_ps:.0f} ps pulse",
+         f"3. Same corner, static loading: g2 = {static_g2:.4f}, {STATIC_LABEL}",
+         f"4. No Purcell recovery: +{pct:.1f}% total rate from a planar cavity",
+         f"5. VERDICT: FAIL ({fail_reasons}) at commit {hashes['verdict']}"],
+        "This is the verdict chain. First, the corrected collection model (audit H4) lifts the "
+        f"collected flux above the floor, but only at {elig_T} K and only on {elig_cards}. "
+        f"Second, at exactly those rows the pulsed g2 is {m['g2_min']}. Third, the cause: at "
+        "these temperatures carriers escape the dot quickly, so during a "
+        f"{pulse_ps:.0f} ps current pulse the dot empties and refills and can emit more than "
+        "once per pulse (fsim_core.pulse_counting, which keeps re-excitation inside the pulse). "
+        "The figure compares the two models from sweep.csv: at the best corner the legacy "
+        f"static-loading model gives {static_g2:.4f} with {static_flux:.0f} photons/s, below the "
+        f"floor (a card-level, {STATIC_LABEL} number; that model has "
+        f"{static_sens.get('eligible', 'n/a')}/{static_sens.get('total', 'n/a')} eligible rows). "
+        f"Fourth, a planar cavity adds only +{pct:.1f}% to the emission rate, so it cannot outrun "
+        f"the escape. Fifth, the verdict fails on {fail_reasons}. {commit_line}. Closing the "
+        "evidence gaps alone would not flip this sweep to PASS.",
+        image=figures["reexc"], verbatim=[verdict["verdict_line"], commit_line]))
 
     slides.append(Slide(
         "Limitations and what would have to change",
-        ["Filter window follows the linewidth, fixing t_X=0.5 by convention",
+        [f"Re-excitation within the {pulse_ps:.0f} ps pulse sets g2: slower escape or a shorter pulse is needed",
+         "Filter window follows the linewidth, fixing t_X=0.5 by convention",
          "Residual background is transferred from 80 K data to this 300 K platform",
          "Pulsed drive is required: the CW dip is narrower than detector response"],
-        "What would have to be true for a future revision to pass: (1) a measured, not "
-        "class-proxy, 300 K single-dot linewidth for an InP/GaAsP or InP/GaInP dot, ideally near "
-        "the 6 meV low end of today's assumed range; (2) a measured X-XX splitting nearer the "
-        "7 meV end of today's 4-7 meV range, or a design (e.g. piezoelectric growth, per "
-        "Chatzarakis et al. 2023's InAs/GaAs result) that widens it further; (3) an independent "
-        "second source for the 80 K electrical g2 anchor and for the InP/GaAsP emission-wavelength "
-        "anchor, closing out/rt_edge/evidence.json's two open claims; and (4) because carrier "
-        "escape at 300 K is faster than any detector's timing response, either a much faster "
-        "single-photon detector or a design that slows thermal escape (a deeper confinement "
-        "barrier) before continuous-wave operation could show any antibunching at all. None of "
-        "these four are engineering details this simulator can resolve on its own -- they are "
-        "measurements and material developments that have not yet been published."))
+        "What would have to be true for a future revision to pass: (1) much slower thermal "
+        "escape, from a deeper confinement barrier, so that the dot is not emptied and refilled "
+        f"within one {pulse_ps:.0f} ps pulse, or a drive pulse short compared with the escape "
+        "time; (2) a measured, not class-proxy, 300 K single-dot linewidth for an InP/GaAsP or "
+        "InP/GaInP dot; (3) a measured X-XX splitting, since the sweep only brackets it; and "
+        f"(4) an independent second source for each of the {n_missing} evidence claims still "
+        "open in out/rt_edge/evidence.json. The modelling conventions also matter: the filter "
+        "window tracks the linewidth, so t_X is 0.5 by construction and flux cannot depend on "
+        "gamma300; the residual background is borrowed from an 80 K device; and because the CW "
+        "antibunching dip is narrower than any detector's timing response, only pulsed, gated "
+        "operation can demonstrate antibunching. None of these are engineering details the "
+        "simulator can resolve on its own -- they are measurements and material developments "
+        "that have not yet been published."))
 
     return slides
 
@@ -939,7 +1223,11 @@ def build_pptx(slides: list[Slide], path: Path):
         set_title(slide, s.title)
 
         content_top = Inches(1.35)
-        content_h = Inches(SLIDE_H_IN - 1.35 - 0.25)
+        # P10: a verbatim data block (the full VERDICT line, ~700 characters,
+        # plus the commit line) gets its own full-width strip at the bottom
+        # of the slide in small monospace, so it never overflows a column.
+        mono_h = Inches(1.25) if s.verbatim else 0
+        content_h = Inches(SLIDE_H_IN - 1.35 - 0.3) - mono_h
         if s.image is not None:
             img_w = Inches(6.6)
             fit_picture(slide, s.image, Inches(SLIDE_W_IN - 0.5 - 6.6), content_top,
@@ -948,20 +1236,24 @@ def build_pptx(slides: list[Slide], path: Path):
         else:
             bullets_w = Inches(SLIDE_W_IN - 1.6)
         bullets_left = Inches(0.6) if s.image is not None else Inches(0.8)
-        bullets_h = content_h if s.image is not None else Inches(2.6)
-        add_bullets(slide, s.bullets, bullets_left, content_top, bullets_w, bullets_h,
-                   font_pt=18 if s.image is not None else 22)
+        n_chars = sum(len(b) for b in s.bullets)
+        if s.image is not None:
+            font_pt = 18 if n_chars < 300 else (16 if n_chars < 380 else 14)
+        else:
+            font_pt = 22 if n_chars < 420 else 18
+        add_bullets(slide, s.bullets, bullets_left, content_top, bullets_w, content_h,
+                   font_pt=font_pt)
         if s.verbatim:
-            mono_top = (content_top + Inches(2.7)) if s.image is None else \
-                (content_top + content_h - Inches(0.9))
-            box = slide.shapes.add_textbox(bullets_left, mono_top, bullets_w, Inches(0.85))
+            box = slide.shapes.add_textbox(Inches(0.5), content_top + content_h + Inches(0.1),
+                                           Inches(SLIDE_W_IN - 1.0), mono_h - Inches(0.1))
             tf = box.text_frame
             tf.word_wrap = True
-            tf.text = s.verbatim[0]
-            run = tf.paragraphs[0].runs[0]
-            run.font.name = "Consolas"
-            run.font.size = Pt(13)
-            run.font.color.rgb = RGBColor(0x57, 0x60, 0x6A)
+            for j, text in enumerate(s.verbatim):
+                p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
+                p.text = text
+                p.font.name = "Courier New"
+                p.font.size = Pt(8)
+                p.font.color.rgb = RGBColor(0x57, 0x60, 0x6A)
 
         notes = slide.notes_slide.notes_text_frame
         notes.text = s.notes
@@ -1013,7 +1305,7 @@ img { display: block; max-width: 100%; height: auto; margin: 1.2rem auto;
 .notes summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .mono { font-family: Consolas, Menlo, monospace; background: var(--mono-bg);
         padding: 0.6rem 0.9rem; border-radius: 6px; white-space: pre-wrap;
-        font-size: 0.95rem; margin: 1rem 0; }
+        overflow-wrap: anywhere; font-size: 0.85rem; margin: 1rem 0; }
 .slideno { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.4rem; }
 </style>
 </head>
@@ -1063,25 +1355,36 @@ def regenerate_gui_screenshot():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    # P10: regenerating the GUI screenshot writes out/rt_edge/gui-smoke.png,
+    # which is outside this script's own output directory; it is now opt-in
+    # (--gui). --no-gui is still accepted (the default behaviour) so older
+    # command lines keep working.
+    parser.add_argument("--gui", action="store_true",
+                       help="regenerate out/rt_edge/gui-smoke.png first (opt-in)")
     parser.add_argument("--no-gui", action="store_true",
-                       help="skip regenerating out/rt_edge/gui-smoke.png")
+                       help="use the committed out/rt_edge/gui-smoke.png as-is (default)")
     args = parser.parse_args()
 
-    if not args.no_gui:
+    if args.gui and not args.no_gui:
         regenerate_gui_screenshot()
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
 
     verdict = parse_verdict_md(VERDICT_MD)
     sweep_rows = load_sweep_rows(SWEEP_CSV)
+    headline_rows = headline_model_rows(sweep_rows, verdict)
     anchors = load_anchor_sources(ANCHORS_YAML)
+    anchor_vals = anchor_values(ANCHORS_YAML)
     evidence = evidence_numbers(EVIDENCE_JSON)
 
     lv = gaasp_band_levels()
     mat_sw = material_switch_numbers()
-    diode_info = diode_numbers(sweep_rows)
-    wg_info = waveguide_numbers(sweep_rows, GAASP_CARD)
+    diode_info = diode_numbers(headline_rows)
+    wg_info = waveguide_numbers(headline_rows, GAASP_CARD)
     lw_info = linewidth_numbers()
+    cmp = best_row_comparison(sweep_rows, verdict)
+    planar = planar_cavity_numbers()
+    hashes = git_hashes()
 
     figures = {
         "band": FIG_DIR / "band_diagram.png",
@@ -1090,19 +1393,30 @@ def main():
         "wg": FIG_DIR / "waveguide_mode.png",
         "g2": FIG_DIR / "g2_dip.png",
         "linewidth": FIG_DIR / "linewidth_sweep.png",
+        "flux": FIG_DIR / "flux_vs_T.png",
+        "reexc": FIG_DIR / "reexcitation_g2.png",
     }
     draw_band_diagram(figures["band"], lv)
     draw_pin_diode(figures["pin"], diode_info["diode"], diode_info["V_j"], diode_info["I_uA"])
     draw_spectral_overlap(figures["overlap"], lw_info["params"], 4.0, 7.0)
     draw_waveguide_mode(figures["wg"], wg_info["stack"], wg_info["mode"], wg_info["edge"])
-    _g2_card = verdict["cards"]["edge-inp-gainp-design"]
-    best_g2_pulsed = _g2_card.get("g2_pulsed_min", _g2_card.get("diag_g2_min"))
-    draw_g2_dip(figures["g2"], best_g2_pulsed, 0.5)
-    linewidth_sweep = draw_linewidth_sweep(figures["linewidth"], sweep_rows)
+    draw_g2_dip(figures["g2"], float(verdict["metrics"]["g2_min"]),
+                anchor_vals["laferriere23-g2-temperature"])
+    linewidth_sweep = draw_linewidth_sweep(figures["linewidth"], headline_rows)
+    draw_flux_vs_T(figures["flux"], headline_rows, verdict["flux_floor"])
+    draw_reexcitation(figures["reexc"], headline_rows, static_model_rows(sweep_rows),
+                      cmp["best"]["card_id"])
     brightness = verdict_brightness_factors()
 
-    slides = build_slides(verdict, sweep_rows, lv, mat_sw, diode_info, wg_info, lw_info,
-                          evidence, anchors, figures, linewidth_sweep, brightness)
+    slides = build_slides(verdict, headline_rows, lv, mat_sw, diode_info, wg_info, lw_info,
+                          evidence, anchors, figures, linewidth_sweep, brightness,
+                          cmp, planar, hashes, anchor_vals)
+
+    # Speaker-notes length rule of the deck (120-250 words per slide).
+    for i, s in enumerate(slides, start=1):
+        n_words = len(s.notes.split())
+        if not 120 <= n_words <= 250:
+            print(f"WARNING slide {i} notes have {n_words} words (rule: 120-250)")
 
     build_pptx(slides, PPTX_PATH)
     build_html(slides, HTML_PATH)

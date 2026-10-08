@@ -69,6 +69,13 @@ G2, FLUX_FLOOR = 0.5, 1000.0
 # T=230/300 K and both rates").
 CUT_T_HS = (230.0, 300.0)
 
+# Audit C3 item 7: artifacts written AFTER this runner by their own builder
+# (scripts/build_nanowire_graphs_page.py writes graphs.html from results.md,
+# manifest.json and the PNGs). They are downstream of the manifest, so
+# manifest.json never records their hash: a hash taken here would go stale the
+# moment the builder rebuilds the page, whatever the order of the two commands.
+DOWNSTREAM_ARTIFACTS = ("graphs.html",)
+
 CARD_NAME = {
     ("horizontal_as_built", "rectangular"): "nitride-nanowire-horizontal-pulse-design.yaml",
     ("horizontal_as_built", "deterministic_pair"): "nitride-nanowire-horizontal-set-design.yaml",
@@ -169,6 +176,13 @@ def _card_hash(name):
     if name not in _CARD_HASH_CACHE:
         _CARD_HASH_CACHE[name] = hashlib.sha256((ROOT / "cards" / name).read_bytes()).hexdigest()
     return _CARD_HASH_CACHE[name]
+
+
+def _output_hashes(out):
+    """sha256 of every file in the run dir except manifest.json itself and
+    the DOWNSTREAM_ARTIFACTS (audit C3 item 7)."""
+    return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())
+            if p.is_file() and p.name != "manifest.json" and p.name not in DOWNSTREAM_ARTIFACTS}
 
 
 def _load_card(name):
@@ -355,6 +369,12 @@ def _design(p):
     tau_pulse_ns = float(p.get("tau_pulse_ns", 0.1))
     rep = float(p["rep_rate_hz"])
     d.drive.diode["tau_pulse_ns"] = tau_pulse_ns
+    # Audit C6: the injector loading window is its own card leaf; written
+    # ONLY for rows that carry it (the opt-in loading-window cut below), so
+    # every default-grid row's design and physics-only identity are
+    # unchanged (the device then defaults the window to tau_pulse_ns).
+    if p.get("loading_window_ns") is not None:
+        d.drive.diode["loading_window_ns"] = float(p["loading_window_ns"])
     d.drive.rep_rate_hz = rep
     d.drive.duty = tau_pulse_ns * 1e-9 * rep  # spec: "duty=tau*rep"
     d.drive.cycle_loading = regime
@@ -476,11 +496,26 @@ def build_core(family, quick):
     return out
 
 
-def build_reduced_cuts(quick):
+# Audit C4: the reduced-cut grid is VERSIONED so an artifact produced by an
+# older grid definition is still checked exactly against the grid that
+# produced it (verify_nitride_nanowire_sweep reads the manifest's
+# reduced_cut_grid_version; a manifest without the key predates C4).
+# "c4" adds occupied_dot_access=0.1 and the lifetime (tau_rad0_ns), capture
+# (tau_cap_ps) and parasitic-capacitance (C_parasitic_F) cuts.
+REDUCED_CUT_GRID_VERSIONS = ("pre_c4", "c4")
+REDUCED_CUT_GRID_VERSION = "c4"
+
+
+def build_reduced_cuts(quick, grid_version=REDUCED_CUT_GRID_VERSION):
     """One-at-a-time reduced cuts at each family's reference geometry, both
     regimes/bounds, T in {230,300}, both rates (contract "Sweep grid").
     `quick` trims the per-axis value list (never the two families/regimes/
-    bounds/rates/temperatures) so --quick stays well under 600 s."""
+    bounds/rates/temperatures) so --quick stays well under 600 s.
+    `grid_version` selects the declared grid ("c4" = current; "pre_c4" =
+    the grid every sweep.csv before audit C4 was generated with)."""
+    if grid_version not in REDUCED_CUT_GRID_VERSIONS:
+        raise ValueError(f"unknown reduced-cut grid_version {grid_version!r}")
+    c4 = grid_version == "c4"
     out = []
 
     def axis(name, key, values):
@@ -497,9 +532,14 @@ def build_reduced_cuts(quick):
     if quick:
         axis("screening_fraction", "screening_fraction", (1.0,))
         axis("b_res", "b_res", (0.02,))
-        axis("occupied_dot_access", "occupied_dot_access", (1.0,))
+        axis("occupied_dot_access", "occupied_dot_access", (0.1, 1.0) if c4 else (1.0,))
         axis("R_s_ohm", "R_s_ohm", (1.0e6,))  # horizontal-only meaningful value, evaluated on both (vertical is its own default)
         axis("current_uA", "I_uA", (0.02,))
+        if c4:
+            # audit C4 restored axes (one alternative value each in --quick)
+            axis("tau_rad0_ns", "tau_rad0_ns", (4.0,))
+            axis("tau_cap_ps", "tau_cap_ps", (100.0,))
+            axis("C_parasitic_F", "C_parasitic_F", (1.0e-16,))
         return out
 
     # REDUCED-CUT BUDGET TRIM (decisions: see main()'s `decisions` list and
@@ -522,9 +562,8 @@ def build_reduced_cuts(quick):
     # equals the main-grid default (redundant with the core grid).
     # RESTORED this fix round (see the current_pulse_width axis below):
     # current_uA/tau_pulse_ns pulse sensitivity, previously dropped.
-    # DROPPED entirely this run (never Cartesian-producted against the
-    # kept axes, simply not sampled): reservoir_access, gamma300
-    # (linewidth), tau_rad0_ns, tau_cap_ps (capture), C_parasitic_F,
+    # DROPPED entirely (never Cartesian-producted against the kept axes,
+    # simply not sampled): reservoir_access, gamma300 (linewidth),
     # Rth_K_W (both families), R_s_ohm on the
     # vertical family, NA (horizontal)/bottom_reflectivity (vertical)
     # collection-envelope cuts. This is a real, reported coverage gap
@@ -534,11 +573,24 @@ def build_reduced_cuts(quick):
     axis("b_res", "b_res", (0.02,))
     axis("S_cm_s", "S_cm_s", (1.0e2, 1.0e4))
     axis("shell", "shell", ("AlGaN",))
-    axis("occupied_dot_access", "occupied_dot_access", (1.0,))
+    axis("occupied_dot_access", "occupied_dot_access", (0.1, 1.0) if c4 else (1.0,))
     axis("al_fraction", "al_fraction", (0.2,))
     axis("growth_tolerance_steps", "growth_tolerance_steps", (2.0,))
     axis("alignment_uncertainty_meV", "alignment_uncertainty_meV", (30.0,))
     axis("occupation_control_uncertainty", "occupancy_control_known", (True,))
+    # Audit C4 (results review, Astra 6): RESTORED lifetime / capture /
+    # parasitic-capacitance cuts, plus occupied_dot_access=0.1 above (the
+    # contract's sensitivity set is {0, 0.1, 1.0}; 0.05 is the default).
+    # Values [A]: tau_rad0_ns {0.2, 4.0} and tau_cap_ps {1, 100} reuse the
+    # planar cavity sweep's own SENS endpoints (scripts/run_nitride_cavity.py);
+    # C_parasitic_F {1e-18, 1e-16} is the contract's Card-schema sensitivity
+    # set (docs/nitride_nanowire_contract.md). Added to the grid definition
+    # now; only --dry-run exercised them in audit C4 -- the full sweep that
+    # evaluates them is the checker's scheduled re-run.
+    if c4:
+        axis("tau_rad0_ns", "tau_rad0_ns", (0.2, 4.0))
+        axis("tau_cap_ps", "tau_cap_ps", (1.0, 100.0))
+        axis("C_parasitic_F", "C_parasitic_F", (1.0e-18, 1.0e-16))
 
     # injector_barrier_thickness_nm: electron AND hole barrier thickness
     # move together (one "barrier thickness" cut, contract's "injector
@@ -586,9 +638,47 @@ def build_reduced_cuts(quick):
     return out
 
 
+# Audit C6 (2026-09-23, M3; user decision Q6: the loading window is
+# arbitrary -- the goal is single photons in ANY window). An OPT-IN sweep
+# axis (--loading-window-cut), never part of the default grid, so the
+# default grid (and every committed sweep.csv) is untouched. Values [A]:
+# roughly half-decade steps from the 0.1 ns headline pulse up to the 80 MHz
+# period; a value is kept only where it is strictly below the row's period
+# 1/rep_rate (contract "Composition rules" bullet 7), so 10 ns appears at
+# 80 MHz only (the 200 MHz period is 5 ns).
+LOADING_WINDOW_CUT_NS = (0.1, 0.3, 1.0, 3.0, 10.0)
+QUICK_LOADING_WINDOW_CUT_NS = (0.3, 3.0)
+LOADING_WINDOW_AXIS = "loading_window_ns"
+
+
+def build_loading_window_cut(quick):
+    """Opt-in loading-window sensitivity (audit C6): each family's reference
+    geometry, both regimes, relaxed (headline) bound, T in CUT_T_HS (300 K
+    only in --quick), both rates, loading_window_ns in LOADING_WINDOW_CUT_NS
+    (QUICK_LOADING_WINDOW_CUT_NS in --quick) strictly below the period. In
+    the rectangular regime the window is also the second-carrier gate; in
+    the deterministic_pair regime it prices the missed load only (the
+    counting gate stays the card gate). tau_pulse_ns (the electrical pulse)
+    is held at its 0.1 ns default throughout."""
+    values = QUICK_LOADING_WINDOW_CUT_NS if quick else LOADING_WINDOW_CUT_NS
+    temps = (300.0,) if quick else CUT_T_HS
+    out = []
+    for family in FAMILIES:
+        for reg, t, rate in itertools.product(REGIMES, temps, REP_RATES):
+            for v in values:
+                if v * 1e-9 >= 1.0 / rate:
+                    continue
+                p = full_defaults(family)
+                p.update(regime=reg, strain_bound="relaxed", T_hs=t, rep_rate_hz=rate)
+                p["loading_window_ns"] = float(v)
+                p["sensitivity_axis"] = LOADING_WINDOW_AXIS
+                p["sensitivity_value"] = float(v)
+                out.append(p)
+    return out
+
+
 DROPPED_CUT_AXES = (
-    "reservoir_access", "gamma300 (linewidth)", "tau_rad0_ns", "tau_cap_ps (capture)",
-    "C_parasitic_F", "Rth_K_W (both families)",
+    "reservoir_access", "gamma300 (linewidth)", "Rth_K_W (both families)",
     "R_s_ohm (vertical family)", "NA (horizontal)/bottom_reflectivity (vertical) collection envelope",
 )
 
@@ -643,14 +733,16 @@ def build_planar_reference(quick):
     return out
 
 
-def planned_counts(quick):
+def planned_counts(quick, loading_window_cut=False):
     core = sum(len(build_core(f, quick)) for f in FAMILIES)
-    cuts = len(build_reduced_cuts(quick)) + len(build_dipole_falsification())
+    lw_rows = len(build_loading_window_cut(quick)) if loading_window_cut else 0
+    cuts = len(build_reduced_cuts(quick)) + len(build_dipole_falsification()) + lw_rows
     desh2013 = len(build_deshpande2013(quick))
     planar = len(build_planar_reference(quick))
     total = core + cuts + desh2013 + planar + 1  # +1: deshpande2014 replay
     return {"core_rows": core, "reduced_cut_rows": cuts, "deshpande2013_rows": desh2013,
             "planar_reference_rows": planar, "deshpande2014_replay_rows": 1,
+            "loading_window_cut_rows": lw_rows,
             "planned_evaluate_calls_upper_bound": total}
 
 
@@ -699,7 +791,11 @@ _CSV_BOOL_COLUMNS = frozenset((
 # `is False` check correctly treats "not applicable" as neither, exactly
 # like the CSV's own bound_reversal_pair sentinel strings are already left
 # uncoerced rather than forced into True/False.
-_CSV_NULL_BOOL_TOKENS = frozenset(("", "nan", "NaN", "NAN", "none", "None", "NONE", "null", "NULL"))
+# Audit C4 (results review deferred LOW): the sweep's own "not applicable"
+# sentinel (e.g. set_feasible / rti_feasible / single_mode on rows where the
+# screen never applies) is a null too, never False.
+_CSV_NULL_BOOL_TOKENS = frozenset(("", "nan", "NaN", "NAN", "none", "None", "NONE", "null", "NULL",
+                                    "not_applicable"))
 
 
 def _coerce_csv_row(row):
@@ -1397,6 +1493,160 @@ def _diagnostic_lambda_from_invalid_reasons(row):
     return None, False
 
 
+# ------------------------------------------------ audit C7: invalid-rows paragraph
+QCSE_PARAGRAPH_HEADING = "### QCSE / invalid-rows paragraph (dominant invalid reason)"
+FIELD_COLLAPSE_HEADING = "### Field-collapse (QCSE collapse) paragraph"
+
+
+def _reason_key(reason):
+    """Audit C3 item 6: the breakdown label of an invalid reason is its text
+    up to the first ':' OUTSIDE parentheses. A ':' inside a parenthesised
+    clause (the field_collapse reason's '(|F|*h_eff >= strained InGaN gap:
+    interband Zener breakdown, ...)') no longer truncates the label mid-
+    parenthesis; such a reason is printed whole, parentheses balanced."""
+    depth = 0
+    for i, ch in enumerate(reason):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == ":" and depth == 0:
+            return reason[:i]
+    return reason
+
+
+def _row_reasons(row):
+    try:
+        reasons = json.loads(row.get("invalid_reasons", "[]"))
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return reasons if isinstance(reasons, list) else []
+
+
+def _invalid_paragraph_triggers(core, top_key, top_n, invalid_total):
+    """Audit C7: the single trigger rule shared by every sub-paragraph of
+    results.md's invalid-rows section (the artifact verifier recomputes it
+    independently from sweep.csv). Returns (dominant, si_rows, fc_dominant):
+    dominant = the leading reason covers MORE than half of all invalid rows
+    [A threshold, unchanged from the H4 rule]; si_rows = the invalid CORE rows
+    carrying that reason whose invalid_reasons also carry a recoverable
+    Si-index-table diagnostic wavelength (non-empty only when dominant) --
+    the Si-index excursion trigger; fc_dominant = dominant and the leading
+    reason is the Zener / field_collapse validity floor."""
+    dominant = bool(invalid_total > 0 and top_key is not None and top_n / invalid_total > 0.5)
+    si_rows = []
+    if dominant:
+        for r in core:
+            if r.get("row_kind") != "core" or r.get("valid"):
+                continue
+            if not any(reason.startswith(top_key) for reason in _row_reasons(r)):
+                continue
+            lam, recovered = _diagnostic_lambda_from_invalid_reasons(r)
+            if recovered:
+                si_rows.append((r, lam))
+    fc_dominant = bool(dominant and str(top_key).startswith("field_collapse"))
+    return dominant, si_rows, fc_dominant
+
+
+def _dominant_invalid_paragraph(top_key, top_n, invalid_total, dominant, si_trigger, fc_dominant):
+    """Audit C7: ALWAYS written. States the dominant invalid reason and its
+    count, and the three trigger flags in a machine-checkable line."""
+    out = [QCSE_PARAGRAPH_HEADING, ""]
+    if top_key is None or invalid_total <= 0:
+        out.append("Dominant invalid reason: none (0 invalid rows this run); dominant=False; "
+                   "si_index_excursion_trigger=False; field_collapse_dominant=False.")
+        return out
+    out.append(f"Dominant invalid reason: '{top_key}' on {top_n}/{invalid_total} invalid rows "
+               f"({100.0 * top_n / invalid_total:.0f} percent); dominant={dominant}; "
+               f"si_index_excursion_trigger={si_trigger}; field_collapse_dominant={fc_dominant}. "
+               "Rule (shared by this generator and the artifact verifier): dominant means the leading "
+               "reason covers more than half of all invalid rows [A]; the Si-index QCSE excursion paragraph "
+               "is written only when, in addition, at least one invalid core row carrying that reason "
+               "records a recoverable si_complex_index diagnostic wavelength; the field-collapse paragraph "
+               "only when the dominant reason is the field_collapse validity floor.")
+    return out
+
+
+def _field_collapse_paragraph(core, top_key, top_n, invalid_total):
+    """Audit C7: explains field_collapse-dominated invalid rows. The Zener /
+    field-collapse validity floor (fsim_core.nitride_levels.
+    _field_drop_exceeds_gap, audit C0/C4) declares a dot invalid when the
+    electrostatic drop across it, |F|*h, reaches the strained InGaN gap
+    Ec-Ev [DR uniform-field slab; mechanism: Simon et al., PRL 2009;
+    Krishnamoorthy et al., APL 2010; threshold [A]]. The replay here reads
+    ONLY dependency modules at the representative row's own inputs (never
+    a second evaluate() call): nitride_nanowire_levels.levels() for the
+    total field and the invalid reason, its _once() tuple for the
+    spontaneous/piezoelectric split, and nitride_materials.band_edges() for
+    the strained gap. It is not a new physics result."""
+    fc_rows = [r for r in core if r.get("row_kind") == "core" and not r.get("valid")
+               and any(reason.startswith(top_key) for reason in _row_reasons(r))]
+    out = [FIELD_COLLAPSE_HEADING, ""]
+    if not fc_rows:
+        out.append(f"NOTE: '{top_key}' dominates ({top_n}/{invalid_total}) but no invalid CORE row carries it.")
+        return out
+    families = sorted({r.get("family") for r in fc_rows})
+    bounds = sorted({r.get("strain_bound") for r in fc_rows})
+    x_ins = sorted({float(r.get("x_in", -1)) for r in fc_rows})
+    heights = sorted({float(r.get("height_nm", -1)) for r in fc_rows})
+    sample = min(fc_rows, key=lambda r: r["row_id"])
+    dep = sample.get("field_kVcm")
+    dep_finite = _finite_num(dep)
+    ext = float(dep) if dep_finite else 0.0
+    stored_ext = sample.get("external_field_kVcm")
+    stored_ext_txt = f"{float(stored_ext):.4g}" if _finite_num(stored_ext) else "nan"
+    dep_txt = (f"{float(dep):.4g} kV/cm depletion field, used as the replay input external_field_kVcm"
+               if dep_finite else
+               "nan (no depletion field was resolved: the row went invalid at the levels stage) and the "
+               f"row's stored external_field_kVcm is {stored_ext_txt}; the replay below therefore takes "
+               "external_field_kVcm=0.0 [A] as its replay input (the card's ext_field default, no bias), "
+               "not a value stored on the row")
+    t_k = float(sample.get("T_j")) if _finite_num(sample.get("T_j")) else float(sample.get("T_hs", 300.0))
+    h_nm = float(sample.get("height_nm"))
+    replay_txt = "the levels-only replay could not be computed for this row this run"
+    try:
+        from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem, levels, _once
+        from fsim_core.nitride_materials import band_edges, binary, ingaN
+        sys_ = NitrideNanowireSystem(
+            height_nm=h_nm, core_radius_nm=float(sample.get("core_radius_nm")),
+            outer_radius_nm=float(sample.get("outer_radius_nm") or sample.get("core_radius_nm")),
+            disc_radius_nm=None, x_in=float(sample.get("x_in")), strain_bound=sample.get("strain_bound"),
+            screening_fraction=float(sample.get("screening_fraction") or 0.0),
+            external_field_kVcm=ext)
+        lv = levels(sys_, T_K=t_k)
+        a_tuple = _once(sys_, t_k, 1201, 45.)[0]
+        f_sp, f_pz = (a_tuple[3], a_tuple[4]) if a_tuple is not None else (float("nan"), float("nan"))
+        sf = 0 if sample.get("strain_bound") == "relaxed" else 1
+        de = band_edges(ingaN(float(sample.get("x_in"))), t_k, substrate=binary("GaN"), strain_fraction=sf)
+        gap = de["Ec_eV"] - de["Ev_eV"]
+        drop = abs(lv.field_kVcm) * 1e-4 * h_nm  # e*(kV/cm)*nm = 1e-4 eV [DR]
+        collapse_seen = any(str(x).startswith("field_collapse") for x in lv.invalid_reasons)
+        replay_txt = (f"a levels-only replay (fsim_core.nitride_nanowire_levels at this row's own x_in/"
+                      f"height_nm/core_radius_nm/strain_bound/screening_fraction, T={t_k:g} K) gives "
+                      f"F_sp_kVcm={f_sp:.6g}, F_pz_kVcm={f_pz:.6g}, total_field_kVcm={lv.field_kVcm:.6g}; "
+                      f"field drop |F|*h={drop:.6g} eV across h={h_nm:g} nm against the strained InGaN gap "
+                      f"Ec-Ev={gap:.6g} eV (drop >= gap: {drop >= gap}); replay valid={lv.valid}, "
+                      f"field_collapse reason reproduced: {collapse_seen}")
+    except Exception:
+        pass
+    out.append(f"The {len(fc_rows)} invalid core rows carrying '{top_key}' ({top_n}/{invalid_total} of all "
+               f"invalid rows) are family={families}, strain_bound={bounds}, x_in={x_ins}, "
+               f"height_nm={heights}. They are QCSE COLLAPSE rows, not a data-table gap: the unscreened "
+               "polarization field (spontaneous + piezoelectric, Bernardini et al., PRB 1997 [V]) tilts the "
+               "dot's band edges so far that the electrostatic drop across the dot, |F|*h, reaches the "
+               "strained InGaN gap Ec-Ev. Past that point the filled valence states at one face are degenerate "
+               "with empty conduction states at the other, interband (Zener) tunnelling screens the field, "
+               "and the fixed-field single-particle solve is not self-consistent (mechanism: Simon et al., "
+               "PRL 2009; Krishnamoorthy et al., APL 2010 [E]). The validity floor (fsim_core/"
+               "nitride_levels.py _field_drop_exceeds_gap, audit C0/C4; threshold [A]) therefore marks these "
+               "rows INVALID rather than reporting a collapsed, near-zero E_X -- reported as missing, never "
+               "repaired. field_kVcm on an invalid row is the transport depletion field alone, never the "
+               f"built-in polarization field; on the representative row (deterministic rule: smallest row_id "
+               f"among the {len(fc_rows)} rows), {sample.get('row_id')}: field_kVcm is {dep_txt}. The "
+               f"polarization field is reported separately: {replay_txt}.")
+    return out
+
+
 def _rate_pair_rows(all_core, family, T_hs=300.0, strain_bound="relaxed", x_in=0.40):
     ref = REF_GEOM[family]
     out = {}
@@ -1411,6 +1661,54 @@ def _rate_pair_rows(all_core, family, T_hs=300.0, strain_bound="relaxed", x_in=0
 
 def _optical_pass_of(r):
     return bool(r.get("optical_pass") in (True, "True"))
+
+
+def _cut_value_label(v):
+    """Comparable label for a reduced-cut sensitivity_value, whether it is
+    the grid's own Python value or the CSV loader's float/str/bool."""
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        return f"{float(v):g}"
+    if isinstance(v, str):
+        try:
+            return f"{float(v):g}"
+        except ValueError:
+            return v
+    return str(v)
+
+
+def _period_effect_clause(r80, r200):
+    """Audit C4: classify an 80/200 MHz SET row pair from the rows' own
+    one_pair_valid flags, so the 'loading-window/period effect' wording is
+    only ever applied to a family where it is true."""
+    v80 = r80.get("one_pair_valid") in (True, "True")
+    v200 = r200.get("one_pair_valid") in (True, "True")
+    if v80 and not v200:
+        return ("-> PERIOD EFFECT: one_pair_valid holds at 80 MHz and fails at 200 MHz (the shorter period "
+                "leaves too little reset time).")
+    if not v80 and not v200:
+        # Review follow-up: the blocked-load claim is COMPUTED from the two
+        # rows' own blocked_load_probability against the 1e-9 one_pair_valid
+        # threshold, never asserted.
+        def _p(r):
+            try:
+                x = float(r.get("blocked_load_probability"))
+                return x if math.isfinite(x) else None
+            except (TypeError, ValueError):
+                return None
+        p80, p200 = _p(r80), _p(r200)
+        ptxt = f"blocked_load_probability {p80 if p80 is not None else 'n/a'} at 80 MHz, {p200 if p200 is not None else 'n/a'} at 200 MHz"
+        if p80 is not None and p200 is not None and p80 > 1e-9 and p200 > 1e-9:
+            return (f"-> NOT a period effect: one_pair_valid already fails at 80 MHz ({ptxt}, both above the "
+                    "1e-9 threshold), so the 200 MHz failure is not caused by the shorter period.")
+        return (f"-> NOT a period effect: one_pair_valid fails at both rates ({ptxt}); the blocked-load "
+                "probability is NOT above 1e-9 at both rates, so the 80 MHz failure comes from another "
+                "one_pair_valid criterion.")
+    if v80 and v200:
+        return "-> no period effect: one_pair_valid holds at both rates."
+    return ("-> inverted: one_pair_valid fails at 80 MHz but holds at 200 MHz (not the loading-window "
+            "period effect described above).")
 
 
 def _pick(rows, **filters):
@@ -1763,6 +2061,65 @@ def _planar_reference_section(core):
     return lines
 
 
+# Audit C3 items 1/4/5: reduced-cut axes, values and coverage are DERIVED
+# from the sensitivity rows actually present, never a literal list.
+# deshpande2013_comparison is a replay of a measured device (its own
+# section), not a reduced cut.
+NON_CUT_SENSITIVITY_AXES = ("", "deshpande2013_comparison")
+
+
+def _cut_rows(core):
+    return [r for r in core if r.get("row_kind") == "sensitivity"
+            and (r.get("sensitivity_axis") or "") not in NON_CUT_SENSITIVITY_AXES]
+
+
+def _cut_families(sens):
+    fams = {}
+    for r in _cut_rows(sens):
+        fams.setdefault(r["sensitivity_axis"], set()).add(r.get("family"))
+    return {ax: sorted(v) for ax, v in fams.items()}
+
+
+def _num_sort_key(v):
+    try:
+        return (0, float(v), "")
+    except (TypeError, ValueError):
+        return (1, 0.0, str(v))
+
+
+def _cut_coverage(core):
+    """axis -> dict(values, rows, families, regimes, strain_bounds, T_hs_K,
+    rep_rate_hz, full) from the rows present. `full` = every family,
+    regime, strain bound, CUT_T_HS temperature and REP_RATES rate."""
+    cov = {}
+    for r in _cut_rows(core):
+        c = cov.setdefault(r["sensitivity_axis"], dict(values=set(), rows=0, families=set(), regimes=set(),
+                                                         strain_bounds=set(), T_hs_K=set(), rep_rate_hz=set()))
+        c["values"].add(_cut_value_label(r.get("sensitivity_value")))
+        c["rows"] += 1
+        c["families"].add(r.get("family"))
+        c["regimes"].add(r.get("regime"))
+        c["strain_bounds"].add(r.get("strain_bound"))
+        c["T_hs_K"].add(float(r.get("T_hs")))
+        c["rep_rate_hz"].add(float(r.get("rep_rate_hz")))
+    out = {}
+    for ax, c in cov.items():
+        full = (c["families"] == set(FAMILIES) and c["regimes"] == set(REGIMES)
+                and c["strain_bounds"] == set(STRAIN_BOUNDS) and c["T_hs_K"] == set(CUT_T_HS)
+                and c["rep_rate_hz"] == set(REP_RATES))
+        out[ax] = dict(values=sorted(c["values"], key=_num_sort_key), rows=c["rows"],
+                       families=sorted(c["families"]), regimes=sorted(c["regimes"]),
+                       strain_bounds=sorted(c["strain_bounds"]), T_hs_K=sorted(c["T_hs_K"]),
+                       rep_rate_hz=sorted(c["rep_rate_hz"]), full=full)
+    return out
+
+
+def _coverage_clause(c):
+    return (f"families={','.join(c['families'])}; regimes={','.join(c['regimes'])}; "
+            f"strain_bounds={','.join(c['strain_bounds'])}; T_hs_K={','.join(f'{t:g}' for t in c['T_hs_K'])}; "
+            f"rep_rate_hz={','.join(f'{v:g}' for v in c['rep_rate_hz'])}")
+
+
 def _sensitivity_ranking_table(core, all_core):
     """M9-M10/L obligation: a numerical sensitivity table for every reduced
     cut, ranked by MEASURED leverage (never a single narrative-ordered
@@ -1774,6 +2131,19 @@ def _sensitivity_ranking_table(core, all_core):
              "Ranking is measured from this run's own rows, separately per family and per observable -- "
              "never a single mixed narrative ordering.", ""]
     sens = [r for r in core if r.get("row_kind") == "sensitivity"]
+    # Audit C3 item 5: a cut is ranked only in the family sections where it
+    # has rows; cuts present for a strict subset of families are named here.
+    cut_fams = _cut_families(sens)
+    fam_specific = {ax: fs for ax, fs in cut_fams.items() if set(fs) != set(FAMILIES)}
+    if fam_specific:
+        lines.append("Family-specific cuts (rows exist only for the named family; each is ranked ONLY in that "
+                     "family's section below, never against another family's reference row): "
+                     + "; ".join(f"{ax} [{', '.join(fs)} only]" for ax, fs in sorted(fam_specific.items()))
+                     + ". Every other cut has rows for every family. (current_pulse_width is tabulated "
+                     "separately at the end of this section, not ranked.)")
+    else:
+        lines.append("Family-specific cuts: none (every cut has rows for every family).")
+    lines.append("")
     for fam in FAMILIES:
         ref = REF_GEOM[fam]
         base_filter_common = dict(family=fam, strain_bound="relaxed", T_hs=300.0, rep_rate_hz=200.0e6,
@@ -1817,6 +2187,10 @@ def _sensitivity_ranking_table(core, all_core):
                          f"delivered_flux={ref_row.get('collected_flux_delivered_s')} (regime=deterministic_pair)")
         else:
             lines.append("Reference row: not in this run's coverage.")
+        lines.append("")
+        absent_here = sorted(ax for ax, fs in fam_specific.items() if fam not in fs)
+        lines.append(f"Cuts with no {fam} rows (no ranking entry in this section): "
+                     + (", ".join(absent_here) if absent_here else "none") + ".")
         lines.append("")
 
         axes_present = sorted({r.get("sensitivity_axis") for r in sens
@@ -1890,12 +2264,21 @@ def _sensitivity_ranking_table(core, all_core):
                              f"{fluxd} | {ratio_d} | {r.get('one_pair_valid')} | {r.get('optical_pass')} | "
                              f"{r.get('quality_pass')} | {r.get('row_id')} | {a_ref_rid} |")
         lines.append("")
-    lines.append("dipole_weights leverage (M2 fix): dipole_weights IS now a numeric ranking-table entry above "
-                 "-- build_dipole_falsification() evaluates it only in the rectangular regime (it never "
-                 "overrides full_defaults' rectangular default), so it is ranked, per family/axis above, "
-                 "against that family's OWN rectangular-regime reference row rather than the deterministic_"
-                 "pair reference row printed at the top of the section; see the 'regime used per axis' line "
-                 "and the table's regime/reference_row_id columns for exactly which reference each row uses.")
+    dw_fams = cut_fams.get("dipole_weights", [])
+    if dw_fams:
+        others = [fm for fm in FAMILIES if fm not in dw_fams]
+        lines.append(f"dipole_weights leverage (M2 fix): dipole_weights rows exist ONLY for {', '.join(dw_fams)} "
+                     "(build_dipole_falsification() evaluates it only there, and only in the rectangular regime "
+                     "-- it never overrides full_defaults' rectangular default), so it has a numeric ranking "
+                     f"entry ONLY in the {', '.join(dw_fams)} section above, ranked against that family's OWN "
+                     "rectangular-regime reference row rather than the deterministic_pair reference row printed "
+                     "at the top of that section"
+                     + (f"; {', '.join(others)} has no dipole_weights rows and no dipole_weights ranking entry"
+                        if others else "")
+                     + ". See the 'regime used per axis' line and the table's regime/reference_row_id columns "
+                     "for exactly which reference each row uses.")
+    else:
+        lines.append("dipole_weights leverage: no dipole_weights rows in this run, so no ranking entry.")
     lines.append("")
     lines.append("Restored current/pulse-width cut (I x tau_pulse, 9 rows, horizontal reference geometry, "
                  "rectangular regime, relaxed, 300K, 200MHz -- preserves the 100 ps headline point):")
@@ -2020,7 +2403,9 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     lines.append("one_pair_valid requires blocked_load_probability<=1e-9 (the disc must empty between "
                  "cycles); a shorter 200 MHz period leaves less time per cycle for that reset than 80 MHz, "
                  "so a one_pair_valid failure at 200 MHz where it holds at 80 MHz is a loading-window/period "
-                 "effect, not a fit. collected_flux_pulsed_s is the idealized/commanded flux, "
+                 "effect, not a fit. Whether that applies is stated PER family/T_hs line below (computed from "
+                 "the two rows): a family that already fails at 80 MHz is NOT showing a period effect. "
+                 "collected_flux_pulsed_s is the idealized/commanded flux, "
                  "collected_flux_delivered_s is the RC-limited delivered flux (bullet 6). No row at any "
                  "OFF-GRID repetition rate was evaluated this run -- only this run's own main-grid values, "
                  "80 MHz and 200 MHz, were ever sampled.")
@@ -2038,7 +2423,8 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                               f"at 200 MHz one_pair_valid={r200.get('one_pair_valid')} optical_pass={_optical_pass_of(r200)} "
                               f"blocked_load_probability={b200} "
                               f"(row {r200.get('row_id')}, g2={r200.get('g2_op')}, flux={r200.get('collected_flux_pulsed_s')}, "
-                              f"delivered={r200.get('collected_flux_delivered_s')}).")
+                              f"delivered={r200.get('collected_flux_delivered_s')}). "
+                              + _period_effect_clause(r80, r200))
             else:
                 lines.append(f"{family} T_hs={t_hs:g}K: rate-pair rows not found in this run's coverage (quick={quick}).")
     lines.append("")
@@ -2171,8 +2557,28 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                  f"2014 relaxed predicted lambda_nm={lam2014_rel} / unrelaxed predicted lambda_nm={lam2014_unrel} "
                  f"vs measured ~630 nm. The two strain-bound anchors are matched by OPPOSITE endpoints (2013 by "
                  f"relaxed, 2014 by whichever endpoint lands closer) and are never averaged: one of x_in transfer, "
-                 f"disc thickness, VBO/bowing, or lateral localization carries roughly 0.3 eV of the remaining "
-                 f"discrepancy -- stated here, not resolved.")
+                 f"disc thickness, VBO/bowing, or lateral localization carries the remaining per-anchor "
+                 f"discrepancy below -- stated here, not resolved.")
+    # Audit C4: the per-anchor photon-energy residuals are COMPUTED from this
+    # run's own predicted lambda_nm (never a hard-coded magnitude): residual
+    # = hc/lambda_pred - hc/lambda_meas, hc = 1239.841984 eV nm [V CODATA
+    # 2018]; measured 2013 X = 436.56 nm (2.84 eV) [V, Deshpande et al., Nat.
+    # Commun. 4, 1675 (2013) Fig. 3c], 2014 ~630 nm [V abstract-only,
+    # Deshpande et al., APL 105, 141109 (2014)].
+    _hc_eV_nm = 1239.841984
+    _lam2013_for_residual = lam2013_diag if lam2013_recovered else lam2013
+    residual_parts = []
+    for tag, lam_pred, lam_meas in (("2013 relaxed", _lam2013_for_residual, 436.56),
+                                     ("2014 relaxed", lam2014_rel, 630.0),
+                                     ("2014 unrelaxed", lam2014_unrel, 630.0)):
+        if _finite_num(lam_pred) and float(lam_pred) > 0.0:
+            res_eV = _hc_eV_nm / float(lam_pred) - _hc_eV_nm / lam_meas
+            residual_parts.append(f"{tag} {res_eV:+.3f} eV (predicted {float(lam_pred):.4g} nm vs measured {lam_meas:g} nm)")
+        else:
+            residual_parts.append(f"{tag} unavailable (no finite predicted lambda_nm this run)")
+    lines.append("")
+    lines.append("Per-anchor photon-energy residual hc/lambda_pred - hc/lambda_meas (positive = predicted too blue), "
+                 "computed from this run's rows: " + "; ".join(residual_parts) + ".")
     lines.append("")
 
     # ---- RC caveat (bullet 6)
@@ -2187,9 +2593,33 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         tau_rc = sorted(float(r["tau_RC_ns"]) for r in rc_as_built)
         dsf = sorted(float(r["delivered_step_fraction"]) for r in rc_as_built if _finite_num(r.get("delivered_step_fraction")))
         dsf_txt = f"{dsf[0]:.4g}-{dsf[-1]:.4g}" if dsf else "n/a"
-        lines.append(f"As-built R_s_ohm=2.38e9 (horizontal_as_built, deterministic_pair rows): "
+        as_built_rs = sorted({float(r["R_s_ohm"]) for r in rc_as_built if _finite_num(r.get("R_s_ohm"))})
+        rs_txt = "/".join(f"{v:.3g}" for v in as_built_rs) or "n/a"
+        lines.append(f"As-built R_s_ohm={rs_txt} (horizontal_as_built, deterministic_pair, CORE rows only -- "
+                      f"the main grid at the card-default C_parasitic_F, {len(rc_as_built)} rows): "
                       f"tau_RC_ns spans {tau_rc[0]:.4g}-{tau_rc[-1]:.4g}, delivered_step_fraction spans "
                       f"{dsf_txt} -- this device CANNOT deliver a 100 ps step.")
+        # Audit C3 item 3: the core-only span above excludes the reduced-cut
+        # sensitivity rows at the SAME as-built contact (e.g. the
+        # C_parasitic_F cut), which reach a much longer tau_RC; report them
+        # as a separate, labelled span rather than folding them in.
+        rc_as_built_sens = [r for r in core if r.get("row_kind") == "sensitivity"
+                            and r.get("family") == "horizontal_as_built" and r.get("regime") == "deterministic_pair"
+                            and _finite_num(r.get("R_s_ohm"))
+                            and any(_close(float(r["R_s_ohm"]), v) for v in as_built_rs)
+                            and _finite_num(r.get("tau_RC_ns")) and _finite_num(r.get("delivered_step_fraction"))]
+        if rc_as_built_sens:
+            worst = max(rc_as_built_sens, key=lambda r: float(r["tau_RC_ns"]))
+            st = sorted(float(r["tau_RC_ns"]) for r in rc_as_built_sens)
+            sd = sorted(float(r["delivered_step_fraction"]) for r in rc_as_built_sens)
+            lines.append(f"As-built R_s_ohm={rs_txt} SENSITIVITY rows (horizontal_as_built, deterministic_pair, "
+                          f"row_kind=sensitivity, {len(rc_as_built_sens)} rows, reported separately from the "
+                          f"core-only span above): tau_RC_ns spans {st[0]:.4g}-{st[-1]:.4g}, "
+                          f"delivered_step_fraction spans {sd[0]:.4g}-{sd[-1]:.4g}; the longest is row "
+                          f"{worst.get('row_id')} ({worst.get('sensitivity_axis')}="
+                          f"{_cut_value_label(worst.get('sensitivity_value'))}): tau_RC_ns="
+                          f"{float(worst['tau_RC_ns']):.4g}, delivered_step_fraction="
+                          f"{float(worst['delivered_step_fraction']):.4g}.")
     if rc_designed:
         tau_rc_d = sorted(float(r["tau_RC_ns"]) for r in rc_designed)
         dsf_d = sorted(float(r["delivered_step_fraction"]) for r in rc_designed if _finite_num(r.get("delivered_step_fraction")))
@@ -2227,19 +2657,24 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
     # ---- E_C/kT wall (bullet 11 obligation)
     lines.append("## E_C/kT wall (bullet 11 obligation)")
     lines.append("")
-    wall_rows = [r for r in all_core if r.get("regime") == "deterministic_pair" and _finite_num(r.get("core_radius_nm"))
-                 and float(r["core_radius_nm"]) >= 10.0 and _finite_num(r.get("set_EC_over_kT"))]
-    rti_margin_rows = [r for r in all_core if r.get("regime") == "deterministic_pair" and _finite_num(r.get("core_radius_nm"))
-                        and float(r["core_radius_nm"]) >= 10.0 and _finite_num(r.get("rti_level_margin_kT"))]
+    # Audit C3 item 2: the denominators are the VALID rows (finite screen
+    # outputs); the total row count of the bin is printed beside them.
+    wall_all = [r for r in all_core if r.get("regime") == "deterministic_pair" and _finite_num(r.get("core_radius_nm"))
+                and float(r["core_radius_nm"]) >= 10.0]
+    wall_rows = [r for r in wall_all if r.get("valid") is True and _finite_num(r.get("set_EC_over_kT"))]
+    rti_margin_rows = [r for r in wall_all if r.get("valid") is True and _finite_num(r.get("rti_level_margin_kT"))]
+    n_wall_invalid = sum(1 for r in wall_all if r.get("valid") is not True)
     if wall_rows:
         ecs = [float(r["set_EC_over_kT"]) for r in wall_rows]
         n_pass_coulomb = sum(1 for r in wall_rows if r.get("set_feasible") is True)
         n_pass_rti = sum(1 for r in rti_margin_rows if r.get("rti_feasible") is True)
-        lines.append(f"Across every deterministic_pair core row with core_radius_nm>=10 nm at 230-300 K: "
+        lines.append(f"Across the valid deterministic_pair core rows with core_radius_nm>=10 nm at 230-300 K: "
                       f"set_EC_over_kT spans {min(ecs):.4g}-{max(ecs):.4g} (required ec_margin=10), "
-                      f"set_feasible=True count={n_pass_coulomb}/{len(wall_rows)}; rti_feasible=True count="
-                      f"{n_pass_rti}/{len(rti_margin_rows)}. Deterministic loading at 230-300 K fails the "
-                      "Coulomb-blockade screen for every core_radius_nm>=10 nm priced in this tier.")
+                      f"set_feasible=True count={n_pass_coulomb}/{len(wall_rows)} valid rows; rti_feasible=True "
+                      f"count={n_pass_rti}/{len(rti_margin_rows)} valid rows (of {len(wall_all)} "
+                      f"deterministic_pair core rows with core_radius_nm>=10 nm in total; the {n_wall_invalid} "
+                      "invalid rows are excluded from both denominators). Deterministic loading at 230-300 K "
+                      "fails the Coulomb-blockade screen for every core_radius_nm>=10 nm priced in this tier.")
         # M5 fix: rti_feasible=False is NOT itself a demonstrated hardware
         # result -- rti_status is unknown_incomplete on essentially every
         # SET row this run (the RT injector screen is a conditional
@@ -2322,11 +2757,12 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         except (TypeError, json.JSONDecodeError):
             reasons = ["<undecodable invalid_reasons>"]
         for reason in reasons:
-            key = reason.split(":", 1)[0] if ":" in reason else reason
+            key = _reason_key(reason)
             reason_counts[key] = reason_counts.get(key, 0) + 1
     if reason_counts:
-        lines.append("Breakdown by reason (leading token before ':', counted per row -- a row may carry "
-                     "more than one reason):")
+        lines.append("Breakdown by reason (label = the reason text up to its first ':' outside "
+                     "parentheses, so a reason whose only ':' sits inside a parenthesised clause is printed "
+                     "whole; counted per row -- a row may carry more than one reason):")
         lines.append("")
         for key, n in sorted(reason_counts.items(), key=lambda kv: -kv[1]):
             lines.append(f"- {key}: {n}")
@@ -2340,23 +2776,20 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
         # below 450 nm", both wrong (the real table is 380-750 nm and the
         # affected rows are x_in=0.40 h=3-4nm UNRELAXED rows RED-shifted
         # past 750 nm by QCSE).
-        if invalid_total > 0 and top_n / invalid_total > 0.5:
+        # Audit C7: ONE shared trigger rule (_invalid_paragraph_triggers)
+        # decides which sub-paragraphs are written; the artifact verifier
+        # recomputes the same rule independently from sweep.csv. The
+        # dominant-reason paragraph below is written UNCONDITIONALLY (the
+        # verifier requires it on every run); the Si-index excursion text
+        # only when that trigger holds; the field_collapse explanation only
+        # when field_collapse is the dominant reason.
+        dominant, si_rows, fc_dominant = _invalid_paragraph_triggers(core, top_key, top_n, invalid_total)
+        lines.append("")
+        lines += _dominant_invalid_paragraph(top_key, top_n, invalid_total, dominant, bool(si_rows), fc_dominant)
+        if dominant:
             import fsim_core.nitride_nanowire_photonics as _photonics
             si_lo = float(_photonics._SI_INDEX_ANCHORS_NM[0])
             si_hi = float(_photonics._SI_INDEX_ANCHORS_NM[-1])
-            si_rows = []
-            for r in core:
-                if r.get("row_kind") != "core" or r.get("valid"):
-                    continue
-                try:
-                    reasons = json.loads(r.get("invalid_reasons", "[]"))
-                except (TypeError, json.JSONDecodeError):
-                    reasons = []
-                if not any(reason.startswith(top_key) for reason in reasons):
-                    continue
-                lam, recovered = _diagnostic_lambda_from_invalid_reasons(r)
-                if recovered:
-                    si_rows.append((r, lam))
             lines.append("")
             if si_rows:
                 lambdas = [lam for _, lam in si_rows]
@@ -2437,11 +2870,16 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                              "geometries where only the relaxed bound is computable this run, an asymmetry "
                              "the bounds table and headline selection must not paper over by silently "
                              "reporting only the relaxed side.")
+            elif fc_dominant:
+                lines += _field_collapse_paragraph(core, top_key, top_n, invalid_total)
             else:
                 lines.append(f"NOTE: '{top_key}' accounts for {top_n}/{invalid_total} "
                              f"({100.0 * top_n / invalid_total:.0f} percent) of all invalid rows this run; no "
                              "row's invalid_reasons carried a recoverable diagnostic wavelength for this "
                              "specific reason this run.")
+        lines.append("")
+    else:
+        lines += _dominant_invalid_paragraph(None, 0, 0, False, False, False)
         lines.append("")
 
     if decisions:
@@ -2457,20 +2895,86 @@ def _results_md(core, quick, complete, runtime_s, evaluate_calls, invalid_by_kin
                  "injector.injector_feasibility's resonance search, run on every row regardless of regime, "
                  "dominates); the mandated 2560-row core grid alone consumes most of the 1800 s/40-minute "
                  "operational budget even parallelized across all cores (see manifest n_workers). The "
-                 "reduced-cut axis list is therefore trimmed to screening_fraction {0,1}, occupied_dot_"
-                 "access's 1.0 conservative partner, S_cm_s {1e2,1e4}, shell AlGaN, b_res 0.02, the "
-                 "spec-named injector cuts (barrier thickness, al_fraction, alignment_uncertainty_meV, "
-                 "growth_tolerance_steps, occupation-control uncertainty), and R_s_ohm=1e6 on the "
-                 "horizontal family only -- each sampling only its non-default alternative value(s). "
-                 "DROPPED entirely this run (a real, reported coverage gap against the contract's fuller "
-                 "reduced-cut list, never silently omitted): " + ", ".join(DROPPED_CUT_AXES) + ".")
+                 "reduced-cut axis list is therefore trimmed; the cuts ACTUALLY sampled are tabulated "
+                 "below, derived from this run's sweep.csv sensitivity rows (axis, sampled values, row "
+                 "count and per-cut coverage), never a literal list. "
+                 "DROPPED entirely from the grid definition (a real, reported coverage gap against the "
+                 "contract's fuller reduced-cut list, never silently omitted): " + ", ".join(DROPPED_CUT_AXES) + ".")
+    # Audit C4: the grid definition (build_reduced_cuts) and the rows actually
+    # present can differ when this page is regenerated with --report-only
+    # from an older sweep.csv; report both, computed, never asserted.
+    declared_cuts = {}
+    for p in build_reduced_cuts(quick):
+        declared_cuts.setdefault(p["sensitivity_axis"], set()).add(_cut_value_label(p["sensitivity_value"]))
+    present_cuts = {}
+    for r in core:
+        if r.get("row_kind") == "sensitivity" and r.get("sensitivity_axis"):
+            present_cuts.setdefault(r["sensitivity_axis"], set()).add(_cut_value_label(r.get("sensitivity_value")))
+    absent = {ax: sorted(vals - present_cuts.get(ax, set())) for ax, vals in declared_cuts.items()}
+    absent = {ax: v for ax, v in absent.items() if v}
     lines.append("")
+    coverage = _cut_coverage(core)
+    lines.append("| cut (sensitivity_axis) | sampled values | rows | families | regimes | strain_bounds | "
+                 "T_hs K | rep_rate_hz |")
+    lines.append("|---|---|---|---|---|---|---|---|")
+    for ax in sorted(coverage):
+        c = coverage[ax]
+        lines.append(f"| {ax} | {', '.join(c['values'])} | {c['rows']} | {', '.join(c['families'])} | "
+                     f"{', '.join(c['regimes'])} | {', '.join(c['strain_bounds'])} | "
+                     f"{', '.join(f'{t:g}' for t in c['T_hs_K'])} | "
+                     f"{', '.join(f'{v:g}' for v in c['rep_rate_hz'])} |")
+    n_d13 = sum(1 for r in core if r.get("row_kind") == "sensitivity"
+                and r.get("sensitivity_axis") == "deshpande2013_comparison")
+    lines.append("")
+    lines.append(f"{len(coverage)} cuts, {sum(c['rows'] for c in coverage.values())} rows. The "
+                 f"deshpande2013_comparison rows ({n_d13}) are a replay of a measured device (see its own "
+                 "section), not a reduced cut, and are not in this table.")
+    lines.append("")
+    if absent:
+        lines.append("Declared in the CURRENT grid definition but ABSENT from this run's sweep.csv rows (the rows "
+                     "predate these cuts; the scheduled full re-run will carry them): "
+                     + "; ".join(f"{ax} {{{', '.join(v)}}}" for ax, v in sorted(absent.items())) + ".")
+    else:
+        lines.append("Every reduced cut declared in the current grid definition is present in this run's rows.")
+    lines.append("")
+
+    lw_rows = [r for r in core if r.get("sensitivity_axis") == LOADING_WINDOW_AXIS]
+    if lw_rows:
+        # audit C6: printed only when the opt-in axis was run, so a default
+        # run's results.md is unchanged.
+        lines.append("## Loading-window sensitivity (audit C6)")
+        lines.append("")
+        lines.append("Opt-in --loading-window-cut rows: the RT-injector loading window loading_window_ns is "
+                     "swept at fixed 0.1 ns electrical pulse. Rectangular rows price the second carrier over "
+                     "the window (rti_gate_ns = window); deterministic_pair rows keep the card counting gate. "
+                     "The missed load is priced over the window in both regimes. Optical columns (g2_op, "
+                     "flux) do not depend on the window.")
+        lines.append("")
+        lines.append("| family | regime | T_hs | rep_rate_hz | loading_window_ns | rti_gate_ns | "
+                     "rti_missed_load_probability | rti_second_pair_probability | rti_qualified | row_id |")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|")
+        for r in sorted(lw_rows, key=lambda z: (str(z.get("family")), str(z.get("regime")), float(z.get("T_hs", 0)),
+                                                  float(z.get("rep_rate_hz", 0)), float(z.get("loading_window_ns", 0)))):
+            lines.append(f"| {r.get('family')} | {r.get('regime')} | {r.get('T_hs')} | {r.get('rep_rate_hz')} | "
+                         f"{r.get('loading_window_ns')} | {r.get('rti_gate_ns')} | "
+                         f"{r.get('rti_missed_load_probability')} | {r.get('rti_second_pair_probability')} | "
+                         f"{r.get('rti_qualified')} | {r.get('row_id')} |")
+        lines.append("")
 
     lines.append("## Limitations")
     lines.append("")
+    cov_l = _cut_coverage(core)
+    full_cuts = sorted(ax for ax, c in cov_l.items() if c["full"])
+    narrow_cuts = sorted(ax for ax, c in cov_l.items() if not c["full"])
     lines.append("Reduced cuts are one-at-a-time and moderately sampled (not exhaustive), always at the "
-                 "family's reference geometry (12.5/80 nm core, 2 nm height, x_in=0.40), both regimes/bounds, "
-                 "T in {230,300} K, both rates -- never the Cartesian product. bound_reversal_pair is a "
+                 "family's reference geometry (12.5/80 nm core, 2 nm height, x_in=0.40) -- never the Cartesian "
+                 "product. Per-cut coverage, from this run's rows (see the 'Reduced-cut coverage' table): "
+                 + (f"{len(full_cuts)} cuts ({', '.join(full_cuts)}) span every family, both regimes, both strain "
+                    f"bounds, T_hs in {{{','.join(f'{t:g}' for t in CUT_T_HS)}}} K and both rep rates"
+                    if full_cuts else "no cut spans every family/regime/bound/temperature/rate")
+                 + ("; narrower cuts: " + "; ".join(f"{ax} ({_coverage_clause(cov_l[ax])})" for ax in narrow_cuts)
+                    if narrow_cuts else "; no narrower cuts")
+                 + ". bound_reversal_pair is a "
                  "declared post-hoc transform over already-evaluated row pairs (see attach_bound_reversal's "
                  "docstring), not a separate evaluate_strain_pair() call. No fitting to any Deshpande anchor "
                  "occurred anywhere in this sweep. Evaluate calls are dispatched across a process pool "
@@ -2538,6 +3042,28 @@ def _build_figures_and_results(out, core, quick, complete, runtime_s, evaluate_c
     return plots, plot_fail_log, text
 
 
+def _generation_provenance():
+    """Audit C4 (results review, Astra 7): record which code generated the
+    artifacts -- the sha256 of THIS runner script's bytes and the repo HEAD
+    commit (read-only `git rev-parse HEAD`; None when git is unavailable).
+    `generation_worktree_dirty` says whether tracked files differed from
+    HEAD at generation time (read-only `git status --porcelain
+    --untracked-files=no`), because a HEAD hash alone does not pin
+    uncommitted edits. Card hashes elsewhere in the manifest are the
+    working-tree bytes (CRLF on this checkout), not the committed LF blobs."""
+    import subprocess
+    def _git(*args):
+        try:
+            r = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+            return r.stdout.strip() if r.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+    status = _git("status", "--porcelain", "--untracked-files=no")
+    return {"runner_sha256": hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),
+            "generation_commit": _git("rev-parse", "HEAD"),
+            "generation_worktree_dirty": (bool(status) if status is not None else None)}
+
+
 def _main_report_only(out, a):
     """Sweep fix 1 (Attempt 2, reporting-only round): regenerate
     results.md, the PNGs and manifest.json from the EXISTING sweep.csv in
@@ -2595,17 +3121,21 @@ def _main_report_only(out, a):
         out, core, quick, complete, runtime_s, evaluate_calls, invalid_by_kind, dipole_rows, decisions)
     (out / "results.md").write_text(text, encoding="utf-8")
 
-    files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]
-    hashes = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in files}
+    hashes = _output_hashes(out)
     report_only_runtime_s = time.time() - t0
     manifest = dict(prior_manifest)
     manifest.update({
         "report_only": True,
         "report_only_source_sweep_sha256": sweep_hash_before,
+        # audit C4: provenance of THIS report-only regeneration (the original
+        # sweep run's own runner_sha256/generation_commit, when the prior
+        # manifest has them, are kept untouched above).
+        **{"report_only_" + k: v for k, v in _generation_provenance().items()},
         "report_only_runtime_s": report_only_runtime_s,
         "plot_row_mapping": plots,
         "plot_trace_failures": plot_fail_log,
         "output_hashes": hashes,
+        "output_hashes_excluded_downstream": list(DOWNSTREAM_ARTIFACTS),
     })
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     print("report_only=True sweep_csv_sha256=%s report_only_runtime_s=%.2f core_rows=%d invalid_total=%d" % (
@@ -2622,12 +3152,15 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--report-only", action="store_true")
     ap.add_argument("--max-evaluations", type=int, default=10000)
+    ap.add_argument("--loading-window-cut", action="store_true",
+                    help="audit C6: add the opt-in loading_window_ns sensitivity axis "
+                         "(LOADING_WINDOW_CUT_NS; off by default, the default grid is unchanged)")
     a = ap.parse_args(argv)
 
     if a.report_only:
         return _main_report_only(_safe(a.out_dir), a)
 
-    counts = planned_counts(a.quick)
+    counts = planned_counts(a.quick, loading_window_cut=a.loading_window_cut)
     horiz_core = len(build_core("horizontal_as_built", a.quick))
     vert_core = len(build_core("vertical_photonic", a.quick))
     if a.dry_run:
@@ -2637,7 +3170,7 @@ def main(argv=None):
                    max_evaluations=a.max_evaluations,
                    within_cap=counts["planned_evaluate_calls_upper_bound"] <= a.max_evaluations
                    and counts["planned_evaluate_calls_upper_bound"] <= 10000,
-                   quick=a.quick)
+                   quick=a.quick, loading_window_cut=a.loading_window_cut)
         print(json.dumps(out, sort_keys=True))
         ok = out["within_cap"] and (a.quick or (horiz_core == 1536 and vert_core == 1024))
         return 0 if ok else 1
@@ -2670,6 +3203,7 @@ def main(argv=None):
         # once.
         core_jobs = {f: build_core(f, a.quick) for f in FAMILIES}
         cut_jobs = build_reduced_cuts(a.quick)
+        lw_jobs = build_loading_window_cut(a.quick) if a.loading_window_cut else []
         dipole_p = build_dipole_falsification()
         d2013_jobs = build_deshpande2013(a.quick)
         planar_jobs = build_planar_reference(a.quick)
@@ -2678,6 +3212,7 @@ def main(argv=None):
         for family in FAMILIES:
             all_jobs += [("nanowire", p) for p in core_jobs[family]]
         all_jobs += [("nanowire", p) for p in cut_jobs]
+        all_jobs += [("nanowire", p) for p in lw_jobs]
         all_jobs += [("nanowire", p) for p in dipole_p]
         all_jobs += [("nanowire", p) for p in d2013_jobs]
         all_jobs += [("planar", planar) for planar in planar_jobs]
@@ -2717,6 +3252,10 @@ def main(argv=None):
     for p in cut_jobs:
         rid += 1
         core.append(_row(f"SN{rid:05d}", "sensitivity", p, seen, results))
+
+    for p in lw_jobs:
+        rid += 1
+        core.append(_row(f"LW{rid:05d}", "sensitivity", p, seen, results))
 
     dipole_rows = []
     for p in dipole_p:
@@ -2768,7 +3307,9 @@ def main(argv=None):
         "geometry, rectangular regime, relaxed bound, 300 K, 200 MHz) -- see DROPPED_CUT_AXES in scripts/"
         "run_nitride_nanowire.py and results.md's 'Reduced-cut coverage' section for the axes still "
         "dropped relative to the contract's fuller reduced-cut list (reservoir_access, gamma300, "
-        "tau_rad0_ns, tau_cap_ps, C_parasitic_F, Rth_K_W, vertical R_s_ohm, NA/bottom_reflectivity). "
+        "Rth_K_W, vertical R_s_ohm, NA/bottom_reflectivity); audit C4 (reduced_cut_grid_version=c4) "
+        "restored occupied_dot_access=0.1, tau_rad0_ns {0.2,4}, tau_cap_ps {1,100} and C_parasitic_F "
+        "{1e-18,1e-16} [A] (+224 rows). "
         "Rejected alternative: the contract's full one-at-a-time axis list (~1350 extra calls), which "
         "single-benchmark projections put close to or beyond the 40-minute stop threshold once added to "
         "the core grid's own runtime; the core/main grid itself is NEVER reduced. The job/cache identity "
@@ -2784,13 +3325,20 @@ def main(argv=None):
         "The 2013 CW comparison is published as a pulsed-model drive_mismatch (this evaluator has no "
         "CW/HBT path), per the contract's own instruction, never substituted for a predicted CW g2.",
     ]
+    if a.loading_window_cut:
+        decisions.append(
+            "Audit C6 opt-in loading-window cut (--loading-window-cut): loading_window_ns in "
+            "%s ns (only values strictly below the row's period), reference geometry, both families/regimes, "
+            "relaxed bound, both rates; rectangular rows price the second carrier over the window, "
+            "deterministic_pair rows keep the card counting gate. Rejected alternative: adding the axis to "
+            "the default reduced-cut grid, which would change every committed sweep.csv's row set."
+            % (list(QUICK_LOADING_WINDOW_CUT_NS if a.quick else LOADING_WINDOW_CUT_NS),))
 
     plots, plot_fail_log, text = _build_figures_and_results(
         out, core, a.quick, complete, runtime_s, counter["evaluate_calls"], invalid_by_kind, dipole_rows, decisions)
     (out / "results.md").write_text(text, encoding="utf-8")
 
-    files = [p.name for p in out.iterdir() if p.is_file() and p.name != "manifest.json"]
-    hashes = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in files}
+    hashes = _output_hashes(out)
     manifest = {
         "quick": a.quick, "complete": complete, "runtime_s": runtime_s,
         "evaluate_calls": counter["evaluate_calls"], "max_evaluations": a.max_evaluations,
@@ -2820,12 +3368,18 @@ def main(argv=None):
         "plot_row_mapping": plots,
         "plot_trace_failures": plot_fail_log,
         "output_hashes": hashes,
+        "output_hashes_excluded_downstream": list(DOWNSTREAM_ARTIFACTS),
         "card_hashes": {n: _card_hash(n) for n in set(list(CARD_NAME.values()) + list(PLANAR_CARD_NAME.values()) + [DESHPANDE2014_CARD])},
         "source_hashes": {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                            for p in (ROOT / "fsim_core").glob("nitride_nanowire_*.py")},
         "decisions": decisions,
         "versions": {"python": sys.version.split()[0]},
         "resolved_out_dir": str(out),
+        "reduced_cut_grid_version": REDUCED_CUT_GRID_VERSION,
+        # audit C6: the opt-in loading-window axis (absent/False = not run)
+        "loading_window_cut": bool(a.loading_window_cut),
+        # audit C4 (results review, Astra 7): provenance of the generating code
+        **_generation_provenance(),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     print("evaluate_calls=%d runtime_s=%.2f complete=%s core_rows=%d invalid_total=%d" % (

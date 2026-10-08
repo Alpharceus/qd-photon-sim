@@ -1,0 +1,185 @@
+# Cryogenic Fock-state source tier design card (work order F4).
+#
+# Loaded with fsim_core.resonant_source.load_fock_card (NOT fsim_core.card:
+# categorical entries and log-scaled ranges do not fit that schema). This card
+# is deliberately separate from the electrically injected, incoherently pumped
+# device cards: boson-sampling-grade photons at cryogenic temperature need
+# coherent (resonant or two-photon) excitation, see the module docstring of
+# fsim_core/resonant_source.py. Do not route it through device.evaluate.
+#
+# Every entry carries unit, tag and source, and is [A] (assumption) or [E]
+# (estimate / class range). Every [A] number is a RANGE (or a documented
+# categorical choice) and is swept, never averaged. No entry is [V]: nothing
+# here was checked against a device of this exact kind in this repository.
+# The V-a Gamma_0 = 119 ueV (time-integrated, non-resonant) is NOT used as a
+# homogeneous width; the homogeneous width is a multiple of the transform
+# limit instead (hom_width_multiple).
+
+meta:
+  name: fock-source-4K-design
+  role: fock-source-design
+  device: >
+    Cryogenic (4 K) quantum-dot Fock-state source for time-demultiplexed boson
+    sampling: resonantly pi-pulsed charged exciton (default) or
+    two-photon-excited neutral exciton-biexciton cascade, in a Purcell-enhanced
+    cavity, with charge noise treated as slow spectral diffusion.
+  source: "work order claude_code_work_order_quantum_tier.md, piece F4"
+  note: >
+    Class references for the architecture: Somaschi et al., Nat. Photonics 10,
+    340 (2016) and Ding et al., Phys. Rev. Lett. 116, 020401 (2016)
+    (resonantly driven QD-micropillar, diode for charge stabilisation and Stark
+    tuning only); Wang et al., Phys. Rev. Lett. 123, 250503 (2019) (20-photon,
+    60-mode boson sampling). Numbers below are NOT copied from those papers;
+    ranges are conservative class ranges chosen by the repository author.
+    Used by scripts/run_fock_source.py.
+
+params:
+  T_K:
+    value: 4.0
+    unit: K
+    tag: A
+    source: "cryostat temperature of the work order (4 K tier); phonon Debye-Waller weight Z(T) from fsim_core.qd_gf"
+
+  transition:
+    choices: ["X+", "X"]
+    default: "X+"
+    unit: none
+    tag: A
+    source: "work order F4: charged exciton X+ (own two-level system, ground state = resident hole) is the default; neutral X is required for two-photon excitation"
+
+  excitation:
+    choices: ["resonant_pi", "tpe"]
+    default: "resonant_pi"
+    unit: none
+    tag: A
+    source: "work order F4: resonant pi pulse (F1) or two-photon excitation of the X-XX cascade (F2); tpe requires transition X"
+
+  gamma0_ns:
+    range: [1.0, 2.5]
+    unit: 1/ns
+    tag: E
+    source: "free-space radiative rate of a self-assembled InGaAs/GaAs-class QD, bare lifetime 0.4-1 ns (class range of the resonantly driven pillar literature, Somaschi 2016 / Ding 2016 class; not re-checked against those papers)"
+
+  F_P:
+    range: [0.0, 10.0]
+    unit: dimensionless
+    tag: A
+    source: "resonant Purcell factor Gamma = Gamma_0 (1 + F_P L), spectral.cavity_transmission overlap convention; 0 = bare dot; micropillar-class values of a few; upper end is an assumption"
+
+  kappa_ueV:
+    range: [50.0, 300.0]
+    unit: ueV
+    tag: A
+    source: "cavity FWHM, Q ~ 4e3 to 2.6e4 at ~1.3 eV; assumed. Only enters through the line/cavity overlap L ~ kappa/(line+kappa) ~ 1 because kappa >> line"
+
+  cav_detune_ueV:
+    value: 0.0
+    unit: ueV
+    tag: A
+    source: "dot on resonance with the cavity (Stark-tuned via the diode); a detuned dot is a lower Purcell factor, covered by the F_P range"
+
+  pulse_shape:
+    choices: ["gauss", "rect"]
+    default: "gauss"
+    unit: none
+    tag: A
+    source: "pulse envelope of F1/F2 (pulse_envelope): Gaussian (intensity FWHM) or rectangular"
+
+  pulse_fwhm_ps:
+    range: [2.0, 20.0]
+    unit: ps
+    tag: A
+    source: "pulse intensity FWHM (rectangle: length); re-excitation depends on Gamma * tau_p only (g2 ~ Gamma tau_p/4 for a rectangular pi pulse); assumed laser/pulse-shaper range"
+
+  hom_width_multiple:
+    range: [1.0, 3.0]
+    unit: multiples of the transform limit hbar*Gamma
+    tag: A
+    source: "homogeneous FWHM / (hbar Gamma); 1 = transform limited (Kuhlmann et al., Nat. Commun. 6, 8204 (2015) report transform-limited lines under resonant excitation), 3 = work-order upper range; pure dephasing gamma* = (m - 1) Gamma"
+
+  sigma_sd_ueV:
+    range: [0.1, 1.0]
+    unit: ueV
+    tag: A
+    source: "standard deviation of the slow spectral-diffusion detuning (Ornstein-Uhlenbeck, F3); assumed, to be replaced by a measured two-pulse HOM versus delay (Thoma et al., Phys. Rev. Lett. 116, 033601 (2016) is the qualitative anchor for the delay dependence only)"
+
+  tau_sd_ns:
+    range: [10.0, 1000.0]
+    unit: ns
+    tag: A
+    source: "spectral-diffusion correlation time; assumed, bracketing the 12.5 ns pulse spacing at 80 MHz"
+    scale: log
+
+  remote_offset_ueV:
+    range: [0.0, 0.3]
+    unit: ueV
+    tag: A
+    source: "static residual detuning between two remote sources after Stark tuning (F3 hom_remote); assumed"
+
+  delta_xx_meV:
+    range: [-4.0, -1.0]
+    unit: meV
+    tag: E
+    source: "biexciton binding Delta_XX = (E_XX - E_X) - (E_X - E_G), card sign convention (negative = bound); InGaAs/GaAs-class 1-4 meV; two-photon excitation only"
+
+  gamma_xx_ratio:
+    value: 2.0
+    unit: dimensionless
+    tag: A
+    source: "gamma_XX = ratio x Gamma_0 (BARE X rate): two decay channels of the biexciton, the ratio used throughout the repository's cascade checks. The XX line is |Delta_XX| = 1-4 meV from the cavity-resonant X line, far outside kappa = 50-300 ueV, so it is not Purcell-enhanced (physics review 2026-10-08, finding 2)"
+
+  dephasing_mode:
+    choices: ["enhanced", "dot"]
+    default: "enhanced"
+    unit: none
+    tag: A
+    source: "what the pure dephasing scales with: enhanced = gamma* = (m-1) Gamma_Purcell (I = 1/m independent of F_P by construction); dot = gamma* = (m-1) Gamma_0 (a dot property, I rises with F_P; Grange et al., PRL 114, 193601 (2015); Iles-Smith et al., Nat. Photonics 11, 521 (2017)). Both are swept, never averaged (physics review 2026-10-08, finding 3)"
+
+  f_rep_MHz:
+    value: 80.0
+    unit: MHz
+    tag: A
+    source: "pump repetition rate; time-demultiplexing spacing 1/f_rep = 12.5 ns; assumed"
+
+  beta0:
+    range: [0.05, 0.2]
+    unit: dimensionless
+    tag: A
+    source: "fraction of the bare-dot emission that reaches the collected mode without the cavity channel; beta = (beta0 + F_P L)/(1 + F_P L); assumed"
+
+  eta_out:
+    range: [0.3, 0.7]
+    unit: dimensionless
+    tag: E
+    source: "single-mode extraction/transfer efficiency of the collected mode; micropillar-class range (Somaschi 2016 and Ding 2016 report extraction efficiencies in this range; individual values not re-verified here)"
+
+  eta_demux:
+    range: [0.5, 0.9]
+    unit: dimensionless
+    tag: A
+    source: "time-demultiplexer (fast switch / delay lines) transmission; assumed"
+
+  eta_circuit:
+    range: [0.5, 0.95]
+    unit: dimensionless
+    tag: A
+    source: "interferometer (mesh) transmission; assumed"
+
+  eta_det:
+    range: [0.7, 0.95]
+    unit: dimensionless
+    tag: A
+    source: "detector efficiency (superconducting-nanowire class); assumed"
+
+  zpl_output:
+    choices: [false, true]
+    default: false
+    unit: none
+    tag: A
+    source: "true = output is ZPL-filtered, source efficiency is multiplied by the Debye-Waller weight Z(T) from fsim_core.qd_gf"
+
+  phonon_alpha_ps2:
+    range: [0.0181, 0.027]
+    unit: ps^2
+    tag: E
+    source: "exciton-LA-phonon coupling alpha of qd_gf.PhononParams: 0.0181 ps^2 is the qd_gf default (InP-class proxy) and 0.027 ps^2 the InGaAs/GaAs Ramsay-class value quoted in the qd_gf docstring; enters only through Z(T) when zpl_output is true"

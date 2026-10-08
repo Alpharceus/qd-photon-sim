@@ -584,10 +584,9 @@ _check_nan = rte._brightness_factor_check(_nan_row)
 ok("factor self-check oracle: non-finite inputs yield ok=False without raising",
    not _check_nan["ok"] and math.isnan(_check_nan["rel_diff"]))
 
-# -- ray-series facet oracle (peer-review pkg2 facet fix, 2026-09-07,
-# .workers/specs/pr-pkg2-facet-fix.md; updated again for pkg2-oracle,
-# .workers/specs/pr-pkg2-oracle.md): fsim_core/waveguide.py's
-# facet_escape_fraction folds single-pass propagation entirely into the
+# -- ray-series facet oracle (peer-review fix, 2026-09-07):
+# fsim_core/waveguide.py's facet_escape_fraction folds single-pass
+# propagation entirely into the
 # ray-series facet term, so the STRUCTURAL equation is now
 # edge_eta_total = beta * eta_facet * eta_NA -- no eta_prop factor and no
 # separate T_facet division. This fixture computes eta_facet with a
@@ -627,9 +626,8 @@ ok("ray-series facet oracle: non-finite/zero component inputs yield nan without 
    math.isnan(rte._front_facet_split({"edge_beta": 0.0, "edge_T_facet": 0.72,
                                       "edge_eta_NA": 0.30, "edge_eta_total": 0.001})))
 
-# -- facet-factor forward check (council review round 5, item 6; replaced
-# again for peer-review pkg2 fix3, 2026-09-07, .workers/specs/
-# pr-pkg2-fix3.md item 2): the checks below used to fake candidate formula
+# -- facet-factor forward check (peer-review fix, 2026-09-07):
+# the checks below used to fake candidate formula
 # lists via _facet_factor_formula_candidates and swap it onto the module,
 # exercising a source-introspection path that 48209dc deleted --
 # _facet_factor_forward_check now calls waveguide.facet_escape_fraction
@@ -1312,6 +1310,25 @@ if not RUN_FULL:
        sum(info["n_total"] for info in saved_manifest.get("model_sensitivity", {}).values())
        == len(saved_csv_rows))
     expected_line = rte.verdict_line(saved_manifest["verdict"])
+    # Audit C4 prose pins (recomputed from the CSV-typed headline rows, not
+    # read from the generator): the pooled/best-row wording is conditioned on
+    # the best row's own eligibility; edge_eta_NA is labelled as a collection
+    # fraction, never "NA (numerical aperture)"; gamma300 is stated as the
+    # 300 K linewidth.
+    _c4_best = recomputed_stats.get("best_diagnostic_row") or {}
+    _c4_cov = next((l for l in saved_md.splitlines() if l.startswith("- diagnostic pooled g2")), "")
+    ok("C4 saved full run: the pooled diagnostic-g2 label says 'below flux floor, not measurable' only "
+       "when no row is eligible, and names the best row's eligibility otherwise",
+       bool(_c4_cov) and (("below flux floor, not measurable" in _c4_cov) == (recomputed_stats["n_eligible"] == 0))
+       and (recomputed_stats["n_eligible"] == 0
+            or (("minimum-g2 row is ELIGIBLE" in _c4_cov) == bool(_c4_best.get("eligible_row")))))
+    ok("C4 saved full run: the best-row section states the row's eligibility and the corner wording follows it",
+       recomputed_stats["n_eligible"] == 0
+       or ((("Eligibility of this row: ELIGIBLE" in saved_md) == bool(_c4_best.get("eligible_row")))
+           and (("favourable eligible corner" in saved_md) == bool(_c4_best.get("eligible_row")))))
+    ok("C4 saved full run: edge_eta_NA is not labelled as the numerical aperture; gamma300 is the 300 K linewidth",
+       "| NA (numerical aperture) |" not in saved_md and "eta_NA (fraction of the facet emission" in saved_md
+       and "linewidth AT 300 K" in saved_md and "meV at 300 K, T_hs=" in saved_md)
     ok("saved full run: verdict.md VERDICT line equals manifest verdict",
        expected_line in saved_md)
     ok("saved full run: manifest card hashes match current cards",

@@ -5,8 +5,12 @@ channels F8/F8b/F9).
 F1b (finite-mu operating point). Pulse loads n ~ Poisson(mu) excitons, capped
 at 2 (cap-2 loading assumption: n>=2 relaxes to the XX ground state). Emission
 through the X-centered filter: n=1 -> X photon (transmission t_X); n=2 ->
-cascade XX->X (t_XX then t_X, independent). With the experimental peak-area
-convention g2(0) = area(tau=0)/area(adjacent),
+cascade XX->X (t_XX then t_X, independent). g2(0) is the peak-area ratio
+area(tau=0)/area(long-delay side peak) = <m(m-1)>/<m>^2, normalised to the
+UNCORRELATED (long-delay) peak <m>^2 [DR]. Every pulse here loads an empty
+dot independently, so the adjacent peak <m_n m_(n+1)> equals <m>^2 and the
+two normalisations coincide in this static model; they differ once occupancy
+carries between periods (pulse_counting, audit D2: g2_adj there),
 
     <m(m-1)> = 2 P2 t_X t_XX,   <m>^2 = t_X^2 [P1 + P2 (1+eps)]^2
     g2(mu)   = 2 P2 eps / [P1 + P2 (1+eps)]^2,   eps = t_XX/t_X
@@ -55,19 +59,66 @@ from .spectral import KB
 
 # --------------------------------------------------------------------- cap-2 loading
 
+# Below this mean loading, P2 = 1 - P0 - P1 loses ~log10(1/mu^2) digits to
+# cancellation (1e-2 relative error at mu = 1e-7; garbage below ~1e-8), so the
+# small-mu branch evaluates P(n>=2) from its all-positive series instead. At
+# and above the threshold the legacy expression is used unchanged, so every
+# existing mu >= 1e-3 result is bit-identical. [DR]
+_SMALL_MU = 1e-3
+
+
+def _tail_series(mu):
+    """S(mu) = sum_{k>=2} mu^(k-2)/k! = 1/2 + mu/6 + mu^2/24 + ... [DR]
+
+    Exact Poisson identities (all terms positive, no cancellation):
+        P(n>=2) = mu^2 e^-mu S(mu),   P(n>=2)/P1 = mu S(mu),
+        P(n>=2)/P1^2 = e^mu S(mu).
+    Truncated after mu^5/5040: for mu < 1e-3 the first omitted term,
+    mu^6/40320, is < 3e-23, far below double-precision rounding of S ~ 1/2."""
+    return 0.5 + mu * (1.0 / 6.0 + mu * (1.0 / 24.0 + mu * (1.0 / 120.0
+                 + mu * (1.0 / 720.0 + mu * (1.0 / 5040.0)))))
+
+
 def loading_probs(mu):
-    """(P0, P1, P2) for cap-2 Poisson loading."""
+    """(P0, P1, P2) for cap-2 Poisson loading; P2 = P(n>=2).
+
+    mu >= 1e-3: P2 = 1 - P0 - P1 (legacy expression, bit-identical).
+    0 <= mu < 1e-3: P2 = mu^2 e^-mu S(mu) with S the positive tail series of
+    _tail_series -- full relative precision down to mu -> 0 [DR]
+    (Poisson tail identity; audit D5, loading.py:63)."""
     mu = np.asarray(mu, dtype=float)
     P0 = np.exp(-mu)
     P1 = mu * np.exp(-mu)
-    return P0, P1, 1.0 - P0 - P1
+    small = (mu >= 0.0) & (mu < _SMALL_MU)
+    if not np.any(small):
+        return P0, P1, 1.0 - P0 - P1
+    mu_s = np.where(small, mu, 0.0)
+    P2_series = mu_s * mu_s * np.exp(-mu_s) * _tail_series(mu_s)
+    return P0, P1, np.where(small, P2_series, 1.0 - P0 - P1)[()]
 
 
 def f1b_g2(mu, eps):
-    """F1b: pulsed g2(0) of the filtered cascade at mean loading mu."""
-    _, P1, P2 = loading_probs(mu)
+    """F1b: pulsed g2(0) of the filtered cascade at mean loading mu.
+
+    mu >= 1e-3: legacy expression 2 P2 eps / [P1 + P2 (1+eps)]^2, unchanged
+    (bit-identical; also used for mu < 0 or NaN). 0 <= mu < 1e-3: the same
+    quantity divided through by P1^2,
+        g2 = 2 eps e^mu S(mu) / [1 + mu S(mu) (1+eps)]^2,
+    which is exact [DR] and has the analytic limit g2(mu -> 0) = eps (the F1
+    identity), including at mu = 0 exactly (the legacy form returned 0 there
+    because denom = 0)."""
+    mu_a = np.asarray(mu, dtype=float)
+    _, P1, P2 = loading_probs(mu_a)
     denom = P1 + P2 * (1.0 + eps)
-    return np.where(denom > 0, 2.0 * P2 * eps / denom**2, 0.0)
+    small = (mu_a >= 0.0) & (mu_a < _SMALL_MU)
+    if not np.any(small):
+        return np.where(denom > 0, 2.0 * P2 * eps / denom**2, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        legacy = np.where(denom > 0, 2.0 * P2 * eps / denom**2, 0.0)
+    mu_s = np.where(small, mu_a, 0.0)
+    S = _tail_series(mu_s)
+    g2_small = 2.0 * eps * np.exp(mu_s) * S / (1.0 + mu_s * S * (1.0 + eps)) ** 2
+    return np.where(small, g2_small, legacy)
 
 
 def drive_factor(mu, eps):
@@ -162,8 +213,9 @@ def mc_aperture_g2(p_list, n_pulses=1_000_000, seed=0):
 
 def mc_pulsed_g2(mu, t_x, t_xx, b=0.0, n_pulses=2_000_000, seed=0):
     """Monte-Carlo second method for F1b (+ Poissonian background): simulate
-    photon counts per pulse, return (g2, stderr) with the all-pairs peak-area
-    normalization g2 = <m(m-1)>/<m>^2."""
+    photon counts per pulse, return (g2, stderr) with the long-delay-peak
+    normalization g2 = <m(m-1)>/<m>^2 (pulses independent here, so this is
+    also the adjacent-peak value)."""
     rng = np.random.default_rng(seed)
     n = np.minimum(rng.poisson(mu, n_pulses), 2)
     m = np.zeros(n_pulses, dtype=np.int64)
@@ -268,7 +320,8 @@ def mc_f8_g2(mu, F_p, t_x, t_xx, n_pulses=2_000_000, seed=0):
     """MC second method for F8 (mirrors mc_pulsed_g2's construction): build the
     explicit {P0, P1, P2} loading distribution from (mu, F_p) via _f8_probs,
     draw the per-pulse load with np.random.Generator.choice, then simulate
-    the same X/cascade-XX emission + all-pairs peak-area g2 as mc_pulsed_g2.
+    the same X/cascade-XX emission + <m(m-1)>/<m>^2 (long-delay-peak) g2 as
+    mc_pulsed_g2.
     Returns (g2, stderr)."""
     P0, P1, P2 = (float(x) for x in _f8_probs(mu, F_p))
     rng = np.random.default_rng(seed)

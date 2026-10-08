@@ -106,8 +106,8 @@ CLAIM_META = {
                               drive_tokens=[], proxy=True),
 }
 
-# Literal figure/text numbers pulled directly from ../_goal/paper_digests.md
-# for the one claim where raw/deconvolved/background-corrected values could
+# Literal figure/text numbers for the one claim where raw/deconvolved/
+# background-corrected values could
 # be swapped (Reischle et al. 2008, Fig. 3b, QD C, 80 K): 0.43 raw dip,
 # 0.25 after IRF deconvolution only, 0.03 after background correction too.
 # An anchor whose conditions claim "raw dip" but whose value matches one of
@@ -133,10 +133,9 @@ def load_anchors(path: Path = ANCHORS_PATH) -> dict:
 def load_digest_values(path: Path = DIGEST_VALUES_PATH) -> dict:
     """The independent ground-truth transcription table (verify/data/
     rt_edge_digest_values.yaml), keyed by (doi, quantity) -> entry. This is
-    never derived from rt_edge_anchors.yaml -- it is hand-transcribed from
-    ../_goal/paper_digests.md / confirmed web-PDF sources -- so it can catch
-    a fabricated anchor or a mutated real value the anchors file alone
-    cannot self-detect."""
+    never derived from rt_edge_anchors.yaml; it is hand-transcribed from
+    confirmed sources to catch a fabricated anchor or a mutated real value
+    the anchors file alone cannot self-detect."""
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     return {(e["doi"], e["quantity"]): e for e in doc.get("entries", [])}
 
@@ -410,6 +409,30 @@ def score_ledger(anchors: dict, digest_table: dict | None = None) -> dict:
         distinct = len(eligible_keys)
         complete = distinct >= 2 and any_v_or_dr
         reason = None
+        # Spec audit-edge-cards-label task 2 (2026-09-23): a DERIVED
+        # single-source claim is exempt from the two-source rule. The rule
+        # exists to catch a mis-transcribed or hallucinated literature
+        # number, which a second independent paper can expose; a [DR]
+        # closed-form evaluation (e.g. hkust_ridge_guided_beta, Lecamp,
+        # Lalanne & Hugonin, PRL 99, 023902 (2007) evaluated on the solved
+        # HKUST ridge) has exactly one formula source by construction, and
+        # its independent check is the re-derivation (audit script +
+        # verify_waveguide.py), not a second paper -- demanding one would
+        # force a fabricated source. Same effect as verify_rt_edge_contract.
+        # py, whose REQUIRED_CLAIMS (== CLAIM_META's keys here) never lists
+        # such a claim. Narrow: only claims OUTSIDE CLAIM_META (the
+        # contract's literature claims always need two sources), and only
+        # when EVERY anchor of the claim is tagged DR, effective-verified
+        # and carries a 'derived:' verification note.
+        derived_single = (
+            claim not in CLAIM_META and distinct == 1 and bool(aids)
+            and all(anchors[aid].get("tag") == "DR"
+                    and anchor_results[aid]["effective_verified"]
+                    and str(anchors[aid].get("verification", "")).strip().startswith("derived:")
+                    for aid in aids))
+        if derived_single:
+            complete = True
+        claim_results_exempt = derived_single
         if not complete:
             if distinct < 2:
                 reason = f"only {distinct} distinct verified primary source(s), need 2"
@@ -419,6 +442,10 @@ def score_ledger(anchors: dict, digest_table: dict | None = None) -> dict:
             "anchors": aids, "distinct_verified_sources": distinct, "complete": complete,
             "reason": reason,
         }
+        if claim_results_exempt:
+            claim_results[claim]["exemption"] = (
+                "single-source [DR] derived claim: two-source rule not applicable "
+                "(closed-form evaluation, independently re-derived)")
         if not complete:
             missing_evidence.append({"claim": claim, "reason": reason, "anchors": aids})
     return {"claim_results": claim_results, "anchor_results": anchor_results,
@@ -567,7 +594,20 @@ def _xcheck_edge_extraction_efficiency(anchors):
     d = DeviceDesign.load(GAINP_CARD)
     r = evaluate(d, [d.thermal.T_hs])
     edge_beta = r["scalars"]["edge_beta"]
-    ridge_class_ok = 0.003 < edge_beta < 0.03
+    # Spec audit-edge-cards-label task 2 (2026-09-23): the pre-audit-H4
+    # [E] ridge class (0.003, 0.03) predates the waveguide Purcell-area fix
+    # (beta ~2.3x, gainp card now ~0.057). The bound is the ONE shared [E]
+    # envelope verify/data/rt_edge_anchors.yaml envelopes.ridge_guided_beta
+    # (0.0060, 0.067: the old class mapped through the Lecamp, Lalanne &
+    # Hugonin, PRL 99, 023902 (2007) Purcell-area rescale, r = 2 .. 2.32;
+    # re-derived in verify_waveguide.py). Not a geometry-matched pin: the
+    # lecamp07-hkust-ridge-guided-beta [DR] anchor is the HKUST 668 nm
+    # ridge, not this 770 nm red-diode stack. The card must also sit >= 5%
+    # inside both bounds, so the envelope can never be a bound tuned to it.
+    env = yaml.safe_load(ANCHORS_PATH.read_text(encoding="utf-8"))["envelopes"]["ridge_guided_beta"]
+    env_lo, env_hi = float(env["lo"]), float(env["hi"])
+    ridge_class_ok = (env_lo < edge_beta < env_hi
+                      and edge_beta >= 1.05 * env_lo and edge_beta <= 0.95 * env_hi)
     # Guard: a vertical photonic-nanowire/first-lens collection efficiency
     # (Laferriere: 0.276; Reischle vertical reference: 9e-5) must not be
     # conflated with this ridge's own beta factor -- "high-beta photonic
@@ -575,8 +615,9 @@ def _xcheck_edge_extraction_efficiency(anchors):
     far_from_laferriere = abs(edge_beta - anchors["laferriere23-first-lens-efficiency"]["value"]) > 0.1
     far_from_reischle = abs(edge_beta - anchors["reischle08-first-lens-efficiency"]["value"]) > 0.001
     ok = ridge_class_ok and far_from_laferriere and far_from_reischle
-    detail = (f"gainp card edge_beta={edge_beta:.4f} sits in its own [E] ridge class "
-              f"(0.3%-3%, {ridge_class_ok}) and stays distinct from both vertical-reference "
+    detail = (f"gainp card edge_beta={edge_beta:.4f} sits in the shared [E] ridge class "
+              f"envelope ({env_lo}-{env_hi}, >= 5% inside both bounds, {ridge_class_ok}) and "
+              f"stays distinct from both vertical-reference "
               f"anchors ({anchors['laferriere23-first-lens-efficiency']['value']}, "
               f"{anchors['reischle08-first-lens-efficiency']['value']}) -- a vertical collection "
               f"efficiency does not validate this edge ridge's beta")
@@ -807,6 +848,16 @@ def _naive_recount_complete(anchors: dict) -> set:
                     any_v_or_dr = True
         if len(keys) >= 2 and any_v_or_dr:
             complete.add(claim)
+        # audit-edge-cards-label task 2: the [DR] derived single-source
+        # exemption, recounted from the raw fields only (claim outside
+        # CLAIM_META; every anchor DR, verified, valued, 'derived:' note;
+        # one distinct source).
+        elif (claim not in CLAIM_META and len(keys) == 1
+              and all(anchors[aid].get("tag") == "DR" and anchors[aid].get("status") == "verified"
+                      and anchors[aid].get("value") is not None
+                      and str(anchors[aid].get("verification", "")).strip().startswith("derived:")
+                      for aid in aids)):
+            complete.add(claim)
     return complete
 
 
@@ -877,6 +928,27 @@ def _run_self_test(ok_fn) -> None:
          not fabricated_scored["claim_results"]["reischle2008_g2_80K"]["complete"])
     ok_fn("self-test: the fabricated anchor itself is rejected (not effective_verified)",
          not fabricated_scored["anchor_results"]["fabricated-g2-80k"]["effective_verified"])
+
+    # audit-edge-cards-label task 2: the [DR] derived single-source
+    # exemption is narrow -- downgrading the derived anchor's tag to [E], or
+    # dropping its 'derived:' verification note, must make the claim
+    # incomplete again (the exemption never covers a transcribed number).
+    derived_claims = [c for c, r in baseline["claim_results"].items() if r.get("exemption")]
+    ok_fn("self-test: the ledger's [DR] derived single-source claim(s) are scored complete "
+         "under the exemption", bool(derived_claims)
+         and all(baseline["claim_results"][c]["complete"] for c in derived_claims))
+    for label, mutate in (
+            ("tag downgraded DR -> E", lambda a: a.__setitem__("tag", "E")),
+            ("'derived:' verification note removed",
+             lambda a: a.__setitem__("verification", "digest: " + str(a.get("verification", ""))))):
+        broken = True
+        for c in derived_claims:
+            tampered_anchors = copy.deepcopy(real_anchors)
+            for aid in baseline["claim_results"][c]["anchors"]:
+                mutate(tampered_anchors[aid])
+            broken = broken and not score_ledger(tampered_anchors)["claim_results"][c]["complete"]
+        ok_fn(f"self-test: derived single-source exemption is revoked when the anchor's {label}",
+             bool(derived_claims) and broken)
 
     # Newly-completed claims: the ledger now carries a genuine second source
     # for these (Matsuda 2001 + Chatzarakis 2023; Schulz 2009 + Bommer
@@ -997,6 +1069,14 @@ def run_checks(self_test: bool = False) -> dict:
         anchors = load_anchors()
         scored = score_ledger(anchors)
         for claim, result in scored["claim_results"].items():
+            if result.get("exemption"):
+                # audit-edge-cards-label task 2: named honestly -- this claim
+                # does NOT have two sources; it is a [DR] derived single-
+                # source claim, exempt from the two-source rule.
+                ok(f"claim [{claim}] is a single-source [DR] derived claim "
+                   "(two-source rule exempt, independently re-derived)", result["complete"],
+                   result["exemption"])
+                continue
             ok(f"claim [{claim}] has two distinct verified primary sources", result["complete"],
                result.get("reason"))
         crosscheck_results = run_evaluator_crosschecks(anchors, ok)

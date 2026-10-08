@@ -34,8 +34,8 @@ single-dot):
     linewidth -- an instrument upper bound only [E] (Laferriere et al.,
     Nano Lett. 23, 962 (2023), p. 965). Not used as an anchor; see
     verify/data/rt_edge_anchors.yaml 'laferriere23-linewidth-class-proxy'.
-  * InAs/InP single dot at 1.55 um: 17.5 meV homogeneous at 300 K (literature
-    report cited in _goal/materials_research.md, section 6) [DR].
+  * InAs/InP single dot at 1.55 um: 17.5 meV homogeneous at 300 K (internal
+    literature report) [DR].
   * (211)B InAs/GaAs cavity dot: 6-7 meV at >= 250 K -- Chatzarakis et al.,
     PRApplied 20, 034011 (2023) [V] (lowest reported value; strong
     confinement).

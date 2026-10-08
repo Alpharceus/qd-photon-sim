@@ -84,9 +84,8 @@ check("bias mapping survives in-memory load round trip",rt.nitride["bias"]==dv.n
 
 # ---------------------------------------------------------------------------
 # Fix-round-1 additions below. Each block is an INDEPENDENT integration check
-# (acceptance criteria 1, 2, 5, 6, 7 of .workers/specs/nitride-geometry-device.md's
-# fix round) plus the three named mutation-sensitivity checks the Opus
-# re-review's Required list called for by name.
+# (acceptance criteria 1, 2, 5, 6, 7) plus the three named mutation-sensitivity
+# checks from the Opus re-review's Required list.
 # ---------------------------------------------------------------------------
 
 # --- Acceptance 1: NaN-aware old-card equality, absent vs explicit defaults ---

@@ -13,12 +13,15 @@ session stays reproducible from its file.
 HONESTY: a design evaluated at point values yields conditional numbers, not
 predictions -- unmeasured inputs keep their [A] tags and every result carries
 the widest tag of its chain. The envelope treatment lives in run_phase3.
+
+PRE-RETENTION BRIGHTNESS NOTE: the retention factor S is intentionally omitted on the legacy non-diode brightness path (brightness_per_pulse is "pre-retention" there, (P1+P2)*t_x*G*beta_sin; user decision Q1, 2026-09-23, audit device.py:2226); the diode path carries it (x S). See scalars["brightness_convention"].
 """
 from __future__ import annotations
 
 import copy
 import itertools
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -44,7 +47,7 @@ from .loading import (
     n_window_competitors,
 )
 from .qd_gf import PhononParams, ibm_purcell_transmission, ibm_transmission
-from .spectral import SpectralResult, epsilon, epsilon2, gamma_of_T
+from .spectral import SpectralResult, cavity_transmission, epsilon, epsilon2, gamma_of_T
 from .thermal import Layer, Stack, t_junction
 from .linewidth import LinewidthParams, gamma_anchor
 from . import cw_g2, dot_levels, materials, pulse_counting, transport, waveguide
@@ -77,6 +80,16 @@ class DotBlock:
     a_ac: float = 2.0e-3         # meV/K [V] Ortner et al., PRB 70, 201301 (2004)
     E_LO: float = 43.0           # meV [V] Ioffe NSM, InP LO phonon
     gamma300: float = 12.0       # meV [A] Matsuda et al., PRB 63, 121304 (2001) class anchor
+    width_kind: str = "total"    # [A] what the linewidth Gamma(T) above holds: "total" (the
+                                 # measured full width, ZPL+sidebands: default, legacy) | "zpl"
+                                 # (the zero-phonon-line width alone). Read ONLY by the optional
+                                 # quantum path (quantum_hom_indistinguishability_phonon);
+                                 # shipped cards leave it unset, so legacy outputs are unchanged.
+
+    def __post_init__(self):
+        # card-parsing validation (DeviceDesign.load builds DotBlock(**dot));
+        # evaluate() re-checks for designs mutated after construction.
+        _check_width_kind(self)
 
 
 @dataclass
@@ -358,7 +371,19 @@ class CavityBlock:
     T_track: float = 120.0       # tracking-rule target (K)
     E_X0: float = 1.88           # eV cryogenic X
     dEdT_cav: float = -0.04      # meV/K
-    F_P: float = 10.0            # [A]; unused when type=sin_waveguide
+    F_P: float = 10.0            # [A]; unused when type=sin_waveguide.
+                                  # Meaning (audit 2026-09-23): the EXTRA
+                                  # emission rate into the single cavity mode
+                                  # relative to the bulk rate Gamma_0 -- a 3-D
+                                  # mode Purcell factor (3/4pi^2)(lambda/n)^3
+                                  # Q/V (Purcell, Phys. Rev. 69, 681 (1946)),
+                                  # micropillar/V_eff class. purcell_wire
+                                  # composes F_eff = 1 + F_P*cavity_transmission
+                                  # (the '1 +' is the free-space channel), so a
+                                  # planar-DBR TOTAL-rate multiplier
+                                  # (dbr.planar_total_rate) must NOT be passed
+                                  # here: its free-space share would be counted
+                                  # twice [DR].
     G: float = 8.0               # collection gain on signal [A]; unused when type=sin_waveguide
     beta_sin: float = 1.0        # SiN evanescent coupling [A]; Lemma 1: brightness ONLY,
                                   # never eps/rho/g2/T_c (applied inline in evaluate())
@@ -368,6 +393,15 @@ class CavityBlock:
                                   # ZPL redistribution (Z_eff funneling).
                                   # [E->analytic-1D, confirm: SIM-B]. False =
                                   # legacy bit-identical (T_c conservative).
+                                  # Rate law (audit 2026-09-23, [DR] Lindblad
+                                  # weak coupling; same kernel as
+                                  # nitride_cavity.response): F_eff = 1 +
+                                  # F_P * spectral.cavity_transmission(dx,
+                                  # Gamma, kappa), additive cavity channel with
+                                  # the emitter-cavity Lorentzian of FWHM
+                                  # kappa + Gamma. F_P is the extra cavity-mode
+                                  # rate (see F_P above), never a planar total-
+                                  # rate multiplier.
 
 
 @dataclass
@@ -496,6 +530,14 @@ class DeviceDesign:
     # nitride tier; defaults are only inert schema defaults [A].
     nitride: dict = field(default_factory=dict)
     provenance: dict = field(default_factory=dict)  # persisted card-side evidence notes
+    # Optional Lindblad quantum path (audit Phase C item 2, 2026-09-23), OFF by
+    # default: {} or {"enabled": False} leaves every result bit-identical and
+    # adds no key. {"enabled": True, "dephasing": "corr"|"indep", "n_filt": 4}
+    # makes evaluate() (legacy/RT edge, planar nitride, nanowire) additionally
+    # report the cascaded-filter CW g2(0) and the HOM indistinguishability at
+    # the operating point as NEW "quantum_*" scalars, tagged [DR]; no existing
+    # key or verdict changes. See _quantum_diagnostics.
+    quantum: dict = field(default_factory=dict)
 
     # ---- YAML round-trip (same reproducibility rule as the cards)
     def save(self, path):
@@ -503,6 +545,14 @@ class DeviceDesign:
                         "note": "editable device description; evaluate with "
                                 "fsim_core.device.evaluate"},
                "design": asdict(self)}
+        # The optional quantum block is written only when non-empty, so a
+        # flag-off design saves exactly the pre-quantum-path text (load()
+        # reads a missing block back as {}).
+        if not doc["design"].get("quantum"):
+            doc["design"].pop("quantum", None)
+        # Same rule for dot.width_kind: the default "total" is not written.
+        if doc["design"]["dot"].get("width_kind") == "total":
+            doc["design"]["dot"].pop("width_kind")
         Path(path).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
     @staticmethod
@@ -582,6 +632,7 @@ class DeviceDesign:
             emission=EmissionBlock(**d.get("emission", {})),
             platform=platform, nitride=dict(d.get("nitride", {})),
             provenance=dict(d.get("provenance", {})),
+            quantum=dict(d.get("quantum", None) or {}),
         )
 
 
@@ -787,6 +838,15 @@ def _compose_aperture_g2(g_target, lam):
     return (np.asarray(g_target, dtype=float) + 2.0 * lam + lam * lam) / (1.0 + lam) ** 2
 
 
+def _aperture_rho_eff(rho, lam):
+    """Signal fraction of target + Poisson competitor bath (audit 2026-09-23,
+    device.py:2128): with target counts s, bath lam*s and background b
+    (rho = s/(s+b)), rho_eff = (1+lam)s/((1+lam)s+b) = (1+lam)rho/(1+lam rho).
+    Feeding it to g2_from with g_mix = _compose_aperture_g2(g_t, lam) gives
+    the exact three-source result 1 - s^2(1-g_t)/((1+lam)s+b)^2 [DR]."""
+    return (1.0 + lam) * rho / (1.0 + lam * rho)
+
+
 def _resolve_edge(ret: RetentionBlock, emission: EmissionBlock, Tj: float):
     """Convert the shared inline stack (ret.preset / ret.system) into
     waveguide.Layer objects at the actual emission wavelength (the
@@ -853,14 +913,44 @@ def _nitride_flat_background_acceptance(kappa_meV, w_meV, dx_w_meV, detuning_meV
     second window position). A flat/broadband continuum crossing that same
     window is filtered by the cavity+slit's spectral acceptance function
     averaged (not Lorentzian-line-weighted like spectral.epsilon2's t_X)
-    across the reservoir-centred window -- spec: "not t_X" [DR extension of spectral.py's
+    across that X-centred window -- spec: "not t_X" [DR extension of spectral.py's
     transmission2/combined_transmission kernel, flat-weighted instead of
     line-shape-weighted].
+
+    ONE spectral selection (audit H3, 2026-09-23): nitride_transport's
+    Background.rate_bg_window is ALREADY the in-window rate -- b_e multiplies
+    the reservoir emission by transport.xi_window(w, dE, E_U), the fraction
+    of the reservoir's Urbach tail that falls inside the X-line window of
+    full width w. The planar evaluator therefore calls this with
+    reservoir_offset_meV = 0 (window centred on X, the same window xi
+    selected). A window centred on the reservoir peak (the pre-fix call)
+    evaluated the cavity Lorentzian several hundred meV off resonance for
+    photons xi had already placed inside the X window -- a second, spurious
+    selection (background 7.5e3-3.5e5x too small). The reservoir_offset_meV
+    argument is kept for callers/diagnostics only.
+
+    Closed form (audit C0/D2, 2026-09-23) [DR]: with g = kappa/2 and the
+    window [a, b] = offset -/+ w/2,
+        (1/w) int_a^b g^2/((x-off)^2+g^2) dx
+            = (g/w) [atan((b-off)/g) - atan((a-off)/g)],
+    the same arctan average the nanowire helper
+    (nitride_nanowire_device._background_acceptance) documents.  It replaces
+    a scipy quad over the same kernel that emitted IntegrationWarning
+    ("probably divergent or slowly convergent") for narrow (high-Q) lines;
+    the integrand is elementary, so no quadrature error remains.  A
+    non-positive kappa (zero-width line) has zero flat-spectrum acceptance.
     """
     half = w_meV / 2.0
     off = dx_w_meV - detuning_meV  # cavity center, in slit-relative meV (spectral.transmission2 convention)
-    val, _ = quad(lambda x: (kappa_meV / 2.0) ** 2 / ((x - off) ** 2 + (kappa_meV / 2.0) ** 2),
-                 reservoir_offset_meV-half, reservoir_offset_meV+half, limit=200)
+    g = kappa_meV / 2.0
+    # C0 review low (2026-09-23): `not g > 0.0` also caught NaN and silently
+    # turned a NaN kappa (a not-computed cavity) into a finite 0.0; a NaN
+    # kappa now propagates to a NaN acceptance instead.
+    if g <= 0.0:
+        return 0.0
+    lo = reservoir_offset_meV - half
+    hi = reservoir_offset_meV + half
+    val = g * (math.atan((hi - off) / g) - math.atan((lo - off) / g))
     return val / w_meV
 
 
@@ -916,6 +1006,295 @@ def _nitride_lifetime_ns(rate_ns):
     if not np.isfinite(rate_ns):
         return np.nan
     return np.inf if rate_ns == 0 else 1.0 / rate_ns
+
+
+# ------------------------------------------------------------- optional quantum path
+
+_QUANTUM_KEYS = frozenset({"enabled", "dephasing", "n_filt"})
+
+
+def _quantum_settings(d: "DeviceDesign"):
+    """Resolve DeviceDesign.quantum. Returns None when the optional Lindblad
+    path is off (the default: {} or enabled False) -- the caller then adds
+    no key at all, so every legacy result stays bit-identical. A malformed
+    block raises ValueError whether or not it is enabled."""
+    q = d.quantum if d.quantum is not None else {}
+    if not isinstance(q, dict):
+        raise ValueError("quantum must be a mapping")
+    extra = set(q) - _QUANTUM_KEYS
+    if extra:
+        raise ValueError("unknown quantum keys: " + ", ".join(sorted(extra)))
+    enabled = q.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ValueError("quantum.enabled must be true or false")
+    mode = q.get("dephasing", "corr")
+    if mode not in ("corr", "indep"):
+        raise ValueError("quantum.dephasing must be 'corr' or 'indep'")
+    # n_filt = sensor Fock states kept (0..n_filt-1). 4 makes the leading-
+    # order <f+2 f2> exact (two-level closed form to ~1e-15, verify_lindblad
+    # g1); 3 truncates it at ~1e-8 (device points) to ~2e-5 (cryo) [DR].
+    n_filt = q.get("n_filt", 4)
+    if isinstance(n_filt, bool) or not isinstance(n_filt, int) or n_filt < 3:
+        raise ValueError("quantum.n_filt must be an integer >= 3")
+    return {"dephasing": mode, "n_filt": n_filt} if enabled else None
+
+
+_WIDTH_KINDS = ("total", "zpl")
+
+
+def _check_width_kind(dot) -> None:
+    if dot.width_kind not in _WIDTH_KINDS:
+        raise ValueError(f"unknown dot.width_kind {dot.width_kind!r} (use 'total' or 'zpl')")
+
+
+def _quantum_diagnostics(*, r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio,
+                         fwhm_X_meV, fwhm_XX_meV, delta_xx_meV, dx_meV, w_meV, eps_rate,
+                         dephasing="corr", n_filt=4, cw=True, levels=3,
+                         mu=None, T_j_K=None, width_kind="total", phonon=None):
+    """Operating-point Lindblad diagnostics (fsim_core.lindblad, the reviewed
+    core, imported locally so that no legacy path imports it). Returns the
+    NEW "quantum_*" scalars; every value is [DR] on the evaluator's own rates.
+
+    (a) Filtered CW g2(0). The emitter (G, X[, XX]) runs under the SAME
+        incoherent pump r, radiative rates gamma_X/gamma_XX, escape k_X/k_XX
+        and pump_ratio as the rate-equation path. Pure dephasing is fitted by
+        lindblad.dephasing_for_fwhm so the X (XX) line FWHM equals the
+        evaluator's own homogeneous linewidth fwhm_X_meV (fwhm_XX_meV). The
+        radiated field drives a cascaded two-port Lorentzian filter
+        (Gardiner, PRL 70, 2269 (1993); Carmichael, PRL 70, 2273 (1993)) of
+        FWHM w_meV, the SAME window width the rate path's Bernoulli t_X/t_XX
+        use, centred per the spectral.epsilon convention (dx_meV = X offset
+        from the filter centre; XX lies delta_xx_meV below X). Frame: the X
+        transition, so det_XX = -delta_xx/hbar and the filter centre sits at
+        -dx/hbar. g2_f(0) = <f+2 f2>/<f+f>^2 carries the filter memory 1/w
+        that cw_g2's memoryless Bernoulli thinning omits (audit 2026-09-22:
+        +0.05..+0.19 at 230-300 K). quantum_g2_cw0_rate_dot is the rate
+        equation's memoryless value at the same point (cw_g2.g2_cw_zero with
+        the rate path's own eps), for comparison. Two-level reduction:
+        g2_f(0) = 2D(w+L)/((D+w)(3w+L)), D = r + gamma_X + k_X, L = line FWHM
+        (verify_lindblad e2 and g1).
+    (b) HOM indistinguishability of the X photon after an instantaneous
+        excitation into |X> (pulsed convention, no pump during the emission;
+        Grange et al., PRL 114, 193601 (2015)). Two-level emitter with
+        population decay Gamma = gamma_X + k_X and pure-dephasing (coherence)
+        rate gamma* = FWHM_X/(2 hbar) - Gamma/2 [DR], so the X line FWHM is
+        hbar (Gamma + 2 gamma*) = fwhm_X_meV and
+        I = Gamma/(Gamma + 2 gamma*) = hbar Gamma / fwhm_X_meV. gamma* is
+        clipped at 0 when the lifetime floor hbar Gamma >= fwhm_X_meV binds
+        (quantum_hom_lifetime_floor_binds). I itself comes from
+        lindblad.indistinguishability, not from the closed form.
+    (b2) Cascade-weighted HOM (Q2). Starting the three-level system in
+        |XX><XX| (field sqrt(gamma_X) c_X, the same dephasing on the X-G
+        coherence), the X photon follows an XX photon and the stochastic XX
+        decay time is imprinted on the X wavepacket (Schoell et al., PRL 125,
+        233605 (2020)). Exact identity [DR, pinned in verify_lindblad (d7)]:
+            I_{XX->X} = I_X Gamma_XX / (Gamma_XX + Gamma_X),
+        Gamma_X = gamma_X + k_X, Gamma_XX = gamma_XX + k_XX
+        (quantum_hom_cascade_factor is the ratio).
+        quantum_hom_indistinguishability_loaded = [P1 I_X + P2 I_{XX->X}] /
+        (P1 + P2) with P1, P2 the cap-2 loading probabilities
+        (loading.loading_probs(mu)) at the operating point: [DR]
+        leading-order mixture, NOT exact (the HOM integrand is quadratic in
+        the field correlator). NaN when mu is not supplied/finite.
+    (b3) Filtered HOM (Q3). The HOM integral of the cascaded-filter output
+        field ops["f_out"] on a two-level emitter feeding the SAME filter as
+        (a) (source "X"), same dephasing and escape as (b), starting in
+        |X, n_f = 0>. quantum_hom_filtered_photons_per_excitation is the
+        photon number N through the filter output per excitation (<= 1).
+        Narrowing w raises I and lowers N: the efficiency-indistinguishability
+        trade-off of Iles-Smith et al., Nat. Photonics 11, 521 (2017). NaN
+        (silently; (a) reports the missing-filter reason) when w is not a
+        finite positive width.
+    (b4) ZPL/sideband partition (Q4). quantum_hom_zpl_weight =
+        qd_gf.zpl_weight(PhononParams(**phonon), T_j) = exp(-S(T)). The
+        quantum path models a Lorentzian line; the independent-boson sideband
+        weight is a separate phonon description. dot.width_kind states which
+        one the card's linewidth holds [A]: "zpl" -> the weak-coupling
+        estimate Z^2 I_X ([DR], Iles-Smith 2017: each of the two photons must
+        sit in the ZPL); "total" (default) -> NaN, because a measured total
+        width (ZPL+sidebands) cannot be partitioned without a measured
+        spectrum and Z^2 would double-count the sidebands. The explanation is
+        in quantum_hom_phonon_reason, deliberately NOT appended to
+        quantum_invalid_reasons (the default would make every quantum result
+        carry a reason; existing checks assert that list is empty for valid
+        points).
+    Markovian (Lorentzian ZPL) baths only [A]. The Lorentzian filter of FWHM
+    w stands in for the rate path's top-hat of width w; both give t_X = 0.5
+    at w = FWHM [A]."""
+    from . import lindblad as lb
+    R = lb.mev_to_rate
+    out = {"quantum_model": "lindblad (fsim_core.lindblad): cascaded Lorentzian filter + HOM",
+           "quantum_dephasing_mode": dephasing, "quantum_filter_n_max": int(n_filt),
+           "quantum_filter_fwhm_meV": float(w_meV) if w_meV is not None else float("nan"),
+           "quantum_filter_center_offset_meV": float(dx_meV),
+           "quantum_linewidth_X_meV": float(fwhm_X_meV),
+           "quantum_linewidth_XX_meV": float(fwhm_XX_meV),
+           "quantum_g2_cw0_filtered_dot": float("nan"),
+           "quantum_g2_cw0_filtered_dot_corr": float("nan"),
+           "quantum_g2_cw0_filtered_dot_indep": float("nan"),
+           "quantum_g2_cw0_rate_dot": float("nan"),
+           "quantum_g2_cw0_rate_dot_lorentzian": float("nan"),
+           "quantum_g2_cw0_filter_shift_corr": float("nan"),
+           "quantum_g2_cw0_filter_shift_indep": float("nan"),
+           "quantum_hom_gamma_ns": float("nan"), "quantum_hom_gamma_star_ns": float("nan"),
+           "quantum_hom_indistinguishability": float("nan"),
+           "quantum_hom_lifetime_floor_binds": False,
+           "quantum_hom_indistinguishability_from_XX": float("nan"),
+           "quantum_hom_indistinguishability_loaded": float("nan"),
+           "quantum_hom_indistinguishability_loaded_exact": float("nan"),
+           "quantum_hom_cascade_factor": float("nan"),
+           "quantum_hom_indistinguishability_filtered": float("nan"),
+           "quantum_hom_filtered_photons_per_excitation": float("nan"),
+           "quantum_hom_zpl_weight": float("nan"),
+           "quantum_hom_indistinguishability_phonon": float("nan"),
+           "quantum_hom_width_kind": str(width_kind),
+           "quantum_hom_phonon_reason": "",
+           "quantum_invalid_reasons": []}
+    reasons = out["quantum_invalid_reasons"]
+    vals = (gamma_X_ns, gamma_XX_ns, k_X, k_XX, fwhm_X_meV, fwhm_XX_meV)
+    if not all(np.isfinite(v) for v in vals) or gamma_X_ns <= 0:
+        reasons.append("quantum: operating-point rates/linewidth not finite")
+        return out
+    # (b) HOM: two-level, instantaneous excitation into |X>.
+    Gam = float(gamma_X_ns + k_X)
+    fw_X = float(R(fwhm_X_meV))
+    gstar = max(0.5 * fw_X - 0.5 * Gam, 0.0)
+    out["quantum_hom_gamma_ns"] = Gam
+    out["quantum_hom_gamma_star_ns"] = gstar
+    out["quantum_hom_lifetime_floor_binds"] = bool(fw_X <= Gam)
+    # D[sqrt(c)|X><X|] adds c/2 to the X-G coherence decay, so c = 2 gamma*.
+    s2 = lb.build_system(levels=2, gamma_X_ns=gamma_X_ns, k_X=k_X,
+                         deph=[(2.0 * gstar, (0.0, 1.0))] if gstar > 0 else [])
+    rho0 = np.zeros((s2.dim, s2.dim), dtype=complex)
+    rho0[1, 1] = 1.0
+    out["quantum_hom_indistinguishability"] = float(
+        lb.indistinguishability(s2.L, s2.dim, rho0, np.sqrt(gamma_X_ns) * s2.ops["c_X"]))
+    I_X = out["quantum_hom_indistinguishability"]
+    # (b2) cascade-weighted HOM: three-level system started in |XX>.
+    Gam_XX = float(gamma_XX_ns + k_XX)
+    if levels == 3 and Gam_XX > 0:
+        out["quantum_hom_cascade_factor"] = float(Gam_XX / (Gam_XX + Gam))
+        s3 = lb.build_system(levels=3, gamma_X_ns=gamma_X_ns, gamma_XX_ns=gamma_XX_ns,
+                             k_X=k_X, k_XX=k_XX,
+                             deph=[(2.0 * gstar, (0.0, 1.0, 0.0))] if gstar > 0 else [])
+        rho3 = np.zeros((s3.dim, s3.dim), dtype=complex)
+        rho3[2, 2] = 1.0
+        I_XX = float(lb.indistinguishability(s3.L, s3.dim, rho3,
+                                             np.sqrt(gamma_X_ns) * s3.ops["c_X"]))
+        out["quantum_hom_indistinguishability_from_XX"] = I_XX
+        if mu is not None and np.isfinite(mu) and mu >= 0:
+            _, P1, P2 = loading_probs(mu)
+            if P1 + P2 > 0:
+                out["quantum_hom_indistinguishability_loaded"] = float(
+                    (P1 * I_X + P2 * I_XX) / (P1 + P2))
+                # Exact HOM of the loaded mixed state rho = (P1 |X><X| + P2 |XX><XX|)
+                # /(P1+P2) (Fable review finding 5, 2026-10-08). The HOM numerator S
+                # is quadratic and the photon number N linear in rho, so the exact I
+                # is not the linear P-weighted mean above; by AM-GM on the
+                # correlator integrand the mean is an UPPER bound [DR] (verify_device_rt
+                # checks exact <= mixture numerically).
+                rho_mix = np.zeros((s3.dim, s3.dim), dtype=complex)
+                rho_mix[1, 1] = P1 / (P1 + P2)
+                rho_mix[2, 2] = P2 / (P1 + P2)
+                out["quantum_hom_indistinguishability_loaded_exact"] = float(
+                    lb.indistinguishability(s3.L, s3.dim, rho_mix,
+                                            np.sqrt(gamma_X_ns) * s3.ops["c_X"]))
+    # (b3) filtered HOM: two-level emitter feeding the cascaded filter.
+    if w_meV is not None and np.isfinite(w_meV) and w_meV > 0:
+        sf = lb.build_system(levels=2, gamma_X_ns=gamma_X_ns, k_X=k_X,
+                             deph=[(2.0 * gstar, (0.0, 1.0))] if gstar > 0 else [],
+                             filt=dict(fwhm_ns=float(R(w_meV)), det_ns=-float(R(dx_meV)),
+                                       n_max=3, source="X"))
+        rhof = np.zeros((sf.dim, sf.dim), dtype=complex)
+        rhof[3, 3] = 1.0                      # |X, n_f = 0>: index = e * n_f + f, n_f = 3
+        I_f, N_f = lb.indistinguishability(sf.L, sf.dim, rhof, sf.ops["f_out"],
+                                           return_counts=True)
+        out["quantum_hom_indistinguishability_filtered"] = float(I_f)
+        out["quantum_hom_filtered_photons_per_excitation"] = float(N_f)
+    # (b4) ZPL weight and the phonon-partitioned HOM.
+    if T_j_K is not None and np.isfinite(T_j_K) and T_j_K > 0:
+        from . import qd_gf
+        out["quantum_hom_zpl_weight"] = float(
+            qd_gf.zpl_weight(PhononParams(**(phonon or {})), float(T_j_K)))
+    if width_kind == "zpl":
+        out["quantum_hom_indistinguishability_phonon"] = float(
+            out["quantum_hom_zpl_weight"] ** 2 * I_X)
+    else:
+        out["quantum_hom_phonon_reason"] = (
+            "quantum: dot.width_kind='total' (a measured total width, ZPL + sidebands) cannot "
+            "be partitioned into ZPL and sideband without a measured spectrum; set "
+            "dot.width_kind='zpl' only if the card's linewidth is the zero-phonon-line width")
+    # (a) filtered CW g2(0).
+    if not cw:
+        reasons.append("quantum: CW g2 not evaluated (no continuous pump at this operating "
+                       "point, e.g. deterministic_pair loading)")
+        return out
+    if w_meV is None or not np.isfinite(w_meV) or w_meV <= 0:
+        reasons.append("quantum: CW filtered g2 needs an enabled spectral filter (filter.enabled)")
+        return out
+    if not (np.isfinite(r_ns) and r_ns > 0):
+        reasons.append("quantum: CW pump rate not finite/positive")
+        return out
+    from .cw_g2 import g2_cw_zero
+    if levels == 3 and np.isfinite(eps_rate):
+        out["quantum_g2_cw0_rate_dot"] = float(g2_cw_zero(r_ns, gamma_X_ns, gamma_XX_ns, eps_rate,
+                                                          k_X, k_XX, pump_ratio))
+    # Memoryless (Bernoulli) rate-equation value with the Lorentzian filter's
+    # OWN transmissions (Lorentzian (x) Lorentzian overlaps,
+    # spectral.cavity_transmission): separates the exact-filter shift
+    # quantum_g2_cw0_filter_shift_* = filtered - this (filter memory 1/w plus
+    # the X/XX spectral correlation and two-photon interference inside the
+    # filter, both absent from Bernoulli thinning; audit 2026-09-22 section
+    # 2) from the top-hat vs Lorentzian filter-SHAPE change in eps [DR].
+    t_X_L = float(cavity_transmission(dx_meV, fwhm_X_meV, w_meV))
+    t_XX_L = float(cavity_transmission(dx_meV - delta_xx_meV, fwhm_XX_meV, w_meV))
+    eps_L = t_XX_L / t_X_L if t_X_L > 0 else float("nan")
+    if levels == 3 and np.isfinite(eps_L):
+        out["quantum_g2_cw0_rate_dot_lorentzian"] = float(
+            g2_cw_zero(r_ns, gamma_X_ns, gamma_XX_ns, eps_L, k_X, k_XX, pump_ratio))
+    for mode in ("corr", "indep"):
+        deph = lb.dephasing_for_fwhm(R(fwhm_X_meV), R(fwhm_XX_meV), r_ns=r_ns,
+                                     gamma_X_ns=gamma_X_ns, gamma_XX_ns=gamma_XX_ns,
+                                     k_X=k_X, k_XX=k_XX, pump_ratio=pump_ratio,
+                                     mode=mode, levels=levels)
+        system = lb.build_system(levels=levels, r_ns=r_ns, gamma_X_ns=gamma_X_ns,
+                                 gamma_XX_ns=gamma_XX_ns, k_X=k_X, k_XX=k_XX,
+                                 pump_ratio=pump_ratio, deph=deph,
+                                 det_XX_ns=-float(R(delta_xx_meV)),
+                                 filt=dict(fwhm_ns=float(R(w_meV)), det_ns=-float(R(dx_meV)),
+                                           n_max=int(n_filt)))
+        out[f"quantum_g2_cw0_filtered_dot_{mode}"] = float(lb.filtered_g2_zero(system))
+        out[f"quantum_g2_cw0_filter_shift_{mode}"] = (
+            out[f"quantum_g2_cw0_filtered_dot_{mode}"] - out["quantum_g2_cw0_rate_dot_lorentzian"])
+    out["quantum_g2_cw0_filtered_dot"] = out[f"quantum_g2_cw0_filtered_dot_{dephasing}"]
+    return out
+
+
+QUANTUM_PROVENANCE_NOTE = (
+    "[DR] optional Lindblad path (fsim_core.lindblad): quantum_g2_cw0_filtered* = "
+    "cascaded-Lorentzian-filter CW g2(0) (Gardiner, PRL 70, 2269 (1993); Carmichael, "
+    "PRL 70, 2273 (1993)) at the operating point, filter FWHM = the rate path's window "
+    "w, pure dephasing fitted to the reported linewidth; quantum_hom_* = HOM "
+    "indistinguishability (Grange et al., PRL 114, 193601 (2015)) with "
+    "gamma* = FWHM/(2 hbar) - Gamma/2, Gamma = gamma_X + k_X; "
+    "quantum_hom_indistinguishability_from_XX = the same HOM for an X photon that follows an XX "
+    "photon (|XX> start; exact identity I_XX->X = I_X Gamma_XX/(Gamma_XX+Gamma_X) = "
+    "quantum_hom_cascade_factor x I_X, Schoell et al., PRL 125, 233605 (2020)); "
+    "quantum_hom_indistinguishability_loaded = [P1 I_X + P2 I_XX->X]/(P1+P2) with the cap-2 "
+    "loading probabilities [DR] linear mixture, an UPPER BOUND on the loaded HOM (the HOM "
+    "integrand is quadratic in the field correlator, AM-GM); "
+    "quantum_hom_indistinguishability_loaded_exact = the exact HOM of the loaded mixed state "
+    "(P1 rho_X + P2 rho_XX)/(P1+P2) through lindblad.indistinguishability [DR], <= the mixture; quantum_hom_indistinguishability_filtered / "
+    "quantum_hom_filtered_photons_per_excitation = HOM and photons per excitation through the "
+    "same cascaded Lorentzian filter (the efficiency-indistinguishability trade-off of "
+    "Iles-Smith et al., Nat. Photonics 11, 521 (2017)); quantum_hom_zpl_weight = exp(-S(T)) "
+    "(qd_gf) and quantum_hom_indistinguishability_phonon = Z^2 I_X [DR] weak-coupling estimate "
+    "only when dot.width_kind='zpl' [A] (NaN for a total width, which cannot be partitioned); "
+    "no existing key or "
+    "verdict changes. Against the REPORTED top-hat g2_cw0 (legacy/RT, "
+    "quantum_g2_cw0_shift_vs_reported) the correction at 300 K on the gainp card is about "
+    "+0.23 after background (+0.33 dot level), larger than the audit's +0.05..+0.19 "
+    "memory-only shift (quantum_g2_cw0_filter_shift_*), which excludes the filter-shape change")
 
 
 def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
@@ -1124,6 +1503,8 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
     # reported gate_ns_used on an invalid row too (a requested experimental
     # setting, not a derived physics result).
     requested_gate = min(d.drive.gate_ns if d.drive.gate_ns is not None else period, period)
+    _check_width_kind(d.dot)
+    qset = _quantum_settings(d)  # optional Lindblad path; None (off) adds no key
     rows=[]
     for ths in ts:
         # Electro-thermal self-consistency: diode.junction_power(I_uA, T)
@@ -1178,6 +1559,7 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         # silently read the prior iteration's still-bound local instead.
         reservoir_energy_eV = np.nan
         reservoir_offset_meV = np.nan
+        bg_accept = bg_rate_window_s = bg_window = np.nan
         # Invalid-row placeholder: an ALL-NaN NitrideLevels, never a real
         # evaluation of some other (e.g. unbiased, heat-sink-T) state (Opus
         # fix-round finding 3: a thermal-runaway row was reporting finite,
@@ -1215,7 +1597,14 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
                 "external_field_kVcm": bias["applied_field_kVcm"]})
             lv = nitride_levels.levels(dsys, Tj)
             if not lv.valid:
-                raise ValueError("unbound dot: " + "; ".join(lv.invalid_reasons))
+                # C0 review low (2026-09-23): a field_collapse (interband
+                # Zener) dot is bound -- it is invalid because the unscreened
+                # field is not self-consistent -- so it gets its own
+                # "invalid dot:" prefix; genuinely unbound dots keep
+                # "unbound dot:".
+                _collapse = any(str(_r).startswith("field_collapse") for _r in lv.invalid_reasons)
+                raise ValueError(("invalid dot: " if _collapse else "unbound dot: ")
+                                 + "; ".join(lv.invalid_reasons))
             # Fix round 2 (2026-09-09, Opus re-review): ret.tau_cap_scales_with_density
             # was accepted by the card schema but never forwarded here, so the
             # axis was inert on the nitride branch (nitride_levels.rates
@@ -1267,7 +1656,13 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
             # integrated over the injection window plus optional exponential
             # afterglow, then filtered by the cavity/slit's flat-spectrum
             # acceptance (not t_X, spec) and collected once via eta_background [A].
-            bg_accept = _nitride_flat_background_acceptance(cr["kappa_meV"], w_val, d.filter.dx, cr["detuning_meV"], reservoir_offset_meV)
+            # Audit H3 (2026-09-23): ONE spectral selection. rate_bg_window
+            # already carries xi_window (the X-window share of the reservoir
+            # tail, nitride_transport.NitrideDiode.b_e), so the acceptance is
+            # averaged over the SAME X-centred window (offset 0), never a
+            # window centred on the reservoir peak [DR].
+            bg_accept = _nitride_flat_background_acceptance(cr["kappa_meV"], w_val, d.filter.dx, cr["detuning_meV"], 0.0)
+            bg_rate_window_s = inj.background.rate_bg_window
             bg_counts=inj.background.rate_bg_window*1e-9*bg_window
             if bg_tau>0 and gate>tau_on: bg_counts += inj.background.rate_bg_window*1e-9*bg_tau*(1-np.exp(-(gate-tau_on)/bg_tau))
             bg_counts *= eta_bg*bg_accept
@@ -1327,7 +1722,9 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
                          cnt=cnt,signal=signal,sx=sx,sxx=sxx,bg=bg_counts,valid=valid,reasons=reasons,
                          feas=feas,priced_fp=priced_fp,supplied=supplied,one_pair=one_pair,blocked=blocked,vj=vj,gam=gam,
                          bias=bias, reservoir_energy_eV=reservoir_energy_eV,
-                         reservoir_offset_meV=reservoir_offset_meV))
+                         reservoir_offset_meV=reservoir_offset_meV,
+                         bg_accept=bg_accept, bg_rate_window_s=bg_rate_window_s,
+                         bg_window_ns=bg_window))
     keys={"g2":lambda r:r["g2"],"rho2":lambda r:r["rho"]**2,"Tj":lambda r:r["T_j"],"gamma":lambda r:r["gam"],"eps":lambda r:r["cr"]["t_XX"]/r["cr"]["t_X"],"signal_flux":lambda r:r["signal"]*rep}
     curves={k:np.array([f(r) for r in rows]) for k,f in keys.items()}; op=rows[int(np.argmin(abs(ts-d.thermal.T_hs)))]
     x=op; c=x["cr"]; rr=x["rr"]; lv=x["lv"]; feas=x["feas"]
@@ -1349,6 +1746,10 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         "flat_band": bool(x["bias"]["flat_band"]) if x["bias"] else False,
         "depletion_regime": x["bias"]["depletion_regime"] if x["bias"] else None,
         "reservoir_energy_eV": x["reservoir_energy_eV"], "reservoir_offset_meV": x["reservoir_offset_meV"],
+        # Audit H3 (2026-09-23): the single spectral selection's inputs, so
+        # background_flux_s can be recomputed as rate x acceptance x eta x window.
+        "background_acceptance": x["bg_accept"], "background_rate_window_s": x["bg_rate_window_s"],
+        "background_window_ns": x["bg_window_ns"], "eta_background": eta_bg,
         "optical_reservoir_energy_eV": x["reservoir_energy_eV"],
         "optical_reservoir_kind": lv.optical_reservoir_kind, "reservoir_kind": lv.reservoir_kind, "geometry_type": system0.geometry_type,
         "effective_height_nm": lv.effective_height_nm, "effective_radius_nm": lv.effective_radius_nm,
@@ -1356,6 +1757,27 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
         "cavity_reference_convention": "fixed_junction_voltage" if cavity_reference_V is not None or bias_mode == "junction_voltage" else "current_controlled",
     })
     scalars["device_pass"]=bool(bias_mode == "current" and scalars["valid"] and scalars["g2_op"]<.5 and scalars["collected_flux_pulsed_s"]>=1000 and (d.drive.cycle_loading!="deterministic_pair" or (scalars["one_pair_valid"] and scalars["set_feasible"] and scalars["pair_supply_possible"])))
+    if qset is not None:
+        # Optional Lindblad diagnostics (audit Phase C item 2), NEW keys only.
+        # CW pump = the pulse-on captured rate r_dot (rectangular loading
+        # only); linewidth gam for X and XX (as nitride_cavity.response
+        # uses); filter FWHM = the SAME collection window w_val.
+        _tx, _txx = c["t_X"], c["t_XX"]
+        _eps = _txx / _tx if (np.isfinite(_tx) and _tx > 0) else float("nan")
+        q = _quantum_diagnostics(
+            r_ns=x["r_dot"] / 1e9, gamma_X_ns=c["gamma_X_ns"], gamma_XX_ns=c["gamma_XX_ns"],
+            k_X=rr["k_X_ns"], k_XX=rr["k_XX_ns"], pump_ratio=d.drive.cw_pump_ratio,
+            fwhm_X_meV=x["gam"], fwhm_XX_meV=x["gam"], delta_xx_meV=d.dot.delta_xx,
+            dx_meV=d.filter.dx, w_meV=(x["gam"] if d.filter.auto_w else d.filter.w),
+            eps_rate=_eps, cw=(d.drive.cycle_loading == "rectangular"),
+            mu=(x["mu"] if d.drive.cycle_loading != "deterministic_pair" else None),
+            T_j_K=x["T_j"], width_kind=d.dot.width_kind, phonon=d.dot.phonon, **qset)
+        q["quantum_note"] = ("planar nitride: quantum filter = the collection window w only; "
+                             "the cavity's own Lorentzian (kappa) and eta_out are not part of "
+                             "the quantum filter [A]; gamma_X/gamma_XX are the cavity-enhanced "
+                             "rates of nitride_cavity.response")
+        scalars.update(q)
+        scalars["provenance"]["quantum"] = QUANTUM_PROVENANCE_NOTE
     return {"curves":curves,"scalars":scalars}
 
 
@@ -1395,6 +1817,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         raise ValueError("finite_pulse does not support drive.mechanism overrides")
     if d.dot.linewidth not in ("class", "anchored"):
         raise ValueError(f"unknown dot.linewidth {d.dot.linewidth!r}")
+    _check_width_kind(d.dot)
+    qset = _quantum_settings(d)  # optional Lindblad path; None (off) adds no key
     if d.ret.mode not in ("proxy", "confinement"):
         raise ValueError(f"unknown ret.mode {d.ret.mode!r}")
     if d.drive.mode not in ("EL", "PL", "EL-transport"):
@@ -1651,15 +2075,24 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         held = (d.filter.track == "hold" and d.filter.enabled
                 and d.cavity.enabled and not sin_mode)
         dx_w = d.filter.dx if held else dx
-        # R2 opt-in: overlap-penalized Purcell at this operating point,
-        # scaled by the cavity Lorentzian at the X detuning (a mode far off
-        # the line enhances nothing -- the factor that kills the 77 K +
-        # 120 K-tracked wiring honestly).
+        # R2 opt-in: Purcell at this operating point, scaled by the emitter-
+        # cavity overlap at the X detuning (a mode far off the line enhances
+        # nothing -- the factor that kills the 77 K + 120 K-tracked wiring
+        # honestly). Audit 2026-09-23 (quantum/device findings, device.py:
+        # 1660-1661): (a) the detuning factor is the emitter-cavity
+        # Lorentzian of FWHM kappa + Gamma (Lorentzian-Lorentzian
+        # convolution, spectral.cavity_transmission -- the kernel
+        # nitride_cavity.response uses), not a Lorentzian of FWHM kappa;
+        # (b) the cavity channel ADDS to the free-space channel:
+        #     F_eff = 1 + F_P * cavity_transmission(dx, Gamma, kappa),
+        # where cavity_transmission(0, Gamma, kappa) = kappa/(kappa+Gamma)
+        # already carries the overlap factor of cavity.purcell_eff (applied
+        # once, not twice). [DR] Lindblad weak coupling (audit prototype
+        # quantum_jc_purcell.py: 3.29908 vs 3.29909); Purcell, Phys. Rev.
+        # 69, 681 (1946). F_P is the EXTRA single-mode rate (CavityBlock.F_P).
         wire = (d.cavity.purcell_wire and d.cavity.enabled and not sin_mode)
         if wire:
-            det = (kappa / 2.0) ** 2 / (dx**2 + (kappa / 2.0) ** 2)
-            F_eff_op = 1.0 + (float(purcell_eff(d.cavity.F_P, kappa, gam))
-                              - 1.0) * det
+            F_eff_op = 1.0 + d.cavity.F_P * float(cavity_transmission(dx, gam, kappa))
         else:
             F_eff_op = 1.0
         rate_mult = 1.0
@@ -1870,8 +2303,8 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         # injection.loading.r_dot; False (default) or no injection leaves
         # g2_dot AND rho untouched (legacy, bit-identical). gamma_X_ns/k_X/
         # k_XX use the EXACT same expressions as the CW branch below
-        # (rm-enhanced radiative rate, cw_g2.escape_rates_from_retention at
-        # this Tj) so the two opt-in diagnostics stay consistent with each
+        # (rm-enhanced radiative rate, ABSOLUTE escape rates -- ratios / rm --
+        # via cw_g2.escape_rates_from_retention at this Tj) so the two opt-in diagnostics stay consistent with each
         # other.
         #
         # Whenever finite_pulse IS evaluable here, rho is ALSO always
@@ -1975,8 +2408,15 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         invalid_reason = None
         if d.drive.finite_pulse and injection is not None and mu_use > 0:
             gamma_X_ns_fp = rm / d.ret.tau_rad_ns
+            # Audit 2026-09-23 (device.py:1977): escape rates are ABSOLUTE,
+            # k = (a_esc e^-Ea/kT + b_p e^-Eb/kT)/tau_rad, independent of the
+            # Purcell factor -- so the escape ratios are divided by rm exactly
+            # as in S above, giving gamma/(gamma+k) == S [DR]. With the wire
+            # off rm == 1.0 and the unchanged call keeps legacy bit-identity.
+            a_esc_fp, b_p_fp = ((params["a_esc"] / rm, params["b_p"] / rm) if wire
+                                else (params["a_esc"], params["b_p"]))
             k_X_fp, k_XX_fp = cw_g2.escape_rates_from_retention(
-                gamma_X_ns_fp, params["a_esc"], params["E_a"], params["b_p"], params["E_b"], Tj)
+                gamma_X_ns_fp, a_esc_fp, params["E_a"], b_p_fp, params["E_b"], Tj)
             r_ns_fp = injection.loading.r_dot / 1e9
             # rep_rate_hz is resolved identically to the outer-scope pulsed-
             # flux bookkeeping below (duty_eff/tau_pulse_ns_val whenever
@@ -2052,23 +2492,40 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             g2_dot = float(_compose_aperture_g2(g2_dot, lam_row))
         else:
             lam_row = float("nan")
+        # Audit 2026-09-23 (device.py:2128): the bath is part of the collected
+        # signal the background law sees, so g2_from must use the signal
+        # fraction of target+bath, rho_eff = (1+lam)s/((1+lam)s+b) =
+        # (1+lam) rho/(1 + lam rho), not the target-only rho -- giving the
+        # exact three-source moment result g2 = 1 - s^2(1-g_t)/((1+lam)s+b)^2
+        # [DR factorial moments]. rho itself (the target-only signal
+        # fraction) is reported unchanged; compose=False keeps rho_g2 = rho.
+        rho_g2 = (_aperture_rho_eff(rho, lam_row)
+                  if d.aperture.compose and np.isfinite(lam_row) else rho)
 
         # CW diagnostics (opt-in, drive.cw=True; requires EL-transport so the
         # pump rate comes from transport.loading.r_dot, never inferred from
         # the dimensionless pulsed mu). gamma_X_ns carries the same Purcell
         # "radiative enhancement" (rm) as the pulsed retention S above; k_X/
-        # k_XX are the matching ABSOLUTE non-radiative rates for that same
-        # enhanced gamma_X_ns (integrator.retention-consistent, see
+        # k_XX are the matching ABSOLUTE non-radiative rates (escape ratios
+        # divided by rm, so k does NOT scale with the Purcell factor and
+        # gamma_X/(gamma_X+k_X) == S; audit 2026-09-23 -- before the fix k
+        # was multiplied by rm, erasing the Purcell benefit here;
+        # integrator.retention-consistent, see
         # cw_g2.escape_rates_from_retention). rho_cw is derived from the
         # TOTAL filtered X+XX signal, not 1/(1+b_e): b_e is a per-X ratio, so
         # naively applying it to the X+XX total would double-discount the XX
         # contribution.
         g2_cw0 = g2_cw0_raw = float("nan")
         cw_r_ns = cw_gamma_X_ns = cw_rho = float("nan")
+        quantum_inputs = None  # CW rate set handed to the optional quantum path
         if d.drive.cw and injection is not None:
             gamma_X_ns = rm / d.ret.tau_rad_ns
+            # Absolute escape rates (audit 2026-09-23, device.py:2069-2071):
+            # same /rm division as S and the finite-pulse block above.
+            a_esc_cw, b_p_cw = ((params["a_esc"] / rm, params["b_p"] / rm) if wire
+                                else (params["a_esc"], params["b_p"]))
             k_X, k_XX = cw_g2.escape_rates_from_retention(
-                gamma_X_ns, params["a_esc"], params["E_a"], params["b_p"], params["E_b"], Tj)
+                gamma_X_ns, a_esc_cw, params["E_a"], b_p_cw, params["E_b"], Tj)
             r_ns = injection.loading.r_dot / 1e9
             t_X, t_XX = spec.t_x, spec.eps * spec.t_x
             if r_ns > 0 and gamma_X_ns > 0 and t_X > 0:
@@ -2114,7 +2571,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                 if d.aperture.compose and np.isfinite(lam_row):
                     tau = report["curves"]["tau"]
                     g_mix = _compose_aperture_g2(report["curves"]["g2_dot"], lam_row)
-                    g_meas = cw_g2.g2_with_background(g_mix, rho_cw)
+                    g_meas = cw_g2.g2_with_background(g_mix, _aperture_rho_eff(rho_cw, lam_row))
                     g_raw = (cw_g2.convolve_irf(tau, g_meas, d.drive.cw_irf_fwhm_ps,
                                                 d.drive.cw_irf_shape)
                              if d.drive.cw_irf_fwhm_ps > 0 else g_meas)
@@ -2124,8 +2581,17 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     g2_cw0 = report["g2_meas0"]
                     g2_cw0_raw = report["g2_raw0"]
                 cw_r_ns, cw_gamma_X_ns, cw_rho = r_ns, gamma_X_ns, rho_cw
+                quantum_inputs = dict(
+                    r_ns=r_ns, gamma_X_ns=gamma_X_ns, gamma_XX_ns=2.0 * gamma_X_ns,
+                    k_X=k_X, k_XX=k_XX, pump_ratio=d.drive.cw_pump_ratio,
+                    fwhm_X_meV=gam, fwhm_XX_meV=d.dot.r_xx * gam,
+                    delta_xx_meV=d.dot.delta_xx, dx_meV=dx_w, w_meV=w,
+                    eps_rate=spec.eps, rho_cw=rho_cw, lam_row=lam_row,
+                    cavity_in_path=kappa is not None)
         return dict(Tj=Tj, gam=gam, eps=spec.eps, rho=rho,
-                    g2=g2_from(g2_dot, rho), t_x=spec.t_x, runaway=False,
+                    g2=g2_from(g2_dot, rho_g2), rho_g2=rho_g2, F_eff_op=F_eff_op, dx_cav=dx,
+                    static_path=not np.isfinite(finite_pulse_g2_dot),
+                    t_x=spec.t_x, runaway=False,
                     mu=mu_use, eta_capture=eta_use, b_e=inj_bg,
                     injection=injection, S=S, g2_cw0=g2_cw0, g2_cw0_raw=g2_cw0_raw,
                     cw_r_ns=cw_r_ns, cw_gamma_X_ns=cw_gamma_X_ns, cw_rho=cw_rho,
@@ -2147,6 +2613,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                     # above for why the cw-reduction identity depends on
                     # THESE values, not the raw RetentionBlock fields.
                     retention_params_used={"b0": params["b0"], "beta": params["beta"]},
+                    quantum_inputs=quantum_inputs,
                     **({"invalid_reason": invalid_reason} if invalid_reason else {}))
 
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
@@ -2212,6 +2679,17 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
 
     gain_factor = d.cavity.G if (d.cavity.enabled and not sin_mode) else 1.0
     beta_factor = d.cavity.beta_sin if sin_mode else 1.0
+    # User decision Q1 (2026-09-23): the legacy non-diode static brightness
+    # below omits S BY DESIGN (bit-identity); it is labelled "pre-retention"
+    # rather than changed. brightness_convention names which definition
+    # brightness_per_pulse carries at this operating point.
+    if d.drive.finite_pulse and diode is not None and np.isfinite(op["finite_pulse_mean_counts"]):
+        brightness_convention = "finite-pulse mean_counts (X+XX, post-retention)"
+    elif diode is not None:
+        brightness_convention = "post-retention static (P1+P2)*t_x*S"
+    else:
+        brightness_convention = ("pre-retention static (P1+P2)*t_x; retention S "
+                                 "intentionally omitted on the legacy non-diode path")
     if d.drive.finite_pulse and diode is not None and np.isfinite(op["finite_pulse_mean_counts"]):
         # finding 1: pulse_counting's m1 (mean_counts) is already the
         # detected-photon count per pulse period -- escape (k_X/k_XX enter
@@ -2319,7 +2797,39 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
         "runaway": bool(op["runaway"]),
         "gamma_op": op["gam"], "eps_op": op["eps"], "rho_op": op["rho"],
         "g2_op": op["g2"], "t_x_op": op["t_x"],
+        # brightness_per_pulse: collected photons per pulse. On the legacy
+        # NON-diode static path it is PRE-RETENTION ((P1+P2)*t_x*G*beta_sin,
+        # retention S intentionally omitted -- user decision Q1, 2026-09-23);
+        # the diode path carries S. See brightness_convention.
         "brightness_per_pulse": brightness,
+        "brightness_convention": brightness_convention,
+        # Static-path validity flag (audit 2026-09-23, device.py:1860): a
+        # static per-pulse (cap-2 f1b/f8) g2_op above 1 is outside the static
+        # model's domain (the small-mu cancellation artefact class, or a
+        # super-Poissonian F_p the static model is not validated for); it is
+        # flagged here, never silently reported. Existing values unchanged.
+        "g2_op_valid": not (op.get("static_path", True) and np.isfinite(op["g2"])
+                            and op["g2"] > 1.0),
+        "g2_op_invalid_reason": ("static per-pulse g2_op > 1: unphysical for the static "
+                                 "cap-2 loading model (small-mu cancellation artefact or "
+                                 "F_p outside the validated domain)"
+                                 if (op.get("static_path", True) and np.isfinite(op["g2"])
+                                     and op["g2"] > 1.0) else ""),
+        # purcell_wire: the ZPL (zero-phonon-line) rate factor wired at the
+        # operating point, F_eff = 1 + F_P*cavity_transmission(dx, Gamma,
+        # kappa) (1.0 when the wire is off). With dot.lineshape="lorentzian"
+        # it is also the total radiative-rate multiplier rm; with "ibm" the
+        # total multiplier is rm = Z*F_eff + (1-Z) (qd_gf.
+        # ibm_purcell_transmission, sidebands unenhanced), so F_eff_wire_op
+        # is NOT the total rate factor there. "F_eff" below stays the legacy
+        # cavity-channel scalar purcell_eff(F_P, kappa, Gamma).
+        "F_eff_wire_op": op.get("F_eff_op", float("nan")),
+        # emitter-cavity detuning dx (meV) the wire's overlap used (the
+        # tracking detuning when the cavity is enabled; filter.dx otherwise).
+        "cavity_detuning_op_meV": op.get("dx_cav", float("nan")),
+        # aperture.compose: the target+bath signal fraction g2_op was built
+        # from (== rho_op when compose is off).
+        "rho_g2_op": op.get("rho_g2", op["rho"]),
         "T_c": Tc,
         "F_eff": float(purcell_eff(d.cavity.F_P, d.cavity.kappa, op["gam"]))
         if (d.cavity.enabled and not sin_mode and np.isfinite(op["gam"])) else np.nan,
@@ -2456,6 +2966,7 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                               else "legacy drive fields"},
             "mu_resolved": {"tag": "E" if diode is not None else "A",
                             "note": "transport dot loading" if diode is not None else "drive.mu"},
+            "brightness": {"tag": "A", "note": brightness_convention},
             "b_e_resolved": {"tag": "E" if diode is not None else "A",
                               "note": "in-window background per collected X photon"},
             "emission": {"tag": "E" if edge is not None else "A",
@@ -2527,6 +3038,55 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
                                       else "explicit fixed filter.w")},
         },
     }
+    if qset is not None:
+        # Optional Lindblad diagnostics (audit Phase C item 2), NEW keys only;
+        # evaluated once, at the operating point, on the CW rate set the
+        # cw_g2 diagnostics above used (drive.cw + EL-transport).
+        nan = float("nan")
+        qin = op.get("quantum_inputs") or {}
+        q = _quantum_diagnostics(
+            r_ns=qin.get("r_ns", nan), gamma_X_ns=qin.get("gamma_X_ns", nan),
+            gamma_XX_ns=qin.get("gamma_XX_ns", nan), k_X=qin.get("k_X", nan),
+            k_XX=qin.get("k_XX", nan), pump_ratio=d.drive.cw_pump_ratio,
+            fwhm_X_meV=qin.get("fwhm_X_meV", nan), fwhm_XX_meV=qin.get("fwhm_XX_meV", nan),
+            delta_xx_meV=d.dot.delta_xx, dx_meV=qin.get("dx_meV", 0.0),
+            w_meV=qin.get("w_meV", None), eps_rate=qin.get("eps_rate", nan),
+            mu=op.get("mu"), T_j_K=op.get("Tj"), width_kind=d.dot.width_kind,
+            phonon=d.dot.phonon, **qset)
+        if not qin:
+            q["quantum_invalid_reasons"].insert(
+                0, "quantum: the legacy/RT path needs drive.cw=True with an EL-transport "
+                   "injection at a finite operating point (the CW rate set)")
+        # Same background law and aperture composition the rate path's
+        # g2_cw0 applies at tau = 0 (pointwise in tau) [DR].
+        g_f = q["quantum_g2_cw0_filtered_dot"]
+        rho_q, lam_q = qin.get("rho_cw", nan), qin.get("lam_row", nan)
+        if d.aperture.compose and np.isfinite(lam_q):
+            g_f = float(_compose_aperture_g2(g_f, lam_q))
+            rho_q = _aperture_rho_eff(rho_q, lam_q)
+        q["quantum_g2_cw0_filtered"] = (float(cw_g2.g2_with_background(g_f, rho_q))
+                                        if np.isfinite(g_f) and np.isfinite(rho_q) else nan)
+        # Correction against the value this device actually REPORTS (g2_cw0:
+        # top-hat Bernoulli filter, same background/aperture law). It is
+        # filter memory + in-filter X/XX correlation + the top-hat ->
+        # Lorentzian filter-shape change of eps, so it is larger than the
+        # memory-only quantum_g2_cw0_filter_shift_* (audit +0.05..+0.19):
+        # gainp card at 300 K about +0.23 after background, +0.33 at dot
+        # level (quantum_g2_cw0_filtered_dot - quantum_g2_cw0_rate_dot) [DR].
+        q["quantum_g2_cw0_shift_vs_reported"] = (q["quantum_g2_cw0_filtered"] - float(op["g2_cw0"])
+                                                 if np.isfinite(q["quantum_g2_cw0_filtered"])
+                                                 and np.isfinite(op["g2_cw0"]) else nan)
+        q["quantum_note"] = ("legacy/RT: filtered g2 composed with the SAME cw_rho_op background "
+                             "and aperture bath as g2_cw0; quantum filter = the window w only. "
+                             "quantum_g2_cw0_shift_vs_reported (filtered - the REPORTED top-hat "
+                             "g2_cw0) includes the top-hat -> Lorentzian filter-shape change and is "
+                             "larger than the memory-only quantum_g2_cw0_filter_shift_* (gainp "
+                             "300 K: about +0.23 after background, +0.33 at dot level, vs the "
+                             "Phase A audit's +0.05..+0.19 memory-only figure)"
+                             + ("; the cavity's own Lorentzian (kappa) is NOT part of the "
+                                "quantum filter [A]" if qin.get("cavity_in_path") else ""))
+        scalars.update(q)
+        scalars["provenance"]["quantum"] = {"tag": "DR", "note": QUANTUM_PROVENANCE_NOTE}
     return {"curves": curves, "scalars": scalars}
 
 
@@ -2556,35 +3116,50 @@ def _value_set(spec, mode: str) -> tuple:
     return seq
 
 
+def _envelope_sample(job):
+    """One envelope sample (top-level so a process pool can pickle it): job is
+    (design, paths, values, T_grid); returns (curves, scalars, dropped)."""
+    design, paths, values, T_grid = job
+    d = copy.deepcopy(design)
+    for path, v in zip(paths, values):
+        _set_path(d, path, v)
+    try:
+        res = evaluate(d, T_grid=T_grid)
+    except ValueError:
+        # F8 domain violation (mu < 1 - F_eff): no cap-2 loading
+        # distribution with these moments exists -- same category as
+        # thermal runaway, so the sample contributes a gap, not a crash
+        # (Opus v1.1 finding). The point-evaluation path keeps raising.
+        n_T = len(T_grid) if T_grid is not None else 120
+        nanarr = np.full(n_T, np.nan)
+        res = {"curves": {k: nanarr.copy() for k in _ENV_CURVES},
+               "scalars": {k: float("nan") for k in _ENV_SCALARS}}
+        res["scalars"]["runaway"] = False
+        return res["curves"], res["scalars"], True
+    return res["curves"], res["scalars"], False
+
+
 def _cartesian_eval(design: DeviceDesign, paths: list, value_sets: dict, T_grid,
-                    raise_if_all_dropped=True):
+                    raise_if_all_dropped=True, map_fn=None, on_sample=None):
     """Evaluate design at every point of the cartesian product of value_sets
     (one value set per path, in `paths` order); returns (curves_list,
     scalars_list), one entry per sample. raise_if_all_dropped=False lets a
     caller (the tornado's collapsed runs) receive an all-NaN result instead
-    of an error when the whole collapsed box is outside the F8 domain."""
+    of an error when the whole collapsed box is outside the F8 domain.
+    map_fn (optional, e.g. a ProcessPoolExecutor's map) replaces the serial
+    loop; it must return results in input order. on_sample() is called once
+    per finished sample (progress reporting only)."""
     combos = list(itertools.product(*(value_sets[p] for p in paths))) if paths else [()]
+    jobs = [(design, paths, values, T_grid) for values in combos]
+    results = map(_envelope_sample, jobs) if map_fn is None else map_fn(_envelope_sample, jobs)
     curves_list, scalars_list = [], []
     n_dropped = 0
-    for values in combos:
-        d = copy.deepcopy(design)
-        for path, v in zip(paths, values):
-            _set_path(d, path, v)
-        try:
-            res = evaluate(d, T_grid=T_grid)
-        except ValueError:
-            # F8 domain violation (mu < 1 - F_eff): no cap-2 loading
-            # distribution with these moments exists -- same category as
-            # thermal runaway, so the sample contributes a gap, not a crash
-            # (Opus v1.1 finding). The point-evaluation path keeps raising.
-            n_T = len(T_grid) if T_grid is not None else 120
-            nanarr = np.full(n_T, np.nan)
-            res = {"curves": {k: nanarr.copy() for k in _ENV_CURVES},
-                   "scalars": {k: float("nan") for k in _ENV_SCALARS}}
-            res["scalars"]["runaway"] = False
-            n_dropped += 1
-        curves_list.append(res["curves"])
-        scalars_list.append(res["scalars"])
+    for curves, scalars, dropped in results:
+        n_dropped += int(dropped)
+        curves_list.append(curves)
+        scalars_list.append(scalars)
+        if on_sample is not None:
+            on_sample()
     if n_dropped == len(combos) and raise_if_all_dropped:
         raise ValueError(
             "evaluate_envelope: every sample in the ranged box violates the F8 "
@@ -2622,7 +3197,7 @@ def _scalar_bands(scalars_list: list) -> dict:
 
 
 def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
-                      mode: str = "extremes") -> dict:
+                      mode: str = "extremes", map_fn=None, progress=None) -> dict:
     """Headless envelope evaluation: sweep `ranged` inputs instead of pinning
     them to a point, per the honesty discipline (unmeasured [A] inputs are
     swept, never averaged into a single "prediction").
@@ -2652,6 +3227,12 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
 
     ranged={} degenerates exactly to evaluate(design, T_grid): one sample, so
     bands/mid/scalar_bands all collapse to that single evaluate() call.
+
+    map_fn (optional): a map-like callable (e.g. ProcessPoolExecutor.map)
+    used for the sample loops instead of the serial built-in map; results
+    are identical, only wall time changes. progress (optional): called as
+    progress(k, n) after each finished evaluation, n counting the main box,
+    the midpoint and every tornado collapse.
     """
     Ts = np.asarray(T_grid if T_grid is not None else np.linspace(4.0, 350.0, 120))
     paths = list(ranged)
@@ -2667,7 +3248,16 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
             "Sweep fewer parameters at once, or use coarser/explicit grids."
         )
 
-    curves_list, scalars_list = _cartesian_eval(design, paths, value_sets, Ts)
+    n_total = n_samples + 1 + sum(n_samples // len(value_sets[p]) for p in paths)
+    done = [0]
+
+    def _tick():
+        done[0] += 1
+        if progress is not None:
+            progress(done[0], n_total)
+
+    curves_list, scalars_list = _cartesian_eval(design, paths, value_sets, Ts,
+                                                map_fn=map_fn, on_sample=_tick)
     bands = _curve_bands(curves_list)
     scalar_bands = _scalar_bands(scalars_list)
 
@@ -2683,6 +3273,7 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
         # bands remain valid (Opus v1.1 finding, mid-path leg)
         n_T = len(Ts) if Ts is not None else 120
         mid = {k: np.full(n_T, np.nan) for k in _ENV_CURVES}
+    _tick()
 
     baseline = "T_c" if np.isfinite(scalar_bands["T_c"][0]) else "g2_op"
     full_lo, full_hi = scalar_bands[baseline]
@@ -2692,7 +3283,8 @@ def evaluate_envelope(design: DeviceDesign, ranged: dict, T_grid=None,
         collapsed = dict(value_sets)
         collapsed[p] = (mid_values[p],)
         _, sc_list = _cartesian_eval(design, paths, collapsed, Ts,
-                                     raise_if_all_dropped=False)
+                                     raise_if_all_dropped=False, map_fn=map_fn,
+                                     on_sample=_tick)
         c_lo, c_hi = _scalar_bands(sc_list)[baseline]
         # collapsed midpoint may sit outside the F8 domain -> width undefined
         collapsed_width = c_hi - c_lo

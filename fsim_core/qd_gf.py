@@ -348,9 +348,9 @@ def ibm_transmission(delta_meV, params: PhononParams, T: float,
     admit the other line's sideband (purity) -- the 'Lorentzian optimism'
     correction. Scalar or array delta_meV.
 
-    delta_c_meV (optional, slit-held tracking, work order T-1): the line's
-    offset from the CAVITY center when it differs from the slit offset
-    delta_meV. None (default) keeps the shared-center behavior exactly.
+    delta_c_meV (optional, slit-held tracking): the line's offset from the
+    CAVITY center when it differs from the slit offset delta_meV. None
+    (default) keeps the shared-center behavior exactly.
     """
     scalar = np.ndim(delta_meV) == 0
     deltas = np.atleast_1d(np.asarray(delta_meV, dtype=float))
@@ -382,9 +382,13 @@ def ibm_purcell_transmission(delta_meV, params: PhononParams, T: float,
                              gamma_zpl_meV: float, F_cav: float,
                              w_meV=None, kappa_meV=None, delta_c_meV=None):
     """R2 (roadmap 13): Purcell-reweighted IBM transmission and the effective
-    ZPL fraction. The cavity enhances emission at the ZPL by F_cav (the
-    overlap-penalized F_eff = F_P*kappa/(kappa+Gamma), computed by the
-    caller); the sidebands, spectrally far from the mode on the kappa scale,
+    ZPL fraction. The cavity enhances emission at the ZPL by F_cav, the
+    TOTAL ZPL rate factor computed by the caller (device.py purcell_wire,
+    audit 2026-09-23): F_cav = 1 + F_P * spectral.cavity_transmission(dx,
+    Gamma, kappa) -- free-space channel plus the additive cavity channel
+    with the emitter-cavity Lorentzian of FWHM kappa+Gamma [DR, Lindblad weak
+    coupling]; never the bare cavity-channel factor F_P*kappa/(kappa+Gamma)
+    alone. The sidebands, spectrally far from the mode on the kappa scale,
     stay at the free-space rate [E: sideband weight within kappa of the mode
     is also enhanced -- ignored; small while kappa << sideband span].
 

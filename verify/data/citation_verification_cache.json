@@ -102,6 +102,14 @@
     },
     "verification_timestamp": "2026-09-14T07:33:48.082729+00:00"
   },
+  "crossref_doi|10.1063/1.1600519": {
+    "response": {
+      "found": true,
+      "title": "Band parameters for nitrogen-containing semiconductors",
+      "year": 2003
+    },
+    "verification_timestamp": "2026-09-23T09:50:37.433111+00:00"
+  },
   "crossref_doi|10.1063/1.4897640": {
     "response": {
       "found": true,
@@ -109,6 +117,14 @@
       "year": 2014
     },
     "verification_timestamp": "2026-09-11T05:29:06.337326+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.90.125118": {
+    "response": {
+      "found": true,
+      "title": "Effects of strain on the band structure of group-III nitrides",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-09-23T09:50:36.988892+00:00"
   },
   "crossref_doi|10.1103/PhysRevLett.106.103601": {
     "response": {

@@ -381,7 +381,7 @@ def check_grid_self(checks, detail):
 
 REQUIRED_CUT_AXES = {
     "screening_fraction": {0.0, 1.0},
-    "occupied_dot_access": {1.0},
+    "occupied_dot_access": {0.1, 1.0},  # audit C4 re-pin: 0.1 added (contract sensitivity set {0,0.1,1.0})
     "S_cm_s": {1.0e2, 1.0e4},
     "shell": {"AlGaN"},
     "al_fraction": {0.2},
@@ -390,6 +390,12 @@ REQUIRED_CUT_AXES = {
     "occupation_control_uncertainty": {True},
     "injector_barrier_thickness_nm": {1.0},
     "R_s_ohm": {1.0e6},
+    # audit C4 restored cuts (contract "Sweep grid": linewidth/tau_rad0/capture,
+    # parasitic capacitance); C_parasitic_F values are the contract's own
+    # Card-schema sensitivity set {1e-18, 1e-16}.
+    "tau_rad0_ns": {0.2, 4.0},
+    "tau_cap_ps": {1.0, 100.0},
+    "C_parasitic_F": {1.0e-18, 1.0e-16},
 }
 
 
@@ -405,9 +411,24 @@ def check_reduced_cut_axes_declared(checks, detail):
                         expected_values <= got))
     checks.append(("R_s_ohm reduced cut is evaluated on the horizontal family only (spec: 'R_s designed 1e6 on the horizontal family')",
                     {p["family"] for p in cuts if p.get("sensitivity_axis") == "R_s_ohm"} == {"horizontal_as_built"}))
+    # audit C4 re-pin: the literal list below now names only the axes still
+    # dropped (tau_rad0_ns / tau_cap_ps / C_parasitic_F were restored), and
+    # every one of them must still be declared in m.DROPPED_CUT_AXES.
+    _still_dropped = ("reservoir_access", "gamma300", "Rth_K_W", "NA", "bottom_reflectivity")
     checks.append(("every declared-dropped axis in DROPPED_CUT_AXES is actually absent from the full-mode cuts",
-                    all(name.split(" ")[0].split("(")[0].strip() not in by_axis for name in
-                        ("reservoir_access", "gamma300", "tau_rad0_ns", "tau_cap_ps", "C_parasitic_F", "NA", "bottom_reflectivity"))))
+                    all(name not in by_axis for name in _still_dropped)
+                    and all(any(name in d for d in m.DROPPED_CUT_AXES) for name in _still_dropped)))
+    checks.append(("audit C4: the restored axes are no longer listed in DROPPED_CUT_AXES",
+                    all(not any(name in d for d in m.DROPPED_CUT_AXES)
+                        for name in ("tau_rad0_ns", "tau_cap_ps", "C_parasitic_F"))))
+    # audit C4: the pre-C4 grid version reproduces the grid every older
+    # sweep.csv was generated with (411 full-mode cut rows incl. the 2
+    # dipole rows = 2992 - 2560 core - 4 D2013 - 16 planar - 1 replay; the
+    # c4 grid adds 7 alternative values x 32 rows = 224).
+    checks.append(("audit C4: reduced-cut grid versions differ by exactly the 224 restored-axis rows "
+                    "(pre_c4 full grid = 409 + 2 dipole rows, the committed pre-C4 sweep's count)",
+                    len(m.build_reduced_cuts(False, grid_version="pre_c4")) == 409
+                    and len(cuts) - len(m.build_reduced_cuts(False, grid_version="pre_c4")) == 224))
     checks.append(("the RESTORED current/pulse-width axis 'current_pulse_width' is not in DROPPED_CUT_AXES "
                     "(M9-M10 fix: 'restore the current / pulse-width cut')",
                     all("current_pulse_width" not in name and "current_uA" not in name and "tau_pulse_ns" not in name
@@ -420,6 +441,43 @@ def check_reduced_cut_axes_declared(checks, detail):
                     and {p["tau_pulse_ns"] for p in pulse_cuts} == {0.01, 0.1, 1.0}
                     and {p["family"] for p in pulse_cuts} == {"horizontal_as_built"}))
     detail.append("reduced_cut_rows(full)=%d axes=%s" % (len(cuts), sorted(by_axis)))
+
+
+def check_loading_window_axis(checks, detail):
+    """Audit C6 (2026-09-23, M3; user decision Q6): the loading window is an
+    OPT-IN sweep axis. The default grid must be exactly the pre-C6 grid (no
+    row carries loading_window_ns, so every default design and physics-only
+    identity is unchanged); the opt-in axis samples 0.1/0.3/1/3/10 ns
+    strictly below each row's period (contract bullet 7)."""
+    default_jobs = ([p for f in m.FAMILIES for p in m.build_core(f, False)] + m.build_reduced_cuts(False)
+                    + m.build_dipole_falsification() + m.build_deshpande2013(False))
+    checks.append(("audit C6: no default-grid row carries loading_window_ns (default grid unchanged)",
+                    all("loading_window_ns" not in p for p in default_jobs)
+                    and "loading_window_ns" not in m.full_defaults("horizontal_as_built")))
+    d_def, _ = m._design(m.full_defaults("horizontal_as_built"))
+    checks.append(("audit C6: a default design writes no drive.diode.loading_window_ns leaf (device defaults it to tau_pulse_ns)",
+                    "loading_window_ns" not in d_def.drive.diode and d_def.drive.diode["tau_pulse_ns"] == 0.1))
+    checks.append(("audit C6: planned counts without the flag add zero loading-window rows",
+                    m.planned_counts(False)["loading_window_cut_rows"] == 0
+                    and m.planned_counts(False) == m.planned_counts(False, loading_window_cut=False)))
+    lw = m.build_loading_window_cut(False)
+    # independent count: 2 families x 2 regimes x |CUT_T_HS| temperatures x
+    # (5 windows below the 12.5 ns 80 MHz period + 4 below the 5 ns 200 MHz one)
+    n_exp = 2 * 2 * len(m.CUT_T_HS) * (5 + 4)
+    checks.append((f"audit C6: opt-in loading-window axis has {n_exp} full-mode rows, values {{0.1,0.3,1,3,10}} ns, "
+                    "each strictly below its row's period",
+                    len(lw) == n_exp
+                    and {p["loading_window_ns"] for p in lw} == {0.1, 0.3, 1.0, 3.0, 10.0}
+                    and all(p["loading_window_ns"] * 1e-9 < 1.0 / p["rep_rate_hz"] for p in lw)
+                    and all(p["sensitivity_axis"] == "loading_window_ns" and p["tau_pulse_ns"] == 0.1 for p in lw)
+                    and m.planned_counts(False, loading_window_cut=True)["loading_window_cut_rows"] == n_exp))
+    p1 = dict(lw[0]); d1, _ = m._design(p1)
+    checks.append(("audit C6: an opt-in row writes its window into drive.diode.loading_window_ns",
+                    d1.drive.diode.get("loading_window_ns") == p1["loading_window_ns"]))
+    checks.append(("audit C6: the quick axis is non-empty and a strict subset of the full axis values",
+                    0 < len(m.build_loading_window_cut(True)) < len(lw)
+                    and {p["loading_window_ns"] for p in m.build_loading_window_cut(True)} < {0.1, 0.3, 1.0, 3.0, 10.0}))
+    detail.append("loading_window_cut rows(full)=%d (opt-in, --loading-window-cut)" % len(lw))
 
 
 def check_dry_run_cap(checks):
@@ -497,9 +555,27 @@ def check_row_counts(core, man, quick, checks, detail):
     if not quick:
         checks.append(("full run's core row count is exactly 2560 (contract literal)", len(core_rows) == 2560))
 
-    exp_cuts = len(m.build_reduced_cuts(quick)) + len(m.build_dipole_falsification())
+    # audit C4: compare against the grid version that PRODUCED this artifact
+    # (manifest reduced_cut_grid_version; absent = generated before C4).
+    # Review follow-up: default to pre_c4 ONLY for a genuinely pre-C4
+    # artifact (no generation_commit either -- C4 full runs record both);
+    # a C4-era manifest missing the grid-version key is an error.
+    _gv = man.get("reduced_cut_grid_version") if isinstance(man, dict) else None
+    _pre_c4_marker = isinstance(man, dict) and "generation_commit" not in man
+    checks.append(("reduced_cut_grid_version present, or the manifest is a pre-C4 artifact (no generation_commit)",
+                    _gv in m.REDUCED_CUT_GRID_VERSIONS or (_gv is None and _pre_c4_marker)))
+    _grid_version = _gv if _gv in m.REDUCED_CUT_GRID_VERSIONS else ("pre_c4" if (_gv is None and _pre_c4_marker) else None)
+    exp_cuts = (len(m.build_reduced_cuts(quick, grid_version=_grid_version)) + len(m.build_dipole_falsification())
+                if _grid_version is not None else -1)
+    # audit C6: the opt-in loading-window rows count only when the
+    # manifest says the axis was run (absent = pre-C6 artifact = not run).
+    _lw_run = bool(man.get("loading_window_cut", False)) if isinstance(man, dict) else False
+    _lw_rows = [r for r in sens_rows if r.get("sensitivity_axis") == "loading_window_ns"]
+    exp_lw = len(m.build_loading_window_cut(quick)) if _lw_run else 0
     checks.append(("sensitivity row count matches independent build_reduced_cuts()+build_dipole_falsification()",
-                    len(sens_rows) == exp_cuts + len(m.build_deshpande2013(quick))))
+                    len(sens_rows) == exp_cuts + len(m.build_deshpande2013(quick)) + exp_lw))
+    checks.append(("audit C6: loading-window rows present iff the manifest records loading_window_cut=True",
+                    len(_lw_rows) == exp_lw))
     exp_planar = len(m.build_planar_reference(quick))
     checks.append(("planar_reference row count matches independent build_planar_reference()", len(planar_rows) == exp_planar))
     checks.append(("exactly one planar_2014_replay row", len(replay_rows) == 1))
@@ -778,13 +854,223 @@ def check_composition_counts(text, core, checks):
                     "these are the ONLY x_in=0.40 optical passes in either family this run" not in text))
 
 
+_SI_DIAG_RE = re.compile(r"si_complex_index: lambda_nm=([0-9.eE+-]+) outside")
+_CODATA_EPS0 = 8.8541878128e-12  # F/m [V] CODATA 2018
+
+
+def _reasons_of(row):
+    try:
+        reasons = json.loads(row.get("invalid_reasons", "[]"))
+    except (TypeError, json.JSONDecodeError):
+        return ["<undecodable invalid_reasons>"]
+    return reasons if isinstance(reasons, list) else []
+
+
+def independent_reason_label(reason):
+    """Audit C3 item 6, this file's own transcription: a reason's label is
+    its text up to the first ':' at parenthesis depth 0 (a ':' inside a
+    parenthesised clause does not cut the label)."""
+    depth = 0
+    for i, ch in enumerate(reason):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        elif ch == ":" and depth == 0:
+            return reason[:i]
+    return reason
+
+
+def independent_invalid_triggers(core):
+    """Audit C7: recompute, from sweep.csv rows alone (this file's own code,
+    never the generator's _invalid_paragraph_triggers), the trigger the
+    invalid-rows paragraph obeys. A row is invalid unless valid == True
+    (a 'nan'/empty token counts as invalid, as the generator's falsy test
+    does). Reason key = independent_reason_label (text up to the first ':'
+    outside parentheses; audit C3 item 6). Returns dict with the
+    per-key counts, the tied-max key set, invalid_total, dominant (> half of
+    invalid rows), si (dominant and >= 1 invalid core row carrying the key
+    AND a recoverable si_complex_index diagnostic wavelength), fc (dominant
+    and key is field_collapse), plus the fc core rows."""
+    counts, order = {}, []
+    invalid_total = 0
+    for r in core:
+        if as_bool(r.get("valid")) is True:
+            continue
+        invalid_total += 1
+        for reason in _reasons_of(r):
+            key = independent_reason_label(reason)
+            if key not in counts:
+                order.append(key)
+            counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return dict(counts={}, top_keys=set(), top_n=0, invalid_total=invalid_total,
+                    dominant=False, si=False, fc=False, fc_rows=[])
+    top_n = max(counts.values())
+    top_keys = {k for k in order if counts[k] == top_n}
+    top_key = next(k for k in order if counts[k] == top_n)  # dict max() keeps the first-inserted tie
+    dominant = invalid_total > 0 and top_n / invalid_total > 0.5
+    inv_core = [r for r in core if r.get("row_kind") == "core" and as_bool(r.get("valid")) is not True]
+    carrying = [r for r in inv_core if any(x.startswith(top_key) for x in _reasons_of(r))]
+    si = dominant and any(any(_SI_DIAG_RE.search(x) for x in _reasons_of(r)) for r in carrying)
+    fc = dominant and top_key.startswith("field_collapse")
+    return dict(counts=counts, top_keys=top_keys, top_key=top_key, top_n=top_n, invalid_total=invalid_total,
+                dominant=dominant, si=si, fc=fc, fc_rows=carrying if fc else [])
+
+
+def closed_form_polarization_field_kVcm(x_in, strain_bound, screening_fraction, external_kVcm, T_K):
+    """Audit C7 closed form [DR]: the interface sheet-charge field inside an
+    InGaN slab between GaN barriers, F = (1-s)*(P_sp,GaN - P_sp,InGaN -
+    P_pz,InGaN)/(eps0*eps_r) + F_ext, with P_pz = P_total(strained) -
+    P_sp (Bernardini, Fiorentini and Vanderbilt, PRB 56, R10024 (1997) [V]
+    polarization constants as tabulated in fsim_core.nitride_materials;
+    eps0 CODATA 2018 [V]). 1 V/m = 1e-5 kV/cm. Returns (F_sp, F_pz, F) in
+    kV/cm and the strained gap Ec-Ev (eV)."""
+    from fsim_core.nitride_materials import band_edges, binary, ingaN
+    d, g = ingaN(x_in), binary("GaN")
+    sf = 0.0 if strain_bound == "relaxed" else 1.0
+    de = band_edges(d, T_K, substrate=g, strain_fraction=sf)
+    f_sp = (g.Psp_Cm2 - d.Psp_Cm2) / (_CODATA_EPS0 * d.eps_r) * 1e-5
+    f_pz = -(de["P_total_Cm2"] - d.Psp_Cm2) / (_CODATA_EPS0 * d.eps_r) * 1e-5
+    F = (1.0 - screening_fraction) * (f_sp + f_pz) + external_kVcm
+    return f_sp, f_pz, F, de["Ec_eV"] - de["Ev_eV"]
+
+
+def check_invalid_paragraph_trigger_fixture(checks):
+    """Audit C7 fixture (no artifacts): synthetic rows fed to the
+    GENERATOR's trigger/paragraph helpers must yield the same flags as this
+    file's independent recomputation, for a field_collapse-dominated, an
+    Si-index-dominated and a no-dominant case."""
+    zr = "field_collapse (|F|*h_eff >= strained InGaN gap: interband Zener breakdown, unscreened field not self-consistent)"
+    si = "si_complex_index: lambda_nm=812.5 outside 380-750 nm"
+    pc = "photon counting did not converge: x"
+    def mk(i, reason, valid=False):
+        return {"row_id": f"CO{i:05d}", "row_kind": "core", "valid": "True" if valid else "False",
+                "invalid_reasons": json.dumps([] if valid else [reason])}
+    cases = {"field_collapse-dominated": [mk(i, zr) for i in range(3)] + [mk(9, pc), mk(10, None, True)],
+             "si-dominated": [mk(i, si) for i in range(3)] + [mk(9, pc)],
+             "no-dominant": [mk(0, zr), mk(1, pc)]}
+    ok = True
+    for tag, rs in cases.items():
+        ind = independent_invalid_triggers(rs)
+        coerced = [m._coerce_csv_row(r) for r in rs]
+        inv_total = sum(1 for r in coerced if not r.get("valid"))
+        dom, si_rows, fc = m._invalid_paragraph_triggers(coerced, ind["top_key"], ind["top_n"], inv_total)
+        para = "\n".join(m._dominant_invalid_paragraph(ind["top_key"], ind["top_n"], inv_total, dom, bool(si_rows), fc))
+        ok = ok and (dom, bool(si_rows), fc) == (ind["dominant"], ind["si"], ind["fc"]) and \
+            f"si_index_excursion_trigger={ind['si']}" in para and f"field_collapse_dominant={ind['fc']}" in para
+    want = {"field_collapse-dominated": (True, False, True), "si-dominated": (True, True, False),
+            "no-dominant": (False, False, False)}
+    ok = ok and all((independent_invalid_triggers(cases[k])["dominant"], independent_invalid_triggers(cases[k])["si"],
+                     independent_invalid_triggers(cases[k])["fc"]) == v for k, v in want.items())
+    checks.append(("C7 fixture: generator's invalid-paragraph trigger flags equal the independent recomputation "
+                    "(field_collapse-dominated / Si-dominated / no-dominant synthetic rows)", ok))
+
+
+def check_invalid_paragraph(text, core, checks):
+    """Audit C7: the invalid-rows paragraph is ALWAYS present and states the
+    dominant reason and count; its trigger flags, and the presence/absence of
+    the Si-index excursion and field-collapse sub-paragraphs, match the
+    trigger recomputed here from sweep.csv. When field_collapse dominates,
+    the printed field and drop are checked against a closed-form sheet-charge
+    field (not the generator's number) and the Zener identity drop >= gap."""
+    ind = independent_invalid_triggers(core)
+    head = "### QCSE / invalid-rows paragraph (dominant invalid reason)"
+    checks.append(("C7: results.md's QCSE / invalid-rows paragraph is present (unconditional)", head in text))
+    body = text.split(head, 1)[1] if head in text else ""
+    if ind["counts"]:
+        mo = re.search(r"Dominant invalid reason: '(.*?)' on (\d+)/(\d+) invalid rows \(\d+ percent\); "
+                        r"dominant=(True|False); si_index_excursion_trigger=(True|False); "
+                        r"field_collapse_dominant=(True|False)\.", body)
+        ok = (bool(mo) and mo.group(1) in ind["top_keys"] and int(mo.group(2)) == ind["top_n"]
+              and int(mo.group(3)) == ind["invalid_total"] and mo.group(4) == str(ind["dominant"])
+              and mo.group(5) == str(ind["si"]) and mo.group(6) == str(ind["fc"]))
+    else:
+        ok = "Dominant invalid reason: none (0 invalid rows this run)" in body
+    checks.append((f"C7: the dominant invalid reason, its count and the trigger flags match an independent "
+                    f"recount from sweep.csv (top_n={ind['top_n']}/{ind['invalid_total']}, dominant="
+                    f"{ind['dominant']}, si={ind['si']}, fc={ind['fc']})", ok))
+    si_present = "### QCSE excursion physics paragraph" in text
+    fc_head = "### Field-collapse (QCSE collapse) paragraph"
+    fc_present = fc_head in text
+    checks.append(("C7: the Si-index QCSE excursion paragraph is present iff the Si-index trigger holds",
+                    si_present == ind["si"]))
+    checks.append(("C7: the field-collapse paragraph is present iff field_collapse is the dominant reason",
+                    fc_present == ind["fc"]))
+    qcse_needed = ind["si"] or ind["fc"]
+    for phrase in ("depletion field", "F_pz_kVcm"):
+        checks.append((f"results.md states the QCSE obligation text {phrase!r} whenever the Si-index or "
+                        f"field_collapse trigger holds (trigger={qcse_needed})",
+                        (phrase in text) if qcse_needed else True))
+    if not ind["fc"]:
+        return
+    fbody = text.split(fc_head, 1)[1].split("\n## ", 1)[0] if fc_present else ""
+    fc_rows = ind["fc_rows"]
+    mo_n = re.search(r"The (\d+) invalid core rows carrying", fbody)
+    checks.append((f"C7: field-collapse paragraph's row count matches an independent recount (n={len(fc_rows)})",
+                    bool(mo_n) and int(mo_n.group(1)) == len(fc_rows)))
+    sample = min(fc_rows, key=lambda r: r["row_id"]) if fc_rows else None
+    rid = re.search(r"representative row \(deterministic rule[^)]*\), (\S+?):", fbody)
+    checks.append(("C7: field-collapse representative row is the smallest row_id among the rows",
+                    sample is not None and bool(rid) and rid.group(1) == sample["row_id"]))
+    checks.append(("C7: field-collapse paragraph labels field_kVcm as the depletion field, never the polarization "
+                    "field", "depletion field alone, never the built-in polarization field" in fbody))
+    num = r"(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+    mo = re.search(rf"F_sp_kVcm={num}, F_pz_kVcm={num}, total_field_kVcm={num}; field drop \|F\|\*h={num} eV "
+                    rf"across h={num} nm against the strained InGaN gap Ec-Ev={num} eV \(drop >= gap: (True|False)\)",
+                    fbody)
+    ok_cf = False
+    if mo and sample is not None:
+        try:
+            dep = f(sample.get("field_kVcm"))
+            ext = dep if math.isfinite(dep) else 0.0
+            T = f(sample.get("T_j")) if isfin(sample.get("T_j")) else f(sample.get("T_hs"))
+            h = f(sample.get("height_nm"))
+            f_sp, f_pz, F, gap = closed_form_polarization_field_kVcm(
+                f(sample.get("x_in")), sample.get("strain_bound"), f(sample.get("screening_fraction")) or 0.0, ext, T)
+            drop = abs(F) * 1e-4 * h  # e*(kV/cm)*nm = 1e-4 eV [DR]
+            ok_cf = (close_nan_safe(f(mo.group(1)), f_sp, rtol=1e-4) and close_nan_safe(f(mo.group(2)), f_pz, rtol=1e-4)
+                     and close_nan_safe(f(mo.group(3)), F, rtol=1e-4) and close_nan_safe(f(mo.group(4)), drop, rtol=1e-4)
+                     and close_nan_safe(f(mo.group(5)), h) and close_nan_safe(f(mo.group(6)), gap, rtol=1e-4)
+                     and drop >= gap and mo.group(7) == "True")
+        except Exception:
+            ok_cf = False
+    checks.append(("C7 expectation: the printed F_sp/F_pz/total field and drop |F|*h equal the closed-form "
+                    "Bernardini sheet-charge field (1-s)(P_sp,GaN-P_sp,InGaN-P_pz)/(eps0 eps_r)+F_ext and "
+                    "the Zener identity |F|*h >= strained gap Ec-Ev holds for the representative row", ok_cf))
+    ok_lv = False
+    if sample is not None:
+        try:
+            from fsim_core.nitride_nanowire_levels import NitrideNanowireSystem, levels
+            dep = f(sample.get("field_kVcm"))
+            sys_ = NitrideNanowireSystem(
+                height_nm=f(sample.get("height_nm")), core_radius_nm=f(sample.get("core_radius_nm")),
+                outer_radius_nm=f(sample.get("outer_radius_nm")) or f(sample.get("core_radius_nm")),
+                disc_radius_nm=None, x_in=f(sample.get("x_in")), strain_bound=sample.get("strain_bound"),
+                screening_fraction=f(sample.get("screening_fraction")) or 0.0,
+                external_field_kVcm=dep if math.isfinite(dep) else 0.0)
+            lv = levels(sys_, T_K=f(sample.get("T_j")) if isfin(sample.get("T_j")) else f(sample.get("T_hs")))
+            ok_lv = (not lv.valid) and any(str(x).startswith("field_collapse") for x in lv.invalid_reasons)
+        except Exception:
+            ok_lv = False
+    checks.append(("C7: an independent levels-only replay of the representative row is invalid with the "
+                    "field_collapse reason", ok_lv))
+
+
 def check_qcse_field_label(text, core, checks):
     """H2 fix fixture: field_kVcm on an invalid row is the transport
     DEPLETION field alone (never the built-in piezoelectric/polarization
     field) -- the paragraph must label it as such and must not repeat the
     old false 'the built-in piezoelectric field this strain bound
     carries' framing attached to field_kVcm's own value; it must also
-    report a separate levels-only F_pz/total-field replay."""
+    report a separate levels-only F_pz/total-field replay. Audit C7: these
+    Si-index-excursion checks apply only when the Si-index trigger
+    (independent_invalid_triggers) holds, the same condition under which the
+    generator writes the paragraph; otherwise check_invalid_paragraph
+    covers the section."""
+    check_invalid_paragraph(text, core, checks)
+    if not independent_invalid_triggers(core)["si"]:
+        return
     parts = text.split("### QCSE excursion physics paragraph", 1)
     ok_present = len(parts) > 1
     body = parts[1] if ok_present else ""
@@ -1077,8 +1363,9 @@ RESULTS_TEXT_OBLIGATIONS = (
     "quality_pass",                             # H3 gate anti-monotonicity fix
     "photons_per_cycle",                        # H3 gate anti-monotonicity fix
     "photons_per_cycle_delivered",              # M4 fix: delivered per-cycle beside commanded
-    "depletion field",                          # H2 fix: field_kVcm on invalid rows is the depletion field
-    "F_pz_kVcm",                                # H2 fix: levels-only polarization-field replay
+    # "depletion field" / "F_pz_kVcm" (H2 fix) moved to check_qcse_field_label
+    # (audit C7): required whenever the Si-index or field_collapse trigger
+    # holds, i.e. under the same condition the generator writes them.
     "DEMONSTRATES the anti-monotonicity",       # M3 fix: the pair that actually flips
     "does NOT repair this loss-induced ordering",  # M5 fix
     "share the SAME insufficient disc E_C/kT", # M6 fix
@@ -1138,6 +1425,296 @@ def check_results_text_obligations(text, checks):
                     "Reduced-cut coverage" in text and "DROPPED" in text))
 
 
+def check_c4_prose(text, core, checks):
+    """Audit C4 pins, recomputed from sweep.csv here (never read back from
+    the generator): (1) the Deshpande per-anchor photon-energy residuals are
+    printed as computed values hc/lambda_pred - hc/lambda_meas (hc =
+    1239.841984 eV nm, CODATA 2018; measured 436.56 nm [Deshpande et al.,
+    Nat. Commun. 2013 Fig. 3c] and ~630 nm [Deshpande et al., APL 2014
+    abstract]), with no hard-coded 'roughly 0.3 eV'; (2) the 80-vs-200 MHz
+    'period effect' wording is stated per family from the rows' own
+    one_pair_valid flags."""
+    import re as _re
+    hc = 1239.841984
+    checks.append(("C4: no hard-coded 'roughly 0.3 eV' anchor residual in results.md", "roughly 0.3 eV" not in text))
+    d13 = [r for r in core if r.get("sensitivity_axis") == "deshpande2013_comparison" and f(r.get("core_radius_nm")) == 12.5]
+    ref = m.REF_GEOM["horizontal_as_built"]
+    def _d14(sb):
+        c = [r for r in core if r.get("row_kind") == "core" and r.get("family") == "horizontal_as_built"
+             and r.get("regime") == "deterministic_pair" and r.get("strain_bound") == sb and f(r.get("T_hs")) == 300.0
+             and f(r.get("rep_rate_hz")) == 200.0e6 and f(r.get("x_in")) == 0.40
+             and f(r.get("core_radius_nm")) == ref["core_radius_nm"] and f(r.get("height_nm")) == ref["height_nm"]]
+        return f(c[0].get("lambda_nm")) if c else float("nan")
+    expect = [("2013 relaxed", f(d13[0].get("lambda_nm")) if d13 else float("nan"), 436.56),
+              ("2014 relaxed", _d14("relaxed"), 630.0), ("2014 unrelaxed", _d14("unrelaxed"), 630.0)]
+    ok = True
+    for tag, lam, meas in expect:
+        mm = _re.search(_re.escape(tag) + r" ([+-][0-9.]+) eV \(predicted", text)
+        ok = ok and lam == lam and mm is not None and abs(float(mm.group(1)) - (hc / lam - hc / meas)) <= 6e-4
+    checks.append(("C4: per-anchor residuals in results.md equal hc/lambda_pred - hc/lambda_meas recomputed from sweep.csv", ok))
+    ok = True
+    for fam in m.FAMILIES:
+        g = m.REF_GEOM[fam]
+        for t in (230.0, 300.0):
+            pair = {}
+            for r in core:
+                if (r.get("row_kind") == "core" and r.get("family") == fam and r.get("regime") == "deterministic_pair"
+                        and r.get("strain_bound") == "relaxed" and f(r.get("T_hs")) == t and f(r.get("x_in")) == 0.40
+                        and f(r.get("core_radius_nm")) == g["core_radius_nm"] and f(r.get("height_nm")) == g["height_nm"]):
+                    pair.setdefault(f(r.get("rep_rate_hz")), r)
+            line = next((l for l in text.splitlines() if l.startswith(f"{fam} T_hs={t:g}K: at 80 MHz")), "")
+            if 80.0e6 not in pair or 200.0e6 not in pair:
+                ok = ok and "not found" in line
+                continue
+            v80 = pair[80.0e6].get("one_pair_valid") == "True"; v200 = pair[200.0e6].get("one_pair_valid") == "True"
+            want = ("PERIOD EFFECT" if (v80 and not v200) else "NOT a period effect" if (not v80 and not v200)
+                    else "no period effect" if (v80 and v200) else "inverted")
+            ok = ok and want in line and (want == "PERIOD EFFECT" or "-> PERIOD EFFECT" not in line)
+            if want == "NOT a period effect":
+                both = f(pair[80.0e6].get("blocked_load_probability")) > 1e-9 and f(pair[200.0e6].get("blocked_load_probability")) > 1e-9
+                ok = ok and (("both above the 1e-9 threshold" in line) == both)
+    checks.append(("C4: the 80/200 MHz period-effect clause per family/T_hs matches the rows' own one_pair_valid flags", ok))
+
+
+# ------------------------------------------------ audit C3 prose checks
+# Each check below recomputes its expectation from sweep.csv / manifest.json
+# with this file's own code (never the generator's helpers).
+C3_NON_CUT_AXES = ("", "deshpande2013_comparison")
+
+
+def _c3_norm(tok):
+    tok = str(tok).strip()
+    try:
+        return ("n", round(float(tok), 12))
+    except ValueError:
+        return ("s", tok)
+
+
+def _c3_norm_set(cell, sep=","):
+    return {_c3_norm(t) for t in str(cell).split(sep) if t.strip()}
+
+
+def independent_cut_coverage(core):
+    """axis -> coverage sets, from raw sweep.csv strings."""
+    cov = {}
+    for r in core:
+        if r.get("row_kind") != "sensitivity" or (r.get("sensitivity_axis") or "") in C3_NON_CUT_AXES:
+            continue
+        c = cov.setdefault(r["sensitivity_axis"], dict(values=set(), rows=0, families=set(), regimes=set(),
+                                                         strain_bounds=set(), T_hs_K=set(), rep_rate_hz=set()))
+        c["values"].add(_c3_norm(r.get("sensitivity_value")))
+        c["rows"] += 1
+        c["families"].add(_c3_norm(r.get("family")))
+        c["regimes"].add(_c3_norm(r.get("regime")))
+        c["strain_bounds"].add(_c3_norm(r.get("strain_bound")))
+        c["T_hs_K"].add(_c3_norm(r.get("T_hs")))
+        c["rep_rate_hz"].add(_c3_norm(r.get("rep_rate_hz")))
+    all_fams = {_c3_norm(x) for x in m.FAMILIES}
+    for c in cov.values():
+        c["full"] = (c["families"] == all_fams and c["regimes"] == {_c3_norm(x) for x in ("rectangular", "deterministic_pair")}
+                     and c["strain_bounds"] == {_c3_norm(x) for x in ("relaxed", "unrelaxed")}
+                     and c["T_hs_K"] == {_c3_norm(230.0), _c3_norm(300.0)}
+                     and c["rep_rate_hz"] == {_c3_norm(80.0e6), _c3_norm(200.0e6)})
+    return cov
+
+
+def _section(text, heading):
+    parts = text.split(heading, 1)
+    return parts[1].split("\n## ", 1)[0] if len(parts) > 1 else ""
+
+
+def check_c3_reduced_cut_list(text, core, checks):
+    """Item 1: the 'Reduced-cut coverage' section's cut list is the set of
+    cuts actually in sweep.csv (axis, values, row count, coverage), not a
+    literal that omits the restored C4 cuts."""
+    cov = independent_cut_coverage(core)
+    body = _section(text, "## Reduced-cut coverage")
+    table = {}
+    for line in body.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 8 and cells[0] in cov:
+            table[cells[0]] = cells
+    ok = set(table) == set(cov) and len(cov) > 0
+    for ax, c in cov.items():
+        cells = table.get(ax)
+        ok = ok and cells is not None and _c3_norm_set(cells[1], ", ") == c["values"] and cells[2] == str(c["rows"]) \
+            and _c3_norm_set(cells[3], ", ") == c["families"] and _c3_norm_set(cells[4], ", ") == c["regimes"] \
+            and _c3_norm_set(cells[5], ", ") == c["strain_bounds"] and _c3_norm_set(cells[6], ", ") == c["T_hs_K"] \
+            and _c3_norm_set(cells[7], ", ") == c["rep_rate_hz"]
+    ok = ok and "occupied_dot_access's 1.0 conservative partner" not in body
+    detail = ", ".join(f"{ax}:{c['rows']}" for ax, c in sorted(cov.items()))
+    checks.append(("C3 item 1: results.md's Reduced-cut coverage table lists exactly the cuts in sweep.csv with "
+                    f"their values, row counts and coverage (independent recount: {detail})", ok))
+
+
+def check_c3_ec_wall_denominator(text, core, checks):
+    """Item 2: the E_C/kT wall's set_feasible / rti_feasible denominators
+    are labelled as VALID rows and the bin's total/invalid counts are
+    printed beside them."""
+    wall = [r for r in core if r.get("row_kind") == "core" and r.get("regime") == "deterministic_pair"
+            and isfin(r.get("core_radius_nm")) and f(r.get("core_radius_nm")) >= 10.0]
+    valid_ec = [r for r in wall if as_bool(r.get("valid")) is True and isfin(r.get("set_EC_over_kT"))]
+    valid_rti = [r for r in wall if as_bool(r.get("valid")) is True and isfin(r.get("rti_level_margin_kT"))]
+    n_set = sum(1 for r in valid_ec if as_bool(r.get("set_feasible")) is True)
+    n_rti = sum(1 for r in valid_rti if as_bool(r.get("rti_feasible")) is True)
+    n_inv = sum(1 for r in wall if as_bool(r.get("valid")) is not True)
+    mo = re.search(r"set_feasible=True count=(\d+)/(\d+) valid rows; rti_feasible=True count=(\d+)/(\d+) valid "
+                    r"rows \(of (\d+) deterministic_pair core rows with core_radius_nm>=10 nm in total; the (\d+) "
+                    r"invalid rows", text)
+    ok = bool(mo) and [int(g) for g in mo.groups()] == [n_set, len(valid_ec), n_rti, len(valid_rti), len(wall), n_inv]
+    checks.append(("C3 item 2: E_C/kT wall prints set_feasible/rti_feasible counts over VALID rows plus the bin total "
+                    f"and invalid count (expected {n_set}/{len(valid_ec)} valid, {n_rti}/{len(valid_rti)} valid, "
+                    f"of {len(wall)}, {n_inv} invalid)", ok))
+
+
+def check_c3_rc_core_only(text, core, checks):
+    """Item 3: the as-built tau_RC/delivered_step_fraction span is labelled
+    CORE rows only, and the as-built sensitivity-row span (C_parasitic_F cut
+    included) is printed separately with its worst row."""
+    as_built = [r for r in core if r.get("row_kind") == "core" and r.get("family") == "horizontal_as_built"
+                and r.get("regime") == "deterministic_pair" and isfin(r.get("tau_RC_ns"))]
+    rs = {f(r.get("R_s_ohm")) for r in as_built}
+    sens = [r for r in core if r.get("row_kind") == "sensitivity" and r.get("family") == "horizontal_as_built"
+            and r.get("regime") == "deterministic_pair" and any(close_nan_safe(f(r.get("R_s_ohm")), v) for v in rs)
+            and isfin(r.get("tau_RC_ns")) and isfin(r.get("delivered_step_fraction"))]
+    body = _section(text, "## RC caveat")
+    num = r"(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)"
+    ok = False
+    if as_built and sens:
+        c_tau = [f(r["tau_RC_ns"]) for r in as_built]
+        c_dsf = [f(r["delivered_step_fraction"]) for r in as_built if isfin(r.get("delivered_step_fraction"))]
+        s_tau = [f(r["tau_RC_ns"]) for r in sens]
+        s_dsf = [f(r["delivered_step_fraction"]) for r in sens]
+        worst = max(sens, key=lambda r: f(r["tau_RC_ns"]))
+        mc = re.search(rf"CORE rows only[^\n]*?\): tau_RC_ns spans {num}-{num}, delivered_step_fraction spans {num}-{num}", body)
+        ms = re.search(rf"SENSITIVITY rows[^\n]*?\): tau_RC_ns spans {num}-{num}, delivered_step_fraction spans "
+                        rf"{num}-{num}; the longest is row (\S+) ", body)
+        near = lambda a, b: close_nan_safe(f(a), b, rtol=1e-3)
+        ok = (bool(mc) and bool(ms)
+              and near(mc.group(1), min(c_tau)) and near(mc.group(2), max(c_tau))
+              and near(mc.group(3), min(c_dsf)) and near(mc.group(4), max(c_dsf))
+              and near(ms.group(1), min(s_tau)) and near(ms.group(2), max(s_tau))
+              and near(ms.group(3), min(s_dsf)) and near(ms.group(4), max(s_dsf))
+              and ms.group(5) == worst["row_id"])
+        tag = (f"core {min(c_tau):.4g}-{max(c_tau):.4g}; sensitivity {min(s_tau):.4g}-{max(s_tau):.4g} ns, "
+               f"fraction down to {min(s_dsf):.4g} at {worst['row_id']}")
+    else:
+        tag = "no as-built rows"
+    checks.append(("C3 item 3: the as-built RC span is labelled core rows only and the as-built sensitivity-row span "
+                    f"is printed separately, both matching sweep.csv ({tag})", ok))
+
+
+def check_c3_limitations_coverage(text, core, checks):
+    """Item 4: the Limitations paragraph states per-cut coverage from the
+    data -- no blanket 'both regimes/bounds, T in {230,300} K, both rates'
+    claim while narrower cuts exist; every narrower cut is named with its
+    actual families/regimes/bounds/temperatures/rates."""
+    cov = independent_cut_coverage(core)
+    body = _section(text, "## Limitations")
+    narrow = {ax: c for ax, c in cov.items() if not c["full"]}
+    ok = bool(body)
+    if narrow:
+        ok = ok and "both regimes/bounds, T in {230,300} K, both rates" not in body
+    for ax, c in narrow.items():
+        mo = re.search(re.escape(ax) + r" \((families=[^)]*)\)", body)
+        if not mo:
+            ok = False
+            continue
+        kv = dict(part.split("=", 1) for part in mo.group(1).split("; ") if "=" in part)
+        ok = ok and all(_c3_norm_set(kv.get(k, "")) == c[k]
+                        for k in ("families", "regimes", "strain_bounds", "T_hs_K", "rep_rate_hz"))
+    for ax, c in cov.items():
+        if c["full"]:
+            ok = ok and re.search(r"cuts \([^)]*\b" + re.escape(ax) + r"\b[^)]*\) span every family", body) is not None
+    checks.append(("C3 item 4: Limitations states per-cut coverage from the rows (narrower cuts: "
+                    + (", ".join(sorted(narrow)) or "none") + ")", ok))
+
+
+def check_c3_family_specific_ranking(text, core, checks):
+    """Item 5: the per-family ranking has an entry only for cuts with rows
+    in that family, and the page names the family-specific cuts."""
+    sens = [r for r in core if r.get("row_kind") == "sensitivity"
+            and (r.get("sensitivity_axis") or "") not in C3_NON_CUT_AXES]
+    fams = {}
+    for r in sens:
+        fams.setdefault(r["sensitivity_axis"], set()).add(r.get("family"))
+    specific = {ax: fs for ax, fs in fams.items() if fs != set(m.FAMILIES)}
+    body = _section(text, "## Numerical sensitivity table")
+    mo = re.search(r"Family-specific cuts \([^\n]*?\): ([^\n]*)", body)
+    printed = dict((a, set(x.split(", "))) for a, x in re.findall(r"(\w+) \[([^\]]+) only\]", mo.group(1))) if mo else None
+    ok = printed == specific if specific else (mo is None and "Family-specific cuts: none" in body)
+    for fam in m.FAMILIES:
+        sec = body.split(f"### {fam}", 1)
+        fb = sec[1].split("\n### ", 1)[0] if len(sec) > 1 else ""
+        ml = re.search(r"Ranked by commanded flux \|ratio-1\| \(measured leverage\): ([^\n]+)", fb)
+        ranked = set(re.findall(r"(\w+)\([^)]*\)", ml.group(1))) if ml else None
+        want = {ax for ax, fs in fams.items() if fam in fs and ax != "current_pulse_width"}
+        ok = ok and ranked == want
+    dw = _section(text, "## Numerical sensitivity table")
+    ok = ok and "ranked, per family/axis above" not in dw
+    checks.append(("C3 item 5: per-family ranking entries exist only where the cut has rows for that family and "
+                    "the family-specific cuts are named ("
+                    + "; ".join(f"{a}: {sorted(v)}" for a, v in sorted(specific.items())) + ")", ok))
+
+
+def check_c3_reason_label_and_replay(text, core, checks):
+    """Item 6: every printed invalid-reason label equals the independent
+    label (whole reason when its ':' is parenthesised) with balanced
+    parentheses, and the field-collapse replay says its external field is the
+    replay input while the row's stored external_field_kVcm is nan."""
+    counts = {}
+    for r in core:
+        if as_bool(r.get("valid")) is True:
+            continue
+        for reason in _reasons_of(r):
+            k = independent_reason_label(reason)
+            counts[k] = counts.get(k, 0) + 1
+    body = _section(text, "## Invalid rows")
+    printed = re.findall(r"^- (.+): (\d+)$", body, flags=re.M)
+    labels = [p for p, _ in printed]
+    quoted = re.findall(r"(?:Dominant invalid reason: |carrying )'([^']*)'", body)
+    bal = lambda sx: sx.count("(") == sx.count(")")
+    ok = (dict((p, int(n)) for p, n in printed) == counts and all(bal(x) for x in labels + quoted)
+          and all(q in counts for q in quoted) and len(quoted) > 0) if counts else True
+    ind = independent_invalid_triggers(core)
+    ok_replay = True
+    if ind["fc"] and ind["fc_rows"]:
+        sample = min(ind["fc_rows"], key=lambda r: r["row_id"])
+        fb = _section(text, "### Field-collapse (QCSE collapse) paragraph")
+        if not isfin(sample.get("field_kVcm")):
+            stored = "nan" if not isfin(sample.get("external_field_kVcm")) else f"{f(sample['external_field_kVcm']):.4g}"
+            ok_replay = (f"stored external_field_kVcm is {stored}" in fb and "as its replay input" in fb
+                         and "the replay uses external_field_kVcm=0.0" not in fb)
+    checks.append(("C3 item 6: invalid-reason labels are printed whole with balanced parentheses and match an "
+                    "independent recount, and the field-collapse replay input is distinguished from the row's "
+                    "stored external_field_kVcm", ok and ok_replay))
+
+
+def check_c3_downstream_hashes(out, man, checks):
+    """Item 7: graphs.html is written after the manifest by its own builder,
+    so the manifest must either exclude it (declared) or carry a hash that
+    matches disk -- rebuild order must not matter."""
+    hashes = man.get("output_hashes", {})
+    excluded = man.get("output_hashes_excluded_downstream", [])
+    if "graphs.html" in hashes:
+        ok = (out / "graphs.html").is_file() and \
+            hashlib.sha256((out / "graphs.html").read_bytes()).hexdigest() == hashes["graphs.html"]
+    else:
+        ok = "graphs.html" in excluded
+    ok = ok and list(getattr(m, "DOWNSTREAM_ARTIFACTS", ())) == ["graphs.html"]
+    checks.append(("C3 item 7: manifest.json deliberately excludes the downstream graphs.html from output_hashes "
+                    "(or its recorded hash matches disk), so a graphs-page rebuild never stales the manifest", ok))
+
+
+def check_c3_prose(text, core, checks):
+    check_c3_reduced_cut_list(text, core, checks)
+    check_c3_ec_wall_denominator(text, core, checks)
+    check_c3_rc_core_only(text, core, checks)
+    check_c3_limitations_coverage(text, core, checks)
+    check_c3_family_specific_ranking(text, core, checks)
+    check_c3_reason_label_and_replay(text, core, checks)
+
+
 def check_caps(man, quick, checks):
     checks.append(("evaluate_calls within the 10000 cap", man.get("evaluate_calls", 10**9) <= 10000))
     if quick:
@@ -1163,8 +1740,10 @@ def main(argv=None):
     check_headline_selection_fixture(checks)
     check_footer_bbox_fixture(checks)
     check_csv_nan_bool_coercion_fixture(checks)
+    check_invalid_paragraph_trigger_fixture(checks)
     check_grid_self(checks, detail)
     check_reduced_cut_axes_declared(checks, detail)
+    check_loading_window_axis(checks, detail)
     check_dry_run_cap(checks)
     check_evaluate_smoke(checks, detail)
 
@@ -1191,6 +1770,9 @@ def main(argv=None):
         check_rti_transport_feasible_denominator(text, core, checks)
         check_dipole_weights_ranking(text, core, checks)
         check_results_text_obligations(text, checks)
+        check_c4_prose(text, core, checks)
+        check_c3_prose(text, core, checks)
+        check_c3_downstream_hashes(out, man, checks)
         check_caps(man, quick, checks)
 
     passed = sum(1 for _, ok in checks if ok)

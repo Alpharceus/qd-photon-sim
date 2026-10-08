@@ -78,9 +78,8 @@ def transmission(delta, gamma, w=None, kappa=None):
 
 def transmission2(delta_w, delta_c, gamma, w=None, kappa=None):
     """Transmission of a Lorentzian line through a slit and a cavity whose
-    CENTERS DIFFER (post-tier work order T-1: the F6 slit-held mode -- an
-    external slit fixed at the design placement while the physical cavity
-    mode walks with dn/dT).
+    CENTERS DIFFER (F6 slit-held mode: an external slit fixed at the design
+    placement while the physical cavity mode walks with dn/dT).
 
     delta_w: line offset from the SLIT center; delta_c: line offset from the
     CAVITY center. With delta_w == delta_c this reduces exactly to

@@ -58,6 +58,26 @@ def expect(exc, fn) -> bool:
     return False
 
 
+def _raise_msg(fn) -> str:
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 -- message inspection only
+        return str(exc)
+    return ""
+
+
+# [E, physics-audit n_group fix] GaAs group index near 950 nm for the
+# source-matched Claudon/Bleuse reference (n_wire=3.45 effective phase
+# index): n_g = n - lambda dn/dlambda ~4.3 from GaAs dispersion just below
+# the band edge (class value consistent with Aspnes, Kelso, Logan and Bhat,
+# J. Appl. Phys. 60, 754 (1986) and Skauli et al., J. Appl. Phys. 94, 6447
+# (2003); n ~3.54, dn/dlambda ~ -0.8e-3 /nm near 950 nm), matching the
+# audit figure (n_g ~4.3, n_g/n ~1.25). Not re-verified digit-for-digit
+# against either table. Now
+# REQUIRED by the module whenever a vertical_photonic n_wire is overridden.
+GAAS_NG_950NM = 4.3
+
+
 # ================================================================= (T) source transcription
 
 # T1: Barker and Ilegems (1973) ordinary-ray GaN Sellmeier, typed fresh here
@@ -522,10 +542,18 @@ ck("N Attempt 3 fix A: horizontal n_wire override moves gamma_X_ns via "
    "antenna_rate_factor (the screening is a rate effect, not a collection "
    "loss)",
    _h_with(n_wire=2.0)["gamma_X_ns"] != _r_h["gamma_X_ns"])
-ck("N Attempt 3 fix A: horizontal n_wire override does NOT move "
-   "eta_collection_X (the wire-antenna screening no longer touches "
-   "collection at all)",
-   close(_h_with(n_wire=2.0)["eta_collection_X"], _r_h["eta_collection_X"]))
+# [physics-audit H6] REPINNED: eta is now the EMISSION-weighted average
+# sum w s eta / sum w s, so for a MIXED (isotropic) card n_wire moves eta
+# through the weights s_i; for a PURE-orientation card (a single s_i that
+# cancels in the ratio) n_wire still does not move eta.
+ck("N physics-audit H6: horizontal n_wire override does NOT move "
+   "eta_collection_X for a pure along-wire card (the screening cancels "
+   "in the emission-weighted ratio)",
+   close(_h_with(n_wire=2.0, dipole_weights=(1.0, 0.0, 0.0))["eta_collection_X"],
+         _h_with(dipole_weights=(1.0, 0.0, 0.0))["eta_collection_X"]))
+ck("N physics-audit H6: horizontal n_wire override DOES move "
+   "eta_collection_X for the mixed isotropic card (emission weights w_i s_i)",
+   not close(_h_with(n_wire=2.0)["eta_collection_X"], _r_h["eta_collection_X"], rtol=1e-6))
 # [fix round MEDIUM 5] replaces a check that mutated emitter_height_nm, not
 # n_ambient, while claiming to test n_ambient: n_ambient is mutated directly.
 ck("N horizontal: n_ambient is mutation-sensitive",
@@ -557,7 +585,7 @@ def _v_with(**over):
 ck("N vertical: NA is mutation-sensitive",
    _v_with(NA=0.9)["eta_collection_X"] != _r_v["eta_collection_X"])
 ck("N vertical: n_wire override is mutation-sensitive (moves V_number and beta_HE11)",
-   _v_with(n_wire=2.2)["beta_HE11"] != _r_v["beta_HE11"])
+   _v_with(n_wire=2.2, n_group_override=2.6)["beta_HE11"] != _r_v["beta_HE11"])
 ck("N vertical: beta_scale is mutation-sensitive",
    _v_with(beta_scale=0.5)["beta_HE11"] != _r_v["beta_HE11"])
 ck("N vertical: taper_transmission is mutation-sensitive",
@@ -660,7 +688,8 @@ ck("N additional-mode flag is absent below cutoff and present above it",
 
 # n_wire<=n_ambient on a vertical_photonic card is a genuine physically
 # invalid design point: valid=False with an explicit reason, not a raise.
-_invalid = response(NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=1.0),
+_invalid = response(NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=1.0,
+                                                   n_group_override=1.0),
                      lambda_nm=500.0, outer_radius_nm=90.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
 ck("N n_wire<=n_ambient on vertical_photonic returns valid=False with an explicit reason",
    _invalid["valid"] is False and len(_invalid["invalid_reasons"]) > 0)
@@ -791,8 +820,8 @@ ck("N NA=1.0 case reports obj_accept == 1.0 exactly",
 # round's own acceptance criterion the envelope must reach >=0.55.
 _claudon_radius_nm = 0.22 * 950.0 / 2.0
 _p_claudon = NitrideNanowirePhotonicsParams(
-    family="vertical_photonic", n_wire=3.45, NA=0.75, bottom_reflectivity=1.0,
-    taper_output_mfr_nm=750.0)
+    family="vertical_photonic", n_wire=3.45, n_group_override=GAAS_NG_950NM, NA=0.75,
+    bottom_reflectivity=1.0, taper_output_mfr_nm=750.0)
 _r_claudon = response(_p_claudon, lambda_nm=950.0, outer_radius_nm=_claudon_radius_nm,
                        gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
 ck("N source-matched Claudon 2010 reference point reaches eta_collection_X >= 0.55",
@@ -853,17 +882,39 @@ _n_lo_fd = gan_ordinary_index(500.0 - _d_fd)
 _n_hi_fd = gan_ordinary_index(500.0 + _d_fd)
 _dn_dlambda_fd = (_n_hi_fd - _n_lo_fd) / (2.0 * _d_fd)
 _expected_ratio_override = (2.2 - 500.0 * _dn_dlambda_fd) / 2.2
-ck("N Attempt 3 fix D: group_index_ratio for an n_wire override matches an "
-   "independent re-derivation (GaN Sellmeier slope scaled onto the "
-   "override's magnitude, fresh finite difference typed here) and is NOT "
-   "1.0",
-   close(_group_index_ratio(2.2, 2.2, 500.0), _expected_ratio_override, rtol=1e-6)
-   and not math.isclose(_group_index_ratio(2.2, 2.2, 500.0), 1.0, abs_tol=1e-3))
-ck("N Attempt 3 fix D: group_index_ratio still falls back to 1.0 only when "
-   "lambda_nm itself is outside the GaN Sellmeier's own validity window "
-   "(350-10000 nm), preserving the n_wire-override-bypasses-GaN-range "
-   "invariant",
-   _group_index_ratio(2.2, 2.2, 100.0) == 1.0)
+# [physics-audit n_group fix] REPINNED: the GaN slope is no longer borrowed
+# for an n_wire override (that gave the GaAs reference n_g/n = 1.02 instead
+# of ~1.25); _group_index_ratio now raises for an override without an
+# explicit n_group_override. The fresh GaN finite difference above is kept
+# as the non-overridden GaN card's expectation.
+ck("N physics-audit n_group: _group_index_ratio raises (ValueError) for an "
+   "n_wire override without n_group_override instead of borrowing the GaN slope",
+   expect(ValueError, lambda: _group_index_ratio(2.2, 2.2, 500.0))
+   and expect(NitrideNanowirePhotonicsError, lambda: _group_index_ratio(2.2, 2.2, 100.0)))
+ck("N physics-audit n_group: with an explicit n_group_override the ratio is "
+   "exactly n_group/n_wire (GaAs Claudon reference 4.3/3.45 = 1.2464, not the "
+   "GaN-slope 1.0197)",
+   close(_group_index_ratio(3.45, 3.45, 950.0, GAAS_NG_950NM), 4.3 / 3.45, rtol=1e-12)
+   and not math.isclose(_group_index_ratio(3.45, 3.45, 950.0, GAAS_NG_950NM),
+                        (3.45 - 950.0 * (gan_ordinary_index(951.0) - gan_ordinary_index(949.0)) / 2.0) / 3.45,
+                        rel_tol=1e-3))
+ck("N physics-audit n_group: the non-overridden GaN card's ratio still matches "
+   "the independent GaN finite difference at 500 nm",
+   close(_group_index_ratio(gan_ordinary_index(500.0), None, 500.0),
+         (gan_ordinary_index(500.0) - 500.0 * _dn_dlambda_fd) / gan_ordinary_index(500.0), rtol=1e-6))
+ck("N physics-audit n_group: a vertical_photonic card overriding n_wire without "
+   "n_group_override raises NitrideNanowirePhotonicsError (a ValueError) at "
+   "construction, with a message naming n_group_override",
+   expect(ValueError, lambda: NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=3.45))
+   and "n_group_override" in _raise_msg(
+       lambda: NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=3.45)))
+ck("N physics-audit n_group: the horizontal family (never consumes n_g) still "
+   "accepts an n_wire override without n_group_override",
+   NitrideNanowirePhotonicsParams(family="horizontal_as_built", n_wire=2.0).n_wire == 2.0)
+ck("N Attempt 3 fix D: group_index_ratio still falls back to 1.0 when "
+   "lambda_nm is outside the GaN Sellmeier's own validity window "
+   "(350-10000 nm) on a non-overridden call",
+   _group_index_ratio(2.2, None, 100.0) == 1.0)
 ck("N Attempt 3 fix D: beta_HE11 differs from confinement_fraction at the "
    "SOURCE-MATCHED CLAUDON REFERENCE too (n_wire override), not only at "
    "the default GaN card",
@@ -913,6 +964,68 @@ for _lam_a in (450.0, 630.0):
            "OLD screened product s_i*eta_raw_i",
            close(_r_pure["gamma_X_ns"] * _r_pure["eta_collection_X"],
                  _s_expected * _eta_expected, rtol=1e-6))
+
+# ================================================================= (physics-audit H6) emission-weighted collection
+
+# For a mixed-orientation card, photons are emitted in proportion to w_i*s_i,
+# so eta = sum w_i s_i eta_i / sum w_i s_i and eta*gamma/gamma0 must equal the
+# module's own DOLP intensities I_par + I_perp = sum w_i s_i eta_i. The
+# per-orientation eta_i and s_i below are computed fresh (verified
+# dipole_collection_fraction + a freshly typed screening formula), never read
+# back from the module's own eta. Audit expected values at the isotropic
+# default, R 12.5 nm, NA 0.5:
+# 0.10471 at 450 nm and 0.14615 at 630 nm (were 0.07889 / 0.10724).
+_H6_AUDIT_ETA = {450.0: 0.10471, 630.0: 0.14615}
+_H6_AUDIT_ETA_OLD = {450.0: 0.07889, 630.0: 0.10724}
+for _lam_h6 in (450.0, 630.0):
+    _n_w_h6 = gan_ordinary_index(_lam_h6)
+    _s_h6 = (2.0 / (_n_w_h6 ** 2 + 1.0)) ** 2
+    _n_ox_h6 = sio2_index(_lam_h6)
+    _n_sub_h6 = si_complex_index(_lam_h6)
+    _eta_i_h6 = [dipole_collection_fraction(v, 0.5, 1.0, _n_ox_h6, _n_sub_h6, 100.0, 12.5, _lam_h6)
+                 for v in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))]
+    _s_i_h6 = (1.0, _s_h6, _s_h6)
+    _w_h6 = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+    _num_h6 = sum(w * si * e for w, si, e in zip(_w_h6, _s_i_h6, _eta_i_h6))
+    _den_h6 = sum(w * si for w, si in zip(_w_h6, _s_i_h6))
+    _r_h6 = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built"),
+                     lambda_nm=_lam_h6, outer_radius_nm=12.5, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+    _d_h6 = _r_h6["diagnostics"]
+    ck(f"N physics-audit H6: isotropic default at {_lam_h6:.0f} nm: "
+       "eta_collection_X * gamma_X_ns / gamma_X0_ns equals the DOLP intensities "
+       "I_par + I_perp within 1e-6 relative",
+       close(_r_h6["eta_collection_X"] * _r_h6["gamma_X_ns"] / 1.0,
+             _d_h6["dolp_I_par"] + _d_h6["dolp_I_perp"], rtol=1e-6)
+       and close(_r_h6["eta_collection_XX"] * _r_h6["gamma_XX_ns"] / 1.0,
+                 _d_h6["dolp_I_par"] + _d_h6["dolp_I_perp"], rtol=1e-6))
+    ck(f"N physics-audit H6: isotropic default at {_lam_h6:.0f} nm: "
+       "eta_collection_X equals the independent emission-weighted closed form "
+       "sum w_i s_i eta_i / sum w_i s_i, and eta*gamma/gamma0 equals the fresh "
+       "sum w_i s_i eta_i",
+       close(_r_h6["eta_collection_X"], _num_h6 / _den_h6, rtol=1e-6)
+       and close(_r_h6["eta_collection_X"] * _r_h6["gamma_X_ns"], _num_h6, rtol=1e-6))
+    ck(f"N physics-audit H6: isotropic default at {_lam_h6:.0f} nm reproduces the "
+       f"audit's independently computed eta {_H6_AUDIT_ETA[_lam_h6]} (5-digit "
+       f"figure, abs 1e-5) and no longer the superseded {_H6_AUDIT_ETA_OLD[_lam_h6]}",
+       abs(_r_h6["eta_collection_X"] - _H6_AUDIT_ETA[_lam_h6]) < 1e-5
+       and abs(_d_h6["eta_plain_weighted_mean_superseded"] - _H6_AUDIT_ETA_OLD[_lam_h6]) < 1e-5)
+    # Weighting identity: a single-orientation card has one s_i, which
+    # cancels, so the emission-weighted eta equals the old plain weighted
+    # mean (i.e. the same eta before and after the fix) and equals eta_i.
+    for _k_h6, _vec_h6 in enumerate(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))):
+        _r_pure_h6 = response(NitrideNanowirePhotonicsParams(family="horizontal_as_built",
+                                                              dipole_weights=_vec_h6),
+                              lambda_nm=_lam_h6, outer_radius_nm=12.5,
+                              gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+        ck(f"N physics-audit H6: single-orientation card {_vec_h6} at {_lam_h6:.0f} nm "
+           "gives the same eta before and after the fix (weighting identity) and "
+           "equals the fresh eta_i",
+           close(_r_pure_h6["eta_collection_X"],
+                 _r_pure_h6["diagnostics"]["eta_plain_weighted_mean_superseded"], rtol=1e-12)
+           and close(_r_pure_h6["eta_collection_X"], _eta_i_h6[_k_h6], rtol=1e-6))
+    print(f"non-gating: physics-audit H6 isotropic eta at {_lam_h6:.0f} nm = "
+          f"{_r_h6['eta_collection_X']:.5f} (superseded plain mean "
+          f"{_d_h6['eta_plain_weighted_mean_superseded']:.5f})")
 
 ck("N Attempt 3 fix A: antenna_rate_factor is mutation-sensitive to "
    "dipole_weights (isotropic default differs from a pure along_wire card)",
@@ -1044,9 +1157,10 @@ ck("N vertical provenance states the incoherent bottom-mirror treatment",
 # transcribed anchor points are read off that platform's own beta_HE11(V)
 # curve) -- a fresh call to response() at each d/lambda, not a re-derivation
 # of _multimode_penalty's own formula.
-def _h7_response_at(d_over_lambda, n_wire=3.45, lambda_nm=950.0):
+def _h7_response_at(d_over_lambda, n_wire=3.45, lambda_nm=950.0, n_group=GAAS_NG_950NM):
     radius_nm = d_over_lambda * lambda_nm / 2.0
-    return response(NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=n_wire),
+    return response(NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=n_wire,
+                                                    n_group_override=n_group),
                      lambda_nm=lambda_nm, outer_radius_nm=radius_nm,
                      gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
 

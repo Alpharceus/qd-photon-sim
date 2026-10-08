@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 import yaml
 
@@ -23,19 +24,81 @@ from fsim_core.fitting import V_A_TOL, fit_phase0
 from fsim_core.integrator import g2_from, g2_of_T, oat_sensitivity, solve_Tc
 from fsim_core.loading import f1b_g2, f8_g2_load, f8b_thin_fano, gamma_eff, loading_probs
 from fsim_core.spectral import epsilon, gamma_of_T, lorentzian
+from fsim_theme import load_tokens, register_plotly
 from fsim_viz.figures import phase0_bundle
 
-TAG_HEX = {Tag.V: "#1a9641", Tag.DR: "#e3a21a", Tag.E: "#e3a21a", Tag.A: "#d7191c"}
-TAG_DOT = {Tag.V: "🟢", Tag.DR: "🟡", Tag.E: "🟡", Tag.A: "🔴"}
+# Theme (studio-02): one token source. The `fsim` Plotly template (dark) is the
+# default for every figure here, and every st.plotly_chart passes theme=None so
+# Streamlit does not restyle it on top.
+register_plotly("dark", set_default=True)
+TOK = load_tokens()
+C = TOK["color"]["dark"]
+S = C["series"]          # categorical slots 1-8 (S[0] = slot 1)
+DIV = C["div"]           # diverging poles: blue (raises) / neutral / red (lowers)
+
+
+def _rgba(hexv: str, alpha: float) -> str:
+    h = hexv.lstrip("#")
+    return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})"
+
+
+# Provenance is graded by LINE FORM, not hue (DIRECTION.md): [V] solid chip,
+# [DR] solid + inset rule, [E] outline, [A] dashed outline. The names stay
+# defined for anything importing them, but both now carry one ink tone /
+# form glyphs instead of the old green/amber/red traffic light.
+TAG_HEX = {Tag.V: C["ink-1"], Tag.DR: C["ink-1"], Tag.E: C["ink-2"], Tag.A: C["ink-2"]}
+TAG_DOT = {Tag.V: "■", Tag.DR: "▣", Tag.E: "□", Tag.A: "⬚"}
+_CHIP_CLASS = {Tag.V: "v", Tag.DR: "dr", Tag.E: "e", Tag.A: "a"}
 
 st.set_page_config(page_title="FSIM", layout="wide")
+
+_MONO = "'B612 Mono', Consolas, ui-monospace, monospace"
+_LABEL = "'Barlow Semi Condensed', Barlow, 'Segoe UI', sans-serif"
+_NUM = "Barlow, 'Segoe UI', sans-serif"  # readouts: tabular Barlow (B612 Mono's decimal point is a full cell)
+st.markdown(f"""<style>
+@font-face {{font-family:'B612 Mono';font-weight:400;src:url('app/static/fonts/b612-mono-latin-400-normal.woff2') format('woff2');}}
+@font-face {{font-family:'Barlow Semi Condensed';font-weight:600;src:url('app/static/fonts/barlow-semi-condensed-latin-600-normal.woff2') format('woff2');}}
+.fsim-chip {{display:inline-block;font-family:{_MONO};font-size:0.74em;line-height:1.45;
+  padding:1px 7px;margin:0 4px 2px 0;border-radius:2px;border:1px solid {C['ink-1']};
+  color:{C['ink-1']};background:transparent;letter-spacing:0.02em;white-space:nowrap;}}
+.fsim-chip-v {{background:{C['ink-1']};color:{C['ground']};}}
+.fsim-chip-dr {{background:{C['ink-1']};color:{C['ground']};
+  box-shadow:inset 0 0 0 2px {C['ink-1']}, inset 0 0 0 3px {C['ground']};}}
+.fsim-chip-e {{border-color:{C['ink-2']};}}
+.fsim-chip-a {{border:1px dashed {C['ink-2']};}}
+.fsim-engraved {{font-family:{_LABEL};font-weight:600;text-transform:uppercase;
+  letter-spacing:{TOK['font']['label_tracking']};font-size:0.78rem;color:{C['ink-2']};
+  border-bottom:1px solid {C['rim']};padding-bottom:3px;margin:4px 0 8px 0;}}
+h1, h2, h3 {{font-family:{_LABEL} !important;text-transform:uppercase;
+  letter-spacing:{TOK['font']['label_tracking']};}}
+[data-testid="stTab"] p {{font-family:{_LABEL};font-weight:600;text-transform:uppercase;
+  letter-spacing:{TOK['font']['label_tracking']};}}
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] * {{font-family:{_NUM};font-variant-numeric:tabular-nums;font-weight:500;
+  font-variant-numeric:tabular-nums;}}
+[data-testid="stMetricLabel"] p {{font-family:{_LABEL};text-transform:uppercase;
+  letter-spacing:{TOK['font']['label_tracking']};color:{C['ink-2']};}}
+.fsim-readout {{font-family:{_NUM};font-variant-numeric:tabular-nums;}}
+/* F8: theme primaryColor is neutral ink-2 (.streamlit/config.toml); the beam
+   red marks only the primary action button. */
+button[kind="primary"], [data-testid="stBaseButton-primary"] {{background-color:{C['beam']} !important;
+  border-color:{C['beam']} !important;color:#ffffff !important;}}
+button[kind="primary"]:hover, [data-testid="stBaseButton-primary"]:hover {{filter:brightness(1.08);}}
+[data-testid="stSliderThumbValue"], [data-testid="stSliderTickBarMin"], [data-testid="stSliderTickBarMax"] {{
+  font-family:{_NUM};font-variant-numeric:tabular-nums;color:{C['ink-1']} !important;}}
+[data-testid="stTab"][aria-selected="true"] p {{color:{C['ink-1']};}}
+[data-testid="stCheckbox"] label[data-selected="true"] svg polyline {{stroke:{C['ground']} !important;stroke-width:2px;}}
+</style>""", unsafe_allow_html=True)
+
+
+def engraved(text: str, where=st):
+    """Laser-engraved section label (Barlow Semi Condensed caps, tracked)."""
+    where.markdown(f"<div class='fsim-engraved'>{text}</div>", unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ card + params
 
 def tag_badge(tag: Tag, label=""):
-    return (f"<span style='background:{TAG_HEX[tag]};color:white;padding:1px 8px;"
-            f"border-radius:8px;font-size:0.8em'>{tag.label} {label}</span>")
+    return f"<span class='fsim-chip fsim-chip-{_CHIP_CLASS[tag]}'>{tag.label} {label}</span>"
 
 
 @st.cache_data
@@ -52,9 +115,11 @@ with st.sidebar:
     ph = card.placeholders()
     if ph:
         st.error(f"PLACEHOLDER entries: {', '.join(ph)} — no gate can close on this card.")
+    engraved("provenance")
     st.markdown(
-        f"{tag_badge(Tag.V, 'measured')} {tag_badge(Tag.DR, 'derived/estimated')} "
-        f"{tag_badge(Tag.A, 'assumed')}", unsafe_allow_html=True)
+        f"{tag_badge(Tag.V, 'measured')} {tag_badge(Tag.DR, 'derived')} "
+        f"{tag_badge(Tag.E, 'estimated')} {tag_badge(Tag.A, 'assumed')}",
+        unsafe_allow_html=True)
     st.caption("Every displayed number carries the widest tag in its input chain.")
 
 has_va = card.name == "chatzarakis" and "g2_vs_T" in card.datasets
@@ -127,30 +192,55 @@ with spec_tab:
     peak = LX.max()
     cen = -dx  # window center relative to X
     fig = go.Figure()
-    fig.add_vrect(x0=cen - w / 2, x1=cen + w / 2, fillcolor="#bbbbbb", opacity=0.25,
-                  line_width=0, annotation_text="filter w", annotation_position="top")
-    fig.add_trace(go.Scatter(x=x, y=LX / peak, name="X", line=dict(color="#2166ac", width=3)))
-    fig.add_trace(go.Scatter(x=x, y=LXX / peak, name="XX", line=dict(color="#5e3c99", width=3)))
+    # filter window: neutral ref-wash with a direct label (not a series hue)
+    fig.add_vrect(x0=cen - w / 2, x1=cen + w / 2, fillcolor=C["ref-wash"], opacity=1.0,
+                  line_width=0, layer="below")
+    fig.add_annotation(x=cen, y=1.0, yref="paper", yanchor="bottom", showarrow=False,
+                       text=f"filter w = {w:.1f} meV", font=dict(color=C["ink-2"], size=12))
+    fig.add_trace(go.Scatter(x=x, y=LX / peak, name="X", line=dict(color=S[0], width=2)))
+    fig.add_trace(go.Scatter(x=x, y=LXX / peak, name="XX", line=dict(color=S[1], width=2)))
     inw = (x >= cen - w / 2) & (x <= cen + w / 2)
     fig.add_trace(go.Scatter(x=x[inw], y=(LXX / peak)[inw], fill="tozeroy", mode="none",
-                             fillcolor="rgba(215,25,28,0.55)",
+                             fillcolor=_rgba(S[1], 0.25),
                              name="t_XX leakage"))
-    fig.update_layout(height=430, margin=dict(l=10, r=10, t=30, b=10),
+    # direct labels at the peaks and at the leakage (the reported quantity)
+    fig.add_annotation(x=0.0, y=1.0, text="X", showarrow=False, yshift=12,
+                       font=dict(color=S[0], size=13))
+    fig.add_annotation(x=-delta, y=float(LXX.max() / peak), text="XX", showarrow=False,
+                       yshift=12, font=dict(color=S[1], size=13))
+    if inw.any():
+        k_leak = int(np.argmax(np.where(inw, LXX, -np.inf)))
+        fig.add_annotation(x=float(x[k_leak]), y=float(LXX[k_leak] / peak),
+                           text=f"ε = {spec.eps:.4f}", showarrow=True, arrowhead=0,
+                           arrowcolor=C["ref"], ax=40, ay=-30,
+                           font=dict(color=C["ink-1"], size=12))
+    fig.update_layout(height=430, margin=dict(l=10, r=10, t=40, b=10),
                       xaxis_title="energy − E_X (meV)", yaxis_title="peak-normalized intensity",
-                      legend=dict(orientation="h"))
-    c1.plotly_chart(fig, use_container_width=True)
+                      legend=dict(orientation="h", x=0, y=1.02, xanchor="left",
+                                  yanchor="bottom"))
+    with c1:
+        engraved("spectral window: X / XX through the filter")
+    c1.plotly_chart(fig, use_container_width=True, theme=None)
 
     ratio = (gam_el / gam_pl) if gam_pl > 0 else float("nan")
-    ratio_style = "color:#e3a21a;font-weight:bold" if ratio > 2 else "font-weight:bold"
+    ratio_style = (f"color:{C['status']['warn']};font-weight:bold" if ratio > 2
+                   else "font-weight:bold")
     c2.markdown(
         f"PL Γ: {gam_pl:.2f} meV / EL Γ_eff: {gam_el:.2f} meV, ratio "
         f"<span style='{ratio_style}'>{ratio:.2f}x</span>"
         + ("  ← Kitamura ~4x" if ratio > 2 else ""),
         unsafe_allow_html=True)
-    c2.markdown(f"**Γ(T)** = {gam:.2f} meV  (active: {drive_mode})")
-    c2.markdown(f"**ε = t_XX/t_X** = {spec.eps:.4f}")
-    c2.markdown(f"**g²₀(μ)** = {g2_dot:.4f}" + ("  (F1: ε)" if mu == 0 else "  (F1b)"))
-    c2.markdown(f"**t_X (brightness)** = {spec.t_x:.3f}")
+    engraved("readouts", c2)
+
+    def _ro(v):  # numeric readout in tabular Barlow
+        return f"<span class='fsim-readout'>{v}</span>"
+
+    c2.markdown(f"**Γ(T)** = {_ro(f'{gam:.2f}')} meV  (active: {drive_mode})",
+                unsafe_allow_html=True)
+    c2.markdown(f"**ε = t_XX/t_X** = {_ro(f'{spec.eps:.4f}')}", unsafe_allow_html=True)
+    c2.markdown(f"**g²₀(μ)** = {_ro(f'{g2_dot:.4f}')}" + ("  (F1: ε)" if mu == 0 else "  (F1b)"),
+                unsafe_allow_html=True)
+    c2.markdown(f"**t_X (brightness)** = {_ro(f'{spec.t_x:.3f}')}", unsafe_allow_html=True)
     spec_tag = widest(card.params["delta_xx"].tag if "delta_xx" in card.params else Tag.A,
                       Tag.A)  # linewidth params are fitted [A]
     c2.markdown(tag_badge(spec_tag, "spectral chain"), unsafe_allow_html=True)
@@ -172,30 +262,32 @@ with casc_tab:
 
     fig = go.Figure()
     for y, name in ((2.0, "|XX⟩"), (1.0, "|X⟩"), (0.0, "|0⟩")):
-        fig.add_shape(type="line", x0=0.25, x1=0.75, y0=y, y1=y, line=dict(width=4))
-        fig.add_annotation(x=0.20, y=y, text=name, showarrow=False, font=dict(size=18))
+        fig.add_shape(type="line", x0=0.25, x1=0.75, y0=y, y1=y, line=dict(width=4, color=C["ink-1"]))
+        fig.add_annotation(x=0.20, y=y, text=name, showarrow=False,
+                           font=dict(size=18, color=C["ink-1"]))
     fig.add_annotation(x=0.5, y=1.5, ax=0.5, ay=2.0, axref="x", ayref="y",
-                       showarrow=True, arrowhead=3, arrowwidth=2, arrowcolor="#5e3c99")
+                       showarrow=True, arrowhead=3, arrowwidth=2, arrowcolor=S[1])
     fig.add_annotation(x=0.62, y=1.55, text=f"XX photon → filter: t_XX"
                        + (f" = {pt.eps * pt.t_x:.3f}" if pt else ""), showarrow=False)
     fig.add_annotation(x=0.5, y=0.5, ax=0.5, ay=1.0, axref="x", ayref="y",
-                       showarrow=True, arrowhead=3, arrowwidth=2, arrowcolor="#2166ac")
+                       showarrow=True, arrowhead=3, arrowwidth=2, arrowcolor=S[0])
     fig.add_annotation(x=0.62, y=0.55, text=f"X photon → filter: t_X"
                        + (f" = {pt.t_x:.3f}" if pt else ""), showarrow=False)
     fig.add_annotation(x=0.32, y=2.35, text=f"cap-2 loading: P₁={P1:.2f}, P₂={P2:.2f}",
-                       showarrow=False, font=dict(color="#666666"))
+                       showarrow=False, font=dict(color=C["muted"]))
     if pt:
         fig.add_annotation(x=0.85, y=1.0,
                            text=f"background channels →<br>ρ({Tc2:.0f} K) = {pt.rho:.3f}",
-                           showarrow=False, font=dict(color="#d7191c"))
+                           showarrow=False, font=dict(color=C["ink-2"]))
         fig.add_annotation(x=0.5, y=-0.45,
                            text=(f"g²(0) = 1 − ρ²(1−g²₀) = {pt.g2:.3f}   "
                                  f"[ε = {pt.eps:.3f}, Γ = {pt.gamma:.2f} meV]"),
-                           showarrow=False, font=dict(size=16))
+                           showarrow=False, font=dict(size=16, color=C["ink-1"]))
     fig.update_layout(height=480, xaxis=dict(visible=False, range=[0, 1.1]),
                       yaxis=dict(visible=False, range=[-0.7, 2.6]),
-                      margin=dict(l=10, r=10, t=10, b=10))
-    st.plotly_chart(fig, use_container_width=True)
+                      margin=dict(l=10, r=10, t=10, b=10), hovermode=False)
+    engraved("cascade: XX → X → 0 through the filter")
+    st.plotly_chart(fig, use_container_width=True, theme=None)
     st.caption("Redrawn from card values; rates and fractions are computed by fsim-core, "
                "never by the GUI (three-layer rule).")
 
@@ -258,24 +350,57 @@ with dash_tab:
                     st.markdown(tag_badge(fit.tag, "fit chain"), unsafe_allow_html=True)
                 st.caption(f"params source: {p_src}")
 
-            fig = go.Figure()
+            # two stacked panels, shared x: g2 (model + data + refs) over the
+            # eps / rho^2 decomposition on 0-1 (02-charts: no crowded single axis)
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.07,
+                                row_heights=[0.62, 0.38])
+            mark_ring = dict(width=TOK["mark"]["marker_ring"], color=C["surface"])
+            is_ub = np.array([r.get("bound") == "upper" for r in rows])
+            g2_d = np.array([r["g2"] for r in rows])
+            err_d = np.array([r["err"] for r in rows])
             fig.add_trace(go.Scatter(
-                x=Ts_d, y=[r["g2"] for r in rows],
-                error_y=dict(type="data", array=[r["err"] for r in rows]),
-                mode="markers", name="data (Fig. 5)", marker=dict(color="#333333", size=9)))
-            fig.add_trace(go.Scatter(x=Ts, y=[q.g2 for q in pts], name="F-series model",
-                                     line=dict(color="#2166ac", width=3)))
+                x=Ts_d[~is_ub], y=g2_d[~is_ub],
+                error_y=dict(type="data", array=err_d[~is_ub], color=C["ink-2"], thickness=1),
+                mode="markers", name="data (Fig. 5) [V]",
+                marker=dict(color=C["ink-1"], size=2 * TOK["mark"]["marker_radius"] + 1,
+                            line=mark_ring)), row=1, col=1)
+            if is_ub.any():
+                fig.add_trace(go.Scatter(
+                    x=Ts_d[is_ub], y=g2_d[is_ub], mode="markers+text", text=["≤"] * int(is_ub.sum()),
+                    textposition="middle left", textfont=dict(color=C["ink-1"], size=13),
+                    error_y=dict(type="data", array=err_d[is_ub], color=C["ink-2"], thickness=1),
+                    name="data, upper bound (≤)",
+                    marker=dict(color=C["ink-1"], symbol="triangle-down",
+                                size=2 * TOK["mark"]["marker_radius"] + 3, line=mark_ring)),
+                    row=1, col=1)
+            fig.add_trace(go.Scatter(x=Ts, y=[q.g2 for q in pts], name="F-series model g²(0)",
+                                     line=dict(color=S[0], width=2)), row=1, col=1)
             fig.add_trace(go.Scatter(x=Ts, y=[q.eps for q in pts], name="ε(T)",
-                                     line=dict(color="#5e3c99", dash="dot")))
+                                     line=dict(color=S[1], width=2)), row=2, col=1)
             fig.add_trace(go.Scatter(x=Ts, y=[q.rho**2 for q in pts], name="ρ²(T)",
-                                     line=dict(color="#e66101", dash="dot")))
-            fig.add_hline(y=0.5, line_dash="dot", line_color="#888888")
+                                     line=dict(color=S[2], width=2)), row=2, col=1)
+            # references (not verdicts): ref ink, 1px, direct labels
+            fig.add_hline(y=0.5, line_width=TOK["mark"]["ref"], line_color=C["ref"],
+                          row=1, col=1, annotation_text="g²(0) = 0.5 ceiling",
+                          annotation_position="top right",
+                          annotation_font=dict(color=C["ink-2"], size=12))
             if np.isfinite(Tc):
-                fig.add_vline(x=Tc, line_dash="dash", line_color="#d7191c",
-                              annotation_text=f"T_c = {Tc:.0f} K")
-            fig.update_layout(height=460, xaxis_title="T (K)", yaxis_title="g²(0)",
-                              margin=dict(l=10, r=10, t=30, b=10))
-            cB.plotly_chart(fig, use_container_width=True)
+                fig.add_vline(x=Tc, line_width=TOK["mark"]["ref"], line_color=C["ref"],
+                              row="all", col=1)
+                fig.add_annotation(x=Tc, y=1.0, xref="x", yref="paper", yanchor="bottom",
+                                   showarrow=False, text=f"T_c = {Tc:.0f} K",
+                                   font=dict(color=C["ink-1"], size=12))
+            fig.update_yaxes(range=[0, 1], title_text="g²(0)", row=1, col=1)
+            fig.update_yaxes(range=[0, 1], title_text="ε, ρ²", row=2, col=1)
+            fig.update_xaxes(title_text="T (K)", row=2, col=1)
+            fig.update_xaxes(showspikes=True, spikemode="across", spikethickness=1,
+                             spikecolor=C["ref"], spikedash="solid")
+            fig.update_layout(height=560, margin=dict(l=10, r=10, t=40, b=10),
+                              legend=dict(orientation="h", x=0, y=1.06, xanchor="left",
+                                          yanchor="bottom"))
+            with cB:
+                engraved("g²(T): model vs Chatzarakis Fig. 5, and its decomposition")
+            cB.plotly_chart(fig, use_container_width=True, theme=None)
 
             if fit is not None:
                 st.dataframe(
@@ -287,13 +412,26 @@ with dash_tab:
                     use_container_width=True, hide_index=True)
 
             sens = oat_sensitivity(p)
+            # diverging bars sorted by |value| (largest on top), value at each tip;
+            # blue pole raises T_c, red pole lowers it
             items = sorted(sens.items(), key=lambda kv: abs(kv[1]))
             figt = go.Figure(go.Bar(
                 x=[v for _, v in items], y=[k for k, _ in items], orientation="h",
-                marker_color=["#d7191c" if v < 0 else "#2166ac" for _, v in items]))
-            figt.update_layout(height=380, title="T_c sensitivity: ΔT_c for +5% of each parameter",
-                               xaxis_title="ΔT_c (K)", margin=dict(l=10, r=10, t=40, b=10))
-            st.plotly_chart(figt, use_container_width=True)
+                marker=dict(color=[DIV[2] if v < 0 else DIV[0] for _, v in items],
+                            cornerradius=4),
+                text=[f"{v:+.1f} K" for _, v in items], textposition="outside",
+                textfont=dict(family="Barlow, Segoe UI, sans-serif", color=C["ink-2"],
+                              size=12),
+                cliponaxis=False, hovertemplate="%{y}: ΔT_c %{x:+.2f} K<extra></extra>"))
+            xmax = max([abs(v) for _, v in items] + [1e-9]) * 1.25
+            figt.update_xaxes(range=[-xmax, xmax], zeroline=True, zerolinecolor=C["axis"],
+                              zerolinewidth=1)
+            figt.update_layout(height=max(260, 34 * len(items) + 90), bargap=0.45,
+                               title="T_c sensitivity: ΔT_c for +5% of each parameter",
+                               xaxis_title="ΔT_c (K)", margin=dict(l=10, r=10, t=40, b=10),
+                               hovermode="closest")
+            engraved("sensitivity")
+            st.plotly_chart(figt, use_container_width=True, theme=None)
 
 
 # --------------------------------------------------------------- 4. card editor
@@ -332,5 +470,5 @@ with card_tab:
         st.success(f"saved {dest.relative_to(ROOT)} — same schema the CLI uses; "
                    "reproducible by anyone holding this file")
     for name, ds in card.datasets.items():
-        st.markdown(f"**dataset `{name}`** {TAG_DOT[ds.tag]} {ds.tag.label}")
+        st.markdown(f"**dataset `{name}`** {tag_badge(ds.tag)}", unsafe_allow_html=True)
         st.dataframe(ds.rows, use_container_width=True, hide_index=True)

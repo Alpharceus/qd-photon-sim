@@ -46,6 +46,18 @@ meta:
     cladding stack). See design.provenance.sources
     ["ret.system.barrier.x_al"].
 
+    CARD-LEVEL NUMBERS ARE "static (non-headline)" (spec audit-edge-cards-
+    label, user decision Q2 2026-09-23): this card ships drive.finite_pulse:
+    false, so DeviceDesign.load + evaluate() of this card -- and every g2_op,
+    rho_op, brightness and collected-flux literal quoted in design.provenance
+    below -- uses the static per-pulse loading (loading.f1b_g2). That is NOT
+    the headline model. The headline RT edge-emitter model is
+    drive.finite_pulse: true with ret.tau_cap_scales_with_density: false
+    (scripts/run_rt_edge.py HEADLINE_MODEL), and its g2 at this card's
+    operating point is ~1.000, not the static 0.979 (see design.provenance.
+    sources["drive.finite_pulse"] for the values and the files they come
+    from). The card is deliberately NOT switched; it is labelled.
+
 design:
   name: edge-inp-gaasp-design
   dot:
@@ -74,7 +86,12 @@ design:
     cw_irf_fwhm_ps: 50.0
     cw_tau_max_ns: 0.12
     loading_model: auto  # [A] peer-review-triage.md finding 2 -- legacy switch, bit-identical
-    finite_pulse: false  # [A] peer-review-triage.md finding 1 -- static per-pulse loading (legacy)
+    # finite_pulse: false => every card-level number is "static (non-headline)";
+    # the headline model is finite_pulse: true (scripts/run_rt_edge.py
+    # HEADLINE_MODEL): finite-pulse g2_op 0.99999 at this card's 300 K point
+    # (static 0.9787) -- see design.provenance.sources["drive.finite_pulse"]
+    # (user decision Q2, 2026-09-23: labelled, not switched).
+    finite_pulse: false  # [A] peer-review-triage.md finding 1 -- static per-pulse loading (legacy, non-headline)
     gate_ns: null        # [A] peer-review-triage.md finding 4 -- not requested (only
                          # meaningful together with finite_pulse=true, which this card
                          # leaves false); null resolves to the whole pulse period if
@@ -158,6 +175,13 @@ design:
           0.8295595445; at 16.0 meV (the previous, now-superseded
           Laferriere proxy) g2_op = 0.8690018619. All three recomputed
           fresh against the final card (council review 2026-09-06 item 1).
+          HISTORICAL (2026-09-23): these three values predate the
+          finding-1b density fix (which moved drive.I_uA to
+          0.005161206095463967) and the 2026-09-23 waveguide and aperture
+          fixes, and are static (non-headline) numbers; a fresh evaluate()
+          of today's card at that old I_uA gives g2_op 0.9833109 /
+          0.9964324 / 0.9981170 at 6.5 / 12.0 / 16.0 meV. They are kept as
+          the record of the 2026-09-06 review, not as current card outputs.
       ret.mode:
         value: confinement
         tag: E
@@ -261,20 +285,29 @@ design:
           card at T_hs=300 K, calling fsim_core.device.evaluate: the
           constrained pulsed-g2 minimum is at the explicit tau_pulse_ns=
           0.1 ns, duty=0.008 (80 MHz), I_uA=0.005161206095463967, where
+          (static (non-headline) card-level values, drive.finite_pulse=
+          false; refreshed 2026-09-23 to a fresh evaluate() after the
+          waveguide Purcell-area fix, audit H4, beta ~2x, and the aperture
+          cross-term fix -- were rho_op 0.3930166427, g2_op 0.9795610814,
+          flux 2.1745160393, eta_total 0.0185615579)
           V_j=1.4622927350 V, f_qfl=0.1074024321, mu=0.0999999987,
-          rho_op=0.3930166427, g2_op=0.9795610814, and
-          collected_flux_pulsed_s=2.1745160393. eta_NA=0.8222156778,
-          eta_total=0.0185615579 (waveguide-na-collection-fix's circular
-          NA-cone / 1/e^2-width convention, A_mode = pi w_x w_y; unchanged
-          from the prior operating point -- Lemma 1, collection is
-          independent of the drive current). The collected flux is now
+          rho_op=0.3930166240, g2_op=0.9787218623, and
+          collected_flux_pulsed_s=4.3287431744. eta_NA=0.8222156778,
+          eta_total=0.0369499338 (waveguide-na-collection-fix's circular
+          NA-cone / 1/e^2-width convention; beta from the energy-normalised
+          Purcell area, audit H4; unchanged from the prior operating point
+          -- Lemma 1, collection is independent of the drive current).
+          Headline (finite-pulse) g2 at this point: 0.99999 (see
+          drive.finite_pulse's source). The I_uA optimum itself was solved
+          on 2026-09-06 and not re-solved; the 0.5x / 2x bracket below is
+          re-checked on the current tree. The collected flux is now
           far below the 1 kHz floor and g2_op is far above 0.5 -- this
           design NO LONGER clears either acceptance gate at its own
           default operating point once the density fix is applied (it is
           still the flux-maximising allowed current: the 0.5x point has
           mu=0.0128, below the 0.05 floor (sub-turn-on, infeasible); the
           2x point is feasible (mu=0.7656, not sub-turn-on) with
-          g2_op=0.9960116 there, still worse (higher) than this point's
+          g2_op=0.9957690 there, still worse (higher) than this point's
           g2_op, so it does not beat this point). See design.provenance's
           finding-1b record for the favourable-corner (T_hs=230 K,
           gamma300=6, delta_xx=8, NA=0.8, R_back=0.95, L=250 um) g2/flux
@@ -342,8 +375,26 @@ design:
         source: >
           peer-review-triage.md finding 1 -- false (default, legacy): keeps
           the static per-pulse loading distribution (f1b_g2). Not requested
-          on this card; the acceptance sweep will decide whether to switch
-          it on.
+          on this card. LABEL (spec audit-edge-cards-label, user decision
+          Q2, 2026-09-23): every card-level number this card produces or
+          quotes is "static (non-headline)". The post-peer-review verdict
+          made drive.finite_pulse=true (tau_cap density law off) the
+          headline model (scripts/run_rt_edge.py HEADLINE_MODEL;
+          out/rt_edge/verdict.md: headline VERDICT FAIL, eligible 0/768,
+          this card's diagnostic pulsed g2 min 0.9981, and 0.9999 at the
+          6.5 meV anchor with this card's own delta_xx); the user chose to
+          label this card rather than switch it. The device audit's
+          static-against-finite-pulse comparison
+          (.workers/review/audit-device-opus-findings.md, the
+          cards/edge-inp-gainp-design.yaml:81 finding: 0.7736 against
+          0.9991 at 300 K) was run on the sibling gainp card only. [DR]
+          Fresh evaluate() of THIS card on the current tree (2026-09-23,
+          card as shipped, drive.finite_pulse set true on a copy): 300 K
+          finite-pulse g2_op 0.9999914 against static 0.9787219; 80 K
+          finite-pulse 0.6403662 against static 0.2306466 (at 80 K this
+          card's I_uA resolves to mu 2.76, outside the [0.05, 1.0] static
+          loading range, so the 80 K static number is not a valid
+          operating point either).
       drive.gate_ns:
         value: null
         tag: A
@@ -661,10 +712,16 @@ design:
       card's drive.I_uA note describes, out of scope here). The g2/flux
       values below are reported for completeness but do NOT represent a
       valid pulsed-loading operating point (F1/f1b_g2 assumes mu in
-      [0.05, 1.0]): default (no-cancellation) g2_op=0.5350254374 (misses
-      the g2<0.5 gate), collected_flux_pulsed_s=91.66962666 s^-1 (misses
+      [0.05, 1.0]; all four g2/flux literals below are static
+      (non-headline) card-level numbers, drive.finite_pulse=false -- the
+      headline finite-pulse model gives g2 near 1, see drive.finite_pulse's
+      source; refreshed 2026-09-23 after the waveguide Purcell-area fix,
+      audit H4, and the aperture cross-term fix -- were 0.5350254374 /
+      91.66962666 / 0.3052588690 / 2443.685900; the gate conclusions are
+      unchanged): default (no-cancellation) g2_op=0.5323677930 (misses
+      the g2<0.5 gate), collected_flux_pulsed_s=182.4839632 s^-1 (misses
       the 1 kHz floor gate) -- fails both; full-cancellation g2_op=
-      0.3052588690, collected_flux_pulsed_s=2443.685900 s^-1 (numerically
+      0.3034930161, collected_flux_pulsed_s=4864.571877 s^-1 (numerically
       clears both gates, but at the same infeasible mu as the
       no-cancellation row above, so this is not a usable pass either).
       This card ships the default (no-cancellation) convention -- the

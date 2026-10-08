@@ -74,6 +74,34 @@ def main(argv=None) -> int:
         total_passed += passed
         total_count += count
 
+    # Audit C4 regression pin (no network: every fixture below returns
+    # before any resolver call). GAP widening for figure_reading anchors:
+    # null identifier + no parseable title -> recorded gap (ok, printed GAP)
+    # for evidence_status in {missing, figure_reading}; still a FAIL for
+    # full_text / abstract_only / absent status (an anchor claiming the text
+    # was read must carry an identifier or a title).
+    from skills.citation_gate.ledger import verify_anchor
+    _untitled = "Author et al., Some Journal 1, 2 (2023)"
+    for status, want_gap in (("missing", True), ("figure_reading", True), ("full_text", False),
+                             ("abstract_only", False), (None, False)):
+        a = {"citation": _untitled, "doi_or_url": None}
+        if status is not None:
+            a["evidence_status"] = status
+        ok, _disp, detail = verify_anchor("c4_fixture", a, cache=None, offline=True, clients={})
+        good = (ok and "recorded gap" in detail) if want_gap else (not ok and "recorded gap" not in detail)
+        print(f"c4_fixture_gap_rule_{status} | null | {'PASS' if good else 'FAIL'} | "
+              f"{'GAP' if want_gap else 'FAIL'} expected; got ok={ok}")
+        total_passed += int(good)
+        total_count += 1
+    # A V-tagged figure_reading anchor with no identifier must still FAIL.
+    ok, _disp, detail = verify_anchor("c4_fixture_v", {"citation": _untitled, "doi_or_url": None,
+                                      "evidence_status": "figure_reading", "tag": "V"},
+                                      cache=None, offline=True, clients={})
+    good = (not ok) and "recorded gap" not in detail
+    print(f"c4_fixture_gap_rule_figure_reading_tag_V | null | {'PASS' if good else 'FAIL'} | FAIL expected; got ok={ok}")
+    total_passed += int(good)
+    total_count += 1
+
     print(f"{total_passed}/{total_count} citation checks passed")
     return 0 if total_passed == total_count else 1
 

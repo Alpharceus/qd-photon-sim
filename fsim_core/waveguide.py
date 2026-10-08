@@ -4,7 +4,8 @@ The vertical solver is the scalar TE/TM slab eigenproblem (the TM result uses
 the same weak-guidance scalar approximation).  This is appropriate for the
 first design pass, but is not a replacement for a full-vector FEM calculation.
 The guided-mode Purcell factor follows Lecamp, Lalanne & Hugonin, PRL 99,
-023902 (2007) [DR]; the high-beta comparison point is Arcari *et al.*, PRL
+023902 (2007) [DR], evaluated with the energy-normalised Purcell area
+(``RidgeMode.A_purcell_um2``; audit H4, 2026-09-22); the high-beta comparison point is Arcari *et al.*, PRL
 113, 093603 (2014) [V].  Index values used by :func:`hkust_ridge_stack` come
 from ``materials.MATERIAL_EXTRA`` (Schubert *et al.*, JAP 77, 3416 (1995))
 [DR].  Ridge loss 5 /cm and Gaussian far-field collection are class/design
@@ -59,10 +60,19 @@ class RidgeMode:
     lateral: SlabMode
     n_ridge: float
     n_outside: float
+    # Nonlinear-optics intensity area (int I)^2 / int I^2 (separable product).
+    # It sets the Gaussian-equivalent radii below and the far-field model; it
+    # is NOT the Purcell area (audit H4, 2026-09-22) -- see A_purcell_um2.
     A_mode_um2: float
     # Gaussian-equivalent 1/e^2 intensity radii (not 1/e radii), in um.
     wx_um: float
     wy_um: float
+    # Energy-normalised Purcell mode area for a dot at the field maximum,
+    # A_P = int eps|E|^2 dA / (eps_dot max|E|^2) [DR] (Lecamp, Lalanne &
+    # Hugonin, PRL 99, 023902 (2007)); a Gaussian gives pi w^2/2, half of
+    # A_mode_um2.  A dot off the antinode is handled by beta_factor's
+    # position_factor = |E(r_dot)|^2/max|E|^2, so A_P(r_dot) = A_P/pos.
+    A_purcell_um2: float = float("nan")
 
 
 @dataclass
@@ -78,6 +88,9 @@ class EdgeResult:
     eta_NA: float
     eta_total: float
     notes: list[str] = field(default_factory=list)
+    # Energy-normalised Purcell area actually used for F_wg (audit H4); the
+    # A_mode_um2 field above keeps the nonlinear (int I)^2/int I^2 area.
+    A_purcell_um2: float = float("nan")
 
 
 def _grid(layers: list[Layer], max_step_nm: float = 2.0):
@@ -166,6 +179,31 @@ def _etched(layers, etch_depth_nm):
     return out + [Layer("etched_air", 1.0, max(1000.0, layers[-1].thickness_nm))]
 
 
+def purcell_mode_width(z_nm, field, n_profile=None, n_dot=None):
+    """One-axis factor of the energy-normalised Purcell area, in um [DR].
+
+    ``int n(z)^2 |E(z)|^2 dz / (n_dot^2 max|E|^2)``: the per-axis factor of
+    Lecamp, Lalanne & Hugonin, PRL 99, 023902 (2007), guided-mode Purcell
+    factor F = (3/(4 pi)) (lambda/n)^2 (n_g/n) / A_eff with A_eff the
+    energy-normalised area at the emitter (their Eq. 2 and the effective-area
+    definition that follows it) [DR], evaluated for a dot at the field
+    maximum.  ``n_profile=None`` means uniform permittivity (factor 1);
+    ``n_dot=None`` takes the index at the field maximum.  For a Gaussian
+    amplitude exp(-x^2/w^2) (1/e^2 intensity radius w) with uniform index it
+    returns sqrt(pi/2) w, so the separable area is pi w^2/2 -- half the
+    nonlinear-optics area (int I)^2/int I^2 = pi w^2 (audit H4, 2026-09-22).
+    """
+    z = np.asarray(z_nm, dtype=float)
+    f2 = np.asarray(field, dtype=float) ** 2
+    imax = int(np.argmax(f2))
+    if n_profile is None:
+        eps = np.ones_like(f2)
+    else:
+        eps = np.asarray(n_profile, dtype=float) ** 2
+    eps_dot = eps[imax] if n_dot is None else float(n_dot) ** 2
+    return float(np.trapezoid(eps * f2, z) / (eps_dot * f2[imax]) * 1e-3)
+
+
 def effective_index_ridge(layers, lambda_nm, ridge_width_nm, etch_depth_nm, pol="TE"):
     """Effective-index ridge mode and separable intensity-effective area [DR].
 
@@ -197,12 +235,31 @@ def effective_index_ridge(layers, lambda_nm, ridge_width_nm, etch_depth_nm, pol=
     # Hence these are 1/e^2 intensity radii and Aeff=pi*wx*wy. [DR]
     wx = lateral.mode_width_um / np.sqrt(pi)
     wy = vertical.mode_width_um / np.sqrt(pi)
+    # Purcell area (audit H4, 2026-09-22): energy-normalised at a dot on the
+    # field maximum [DR] (Lecamp, Lalanne & Hugonin, PRL 99, 023902 (2007)).
+    # Vertical factor weights |E|^2 by the stack's eps(z) = n(z)^2 and uses
+    # the dot layer's own index as eps_dot (index at the field maximum when
+    # no layer is marked is_dot).  Lateral factor: within the separable EIM
+    # the lateral eps weighting is taken as uniform [A] (outside/ridge
+    # effective indices differ by ~1%, a sub-percent effect on A_P).
+    zv, nv, _ = _grid(list(layers))
+    dots = [x for x in layers if x.is_dot]
+    n_dot = dots[0].n if dots else None
+    A_P = (purcell_mode_width(vertical.z_nm, vertical.field, nv, n_dot)
+           * purcell_mode_width(lateral.z_nm, lateral.field))
     return RidgeMode(lateral.n_eff, vertical, lateral, vertical.n_eff, n_outside,
-                     float(A), float(wx), float(wy))
+                     float(A), float(wx), float(wy), float(A_P))
 
 
 def beta_factor(A_mode_um2, lambda_nm, n_dot, n_g, position_factor=1.0):
-    """``(F_wg, beta)`` for one guided direction pair, Lecamp 2007 [DR]."""
+    """``(F_wg, beta)`` for one guided direction pair, Lecamp 2007 [DR].
+
+    ``A_mode_um2`` must be the energy-normalised Purcell area of the mode
+    for a dot at the field maximum (``RidgeMode.A_purcell_um2``), NOT the
+    nonlinear-optics area ``RidgeMode.A_mode_um2`` (which is 2x larger for
+    a Gaussian; audit H4, 2026-09-22).  ``position_factor`` is
+    |E(r_dot)|^2 / max|E|^2 [DR] (Lecamp, Lalanne & Hugonin, PRL 99,
+    023902 (2007), Eq. 2)."""
     if A_mode_um2 <= 0 or n_dot <= 0 or n_g <= 0 or not 0 <= position_factor <= 1:
         raise ValueError("invalid mode area, indices, or position_factor")
     lam = lambda_nm * 1e-3
@@ -334,13 +391,12 @@ def _redispersed(stack, lambda_nm):
 
 def facet_escape_fraction(T, R_back, alpha_cm, L_um, dot_position=0.5):
     """Ray-probability escape fraction through the front facet, single
-    source of truth for ``edge_emission``'s facet term (peer-review pkg2
-    facet fix, 2026-09-07, `.workers/specs/pr-pkg2-facet-fix.md`, correcting
-    `.workers/specs/pr-pkg2-facet.md`'s checkpoint). Every independent
-    self-check that needs to reproduce the facet factor (verify_waveguide.py,
-    verify_device_rt.py, scripts/run_rt_edge.py's forward check) calls THIS
-    function, or writes its own hand formula against these same numbers --
-    never a formula copy-pasted out of ``edge_emission``'s source.
+    source of truth for ``edge_emission``'s facet term (peer-review fix,
+    2026-09-07). Every independent self-check that needs to reproduce the facet
+    factor (verify_waveguide.py, verify_device_rt.py, scripts/run_rt_edge.py's
+    forward check) calls THIS function, or writes its own hand formula against
+    these same numbers -- never a formula copy-pasted out of
+    ``edge_emission``'s source.
 
     Guided-mode emission from the dot splits 50/50 forward/backward into the
     mode [A]. The dot sits at fraction ``dot_position`` of ``L_um`` measured
@@ -497,10 +553,9 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
                   dot_position=0.5):
     """Calculate the collected forward edge-emission probability.
 
-    Facet model (peer-review finding 3, `.workers/review/peer-review-triage.md`,
-    2026-09-07; fix pass `.workers/specs/pr-pkg2-facet-fix.md`, 2026-09-07): a
-    single ray-probability model, continuous in ``R_back``, replaces the old
-    two-branch geometric/escape-rate switch. That switch stepped by +16.33%
+    Facet model (peer-review finding, 2026-09-07): a single ray-probability
+    model, continuous in ``R_back``, replaces the old two-branch
+    geometric/escape-rate switch. That switch stepped by +16.33%
     at T_facet=0.719371 crossing R_back=0 (0.5*T=0.3596855 vs the
     escape-rate limit T/(T+1)=0.4183916), and its comment claimed T/(T+1)
     was "strictly below" 0.5*T when in fact
@@ -590,7 +645,12 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
     z_dot = float(np.average(centres, weights=[x.thickness_nm for x in dots]))
     field_at_dot = float(np.interp(z_dot, mode.vertical.z_nm, mode.vertical.field))
     pos = min(1.0, float(field_at_dot ** 2 / np.max(mode.vertical.field ** 2)))
-    F, beta = beta_factor(mode.A_mode_um2, lambda_nm, n_dot, ng, pos)
+    # Audit H4 (2026-09-22): the Purcell area, not the nonlinear area.
+    F, beta = beta_factor(mode.A_purcell_um2, lambda_nm, n_dot, ng, pos)
+    notes.append("[DR] F_wg uses the energy-normalised Purcell area "
+                 "A_P = int eps|E|^2 dA / (eps_dot max|E|^2) times the "
+                 "position factor (Lecamp, Lalanne & Hugonin, PRL 99, 023902 "
+                 "(2007)); A_mode_um2 is the nonlinear (int I)^2/int I^2 area")
     T = facet_transmission(mode.n_eff, coating)
     # Peer-review pkg2 fix (2026-09-07, item 4): R_back=None resolves to the
     # UNCOATED Fresnel reflectivity of the bare back facet, computed the
@@ -629,4 +689,4 @@ def edge_emission(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, NA,
                                        dx, dy, lambda_nm, NA)
     total = beta * facet_factor * eta_na
     return EdgeResult(mode.n_eff, float(ng), float(gamma), mode.A_mode_um2, F, beta, T,
-                      prop, eta_na, float(total), notes)
+                      prop, eta_na, float(total), notes, mode.A_purcell_um2)

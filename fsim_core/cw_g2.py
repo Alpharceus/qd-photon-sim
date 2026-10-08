@@ -5,13 +5,22 @@ measured g2(0) of a CW HBT experiment (Reischle 2008-style dc EL).
 
 Why this module exists. The rest of the chain (loading.f1b_g2, f8_g2,
 drive_mech.reexc_g2) computes the PULSED peak-area g2(0) = area(tau=0 peak) /
-area(adjacent peak). Real electrically driven devices are frequently run dc,
+area(long-delay, uncorrelated side peak) = <m(m-1)>/<m>^2 (equal to the
+adjacent-peak ratio only without inter-period carry-over; see
+pulse_counting's "Normalisation", audit D2). Real electrically driven devices are frequently run dc,
 and a dc HBT measurement reports the depth of a dip at tau = 0 of width
 ~1/(pump + decay rate), smeared by the detector timing resolution (IRF).
 Those are different observables; this module provides the CW one.
 
 Model (classical rate equations -- coherences neglected; adequate for
 incoherent electrical/above-band pumping where dephasing >> Rabi coupling):
+
+VALIDITY GUARD (audit D11): r is an INCOHERENT capture/pump rate. This
+ladder is NOT valid for resonant coherent (Rabi) drive: coherent CW drive
+saturates the upper-state population at 1/2, whereas this model gives
+P_X = r/(r+G) -> 1, and it cannot describe Rabi oscillation or pi-pulse
+re-excitation [DR]. Use a master-equation (Lindblad) model for resonant
+excitation.
 
     states |0>, |X>, |XX>              (cap-2 ladder, consistent with loading.py)
     0  -> X   pump           r
@@ -116,7 +125,9 @@ def escape_rates_from_retention(gamma_X_ns, a_esc, E_a, b_p, E_b, T,
 
 def generator(r_ns, gamma_X_ns, gamma_XX_ns, k_X=0.0, k_XX=0.0, pump_ratio=1.0):
     """Generator M (3x3, columns = from-state, rows = to-state) of dP/dt = M P
-    for the ordered basis (|0>, |X>, |XX>)."""
+    for the ordered basis (|0>, |X>, |XX>). r_ns is an incoherent capture
+    rate (above-band / electrical pumping); not valid for resonant/coherent
+    excitation (module docstring, VALIDITY GUARD)."""
     r2 = pump_ratio * r_ns
     GX = gamma_X_ns + k_X
     GXX = gamma_XX_ns + k_XX

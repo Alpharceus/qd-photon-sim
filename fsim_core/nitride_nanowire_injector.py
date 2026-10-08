@@ -42,14 +42,30 @@ Physics and conventions
   [A, default 2].  f(E) is the injecting reservoir's Fermi-Dirac occupation;
   the receiving (dot) state is treated as empty (forward/loading rate) or
   full (reverse/reload rate) as documented per call site.
-* Reservoir electrochemical energy: a bulk 3-D degenerate free-electron-gas
-  Fermi level, E_F - E_band_edge = (hbar^2/2 m*)(3 pi^2 n)^(2/3) [DR;
-  Ashcroft & Mermin, "Solid State Physics" (1976) Ch. 2 Eq. 2.33 -- a
-  standard free-electron-gas result, not GaN-specific].  Using the T=0
-  degenerate formula at finite T is itself an explicit [A] approximation
-  (good to within roughly kT at these dopings, since E_F - E_edge is tens of
-  meV and kT is 20-26 meV over 230-300 K); no non-degenerate/finite-T
-  Fermi-Dirac inversion is attempted.
+* Reservoir electrochemical energy (electron emitter): the finite-T
+  Fermi-Dirac inversion n = N_c F_1/2(eta), eta = (mu_e - E_c)/kT, with
+  N_c = 2 (2 pi m_dos k_B T / h^2)^(3/2) and the normalized complete
+  Fermi-Dirac integral F_1/2 [DR; standard carrier statistics, e.g. Sze &
+  Ng, "Physics of Semiconductor Devices," 3rd ed. (2007), Ch. 1;
+  Blakemore, Solid-State Electron. 25, 1067 (1982)], solved numerically
+  (quad + brentq; n is reproduced to < 1e-8 relative).  The mass is the
+  ellipsoidal density-of-states mass m_dos = (me_xy^2 me_z)^(1/3) [DR from
+  the [V] Rinke et al., PRB 77, 075202 (2008) bulk GaN masses via
+  nitride_materials: me_xy = 0.209 in the c plane, me_z = 0.186 along c],
+  0.2010 for GaN.  The emitter is bulk n-GaN, so m_dos never follows a
+  params.me_well override (the well tunnelling mass); before the
+  2026-09-23 strain-mass audit it used params.me_well for me_z, and the
+  nitride_materials electron axes were swapped (m_dos then 0.1934, mu_e
+  28.92 / 21.42 meV at 230 / 300 K; now 26.98 / 19.21 meV).  AUDIT M1 fix
+  (2026-09-23): this replaces the earlier T=0 degenerate free-electron-gas
+  formula (hbar^2/2m)(3 pi^2 n)^(2/3) with m = me_z [Ashcroft & Mermin,
+  "Solid State Physics" (1976) Ch. 2 Eq. 2.33], which at n = 3e18 cm^-3
+  (n/N_c ~ 1.4) gave 36.29 meV at every T against the Fermi-Dirac 28.9 /
+  21.4 meV at 230 / 300 K.  The T=0 formula is kept (_degenerate_mu_eV)
+  only as the strongly-degenerate limit the inversion reduces to.  The
+  hole emitter keeps its Mg mass-action Boltzmann level kT ln(p/N_V) (see
+  _hole_quasi_fermi_eV): it never used the T=0 formula, and p/N_V is of
+  order 1e-3 there, so the Boltzmann limit of F_1/2 holds to < 0.1 %.
 * Barrier material: an Al_xGa_1-xN barrier's conduction/valence BARRIER
   HEIGHTS come from a linear (no-bowing [A]) virtual-crystal interpolation
   of the GaN/AlN bandgap difference (nitride_materials' [V] Wu et al.
@@ -101,6 +117,7 @@ import math
 import warnings
 from collections import namedtuple
 from dataclasses import dataclass, replace
+from functools import lru_cache
 
 import numpy as np
 from scipy.integrate import quad, IntegrationWarning
@@ -312,6 +329,67 @@ def _degenerate_mu_eV(n_m3: float, m_ratio: float) -> float:
     return (HBAR_JS ** 2 * k_f ** 2) / (2.0 * m_ratio * M0_KG) / EV_J
 
 
+def _fermi_half_integral(eta: float) -> float:
+    """Normalized complete Fermi-Dirac integral of order 1/2,
+    F_1/2(eta) = (2/sqrt(pi)) INTEGRAL_0^inf sqrt(x) / (1 + exp(x - eta)) dx,
+    so that n = N_c F_1/2(eta) and F_1/2 -> exp(eta) in the Boltzmann limit
+    [DR; Blakemore, Solid-State Electron. 25, 1067 (1982), Eq. 1
+    normalization].  Evaluated by adaptive quadrature with a breakpoint at
+    x = eta; the integrand beyond eta + 60 is below exp(-60) relative and
+    is dropped [DR]."""
+    upper = max(eta, 0.0) + 60.0
+
+    def integrand(x):
+        y = x - eta
+        if y > 0.0:
+            ey = math.exp(-y)
+            occ = ey / (1.0 + ey)
+        else:
+            occ = 1.0 / (1.0 + math.exp(y))
+        return math.sqrt(x) * occ
+
+    points = [eta] if 0.0 < eta < upper else None
+    val, _err = quad(integrand, 0.0, upper, points=points, limit=400,
+                     epsabs=0.0, epsrel=1e-12)
+    return 2.0 / math.sqrt(math.pi) * val
+
+
+def _electron_dos_mass(params: "NitrideNanowireInjectorParams") -> float:
+    """Ellipsoidal conduction-band density-of-states mass of the bulk
+    n-GaN emitter, m_dos = (me_xy^2 me_z)^(1/3) [DR; e.g. Sze & Ng (2007)
+    Ch. 1], with me_xy (c plane, 0.209) and me_z (along c, 0.186) the [V]
+    Rinke et al., PRB 77, 075202 (2008) Table V bulk GaN masses via
+    nitride_materials: 0.2010.  Deliberately independent of `params`
+    (in particular of params.me_well, the well tunnelling mass a caller may
+    override): the emitter is bulk GaN (strain-mass audit, 2026-09-23).
+    The argument is kept for call-site compatibility."""
+    return (_GAN.me_xy ** 2 * _GAN.me_z) ** (1.0 / 3.0)
+
+
+def _electron_quasi_fermi_eV(params: "NitrideNanowireInjectorParams", T_K: float) -> float:
+    """Electron emitter quasi-Fermi level above the n-GaN conduction-band
+    edge, mu_e = eta kT with n = N_c F_1/2(eta) solved numerically (audit
+    M1 fix, 2026-09-23; see module docstring "Reservoir electrochemical
+    energy") [DR].  N_c uses _electron_dos_mass.  The root is bracketed by
+    ln(n/N_c) - 1 (F_1/2(eta) <= exp(eta)) and the T=0 degenerate value + 1
+    (F_1/2 exceeds its Sommerfeld leading term), so brentq always
+    converges.  Non-finite or non-positive T_K returns NaN (the caller
+    screens T_K before this is reached)."""
+    if not math.isfinite(T_K) or T_K <= 0.0:
+        return float("nan")
+    n_m3 = params.n_cm3 * 1.0e6
+    m_dos = _electron_dos_mass(params)
+    kT_eV = KB_EV * T_K
+    nc_m3 = _n_v_valence_dos_m3(m_dos, T_K)   # same 3-D effective-DOS formula, conduction DOS mass
+    ratio = n_m3 / nc_m3
+    eta_t0 = _degenerate_mu_eV(n_m3, m_dos) / kT_eV
+    lo = math.log(ratio) - 1.0
+    hi = max(eta_t0, math.log(ratio)) + 1.0
+    eta = brentq(lambda e: _fermi_half_integral(e) - ratio, lo, hi,
+                 xtol=1e-13, rtol=1e-14, maxiter=200)
+    return float(eta * kT_eV)
+
+
 # --------------------------------------------------------------------- params
 
 @dataclass(frozen=True)
@@ -344,7 +422,7 @@ class NitrideNanowireInjectorParams:
     mh_barrier_override: float | None = None
     dEc_eV_override: float | None = None
     dEv_eV_override: float | None = None
-    me_well: float = _GAN.me_z                        # [V] Rinke PRB 2008 GaN conduction mass
+    me_well: float = _GAN.me_z                        # [V] Rinke PRB 2008 GaN conduction mass along c (0.186; 0.209 before the 2026-09-23 axis fix)
     mh_well: float = _GAN.mh_z                        # [V] Rinke PRB 2008 GaN valence mass (z)
 
     delta_Ev_GaN_AlN_eV: float = 0.70                 # [V] Martin, Yu, Waldrop, APL 68, 2541 (1996),
@@ -446,19 +524,23 @@ def _resolve_path(params: NitrideNanowireInjectorParams, carrier: str) -> _Resol
     dEc = params.dEc_eV_override if params.dEc_eV_override is not None else default["dEc_eV"]
     dEv = params.dEv_eV_override if params.dEv_eV_override is not None else default["dEv_eV"]
     if carrier == "electron":
-        mu = _degenerate_mu_eV(params.n_cm3 * 1e6, params.me_well)
+        # AUDIT M1 fix (2026-09-23): the emitter quasi-Fermi level is
+        # temperature dependent (_electron_quasi_fermi_eV(params, T_K), a
+        # Fermi-Dirac inversion); this T-less path record no longer carries
+        # the old T=0 degenerate estimate, so the field is NaN for both
+        # carriers and nothing can silently reuse a T=0 number at 230-300 K.
         return _ResolvedPath("electron", params.electron_topology,
                               params.electron_barrier_thickness_nm,
                               params.electron_well_width_nm,
-                              me_b, params.me_well, dEc, mu)
+                              me_b, params.me_well, dEc, float("nan"))
     # LOW 11 fix (Opus re-review of 12b39cd, 2026-09-14): the hole path's own
     # degenerate free-electron-gas mu is DEAD -- every caller of a hole
     # emitter quasi-Fermi level uses _hole_quasi_fermi_eV's Mg-acceptor
     # mass-action solve instead (MEDIUM 6, injector_feasibility's
     # _screen_at), never this field.  Kept as NaN (not computed at all) so
     # nothing can mistake an unused degenerate-gas estimate for a
-    # meaningful number; the field name is unchanged (mu_eV) since the
-    # electron branch above still genuinely uses it.
+    # meaningful number; the field name is unchanged (mu_eV) for
+    # compatibility (NaN for the electron branch too since audit M1).
     return _ResolvedPath("hole", params.hole_topology,
                           params.hole_barrier_thickness_nm,
                           params.hole_well_width_nm,
@@ -585,7 +667,207 @@ def _transmission_reflection_scalar(segments, energy_eV: float, m_left: float,
     return float(T), float(R)
 
 
-def _transmission_scalar(params, energy_eV, bias_V, field_kVcm, carrier):
+# ------------------------------------------------- vectorized engine (perf)
+# studio-p2c (2026-10-08): the SAME backward recursion as
+# _transmission_reflection_scalar (kept above, unchanged, as the reference),
+# evaluated for a whole energy grid at once.  Every complex operation is
+# spelled out on float64 arrays with the exact formula and operand order the
+# scalar engine's mix of Python-complex and numpy-scalar arithmetic uses
+# (CPython _Py_c_quot vs numpy's reciprocal-scaled Smith division, a plain
+# no-FMA complex product, numpy's own complex exp), because numpy's SIMD
+# complex-array multiply/abs loops are not bit-identical to the scalar
+# path.  The final abs()/**2 step runs per element on numpy scalars for the
+# same reason.  verify/verify_injector_vectorized.py checks the two engines
+# against each other on dense grids over every card's domain.
+
+def _stack_slices(segments, tilt_eV_per_m, pol_fields_eV_per_m,
+                  slice_length_m, min_slices_per_segment):
+    """(dl, V_eV, m_ratio) staircase slices, built by the identical loop
+    _transmission_reflection_scalar runs inline."""
+    if pol_fields_eV_per_m is None:
+        pol_fields_eV_per_m = [0.0] * len(segments)
+    slices = []
+    x0 = 0.0
+    pol_offset = 0.0
+    for (length_m, V_eV, m_ratio), E_pol in zip(segments, pol_fields_eV_per_m):
+        if length_m <= 0.0:
+            continue
+        n = max(min_slices_per_segment, int(math.ceil(length_m / slice_length_m)))
+        dl = length_m / n
+        for i in range(n):
+            xc = x0 + (i + 0.5) * dl
+            local_x = (i + 0.5) * dl
+            pol_here = pol_offset + E_pol * local_x
+            slices.append((dl, V_eV - tilt_eV_per_m * xc + pol_here, m_ratio))
+        pol_offset += E_pol * length_m
+        x0 += length_m
+    return slices
+
+
+def _segment_k_vec(E, V_eV, m_ratio):
+    """(Re k, Im k) arrays equal to _segment_k element by element: numpy's
+    complex sqrt of a real argument is exactly (sqrt(x), 0) or
+    (0, sqrt(-x)), and CPython's complex/float division reduces to
+    (re + im*0)/H, (im - re*0)/H."""
+    val = 2.0 * m_ratio * M0_KG * (E - V_eV) * EV_J
+    pos = val >= 0.0
+    sr = np.where(pos, np.sqrt(np.where(pos, val, 0.0)), 0.0)
+    si = np.where(pos, 0.0, np.sqrt(np.where(pos, 0.0, -val)))
+    return (sr + si * 0.0) / HBAR_JS, (si - sr * 0.0) / HBAR_JS
+
+
+def _cmul(ar, ai, br, bi):
+    return ar * br - ai * bi, ar * bi + ai * br
+
+
+def _cdiv_py(ar, ai, br, bi):
+    """CPython 3 _Py_c_quot (complex / complex), elementwise."""
+    big = np.abs(br) >= np.abs(bi)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r1 = bi / br
+        d1 = br + bi * r1
+        r2 = br / bi
+        d2 = br * r2 + bi
+        qr = np.where(big, (ar + ai * r1) / d1, (ar * r2 + ai) / d2)
+        qi = np.where(big, (ai - ar * r1) / d1, (ai * r2 - ar) / d2)
+    return qr, qi
+
+
+def _cdiv_np(ar, ai, br, bi):
+    """numpy's complex128 divide loop (scaled Smith), elementwise."""
+    big = np.abs(br) >= np.abs(bi)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        r1 = bi / br
+        s1 = 1.0 / (br + bi * r1)
+        r2 = br / bi
+        s2 = 1.0 / (bi + br * r2)
+        qr = np.where(big, (ar + ai * r1) * s1, (ar * r2 + ai) * s2)
+        qi = np.where(big, (ai - ar * r1) * s1, (ai * r2 - ar) * s2)
+    return qr, qi
+
+
+def _cexp(zr, zi):
+    z = np.empty(np.shape(zr), dtype=complex)
+    z.real = zr
+    z.imag = zi
+    e = np.exp(z)
+    return e.real.copy(), e.imag.copy()
+
+
+def _transmission_reflection_vec(segments, energies_eV, m_left: float,
+                                  m_right: float, tilt_eV_per_m: float,
+                                  v_right_eV: float = 0.0,
+                                  pol_fields_eV_per_m=None,
+                                  slice_length_m: float = _SLICE_LENGTH_M,
+                                  min_slices_per_segment: int = _MIN_SLICES_PER_SEGMENT,
+                                  slices=None):
+    """Vectorized twin of _transmission_reflection_scalar: RAW (unclamped)
+    T, R arrays for a 1-D array of energies.  `slices` may pass a
+    precomputed _stack_slices() result for the same stack."""
+    E = np.atleast_1d(np.asarray(energies_eV, dtype=float))
+    if slices is None:
+        slices = _stack_slices(segments, tilt_eV_per_m, pol_fields_eV_per_m,
+                               slice_length_m, min_slices_per_segment)
+    zeros = np.zeros_like(E)
+    kpr, kpi = _segment_k_vec(E, v_right_eV, m_right)
+    k_right_r = kpr
+    Ar, Ai = zeros + 1.0, zeros.copy()
+    Br, Bi = zeros.copy(), zeros.copy()
+    m_prev = m_right
+    first = True   # A, B are still Python complex (scalar engine) on the first pass
+    for (dl, V_eV, m_ratio) in reversed(slices):
+        kr, ki = _segment_k_vec(E, V_eV, m_ratio)
+        ur, ui = Ar + Br, Ai + Bi
+        wr, wi = (kpr + kpi * 0.0) / m_prev, (kpi - kpr * 0.0) / m_prev
+        vr, vi = _cmul(wr, wi, Ar - Br, Ai - Bi)
+        tr, ti = kr * dl - ki * 0.0, kr * 0.0 + ki * dl
+        small = np.hypot(kr, ki) < 1e-3
+        if small.any():
+            kr = np.where(small, 1e-3, kr)
+            ki = np.where(small, 0.0, ki)
+        vmr, vmi = vr * m_ratio - vi * 0.0, vr * 0.0 + vi * m_ratio
+        qr, qi = (_cdiv_py if first else _cdiv_np)(vmr, vmi, kr, ki)
+        # s / 2.0: both division paths reduce to an exact halving
+        hpr, hpi = (ur + qr) * 0.5, (ui + qi) * 0.5
+        hmr, hmi = (ur - qr) * 0.5, (ui - qi) * 0.5
+        # -1j * theta and 1j * theta (CPython complex products)
+        emr, emi = _cexp(-0.0 * tr - (-1.0) * ti, -0.0 * ti + (-1.0) * tr)
+        epr, epi = _cexp(0.0 * tr - 1.0 * ti, 0.0 * ti + 1.0 * tr)
+        Ar, Ai = _cmul(hpr, hpi, emr, emi)
+        Br, Bi = _cmul(hmr, hmi, epr, epi)
+        kpr, kpi, m_prev = kr, ki, m_ratio
+        first = False
+
+    klr, kli = _segment_k_vec(E, 0.0, m_left)
+    ur, ui = Ar + Br, Ai + Bi
+    wr, wi = (kpr + kpi * 0.0) / m_prev, (kpi - kpr * 0.0) / m_prev
+    vr, vi = _cmul(wr, wi, Ar - Br, Ai - Bi)
+    vmr, vmi = vr * m_left - vi * 0.0, vr * 0.0 + vi * m_left
+    qr, qi = (_cdiv_py if first else _cdiv_np)(vmr, vmi, klr, kli)
+    A0r, A0i = (ur + qr) * 0.5, (ui + qi) * 0.5
+    B0r, B0i = (ur - qr) * 0.5, (ui - qi) * 0.5
+
+    T = np.empty_like(E)
+    R = np.empty_like(E)
+    ctor = complex if first else np.complex128
+    for j in range(E.size):
+        k_left_r, k_left_i = float(klr[j]), float(kli[j])
+        if math.hypot(k_left_r, k_left_i) < 1e-12:
+            T[j], R[j] = 0.0, 1.0
+            continue
+        A0 = ctor(complex(float(A0r[j]), float(A0i[j])))
+        B0 = ctor(complex(float(B0r[j]), float(B0i[j])))
+        if abs(A0) < 1e-300:
+            T[j], R[j] = 0.0, 1.0
+            continue
+        v_left = k_left_r / m_left
+        v_right = float(k_right_r[j]) / m_right
+        if v_left <= 0.0 or v_right <= 0.0:
+            T[j], R[j] = 0.0, 1.0
+            continue
+        T[j] = float((v_right / v_left) * (1.0 / abs(A0)) ** 2)
+        R[j] = float(abs(B0 / A0) ** 2)
+    return T, R
+
+
+@lru_cache(maxsize=256)
+def _engine_inputs(params, bias_V, field_kVcm, carrier):
+    """Energy-independent engine inputs for one (params, bias, field,
+    carrier) stack -- the exact values _transmission_scalar builds, computed
+    once (pure function of hashable inputs; studio-p2c caching), plus the
+    staircase slices for the vectorized engine."""
+    path = _resolve_path(params, carrier)
+    segs = _stack_segments(path)
+    total_len_m = sum(s[0] for s in segs)
+    tilt = _tilt_eV_per_m(field_kVcm, bias_V, params.field_leverarm, total_len_m)
+    v_right_eV = -tilt * total_len_m
+    if params.include_polarization:
+        pol_fields = _stack_polarization_fields_eV_per_m(params.al_fraction, segs, params.polarity)
+    else:
+        pol_fields = [0.0] * len(segs)
+    segs, pol_fields = tuple(segs), tuple(pol_fields)
+    slice_length_m = params.slice_length_nm * 1e-9
+    slices = tuple(_stack_slices(segs, tilt, pol_fields, slice_length_m,
+                                 params.min_slices_per_segment))
+    return (segs, path.m_well, tilt, v_right_eV, pol_fields, slice_length_m,
+            params.min_slices_per_segment, slices)
+
+
+def _transmission_vec(params, energies_eV, bias_V, field_kVcm, carrier):
+    """RAW (T, R) arrays on an energy grid: the vectorized engine fed the
+    same inputs _transmission_scalar uses (equal to it element by element;
+    see verify/verify_injector_vectorized.py)."""
+    segs, m_well, tilt, v_right_eV, pol_fields, sl, ms, slices = _engine_inputs(
+        params, float(bias_V), float(field_kVcm), carrier)
+    return _transmission_reflection_vec(
+        segs, energies_eV, m_well, m_well, tilt, v_right_eV=v_right_eV,
+        pol_fields_eV_per_m=pol_fields, slice_length_m=sl,
+        min_slices_per_segment=ms, slices=slices)
+
+
+def _transmission_scalar_reference(params, energy_eV, bias_V, field_kVcm, carrier):
+    """The pre-studio-p2c _transmission_scalar, verbatim (kept as the
+    reference the cached path below is checked against)."""
     path = _resolve_path(params, carrier)
     segs = _stack_segments(path)
     total_len_m = sum(s[0] for s in segs)
@@ -610,6 +892,54 @@ def _transmission_scalar(params, energy_eV, bias_V, field_kVcm, carrier):
     return T, R
 
 
+def _recursion_scalar(slices, energy_eV: float, m_left: float, m_right: float,
+                      v_right_eV: float):
+    """The backward recursion of _transmission_reflection_scalar, verbatim,
+    on precomputed _stack_slices() slices (bit-identical to it: the same
+    statements on the same slice values; only the per-call slice rebuild
+    is skipped)."""
+    k_right = _segment_k(energy_eV, v_right_eV, m_right)
+    A, B = 1.0 + 0j, 0.0 + 0j
+    k_prev, m_prev = k_right, m_right
+    for (dl, V_eV, m_ratio) in reversed(slices):
+        k = _segment_k(energy_eV, V_eV, m_ratio)
+        u = A + B
+        v = (k_prev / m_prev) * (A - B)
+        theta = k * dl
+        if abs(k) < 1e-3:
+            k = 1e-3 + 0j  # degenerate-energy guard; physically negligible width
+        A_new = (u + v * m_ratio / k) / 2.0 * np.exp(-1j * theta)
+        B_new = (u - v * m_ratio / k) / 2.0 * np.exp(1j * theta)
+        A, B = A_new, B_new
+        k_prev, m_prev = k, m_ratio
+
+    k_left = _segment_k(energy_eV, 0.0, m_left)
+    u = A + B
+    v = (k_prev / m_prev) * (A - B)
+    if abs(k_left) < 1e-12:
+        return 0.0, 1.0
+    A0 = (u + v * m_left / k_left) / 2.0
+    B0 = (u - v * m_left / k_left) / 2.0
+    if abs(A0) < 1e-300:
+        return 0.0, 1.0
+    v_left = k_left.real / m_left
+    v_right = k_right.real / m_right
+    if v_left <= 0.0 or v_right <= 0.0:
+        return 0.0, 1.0
+    T = (v_right / v_left) * (1.0 / abs(A0)) ** 2
+    R = abs(B0 / A0) ** 2
+    return float(T), float(R)
+
+
+def _transmission_scalar(params, energy_eV, bias_V, field_kVcm, carrier):
+    """Production per-energy (T, R): bit-identical to
+    _transmission_scalar_reference, with the energy-independent stack setup
+    cached (_engine_inputs) instead of rebuilt on every call."""
+    _segs, m_well, _tilt, v_right_eV, _pol, _sl, _ms, slices = _engine_inputs(
+        params, bias_V, field_kVcm, carrier)
+    return _recursion_scalar(slices, float(energy_eV), m_well, m_well, v_right_eV)
+
+
 def transmission(params: NitrideNanowireInjectorParams, energy_eV, *,
                   bias_V: float = 0.0, field_kVcm: float = 0.0,
                   carrier: str = "electron"):
@@ -626,9 +956,7 @@ def transmission(params: NitrideNanowireInjectorParams, energy_eV, *,
     energies = np.atleast_1d(np.asarray(energy_eV, dtype=float))
     if not np.all(np.isfinite(energies)):
         raise ValueError("energy_eV must be finite")
-    out = np.empty_like(energies)
-    for i, E in enumerate(energies):
-        out[i], _ = _transmission_scalar(params, float(E), bias_V, field_kVcm, carrier)
+    out, _ = _transmission_vec(params, energies, bias_V, field_kVcm, carrier)
     out = np.clip(out, 0.0, 1.0)   # MEDIUM 7 fix: physical clamp <= 1, not 1+1e-9;
                                     # the internal engine stays unclamped (see
                                     # rti_numerics_ok / _numerics_scan)
@@ -650,9 +978,7 @@ def reflection(params: NitrideNanowireInjectorParams, energy_eV, *,
     energies = np.atleast_1d(np.asarray(energy_eV, dtype=float))
     if not np.all(np.isfinite(energies)):
         raise ValueError("energy_eV must be finite")
-    out = np.empty_like(energies)
-    for i, E in enumerate(energies):
-        _, out[i] = _transmission_scalar(params, float(E), bias_V, field_kVcm, carrier)
+    _, out = _transmission_vec(params, energies, bias_V, field_kVcm, carrier)
     out = np.clip(out, 0.0, 1.0)   # MEDIUM 7 fix: physical clamp <= 1, not 1+1e-9
     return float(out[0]) if scalar_input else out
 
@@ -826,6 +1152,13 @@ def _tilted_profile_max_eV(params: NitrideNanowireInjectorParams, path: "_Resolv
     return top if math.isfinite(top) else path.barrier_height_eV
 
 
+# Minimum peak-to-valley transmission ratio for a sampled local maximum to
+# count as a double-barrier resonance (see _find_resonance) [A]: a genuine
+# quasi-bound state stands out of the off-resonant background by orders of
+# magnitude; 2 only rejects shallow background bumps.
+_RESONANCE_MIN_CONTRAST = 2.0
+
+
 def _find_resonance(params: NitrideNanowireInjectorParams, carrier: str,
                      bias_V: float, field_kVcm: float):
     """Locate the lowest double-barrier resonance under the given bias/
@@ -859,56 +1192,86 @@ def _find_resonance(params: NitrideNanowireInjectorParams, carrier: str,
     seed = _analytic_well_seed_eV(path.m_well, path.m_barrier,
                                    path.barrier_height_eV, path.well_nm * 1e-9)
 
-    def _first_local_max(Ts, threshold):
-        """Index of the FIRST (lowest-energy) sampled local maximum above
-        threshold, scanning low-to-high -- a real double barrier generally
-        supports several quasi-bound states (this design's flat-band
-        window has three), and the lowest one is the physically relevant
-        target; a plain global argmax would instead return whichever
-        excited state happens to transmit best, silently mispricing
-        alignment against the wrong state."""
-        for j in range(1, len(Ts) - 1):
-            if Ts[j] > threshold and Ts[j] >= Ts[j - 1] and Ts[j] >= Ts[j + 1]:
-                return j
-        return None
+    def _local_maxima(Ts, threshold):
+        """Indices of the sampled local maxima above threshold, scanning
+        low-to-high -- a real double barrier generally supports several
+        quasi-bound states (this design's flat-band window has three), and
+        the lowest one is the physically relevant target; a plain global
+        argmax would instead return whichever excited state happens to
+        transmit best, silently mispricing alignment against the wrong
+        state."""
+        return [j for j in range(1, len(Ts) - 1)
+                if Ts[j] > threshold and Ts[j] >= Ts[j - 1] and Ts[j] >= Ts[j + 1]]
 
-    def _coarse_scan(n, threshold):
+    def _valley(Ts, j):
+        """Higher of the two flanking coarse-grid valleys of candidate j:
+        the lowest sample between j and the nearest sample above Ts[j] on
+        each side (or the window edge)."""
+        n = len(Ts)
+        k, right = j + 1, Ts[j]
+        while k < n and Ts[k] <= Ts[j]:
+            right = min(right, Ts[k]); k += 1
+        m, left = j - 1, Ts[j]
+        while m >= 0 and Ts[m] <= Ts[j]:
+            left = min(left, Ts[m]); m -= 1
+        return max(left, right)
+
+    def _coarse_scan(n):
         grid = np.linspace(e_lo, e_hi_scan, n)
         if seed is not None and e_lo < seed < e_hi_scan:
             grid = np.sort(np.append(grid, seed))
-        Ts = np.array([T_at(E) for E in grid])
-        i = _first_local_max(Ts, threshold)
-        return grid, Ts, i
+        Ts = _transmission_vec(params, grid, bias_V, field_kVcm, carrier)[0]
+        return grid, Ts
 
-    grid, Ts, i = _coarse_scan(2000, 1e-9)
-    if i is None:
-        grid, Ts, i = _coarse_scan(20000, 1e-12)   # narrow-resonance safety net
-    if i is None:
-        return None
+    def _refine(grid, Ts, i):
+        best_E, best_T = float(grid[i]), float(Ts[i])
+        lo = grid[max(i - 2, 0)]
+        hi = grid[min(i + 2, len(grid) - 1)]
+        for _ in range(4):
+            if hi <= lo:
+                break
+            local = np.linspace(lo, hi, 60)
+            Ts_local = _transmission_vec(params, local, bias_V, field_kVcm, carrier)[0]
+            j = int(np.argmax(Ts_local))
+            if Ts_local[j] > best_T:
+                best_E, best_T = float(local[j]), float(Ts_local[j])
+            span = (hi - lo) / 30.0
+            lo = max(local[j] - span, e_lo)
+            hi = min(local[j] + span, e_hi_scan)
 
-    best_E, best_T = float(grid[i]), float(Ts[i])
-    lo = grid[max(i - 2, 0)]
-    hi = grid[min(i + 2, len(grid) - 1)]
-    for _ in range(4):
         if hi <= lo:
-            break
-        local = np.linspace(lo, hi, 60)
-        Ts_local = np.array([T_at(E) for E in local])
-        j = int(np.argmax(Ts_local))
-        if Ts_local[j] > best_T:
-            best_E, best_T = float(local[j]), float(Ts_local[j])
-        span = (hi - lo) / 30.0
-        lo = max(local[j] - span, e_lo)
-        hi = min(local[j] + span, e_hi_scan)
+            return best_E, best_T
+        res = minimize_scalar(lambda E: -T_at(E), bounds=(lo, hi), method="bounded",
+                               options={"xatol": 1e-12})
+        E_res, T_res = float(res.x), float(T_at(res.x))
+        if T_res < best_T:
+            E_res, T_res = best_E, best_T
+        return E_res, T_res
 
-    if hi <= lo:
-        return best_E, best_T
-    res = minimize_scalar(lambda E: -T_at(E), bounds=(lo, hi), method="bounded",
-                           options={"xatol": 1e-12})
-    E_res, T_res = float(res.x), float(T_at(res.x))
-    if T_res < best_T:
-        E_res, T_res = best_E, best_T
-    return E_res, T_res
+    # Strain-mass audit fix (2026-09-23): the lowest sampled local maximum
+    # is accepted only if its REFINED peak transmission stands out of the
+    # off-resonant background by at least _RESONANCE_MIN_CONTRAST against
+    # both flanking coarse-grid valleys (a transmission-ratio prominence
+    # [A]); otherwise the next candidate is tried.  With the corrected
+    # Rinke 2008 along-c electron masses the default Ga-polar electron path
+    # shows a shallow NON-resonant bump at about 7 meV (T 1.28e-7 over a
+    # 1.17e-7 valley): the emitter's rising k -> 0 factor times a falling
+    # background tail, not a quasi-bound state.  The bare first-local-max
+    # rule latched onto it instead of the ground resonance near 291 meV
+    # (T 0.17); the same artefact (9.2 meV, T 8e-9) already affected the
+    # Tsai-partition electron path with the old masses.  Contrast is judged
+    # on the refined peak, so a narrow true resonance that the coarse grid
+    # samples only on its flank is not rejected.  A coarse pass with no
+    # accepted candidate is retried once with a much denser scan (narrow-
+    # resonance safety net) before giving up.
+    for n_scan, threshold in ((2000, 1e-9), (20000, 1e-12)):
+        grid, Ts = _coarse_scan(n_scan)
+        for i in _local_maxima(Ts, threshold):
+            E_res, T_res = _refine(grid, Ts, i)
+            valley = _valley(Ts, i)
+            if valley <= 0.0 or T_res >= _RESONANCE_MIN_CONTRAST * valley:
+                return E_res, T_res
+    return None
 
 
 def _resonance_width_eV(params: NitrideNanowireInjectorParams, carrier: str,
@@ -945,6 +1308,27 @@ def _resonance_width_eV(params: NitrideNanowireInjectorParams, carrier: str,
     return float(hi - lo)
 
 
+def _rate_window_eV(params: NitrideNanowireInjectorParams, path: "_ResolvedPath",
+                    bias_V: float, field_kVcm: float, E_center: float,
+                    width_eV: float, kT_eV: float, mu_eV: float):
+    """(e_lo, e_hi, true_top) energy window of the Landauer rate integral
+    (HIGH 2 fix bounds): e_lo = max(1e-6, min(center, mu) - 15 kT - 5 w),
+    e_hi = max(true_top, center, mu) + 15 kT, with true_top the ACTUAL
+    tilted-profile maximum (_tilted_profile_max_eV).  A non-finite center
+    is dropped from both min and max.  Shared by _forward_rate_hz and
+    _numerics_scan_ok (audit M2 fix, 2026-09-23) so the unitarity scan
+    certifies the same upper energy the rate integral reaches [DR]."""
+    true_top = _tilted_profile_max_eV(params, path, bias_V, field_kVcm)
+    w = width_eV if math.isfinite(width_eV) else 0.0
+    if math.isfinite(E_center):
+        e_lo = max(1e-6, min(E_center, mu_eV) - 15.0 * kT_eV - 5.0 * w)
+        e_hi = max(true_top, E_center, mu_eV) + 15.0 * kT_eV
+    else:
+        e_lo = max(1e-6, mu_eV - 15.0 * kT_eV - 5.0 * w)
+        e_hi = max(true_top, mu_eV) + 15.0 * kT_eV
+    return e_lo, e_hi, true_top
+
+
 def _forward_rate_hz(params: NitrideNanowireInjectorParams, carrier: str,
                       bias_V: float, field_kVcm: float, E_center: float,
                       combined_width_eV: float, kT_eV: float, mu_eV: float):
@@ -954,8 +1338,8 @@ def _forward_rate_hz(params: NitrideNanowireInjectorParams, carrier: str,
     and the caller-supplied transverse-channel count are BOTH applied (the
     degeneracy factor was previously dead/unused).  `mu_eV` is the
     injecting reservoir's quasi-Fermi level in the carrier's own energy
-    axis, passed in explicitly by the caller (electron: the degenerate
-    free-electron-gas estimate; hole: the Mg-acceptor-neutrality quasi-
+    axis, passed in explicitly by the caller (electron: the Fermi-Dirac
+    inversion _electron_quasi_fermi_eV, audit M1; hole: the Mg-acceptor-neutrality quasi-
     Fermi level, MEDIUM 6) rather than re-derived from path.mu_eV here.
     Also returns the same integral restricted to energies above the
     ACTUAL tilted-profile maximum (HIGH 2 fix, Opus re-review of 12b39cd,
@@ -978,15 +1362,13 @@ def _forward_rate_hz(params: NitrideNanowireInjectorParams, carrier: str,
     if not math.isfinite(E_center):
         return float("nan"), float("nan"), False
     path = _resolve_path(params, carrier)
-    true_top = _tilted_profile_max_eV(params, path, bias_V, field_kVcm)
     mu = mu_eV
-    width = combined_width_eV if math.isfinite(combined_width_eV) else 0.0
     center = E_center
-    e_lo = max(1e-6, min(center, mu) - 15.0 * kT_eV - 5.0 * width)
     # HIGH 2 fix: e_hi is bounded by the ACTUAL tilted profile maximum, not
     # the flat-band barrier height, and so extends at least 15 kT above the
     # true top (not merely above the understated flat-band value).
-    e_hi = max(true_top, center, mu) + 15.0 * kT_eV
+    e_lo, e_hi, true_top = _rate_window_eV(params, path, bias_V, field_kVcm, center,
+                                            combined_width_eV, kT_eV, mu)
 
     def integrand(E):
         T = _transmission_scalar(params, E, bias_V, field_kVcm, carrier)[0]
@@ -1287,11 +1669,17 @@ def _numerics_scan_ok(params: NitrideNanowireInjectorParams, carrier: str,
     resonance center (E_center finite, double-barrier path only), fold in
     a SECOND, densely-sampled scan of 50 points spanning +/- 5 FWHM
     (width_eV) around that center, so the diagnostic actually samples the
-    one place a transfer-matrix resonance is most likely to misbehave."""
+    one place a transfer-matrix resonance is most likely to misbehave.
+
+    AUDIT M2 fix (2026-09-23): the broad scan's window comes from the same
+    _rate_window_eV the Landauer integral uses (zero series bias, as in
+    _carrier_screen): its upper end is max(tilted-profile top, center, mu)
+    + 15 kT, not the flat-band barrier height, which left about 37 % of the
+    hole integration window (0.507 vs 0.802 eV at 230 K) unchecked."""
     path = _resolve_path(params, carrier)
     w = width_eV if math.isfinite(width_eV) else 0.0
-    e_lo = max(1e-6, mu_eV - 15.0 * kT_eV - 5.0 * w)
-    e_hi = max(path.barrier_height_eV, mu_eV) + 15.0 * kT_eV
+    e_lo, e_hi, _true_top = _rate_window_eV(params, path, 0.0, field_kVcm, E_center,
+                                             w, kT_eV, mu_eV)
     grids = []
     if e_hi > e_lo and math.isfinite(e_lo) and math.isfinite(e_hi):
         grids.append(np.linspace(e_lo, e_hi, 300))
@@ -1333,9 +1721,10 @@ _PROVENANCE = (
     "2020 0.30 eV VBO reported as the alternative partition "
     "(rti_bypass_fraction_tsai_partition) -- [A] which partition is correct "
     "for this device; [V] n/p-GaN doping anchors Deshpande et al., Nat. "
-    "Commun. 4, 1675 (2013); [DR] degenerate free-electron-gas reservoir "
-    "electrochemical energy (Ashcroft & Mermin, 'Solid State Physics', "
-    "1976, Ch. 2 Eq. 2.33); [V] single-channel Landauer/Buttiker rate "
+    "Commun. 4, 1675 (2013); [DR] electron reservoir quasi-Fermi level "
+    "from the Fermi-Dirac inversion n = N_c F_1/2(mu/kT) with the DOS "
+    "mass (me_xy^2 me_z)^(1/3) (Sze & Ng 2007 Ch. 1; Blakemore, "
+    "Solid-State Electron. 25, 1067 (1982)); [V] single-channel Landauer/Buttiker rate "
     "normalization 1/h (e.g. Datta, 'Electronic Transport in Mesoscopic "
     "Systems', 1995, Ch. 2); [A] spin/valley degeneracy, bypass prefactor, "
     "field lever-arm, alignment uncertainty, alignment-gate threshold "
@@ -1402,10 +1791,14 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     branch that can set rti_feasible=True without a passing numeric
     computation behind it.
 
-    Each carrier path is also gated on ALIGNMENT: a resonance (or, for a
-    single tunnel barrier, the requested level itself) more than
-    max(2 kT, combined linewidth) away from the requested
-    electron_level_eV/hole_level_eV fails that path's transport screen
+    Each carrier path is also gated on ALIGNMENT: a double-barrier
+    resonance more than max(2 kT, combined linewidth) away from that
+    carrier's own EMITTER quasi-Fermi level (electron: Fermi-Dirac
+    inversion of n_cm3; hole: Mg mass action; HIGH 2 fix, audit L5 doc
+    fix 2026-09-23) fails that path's transport screen (a single tunnel
+    barrier has no resonance and carries zero alignment error;
+    electron_level_eV/hole_level_eV enter only the informational
+    rti_well_to_dot_drop_meV and the rate-window center)
     (params.alignment_tunable=True substitutes a bias-tuning-range gate on
     the reported rti_required_bias_shift_meV instead) -- resonant
     transmission is not itself evidence of delivery into the REQUESTED
@@ -1414,7 +1807,17 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     rti_second_carrier_probability is the same number under its honest
     name. rti_bypass_fraction_tsai_partition reports the same design's
     bypass fraction under the alternative (Tsai & Bayram 0.30 eV) valence
-    partition, non-gating."""
+    partition, non-gating.
+
+    Audit C6 (2026-09-23, user decision Q6: the loading window is
+    arbitrary): loading_window_ns is an explicit caller input with no
+    tie to any electrical pulse width [A]. The missed-load probability is
+    priced over loading_window_ns alone (exp(-r t) per carrier); the
+    second-carrier probability over the counting gate, 1 - exp(-r_2
+    gate_ns) with r_2 = min(r, available_pair_rate_Hz) exp(-(E_C - w)+/kT)
+    (gate_ns defaults to loading_window_ns). The device piece passes a
+    card-level loading window (default = the 0.1 ns pulse, bit-identical
+    to before)."""
     if gate_ns is None:
         gate_ns = loading_window_ns  # [A] compatibility: pulse width is its own gate
     raw = dict(T_K=T_K, rep_rate_hz=rep_rate_hz, loading_window_ns=loading_window_ns, gate_ns=gate_ns,
@@ -1467,7 +1870,7 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     p_free_cm3, mu_h_eV = _hole_quasi_fermi_eV(params, T_K)
 
     def _screen_at(p):
-        mu_e = _resolve_path(p, "electron").mu_eV
+        mu_e = _electron_quasi_fermi_eV(p, T_K)   # audit M1: Fermi-Dirac inversion
         _p_free, mu_h = _hole_quasi_fermi_eV(p, T_K)
         e = _carrier_screen(p, "electron", kT_eV=kT_eV, level_eV=electron_level_eV,
                              mu_emitter_eV=mu_e, spacing_meV=electron_spacing_meV,
@@ -1657,7 +2060,9 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     # without silently changing the pass/fail verdict above.
     p_tsai = replace(params, delta_Ev_GaN_AlN_eV=_TSAI_BAYRAM_DELTA_EV_EV)
     e_tsai, h_tsai = _screen_at(p_tsai)
-    rti_bypass_fraction_tsai_partition = float(max(e_tsai["bypass_fraction"], h_tsai["bypass_fraction"]))
+    # audit L6 fix (2026-09-23): NaN-safe, like the headline max() above.
+    rti_bypass_fraction_tsai_partition = float(_nan_safe_max(e_tsai["bypass_fraction"],
+                                                             h_tsai["bypass_fraction"]))
 
     critical = [rti_level_margin_kT, rti_alignment_error_meV, e["rate_hz"], h["rate_hz"],
                 rti_bypass_fraction, missed_load_probability]
@@ -1671,7 +2076,7 @@ def injector_feasibility(params: NitrideNanowireInjectorParams, *, T_K: float,
     # _numerics_scan_ok) instead of a hardcoded True -- also folds in
     # whether scipy's quad raised an integration-quality warning while
     # computing either carrier's rate.
-    mu_e = _resolve_path(params, "electron").mu_eV
+    mu_e = _electron_quasi_fermi_eV(params, T_K)   # audit M1: Fermi-Dirac inversion
     e_width_for_scan = e["linewidth_meV"] / 1000.0 if math.isfinite(e["linewidth_meV"]) else params.alignment_uncertainty_meV / 1000.0
     h_width_for_scan = h["linewidth_meV"] / 1000.0 if math.isfinite(h["linewidth_meV"]) else params.alignment_uncertainty_meV / 1000.0
     rti_numerics_ok = bool(

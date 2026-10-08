@@ -330,7 +330,7 @@ CHATZARAKIS_ANCHOR_GAMMA300_MEV = 6.5
 # value is the correct like-for-like anchor against this sweep's g2_op
 # (also background-included via drive.b_res/rho, also never IRF-convolved
 # for the pulsed metric): g2_b(0) = 0.25 +/- 0.05 (QD C, 80 K)
-# (../_goal/paper_digests.md line ~36).
+# (reference: published value).
 #
 # Council review round 6, item 5: these three numbers (and the background-
 # assumption citation below, item 1) are now READ from the ledger
@@ -1342,8 +1342,8 @@ def _loading_term(mu) -> float:
 
 
 def _independent_finite_pulse_reconstruction(row: dict) -> dict | None:
-    """pkg5b-fix2 self-check fix (.workers/specs/pr-pkg5b-fix2.md item 1):
-    runs ONE fresh `eval_pulsed_point()` call -- the SAME function the
+    """Independent reconstruction: runs ONE fresh `eval_pulsed_point()` call
+    -- the SAME function the
     sweep itself calls to produce every pulsed sub-result in sweep.csv, not
     a duplicated formula -- on the row's own card (looked up from CARDS by
     `row["card_id"]`), at the row's own (delta_xx, gamma300, T_hs,
@@ -1435,8 +1435,7 @@ def _brightness_factor_check(row: dict) -> dict:
     `_independent_finite_pulse_reconstruction()` runs ONE fresh
     `eval_pulsed_point()` call on the row's own card/lever/temperature/
     model and reads `finite_pulse_mean_counts` and `edge_eta_total` off
-    THAT evaluation's own scalars (pkg5b-fix2, .workers/specs/
-    pr-pkg5b-fix2.md item 1).
+    THAT evaluation's own scalars.
 
     pkg5b-fix2 fixed a tautology in tier 3: the prior version back-solved
     `implied_bpp = collected_flux_pulsed_s / (eta_total * rep_rate)` and
@@ -1512,9 +1511,8 @@ def _brightness_factor_check(row: dict) -> dict:
 
 
 def _front_facet_split(row: dict) -> float:
-    """Peer-review pkg2 facet fix (2026-09-07,
-    .workers/specs/pr-pkg2-facet-fix.md item 3), updated again from council
-    review round 5, item 6: fsim_core/waveguide.py's edge_emission() now
+    """Peer-review facet fix (2026-09-07), updated from council review:
+    fsim_core/waveguide.py's edge_emission() now
     folds single-pass propagation entirely into the facet ray-series
     (facet_escape_fraction), so `eta_prop` is no longer a factor in
     eta_total at all -- dividing by it here would silently reintroduce a
@@ -1535,9 +1533,8 @@ def _front_facet_split(row: dict) -> float:
 
 
 def _facet_factor_forward_check(row: dict) -> dict:
-    """Peer-review pkg2 facet fix (2026-09-07,
-    .workers/specs/pr-pkg2-facet-fix.md item 3): the OLD version of this
-    check scraped a facet-factor formula string out of the live
+    """Peer-review facet fix (2026-09-07): the OLD version of this check
+    scraped a facet-factor formula string out of the live
     fsim_core/waveguide.py source and eval()-ed it in a bare {T, R_back}
     namespace -- after the pkg2 checkpoint, edge_emission() assigns
     `facet_factor = facet_escape_fraction(T, R_back_eff, alpha_cm, L_um,
@@ -2161,7 +2158,10 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                  + ("" if grid_complete else " (--quick: endpoints-only, cannot grant PASS)"))
     for path_key, (lo, hi, unit) in RANGE_BOUNDS.items():
         vals = ", ".join(f"{v:g}" for v in grid[path_key])
-        lines.append(f"- `{path_key}` in [{lo}, {hi}] {unit}: sampled at {vals}")
+        lines.append(f"- `{path_key}` in [{lo}, {hi}] {unit}: sampled at {vals}"
+                     + (" (the single-dot linewidth AT 300 K -- every row's own Gamma(T_hs) at its "
+                        "heat-sink temperature is derived from it, so a 230 K row sampled at gamma300=6 "
+                        "meV has a narrower line)" if path_key == "dot.gamma300" else ""))
     if lever_info:
         lines.append("")
         lines.append("Collection-lever axes (per-card, council review round 4 item 1):")
@@ -2238,7 +2238,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         candidates = [r for r in rows if _t_hs_bucket_key(r.get("T_hs_K")) == T]
         best = _best_diagnostic_row(candidates)
         if best:
-            lines.append(f"At T_hs={T} K, the favourable corner has retention S={_fmt_or_na(best.get('S_retention_pulsed'))}, "
+            _corner_tag = ("eligible, above the flux floor" if best.get("eligible_row")
+                           else "diagnostic, below the flux floor")
+            lines.append(f"At T_hs={T} K, the favourable corner ({_corner_tag}) has retention S={_fmt_or_na(best.get('S_retention_pulsed'))}, "
                          f"linewidth Gamma(T)={_fmt_or_na(best.get('Gamma_pulsed_meV'))} meV, and window background "
                          f"b_e={_fmt_or_na(best.get('b_e_window_pulsed'))}.")
     lines.append("")
@@ -2249,7 +2251,19 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
     lines.append(f"- pulsed collected-flux eligibility floor [A]: "
                  f"{FLUX_FLOOR_PULSED_S:.0f} photons/s; rows excluded by this floor: "
                  f"{stats['n_flux_floor_excluded']}")
-    lines.append(f"- diagnostic pooled g2 (below flux floor, not measurable): "
+    # Audit C4: the diagnostic pool is every valid row (eligible rows PLUS
+    # rows excluded only by the flux floor); it is "below the flux floor,
+    # not measurable" only when no row is eligible, so the label is
+    # conditioned on the counts and on the minimum row's own eligibility.
+    _pool_best = stats.get("best_diagnostic_row")
+    if stats["n_eligible"] == 0:
+        _pool_label = "diagnostic pooled g2 (below flux floor, not measurable)"
+    else:
+        _pool_label = (f"diagnostic pooled g2 over all valid rows ({stats['n_eligible']} eligible + "
+                       f"{stats['n_flux_floor_excluded']} below the flux floor; the minimum-g2 row is "
+                       + ("ELIGIBLE, above the floor" if (_pool_best or {}).get("eligible_row")
+                          else "below the floor, not measurable") + ")")
+    lines.append(f"- {_pool_label}, min / median: "
                  f"pulsed {stats['diag_g2_pulsed_min']:.4g} / {stats['diag_g2_pulsed_median']:.4g}; "
                  f"g2_cw0 {stats['diag_g2_cw0_min']:.4g} / {stats['diag_g2_cw0_median']:.4g}; "
                  f"g2_cw0_raw {stats['diag_g2_cw0_raw_min']:.4g} / {stats['diag_g2_cw0_raw_median']:.4g}")
@@ -2316,7 +2330,18 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                          f"the grid maximum is only {stats['flux_max']:.4g} photons/s "
                          f"(floor/maximum = {verdict['flux_shortfall']:.4g}).")
         else:
+            # Audit C4: the section states whether the best-g2 row is itself
+            # eligible (above the flux floor) or only a diagnostic row. The
+            # heading text itself is a parse key (scripts/make_presentation.py
+            # facet_model_note / verify_rt_edge_sweep), so it is kept stable
+            # and the eligibility condition is the first line under it.
             lines.append("## Best diagnostic-g2 row and brightness decomposition")
+            lines.append("**Eligibility of this row: ELIGIBLE -- above the "
+                         f"{FLUX_FLOOR_PULSED_S:.0f} photons/s collected-flux floor, so it is measurable; "
+                         "'diagnostic' here only means 'lowest pulsed g2 among all valid rows'.**"
+                         if best.get("eligible_row") else
+                         "**Eligibility of this row: NOT eligible -- below the "
+                         f"{FLUX_FLOOR_PULSED_S:.0f} photons/s collected-flux floor, not measurable.**")
         # Council review round 4, item 3: print the ACTUAL multiplicative
         # chain (loading term, t_X, S, eta_total, rep rate) with a
         # self-check that their product reproduces the reported flux --
@@ -2333,7 +2358,7 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                 ("t_X (spectral transmission)", check.get("t_x")),
                 ("S (confinement retention)", check.get("S")),
                 ("eta_total (edge out-coupling: waveguide coupling x facet escape "
-                 "(mid-ridge ray series, propagation included) x NA)",
+                 "(mid-ridge ray series, propagation included) x eta_NA (lens collection fraction))",
                  check.get("eta_total")),
                 ("rep rate (Hz)", check.get("rep_rate"))]
         if not is_static_reconstruction:
@@ -2363,7 +2388,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
                               "an independent multiplicative step beyond eta_facet above; "
                               "see the independent check below)",
                               best.get("edge_T_facet")),
-                             ("NA (numerical aperture)", best.get("edge_eta_NA"))]
+                             ("eta_NA (fraction of the facet emission collected inside the lens NA -- a "
+                              "collection fraction, NOT the numerical aperture; the NA lever itself is "
+                              f"emission_NA={_fmt_or_na(best.get('emission_NA'), 'g')})", best.get("edge_eta_NA"))]
         # Council review round 6, item 3: the dominant-limiter comparison
         # used to run over eta_total's sub-factors only (component_factors:
         # beta, the combined facet factor, T_facet, propagation, NA), which
@@ -2387,7 +2414,9 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             f"finite_pulse_mean_counts x eta_total x rep_rate:" if not is_static_reconstruction
             else f"the multiplicative chain that reproduces the reported "
             f"collected pulsed flux is:")
-        lines.append(f"The dominant brightness limiter at the favourable diagnostic corner -- "
+        _corner_word = ("favourable eligible corner" if best.get("eligible_row")
+                        else "favourable diagnostic (below-floor) corner")
+        lines.append(f"The dominant brightness limiter at the {_corner_word} -- "
                      f"the smallest factor across the WHOLE chain (loading, t_X, S, and "
                      f"eta_total's own sub-factors; council review round 6, item 3) -- is "
                      f"{dominant}. `loading`/`t_X`/`S` below are device.py's static-loading "
@@ -2413,8 +2442,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             if np.isfinite(check.get("rel_diff", float("nan")))
             else f"| self-check ({reconstruction}): relative difference | nan (non-finite inputs) |")
         lines.append("")
-        lines.append(f"`beta`/`eta_facet`/`T_facet`/`NA` are shown below for diagnosis only -- "
-                     f"`beta`, `eta_facet` and `NA` are already folded into `eta_total` above "
+        lines.append(f"`beta`/`eta_facet`/`T_facet`/`eta_NA` are shown below for diagnosis only -- "
+                     f"`beta`, `eta_facet` and `eta_NA` are already folded into `eta_total` above "
                      f"exactly once each (their product reproduces eta_total, by construction "
                      f"of eta_facet -- NOT independent evidence, see below) and must NOT also "
                      f"be multiplied into the flux self-check. Single-pass propagation is NOT "
@@ -2454,7 +2483,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
             "back-solved value really is the eta_facet factor waveguide.py computes, not "
             "some other quantity folded into eta_total).")
         lines.append("")
-        lines.append("## Diagnostic g2 landscape")
+        lines.append("## g2 landscape (best row eligible, above the flux floor)" if best.get("eligible_row")
+                     else "## Diagnostic g2 landscape (best row below the flux floor, not measurable)")
         lines.append("| corner | pulsed g2 min | pooled diagnostic median | lever values | assumptions |")
         lines.append("|---|---:|---:|---|---|")
         def _grid_text(key):
@@ -2463,7 +2493,8 @@ def write_markdown(rows: list, stats: dict, verdict: dict, grid: dict,
         lever_text = (f"NA={_grid_text('emission_NA')}, R_back={_grid_text('emission_R_back')}, "
                      f"L_um={_grid_text('emission_L_um')}")
         lines.append(f"| {best.get('card_id', 'unknown')} ({_grid_text('delta_xx_meV')} meV, "
-                     f"gamma300={_grid_text('gamma300_meV')} meV, "
+                     f"gamma300={_grid_text('gamma300_meV')} meV at 300 K, "
+                     f"T_hs={_grid_text('T_hs_K')} K with Gamma(T)={_fmt_or_na(best.get('Gamma_pulsed_meV'))} meV, "
                      f"irf={_grid_text('irf_ps')} ps) | "
                          f"{best['g2_pulsed']:.6g} | {stats['diag_g2_pulsed_median']:.6g} | "
                          f"{lever_text} | {best.get('assumptions', '')} |")
