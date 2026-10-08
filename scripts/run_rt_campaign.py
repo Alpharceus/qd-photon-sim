@@ -1,10 +1,26 @@
-"""Phase RT campaign (work order v3): R1 requirement curve, R2 decision
-answers, R3 b_e anchor, T-5 pulse-edge verdict, T-7 confirmation deltas.
+"""Phase RT campaign: R1 requirement curve, R2 decision answers, R3 b_e
+anchor, T-5 pulse-edge verdict, T-7 confirmation deltas.
 
 All numbers inherit the V1-validated device tier (proposed x2 band, Raman to
 confirm) and the published-dispersion inputs (data/dispersion_table_668nm.csv).
-Quiet rail = mu 0.7, F_p 0.5 [A]. Purcell wiring [E->analytic-1D] used ONLY
-where labeled. CSVs -> out/rt_campaign/.
+Quiet rail = mu 0.7, F_p 0.5 [A].
+
+PLANAR CAVITY RATE (audit H5, fixed 2026-09-23): the planar lambda cavity
+changes the dot's TOTAL emission rate by only ~1-2 % -- F_total_planar =
+dbr.planar_total_rate at the centre antinode, ~1.013 at 695 nm / 10+16
+pairs [E->analytic-1D-planar] -- so there is NO Purcell recovery from a
+planar DBR cavity (Bjork et al., PRA 44, 669 (1991); Benisty et al., IEEE
+JQE 34, 1612 (1998)). F_total_planar is a total-rate multiplier over ALL
+channels (cavity cone, leaky, guided); it is NOT a cavity-mode F_P and is
+therefore NOT passed into device.py as d.cavity.F_P (device.py reads F_P
+as a single-Lorentzian mode-only factor). The purcell_wire rate path is
+OFF for every planar cavity here; F_total_planar is carried as a reported
+diagnostic only. Before H5 the 1-D on-axis LDOS planar_purcell (~1e2) was
+wired in as F_P, which manufactured the earlier 'Purcell recovery'.
+DEFERRED: applying the +1-2 % total-rate change inside the device model
+needs a total-rate input in device.py (out of scope here); at this size
+it cannot change any R1/R2 verdict.
+CSVs -> out/rt_campaign/.
 """
 import csv
 import sys
@@ -16,7 +32,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fsim_core.cavity import emitter_energy
-from fsim_core.dbr import cavity_mode, cavity_stack, planar_purcell
+from fsim_core.dbr import cavity_mode, cavity_stack, planar_total_rate
 from fsim_core.device import class_proxy_params, evaluate
 from fsim_core.drive_mech import reexc_g2
 from fsim_core.integrator import g2_from
@@ -33,18 +49,26 @@ G300_PROXY = float(gamma_of_T(300.0, PROXY["gamma0"], PROXY["a_ac"],
                               PROXY["b_lo"], PROXY["E_lo"]))
 
 
+def planar_total(top, sp, bot, lam0):
+    """Diagnostic: TOTAL emission-rate multiplier (all channels) of an
+    in-plane dipole at the centre antinode z = d_c/2 [A: standard QD
+    placement] of a planar lambda cavity (dbr.planar_total_rate,
+    spacer-propagating part incl. spacer-guided modes)
+    [E->analytic-1D-planar, confirm: SIM-B]. NOT a cavity-mode F_P: never
+    pass it through purcell_eff or into d.cavity.F_P."""
+    return float(planar_total_rate(top, bot, N_C, sp.d_nm, 0.5 * sp.d_nm,
+                                   lam0, n_out=N_H))
+
+
 def rt_cavity(pairs=10):
     """300 K-tracked cavity at the published contrast (695 nm placement)."""
     lam0 = 1239.841984 / emitter_energy(300.0, 1.88)
     top, sp, bot = cavity_stack(N_H, N_L, N_C, pairs, pairs + 6, lam0)
     mode = cavity_mode(top + [sp] + bot, lam0, n_out=N_H)
-    zs = np.linspace(0.0, sp.d_nm, 21)
-    F = max(planar_purcell(top, bot, N_C, sp.d_nm, z, lam0, n_out=N_H)
-            for z in zs)
-    return mode["kappa_meV"], float(F), lam0
+    return mode["kappa_meV"], planar_total(top, sp, bot, lam0), lam0
 
 
-def make(T, delta, gscale=1.0, cavity=None, wire=False, track="hold"):
+def make(T, delta, gscale=1.0, cavity=None, track="hold"):
     d = preset_device("staged-inp-gaasp", "GaAs",
                       "planar-lambda" if cavity else "none", "cw-electrical")
     d.dot.lineshape = "ibm"
@@ -56,12 +80,14 @@ def make(T, delta, gscale=1.0, cavity=None, wire=False, track="hold"):
     d.thermal.T_hs = T
     d.filter.track = track
     if cavity:
-        kap, F, _ = cavity
+        kap, _F_total_planar, _ = cavity   # diagnostic only, never F_P
         d.cavity.kappa = kap
-        d.cavity.F_P = F
         d.cavity.T_track = T
         d.cavity.dEdT_cav = -0.104        # V3.3 per-layer value [DR-based]
-        d.cavity.purcell_wire = wire
+        # Planar DBR: rate wiring OFF (H5). d.cavity.F_P is left at the
+        # preset value, which only feeds device.py's reported F_eff scalar
+        # (not read here) while purcell_wire is False.
+        d.cavity.purcell_wire = False
     s = evaluate(d, T_grid=[T])["scalars"]
     eps, rho = float(s["eps_op"]), float(s["rho_op"])
     g2q = float(g2_from(float(f8_g2(MU_Q, FP_Q, eps)), rho)) if eps < 1 else np.nan
@@ -71,27 +97,31 @@ def make(T, delta, gscale=1.0, cavity=None, wire=False, track="hold"):
 
 # ================================================================ R2 answers
 print("=" * 74)
-print("R2 -- Purcell wiring answers [E->analytic-1D, confirm: SIM-B]")
+print("R2 -- planar-cavity Purcell answers [E->analytic-1D-planar, confirm: SIM-B]")
 print("=" * 74)
 cav_rt = rt_cavity(10)
-print(f"RT cavity (10p, 695 nm): kappa={cav_rt[0]:.2f} meV, F_planar={cav_rt[1]:.0f}")
-a_off = make(300.0, 4.0, cavity=cav_rt, wire=False)
-a_on = make(300.0, 4.0, cavity=cav_rt, wire=True)
-print(f"300 K, Delta=4.0 (new prior central): t_X {a_off['t_x']:.3f} -> "
-      f"{a_on['t_x']:.3f} wired; g2_q {a_off['g2_q']:.3f} -> {a_on['g2_q']:.3f}")
-print(f"  ANSWER (a): Purcell recovery of t_X >= 0.3 at 300 K: "
-      f"{'YES' if a_on['t_x'] >= 0.3 else 'NO'} (t_X = {a_on['t_x']:.3f})")
+print(f"RT cavity (10p, 695 nm): kappa={cav_rt[0]:.2f} meV, "
+      f"F_total_planar={cav_rt[1]:.3f} (total-rate multiplier, all channels; "
+      f"diagnostic, not wired)")
+a_cav = make(300.0, 4.0, cavity=cav_rt)
+print(f"300 K, Delta=4.0 (new prior central), planar cavity (spectral "
+      f"filtering only): t_X {a_cav['t_x']:.3f}; g2_q {a_cav['g2_q']:.3f}")
+print(f"  ANSWER (a): Purcell recovery of t_X >= 0.3 at 300 K: NO -- a planar "
+      f"DBR cavity changes the total rate by {100 * (cav_rt[1] - 1):+.1f} % "
+      f"(F_total_planar {cav_rt[1]:.3f}), about 1-2 %, not a Purcell "
+      f"enhancement (t_X = {a_cav['t_x']:.3f} without rate wiring; applying "
+      f"the ~1 % change is DEFERRED, see module docstring)")
 lam120 = 668.0
 top, sp, bot = cavity_stack(N_H, N_L, N_C, 10, 16, lam120)
 kap120 = cavity_mode(top + [sp] + bot, lam120, n_out=N_H)["kappa_meV"]
-F120 = max(planar_purcell(top, bot, N_C, sp.d_nm, z, lam120, n_out=N_H)
-           for z in np.linspace(0, sp.d_nm, 21))
+F120 = planar_total(top, sp, bot, lam120)
 b_slit = make(120.0, 4.0)
-b_cav = make(120.0, 4.0, cavity=(kap120, F120, lam120), wire=True)
+b_cav = make(120.0, 4.0, cavity=(kap120, F120, lam120))
 print(f"120 K fork, Delta=4.0: slit-only g2_q={b_slit['g2_q']:.4f} "
-      f"t_X={b_slit['t_x']:.3f} | cavity+wire g2_q={b_cav['g2_q']:.4f} "
+      f"t_X={b_slit['t_x']:.3f} | planar cavity (no rate wiring, "
+      f"F_total_planar {F120:.3f}) g2_q={b_cav['g2_q']:.4f} "
       f"t_X={b_cav['t_x']:.3f}")
-print(f"  ANSWER (b): with the wiring, the cavity route "
+print(f"  ANSWER (b): without Purcell (planar total-rate change ~1-2 %), the cavity route "
       f"{'BEATS' if (b_cav['g2_q'] < b_slit['g2_q'] and b_cav['t_x'] > b_slit['t_x']) else 'does NOT dominate'}"
       f" slit-only at the staged point (plus unmodeled G on top)")
 
@@ -103,14 +133,14 @@ print("=" * 74)
 rows = []
 deltas = np.arange(1.0, 8.01, 0.5)
 print(f"{'Gamma300':>8} | {'Dxx*(0.5) slit':>14} {'Dxx*(0.1) slit':>14} "
-      f"{'Dxx*(0.5) cav+w':>15} {'Dxx*(0.1) cav+w':>15}   (quiet rail)")
+      f"{'Dxx*(0.5) cav':>15} {'Dxx*(0.1) cav':>15}   (quiet rail; planar cavity, no rate wiring)")
 for g300 in (3.0, 5.0, 6.6, 8.0, 10.0):
     gs = g300 / G300_PROXY
     curves = {}
-    for cfg, cav, wire in (("slit", None, False), ("cav", cav_rt, True)):
+    for cfg, cav in (("slit", None), ("cav", cav_rt)):
         g2s = []
         for dd in deltas:
-            c = make(300.0, float(dd), gscale=gs, cavity=cav, wire=wire)
+            c = make(300.0, float(dd), gscale=gs, cavity=cav)
             g2s.append(c["g2_q"])
             rows.append({"Gamma300_meV": g300, "delta_xx_meV": float(dd),
                          "config": cfg, **c})
@@ -187,16 +217,15 @@ base_cells = {
 }
 new_cells = {}
 lad10 = kap120
-c = make(120.0, 4.0, cavity=(kap120, F120, lam120), wire=False)
+c = make(120.0, 4.0, cavity=(kap120, F120, lam120))
 new_cells["120K corner cell (10p, quiet)"] = (c["g2_q"], c["t_x"])
 c = make(77.0, 4.0)
 new_cells["77K slit-only (Poisson)"] = (c["g2_p"], c["t_x"])
 lam77 = 1239.841984 / emitter_energy(77.0, 1.88)
 t7, s7, b7 = cavity_stack(N_H, N_L, N_C, 10, 16, lam77)
 k77 = cavity_mode(t7 + [s7] + b7, lam77, n_out=N_H)["kappa_meV"]
-F77 = max(planar_purcell(t7, b7, N_C, s7.d_nm, z, lam77, n_out=N_H)
-          for z in np.linspace(0, s7.d_nm, 21))
-c = make(77.0, 4.0, cavity=(k77, F77, lam77), wire=False)
+F77 = planar_total(t7, s7, b7, lam77)
+c = make(77.0, 4.0, cavity=(k77, F77, lam77))
 new_cells["77K-designed cavity 10p (Poisson)"] = (c["g2_p"], c["t_x"])
 print(f"{'cell':38s} {'g2 old':>8} {'g2 new':>8} {'t_X old':>8} {'t_X new':>8}")
 for k in base_cells:

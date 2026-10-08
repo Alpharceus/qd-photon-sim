@@ -1,13 +1,24 @@
 """Regression suite for fsim_core.pulse_counting (finite-pulse photon-
-counting moment hierarchy, peer-review-triage.md finding 1).
+counting moment hierarchy).
 
 Every check anchors on a value this module did NOT produce for itself:
-(a)/(b) are published/hand numbers (the reproduction appendix of
-../quantum-dot-peer-review-2026-09-06.md, reproduced exactly by the Opus
-triage in .workers/review/peer-review-triage.md); (c) is an independent
-scipy.integrate.solve_ivp integration of the same 9-vector; (d) is the
-closed-form Lemma 1 (collection-efficiency invariance) stated in
-pulse_counting.py's own docstring.
+(a)/(b) are published/hand numbers (the reproduction appendix, reproduced
+exactly by peer review); (c) is an independent scipy.integrate.solve_ivp
+integration of the same 9-vector; (d) is the closed-form Lemma 1
+(collection-efficiency invariance) stated in pulse_counting.py's own
+docstring.
+
+Audit D2/D7 additions (audit-pulse-g2-label). (f) the adjacent-peak-
+normalised g2_adj = <m(m-1)>/<m_n m_(n+1)> must equal the long-delay-
+normalised g2 = <m(m-1)>/<m>^2 when the period is long enough that nothing
+carries over (identity: m_n, m_(n+1) independent => <m_n m_(n+1)> = <m>^2).
+(g) with carry-over, g2_adj must match an independent event-by-event
+(Gillespie) Monte Carlo of the same incoherent three-state chain, which
+estimates <m(m-1)> and <m_n m_(n+1)> directly from simulated consecutive
+periods -- a number the moment propagation did not produce. (h) the
+two-level incoherent rectangular-pump limits derived in the audit (C9,
+C13): strong fast pump g2 -> (2 G tau + (G tau)^2)/(1 + G tau)^2 (m = 1 + K,
+K ~ Poisson(G tau), i.e. ~ 2 G tau), weak pump g2 -> G tau/3 [DR].
 
 Check (b) uses EXPLICIT, hardcoded rates rather than DeviceDesign.load() +
 evaluate(): pr-pkg1-capture-escape changed the confinement retention
@@ -36,7 +47,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fsim_core import cw_g2
 from fsim_core.drive_mech import reexc_g2
 from fsim_core.loading import f1b_g2
-from fsim_core.pulse_counting import _augmented, _periodic_steady_state, pulse_g2
+from fsim_core.pulse_counting import (_augmented, _periodic_steady_state,
+                                      deterministic_cycle_g2, pulse_g2)
 
 CHECKS = []
 RESULTS = {}
@@ -72,9 +84,8 @@ def _():
 
 # ------------------------------------------------- (b) gainp favourable corner (triage)
 
-# Reproduction of the finite-pulse appendix, ../quantum-dot-peer-review-2026-
-# 09-06.md "Reproduction appendix", verbatim from .workers/review/peer-
-# review-triage.md's "Reproduction of the finite-pulse appendix" table
+# Reproduction of the finite-pulse appendix from ../quantum-dot-peer-review-
+# 2026-09-06.md "Reproduction appendix"
 # (gamma300=6.0, delta_xx=8.0, NA=0.8, R_back=0.95, L=250 um; PRE-package-1
 # escape rates -- see the module docstring above). gamma_X_ns=1.0,
 # gamma_XX_ns=2.0 (cw_g2.escape_rates_from_retention's own gamma_XX_ns=
@@ -204,6 +215,163 @@ def _():
     RESULTS["e"] = rows
 
 
+# ------------------------------------ (f) adjacent-peak g2 == g2 without carry-over
+
+@check("(f) no inter-period carry-over (dark window >> 1/gamma): g2_adj = "
+       "<m(m-1)>/<m_n m_(n+1)> equals the long-delay-normalised g2 to 1e-6, "
+       "pulse_g2 and deterministic_cycle_g2 (identity <m_n m_(n+1)> = <m>^2)")
+def _():
+    rows = []
+    # (a)'s instantaneous-pulse case (200 X lifetimes of dark time).
+    r = pulse_g2(1.0 / 1e-6, 1.0, 2.0, 0.0, 0.0, 1.0, 0.1, 1e-6, 200.0, adjacent=True)
+    rows.append(("pulse_g2 (a)-case", r["g2"], r["g2_adj"]))
+    # gainp 230 K corner of (b) (k_X = 75/ns: carry-over ~ exp(-76*12.4)).
+    c = _GAINP_CASES[0]
+    eps = brentq(lambda e: f1b_g2(c["mu"], e) - c["static_g2"], 1e-9, 1.0 - 1e-9)
+    r = pulse_g2(c["mu"] / _TAU_ON_NS, 1.0, 2.0, c["k_X"], c["k_XX"], 1.0, eps,
+                 _TAU_ON_NS, _TAU_DARK_NS, adjacent=True)
+    rows.append(("pulse_g2 gainp 230 K", r["g2"], r["g2_adj"]))
+    # (g)'s finite-pulse rates with a 200 ns dark window (nontrivial g2).
+    r = pulse_g2(2.0, 1.0, 2.0, 0.3, 0.6, 0.8, 0.3, 1.0, 200.0, adjacent=True)
+    rows.append(("pulse_g2 (g)-rates, 200 ns dark", r["g2"], r["g2_adj"]))
+    factors = [r["adjacent_peak_factor"]]
+    # deterministic cycle, period = 200 X lifetimes.
+    r = deterministic_cycle_g2(0.306, 0.612, 0.1, 0.2, 1.0, 0.3, 200.0 / 0.306,
+                               adjacent=True)
+    # (one pair into an empty dot gives g2 = 0 exactly; the factor is the test)
+    rows.append(("deterministic_cycle_g2 long period", r["g2"], r["g2_adj"]))
+    factors.append(r["adjacent_peak_factor"])
+    RESULTS["f"] = rows
+    for fac in factors:
+        assert abs(fac - 1.0) < 1e-6, factors
+    for name, g2, g2_adj in rows:
+        assert abs(g2_adj - g2) < 1e-6, (name, g2, g2_adj)
+    # the adjacent option must not perturb the default outputs (bit-identical)
+    base = pulse_g2(2.0, 1.0, 2.0, 0.3, 0.6, 0.8, 0.3, 1.0, 0.5)
+    ext = pulse_g2(2.0, 1.0, 2.0, 0.3, 0.6, 0.8, 0.3, 1.0, 0.5, adjacent=True)
+    assert base["g2"] == ext["g2"] and base["mean_counts"] == ext["mean_counts"]
+
+
+# ------------------------------- (g) adjacent-peak g2 vs independent Monte Carlo
+
+def _mc_counts(rates_on, rates_off, t_X, t_XX, tau_on, tau_dark, load, n_chains,
+               n_periods, burn, rng):
+    """Vectorised Gillespie simulation of the incoherent (0, X, XX) chain.
+
+    rates_* = (r, r2, gX, kX, gXX, kXX); a window with tau = 0 is skipped;
+    load=True applies the deterministic one-pair load s -> min(s+1, 2) at the
+    start of each period. Radiative X (XX) jumps are detected with
+    probability t_X (t_XX). Returns counts[n_chains, n_periods] (after burn)."""
+    s = np.zeros(n_chains, dtype=np.int64)
+    out = np.zeros((n_chains, n_periods), dtype=np.int64)
+
+    def window(rates, T, m):
+        r, r2, gX, kX, gXX, kXX = rates
+        t = np.zeros(n_chains)
+        alive = np.ones(n_chains, dtype=bool)
+        while alive.any():
+            lam = np.where(s == 0, r, np.where(s == 1, r2 + gX + kX, gXX + kXX))
+            with np.errstate(divide="ignore"):
+                dt = rng.exponential(1.0, n_chains) / lam
+            t = t + np.where(alive, dt, 0.0)
+            alive &= (lam > 0) & (t < T)
+            u = rng.random(n_chains) * lam
+            det = rng.random(n_chains)
+            up0 = alive & (s == 0)
+            upX = alive & (s == 1) & (u < r2)
+            radX = alive & (s == 1) & (u >= r2) & (u < r2 + gX)
+            nrX = alive & (s == 1) & (u >= r2 + gX)
+            radXX = alive & (s == 2) & (u < gXX)
+            nrXX = alive & (s == 2) & (u >= gXX)
+            m += (radX & (det < t_X)) + (radXX & (det < t_XX))
+            s[up0] = 1
+            s[upX] = 2
+            s[radX | nrX] = 0
+            s[radXX | nrXX] = 1
+
+    for n in range(burn + n_periods):
+        m = np.zeros(n_chains, dtype=np.int64)
+        if load:
+            np.minimum(s + 1, 2, out=s)
+        if tau_on > 0:
+            window(rates_on, tau_on, m)
+        if tau_dark > 0:
+            window(rates_off, tau_dark, m)
+        if n >= burn:
+            out[:, n - burn] = m
+    return out
+
+
+def _mc_g2_adj(counts, n_groups=40):
+    """Ratio estimator <m(m-1)>/<m_n m_(n+1)> and <m(m-1)>/<m>^2 with a
+    standard error from n_groups independent groups of chains."""
+    a = counts.astype(float)
+    fact = (a * (a - 1.0)).mean(axis=1)
+    adj = (a[:, :-1] * a[:, 1:]).mean(axis=1)
+    mean = a.mean(axis=1)
+    groups = np.array_split(np.arange(counts.shape[0]), n_groups)
+    ga = [fact[g].mean() / adj[g].mean() for g in groups]
+    gl = [fact[g].mean() / mean[g].mean() ** 2 for g in groups]
+    return (fact.mean() / adj.mean(), np.std(ga, ddof=1) / np.sqrt(n_groups),
+            fact.mean() / mean.mean() ** 2, np.std(gl, ddof=1) / np.sqrt(n_groups))
+
+
+@check("(g) with inter-period carry-over, g2_adj agrees with an independent "
+       "Gillespie Monte Carlo of <m(m-1)>/<m_n m_(n+1)> within 4 sigma "
+       "(finite pulse: r=2, gX=1, gXX=2, kX=0.3, kXX=0.6, tX=0.8, tXX=0.3, "
+       "on 1 ns / dark 0.5 ns; deterministic cycle: gX=0.306, kX=0.1, "
+       "tX=1, tXX=1, period 2 ns), and the MC resolves g2_adj != g2")
+def _():
+    rng = np.random.default_rng(20260923)
+    rows = []
+    # finite rectangular pulse
+    pr = dict(r=2.0, gX=1.0, gXX=2.0, kX=0.3, kXX=0.6, tX=0.8, tXX=0.3, on=1.0, dark=0.5)
+    ex = pulse_g2(pr["r"], pr["gX"], pr["gXX"], pr["kX"], pr["kXX"], pr["tX"], pr["tXX"],
+                  pr["on"], pr["dark"], adjacent=True)
+    counts = _mc_counts((pr["r"], pr["r"], pr["gX"], pr["kX"], pr["gXX"], pr["kXX"]),
+                        (0.0, 0.0, pr["gX"], pr["kX"], pr["gXX"], pr["kXX"]),
+                        pr["tX"], pr["tXX"], pr["on"], pr["dark"], False,
+                        4000, 150, 20, rng)
+    rows.append(("pulse_g2",) + (ex["g2_adj"], ex["g2"], ex["adjacent_peak_factor"])
+                + _mc_g2_adj(counts))
+    # deterministic one-pair cycle
+    dc = dict(gX=0.306, gXX=0.612, kX=0.1, kXX=0.2, tX=1.0, tXX=1.0, T=2.0)
+    ex = deterministic_cycle_g2(dc["gX"], dc["gXX"], dc["kX"], dc["kXX"], dc["tX"],
+                                dc["tXX"], dc["T"], adjacent=True)
+    counts = _mc_counts(None, (0.0, 0.0, dc["gX"], dc["kX"], dc["gXX"], dc["kXX"]),
+                        dc["tX"], dc["tXX"], 0.0, dc["T"], True, 4000, 150, 20, rng)
+    rows.append(("deterministic_cycle_g2",) + (ex["g2_adj"], ex["g2"],
+                                               ex["adjacent_peak_factor"])
+                + _mc_g2_adj(counts))
+    RESULTS["g"] = rows
+    for name, g2_adj, g2, _f, mc_adj, se_adj, mc_g2, se_g2 in rows:
+        assert abs(mc_adj - g2_adj) < 4.0 * se_adj, (name, g2_adj, mc_adj, se_adj)
+        assert abs(mc_g2 - g2) < 4.0 * se_g2, (name, g2, mc_g2, se_g2)
+        # carry-over is large enough that the two normalisations are
+        # statistically distinguishable (the check is not vacuous)
+        assert abs(g2_adj - g2) > 4.0 * se_adj, (name, g2_adj, g2, se_adj)
+
+
+# ------------------------------------- (h) incoherent two-level rectangular limits
+
+@check("(h) two-level incoherent rectangular pump (pump_ratio=0, t_XX=0, k=0): "
+       "strong fast pump g2 -> (2 G tau + (G tau)^2)/(1 + G tau)^2 to rtol 2e-3, "
+       "weak short pump g2 -> G tau/3 to rtol 1e-2 (audit C9/C13, D7)")
+def _():
+    G, tau = 1.0, 0.1
+    strong = pulse_g2(1e4, G, 2.0 * G, 0.0, 0.0, 1.0, 0.0, tau, 200.0,
+                      pump_ratio=0.0)["g2"]
+    lam = G * tau
+    strong_ref = (2.0 * lam + lam ** 2) / (1.0 + lam) ** 2
+    tau_w = 1e-3
+    weak = pulse_g2(1e-3, G, 2.0 * G, 0.0, 0.0, 1.0, 0.0, tau_w, 200.0,
+                    pump_ratio=0.0)["g2"]
+    weak_ref = G * tau_w / 3.0
+    RESULTS["h"] = (strong, strong_ref, weak, weak_ref)
+    assert abs(strong - strong_ref) / strong_ref < 2e-3, (strong, strong_ref)
+    assert abs(weak - weak_ref) / weak_ref < 1e-2, (weak, weak_ref)
+
+
 def main():
     failed = 0
     for name, fn in CHECKS:
@@ -230,6 +398,18 @@ def main():
             print(f"(e) r_ns={c['r_ns']:g} tau_on_ns={c['tau_on_ns']:g} "
                   f"gamma_X_ns={c['gamma_X_ns']:g}: pulse_g2 = {g2_pc:.10f}  "
                   f"reexc_g2 = {g2_rg:.10f}")
+    if "f" in RESULTS:
+        for name, g2, g2_adj in RESULTS["f"]:
+            print(f"(f) {name}: g2 = {g2:.10f}  g2_adj = {g2_adj:.10f}")
+    if "g" in RESULTS:
+        for name, g2_adj, g2, fac, mc_adj, se_adj, mc_g2, se_g2 in RESULTS["g"]:
+            print(f"(g) {name}: g2_adj = {g2_adj:.6f} (MC {mc_adj:.6f} +/- {se_adj:.6f}); "
+                  f"g2 = {g2:.6f} (MC {mc_g2:.6f} +/- {se_g2:.6f}); "
+                  f"adjacent_peak_factor = {fac:.6f}")
+    if "h" in RESULTS:
+        strong, strong_ref, weak, weak_ref = RESULTS["h"]
+        print(f"(h) strong: g2 = {strong:.6f} (ref {strong_ref:.6f}); "
+              f"weak: g2 = {weak:.6e} (ref G tau/3 = {weak_ref:.6e})")
     return 1 if failed else 0
 
 

@@ -23,7 +23,7 @@ that is); ``card_hash``/``card_file`` on every row are the sha256/name of
 the file that was actually evaluated, never a stand-in.
 """
 from __future__ import annotations
-import argparse, copy, csv, hashlib, itertools, json, math, os, sys, time
+import argparse, copy, csv, hashlib, itertools, json, math, os, re, sys, time
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -1228,15 +1228,25 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
                           f"{r.get('set_EC_over_kT')} | {r.get('set_radius_max_nm')} | {r.get('set_R_T_over_RQ')} | "
                           f"{r.get('set_f_max_Hz')} | {r.get('row_id')} |")
     lines.append("")
-    # Per-card reservoir choice (device.py's reservoir_kind, one sample row
-    # per distinct (card_file, orientation, geometry_type)).
-    lines += ["## Per-card reservoir choice", "", "| card_file | orientation | geometry_type | reservoir_kind (sample) |", "|---|---|---|---|"]
-    seen_cards = set()
+    # Per-card reservoir choice (device.py's reservoir_kind). Audit C4: the
+    # ACTUAL distribution over every row of each (card_file, orientation,
+    # geometry_type), not one sample row -- the QW-fluctuation cards mix
+    # gan_barrier / ingan_qw / mixed across screening and geometry, so a
+    # single sample misstated them.
+    lines += ["## Per-card reservoir choice", "",
+              "reservoir_kind counts over every row carrying it (core + geometry supplements), per card/orientation/geometry:", "",
+              "| card_file | orientation | geometry_type | reservoir_kind counts | rows |", "|---|---|---|---|---|"]
+    res_counts = {}
     for r in core + geo:
+        if "reservoir_kind" not in r: continue
         key = (r.get("card_file"), r.get("orientation"), r.get("geometry_type"))
-        if key in seen_cards or "reservoir_kind" not in r: continue
-        seen_cards.add(key)
-        lines.append(f"| {r.get('card_file')} | {r.get('orientation')} | {r.get('geometry_type')} | {r.get('reservoir_kind')} |")
+        res_counts.setdefault(key, {})
+        kind = str(r.get("reservoir_kind"))
+        res_counts[key][kind] = res_counts[key].get(kind, 0) + 1
+    for key in res_counts:  # first-seen order, as before
+        cnt = res_counts[key]
+        lines.append(f"| {key[0]} | {key[1]} | {key[2]} | "
+                     + ", ".join(f"{k}={v}" for k, v in sorted(cnt.items())) + f" | {sum(cnt.values())} |")
     lines.append("")
     lines += ["## Coverage and geometry change versus round 1 (scripts/run_nitride_cavity.py)", "",
         "Round 1's headline grid was c-plane only, radius fixed at 10 nm (height in {1,2,3,4,5} nm, "
@@ -1268,12 +1278,29 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
             by_group.setdefault(key, set()).add(round(float(r["overlap_sq"]), 12))
     n_groups_checked = sum(1 for v in by_group.values() if v)
     n_radius_invariant = sum(1 for v in by_group.values() if len(v) == 1)
+    # Audit C4: the E_a span over radius is computed per (orientation,
+    # height, T_hs, screening, regime) group from the rows' own E_a_meV and
+    # reported as a range/median -- never a single hand-written magnitude.
+    ea_by_group = {}
+    for r in core:
+        if _finite_num(r.get("E_a_meV")):
+            key = (r.get("orientation"), r.get("height_nm"), r.get("T_hs"), r.get("screening_fraction"), r.get("regime"))
+            ea_by_group.setdefault(key, []).append(float(r["E_a_meV"]))
+    ea_spans = sorted(max(v) - min(v) for v in ea_by_group.values() if len(v) >= 2)
+    if ea_spans:
+        _n = len(ea_spans)
+        _med = ea_spans[_n // 2] if _n % 2 else 0.5 * (ea_spans[_n // 2 - 1] + ea_spans[_n // 2])
+        ea_span_text = (f"escape barrier; its span across the sampled radii at fixed (orientation,height,T_hs,"
+                        f"screening,regime) is {ea_spans[0]:.3g}-{ea_spans[-1]:.3g} meV, median {_med:.3g} meV, "
+                        f"over {_n} groups")
+    else:
+        ea_span_text = "escape barrier; no group had two finite E_a_meV values to span"
     lines += ["## Radius-degeneracy disclosure", "",
               f"Checked directly against sweep.csv: {n_radius_invariant} of {n_groups_checked} "
               "(orientation, height, T_hs, screening, regime) groups have IDENTICAL overlap_sq "
-              "across every sampled radius (5,10,15,20,30 nm) -- this planar model's overlap_sq "
+              f"across every sampled radius ({','.join(f'{x:g}' for x in CORE_R)} nm) -- this planar model's overlap_sq "
               "and tau_rad_bare_ns do not depend on radius_nm; the radius axis enters only through "
-              "E_a_meV (escape barrier, ~11 meV over 5-30 nm) and the escape/counting prefactors. "
+              f"E_a_meV ({ea_span_text}) and the escape/counting prefactors. "
               "Most core rows at fixed (orientation,height,T_hs,screening,regime) are therefore "
               "near-duplicates in E_X/overlap/tau_rad_bare, differing materially only through the "
               "escape-limited flux and validity at large radius.", ""]
@@ -1439,6 +1466,99 @@ def _results_md(core, geo, bias, current, sens, comp, refinement_checks, complet
               "", f"runtime_s={runtime_s:.1f} evaluate_calls={evaluate_calls} complete={complete}"]
     return "\n".join(lines) + "\n"
 
+# ------------------------------------------------------- report-only (C4)
+_INT_LITERAL_RE = re.compile(r"^-?[0-9]+$")
+
+def _typed_csv_value(v):
+    """Inverse of csv.DictWriter's str() for the primitives _primitive()
+    stores: 'True'/'False' -> bool, a plain integer literal -> int, any other
+    float repr (including nan/inf) -> float, anything else (json strings,
+    ids, labels) -> the raw string [audit C4 report-only]."""
+    if v == "True": return True
+    if v == "False": return False
+    if _INT_LITERAL_RE.match(v): return int(v)
+    try: return float(v)
+    except ValueError: return v
+
+def _read_typed_csv(path):
+    """Empty cells are DROPPED from the row dict: a key absent from a _row()
+    dict and a key holding None both read back as r.get(k) -> None, and
+    DictWriter writes both as an empty cell (so e.g. results.md's
+    `"reservoir_kind" not in r` test keeps its full-run meaning)."""
+    with Path(path).open(encoding="utf-8", newline="") as f:
+        return [{k: _typed_csv_value(v) for k, v in r.items() if v != ""} for r in csv.DictReader(f)]
+
+def _generation_provenance():
+    """Audit C4: sha256 of this runner and the repo HEAD (read-only git
+    calls; None when git is unavailable), plus whether tracked files were
+    dirty at generation time."""
+    import subprocess
+    def _git(*args):
+        try:
+            r = subprocess.run(["git", *args], cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+            return r.stdout.strip() if r.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+    st = _git("status", "--porcelain", "--untracked-files=no")
+    return {"runner_sha256": hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),
+            "generation_commit": _git("rev-parse", "HEAD"),
+            "generation_worktree_dirty": (bool(st) if st is not None else None)}
+
+_REPORT_ONLY_CSVS = ("sweep.csv", "geometry_supplement.csv", "stark_bias.csv", "stark_current.csv",
+                     "sensitivities.csv", "screening_compatibility.csv", "literature_comparisons.csv")
+
+def _set_card_margins():
+    """ec_margin and the SET g2 floor, read off the evaluated SET card's own
+    design object exactly as the full run does (card load only, no
+    evaluate() call)."""
+    ec_margin = None; g2_floor = None; failure = None
+    try:
+        set_card = device.DeviceDesign.load(ROOT / "cards" / "nitride-cavity-set-design.yaml")
+        sp = set_card.drive.set_params
+        ec_margin = float(sp["ec_margin"] if isinstance(sp, dict) else sp.ec_margin)
+        g2_floor = 1. - (1. / (1. + float(set_card.drive.b_res))) ** 2
+    except (AttributeError, KeyError, TypeError, OSError, ValueError) as exc:
+        # Review follow-up: never swallow silently -- warn, and the caller
+        # records the failure in manifest.json.
+        failure = f"{type(exc).__name__}: {exc}"
+        print(f"WARNING: --report-only could not read ec_margin/b_res from nitride-cavity-set-design.yaml "
+              f"({failure}); results.md will print them as unavailable", file=sys.stderr)
+    return ec_margin, g2_floor, failure
+
+def _main_report_only(out, with_figures=False):
+    """Audit C4: rebuild results.md from the SAVED CSVs and manifest.json --
+    no evaluate() call and no CSV written (their sha256 is asserted
+    unchanged). Figures are NOT rebuilt by default (they carry no prose this
+    audit changed); manifest.json keeps every prior field and refreshes
+    output_hashes plus the report_only_* provenance keys."""
+    for n in ("sweep.csv", "manifest.json"):
+        if not (out / n).is_file(): raise SystemExit(f"--report-only requires an existing {n} in --out-dir")
+    present = [n for n in _REPORT_ONLY_CSVS if (out / n).is_file()]
+    before = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in present}
+    t0 = time.time(); prior = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    def _load(n): return _read_typed_csv(out / n) if (out / n).is_file() else []
+    core = _load("sweep.csv"); geo = _load("geometry_supplement.csv"); bias = _load("stark_bias.csv")
+    current = _load("stark_current.csv"); sens = _load("sensitivities.csv"); comp = _load("screening_compatibility.csv")
+    ec_margin, g2_floor, margin_failure = _set_card_margins()
+    text = _results_md(core, geo, bias, current, sens, comp, list(prior.get("convergence_checks", [])),
+                       bool(prior.get("complete", False)), float(prior.get("runtime_s", 0.)),
+                       int(prior.get("evaluate_calls", 0)), dict(prior.get("invalid_counts_by_kind", {})),
+                       dict(prior.get("invalid_reasons_summary", {})), ec_margin, g2_floor)
+    if with_figures:
+        raise SystemExit("--report-only figure rebuild is not implemented for this runner (figures are unchanged)")
+    (out / "results.md").write_text(text, encoding="utf-8")
+    after = {n: hashlib.sha256((out / n).read_bytes()).hexdigest() for n in present}
+    if after != before: raise SystemExit("--report-only must never modify a sweep CSV (hash changed unexpectedly)")
+    man = dict(prior)
+    man["output_hashes"] = {q.name: hashlib.sha256(q.read_bytes()).hexdigest() for q in out.iterdir() if q.is_file() and q.name != "manifest.json"}
+    man.update({"report_only": True, "report_only_source_csv_sha256": before, "report_only_figures_rebuilt": False,
+                "report_only_set_card_margin_failure": margin_failure,
+                "report_only_runtime_s": time.time() - t0,
+                **{"report_only_" + k: v for k, v in _generation_provenance().items()}})
+    (out / "manifest.json").write_text(json.dumps(man, indent=2, sort_keys=True), encoding="utf-8")
+    print("report_only=True core_rows=%d geo_rows=%d stark_rows=%d+%d" % (len(core), len(geo), len(bias), len(current)))
+    return 0
+
 # -------------------------------------------------------------------- main
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -1449,7 +1569,12 @@ def main(argv=None):
     ap.add_argument("--max-evaluations", type=int, default=10000)
     ap.add_argument("--slope-range", nargs=2, type=float, default=None)
     ap.add_argument("--bias-window", nargs=2, type=float, default=(0., 2.))
+    ap.add_argument("--report-only", action="store_true",
+                    help="audit C4: rebuild results.md and manifest.json from the saved CSVs/manifest in "
+                         "--out-dir; no evaluate() call, CSVs and figures never written")
     a = ap.parse_args(argv)
+    if a.report_only:
+        return _main_report_only(_safe(a.out_dir))
 
     core_p = build_core(a.quick); shape_p = build_shape(a.quick); qw_p = build_qw(a.quick)
     bias_p, current_p = build_stark(a.quick) if a.stark else ([], [])
@@ -1692,6 +1817,7 @@ def main(argv=None):
         "literature_annotations": ["Wang2017SciRep", "Wang2017APL_FSS", "Zhang2016", "Deshpande2014"],
         "versions": {"python": sys.version.split()[0]},
         "resolved_out_dir": str(out),
+        **_generation_provenance(),
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     print("evaluate_calls=%d runtime_s=%.2f complete=%s" % (counter["evaluate_calls"], runtime_s, complete))

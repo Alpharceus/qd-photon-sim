@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FSIM 3D Lab</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.min.js",
+      "three/addons/": "./vendor/three/addons/"
+    }
+  }
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; background: var(--ground, #0e1012); color: var(--ink-1, #f2f2ef); font-family: var(--font-ui, system-ui); }
+    body { display: grid; grid-template-rows: 44px 1fr; }
+    header { display: flex; align-items: center; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--rim, #2c2f35); background: var(--surface, #15171c); }
+    header b { font: 600 13px/1 var(--font-label, sans-serif); letter-spacing: .08em; text-transform: uppercase; margin-right: 14px; }
+    header button { font: 600 11px/1 var(--font-label, sans-serif); letter-spacing: .06em; text-transform: uppercase; color: inherit; background: transparent; border: 1px solid transparent; border-radius: 2px; padding: 7px 9px; cursor: pointer; }
+    header button[aria-current="true"] { border-color: var(--rim, #2c2f35); box-shadow: inset 0 -2px 0 var(--beam, #ff3b2f); }
+    header .status { margin-left: auto; font: 400 11px/1 var(--font-mono, monospace); color: var(--muted, #898781); }
+    main { position: relative; padding: 0; min-height: 0; }
+    #view { width: 100%; height: 100%; box-sizing: border-box; }
+    body.only { grid-template-rows: 1fr; }
+    body.only header { display: none; }
+  </style>
+</head>
+<body>
+  <header><b>FSIM 3D lab</b><nav id="tabs"></nav><span class="status" id="status"></span></header>
+  <main><div id="view" data-ready="0"></div></main>
+  <script type="module">
+    import { mountScene } from './js/viz3d/index.js';
+
+    // Every scene comes from a live /api/scene call; nothing is typed in here.
+    const SCENES = [
+      { id: 'device-edge', kind: 'device', url: '/api/scene/device?card=edge-inp-gaasp-design' },
+      { id: 'device-nanowire', kind: 'device', url: '/api/scene/device?card=nitride-nanowire-vertical-pulse-design' },
+      { id: 'device-cavity', kind: 'device', url: '/api/scene/device?card=nitride-cavity-pulse-design' },
+      { id: 'band-nitride', kind: 'band', url: '/api/scene/band?card=nitride-cavity-pulse-design' },
+      { id: 'band-inp', kind: 'band', url: '/api/scene/band?card=edge-inp-gaasp-design' },
+      { id: 'cascade', kind: 'cascade', url: '/api/scene/cascade?card=nitride-cavity-pulse-design' },
+      { id: 'surface', kind: 'surface', url: '/api/scene/surface?card=staged-device-design&param=w&mode=envelope' },
+      { id: 'lattice', kind: 'lattice', url: '/api/scene/lattice?campaign=nitride_cavity&x=height_nm&y=radius_nm&z=x_in' },
+      { id: 'device-staged', kind: 'device', url: '/api/scene/device?card=staged-device-design' },
+      { id: 'lattice-rt_edge', kind: 'lattice', url: '/api/scene/lattice?campaign=rt_edge&headline=0' },
+      { id: 'lattice-rt_edge-headline', kind: 'lattice', url: '/api/scene/lattice?campaign=rt_edge&headline=1' },
+    ];
+    const params = new URLSearchParams(location.search);
+    const view = document.getElementById('view');
+    const status = document.getElementById('status');
+    const tabs = document.getElementById('tabs');
+    if (params.get('only') === '1') document.body.classList.add('only');
+    // ?w=870&h=420 mounts the view at a fixed size (the Designer's crowding case).
+    if (params.get('w')) Object.assign(document.getElementById('view').style, { width: params.get('w') + 'px', height: params.get('h') + 'px' });
+    let api = null;
+
+    async function fetchScene(url) {
+      const r = await fetch(url);
+      const body = await r.json();
+      if (r.status === 202 && body.job_id) {
+        // Background job (slow surfaces): poll until done.
+        status.textContent = `job ${body.job_id} running`;
+        for (;;) {
+          await new Promise((res) => setTimeout(res, 800));
+          const j = await (await fetch(`/api/jobs/${body.job_id}`)).json();
+          if (j.state === 'done') return j.result;
+          if (j.state === 'error' || j.state === 'cancelled') throw new Error(j.error || j.state);
+        }
+      }
+      if (!r.ok) throw new Error(body.error || r.statusText);
+      return body.result && body.scene_job ? body.result : body;
+    }
+
+    async function show(id) {
+      const sc = SCENES.find((s) => s.id === id) || SCENES[0];
+      for (const b of tabs.children) b.setAttribute('aria-current', String(b.dataset.id === sc.id));
+      history.replaceState(null, '', `?${new URLSearchParams({ ...Object.fromEntries(params), scene: sc.id })}`);
+      if (api) { api.dispose(); api = null; }
+      view.dataset.ready = '0';
+      view.dataset.scene = sc.id;
+      status.textContent = 'loading ' + sc.url;
+      const t0 = performance.now();
+      try {
+        const spec = await fetchScene(sc.url);
+        api = mountScene(view, sc.kind, spec, {
+          theme: document.documentElement.dataset.theme,
+          reducedMotion: params.get('motion') === '0' ? true : undefined,
+          forceFallback: params.get('fallback') === '1',
+          bloom: params.get('bloom') === '0' ? false : undefined,
+        });
+        status.textContent = `${spec.catalog_id || ''} · ${Math.round(performance.now() - t0)} ms`;
+      } catch (err) {
+        status.textContent = 'error: ' + err.message;
+        view.dataset.error = err.message;
+        console.error(err);
+      }
+    }
+
+    for (const s of SCENES) {
+      const b = document.createElement('button');
+      b.textContent = s.id;
+      b.dataset.id = s.id;
+      b.addEventListener('click', () => show(s.id));
+      tabs.appendChild(b);
+    }
+    window.__lab = { show, SCENES, get api() { return api; } };
+    show(params.get('scene') || SCENES[0].id);
+  </script>
+</body>
+</html>

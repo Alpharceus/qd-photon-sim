@@ -137,8 +137,7 @@ Fix round (this revision), addressing the Opus review of commit 3f6329e:
     direction.
 
 Directive round (this revision), addressing H7 and M5 of the Opus physics
-coherence review (`.workers/review/nitride-nanowire-physics-opus-coherence-
-findings.md`):
+coherence review (internal):
   * ``beta_HE11`` no longer grows without bound in V: above the LP11 cutoff
     (V > V_CUTOFF_LP11 = 2.405) an on-axis dipole's emission couples into
     higher-order guided modes too, so the ON-AXIS HE11 share of guided
@@ -174,9 +173,8 @@ findings.md`):
     deshpande2013_polarization 70% anchor, non-gating, in the verifier.
 
 Attempt 3 fix round (this revision), addressing the Opus re-review of
-c771d5a + 168be8d (2 high: A, B; 5 medium: C-G; 4 low: H-K; see
-`.workers/review/nitride-nanowire-photonics-opus-findings.md`, third
-section):
+c771d5a + 168be8d (2 high: A, B; 5 medium: C-G; 4 low: H-K; see internal
+findings):
   * HIGH A: the wire-antenna screening factor (2/(n_wire^2+1))^2 is a
     RADIATIVE-RATE (LDOS) suppression, not a collection loss: it now
     scales gamma_X_ns/gamma_XX_ns (orientation-weighted by the card's own
@@ -262,6 +260,29 @@ section):
     transfers across platforms). The printed 1/e^2 far-field half-angle
     diagnostic is now capped at 90 deg for display (it is a paraxial
     diagnostic, not meaningful as an actual angle beyond that).
+
+Physics-audit fix round (2026-09-22, internal audit, high H6 at the
+horizontal-collection weighting and the n_group medium at
+`_group_index_ratio`):
+  * HIGH H6: for a mixed-orientation horizontal card, emitted photons are
+    distributed in proportion to w_i*s_i (dipole weight times the antenna
+    rate factor), so the collection efficiency (collected / actually
+    emitted) is now [DR] eta = sum_i w_i s_i eta_i / sum_i w_i s_i, not the
+    plain weighted mean sum_i w_i eta_i. This makes eta*gamma =
+    gamma0 * sum_i w_i s_i eta_i, i.e. gamma0*(I_par + I_perp) of the
+    module's own DOLP intensities. Pure-orientation cards are unchanged
+    (the ratio collapses to eta_i). Isotropic default, R 12.5 nm, NA 0.5:
+    eta 0.07889 -> 0.10471 at 450 nm and 0.10724 -> 0.14615 at 630 nm.
+    antenna_rate_factor = sum_i w_i s_i is unchanged. A consequence: eta
+    for a MIXED card now depends on n_wire through s_i (the weighting),
+    while a pure-orientation card's eta still does not.
+  * MEDIUM (n_group): an n_wire override on a vertical_photonic card no
+    longer silently borrows the GaN Sellmeier dispersion slope for the
+    group-index ratio; it now REQUIRES an explicit n_group_override and
+    raises NitrideNanowirePhotonicsError (a ValueError) without one
+    ([A] conservative choice: no silent platform transfer, no assumed
+    n_g/n = 1). The horizontal family never consumes n_g, so an n_wire
+    override there needs no n_group_override.
 """
 from __future__ import annotations
 
@@ -463,6 +484,7 @@ class NitrideNanowirePhotonicsParams:
             _finite_positive("n_wire", self.n_wire)
         if self.n_group_override is not None:
             _finite_positive("n_group_override", self.n_group_override)
+        _require_group_index_for_override(self.family, self.n_wire, self.n_group_override)
         _finite_positive("n_ambient", self.n_ambient)
         if self.n_oxide is not None:
             _finite_positive("n_oxide", self.n_oxide)
@@ -728,8 +750,26 @@ def _he11_objective_acceptance(theta_max_rad: float, k: float, mode_radius_nm: f
     return float(min(max(numer / denom, 0.0), 1.0))
 
 
+def _require_group_index_for_override(family, n_wire_override, n_group_override) -> None:
+    """[A, physics-audit n_group medium] A vertical_photonic card whose
+    n_wire is overridden (a non-GaN platform, e.g. the GaAs Claudon
+    reference) must also supply n_group_override: the beta estimator's
+    group-index ratio n_g/n_wire cannot be inferred from the GaN Sellmeier
+    for another material (GaAs at 950 nm has n_g ~4.3, n_g/n ~1.25, while
+    the GaN slope gave 1.02). Conservative choice: raise, rather than
+    silently fall back to either the GaN slope or n_g/n = 1. The
+    horizontal family never consumes n_g, so it is exempt."""
+    if family == "vertical_photonic" and n_wire_override is not None and n_group_override is None:
+        raise NitrideNanowirePhotonicsError(
+            "vertical_photonic: n_wire is overridden but n_group_override is None; the "
+            "group-index ratio n_g/n_wire of the beta estimator cannot be taken from the GaN "
+            "Sellmeier for a non-GaN n_wire -- supply an explicit, cited n_group_override "
+            "for the overridden platform")
+
+
 def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float, n_group_override=None) -> float:
-    """[A, Attempt 3 fix D] Guided-vs-radiative rate estimator: a guided
+    """[A, Attempt 3 fix D; superseded for overrides by the physics-audit
+    n_group fix, see the last paragraph] Guided-vs-radiative rate estimator: a guided
     mode's local density of states scales with the GROUP index n_g, not
     the phase index n_wire; approximated here as n_g/n_wire via a central
     finite difference of this module's OWN GaN Sellmeier
@@ -754,9 +794,19 @@ def _group_index_ratio(n_wire_used: float, n_wire_override, lambda_nm: float, n_
     earlier in `response`); it only matters for an n_wire override paired
     with an out-of-GaN-range lambda_nm, preserving this module's stated
     invariant that an n_wire override bypasses GaN's wavelength
-    restriction entirely."""
+    restriction entirely.
+
+    [physics-audit n_group fix, 2026-09-22] The "same GaN slope on an
+    overridden n_wire" branch above is REMOVED: an n_wire override now
+    requires an explicit n_group_override (raises
+    NitrideNanowirePhotonicsError otherwise, see
+    `_require_group_index_for_override`); n_g/n_wire is then
+    n_group_override/n_wire_used. The GaN finite difference is used only
+    for a non-overridden (GaN) card."""
     if n_group_override is not None:
         return float(n_group_override) / n_wire_used  # [A] platform-matched group index override
+    if n_wire_override is not None:
+        _require_group_index_for_override("vertical_photonic", n_wire_override, n_group_override)
     d = 1.0  # nm finite-difference step
     if not 350.0 <= lambda_nm <= 10000.0:
         return 1.0
@@ -990,6 +1040,14 @@ def _horizontal_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: fl
                             outer_radius_nm: float, n_wire: float):
     """Returns (eta_raw_unscreened, antenna_rate_factor, dolp_card, diag).
 
+    [physics-audit H6, DR] `eta_raw_unscreened` is the EMISSION-weighted
+    collection sum_i w_i s_i eta_i / sum_i w_i s_i (photons are emitted in
+    proportion to w_i s_i), so eta * gamma = gamma0 * sum_i w_i s_i eta_i
+    = gamma0 * (I_par + I_perp) of `_dolp_sum_convention`. The text below
+    ("plain weighted geometric collection") describes the superseded
+    sum_i w_i eta_i; it is kept for the history of fix A, whose rate/
+    collection split is otherwise unchanged.
+
     [Attempt 3 fix A] The wire-antenna screening factor is a RADIATIVE-RATE
     suppression, not a collection loss: `eta_raw_unscreened` is the plain
     weighted geometric collection (never multiplied by `screen`), and
@@ -1008,7 +1066,7 @@ def _horizontal_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: fl
 
     eta_raw_by_orientation = {}
     s_by_orientation = {}
-    eta_raw_unscreened = 0.0
+    emitted_collected = 0.0  # sum_i w_i s_i eta_i
     antenna_rate_factor = 0.0
     for (label, vec), weight in zip(_ORIENTATIONS, params.dipole_weights):
         eta_raw_orientation = dipole_collection_fraction(
@@ -1017,8 +1075,12 @@ def _horizontal_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: fl
         s_i = screen if _TRANSVERSE_TO_WIRE_AXIS[label] else 1.0
         eta_raw_by_orientation[label] = eta_raw_orientation
         s_by_orientation[label] = s_i
-        eta_raw_unscreened += weight * eta_raw_orientation
+        emitted_collected += weight * s_i * eta_raw_orientation
         antenna_rate_factor += weight * s_i
+
+    # [DR, physics-audit H6] collected / actually emitted: each orientation's
+    # share of the emitted photons is w_i s_i / sum_j w_j s_j, never w_i.
+    eta_raw_unscreened = emitted_collected / antenna_rate_factor if antenna_rate_factor > 0.0 else 0.0
 
     # [Attempt 3 fix B+E+F] degree_of_linear_polarization for the CARD'S
     # OWN dipole_weights, and a separate always-reported fixed-isotropic
@@ -1032,6 +1094,9 @@ def _horizontal_collection(params: NitrideNanowirePhotonicsParams, lambda_nm: fl
         "n_oxide_used": n_oxide, "n_substrate_used": n_sub,
         "emitter_height_nm_used": height,
         "eta_by_orientation": eta_raw_by_orientation,
+        "eta_weighted_sum_w_s_eta": emitted_collected,
+        "eta_plain_weighted_mean_superseded": sum(
+            w * eta_raw_by_orientation[lbl] for (lbl, _), w in zip(_ORIENTATIONS, params.dipole_weights)),
         "antenna_screening_by_orientation": s_by_orientation,
         "wire_antenna_screening_intensity": screen,
         "dolp_I_par": i_par_card, "dolp_I_perp": i_perp_card,
@@ -1097,8 +1162,13 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             "[Attempt 3 fix A] the wire-antenna screening (2/(n_wire^2+1))^2 is a "
             "radiative-rate (LDOS) suppression: it is removed from gamma_X_ns/"
             "gamma_XX_ns via antenna_rate_factor, NOT from eta_collection_X/XX, "
-            "which is the plain unscreened geometric collection (collected / "
+            "which is the unscreened geometric collection (collected / "
             "actually-emitted)")
+        notes.append(
+            "[physics-audit H6] eta_collection_X/XX is the emission-weighted "
+            "orientation average sum_i w_i s_i eta_i / sum_i w_i s_i (photons are "
+            "emitted in proportion to w_i s_i), so eta*gamma/gamma0 equals the DOLP "
+            "intensities I_par + I_perp")
         # [Attempt 3 fix B+E+F] the isotropic sensitivity's own residual gap
         # against the +70% anchor, attributed (not fitted) to three
         # candidate, unmodeled causes.
@@ -1260,8 +1330,11 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             "suppression: it is removed from gamma_X_ns/gamma_XX_ns via "
             "antenna_rate_factor = sum_i dipole_weights_i * s_i (s_i=1.0 "
             "along-wire, the screening factor above for each transverse "
-            "orientation), NEVER from eta_collection_X/XX (the plain "
-            "unscreened geometric collection). degree_of_linear_polarization "
+            "orientation), NEVER from eta_collection_X/XX (the "
+            "unscreened geometric collection, emission-weighted per "
+            "[physics-audit H6]: eta = sum_i w_i s_i eta_i / sum_i w_i s_i, "
+            "since photons are emitted in proportion to w_i s_i). "
+            "degree_of_linear_polarization "
             "is now computed for the CARD'S OWN dipole_weights (analyzer-"
             "contrast sum convention, see _dolp_sum_convention) against the "
             "deshpande2013_polarization anchor (70%), non-gating; "
@@ -1281,13 +1354,14 @@ def response(params: NitrideNanowirePhotonicsParams, *, lambda_nm: float,
             "beta_single_mode(V) = Gamma_guided/(Gamma_guided+Gamma_rad), "
             "Gamma_guided proportional to confinement_fraction*(n_g/n_wire)*"
             "beta_scale (n_g is this module's own finite-difference GaN "
-            "Sellmeier group index, see _group_index_ratio) and Gamma_rad "
+            "Sellmeier group index for a GaN card, or the REQUIRED explicit "
+            "n_group_override when n_wire is overridden [physics-audit n_group "
+            "fix: an override without it raises], see _group_index_ratio) and Gamma_rad "
             "proportional to (1-confinement_fraction); this differs from "
             "confinement_fraction whenever n_g != n_wire_used, which "
-            "[Attempt 3 fix D] now includes an n_wire override (the SAME "
-            "GaN dispersion slope is applied there too, scaled onto the "
-            "override's magnitude -- it no longer collapses to n_g=n_wire, "
-            "see _group_index_ratio), so beta_single_mode differs from "
+            "now includes an n_wire override paired with its required n_group_override "
+            "(the GaN slope is no longer borrowed for a non-GaN platform), "
+            "so beta_single_mode differs from "
             "confinement_fraction at the Claudon reference as well as at "
             "the default GaN card. radiative_rate_factor is deliberately "
             "excluded from this ratio so beta_single_mode stays independent "

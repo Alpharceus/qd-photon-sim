@@ -25,6 +25,7 @@ params:
     unit: dB
     tag: V
     source: "Zhao et al.: measured pump-current squeezing under the quiet drive [V, read]"
+    conflict: "Published title: 'Broadband amplitude squeezing at room temperature in electrically driven quantum dot laser'. The card carries 3.1 dB, but paper_digests.md:231 records the measured value as 0.9 ± 0.1 dB below shot noise (6.7 %). See .workers/review/p2-whole-deck-findings.md line 'presentation2/sections/02_emission.json:626,669'. The discrepancy is a deck/card reconciliation task, not a numeric bug."
 
 data:
   g2_vs_pump:

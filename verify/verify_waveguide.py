@@ -28,8 +28,33 @@ thin1 = slab_modes([Layer('lo',1.45,2000),Layer('dot',1.50,4,True),Layer('core',
 thin2 = slab_modes([Layer('lo',1.45,2000),Layer('dot',1.50,8,True),Layer('core',1.50,500),Layer('hi',1.45,2000)],1000)[0]
 ck(1.7 < thin2.gamma_layer('dot')/thin1.gamma_layer('dot') < 2.3, 'thin gamma')
 ridge = effective_index_ridge([Layer('lo',3.4,1000),Layer('core',3.5,300),Layer('hi',3.4,1000)],670,2000,1000)
-F,b = beta_factor(ridge.A_mode_um2,670,3.5,ridge.n_eff)
-ck(.003 < b < .03, 'ridge beta class')
+# Audit H4 (2026-09-22): the Purcell area, not the nonlinear area, feeds beta_factor.
+F,b = beta_factor(ridge.A_purcell_um2,670,3.5,ridge.n_eff)
+# Shared [E] ridge guided-beta envelope (spec audit-edge-cards-label, task 2,
+# 2026-09-23): one source of truth in verify/data/rt_edge_anchors.yaml
+# `envelopes.ridge_guided_beta`, also used by verify_device_rt.py and
+# verify_rt_edge_papers.py. Replaces the pre-H4 (.003, .03) bound here.
+import yaml
+_ENV = yaml.safe_load((Path(__file__).resolve().parent / 'data' / 'rt_edge_anchors.yaml')
+                      .read_text(encoding='utf-8'))['envelopes']['ridge_guided_beta']
+ck(_ENV['lo'] < b < _ENV['hi'], 'ridge beta class (shared envelope envelopes.ridge_guided_beta)')
+# The envelope is derived, not free: re-derive both bounds from the closed
+# form beta' = rF/(1+rF), F = beta/(1-beta) (Lecamp, Lalanne & Hugonin, PRL
+# 99, 023902 (2007) area rescaling) on the pre-H4 base class, with r = 2
+# (exact Gaussian A_nl/A_P, analytic) and r = 2.32 (HKUST ridge, audit H4).
+def _rescale_beta(b0, r):
+    F0 = r * b0 / (1.0 - b0)
+    return F0 / (1.0 + F0)
+_lo_cf = _rescale_beta(_ENV['base_class']['lo'], _ENV['area_ratio']['lo'])
+_hi_cf = _rescale_beta(_ENV['base_class']['hi'], _ENV['area_ratio']['hi'])
+ck(_ENV['area_ratio']['lo'] == 2.0 and abs(_ENV['lo'] - _lo_cf) < 0.01 * _lo_cf
+   and abs(_ENV['hi'] - _hi_cf) < 0.01 * _hi_cf,
+   'shared ridge beta envelope equals the closed-form area rescale of the pre-H4 class '
+   '(0.003 @ r=2 -> 0.00598, 0.03 @ r=2.32 -> 0.06695; 1%)')
+_r_hk = edge_emission(hkust_ridge_stack(), 2000, 1200, 668, 500, .5)
+ck(abs(_r_hk.A_mode_um2 / _r_hk.A_purcell_um2 - _ENV['area_ratio']['hi'])
+   < 0.01 * _ENV['area_ratio']['hi'],
+   'HKUST ridge A_nl/A_P = 2.32 (audit H4 factor; the envelope upper ratio), 1%')
 A=(3/(4*pi))*(.67/3.5)**2*(3.6/3.5)
 F1,b1=beta_factor(A,670,3.5,3.6)
 ck(abs(F1-1)<1e-12, 'F unity')
@@ -83,9 +108,9 @@ ck(abs(r_na_gaussian.eta_NA - r_na_numeric.eta_NA) < 0.03 * r_na_numeric.eta_NA,
 ck(any('NA collection method: numeric' in note for note in r_na_numeric.notes),
    'numeric NA method is recorded in edge notes')
 
-# council review 2026-09-05 item 3, updated for peer-review pkg2 facet fix
-# (2026-09-07, .workers/specs/pr-pkg2-facet-fix.md item 1): T_facet and the
-# propagation loss are now folded into eta_total exactly once each, via the
+# council review 2026-09-05 item 3, updated for peer-review fix
+# (2026-09-07): T_facet and the propagation loss are now folded into
+# eta_total exactly once each, via the
 # single continuous ray-probability series at the dot_position=0.5 default
 # (0.5 * T * exp(-a*L/2) * (1 + R_back * exp(-a*L)) / (1 - R_back*R_front*
 # exp(-2*a*L)), a = alpha_cm*1e-4); reproduce that by hand -- NOT via
@@ -196,8 +221,8 @@ r_numeric = edge_emission([Layer('lo', 3.4, 1000), Layer('core', 3.5, 300, True)
                           Layer('hi', 3.4, 1000)], 2000, 1000, 670, 500, .5)
 ck(r_numeric.n_g == r_numeric.n_eff, 'numeric-only (non-dispersive) layers keep the n_g=n_eff fallback')
 
-# Peer-review pkg2 facet fix (2026-09-07, .workers/specs/pr-pkg2-facet-fix.md
-# item 4): a `coating` override on the FRONT transmission must not leak into
+# Peer-review facet fix (2026-09-07): a `coating` override on the FRONT
+# transmission must not leak into
 # what R_back=None resolves to -- the back facet is a separate, uncoated
 # semiconductor/air interface with its own Fresnel reflectivity, computed by
 # hand from n_eff the same way facet_transmission computes the uncoated T
@@ -355,6 +380,70 @@ ck(_wg_source.count('Coldren, Corzine & Masanovic') >= 2
    'module cites the three-author textbook edition consistently (old two-author form gone)')
 ck('0.9563' in _wg_source and '0.9636' in _wg_source,
    'module keeps the textbook cross-check note (series 0.9563 vs F1 0.9636)')
+
+# Audit H4 (2026-09-22): beta_factor must be fed the energy-normalised
+# Purcell area A_P = int
+# eps|E|^2 dA / (eps_dot |E(r_dot)|^2) (Lecamp, Lalanne & Hugonin, PRL 99,
+# 023902 (2007)), not the nonlinear-optics area (int I)^2/int I^2.
+# (a) Analytic: a Gaussian amplitude exp(-x^2/w^2) (1/e^2 intensity radius
+# w) gives int|E|^2/max|E|^2 = sqrt(pi/2) w per axis, so A_P = pi w^2/2 [DR],
+# half of the nonlinear area pi w^2.
+from fsim_core.waveguide import purcell_mode_width
+_w_g = 1.0  # um
+_x_nm = np.linspace(-8000.0, 8000.0, 20001)
+_amp_g = np.exp(-(_x_nm * 1e-3)**2 / _w_g**2)
+_AP_gauss = purcell_mode_width(_x_nm, _amp_g) * purcell_mode_width(_x_nm, _amp_g)
+ck(abs(_AP_gauss - pi * _w_g**2 / 2) < 1e-3 * (pi * _w_g**2 / 2),
+   'Gaussian test profile gives Purcell area A_P = pi w^2/2 within 1e-3 rel (analytic)')
+_I_g = _amp_g**2
+_Anl_gauss = (np.trapezoid(_I_g, _x_nm * 1e-3)**2 / np.trapezoid(_I_g**2, _x_nm * 1e-3))**2
+ck(abs(_AP_gauss / _Anl_gauss - 0.5) < 1e-3,
+   'Gaussian: Purcell area is half the nonlinear (int I)^2/int I^2 area (analytic ratio 1/2)')
+_n_step = np.where(np.abs(_x_nm) < 500.0, 3.5, 3.2)
+ck(abs(purcell_mode_width(_x_nm, _amp_g, _n_step, 3.5)
+       - np.trapezoid((_n_step / 3.5)**2 * _I_g, _x_nm) * 1e-3) < 1e-12,
+   'purcell_mode_width weights |E|^2 by eps(z)/eps_dot (hand integral)')
+
+# (b) HKUST ridge (668 nm, 2000 nm ridge, 1200 nm etch). Independent
+# re-derivation of A_P at the dot from the solved separable profiles (the
+# audit script's own formula, evaluated at the dot centre rather than the
+# field maximum), then the closed-form F and beta; ledger anchor
+# lecamp07-hkust-ridge-guided-beta (verify/data/rt_edge_anchors.yaml).
+import yaml
+_anchors = {a['id']: a for a in yaml.safe_load(
+    (Path(__file__).resolve().parent / 'data' / 'rt_edge_anchors.yaml').read_text(encoding='utf-8'))['anchors']}
+_anc = _anchors.get('lecamp07-hkust-ridge-guided-beta')
+ck(_anc is not None and _anc['tag'] == 'DR' and _anc['doi'] == '10.1103/PhysRevLett.99.023902',
+   'ledger anchor lecamp07-hkust-ridge-guided-beta exists, tagged DR, sourced to Lecamp 2007')
+_rm_h4 = effective_index_ridge(s, 668, 2000, 1200)
+_r_h4 = edge_emission(s, 2000, 1200, 668, 500, .5)
+_edges = np.r_[0.0, np.cumsum([x.thickness_nm for x in s])]
+_zv, _fv = _rm_h4.vertical.z_nm, _rm_h4.vertical.field
+_nz = np.array([s[min(np.searchsorted(_edges, z, side='right') - 1, len(s) - 1)].n for z in _zv])
+_di = [i for i, x in enumerate(s) if x.is_dot][0]
+_zc = 0.5 * (_edges[_di] + _edges[_di + 1])
+_ndot = s[_di].n
+_fz = np.interp(_zc, _zv, _fv)
+_xl, _fl = _rm_h4.lateral.z_nm, _rm_h4.lateral.field
+_fxc = np.interp(0.5 * _xl[-1], _xl, _fl)
+_AP_dot = (np.trapezoid(_nz**2 * _fv**2, _zv) / (_ndot**2 * _fz**2)
+           * np.trapezoid(_fl**2, _xl) / _fxc**2 * 1e-6)
+_pos = min(1.0, _fz**2 / np.max(_fv**2))
+ck(abs(_rm_h4.A_purcell_um2 / _pos - _AP_dot) < 2e-3 * _AP_dot,
+   'HKUST A_purcell_um2 / position factor equals the hand energy-normalised area at the dot (0.2%)')
+ck(abs(_AP_dot - 0.2534) < 0.03 * 0.2534,
+   'HKUST energy-normalised Purcell area at the dot ~0.2534 um^2 (audit H4, 3%)')
+_F_hand = (3 / (4 * pi)) * (0.668 / _ndot)**2 * (_r_h4.n_g / _ndot) / _AP_dot
+ck(abs(_r_h4.F_wg - _F_hand) < 2e-3 * _F_hand,
+   'edge_emission F_wg equals the hand Lecamp closed form with the energy-normalised area (0.2%)')
+ck(abs(_r_h4.F_wg - 0.0425) < 0.03 * 0.0425,
+   'HKUST F_wg ~0.0425 (audit H4; anchor lecamp07-hkust-ridge-guided-beta, 3%)')
+ck(abs(_r_h4.beta - 0.0408) < 0.03 * 0.0408
+   and _anc is not None and abs(_r_h4.beta - float(_anc['value'])) <= float(_anc['tolerance']['rel']) * float(_anc['value']),
+   'HKUST guided beta ~0.0408 and within ledger anchor lecamp07-hkust-ridge-guided-beta tolerance')
+ck(abs(_r_h4.A_purcell_um2 - _rm_h4.A_purcell_um2) < 1e-15 and abs(_r_h4.A_mode_um2 - _rm_h4.A_mode_um2) < 1e-15
+   and _r_h4.A_purcell_um2 < 0.5 * _r_h4.A_mode_um2,
+   'EdgeResult reports both areas; the Purcell area is below half the nonlinear area on the HKUST ridge')
 
 print(f'{sum(checks)}/{len(checks)} waveguide checks passed')
 sys.exit(0 if all(checks) else 1)

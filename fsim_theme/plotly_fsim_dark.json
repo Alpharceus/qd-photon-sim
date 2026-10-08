@@ -1,0 +1,424 @@
+{
+  "layout": {
+    "paper_bgcolor": "#15171c",
+    "plot_bgcolor": "#15171c",
+    "font": {
+      "family": "Barlow, Segoe UI, system-ui, sans-serif",
+      "size": 13,
+      "color": "#c3c2b7"
+    },
+    "title": {
+      "font": {
+        "family": "Barlow, Segoe UI, system-ui, sans-serif",
+        "size": 15,
+        "weight": 600,
+        "color": "#f2f2ef"
+      },
+      "x": 0,
+      "xanchor": "left"
+    },
+    "colorway": [
+      "#3987e5",
+      "#d95926",
+      "#199e70",
+      "#c98500",
+      "#d55181",
+      "#008300",
+      "#9085e9",
+      "#e66767"
+    ],
+    "xaxis": {
+      "showgrid": true,
+      "gridcolor": "#2a2c32",
+      "gridwidth": 1,
+      "zeroline": false,
+      "showline": true,
+      "linecolor": "#3a3c42",
+      "linewidth": 1,
+      "ticks": "outside",
+      "ticklen": 4,
+      "tickcolor": "#3a3c42",
+      "tickfont": {
+        "family": "Barlow, Segoe UI, system-ui, sans-serif",
+        "size": 12,
+        "color": "#c3c2b7"
+      },
+      "title": {
+        "font": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 13,
+          "color": "#c3c2b7"
+        }
+      },
+      "automargin": true
+    },
+    "yaxis": {
+      "showgrid": true,
+      "gridcolor": "#2a2c32",
+      "gridwidth": 1,
+      "zeroline": false,
+      "showline": true,
+      "linecolor": "#3a3c42",
+      "linewidth": 1,
+      "ticks": "outside",
+      "ticklen": 4,
+      "tickcolor": "#3a3c42",
+      "tickfont": {
+        "family": "Barlow, Segoe UI, system-ui, sans-serif",
+        "size": 12,
+        "color": "#c3c2b7"
+      },
+      "title": {
+        "font": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 13,
+          "color": "#c3c2b7"
+        }
+      },
+      "automargin": true
+    },
+    "scene": {
+      "xaxis": {
+        "showgrid": true,
+        "gridcolor": "#2a2c32",
+        "gridwidth": 1,
+        "zeroline": false,
+        "showline": true,
+        "linecolor": "#3a3c42",
+        "linewidth": 1,
+        "ticks": "outside",
+        "ticklen": 4,
+        "tickcolor": "#3a3c42",
+        "tickfont": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 12,
+          "color": "#c3c2b7"
+        },
+        "title": {
+          "font": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 13,
+            "color": "#c3c2b7"
+          }
+        },
+        "backgroundcolor": "#15171c",
+        "showbackground": true,
+        "zerolinecolor": "#3a3c42"
+      },
+      "yaxis": {
+        "showgrid": true,
+        "gridcolor": "#2a2c32",
+        "gridwidth": 1,
+        "zeroline": false,
+        "showline": true,
+        "linecolor": "#3a3c42",
+        "linewidth": 1,
+        "ticks": "outside",
+        "ticklen": 4,
+        "tickcolor": "#3a3c42",
+        "tickfont": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 12,
+          "color": "#c3c2b7"
+        },
+        "title": {
+          "font": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 13,
+            "color": "#c3c2b7"
+          }
+        },
+        "backgroundcolor": "#15171c",
+        "showbackground": true,
+        "zerolinecolor": "#3a3c42"
+      },
+      "zaxis": {
+        "showgrid": true,
+        "gridcolor": "#2a2c32",
+        "gridwidth": 1,
+        "zeroline": false,
+        "showline": true,
+        "linecolor": "#3a3c42",
+        "linewidth": 1,
+        "ticks": "outside",
+        "ticklen": 4,
+        "tickcolor": "#3a3c42",
+        "tickfont": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 12,
+          "color": "#c3c2b7"
+        },
+        "title": {
+          "font": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 13,
+            "color": "#c3c2b7"
+          }
+        },
+        "backgroundcolor": "#15171c",
+        "showbackground": true,
+        "zerolinecolor": "#3a3c42"
+      },
+      "bgcolor": "#15171c"
+    },
+    "hovermode": "x unified",
+    "hoverlabel": {
+      "bgcolor": "#181A1F",
+      "bordercolor": "#2C2F35",
+      "font": {
+        "family": "Barlow, Segoe UI, system-ui, sans-serif",
+        "size": 12,
+        "color": "#f2f2ef"
+      }
+    },
+    "legend": {
+      "orientation": "h",
+      "x": 0,
+      "xanchor": "left",
+      "y": 1.02,
+      "yanchor": "bottom",
+      "borderwidth": 0,
+      "bgcolor": "rgba(0,0,0,0)",
+      "font": {
+        "family": "Barlow, Segoe UI, system-ui, sans-serif",
+        "size": 12,
+        "color": "#c3c2b7"
+      }
+    },
+    "margin": {
+      "l": 56,
+      "r": 16,
+      "t": 40,
+      "b": 48
+    },
+    "modebar": {
+      "bgcolor": "rgba(0,0,0,0)",
+      "color": "#898781",
+      "activecolor": "#f2f2ef"
+    },
+    "colorscale": {
+      "sequential": [
+        [
+          0.0,
+          "#0d366b"
+        ],
+        [
+          0.166667,
+          "#184f95"
+        ],
+        [
+          0.333333,
+          "#256abf"
+        ],
+        [
+          0.5,
+          "#3987e5"
+        ],
+        [
+          0.666667,
+          "#6da7ec"
+        ],
+        [
+          0.833333,
+          "#9ec5f4"
+        ],
+        [
+          1.0,
+          "#cde2fb"
+        ]
+      ],
+      "diverging": [
+        [
+          0,
+          "#3987e5"
+        ],
+        [
+          0.5,
+          "#383835"
+        ],
+        [
+          1,
+          "#e66767"
+        ]
+      ]
+    },
+    "coloraxis": {
+      "colorbar": {
+        "outlinewidth": 0,
+        "ticks": "outside",
+        "ticklen": 4,
+        "tickcolor": "#3a3c42",
+        "tickfont": {
+          "family": "Barlow, Segoe UI, system-ui, sans-serif",
+          "size": 12,
+          "color": "#c3c2b7"
+        }
+      }
+    }
+  },
+  "data": {
+    "scatter": [
+      {
+        "line": {
+          "width": 2
+        },
+        "marker": {
+          "size": 8,
+          "line": {
+            "width": 2,
+            "color": "#15171c"
+          }
+        }
+      }
+    ],
+    "bar": [
+      {
+        "marker": {
+          "line": {
+            "width": 0
+          }
+        }
+      }
+    ],
+    "heatmap": [
+      {
+        "colorscale": [
+          [
+            0.0,
+            "#0d366b"
+          ],
+          [
+            0.166667,
+            "#184f95"
+          ],
+          [
+            0.333333,
+            "#256abf"
+          ],
+          [
+            0.5,
+            "#3987e5"
+          ],
+          [
+            0.666667,
+            "#6da7ec"
+          ],
+          [
+            0.833333,
+            "#9ec5f4"
+          ],
+          [
+            1.0,
+            "#cde2fb"
+          ]
+        ],
+        "colorbar": {
+          "outlinewidth": 0,
+          "ticks": "outside",
+          "ticklen": 4,
+          "tickcolor": "#3a3c42",
+          "tickfont": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 12,
+            "color": "#c3c2b7"
+          }
+        }
+      }
+    ],
+    "contour": [
+      {
+        "colorscale": [
+          [
+            0.0,
+            "#0d366b"
+          ],
+          [
+            0.166667,
+            "#184f95"
+          ],
+          [
+            0.333333,
+            "#256abf"
+          ],
+          [
+            0.5,
+            "#3987e5"
+          ],
+          [
+            0.666667,
+            "#6da7ec"
+          ],
+          [
+            0.833333,
+            "#9ec5f4"
+          ],
+          [
+            1.0,
+            "#cde2fb"
+          ]
+        ],
+        "colorbar": {
+          "outlinewidth": 0,
+          "ticks": "outside",
+          "ticklen": 4,
+          "tickcolor": "#3a3c42",
+          "tickfont": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 12,
+            "color": "#c3c2b7"
+          }
+        }
+      }
+    ],
+    "surface": [
+      {
+        "colorscale": [
+          [
+            0.0,
+            "#0d366b"
+          ],
+          [
+            0.166667,
+            "#184f95"
+          ],
+          [
+            0.333333,
+            "#256abf"
+          ],
+          [
+            0.5,
+            "#3987e5"
+          ],
+          [
+            0.666667,
+            "#6da7ec"
+          ],
+          [
+            0.833333,
+            "#9ec5f4"
+          ],
+          [
+            1.0,
+            "#cde2fb"
+          ]
+        ],
+        "colorbar": {
+          "outlinewidth": 0,
+          "ticks": "outside",
+          "ticklen": 4,
+          "tickcolor": "#3a3c42",
+          "tickfont": {
+            "family": "Barlow, Segoe UI, system-ui, sans-serif",
+            "size": 12,
+            "color": "#c3c2b7"
+          }
+        },
+        "lighting": {
+          "ambient": 0.6,
+          "diffuse": 0.6,
+          "specular": 0.15
+        }
+      }
+    ]
+  }
+}

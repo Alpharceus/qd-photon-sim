@@ -1,0 +1,2196 @@
+{
+  "name": "rt-single-photons",
+  "title": "Room-temperature single photons: where we stand",
+  "description": "13 scenes from .workers/studio/ideas/05-science-content.md section 1; every number is resolved from out/ files or live fsim_core calls at bake time, and every number in the prose is a {name} placeholder interpolated from those baked values.",
+  "scenes": [
+    {
+      "id": "s01",
+      "catalog_id": "V-a",
+      "title": "The model reproduces a published g2(T) curve",
+      "claim": "Calibrated against Chatzarakis 2023 (V-a), the model tracks the measured g2(0) from {t_points[0]} to {t_points[-1]} K.",
+      "numbers": [
+        {
+          "label": "measured T points",
+          "unit": "K",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/phase0/fit_data_points.csv",
+            "col": "T_K",
+            "agg": "values"
+          },
+          "name": "t_points",
+          "tag_declared": "V",
+          "value": [
+            78.0,
+            120.0,
+            150.0,
+            170.0,
+            210.0,
+            230.0
+          ],
+          "raw": "78.0,120.0,150.0,170.0,210.0,230.0",
+          "resolved_from": "out/phase0/fit_data_points.csv values(T_K) where {}",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "measured g2(0)",
+          "unit": "",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/phase0/fit_data_points.csv",
+            "col": "g2",
+            "agg": "values"
+          },
+          "name": "g2_points",
+          "tag_declared": "V",
+          "value": [
+            0.02,
+            0.1,
+            0.15,
+            0.18,
+            0.28,
+            0.36
+          ],
+          "raw": "0.02,0.1,0.15,0.18,0.28,0.36",
+          "resolved_from": "out/phase0/fit_data_points.csv values(g2) where {}",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "78 K point bound type",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/phase0/fit_data_points.csv",
+            "match": {
+              "T_K": 78.0
+            },
+            "col": "bound"
+          },
+          "name": "bound78",
+          "tag_declared": "V",
+          "value": "upper",
+          "raw": "upper",
+          "resolved_from": "out/phase0/fit_data_points.csv row {'T_K': 78.0} col bound",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 78.0
+        },
+        {
+          "label": "max model residual",
+          "unit": "",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/phase0/fit_data_points.csv",
+            "col": "residual",
+            "agg": "max"
+          },
+          "name": "resid_max",
+          "tag_declared": "A",
+          "value": 0.027963157471857847,
+          "raw": "0.027963157471857847",
+          "resolved_from": "out/phase0/fit_data_points.csv max(residual) where {}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "T_c (fit)",
+          "unit": "K",
+          "source": {
+            "kind": "json",
+            "file": "out/phase0/fit_params.json",
+            "key": "Tc_K"
+          },
+          "name": "tc_fit",
+          "tag_declared": "A",
+          "value": 249.1403539379007,
+          "raw": "249.1403539379007",
+          "resolved_from": "out/phase0/fit_params.json [Tc_K]",
+          "tag": "A",
+          "tag_source": "out/phase0/fit_params.json tag_chain"
+        },
+        {
+          "label": "passed +-0.03",
+          "unit": "",
+          "source": {
+            "kind": "json",
+            "file": "out/phase0/fit_params.json",
+            "key": "passed_pm0.03"
+          },
+          "name": "fit_passed",
+          "tag_declared": "A",
+          "value": true,
+          "raw": "true",
+          "resolved_from": "out/phase0/fit_params.json [passed_pm0.03]",
+          "tag": "A",
+          "tag_source": "out/phase0/fit_params.json tag_chain"
+        },
+        {
+          "label": "tag chain",
+          "unit": "",
+          "source": {
+            "kind": "json",
+            "file": "out/phase0/fit_params.json",
+            "key": "tag_chain"
+          },
+          "name": "fit_chain",
+          "tag_declared": "A",
+          "value": "[A]",
+          "raw": "\"[A]\"",
+          "resolved_from": "out/phase0/fit_params.json [tag_chain]",
+          "tag": "A",
+          "tag_source": "out/phase0/fit_params.json tag_chain"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "calibration_g2T",
+          "data": "out/phase0/fit_data_points.csv",
+          "model": "out/phase0/fit_model_curve.csv",
+          "model_col": "g2_model",
+          "residual_col": "residual",
+          "bound_col": "bound"
+        }
+      },
+      "caveat": "Calibration (class C), not held-out. Digitized data. No (P) prediction exists yet. The {t_points[0]} K point is an {bound78} bound (drawn as a down-arrow).",
+      "notes": "The V-a fit uses the measured g2(0) at {t_points} K; the largest model residual is {resid_max:.3f}. The fitted T_c is {tc_fit:.1f} K and the +-0.03 acceptance flag reads {fit_passed}. This is a calibration (class C), not a held-out test; tag chain {fit_chain}."
+    },
+    {
+      "id": "s02",
+      "catalog_id": "V-b/V-c",
+      "title": "The same model, unfitted, brackets other papers",
+      "claim": "Without refitting, the model envelope brackets Laferriere's measured g2 at {lf_T[0]}, {lf_T[1]} and {lf_T[2]} K.",
+      "numbers": [
+        {
+          "name": "lf_T",
+          "label": "Laferriere measured temperatures",
+          "unit": "K",
+          "tag_declared": "V",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/validation/gsq_T_validation.csv",
+            "filter": {
+              "device": "laferriere"
+            },
+            "col": "T_K",
+            "agg": "unique"
+          },
+          "value": [
+            77.0,
+            220.0,
+            300.0
+          ],
+          "raw": "77.0,220.0,300.0",
+          "resolved_from": "out/validation/gsq_T_validation.csv unique(T_K) where {'device': 'laferriere'}",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "Laferriere measured g2 at 77 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 77.0
+            },
+            "col": "g2_measured"
+          },
+          "name": "lf77",
+          "tag_declared": "V",
+          "value": 0.11,
+          "raw": "0.11",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 77.0} col g2_measured",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 77.0
+        },
+        {
+          "label": "model envelope lo at 77 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 77.0
+            },
+            "col": "g2_model_lo"
+          },
+          "name": "lo77",
+          "tag_declared": "A",
+          "value": 0.0015356342615633345,
+          "raw": "0.0015356342615633345",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 77.0} col g2_model_lo",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 77.0
+        },
+        {
+          "label": "model envelope hi at 77 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 77.0
+            },
+            "col": "g2_model_hi"
+          },
+          "name": "hi77",
+          "tag_declared": "A",
+          "value": 0.6186466868533034,
+          "raw": "0.6186466868533034",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 77.0} col g2_model_hi",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 77.0
+        },
+        {
+          "label": "Laferriere measured g2 at 220 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 220.0
+            },
+            "col": "g2_measured"
+          },
+          "name": "lf220",
+          "tag_declared": "V",
+          "value": 0.34,
+          "raw": "0.34",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 220.0} col g2_measured",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 220.0
+        },
+        {
+          "label": "model envelope lo at 220 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 220.0
+            },
+            "col": "g2_model_lo"
+          },
+          "name": "lo220",
+          "tag_declared": "A",
+          "value": 0.24108096209849106,
+          "raw": "0.24108096209849106",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 220.0} col g2_model_lo",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 220.0
+        },
+        {
+          "label": "model envelope hi at 220 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 220.0
+            },
+            "col": "g2_model_hi"
+          },
+          "name": "hi220",
+          "tag_declared": "A",
+          "value": 0.9095848243848923,
+          "raw": "0.9095848243848923",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 220.0} col g2_model_hi",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 220.0
+        },
+        {
+          "label": "Laferriere measured g2 at 300 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 300.0
+            },
+            "col": "g2_measured"
+          },
+          "name": "lf300",
+          "tag_declared": "V",
+          "value": 0.57,
+          "raw": "0.57",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 300.0} col g2_measured",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 300.0
+        },
+        {
+          "label": "model envelope lo at 300 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 300.0
+            },
+            "col": "g2_model_lo"
+          },
+          "name": "lo300",
+          "tag_declared": "A",
+          "value": 0.5047191209167411,
+          "raw": "0.5047191209167411",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 300.0} col g2_model_lo",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 300.0
+        },
+        {
+          "label": "model envelope hi at 300 K",
+          "unit": "",
+          "source": {
+            "kind": "csv_cell",
+            "file": "out/validation/gsq_T_validation.csv",
+            "match": {
+              "device": "laferriere",
+              "T_K": 300.0
+            },
+            "col": "g2_model_hi"
+          },
+          "name": "hi300",
+          "tag_declared": "A",
+          "value": 0.9510659079772344,
+          "raw": "0.9510659079772344",
+          "resolved_from": "out/validation/gsq_T_validation.csv row {'device': 'laferriere', 'T_K': 300.0} col g2_model_hi",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)",
+          "at_T": 300.0
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "band_vs_points",
+          "data": "out/validation/gsq_T_validation.csv",
+          "filter": {
+            "device": "laferriere"
+          },
+          "lo": "g2_model_lo",
+          "hi": "g2_model_hi",
+          "points": "g2_measured"
+        }
+      },
+      "caveat": "Comparison (class M), not validation. Envelope, not point: the mid curve is never plotted alone.",
+      "notes": "Measured Laferriere g2 is {lf77} at {lf_T[0]} K, {lf220} at {lf_T[1]} K and {lf300} at {lf_T[2]} K. The unfitted model envelope spans {lo77:.3g}-{hi77:.3g}, {lo220:.3g}-{hi220:.3g} and {lo300:.3g}-{hi300:.3g} at those temperatures. This is a comparison (class M): the band brackets the points, and its mid curve is never shown alone."
+    },
+    {
+      "id": "s03",
+      "catalog_id": "gate",
+      "title": "What a single-photon source must do",
+      "claim": "Two gates: purity g2(0) below {gate_g2}, and at least {flux_floor} collected photons per second to measure.",
+      "numbers": [
+        {
+          "label": "purity gate: pulsed g2(0) below",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "pulsed intrinsic g2\\(0\\) < ([0-9.]+)"
+          },
+          "name": "gate_g2",
+          "tag_declared": "A",
+          "value": 0.5,
+          "raw": "0.5",
+          "resolved_from": "out/rt_edge/verdict.md:22",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux floor",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "eligibility floor \\[A\\]: ([0-9.eE+]+) photons/s"
+          },
+          "name": "flux_floor",
+          "tag_declared": "A",
+          "value": 1000.0,
+          "raw": "1000",
+          "resolved_from": "out/rt_edge/verdict.md:90",
+          "tag": "A",
+          "tag_source": "bracket tag inside the matched text (out/rt_edge/verdict.md:90)"
+        }
+      ],
+      "visual": {
+        "kind": "scene3d",
+        "spec": {
+          "scene": "device",
+          "cards": [
+            "edge-inp-gainp-design",
+            "nitride-cavity-set-design",
+            "nitride-nanowire-vertical-set-design"
+          ]
+        }
+      },
+      "caveat": "The flux floor is tagged [{flux_floor.tag}]: an assumption, not a detector specification.",
+      "notes": "Purity gate: pulsed intrinsic g2(0) below {gate_g2}. Brightness gate: at least {flux_floor} collected photons per second, tagged [{flux_floor.tag}]. Both values are read from out/rt_edge/verdict.md at bake time, and every later scene is judged against them."
+    },
+    {
+      "id": "s04",
+      "catalog_id": "rt_edge-flux",
+      "title": "RT edge emitter: flux clears the floor only at {elig_T} K",
+      "claim": "Under the headline model, only {elig_T} K rows clear the flux floor: {eligible_n} rows eligible, flux max {flux_max} photons/s.",
+      "numbers": [
+        {
+          "label": "eligible (headline)",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "field": "eligible"
+          },
+          "name": "eligible_n",
+          "tag_declared": "A",
+          "value": "16/768",
+          "raw": "16/768",
+          "resolved_from": "out/rt_edge/verdict.md:6 VERDICT eligible",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux max",
+          "unit": "photons/s",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "field": "flux_max"
+          },
+          "name": "flux_max",
+          "tag_declared": "A",
+          "value": 1117.0,
+          "raw": "1117",
+          "resolved_from": "out/rt_edge/verdict.md:6 VERDICT flux_max",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux max at 230 K (headline)",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| 230 \\| [^|]+\\| [^|]+\\| [^|]+\\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "flux230",
+          "tag_declared": "A",
+          "value": 1117.0,
+          "raw": "1117",
+          "resolved_from": "out/rt_edge/verdict.md:77",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux max at 250 K (headline)",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| 250 \\| [^|]+\\| [^|]+\\| [^|]+\\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "flux250",
+          "tag_declared": "A",
+          "value": 579.4,
+          "raw": "579.4",
+          "resolved_from": "out/rt_edge/verdict.md:78",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux max at 273 K (headline)",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| 273 \\| [^|]+\\| [^|]+\\| [^|]+\\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "flux273",
+          "tag_declared": "A",
+          "value": 299.7,
+          "raw": "299.7",
+          "resolved_from": "out/rt_edge/verdict.md:79",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "flux max at 300 K (headline)",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| 300 \\| [^|]+\\| [^|]+\\| [^|]+\\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "flux300",
+          "tag_declared": "A",
+          "value": 154.1,
+          "raw": "154.1",
+          "resolved_from": "out/rt_edge/verdict.md:80",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "eligible rows (sweep.csv count)",
+          "unit": "",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false,
+              "eligible_pulsed": true
+            },
+            "agg": "count"
+          },
+          "name": "elig_count",
+          "tag_declared": "A",
+          "value": 16,
+          "raw": "16",
+          "resolved_from": "out/rt_edge/sweep.csv count(*) where {'model_finite_pulse': True, 'model_tau_cap_density': False, 'eligible_pulsed': True}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "eligible rows: T_hs values",
+          "unit": "K",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false,
+              "eligible_pulsed": true
+            },
+            "col": "T_hs_K",
+            "agg": "unique"
+          },
+          "name": "elig_T",
+          "tag_declared": "A",
+          "value": [
+            230.0
+          ],
+          "raw": "230.0",
+          "resolved_from": "out/rt_edge/sweep.csv unique(T_hs_K) where {'model_finite_pulse': True, 'model_tau_cap_density': False, 'eligible_pulsed': True}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "eligible rows: NA values",
+          "unit": "",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false,
+              "eligible_pulsed": true
+            },
+            "col": "emission_NA",
+            "agg": "unique"
+          },
+          "name": "elig_NA",
+          "tag_declared": "A",
+          "value": [
+            0.75,
+            0.8
+          ],
+          "raw": "0.75,0.8",
+          "resolved_from": "out/rt_edge/sweep.csv unique(emission_NA) where {'model_finite_pulse': True, 'model_tau_cap_density': False, 'eligible_pulsed': True}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "eligible rows: R_back values",
+          "unit": "",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false,
+              "eligible_pulsed": true
+            },
+            "col": "emission_R_back",
+            "agg": "unique"
+          },
+          "name": "elig_Rback",
+          "tag_declared": "A",
+          "value": [
+            0.95
+          ],
+          "raw": "0.95",
+          "resolved_from": "out/rt_edge/sweep.csv unique(emission_R_back) where {'model_finite_pulse': True, 'model_tau_cap_density': False, 'eligible_pulsed': True}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "eligible rows: L values",
+          "unit": "um",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false,
+              "eligible_pulsed": true
+            },
+            "col": "emission_L_um",
+            "agg": "unique"
+          },
+          "name": "elig_L",
+          "tag_declared": "A",
+          "value": [
+            250.0
+          ],
+          "raw": "250.0",
+          "resolved_from": "out/rt_edge/sweep.csv unique(emission_L_um) where {'model_finite_pulse': True, 'model_tau_cap_density': False, 'eligible_pulsed': True}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "name": "rt_T",
+          "label": "headline-model T_hs grid",
+          "unit": "K",
+          "tag_declared": "A",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false
+            },
+            "col": "T_hs_K",
+            "agg": "unique"
+          },
+          "value": [
+            230.0,
+            250.0,
+            273.0,
+            300.0
+          ],
+          "raw": "230.0,250.0,273.0,300.0",
+          "resolved_from": "out/rt_edge/sweep.csv unique(T_hs_K) where {'model_finite_pulse': True, 'model_tau_cap_density': False}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "bars_vs_floor",
+          "campaign": "rt_edge",
+          "headline": true,
+          "x": "T_hs_K",
+          "y": "collected_flux_pulsed_s",
+          "values_from": "this scene's per-T flux numbers"
+        }
+      },
+      "caveat": "headline model = finite_pulse:true, tau_cap_density:false",
+      "notes": "Headline model only: finite pulse on, capture time not scaled with dot density. {eligible_n} rows are eligible, all at {elig_T} K with NA {elig_NA}, R_back {elig_Rback} and L {elig_L} um. Flux maxima are {flux230}, {flux250}, {flux273} and {flux300} photons/s at {rt_T} K against the {flux_floor} photons/s floor."
+    },
+    {
+      "id": "s05",
+      "catalog_id": "rt_edge-verdict",
+      "title": "...and purity fails: VERDICT {verdict_word}",
+      "claim": "Even the best eligible row has pulsed g2(0) = {g2_min} (median {g2_median}), against the {gate_g2} gate.",
+      "numbers": [
+        {
+          "label": "verdict",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "word": true
+          },
+          "name": "verdict_word",
+          "tag_declared": "A",
+          "value": "FAIL",
+          "raw": "FAIL",
+          "resolved_from": "out/rt_edge/verdict.md:6 (VERDICT word)",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "verdict n/N eligible",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "field": "eligible"
+          },
+          "name": "verdict_eligible",
+          "tag_declared": "A",
+          "value": "16/768",
+          "raw": "16/768",
+          "resolved_from": "out/rt_edge/verdict.md:6 VERDICT eligible",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "pulsed g2 min (eligible)",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "field": "g2_min"
+          },
+          "name": "g2_min",
+          "tag_declared": "A",
+          "value": 0.9817,
+          "raw": "0.9817",
+          "resolved_from": "out/rt_edge/verdict.md:6 VERDICT g2_min",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "pulsed g2 median (eligible)",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "field": "g2_median_eligible"
+          },
+          "name": "g2_median",
+          "tag_declared": "A",
+          "value": 0.9879,
+          "raw": "0.9879",
+          "resolved_from": "out/rt_edge/verdict.md:6 VERDICT g2_median_eligible",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "live g2_op at 230 K (headline switches)",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 230.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "g2_op"
+          },
+          "name": "live_g2",
+          "tag_declared": "A",
+          "value": 0.9816951150623668,
+          "raw": "0.9816951150623668",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['g2_op']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "live collected flux at 230 K (headline switches)",
+          "unit": "photons/s",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 230.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "collected_flux_pulsed_s"
+          },
+          "name": "live_flux",
+          "tag_declared": "A",
+          "value": 1109.286182291714,
+          "raw": "1109.286182291714",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['collected_flux_pulsed_s']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "data commit",
+          "unit": "",
+          "source": {
+            "kind": "commit",
+            "dir": "rt_edge"
+          },
+          "name": "commit",
+          "tag_declared": "V",
+          "value": "5beb620",
+          "raw": "5beb620",
+          "resolved_from": "out/rt_edge (git log (last commit touching the folder))",
+          "tag": "V",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "g2_vs_flux_scatter",
+          "campaign": "rt_edge",
+          "headline": true,
+          "x": "collected_flux_pulsed_s",
+          "y": "g2_pulsed",
+          "gate_box_from": [
+            "s03"
+          ]
+        }
+      },
+      "caveat": "{verdict_word}. The gate box is empty for every headline row.",
+      "notes": "VERDICT {verdict_word}: eligible {verdict_eligible}, best pulsed g2(0) {g2_min}, median {g2_median}. A live headline evaluate of the best corner gives an operating-point g2(0) of {live_g2:.4f} and {live_flux:.0f} photons/s at {live_g2.T} K. Data commit {commit}."
+    },
+    {
+      "id": "s06",
+      "catalog_id": "re-excitation",
+      "title": "Why: re-excitation inside the {pulse_ns} ns pulse",
+      "claim": "Thermal escape (k_X = {kx230:.0f} /ns against radiative gamma_X = {gx230} /ns) makes the dot refill and re-emit many times inside one {pulse_ns} ns pulse.",
+      "numbers": [
+        {
+          "name": "pulse_ns",
+          "label": "pump pulse width (headline rows)",
+          "unit": "ns",
+          "tag_declared": "A",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/rt_edge/sweep.csv",
+            "filter": {
+              "model_finite_pulse": true,
+              "model_tau_cap_density": false
+            },
+            "col": "pulse_width_ns",
+            "agg": "unique"
+          },
+          "value": [
+            0.1
+          ],
+          "raw": "0.1",
+          "resolved_from": "out/rt_edge/sweep.csv unique(pulse_width_ns) where {'model_finite_pulse': True, 'model_tau_cap_density': False}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "k_X at 230 K",
+          "unit": "1/ns",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 230.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "finite_pulse_k_X"
+          },
+          "name": "kx230",
+          "tag_declared": "A",
+          "value": 740.8288224361773,
+          "raw": "740.8288224361773",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_k_X']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "k_X at 300 K",
+          "unit": "1/ns",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 300.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "finite_pulse_k_X"
+          },
+          "name": "kx300",
+          "tag_declared": "A",
+          "value": 5338.044767803697,
+          "raw": "5338.044767803697",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 300.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[300.0])['scalars']['finite_pulse_k_X']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 300.0
+        },
+        {
+          "label": "gamma_X at 230 K",
+          "unit": "1/ns",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 230.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "finite_pulse_gamma_X_ns"
+          },
+          "name": "gx230",
+          "tag_declared": "A",
+          "value": 1.0,
+          "raw": "1.0",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_gamma_X_ns']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "dot-only finite-pulse g2 at 230 K",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 230.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "finite_pulse_g2_dot"
+          },
+          "name": "g2dot230",
+          "tag_declared": "A",
+          "value": 0.9747229561804862,
+          "raw": "0.9747229561804862",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_g2_dot']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "dot-only finite-pulse g2 at 300 K",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "headline",
+            "overrides": {
+              "dot.delta_xx": 8.0,
+              "dot.gamma300": 6.0,
+              "thermal.T_hs": 300.0,
+              "emission.NA": 0.8,
+              "emission.R_back": 0.95,
+              "emission.L_um": 250.0
+            },
+            "scalar": "finite_pulse_g2_dot"
+          },
+          "name": "g2dot300",
+          "tag_declared": "A",
+          "value": 0.9967717111859693,
+          "raw": "0.9967717111859693",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 300.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[300.0])['scalars']['finite_pulse_g2_dot']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 300.0
+        }
+      ],
+      "visual": {
+        "kind": "scene3d",
+        "spec": {
+          "scene": "cascade",
+          "card": "edge-inp-gainp-design"
+        }
+      },
+      "caveat": "Static (non-headline) loading gives much lower g2; it is shown only as a ghost series.",
+      "notes": "In the headline finite-pulse model the escape rate k_X is {kx230:.0f} /ns at {kx230.T} K and {kx300:.0f} /ns at {kx300.T} K, against gamma_X = {gx230} /ns. The dot reloads many times inside the {pulse_ns} ns pulse, so the dot-only finite-pulse g2 is {g2dot230:.4f} at {g2dot230.T} K and {g2dot300:.4f} at {g2dot300.T} K."
+    },
+    {
+      "id": "s07",
+      "catalog_id": "model-sensitivity",
+      "title": "Which switch made the old optimistic answer",
+      "claim": "Only the headline model cell gates PASS ({m_tf_pass} passes); the static + density cell's {m_ft_pass} passes are a false PASS.",
+      "numbers": [
+        {
+          "label": "static, no density: eligible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:false,tau_cap_density:false[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "m_ff_elig",
+          "tag_declared": "A",
+          "value": "0/768",
+          "raw": "0/768",
+          "resolved_from": "out/rt_edge/verdict.md:69",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "static, no density: flux max",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:false,tau_cap_density:false[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 4
+          },
+          "name": "m_ff_flux",
+          "tag_declared": "A",
+          "value": 861.3,
+          "raw": "861.3",
+          "resolved_from": "out/rt_edge/verdict.md:69",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "static + density: eligible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:false,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "m_ft_elig",
+          "tag_declared": "A",
+          "value": "560/768",
+          "raw": "560/768",
+          "resolved_from": "out/rt_edge/verdict.md:70",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "static + density: passes",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:false,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 2
+          },
+          "name": "m_ft_pass",
+          "tag_declared": "A",
+          "value": 232.0,
+          "raw": "232",
+          "resolved_from": "out/rt_edge/verdict.md:70",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "static + density: g2 min",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:false,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 3
+          },
+          "name": "m_ft_g2",
+          "tag_declared": "A",
+          "value": 0.2977,
+          "raw": "0.2977",
+          "resolved_from": "out/rt_edge/verdict.md:70",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "headline: eligible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:false[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "m_tf_elig",
+          "tag_declared": "A",
+          "value": "16/768",
+          "raw": "16/768",
+          "resolved_from": "out/rt_edge/verdict.md:71",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "headline: passes",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:false[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 2
+          },
+          "name": "m_tf_pass",
+          "tag_declared": "A",
+          "value": 0.0,
+          "raw": "0",
+          "resolved_from": "out/rt_edge/verdict.md:71",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "headline: g2 min",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:false[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 3
+          },
+          "name": "m_tf_g2",
+          "tag_declared": "A",
+          "value": 0.9817,
+          "raw": "0.9817",
+          "resolved_from": "out/rt_edge/verdict.md:71",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "finite + density: eligible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "m_tt_elig",
+          "tag_declared": "A",
+          "value": "608/768",
+          "raw": "608/768",
+          "resolved_from": "out/rt_edge/verdict.md:72",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "finite + density: passes",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 2
+          },
+          "name": "m_tt_pass",
+          "tag_declared": "A",
+          "value": 0.0,
+          "raw": "0",
+          "resolved_from": "out/rt_edge/verdict.md:72",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "finite + density: g2 min",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/rt_edge/verdict.md",
+            "pattern": "^\\| finite_pulse:true,tau_cap_density:true[^|]*\\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 3
+          },
+          "name": "m_tt_g2",
+          "tag_declared": "A",
+          "value": 0.8287,
+          "raw": "0.8287",
+          "resolved_from": "out/rt_edge/verdict.md:72",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "board",
+        "spec": {
+          "preset": "model_2x2",
+          "highlight": "finite_pulse:true,tau_cap_density:false"
+        }
+      },
+      "caveat": "Only the headline cell gates PASS.",
+      "notes": "Static + density gives {m_ft_elig} eligible rows and {m_ft_pass} passes (g2 min {m_ft_g2}), but it never gates. The headline cell has {m_tf_elig} eligible, {m_tf_pass} passes and g2 min {m_tf_g2}. Finite pulse + density: {m_tt_elig} eligible, {m_tt_pass} passes; static without density: {m_ff_elig} eligible, flux max {m_ff_flux} photons/s."
+    },
+    {
+      "id": "s08",
+      "catalog_id": "lindblad",
+      "title": "Is the simulator quantum? Partly.",
+      "claim": "The Lindblad path agrees with the rate ladder and adds filter memory and HOM.",
+      "numbers": [
+        {
+          "label": "HOM indistinguishability at 230 K",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "point",
+            "overrides": {
+              "thermal.T_hs": 230.0,
+              "quantum": {
+                "enabled": true
+              }
+            },
+            "scalar": "quantum_hom_indistinguishability"
+          },
+          "name": "hom230",
+          "tag_declared": "DR",
+          "value": 0.07118154405554632,
+          "raw": "0.07118154405554632",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'thermal.T_hs': 230.0, 'quantum': {'enabled': True}}, T_grid=[230.0])['scalars']['quantum_hom_indistinguishability']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "HOM indistinguishability at 300 K",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "point",
+            "overrides": {
+              "quantum": {
+                "enabled": true
+              }
+            },
+            "scalar": "quantum_hom_indistinguishability"
+          },
+          "name": "hom300",
+          "tag_declared": "DR",
+          "value": 0.29285191727854204,
+          "raw": "0.29285191727854204",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'quantum': {'enabled': True}}, T_grid=[300.0])['scalars']['quantum_hom_indistinguishability']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 300.0
+        },
+        {
+          "label": "filtered CW g2 shift at 230 K (corr)",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "point",
+            "overrides": {
+              "thermal.T_hs": 230.0,
+              "quantum": {
+                "enabled": true
+              }
+            },
+            "scalar": "quantum_g2_cw0_filter_shift_corr"
+          },
+          "name": "shift230",
+          "tag_declared": "DR",
+          "value": 0.07711644783341443,
+          "raw": "0.07711644783341443",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'thermal.T_hs': 230.0, 'quantum': {'enabled': True}}, T_grid=[230.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 230.0
+        },
+        {
+          "label": "filtered CW g2 shift at 300 K (corr)",
+          "unit": "",
+          "source": {
+            "kind": "live",
+            "card": "edge-inp-gainp-design",
+            "mode": "point",
+            "overrides": {
+              "quantum": {
+                "enabled": true
+              }
+            },
+            "scalar": "quantum_g2_cw0_filter_shift_corr"
+          },
+          "name": "shift300",
+          "tag_declared": "DR",
+          "value": 0.18616179286716372,
+          "raw": "0.18616179286716372",
+          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'quantum': {'enabled': True}}, T_grid=[300.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
+          "tag": "A",
+          "tag_source": "live run tag_chain (fsim_core tag_chain)",
+          "at_T": 300.0
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "hom_vs_T"
+        }
+      },
+      "caveat": "Card-level, static (non-headline). The CW g2 shift does not change any verdict.",
+      "notes": "With the card's Lindblad diagnostics on, HOM indistinguishability is {hom230:.3f} at {hom230.T} K and {hom300:.3f} at {hom300.T} K. The filtered CW g2 shift (corr) is {shift230:.3f} and {shift300:.3f} at the same temperatures. These are card-level static (non-headline) diagnostics and change no verdict."
+    },
+    {
+      "id": "s09",
+      "catalog_id": "planar-cavity",
+      "title": "Planar InGaN cavity: pulse fails, SET passes optically",
+      "claim": "The rectangular pulse fails; deterministic SET loading passes optically.",
+      "numbers": [
+        {
+          "label": "pulse: eligible",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "rectangular"
+            },
+            "field": "eligible"
+          },
+          "name": "pulse_elig",
+          "tag_declared": "A",
+          "value": 2.0,
+          "raw": "2",
+          "resolved_from": "out/nitride_cavity/results.md:5 VERDICT eligible",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "pulse: g2 min",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "rectangular"
+            },
+            "field": "g2_min"
+          },
+          "name": "pulse_g2min",
+          "tag_declared": "A",
+          "value": 0.8976643501857965,
+          "raw": "0.8976643501857965",
+          "resolved_from": "out/nitride_cavity/results.md:5 VERDICT g2_min",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET: optical passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "idealized_pass_count"
+          },
+          "name": "set_opt",
+          "tag_declared": "A",
+          "value": 115.0,
+          "raw": "115",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT idealized_pass_count",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET: flux max",
+          "unit": "photons/s",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "flux_max"
+          },
+          "name": "set_flux",
+          "tag_declared": "A",
+          "value": 42909.882808269664,
+          "raw": "42909.882808269664",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT flux_max",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET: g2 min",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "g2_min"
+          },
+          "name": "set_g2",
+          "tag_declared": "A",
+          "value": 0.17355371900826433,
+          "raw": "0.17355371900826433",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT g2_min",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET: status",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "idealized_status"
+          },
+          "name": "set_status",
+          "tag_declared": "A",
+          "value": "pass_hardware_infeasible",
+          "raw": "pass_hardware_infeasible",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT idealized_status",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "g2_vs_flux_scatter",
+          "campaign": "nitride_cavity",
+          "x": "collected_flux_pulsed_s",
+          "y": "g2_op",
+          "color": "T_hs",
+          "facet": "regime"
+        }
+      },
+      "caveat": "SET g2 {set_g2:.4g} is a structural floor set by b_res [A], not a device number.",
+      "notes": "Rectangular pulse: {pulse_elig} eligible rows, best g2 {pulse_g2min:.4g}. Deterministic SET: {set_opt} optical passes, flux max {set_flux:.0f} photons/s, g2 {set_g2:.4g}, so the SET {set_status.say}. That g2 is the floor set by the assumed residual background, so it is not a device number."
+    },
+    {
+      "id": "s10",
+      "catalog_id": "screening",
+      "title": "Screening is the pivot",
+      "claim": "Polarization screening moves SET flux by orders of magnitude, and does not order every metric the same way.",
+      "numbers": [
+        {
+          "label": "SET flux 230 K, s=0",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| deterministic_pair \\| 230 \\| 0 \\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "s0",
+          "tag_declared": "A",
+          "value": 6.33469,
+          "raw": "6.33469",
+          "resolved_from": "out/nitride_cavity/results.md:20",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET flux 230 K, s=0.5",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| deterministic_pair \\| 230 \\| 0.5 \\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "s05",
+          "tag_declared": "A",
+          "value": 2331.14,
+          "raw": "2331.14",
+          "resolved_from": "out/nitride_cavity/results.md:21",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "SET flux 230 K, s=1",
+          "unit": "photons/s",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| deterministic_pair \\| 230 \\| 1 \\| [^|]+\\| ([^|]+) \\|"
+          },
+          "name": "s1",
+          "tag_declared": "A",
+          "value": 570739.0,
+          "raw": "570739",
+          "resolved_from": "out/nitride_cavity/results.md:22",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "paired_bars",
+          "pairs": [
+            "s=0",
+            "s=0.5",
+            "s=1"
+          ],
+          "no_mean": true
+        }
+      },
+      "caveat": "s=0 lower / s=1 upper are scenarios, not ordered bounds on every metric.",
+      "notes": "The SET flux is {s0} photons/s with no screening (s=0), {s05} at s=0.5 and {s1:.3g} at full screening (s=1). The screening fraction is a scenario axis: the three are shown side by side, never averaged, and they do not order every metric the same way."
+    },
+    {
+      "id": "s11",
+      "catalog_id": "nanowire",
+      "title": "Nanowires: optical pass, but commanded is not delivered",
+      "claim": "Predicted without fitting, nanowires pass optically; the as-built contact cannot deliver the pulse.",
+      "numbers": [
+        {
+          "label": "vertical relaxed SET 80 MHz: optical passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "field": "paired_optical_pass"
+          },
+          "name": "v_opt",
+          "tag_declared": "A",
+          "value": 128.0,
+          "raw": "128",
+          "resolved_from": "out/nitride_nanowire/full/results.md:23 VERDICT paired_optical_pass",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "vertical relaxed SET 80 MHz: quality passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "field": "quality_pass"
+          },
+          "name": "v_q",
+          "tag_declared": "A",
+          "value": 87.0,
+          "raw": "87",
+          "resolved_from": "out/nitride_nanowire/full/results.md:23 VERDICT quality_pass",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "horizontal relaxed SET 80 MHz: optical passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "horizontal_as_built",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "field": "paired_optical_pass"
+          },
+          "name": "h_opt",
+          "tag_declared": "A",
+          "value": 58.0,
+          "raw": "58",
+          "resolved_from": "out/nitride_nanowire/full/results.md:15 VERDICT paired_optical_pass",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "horizontal relaxed SET 80 MHz: quality passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "horizontal_as_built",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "field": "quality_pass"
+          },
+          "name": "h_q",
+          "tag_declared": "A",
+          "value": 39.0,
+          "raw": "39",
+          "resolved_from": "out/nitride_nanowire/full/results.md:15 VERDICT quality_pass",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "horizontal best: delivered flux",
+          "unit": "photons/s",
+          "source": {
+            "kind": "best",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "horizontal_as_built"
+            },
+            "field": "delivered_flux"
+          },
+          "name": "h_deliv",
+          "tag_declared": "A",
+          "value": 113102.0,
+          "raw": "113102",
+          "resolved_from": "out/nitride_nanowire/full/results.md:28 BEST_PASSING_FLUX delivered_flux",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "horizontal best: commanded flux",
+          "unit": "photons/s",
+          "source": {
+            "kind": "best",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "horizontal_as_built"
+            },
+            "field": "commanded_flux"
+          },
+          "name": "h_cmd",
+          "tag_declared": "A",
+          "value": 3031280.0,
+          "raw": "3.03128e+06",
+          "resolved_from": "out/nitride_nanowire/full/results.md:28 BEST_PASSING_FLUX commanded_flux",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "vertical best: commanded flux",
+          "unit": "photons/s",
+          "source": {
+            "kind": "best",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic"
+            },
+            "field": "commanded_flux"
+          },
+          "name": "v_cmd",
+          "tag_declared": "A",
+          "value": 5992940.0,
+          "raw": "5.99294e+06",
+          "resolved_from": "out/nitride_nanowire/full/results.md:30 BEST_PASSING_FLUX commanded_flux",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "vertical best: delivered flux",
+          "unit": "photons/s",
+          "source": {
+            "kind": "best",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic"
+            },
+            "field": "delivered_flux"
+          },
+          "name": "v_deliv",
+          "tag_declared": "A",
+          "value": 5475390.0,
+          "raw": "5.47539e+06",
+          "resolved_from": "out/nitride_nanowire/full/results.md:30 BEST_PASSING_FLUX delivered_flux",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "2013 anchor, relaxed prediction",
+          "unit": "nm",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "2013 relaxed predicted lambda_nm=([0-9.]+)"
+          },
+          "name": "a2013",
+          "tag_declared": "A",
+          "value": 444.4178469746954,
+          "raw": "444.4178469746954",
+          "resolved_from": "out/nitride_nanowire/full/results.md:92",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "2014 anchor, relaxed prediction",
+          "unit": "nm",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "2014 relaxed predicted lambda_nm=([0-9.]+)"
+          },
+          "name": "a2014r",
+          "tag_declared": "A",
+          "value": 538.9742247393968,
+          "raw": "538.9742247393968",
+          "resolved_from": "out/nitride_nanowire/full/results.md:92",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "2014 anchor, unrelaxed prediction",
+          "unit": "nm",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "unrelaxed predicted lambda_nm=([0-9.]+)"
+          },
+          "name": "a2014u",
+          "tag_declared": "A",
+          "value": 665.8739573269079,
+          "raw": "665.8739573269079",
+          "resolved_from": "out/nitride_nanowire/full/results.md:92",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "as-built tau_RC (lo)",
+          "unit": "ns",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "tau_RC_ns spans ([0-9.]+)-([0-9.]+)",
+            "group": 1
+          },
+          "name": "rc_lo",
+          "tag_declared": "A",
+          "value": 1.651,
+          "raw": "1.651",
+          "resolved_from": "out/nitride_nanowire/full/results.md:98",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "as-built tau_RC (hi)",
+          "unit": "ns",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "tau_RC_ns spans ([0-9.]+)-([0-9.]+)",
+            "group": 2
+          },
+          "name": "rc_hi",
+          "tag_declared": "A",
+          "value": 26.47,
+          "raw": "26.47",
+          "resolved_from": "out/nitride_nanowire/full/results.md:98",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "name": "nw_pulse_ns",
+          "label": "nanowire pump pulse width (core rows)",
+          "unit": "ns",
+          "tag_declared": "A",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/nitride_nanowire/full/sweep.csv",
+            "filter": {
+              "row_kind": "core"
+            },
+            "col": "tau_pulse_ns",
+            "agg": "unique"
+          },
+          "value": [
+            0.1
+          ],
+          "raw": "0.1",
+          "resolved_from": "out/nitride_nanowire/full/sweep.csv unique(tau_pulse_ns) where {'row_kind': 'core'}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "chart",
+        "spec": {
+          "preset": "delivered_vs_commanded",
+          "campaign": "nitride_nanowire/full",
+          "x": "collected_flux_pulsed_s",
+          "y": "collected_flux_delivered_s",
+          "log": true,
+          "identity_line": true
+        }
+      },
+      "caveat": "Relaxed = headline upper, unrelaxed = conservative; never averaged. The as-built contact (tau_RC {rc_lo}-{rc_hi} ns) cannot deliver a {nw_pulse_ns} ns step.",
+      "notes": "Vertical relaxed SET: {v_opt} optical passes and {v_q} quality passes; horizontal: {h_opt} and {h_q}. The best horizontal row is commanded {h_cmd:.3g} but delivers {h_deliv:.3g} photons/s; the best vertical row {v_cmd:.3g} commanded, {v_deliv:.3g} delivered. Unfitted wavelength anchors: 2013 relaxed {a2013:.1f} nm; 2014 relaxed {a2014r:.1f} nm, unrelaxed {a2014u:.1f} nm."
+    },
+    {
+      "id": "s12",
+      "catalog_id": "coulomb-wall",
+      "title": "The common wall: Coulomb blockade",
+      "claim": "Every deterministic-loading design fails the charging-energy screen at {wall_T_lo}-{wall_T_hi} K.",
+      "numbers": [
+        {
+          "name": "wall_T_lo",
+          "label": "deterministic-loading rows: lowest T_hs",
+          "unit": "K",
+          "tag_declared": "A",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/nitride_cavity/sweep.csv",
+            "filter": {
+              "regime": "deterministic_pair"
+            },
+            "col": "T_hs",
+            "agg": "min"
+          },
+          "value": 230.0,
+          "raw": "230.0",
+          "resolved_from": "out/nitride_cavity/sweep.csv min(T_hs) where {'regime': 'deterministic_pair'}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "name": "wall_T_hi",
+          "label": "deterministic-loading rows: highest T_hs",
+          "unit": "K",
+          "tag_declared": "A",
+          "source": {
+            "kind": "csv_agg",
+            "file": "out/nitride_cavity/sweep.csv",
+            "filter": {
+              "regime": "deterministic_pair"
+            },
+            "col": "T_hs",
+            "agg": "max"
+          },
+          "value": 300.0,
+          "raw": "300.0",
+          "resolved_from": "out/nitride_cavity/sweep.csv max(T_hs) where {'regime': 'deterministic_pair'}",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar E_C/kT, island r 5 nm, 230 K",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| 5 \\| 230 \\| [^|]+\\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "ec230",
+          "tag_declared": "A",
+          "value": 1.53,
+          "raw": "1.53",
+          "resolved_from": "out/nitride_cavity/results.md:62",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar E_C/kT, island r 5 nm, 300 K",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| 5 \\| 300 \\| [^|]+\\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 1
+          },
+          "name": "ec300",
+          "tag_declared": "A",
+          "value": 1.173,
+          "raw": "1.173",
+          "resolved_from": "out/nitride_cavity/results.md:65",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar allowed max island radius, 230 K",
+          "unit": "nm",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| 5 \\| 230 \\| [^|]+\\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 2
+          },
+          "name": "rmax230",
+          "tag_declared": "A",
+          "value": 0.7648,
+          "raw": "0.7648",
+          "resolved_from": "out/nitride_cavity/results.md:62",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar allowed max island radius, 300 K",
+          "unit": "nm",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_cavity/results.md",
+            "pattern": "^\\| 5 \\| 300 \\| [^|]+\\| ([^|]+) \\| ([^|]+) \\|",
+            "group": 2
+          },
+          "name": "rmax300",
+          "tag_declared": "A",
+          "value": 0.5863,
+          "raw": "0.5863",
+          "resolved_from": "out/nitride_cavity/results.md:65",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "required E_C/kT margin",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_geometry_stark/results.md",
+            "pattern": "required margin ec_margin=([0-9.]+)"
+          },
+          "name": "ec_margin",
+          "tag_declared": "A",
+          "value": 10.0,
+          "raw": "10",
+          "resolved_from": "out/nitride_geometry_stark/results.md:71",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire E_C/kT (lo)",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "set_EC_over_kT spans ([0-9.]+)-([0-9.]+)",
+            "group": 1
+          },
+          "name": "nw_ec_lo",
+          "tag_declared": "A",
+          "value": 0.1464,
+          "raw": "0.1464",
+          "resolved_from": "out/nitride_nanowire/full/results.md:109",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire E_C/kT (hi)",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "set_EC_over_kT spans ([0-9.]+)-([0-9.]+)",
+            "group": 2
+          },
+          "name": "nw_ec_hi",
+          "tag_declared": "A",
+          "value": 0.7643,
+          "raw": "0.7643",
+          "resolved_from": "out/nitride_nanowire/full/results.md:109",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire set_feasible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "set_feasible=True count=([0-9]+/[0-9]+)"
+          },
+          "name": "nw_set",
+          "tag_declared": "A",
+          "value": "0/1152",
+          "raw": "0/1152",
+          "resolved_from": "out/nitride_nanowire/full/results.md:109",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire rti_feasible",
+          "unit": "",
+          "source": {
+            "kind": "md_regex",
+            "file": "out/nitride_nanowire/full/results.md",
+            "pattern": "rti_feasible=True count=([0-9]+/[0-9]+)"
+          },
+          "name": "nw_rti",
+          "tag_declared": "A",
+          "value": "0/1152",
+          "raw": "0/1152",
+          "resolved_from": "out/nitride_nanowire/full/results.md:109",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "scene3d",
+        "spec": {
+          "scene": "band",
+          "card": "nitride-cavity-set-design",
+          "companion": "ec_over_kt_bars"
+        }
+      },
+      "caveat": "rti_feasible False is a conditional screen, not a demonstrated failure.",
+      "notes": "Planar SET islands give E_C/kT of {ec230} and {ec300} (at {wall_T_lo} and {wall_T_hi} K) against a required margin of {ec_margin}; the largest allowed island radius is {rmax300}-{rmax230} nm. Nanowire E_C/kT spans {nw_ec_lo}-{nw_ec_hi}; the single-electron turnstile is feasible in {nw_set} rows and the resonant-tunnelling injector in {nw_rti}. The injector result is a conditional screen, not a demonstrated failure."
+    },
+    {
+      "id": "s13",
+      "catalog_id": "scorecard",
+      "title": "Scorecard",
+      "claim": "Three platforms priced end to end: the RT edge emitter {sc_rt.say}; the planar cavity SET {sc_cav.say}; the nanowire vertical SET {sc_nw.say}.",
+      "numbers": [
+        {
+          "label": "RT edge (InP/GaInP)",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/rt_edge/verdict.md",
+            "word": true
+          },
+          "name": "sc_rt",
+          "tag_declared": "A",
+          "value": "FAIL",
+          "raw": "FAIL",
+          "resolved_from": "out/rt_edge/verdict.md:6 (VERDICT word)",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar cavity SET",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "idealized_status"
+          },
+          "name": "sc_cav",
+          "tag_declared": "A",
+          "value": "pass_hardware_infeasible",
+          "raw": "pass_hardware_infeasible",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT idealized_status",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "planar cavity SET hardware passes",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_cavity/results.md",
+            "match": {
+              "regime": "deterministic_pair"
+            },
+            "field": "hardware_pass_count"
+          },
+          "name": "sc_cav_hw",
+          "tag_declared": "A",
+          "value": 0.0,
+          "raw": "0",
+          "resolved_from": "out/nitride_cavity/results.md:7 VERDICT hardware_pass_count",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "geometry/Stark c-plane SET (screened)",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_geometry_stark/results.md",
+            "word": true,
+            "match": {
+              "family": "c_plane",
+              "regime": "deterministic_pair",
+              "screening": "screened_upper"
+            }
+          },
+          "name": "sc_geo",
+          "tag_declared": "A",
+          "value": "pass_hardware_infeasible",
+          "raw": "pass_hardware_infeasible",
+          "resolved_from": "out/nitride_geometry_stark/results.md:8 (VERDICT word)",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire vertical relaxed SET 80 MHz",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "word": true
+          },
+          "name": "sc_nw",
+          "tag_declared": "A",
+          "value": "pass_hardware_infeasible",
+          "raw": "pass_hardware_infeasible",
+          "resolved_from": "out/nitride_nanowire/full/results.md:23 (VERDICT word)",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        },
+        {
+          "label": "nanowire vertical relaxed SET: hardware qualified",
+          "unit": "",
+          "source": {
+            "kind": "verdict",
+            "file": "out/nitride_nanowire/full/results.md",
+            "match": {
+              "family": "vertical_photonic",
+              "regime": "deterministic_pair",
+              "strain_bound": "relaxed",
+              "rep_rate_hz": "8e+07"
+            },
+            "field": "hardware_qualified"
+          },
+          "name": "sc_nw_hw",
+          "tag_declared": "A",
+          "value": 0.0,
+          "raw": "0",
+          "resolved_from": "out/nitride_nanowire/full/results.md:23 VERDICT hardware_qualified",
+          "tag": "A",
+          "tag_source": "declared in the story (the source prints no tag)"
+        }
+      ],
+      "visual": {
+        "kind": "board",
+        "spec": {
+          "preset": "scorecard",
+          "campaigns": [
+            "rt_edge",
+            "nitride_cavity",
+            "nitride_geometry_stark",
+            "nitride_nanowire/full"
+          ]
+        }
+      },
+      "caveat": "COMSOL work orders are pending; no COMSOL result enters any number here.",
+      "notes": "The RT edge emitter {sc_rt.say} outright (VERDICT {sc_rt}). The planar cavity SET {sc_cav.say}: {sc_cav_hw} rows pass in hardware. The screened c-plane SET from the geometry/Stark study also {sc_geo.say}. The relaxed vertical nanowire SET {sc_nw.say} too, with {sc_nw_hw} rows hardware-qualified. No COMSOL result enters any number here."
+    }
+  ],
+  "baked_hash": "9cf79db269c05ddd4a4aacf3e0f00e6060901ccbc527b65b9229c0ce098aab29",
+  "baked_fsim_core_hash": "875a40716a9b630e4dbd46dfd3b163d75b11eab93d3982a04fd0ef025f86c2a7",
+  "baked_at": "2026-10-08T09:25:45+00:00",
+  "bake_errors": []
+}

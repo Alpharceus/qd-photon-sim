@@ -10,9 +10,21 @@ known parameter engaged at once --
     (F6 tracking rule: mode red of the 659.5 nm cryo line by the Varshni walk
     to T_target = 120 K), AlGaInP-class contrast 3.5/3.0, spacer 3.4. The DBR
     tier solves the VERTICAL (1-D) problem; in-plane confinement/collection
-    stays [A] (G from the planar-lambda preset) pending SIM-B. F_P from the
-    1-D antinode LDOS [E->analytic-1D]. dE_cav/dT from uniform dn/dT 2.3e-4/K
-    [E class].
+    stays [A] (G from the planar-lambda preset) pending SIM-B. dE_cav/dT from
+    uniform dn/dT 2.3e-4/K [E class].
+    Audit H5 (fixed 2026-09-23, same treatment as run_geom_sweep.py and
+    run_rt_campaign.py): NO planar value is wired into d.cavity.F_P. The
+    cavity F_P stays at the planar-lambda preset's mode-only [A] value
+    (device.py reads F_P as a single-Lorentzian mode-only factor). Two
+    planar numbers are PRINTED as diagnostics only:
+      - F_total_planar = dbr.planar_total_rate at the centre antinode
+        (z = d_spacer/2) [E->analytic-1D-planar]: the TOTAL emission-rate
+        multiplier over all channels, ~1.0 for a planar DBR microcavity
+        (Bjork et al., PRA 44, 669 (1991); Benisty et al., IEEE JQE 34,
+        1612 (1998)); never passed through purcell_eff or into F_P.
+      - F_planar_1d_onaxis = max over the spacer of the 1-D, on-axis
+        antinode LDOS dbr.planar_purcell [E->analytic-1D]: not a Purcell
+        factor of any kind (before H5 it was wired in as F_P here).
   * drive: the full T1 mechanism roster, each priced honestly at the junction
     temperature (SETs hit the F9 wall at >= 77 K -- that IS the result).
   * temperatures: 77 / 120 / 300 K (RT explicitly included) + T_c.
@@ -33,7 +45,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fsim_core.dbr import cavity_stack, dEdT_cav, invert_kappa, planar_purcell
+from fsim_core.dbr import (cavity_stack, dEdT_cav, invert_kappa, planar_purcell,
+                            planar_total_rate)
 from fsim_core.device import evaluate
 from fsim_core.drive_mech import reexc_g2
 from fsim_core.presets import preset_device
@@ -43,8 +56,8 @@ OUT = Path(__file__).resolve().parents[1] / "out" / "tier_device"
 OUT.mkdir(parents=True, exist_ok=True)
 
 T_OPS = [77.0, 120.0, 300.0]
-LAMBDA0 = 668.0          # nm; 120 K tracking-rule placement [work order SIM-B1]
-N_H, N_L, N_C = 3.5, 3.0, 3.4   # AlGaInP-class [work order SIM-B0 pending]
+LAMBDA0 = 668.0          # nm; 120 K tracking-rule placement
+N_H, N_L, N_C = 3.5, 3.0, 3.4   # AlGaInP-class
 DNDT = 2.3e-4            # 1/K, uniform III-V class [E]
 KAPPA_TARGET = 1.06      # meV; staged 120K/0.1 spec ceiling
 
@@ -58,19 +71,28 @@ top, spacer, bottom = cavity_stack(N_H, N_L, N_C, sol["n_top"], sol["n_bottom"],
                                    dn_dT_c=DNDT)
 stack = top + [spacer] + bottom
 dEdT = dEdT_cav(stack, LAMBDA0, n_out=N_H)
-# 1-D antinode LDOS: scan the spacer for the max (lambda cavity: two antinodes)
+# 1-D, on-axis antinode LDOS: scan the spacer for the max (lambda cavity:
+# two antinodes). DIAGNOSTIC ONLY (audit H5): not a Purcell factor.
 zs = np.linspace(0.0, spacer.d_nm, 41)
 Fz = [planar_purcell(top, bottom, N_C, spacer.d_nm, z, LAMBDA0, n_out=N_H)
       for z in zs]
-F_planar = float(max(Fz))
+F_planar_1d_onaxis = float(max(Fz))
 z_anti = float(zs[int(np.argmax(Fz))])
+# Total emission-rate multiplier over ALL channels at the centre antinode
+# (standard QD placement, z = d_spacer/2) [E->analytic-1D-planar]; printed
+# diagnostic only, never used as a cavity-mode F_P (audit H5).
+F_total_planar = float(planar_total_rate(top, bottom, N_C, spacer.d_nm,
+                                         0.5 * spacer.d_nm, LAMBDA0, n_out=N_H))
 print(f"pairs top/bottom : {sol['n_top']} / {sol['n_bottom']}  "
       f"(contrast {N_H}/{N_L}, spacer n={N_C}, lambda0={LAMBDA0} nm)")
 print(f"kappa            : {sol['kappa_meV']:.3f} meV  (target <= {KAPPA_TARGET})")
 print(f"Q                : {sol['Q']:.0f}")
 print(f"L_pen            : {sol['L_pen_nm']:.0f} nm")
 print(f"dE_cav/dT        : {dEdT:+.4f} meV/K  [E, uniform dn/dT {DNDT:.1e}]")
-print(f"F_planar(antinode {z_anti:.0f} nm): {F_planar:.2f}  [E->analytic-1D; NOT 3-D F_P]")
+print(f"F_total_planar(centre antinode {0.5 * spacer.d_nm:.0f} nm): {F_total_planar:.3f}  "
+      f"[E->analytic-1D-planar; total-rate multiplier, all channels; diagnostic, NOT F_P]")
+print(f"F_planar_1d_onaxis(antinode {z_anti:.0f} nm): {F_planar_1d_onaxis:.2f}  "
+      f"[E->analytic-1D; on-axis LDOS diagnostic only, NOT a Purcell factor, NOT F_P]")
 
 # ------------------------------------------------------------- base device
 base = preset_device("staged-inp-gaasp", "GaAs", "planar-lambda",
@@ -80,7 +102,9 @@ base.dot.phonon = {}                            #  isotropic l_xy default)
 base.cavity.kappa = sol["kappa_meV"]            # T3 tier numbers
 base.cavity.dEdT_cav = dEdT
 base.cavity.T_track = 120.0
-base.cavity.F_P = F_planar                      # [E->analytic-1D]
+# Audit H5: no planar value is wired into base.cavity.F_P -- it stays at the
+# planar-lambda preset's mode-only [A] value; F_total_planar and
+# F_planar_1d_onaxis above are printed diagnostics only.
 base.thermal.mesa_diameter_um = 1.0             # spec floor
 base.aperture.density_cm2 = 2.0e8               # F5 growth target
 pp = PhononParams()

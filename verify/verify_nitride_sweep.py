@@ -117,6 +117,25 @@ def main(argv=None):
                man["output_hashes"].get("pulse_vs_set.png")!=man["output_hashes"].get("temperature_response.png")]
     for name in ("height_response.png","temperature_response.png","cavity_q_response.png","envelope_pulse.png","envelope_set.png","pulse_vs_set.png","set_feasibility.png"):
         checks.append((out/name).is_file() and (out/name).stat().st_size>1000)
+    # Audit C4 prose pins, recomputed here from the CSVs (not from the
+    # generator): (1) each VERDICT line reports invalid headline rows
+    # separately, and flux_floor_excluded counts VALID rows below the floor
+    # only; (2) no blanket 'screening_fraction=1.0 rows ... are the UPPER
+    # BOUND' claim -- the rectangular pulsed flux is LOWER at screening 1 in
+    # the scenario table, and the page must say so; (3) the SET-floor note
+    # points at the table ABOVE it; (4) no duplicated sensitivity-table line.
+    import re as _re
+    for reg in sweep.HEAD["regime"]:
+        hr=[r for r in rows if r["regime"]==reg]
+        n_inv=sum(not _bool(r["valid"]) for r in hr); n_el=sum(_bool(r["eligible"]) for r in hr)
+        vl=[l for l in md.splitlines() if l.startswith("VERDICT:") and f"regime={reg} " in l]
+        checks.append(len(vl)==1 and f" invalid={n_inv} " in vl[0] and f" flux_floor_excluded={len(hr)-n_inv-n_el} " in vl[0])
+    checks.append("rows below are the UPPER BOUND" not in md and "bounds table below" not in md)
+    _rect=[r for r in sens if r.get("row_kind") in ("reference","bound") and r["regime"]=="rectangular" and _num(r["height_nm"])==3 and _num(r["Q"])==2000 and _num(r["T_hs"])==300]
+    _f0=[_num(r["signal_flux_s"]) for r in _rect if _num(r["screening_fraction"])==0]; _f1=[_num(r["signal_flux_s"]) for r in _rect if _num(r["screening_fraction"])==1]
+    checks.append(bool(_f0) and bool(_f1) and (_f1[0]>=_f0[0] or bool(_re.search(r"- rectangular flux: screening_fraction=1 is the UNFAVOURABLE side", md))))
+    _sens_lines=[l for l in md.splitlines() if l.startswith("| ") and l.count("|")==7 and not l.startswith("| axis") and not l.startswith("| regime")]
+    checks.append(len(_sens_lines)==len(set(_sens_lines)))
     print("numerical verification: evaluator replay [A rtol=1e-8, atol=1e-10]")
     print("source transcription: Deshpande 2014 g2=0.29 [V abstract-only]")
     print("non-gating model comparison: no held-out prediction claim")

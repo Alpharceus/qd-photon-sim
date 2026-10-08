@@ -76,8 +76,12 @@ for label, m in (('electron-like (GaN me_xy)', g.me_xy), ('hole-like (GaN mh_xy)
 # round's -0.185/+11.115 meV numbers, not these.
 l_desh = levels(NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.25,
                                        strain_bound='relaxed'), 300.)
-C('sp_split_e_meV within 0.1 meV of 13.93 at the Deshpande geometry',
-  l_desh.valid and abs(l_desh.sp_split_e_meV-13.93) < .1)
+# 12.49 meV = (j11^2 - j01^2) hbar^2 / (2 m_xy R^2) with j01 = 2.40483,
+# j11 = 3.83171, R = 12.5 nm and the in-plane VCA mass m_xy = 0.75*0.209 +
+# 0.25*0.068 = 0.17375 (Rinke 2008 m_e-perp, corrected axis, 2026-09-23;
+# 13.93 meV with the old swapped m_xy = 0.15575) [DR].
+C('sp_split_e_meV within 0.1 meV of 12.49 at the Deshpande geometry',
+  l_desh.valid and abs(l_desh.sp_split_e_meV-12.49) < .1)
 C('sp_split_h_meV within 0.1 meV of 3.31 at the Deshpande geometry',
   l_desh.valid and abs(l_desh.sp_split_h_meV-3.31) < .1)
 
@@ -155,7 +159,7 @@ C('k_nr_ns adds once to k_X_ns, once (not doubled) to k_XX_ns',
 # the default call; verified directly (no row is exempted from the
 # expected-valid branch below, and never clamped -- levels() only reports
 # valid when the actual convergence gates pass at whatever z_points it
-# settled on). All 32 rows must be valid AND -- re-solved at an EXTERNALLY
+# settled on). All 32 rows (except the 4 C4 field_collapse rows, below) must be valid AND -- re-solved at an EXTERNALLY
 # doubled resolution called fresh through the public levels() API, not the
 # internal gate's own numbers -- converged in E_X (<=0.5 meV) and overlap
 # (<=2%).
@@ -169,6 +173,21 @@ for h in (1.5, 4):
                     q = levels(sysx, t)
                     tag = str((h, rad, x, t, b))
                     qq = levels(sysx, t, z_points=2403, exterior_nm=90.)
+                    # C4 re-pin: rows whose electrostatic drop |F|*h reaches
+                    # the strained gap (closed form, gap from band_edges at
+                    # this row's own strain state) are now field_collapse
+                    # invalid by design -- the 4 rows H=4, x_in=0.40,
+                    # unrelaxed (2.59 eV drop vs 2.15 eV gap). They must be
+                    # invalid with exactly that one reason at both
+                    # resolutions; every other row keeps the old check.
+                    from fsim_core.nitride_materials import band_edges as _be, ingaN as _ig
+                    _de = _be(_ig(x), float(t), substrate=binary('GaN'), strain_fraction=0 if b == 'relaxed' else 1)
+                    if q.field_kVcm == q.field_kVcm and abs(q.field_kVcm) * h * 1e-4 >= _de['Ec_eV'] - _de['Ev_eV']:
+                        _zr = ('field_collapse (|F|*h_eff >= strained InGaN gap: interband Zener breakdown, '
+                               'unscreened field not self-consistent)',)
+                        C('refinement ' + tag + ' expected field_collapse invalid (closed-form drop >= strained gap) at both resolutions',
+                          (not q.valid) and (not qq.valid) and q.invalid_reasons == _zr and qq.invalid_reasons == _zr)
+                        continue
                     ok = (q.valid and qq.valid
                           and abs(qq.E_X_eV-q.E_X_eV)*1000 <= .5
                           and abs(qq.overlap_sq-q.overlap_sq)/q.overlap_sq <= .02)
@@ -278,6 +297,42 @@ C('L1: finite-barrier disc E_perp is strictly below independent 9.054 meV hard-w
   l_disc_in_100.transverse_e_meV < 9.054)
 C('L2: returned resolutions are disclosed in approximation metadata',
   _z_points_used(l_headline) is not None and _z_points_used(l_headline_default) is not None)
+
+# ---- C4 (audit Phase C item 4, follow-up to C0/D1): Zener / field-collapse
+# validity floor, same rule and reason string as the planar nitride_levels.
+# The threshold is re-derived HERE in closed form from the materials module's
+# strained gap (band_edges at each system's OWN strain state) and the solved
+# field: invalid iff |F| * height * 1e-4 eV >= Ec - Ev [DR, uniform-field slab].
+from fsim_core.nitride_materials import band_edges, ingaN
+ZENER = 'field_collapse (|F|*h_eff >= strained InGaN gap: interband Zener breakdown, unscreened field not self-consistent)'
+_gap = {sb: (lambda de: de['Ec_eV'] - de['Ev_eV'])(band_edges(ingaN(.4), 300., substrate=binary('GaN'), strain_fraction=sf))
+        for sb, sf in (('relaxed', 0), ('unrelaxed', 1))}
+z3 = levels(NitrideNanowireSystem(height_nm=3., x_in=.4, strain_bound='unrelaxed'), 300.)
+z4 = levels(NitrideNanowireSystem(height_nm=4., x_in=.4, strain_bound='unrelaxed'), 300.)
+h_star = _gap['unrelaxed'] / (abs(z3.field_kVcm) * 1e-4)
+print('C4 Zener floor: unrelaxed x=0.40 gap %.4f eV, |F| %.1f kV/cm -> closed-form threshold height %.3f nm'
+      % (_gap['unrelaxed'], abs(z3.field_kVcm), h_star))
+C('C4 Zener floor: closed-form threshold height lies between the 3 nm (valid) and 4 nm (field_collapse) discs, '
+  'the committed-sweep boundary (vertical_photonic unrelaxed x_in=0.40 h=4 nm rows)',
+  3. < h_star < 4. and z3.valid and not z4.valid and z4.invalid_reasons == (ZENER,)
+  and z4.field_kVcm == z3.field_kVcm)
+z4d = levels(NitrideNanowireSystem(height_nm=4., core_radius_nm=100., outer_radius_nm=100., disc_radius_nm=50.,
+                                    x_in=.4, strain_bound='unrelaxed'), 300.)
+C('C4 Zener floor applies to the vertical disc-in-wire branch too (same reason string)',
+  not z4d.valid and z4d.invalid_reasons == (ZENER,))
+# Own-strain-state discrimination: screening=1 leaves exactly the external
+# field, set so the drop across 3 nm sits midway between the relaxed and the
+# unrelaxed strained gaps -> only the relaxed (smaller-gap) system collapses.
+F_mid = -0.5 * (_gap['relaxed'] + _gap['unrelaxed']) / (3. * 1e-4)
+zr = levels(NitrideNanowireSystem(height_nm=3., x_in=.4, strain_bound='relaxed', screening_fraction=1.,
+                                   external_field_kVcm=F_mid), 300.)
+zu = levels(NitrideNanowireSystem(height_nm=3., x_in=.4, strain_bound='unrelaxed', screening_fraction=1.,
+                                   external_field_kVcm=F_mid), 300.)
+C('C4 Zener floor uses the nanowire OWN strain state for the gap: a drop between the relaxed (%.4f eV) and '
+  'unrelaxed (%.4f eV) gaps invalidates only the relaxed system' % (_gap['relaxed'], _gap['unrelaxed']),
+  _gap['relaxed'] < _gap['unrelaxed'] and zr.invalid_reasons == (ZENER,) and zu.valid)
+C('C4 Zener floor does not escalate z_points (grid-independent reason returned at the requested resolution)',
+  levels(NitrideNanowireSystem(height_nm=4., x_in=.4, strain_bound='unrelaxed'), 300., z_points=401).invalid_reasons == (ZENER,))
 
 print('%d/%d nitride nanowire levels checks passed' % (sum(c), len(c)))
 raise SystemExit(0 if all(c) else 1)

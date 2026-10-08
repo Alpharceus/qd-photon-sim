@@ -37,10 +37,20 @@ meta:
     electron and the hole; 'ingan_qw' only when BOTH select the well,
     'gan_barrier' only when BOTH select the plateau, 'mixed' if they select
     different channels): at this card's own default geometry (H=3.5 nm,
-    w=3.0 nm, R=20 nm, screening_fraction=0.0) BOTH carriers select the
-    wider GaN plateau, so reservoir_kind='gan_barrier' (pinned in
+    w=3.0 nm, R=20 nm, screening_fraction=0.0) the two carriers select DIFFERENT channels -- the ELECTRON the
+    surrounding InGaN well (its well subband edge lies only about 1.1 meV
+    below its GaN-plateau edge at 300 K), the HOLE the wider GaN plateau
+    (its well edge lies about 54 meV above the plateau edge) -- so
+    reservoir_kind='mixed'. The label is FRAGILE: a ~1 meV shift of the
+    electron's well edge (strain, mass, composition or temperature
+    inputs) flips it to 'gan_barrier' [DR, fsim_core.nitride_levels.
+    _qw_levels er-ce / hr-ch at this card's defaults, audit C4]
+    (was 'gan_barrier' before the 2026-09-23 audit-nitride-strain-mass
+    correction of the Rinke et al., PRB 77, 075202 (2008) electron-mass
+    axes and the anisotropic strain shift, which moved the well/plateau
+    edges) (pinned in
     verify/verify_nitride_geometry_cards.py); raising nitride.dot.
-    screening_fraction toward 1.0 pulls both carriers back into the SAME
+    screening_fraction toward 1.0 pulls both carriers into the SAME
     surrounding InGaN well (x_in=0.25, wl_thickness_nm=3.0 nm) shared
     between the confinement dot and the diode's own SRH background layer,
     giving reservoir_kind='ingan_qw' instead, closing the reservoir-vs-

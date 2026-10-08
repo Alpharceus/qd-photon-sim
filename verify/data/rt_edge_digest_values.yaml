@@ -177,3 +177,18 @@ entries:
     value: 150
     unit: meV
     digest_section: "not in paper_digests.md; full-text-confirmed 2026-09-05 (arXiv:0812.0452, Table 1): 'Structure (a) (b) (c) (d) (e) / EA (meV) 150 205 220 251 272' -- structure (a) is the reference Al0.20Ga0.80InP barrier with no additional cladding or tunnel barrier."
+
+  # --- Lecamp, Lalanne & Hugonin, PRL 99, 023902 (2007) -- NOT in the
+  # digest set, and NOT a transcribed paper number: a [DR] closed-form
+  # evaluation of their guided-mode Purcell formula on the HKUST ridge
+  # (audit H4, 2026-09-22). The independent number is the one printed by
+  # the audit's own script .workers/review/audit-scripts/
+  # photonics_waveguide_checks.py (beta 0.04078), which never reads the
+  # ledger.
+  - doi: "10.1103/PhysRevLett.99.023902"
+    author: "Lecamp"
+    year: 2007
+    quantity: "hkust_ridge_guided_beta"
+    value: 0.0408
+    unit: fraction
+    digest_section: "not in paper_digests.md; derived value: audit script photonics_waveguide_checks.py prints 'Lecamp F 0.04251 beta 0.04078' for the HKUST ridge (668 nm, 2000 nm ridge, 1200 nm etch) with the energy-normalised area at the dot, 0.2534 um^2."

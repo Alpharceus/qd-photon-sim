@@ -219,9 +219,19 @@ def stark_trace_slope(polarity, screening):
     ok('physics-coupled derivative at V_j=0.50 is valid', out[1]['derivative_valid'])
     return out[1]['dE_X_dV_meV_per_V']
 
+# Re-pinned 2026-09-23 (physics audit, nitride_levels:339): the exciton
+# Coulomb term is now the exact frozen-orbital sqrt(pi)/L*erfcx(z_sep/L)
+# instead of the quadrature sqrt(pi)/sqrt(L^2+2 z_sep^2). Previous pins:
+# (+1,0)-12.9527 (+1,.5)-9.5502 (+1,1)+2.8844 (-1,0)+13.5229 (-1,.5)+10.6844
+# (-1,1)+2.8844 meV/V. Tolerance unchanged (1e-3 meV/V).
+# Re-pinned again 2026-09-23 (strain-mass audit): Rinke 2008 electron-mass
+# axes corrected (me_z 0.186 along c) and the anisotropic Yan 2014 A-gap
+# strain shift replaces the volume-only a_V form. Previous (erfcx) pins:
+# (+1,0)-12.9695 (+1,.5)-9.5217 (+1,1)+2.5068 (-1,0)+13.5561 (-1,.5)+10.6713
+# (-1,1)+2.5068 meV/V. Tolerance unchanged (1e-3 meV/V).
 PINNED_SLOPES_MEV_PER_V = {
-    (1, 0.0): -12.9527, (1, 0.5): -9.5502, (1, 1.0): 2.8844,
-    (-1, 0.0): 13.5229, (-1, 0.5): 10.6844, (-1, 1.0): 2.8844,
+    (1, 0.0): -12.1164, (1, 0.5): -8.8436, (1, 1.0): 2.2985,
+    (-1, 0.0): 12.6727, (-1, 0.5): 9.9297, (-1, 1.0): 2.2985,
 }
 computed_slopes = {}
 for (polarity, screening), expect in PINNED_SLOPES_MEV_PER_V.items():
@@ -234,8 +244,8 @@ for (polarity, screening), expect in PINNED_SLOPES_MEV_PER_V.items():
 # and must be the SAME regardless of field_polarity's sign convention.
 ok('zero-polarization limit is polarity-independent',
    abs(computed_slopes[(1, 1.0)] - computed_slopes[(-1, 1.0)]) < 1e-6)
-ok('zero-polarization limit matches pinned +2.8844 meV/V',
-   abs(computed_slopes[(1, 1.0)] - 2.8844) < 1e-3)
+ok('zero-polarization limit matches pinned +2.2985 meV/V',
+   abs(computed_slopes[(1, 1.0)] - 2.2985) < 1e-3)
 # Polarity sign rule (screening=0, unscreened intrinsic field dominates):
 # field_polarity=+1 gives a negative slope, -1 gives a positive slope.
 ok('polarity sign rule at screening=0', computed_slopes[(1, 0.0)] < 0 < computed_slopes[(-1, 0.0)])

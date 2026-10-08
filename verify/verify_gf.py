@@ -430,6 +430,63 @@ def _():
     assert won["g2_op"] <= ref["g2_op"] + 1e-12
 
 
+@check("R2 Purcell wire rate law (audit 2026-09-23): (i) on resonance F_eff = "
+       "1 + F_P*kappa/(kappa+Gamma) (closed form cavity_transmission(0)); (ii) at "
+       "|dx| = (kappa+Gamma)/2 the cavity term is exactly half its resonant value "
+       "(emitter-cavity Lorentzian FWHM kappa+Gamma, not kappa); (iii) with "
+       "finite_pulse, pulse_counting's survival gamma/(gamma+k) equals S to 1e-9 "
+       "(absolute escape rates, not multiplied by F_eff)")
+def _():
+    from copy import deepcopy
+    from fsim_core.device import DeviceDesign, evaluate
+    # [DR] Lindblad weak coupling: Gamma_tot/Gamma_0 = 1 + F_P * kappa(kappa+g)/4
+    # / (dx^2 + ((kappa+g)/2)^2) (Lorentzian-Lorentzian convolution); closed
+    # forms below are written out here, never read back from spectral.py.
+    base = DeviceDesign()
+    base.cavity.enabled = True
+    base.cavity.purcell_wire = True
+    base.cavity.F_P = 10.0
+    base.cavity.kappa = 1.0
+    base.thermal.T_hs = 300.0
+    base.drive.I_uA = 1e-9       # no junction heating: T_j = T_hs
+    base.drive.b_e = 0.0
+    res = deepcopy(base)
+    res.cavity.T_track = 300.0   # cavity tracked onto X at the op point
+    s = evaluate(res, T_grid=[300.0])["scalars"]
+    g, k, F = s["gamma_op"], res.cavity.kappa, res.cavity.F_P
+    assert abs(s["cavity_detuning_op_meV"]) < 1e-6, s["cavity_detuning_op_meV"]
+    want = 1.0 + F * k / (k + g)
+    assert abs(s["F_eff_wire_op"] - want) <= 1e-12 * want, (s["F_eff_wire_op"], want)
+    # (ii) detuned by T_track != T_j; dx and Gamma do not depend on kappa, so
+    # pick kappa with (kappa + Gamma)/2 = |dx| exactly.
+    det = deepcopy(base)
+    det.cavity.T_track = 250.0
+    s0 = evaluate(det, T_grid=[300.0])["scalars"]
+    dx, g = s0["cavity_detuning_op_meV"], s0["gamma_op"]
+    det.cavity.kappa = 2.0 * abs(dx) - g
+    assert det.cavity.kappa > 0, (dx, g)
+    s1 = evaluate(det, T_grid=[300.0])["scalars"]
+    assert s1["cavity_detuning_op_meV"] == dx and s1["gamma_op"] == g
+    k = det.cavity.kappa
+    half = 0.5 * F * k / (k + g)     # half the resonant cavity term
+    got = s1["F_eff_wire_op"] - 1.0
+    assert abs(got - half) <= 1e-12 * half, (got, half)
+    # (iii) absolute escape rates on the finite-pulse path.
+    root = Path(__file__).resolve().parents[1]
+    fp = DeviceDesign.load(str(root / "cards" / "edge-inp-gainp-design.yaml"))
+    fp.emission.type = "none"    # edge and cavity are mutually exclusive
+    fp.cavity.enabled = True
+    fp.cavity.purcell_wire = True
+    fp.cavity.T_track = 300.0
+    fp.drive.finite_pulse = True
+    fp.thermal.T_hs = 300.0
+    sf = evaluate(fp, T_grid=[300.0])["scalars"]
+    assert sf["finite_pulse_converged"] and sf["F_eff_wire_op"] > 1.5, sf["F_eff_wire_op"]
+    gx, kx = sf["finite_pulse_gamma_X_ns"], sf["finite_pulse_k_X"]
+    surv = gx / (gx + kx)
+    assert abs(surv - sf["S_resolved"]) <= 1e-9 * sf["S_resolved"], (surv, sf["S_resolved"])
+
+
 @check("V-a GATE (T2): the six Chatzarakis points re-evaluated with the IBM "
        "lineshape at the FITTED Lorentzian parameters shift eps by < 0.03 "
        "per point (inside the V-a acceptance band) -- the validated fit "
@@ -455,6 +512,21 @@ def _():
               / float(ibm_transmission(dx, pp, T, gam, w_meV=w)))
         assert ei > el, (T, "sideband correction must fatten eps")
         assert abs(ei - el) < 0.03, (T, el, ei)
+
+
+@check("Q4 ZPL weight: zpl_weight(params, T) == exp(-huang_rhys(params, T)) to rel 1e-12 at 4, 77, 230, 300 K; "
+       "S itself matches an independent adaptive quad of int J/E^2 coth(E/2kT) dE (rel 1e-7); "
+       "default-parameter Z = 0.953 (4 K), 0.161 (230 K), 0.092 (300 K) to 3 digits")
+def _():
+    e_hi = 12.0 * HBAR * np.sqrt(2.0) * P.c_s_m_s * 1e-3 / min(P.l_xy_nm, P.l_z_nm)
+    for T in (4.0, 77.0, 230.0, 300.0):
+        z, S = zpl_weight(P, T), huang_rhys(P, T)
+        assert abs(z / np.exp(-S) - 1.0) <= 1e-12, (T, z, S)
+        S_q = quad(lambda E: spectral_density(E, P) / E ** 2 / np.tanh(E / (2.0 * KB * T)),
+                   1e-9, e_hi, limit=400, epsabs=0.0, epsrel=1e-12)[0]
+        assert abs(S_q / S - 1.0) <= 1e-7, (T, S, S_q)
+    for T, zref in ((4.0, 0.953), (230.0, 0.161), (300.0, 0.092)):
+        assert abs(zpl_weight(P, T) - zref) <= 5e-4, (T, zpl_weight(P, T), zref)
 
 
 def main():

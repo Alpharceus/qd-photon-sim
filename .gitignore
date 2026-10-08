@@ -31,3 +31,25 @@ scratch/
 
 # report staging (weekly report inputs copied from memory / ~/.claude)
 /reports/
+
+# FSIM Studio run cache (results keyed by fsim_core source hash)
+.cache/
+cards/studio/p2a-verify-*.yaml
+cards/studio/probe-*.yaml
+
+# --- public-repo hygiene (owner request 2026-10-08): internal docs, decks, results stay local only ---
+**/README.md
+!/README.md
+*.pptx
+*.pdf
+/CLAUDE.md
+/AGENTS.md
+/PRODUCT.md
+/DESIGN.md
+/.impeccable/
+/docs/
+/notes/
+/out/
+/presentation2/
+/reports/
+/tmp*/

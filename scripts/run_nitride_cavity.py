@@ -7,11 +7,14 @@ Fix round 2 (2026-09-09, Opus re-review "physics closed, presentation
 FAIL"): headline rows use the card default screening_fraction=0.0, an
 explicit CONSERVATIVE LOWER BOUND (no polarization-field screening).
 screening_fraction=1.0 counterpart rows (row_kind='bound') are evaluated
-alongside them, at the same inputs otherwise, as the UPPER BOUND -- never
-hand-entered, always additional evaluate() calls through the same cache.
-Every headline figure plots both (solid=unscreened lower bound,
-dashed=screened upper bound) with a legend; results.md carries a bounds
-table under the VERDICT lines.
+alongside them, at the same inputs otherwise -- never hand-entered, always
+additional evaluate() calls through the same cache. Audit C4: the two are
+screening SCENARIOS, not an ordered bound on every metric -- screening=1 is
+the favourable side for g2 and for SET flux, but pulsed (rectangular) flux
+is LOWER at screening=1; results.md states the ordering per regime and
+metric from the evaluated rows. Every headline figure plots both
+(solid/dashed=unscreened, dotted/dash-dot=screening_fraction=1) with a
+legend; results.md carries the scenario table under the VERDICT lines.
 """
 from __future__ import annotations
 import argparse,csv,hashlib,itertools,json,math,os,platform,sys,time
@@ -85,7 +88,7 @@ def compute_verdict(rows,*,complete):
                       else "no_idealized_pass")
   else:
    idealized_status="pass" if s["idealized_pass_count"]>0 else "no_idealized_pass"
-  out[reg]={**s,"regime":reg,"model":"finite electrical pulse" if reg=="rectangular" else "idealized deterministic SET","complete":complete,"status":status,"idealized_status":idealized_status,"flux_margin":s["flux_max"]/FLUX if s["flux_max"] is not None else None,"eligible_fraction":s["eligible"]/n if n else 0,"flux_floor_excluded":n-s["eligible"],"coverage_over_eligible":s["hardware_pass_count"]/s["eligible"] if s["eligible"] else None,"headline_coverage":f"{n}/{n}","evidence":"incomplete","conditional":status=="CONDITIONAL","T_pass_min":min((r["T_hs"] for r in rs if r.get("device_pass")),default=None)}
+  out[reg]={**s,"regime":reg,"model":"finite electrical pulse" if reg=="rectangular" else "idealized deterministic SET","complete":complete,"status":status,"idealized_status":idealized_status,"flux_margin":s["flux_max"]/FLUX if s["flux_max"] is not None else None,"eligible_fraction":s["eligible"]/n if n else 0,"invalid":n-s["valid"],"flux_floor_excluded":s["valid"]-s["eligible"],"coverage_over_eligible":s["hardware_pass_count"]/s["eligible"] if s["eligible"] else None,"headline_coverage":f"{n}/{n}","evidence":"incomplete","conditional":status=="CONDITIONAL","T_pass_min":min((r["T_hs"] for r in rs if r.get("device_pass")),default=None)}
  return out
 def _csv(p,rows):
  with p.open("w",newline="",encoding="utf-8") as f:
@@ -149,15 +152,15 @@ def _plots(out,rows,sens):
   for reg,m in (("rectangular","o"),("deterministic_pair","s")):
    ref,bnd=bound_pair(pool,reg,x,fixed)
    if ref:
-    a.plot([r[x] for r in ref],[r["g2"] for r in ref],m+"-",label=f"{reg} g2 (unscreened lower bound)")
-    b.plot([r[x] for r in ref],[max(r["signal_flux_s"],1e-12) for r in ref],m+"--",alpha=.55,label=f"{reg} flux (unscreened lower bound)")
+    a.plot([r[x] for r in ref],[r["g2"] for r in ref],m+"-",label=f"{reg} g2 (unscreened, screening_fraction=0)")
+    b.plot([r[x] for r in ref],[max(r["signal_flux_s"],1e-12) for r in ref],m+"--",alpha=.55,label=f"{reg} flux (unscreened, screening_fraction=0)")
     trace_ids[f"{reg}_unscreened_g2"]=[r["row_id"] for r in ref]
    if bnd:
-    a.plot([r[x] for r in bnd],[r["g2"] for r in bnd],m+":",label=f"{reg} g2 (screened upper bound)")
-    b.plot([r[x] for r in bnd],[max(r["signal_flux_s"],1e-12) for r in bnd],m+"-.",alpha=.55,label=f"{reg} flux (screened upper bound)")
+    a.plot([r[x] for r in bnd],[r["g2"] for r in bnd],m+":",label=f"{reg} g2 (screening_fraction=1)")
+    b.plot([r[x] for r in bnd],[max(r["signal_flux_s"],1e-12) for r in bnd],m+"-.",alpha=.55,label=f"{reg} flux (screening_fraction=1)")
     trace_ids[f"{reg}_screened_g2"]=[r["row_id"] for r in bnd]
   a.axhline(G2,color="k",lw=.8,label="g2<0.5 optical guide");b.axhline(FLUX,color="gray",lw=.8,ls="--",label="flux>=1000/s guide")
-  b.set_yscale("log");a.set(xlabel=x,ylabel="g2");a.set_title(title+"; assumed-planar model\nsolid/dashed=unscreened lower bound, dotted/dash-dot=screening=1 upper bound",fontsize=8);b.set_ylabel("first-lens useful flux / s (log)")
+  b.set_yscale("log");a.set(xlabel=x,ylabel="g2");a.set_title(title+"; assumed-planar model\nsolid/dashed=unscreened (s=0), dotted/dash-dot=screening_fraction=1 (scenarios, not an ordered bound on every metric)",fontsize=8);b.set_ylabel("first-lens useful flux / s (log)")
   h1,l1=a.get_legend_handles_labels();h2,l2=b.get_legend_handles_labels();_leg(fig,name,a,h1+h2,outside=True)
   fig.tight_layout();fig.savefig(out/name,dpi=130);plt.close(fig);rowmap[name]=trace_ids
  fixed_h=lambda r:r["radius_nm"]==10 and r["x_in"]==.25 and r["current_uA"]==.02 and r["Q"]==2000 and r["T_hs"] in (230.,300.)
@@ -205,7 +208,7 @@ def _plots(out,rows,sens):
    idl_n,hw_n,tot_n=(int(v) for v in label.split("/"))
    if reg=="deterministic_pair" and idl_n>0 and hw_n==0:
     a0.add_patch(plt.Rectangle((xi-.5,yi-.5),1,1,fill=False,hatch="///",edgecolor="k",lw=.5))
-  a0.set(xticks=range(5),xticklabels=[f"{v:g}" for v in HEAD["height_nm"]],yticks=range(4),yticklabels=[f"{v:g}" for v in HEAD["T_hs"]],xlabel="height nm",ylabel="T_hs K");a0.set_title("unscreened lower bound: idealized/hardware/total\nper cell (all other headline axes)",fontsize=8)
+  a0.set(xticks=range(5),xticklabels=[f"{v:g}" for v in HEAD["height_nm"]],yticks=range(4),yticklabels=[f"{v:g}" for v in HEAD["T_hs"]],xlabel="height nm",ylabel="T_hs K");a0.set_title("unscreened (screening_fraction=0): idealized/hardware/total\nper cell (all other headline axes)",fontsize=8)
   handles=[Patch(facecolor="none",edgecolor="k",hatch="///",label="idealized pass, hardware infeasible")] if reg=="deterministic_pair" else [Patch(facecolor="none",edgecolor="none",label="text = idealized/hardware/total same-row passes")]
   _leg(fig,name,a0,handles)
   mat2=[];labs2=[]
@@ -223,7 +226,7 @@ def _plots(out,rows,sens):
   for h,t,label in labs2:
    xi,yi=HEAD["height_nm"].index(h),HEAD["T_hs"].index(t);a1.text(xi,yi,label,ha="center",va="center",fontsize=7)
    if reg=="deterministic_pair" and label=="opt":a1.add_patch(plt.Rectangle((xi-.5,yi-.5),1,1,fill=False,hatch="///",edgecolor="k",lw=.5))
-  a1.set(xticks=range(5),xticklabels=[f"{v:g}" for v in HEAD["height_nm"]],yticks=range(4),yticklabels=[f"{v:g}" for v in HEAD["T_hs"]],xlabel="height nm",ylabel="T_hs K");a1.set_title("screened upper bound (reference geometry, 1 row/cell)\n'opt'=idealized pass, hardware infeasible",fontsize=8)
+  a1.set(xticks=range(5),xticklabels=[f"{v:g}" for v in HEAD["height_nm"]],yticks=range(4),yticklabels=[f"{v:g}" for v in HEAD["T_hs"]],xlabel="height nm",ylabel="T_hs K");a1.set_title("screening_fraction=1 scenario (reference geometry, 1 row/cell)\n'opt'=idealized pass, hardware infeasible",fontsize=8)
   fig.tight_layout();fig.savefig(out/name,dpi=130);plt.close(fig)
   rowmap[name]={"unscreened_cells":cellmap,"screened_cells":{f"h{h:g}_T{t:g}":([refpool[(h,t)]["row_id"]] if (h,t) in refpool else []) for t in HEAD["T_hs"] for h in HEAD["height_nm"]}}
  # set_feasibility.png: E_C vs 10 kT, assumed vs allowed island radius, RC rate vs 80 MHz.
@@ -259,13 +262,43 @@ def _bounds_table_md(sens):
   lines.append(f"| {r['regime']} | {r['T_hs']:g} | {r['screening_fraction']:g} | {r['g2']:.6g} | {r['signal_flux_s']:.6g} | {r.get('S_X',float('nan')):.4g} | {ec_s} | {hf_s} |")
  return "\n".join(lines)
 def _sensitivity_md(sens):
+ """Audit C4: identical (axis, regime, T_hs, value) rows -- e.g.
+ purcell_enabled=False, generated once by the SENS axis and once by the
+ Q=167/purcell pair, both served from the same evaluate() cache entry --
+ are shown ONCE, with the collapse count stated; rows that share those keys
+ but DIFFER in g2/flux are all kept (that would be a real discrepancy)."""
  axes=sorted({r.get("sensitivity_axis") for r in sens if r.get("row_kind")=="sensitivity" and r.get("sensitivity_axis")})
- lines=["| axis | regime | T_hs K | value | g2_op | flux /s |","|---|---|---|---|---|---|"]
+ lines=["| axis | regime | T_hs K | value | g2_op | flux /s |","|---|---|---|---|---|---|"];seen=set();collapsed=0
  for ax in axes:
   rs=sorted([r for r in sens if r.get("sensitivity_axis")==ax],key=lambda r:(r["regime"],r["T_hs"],str(r.get(ax))))
   for r in rs:
-   lines.append(f"| {ax} | {r['regime']} | {r['T_hs']:g} | {r.get(ax)} | {r['g2']:.6g} | {r['signal_flux_s']:.6g} |")
+   line=f"| {ax} | {r['regime']} | {r['T_hs']:g} | {r.get(ax)} | {r['g2']:.6g} | {r['signal_flux_s']:.6g} |"
+   if line in seen:collapsed+=1;continue
+   seen.add(line);lines.append(line)
+ if collapsed:lines+=["",f"({collapsed} duplicate row(s) with identical axis/regime/T_hs/value AND identical g2/flux -- the same evaluate() inputs requested twice, e.g. purcell_enabled=False by both the SENS axis and the Q=167/purcell pair -- are shown once; sensitivities.csv keeps every row.)"]
  return "\n".join(lines)
+def _bound_ordering_md(sens):
+ """Audit C4: which screening scenario is favourable, per regime and metric,
+ read off the same reference-geometry rows as the scenario table (H=3 nm,
+ Q=2000, 230/300 K): g2 favourable = lower, flux favourable = higher."""
+ tbl=[r for r in sens if r.get("row_kind") in ("reference","bound") and r.get("height_nm")==3 and r.get("Q")==2000 and r.get("T_hs") in (230.,300.)]
+ out=[]
+ for reg in HEAD["regime"]:
+  for metric,key,better in (("g2_op","g2",lambda a,b:a<b),("flux","signal_flux_s",lambda a,b:a>b)):
+   pairs=[]
+   for t in (230.,300.):
+    s0=[r for r in tbl if r["regime"]==reg and r["T_hs"]==t and r.get("screening_fraction")==0.]
+    s1=[r for r in tbl if r["regime"]==reg and r["T_hs"]==t and r.get("screening_fraction")==1.]
+    if s0 and s1 and _finite(s0[0].get(key)) and _finite(s1[0].get(key)):pairs.append((t,s0[0][key],s1[0][key]))
+   if not pairs:out.append(f"- {reg} {metric}: not available");continue
+   same=[math.isclose(a,b,rel_tol=1e-9,abs_tol=1e-15) for t,a,b in pairs];fav1=[better(b,a) and not q for (t,a,b),q in zip(pairs,same)] # equal to 1e-9 relative = no ordering
+   vals="; ".join(f"{t:g} K: s=0 {a:.4g}, s=1 {b:.4g}" for t,a,b in pairs)
+   if all(same):verdict="identical at screening 0 and 1 to 1e-9 relative (a structural floor, no ordering)"
+   elif all(f or q for f,q in zip(fav1,same)):verdict="screening_fraction=1 is the FAVOURABLE (upper) side and s=0 the conservative side"
+   elif not any(fav1):verdict="screening_fraction=1 is the UNFAVOURABLE side -- 'upper bound' is FALSE here and s=0 is not conservative"
+   else:verdict="the ordering flips with T_hs -- neither scenario bounds this metric"
+   out.append(f"- {reg} {metric}: {verdict} ({vals}).")
+ return "\n".join(out)
 def _islands_md(sens):
  rs=sorted([r for r in sens if r["row_kind"]=="island"],key=lambda r:(r["island_radius_nm"],r["T_hs"]))
  lines=["| island radius nm | T_hs K | E_C meV | E_C/kT | allowed max radius nm | R_T/R_Q | hardware_feasible | f_max Hz |","|---|---|---|---|---|---|---|---|"]
@@ -278,8 +311,91 @@ def _anchor_md(sens):
  for r in rs:
   lines.append(f"| {r['regime']} | {r['T_hs']:g} | {r['T_track']:g} | {r.get('detuning_meV',float('nan')):.4g} | {r['g2']:.6g} | {r['signal_flux_s']:.6g} |")
  return "\n".join(lines)
+def _results_md(rows,sens,comp,vs):
+ """results.md text from already-evaluated rows only (shared by the full
+ run and --report-only; never calls evaluate())."""
+ lines=["# Nitride cavity sweep results","","Assumed planar model, evaluator outputs only; no held-out prediction.",""]
+ keys=("regime","model","complete","g2_min","g2_median_eligible","diag_g2_min","diag_g2_flux_max","flux_max","flux_margin","eligible_fraction","eligible","invalid","flux_floor_excluded","coverage_over_eligible","headline_coverage","idealized_pass_count","idealized_status","hardware_infeasible_count","hardware_pass_count","evidence","conditional","T_pass_min")
+ for v in vs.values():lines += ["VERDICT: "+v["status"]+" "+" ".join(f"{k}={v[k] if v[k] is not None else 'none'}" for k in keys),""]
+ set_diag=vs["deterministic_pair"]["diag_g2_min"]
+ if set_diag is not None and set_diag<1e-6:
+  set_note="Note: SET g2_op=0.0 wherever it appears is STRUCTURAL under this model's idealized deterministic one-pair loading (exact-one-pair counting has zero coincidence probability by construction), not evidence of any device suppressing multi-photon emission; it carries no additional device information beyond one_pair_valid/eligible."
+ else:
+  set_note=("Note: with drive.b_res wired into this branch (fix round 2), SET g2_op is NOT exactly 0: under ideal one-pair loading the exact-one-pair counting result is 0 by construction (cnt_g2=0), so g2_op=1-rho^2 depends only on rho=signal/(signal+background); since bg_counts includes b_res*(collected X counts) and one-pair loading has negligible XX, signal~=collected X counts, so rho asymptotes to 1/(1+b_res) and g2_op asymptotes to 1-(1/(1+b_res))^2 nearly independent of absolute flux (b_res=0.1 on the shipped cards -> g2_op~0.174, matching the scenario table above across screening/T/Q). This is a STRUCTURAL floor set by the assumed residual background channel, not a demonstrated device number.")
+ lines += ["## Screening scenarios (unscreened screening_fraction=0 / 0.5 / 1)",
+           "Headline rows use the card default screening_fraction=0.0, labelled the CONSERVATIVE LOWER BOUND (no polarization-field screening). The screening_fraction=0.5 and 1.0 rows below are evaluated the same way (row_kind='bound' in sensitivities.csv), never hand-entered. They are screening SCENARIOS, not an ordered bound on every metric; the per-regime, per-metric ordering computed from the table rows is:",
+           "",_bound_ordering_md(sens),"",
+           "",_bounds_table_md(sens),"",
+           set_note,
+           "",
+           "Cavity re-tuning disclosure: every headline row re-tracks the cavity resonance to T_track=T_hs (the SAME dot's own E_X at that operating point) -- headline results assume a cavity re-tuned per dot/temperature, not a single fixed cavity swept across all conditions. The fixed-anchor (T_track=300 K) sensitivity set below holds the cavity fixed while T_hs varies, to show the resulting detuning as a labelled, separate effect.",
+           "",
+           "### Fixed-anchor (T_track=300 K) sensitivity","",_anchor_md(sens),"",
+           "### SET island-radius sensitivity (classical charging-energy screen only; not demonstrated feasible manufacture)","",_islands_md(sens),""]
+ lines += ["## Deshpande comparison",f"Measured g2=0.29 [V abstract-only; Deshpande et al., APL 105, 141109 (2014), DOI 10.1063/1.4897640]. Evaluated card g2={comp['g2']}, flux={comp['signal_flux_s']}/s; count rate unavailable. CONDITIONS INCOMPLETE.","| transfer | value |","|---|---|","| geometry/x | 2 nm / 12.5 nm [A], x=0.40 [V abstract-only] |","| rate/waveform | 200 MHz reported maximum [V], waveform/current [A] |","| field/cavity | planar QCSE, Q/V/outcoupling [A] |",""]
+ lines += ["## Sensitivity","Full mode contains all one-at-a-time contract axes at 230/300 K, both regimes (quick contains the named diagnostic subset plus Q=167 and purcell_enabled=False as two independent one-at-a-time rows). Values below are the actual evaluated g2/flux for each axis value.","",_sensitivity_md(sens),""]
+ lines += ["## Limitations","Q/V realization, oscillator/QCSE uncertainty, omitted field-assisted tunnelling, optimistic nonradiative/background assumptions, SET pair delivery and hardware screen limit this model. Idealized optical pass is not hardware demonstration.","Reservoir-vs-diode-SRH-layer disagreement: the background reservoir energy (fsim_core.device._nitride_reservoir_energy_eV) is read from nitride.dot's own wetting-layer thickness (0.0 nm on shipped cards -> GaN barrier edge), while the diode's SRH background (fsim_core.nitride_transport.evaluate_injection) lives in drive.diode's separate 0.5 nm InGaN layer -- the two blocks disagree about which material hosts the background carriers. No numerical consequence today (the reservoir energy only sets the cavity/slit spectral ACCEPTANCE of the SRH rate, not the rate itself), but the two should eventually be unified."]
+ return "\n".join(lines)+"\n"
+_INT_RE=None
+def _typed_csv_value(v):
+ """Inverse of csv.DictWriter's str() for the primitives _row() stores:
+ 'True'/'False' -> bool, a plain integer literal -> int, any other float
+ repr (including nan/inf) -> float, everything else (json strings, ids,
+ labels) -> the raw string. An empty cell was a None value [report-only]."""
+ import re
+ global _INT_RE
+ if _INT_RE is None:_INT_RE=re.compile(r"^-?[0-9]+$")
+ if v=="True":return True
+ if v=="False":return False
+ if _INT_RE.match(v):return int(v)
+ try:return float(v)
+ except ValueError:return v
+def _read_typed_csv(path):
+ """Audit C4 --report-only loader. Empty cells are DROPPED from the row dict
+ (a key absent from a _row() dict and a key holding None both read back as
+ r.get(k) -> None, and DictWriter writes both as an empty cell)."""
+ with Path(path).open(encoding="utf-8",newline="") as f:
+  return [{k:_typed_csv_value(v) for k,v in r.items() if v!=""} for r in csv.DictReader(f)]
+def _generation_provenance():
+ """Audit C4: sha256 of this runner and the repo HEAD (read-only git calls;
+ None when git is unavailable), plus whether tracked files were dirty."""
+ import subprocess
+ def _git(*args):
+  try:
+   r=subprocess.run(["git",*args],cwd=str(ROOT),capture_output=True,text=True,timeout=30)
+   return r.stdout.strip() if r.returncode==0 else None
+  except (OSError,subprocess.SubprocessError):return None
+ st=_git("status","--porcelain","--untracked-files=no")
+ return {"runner_sha256":hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest(),"generation_commit":_git("rev-parse","HEAD"),"generation_worktree_dirty":(bool(st) if st is not None else None)}
+def _main_report_only(out,with_figures=True):
+ """Audit C4: rebuild results.md (and, cheaply, the figures) from the SAVED
+ sweep.csv / sensitivities.csv / deshpande_comparison.csv and manifest.json
+ -- no evaluate() call, no CSV is written (their sha256 is asserted
+ unchanged). manifest.json keeps every prior field; output_hashes,
+ plot_row_mapping/figure_legends (when figures are rebuilt) and the
+ report_only_* provenance keys are refreshed."""
+ names=("sweep.csv","sensitivities.csv","deshpande_comparison.csv")
+ for n in names+("manifest.json",):
+  if not (out/n).is_file():raise SystemExit(f"--report-only requires an existing {n} in --out-dir")
+ before={n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}
+ t0=time.time();prior=json.loads((out/"manifest.json").read_text(encoding="utf-8"))
+ rows=_read_typed_csv(out/"sweep.csv");sens=_read_typed_csv(out/"sensitivities.csv");comp=_read_typed_csv(out/"deshpande_comparison.csv")[0]
+ vs=compute_verdict(rows,complete=bool(prior.get("complete",False)))
+ man=dict(prior)
+ if with_figures:
+  os.environ["MPLBACKEND"]="Agg";os.environ["MPLCONFIGDIR"]=str(out/"mplconfig")
+  rowmap,legends=_plots(out,rows,sens);man["plot_row_mapping"]=rowmap;man["figure_legends"]=legends
+ (out/"results.md").write_text(_results_md(rows,sens,comp,vs),encoding="utf-8")
+ after={n:hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}
+ if after!=before:raise SystemExit("--report-only must never modify a sweep CSV (hash changed unexpectedly)")
+ man["output_hashes"]={q.name:hashlib.sha256(q.read_bytes()).hexdigest() for q in out.iterdir() if q.is_file() and q.name!="manifest.json"}
+ man.update({"report_only":True,"report_only_source_csv_sha256":before,"report_only_figures_rebuilt":bool(with_figures),"report_only_runtime_s":time.time()-t0,**{"report_only_"+k:v for k,v in _generation_provenance().items()}})
+ (out/"manifest.json").write_text(json.dumps(man,indent=2,sort_keys=True),encoding="utf-8")
+ print(f"report_only=True headline_rows={len(rows)} sensitivity_rows={len(sens)} figures_rebuilt={bool(with_figures)}");return 0
 def main(argv=None):
- ap=argparse.ArgumentParser();ap.add_argument("--quick",action="store_true");ap.add_argument("--out-dir",default=str(ROOT/"out"/"nitride_cavity"));ap.add_argument("--max-evaluations",type=int,default=5000);ap.add_argument("--dry-run",action="store_true");a=ap.parse_args(argv);g=build_grid(a.quick);head=[dict(zip(g,z)) for z in itertools.product(*g.values())]
+ ap=argparse.ArgumentParser();ap.add_argument("--quick",action="store_true");ap.add_argument("--out-dir",default=str(ROOT/"out"/"nitride_cavity"));ap.add_argument("--max-evaluations",type=int,default=5000);ap.add_argument("--dry-run",action="store_true");ap.add_argument("--report-only",action="store_true",help="audit C4: rebuild results.md, figures and manifest.json from the saved CSVs/manifest in --out-dir; no evaluate() call, CSVs never written");ap.add_argument("--no-figures",action="store_true",help="with --report-only: rebuild results.md and manifest.json only");a=ap.parse_args(argv)
+ if a.report_only:return _main_report_only(_safe(a.out_dir),with_figures=not a.no_figures)
+ g=build_grid(a.quick);head=[dict(zip(g,z)) for z in itertools.product(*g.values())]
  axes={"detuning_offset_meV":[10.],"background_tau_ns":[1.]} if a.quick else SENS;aux_combos=[(k,v,t,r) for k,vs in axes.items() for v in vs for t in (230.,300.) for r in HEAD["regime"]]
  q167_combos=[("Q",167.,t,r) for t in (230.,300.) for r in HEAD["regime"]]+[("purcell_enabled",False,t,r) for t in (230.,300.) for r in HEAD["regime"]]
  islands=[(r,t) for r in (.5,1.,5.) for t in HEAD["T_hs"]]
@@ -303,28 +419,8 @@ def main(argv=None):
  sens += _bound_rows(g,cache)
  comp=_row("C000","comparison","rectangular",{"T_hs":300.},cache,True);ch=hashlib.sha256((ROOT/"cards"/"nitride-deshpande2014-comparison-design.yaml").read_bytes()).hexdigest();comp.update(measured_g2=.29,measured_count_rate="unavailable",comparison_card_hash=ch,comparison_note="Deshpande et al., APL 105, 141109 (2014), DOI 10.1063/1.4897640, abstract-only [V]; CONDITIONS INCOMPLETE")
  _csv(out/"sweep.csv",rows);_csv(out/"sensitivities.csv",sens);_csv(out/"deshpande_comparison.csv",[comp]);rowmap,legends=_plots(out,rows,sens);vs=compute_verdict(rows,complete=not a.quick)
- lines=["# Nitride cavity sweep results","","Assumed planar model, evaluator outputs only; no held-out prediction.",""]
- keys=("regime","model","complete","g2_min","g2_median_eligible","diag_g2_min","diag_g2_flux_max","flux_max","flux_margin","eligible_fraction","eligible","flux_floor_excluded","coverage_over_eligible","headline_coverage","idealized_pass_count","idealized_status","hardware_infeasible_count","hardware_pass_count","evidence","conditional","T_pass_min")
- for v in vs.values():lines += ["VERDICT: "+v["status"]+" "+" ".join(f"{k}={v[k] if v[k] is not None else 'none'}" for k in keys),""]
- set_diag=vs["deterministic_pair"]["diag_g2_min"]
- if set_diag is not None and set_diag<1e-6:
-  set_note="Note: SET g2_op=0.0 wherever it appears is STRUCTURAL under this model's idealized deterministic one-pair loading (exact-one-pair counting has zero coincidence probability by construction), not evidence of any device suppressing multi-photon emission; it carries no additional device information beyond one_pair_valid/eligible."
- else:
-  set_note=("Note: with drive.b_res wired into this branch (fix round 2), SET g2_op is NOT exactly 0: under ideal one-pair loading the exact-one-pair counting result is 0 by construction (cnt_g2=0), so g2_op=1-rho^2 depends only on rho=signal/(signal+background); since bg_counts includes b_res*(collected X counts) and one-pair loading has negligible XX, signal~=collected X counts, so rho asymptotes to 1/(1+b_res) and g2_op asymptotes to 1-(1/(1+b_res))^2 nearly independent of absolute flux (b_res=0.1 on the shipped cards -> g2_op~0.174, matching the bounds table below across screening/T/Q). This is a STRUCTURAL floor set by the assumed residual background channel, not a demonstrated device number.")
- lines += ["## Bounds (unscreened lower bound / screening_fraction=1 upper bound)",
-           "Headline rows use the card default screening_fraction=0.0 -- an explicit CONSERVATIVE LOWER BOUND (no polarization-field screening). screening_fraction=1.0 rows below are the UPPER BOUND, evaluated the same way (row_kind='bound' in sensitivities.csv), never hand-entered.",
-           "",_bounds_table_md(sens),"",
-           set_note,
-           "",
-           "Cavity re-tuning disclosure: every headline row re-tracks the cavity resonance to T_track=T_hs (the SAME dot's own E_X at that operating point) -- headline results assume a cavity re-tuned per dot/temperature, not a single fixed cavity swept across all conditions. The fixed-anchor (T_track=300 K) sensitivity set below holds the cavity fixed while T_hs varies, to show the resulting detuning as a labelled, separate effect.",
-           "",
-           "### Fixed-anchor (T_track=300 K) sensitivity","",_anchor_md(sens),"",
-           "### SET island-radius sensitivity (classical charging-energy screen only; not demonstrated feasible manufacture)","",_islands_md(sens),""]
- lines += ["## Deshpande comparison",f"Measured g2=0.29 [V abstract-only; Deshpande et al., APL 105, 141109 (2014), DOI 10.1063/1.4897640]. Evaluated card g2={comp['g2']}, flux={comp['signal_flux_s']}/s; count rate unavailable. CONDITIONS INCOMPLETE.","| transfer | value |","|---|---|","| geometry/x | 2 nm / 12.5 nm [A], x=0.40 [V abstract-only] |","| rate/waveform | 200 MHz reported maximum [V], waveform/current [A] |","| field/cavity | planar QCSE, Q/V/outcoupling [A] |",""]
- lines += ["## Sensitivity","Full mode contains all one-at-a-time contract axes at 230/300 K, both regimes (quick contains the named diagnostic subset plus Q=167 and purcell_enabled=False as two independent one-at-a-time rows). Values below are the actual evaluated g2/flux for each axis value.","",_sensitivity_md(sens),""]
- lines += ["## Limitations","Q/V realization, oscillator/QCSE uncertainty, omitted field-assisted tunnelling, optimistic nonradiative/background assumptions, SET pair delivery and hardware screen limit this model. Idealized optical pass is not hardware demonstration.","Reservoir-vs-diode-SRH-layer disagreement: the background reservoir energy (fsim_core.device._nitride_reservoir_energy_eV) is read from nitride.dot's own wetting-layer thickness (0.0 nm on shipped cards -> GaN barrier edge), while the diode's SRH background (fsim_core.nitride_transport.evaluate_injection) lives in drive.diode's separate 0.5 nm InGaN layer -- the two blocks disagree about which material hosts the background carriers. No numerical consequence today (the reservoir energy only sets the cavity/slit spectral ACCEPTANCE of the SRH rate, not the rate itself), but the two should eventually be unified."]
- (out/"results.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
+ (out/"results.md").write_text(_results_md(rows,sens,comp,vs),encoding="utf-8")
  hashes={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in out.iterdir() if p.is_file() and p.name!="manifest.json"}
- man={"quick":a.quick,"complete":not a.quick,"axes":g,"requested_headline_rows":len(head),"completed_headline_rows":len(rows),"invalid_headline_rows":sum(not r["valid"] for r in rows),"evaluate_calls":len(cache),"runtime_s":time.time()-start,"resolved_out_dir":str(out),"versions":{"python":platform.python_version()},"output_hashes":hashes,"card_hashes":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/"cards").glob("nitride-*.yaml")},"source_hashes":{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/"fsim_core").glob("*.py")},"plot_row_mapping":rowmap,"figure_legends":legends}
+ man={"quick":a.quick,"complete":not a.quick,"axes":g,"requested_headline_rows":len(head),"completed_headline_rows":len(rows),"invalid_headline_rows":sum(not r["valid"] for r in rows),"evaluate_calls":len(cache),"runtime_s":time.time()-start,"resolved_out_dir":str(out),"versions":{"python":platform.python_version()},"output_hashes":hashes,"card_hashes":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/"cards").glob("nitride-*.yaml")},"source_hashes":{str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT/"fsim_core").glob("*.py")},"plot_row_mapping":rowmap,"figure_legends":legends,**_generation_provenance()}
  (out/"manifest.json").write_text(json.dumps(man,indent=2,sort_keys=True),encoding="utf-8");print(f"generated {len(rows)} headline rows, {len(cache)} evaluate calls in {man['runtime_s']:.1f}s");return 0
 if __name__=="__main__":raise SystemExit(main())

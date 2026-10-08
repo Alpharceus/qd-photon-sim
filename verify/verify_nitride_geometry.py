@@ -151,8 +151,13 @@ ex_new,dee_new,deh_new=_mass_isolated_ex(s_apl,300.,d_ez,m_ez,d_hz,m_hz,d_exy,m_
 lv_apl=levels(s_apl,300.)
 ck('M independent mass-only recompute matches the production a_plane result',
    abs(lv_apl.E_X_eV-ex_new)<1e-9 and abs(lv_apl.dE_h_meV-deh_new)<1e-6)
-ck('M nonpolar growth-axis mass swap moves E_X by roughly +30 meV and hole escape depth by roughly -22 meV at H=3nm',
-   20.<=(ex_new-ex_old)*1000.<=45. and -35.<=(deh_new-deh_old)<=-10.)
+# Re-pinned 2026-09-23 (strain-mass audit): with the Rinke 2008 electron
+# axes corrected (me_z 0.186 < me_xy 0.209) the electron part of the
+# nonpolar swap now LOWERS the electron z-confinement energy, so the E_X
+# move shrank from ~+30 meV (band 20..45) to ~+16 meV (band 10..25, same
+# relative width); the hole move (-23 meV) is unchanged in kind.
+ck('M nonpolar growth-axis mass swap moves E_X by roughly +16 meV and hole escape depth by roughly -23 meV at H=3nm',
+   10.<=(ex_new-ex_old)*1000.<=25. and -35.<=(deh_new-deh_old)<=-10.)
 ck('M semipolar_11_22 keeps c-plane masses (no swap)',_growth_masses(d0,'semipolar_11_22')==(d0.me_z,d0.me_xy,d0.mh_z,d0.mh_xy))
 ck('M c_plane keeps c-plane masses (no swap)',_growth_masses(d0,'c_plane')==(d0.me_z,d0.me_xy,d0.mh_z,d0.mh_xy))
 ck('M m_plane swaps like a_plane',_growth_masses(d0,'m_plane')==(d0.me_xy,d0.me_z,d0.mh_xy,d0.mh_z))
@@ -365,39 +370,54 @@ def _nan_eq(a, b):
 
 # h_nm, R_nm, orientation, screening_fraction, E_X_eV, overlap_sq, dE_e_meV,
 # dE_h_meV, valid, reservoir_kind, gamma_X0_ns, k_X_ns, S0, E_a_meV, rates_valid
+# Re-pin 2026-09-23 (physics audit, nitride_levels:339 Coulomb term now the
+# exact frozen-orbital sqrt(pi)/L*erfcx(z_sep/L)): ONLY the E_X_eV column
+# was re-captured from the working tree; every other column is still the
+# 17a333f capture and still compared exactly. E_X rose by 6.0/0.87/8.3/1.45
+# meV on the four unscreened c-plane rows (h,R)=(1,5)/(1,30)/(3,5)/(3,30);
+# every other valid row moved by < 1e-9 meV (residual numerical z_sep enters
+# erfcx linearly rather than quadratically). Old values in the STATUS repins.
+# Re-pin 2026-09-23 (strain-mass audit: Rinke 2008 electron-mass axes
+# corrected, Yan 2014 anisotropic A-gap strain shift): EVERY physics column
+# (E_X, overlap, both escape depths, gamma_X0, k_X, S0, E_a) of every valid
+# row was re-captured from the working tree, because the masses and the
+# strained gap enter all of them. The categorical columns (valid,
+# reservoir_kind, rates valid) and the grid points are still the 17a333f
+# ones and did not change. This grid is therefore a regression pin of the
+# 2026-09-23 physics, no longer a bit-identity check against 17a333f.
 PIN_GRID_17A333F = [
-  (1.0,5.0,'c_plane',0.0, 2.9854444405583824,0.26886426817644143,7.140173001705497,8.745657404253475, True,'gan_barrier', 0.20681866782803188,15238.936375242862,1.3571541732784111e-05,7.140173001705497, True),
-  (1.0,5.0,'c_plane',1.0, 3.118904444932365,0.8322086313626568,131.45395644445478,128.05261923264536, True,'gan_barrier', 0.6401604856635821,251.60308120866017,0.002537869721954131,128.05261923264536, True),
-  (1.0,5.0,'a_plane',0.0, 3.1878944558087285,0.9962343619112091,124.0025693554127,66.6644455713944, True,'gan_barrier', 0.7663341245470838,15404.08097349792,4.9746297982966326e-05,66.6644455713944, True),
-  (1.0,5.0,'a_plane',1.0, 3.1878944558087285,0.9962343619112091,124.0025693554127,66.6644455713944, True,'gan_barrier', 0.7663341245470838,15404.08097349792,4.9746297982966326e-05,66.6644455713944, True),
-  (1.0,30.0,'c_plane',0.0, 2.983389895408833,0.26886426817644143,22.922165358933626,16.514582533493833, True,'gan_barrier', 0.20681866782803188,18813.625838443248,1.0992904614247245e-05,16.514582533493833, True),
-  (1.0,30.0,'c_plane',1.0, 3.1223393641567427,0.8322086313626568,164.69761865325611,139.00647301737573, True,'gan_barrier', 0.6401604856635821,164.70216607276575,0.003871727820627706,139.00647301737573, True),
-  (1.0,30.0,'a_plane',0.0, 3.2015503231620412,0.9962343619112091,154.05110304349938,70.45568769461968, True,'gan_barrier', 0.7663341245470838,13302.881681212599,5.760330727809496e-05,70.45568769461968, True),
-  (1.0,30.0,'a_plane',1.0, 3.2015503231620412,0.9962343619112091,154.05110304349938,70.45568769461968, True,'gan_barrier', 0.7663341245470838,13302.881681212599,5.760330727809496e-05,70.45568769461968, True),
-  (3.0,5.0,'c_plane',0.0, 2.1624787805772376,0.0025456662371087487,21.683708249353202,9.238168459395624, True,'gan_barrier', 0.0019582047977759606,24929.34563826353,7.855018227807029e-08,9.238168459395624, True),
-  (3.0,5.0,'c_plane',1.0, 2.8626310529575254,0.9559569723028649,326.7452012484394,185.45723929806672, True,'gan_barrier', 0.73535151715605,27.31245772901792,0.02621778801695038,185.45723929806672, True),
-  (3.0,5.0,'a_plane',0.0, 2.883174908429698,0.9838185368314954,322.5912125515136,168.56163006498454, True,'gan_barrier', 0.7567834898703811,299.1151665400365,0.0025236888271640795,168.56163006498454, True),
-  (3.0,5.0,'a_plane',1.0, 2.883174908429698,0.9838185368314954,322.5912125515136,168.56163006498454, True,'gan_barrier', 0.7567834898703811,299.1151665400365,0.0025236888271640795,168.56163006498454, True),
-  (3.0,30.0,'c_plane',0.0, 2.1547764245511436,0.0025456662371087487,43.26860224254969,17.082168499493456, True,'gan_barrier', 0.0019582047977759606,18405.07019116673,1.0639484495815067e-07,17.082168499493456, True),
-  (3.0,30.0,'c_plane',1.0, 2.8635400547366605,0.9559569723028649,365.68950590012827,196.71634117156933, True,'gan_barrier', 0.73535151715605,17.669171881269083,0.03995493397123088,196.71634117156933, True),
-  (3.0,30.0,'a_plane',0.0, 2.895319239125514,0.9838185368314954,357.95824490310775,172.65597742741903, True,'gan_barrier', 0.7567834898703811,255.3032985348733,0.002955491866933212,172.65597742741903, True),
-  (3.0,30.0,'a_plane',1.0, 2.895319239125514,0.9838185368314954,357.95824490310775,172.65597742741903, True,'gan_barrier', 0.7567834898703811,255.3032985348733,0.002955491866933212,172.65597742741903, True),
+  (1.0,5.0,'c_plane',0.0, 2.9347360452456774,0.40502523542012364,30.4775419768627,29.98530089449907, True,'gan_barrier', 0.3115578734000951,11173.118225313294,2.788381718466735e-05,29.98530089449907, True),
+  (1.0,5.0,'c_plane',1.0, 3.0397126688255414,0.8210296796603165,174.03813989628702,162.89047736132392, True,'gan_barrier', 0.6315612920463972,65.38312850861496,0.009566981136372317,162.89047736132392, True),
+  (1.0,5.0,'a_plane',0.0, 3.1027389105314813,0.9946004649644947,183.8934679872367,90.45391728371294, True,'gan_barrier', 0.7650772807419189,6137.4823701373225,0.00012464099684735485,90.45391728371294, True),
+  (1.0,5.0,'a_plane',1.0, 3.1027389105314813,0.9946004649644947,183.8934679872367,90.45391728371294, True,'gan_barrier', 0.7650772807419189,6137.4823701373225,0.00012464099684735485,90.45391728371294, True),
+  (1.0,30.0,'c_plane',0.0, 2.9314781393434775,0.40502523542012364,52.230301411480326,39.389377115485665, True,'gan_barrier', 0.3115578734000951,7765.919185847551,4.011699931166631e-05,39.389377115485665, True),
+  (1.0,30.0,'c_plane',1.0, 3.0458963765472897,0.8210296796603165,206.05287465430183,174.04687419464722, True,'gan_barrier', 0.6315612920463972,42.46650102261973,0.014654053062415268,174.04687419464722, True),
+  (1.0,30.0,'a_plane',0.0, 3.1123408348857478,0.9946004649644947,219.317174288286,94.35570097559382, True,'gan_barrier', 0.7650772807419189,5277.681485952934,0.00014494364422877062,94.35570097559382, True),
+  (1.0,30.0,'a_plane',1.0, 3.1123408348857478,0.9946004649644947,219.317174288286,94.35570097559382, True,'gan_barrier', 0.7650772807419189,5277.681485952934,0.00014494364422877062,94.35570097559382, True),
+  (3.0,5.0,'c_plane',0.0, 2.1005522653570234,0.006547253143935631,64.60540551368028,30.958726125576817, True,'gan_barrier', 0.005036348572258178,10760.230384851402,4.6805189432337976e-07,30.958726125576817, True),
+  (3.0,5.0,'c_plane',1.0, 2.739441933886894,0.954557443025416,408.79696087490635,225.52015733609122, True,'gan_barrier', 0.7342749561733969,5.798736586600326,0.11239455974719517,225.52015733609122, True),
+  (3.0,5.0,'a_plane',0.0, 2.752535956330454,0.9879958663249239,413.59880264634177,207.616883904951, True,'gan_barrier', 0.7599968202499414,66.02965780967422,0.011378960176707302,207.616883904951, True),
+  (3.0,5.0,'a_plane',1.0, 2.752535956330454,0.9879958663249239,413.59880264634177,207.616883904951, True,'gan_barrier', 0.7599968202499414,66.02965780967422,0.011378960176707302,207.616883904951, True),
+  (3.0,30.0,'c_plane',0.0, 2.0849880848705054,0.006547253143935631,90.75993319230369,40.40238666087737, True,'gan_barrier', 0.005036348572258178,7467.496977472385,6.744355157771412e-07,40.40238666087737, True),
+  (3.0,30.0,'c_plane',1.0, 2.743641533927164,0.954557443025416,445.3483146880101,236.92565297107328, True,'gan_barrier', 0.7342749561733969,3.730177406750285,0.1644714505795588,236.92565297107328, True),
+  (3.0,30.0,'a_plane',0.0, 2.7602663710761637,0.9879958663249239,453.8833367728103,211.76638149463307, True,'gan_barrier', 0.7599968202499414,56.23808905885061,0.013333725308986365,211.76638149463307, True),
+  (3.0,30.0,'a_plane',1.0, 2.7602663710761637,0.9879958663249239,453.8833367728103,211.76638149463307, True,'gan_barrier', 0.7599968202499414,56.23808905885061,0.013333725308986365,211.76638149463307, True),
   (7.0,5.0,'c_plane',0.0, 0.5588768913897915,6.993479097544514e-12,21.985081807827655,9.52963234635007, True,'gan_barrier', 5.3795993058034715e-12,24649.86250791069,2.1824054004670564e-16,9.52963234635007, True),
-  (7.0,5.0,'c_plane',1.0, 2.7758991598998928,0.9884671514849829,400.9035436547549,197.41108163815528, True,'gan_barrier', 0.7603593472961406,17.200658333950148,0.042333867756839734,197.41108163815528, True),
-  (7.0,5.0,'a_plane',0.0, 2.7729225743404613,0.9924346438089483,401.8634076184131,198.8168510504523, True,'gan_barrier', 0.7634112644684218,92.80536688641533,0.008158824765643382,198.8168510504523, True),
-  (7.0,5.0,'a_plane',1.0, 2.7729225743404613,0.9924346438089483,401.8634076184131,198.8168510504523, True,'gan_barrier', 0.7634112644684218,92.80536688641533,0.008158824765643382,198.8168510504523, True),
+  (7.0,5.0,'c_plane',1.0, 2.6406274123409323,0.9883469858608772,494.71723258124575,237.9136006956763, True,'gan_barrier', 0.7602669122006748,3.590316177725009,0.17475057859742232,237.9136006956763, True),
+  (7.0,5.0,'a_plane',0.0, 2.640140717613241,0.994646189292561,493.75048312949883,239.29986428917468, True,'gan_barrier', 0.76511245330197,19.386008640953158,0.0379687288723651,239.29986428917468, True),
+  (7.0,5.0,'a_plane',1.0, 2.640140717613241,0.994646189292561,493.75048312949883,239.29986428917468, True,'gan_barrier', 0.76511245330197,19.386008640953158,0.0379687288723651,239.29986428917468, True),
   (7.0,30.0,'c_plane',0.0, 0.5395091096981972,6.993479097544514e-12,43.651270757072645,17.416188502642484, True,'gan_barrier', 5.3795993058034715e-12,18168.797685787624,2.96089999945985e-16,17.416188502642484, True),
-  (7.0,30.0,'c_plane',1.0, 2.7761956214375996,0.9884671514849829,441.0147335220955,208.7180290745468, True,'gan_barrier', 0.7603593472961406,11.106998482578803,0.06407149410983533,208.7180290745468, True),
-  (7.0,30.0,'a_plane',0.0, 2.784625658800511,0.9924346438089483,438.33135614126127,202.9552510774334, True,'gan_barrier', 0.7634112644684218,79.07715414290227,0.0095616966209253,202.9552510774334, True),
-  (7.0,30.0,'a_plane',1.0, 2.784625658800511,0.9924346438089483,438.33135614126127,202.9552510774334, True,'gan_barrier', 0.7634112644684218,79.07715414290227,0.0095616966209253,202.9552510774334, True),
+  (7.0,30.0,'c_plane',1.0, 2.644368469260268,0.9883469858608772,532.1752676812514,249.35740603023706, True,'gan_barrier', 0.7602669122006748,2.3061376583579003,0.2479343135280368,249.35740603023706, True),
+  (7.0,30.0,'a_plane',0.0, 2.647419033622583,0.994646189292561,534.9962450226279,243.48444966382212, True,'gan_barrier', 0.76511245330197,16.48885358677572,0.04434414971750605,243.48444966382212, True),
+  (7.0,30.0,'a_plane',1.0, 2.647419033622583,0.994646189292561,534.9962450226279,243.48444966382212, True,'gan_barrier', 0.76511245330197,16.48885358677572,0.04434414971750605,243.48444966382212, True),
   (10.0,5.0,'c_plane',0.0, float('nan'),0.0,float('nan'),float('nan'), False,'gan_barrier', float('nan'),float('nan'),float('nan'),float('nan'), False),
-  (10.0,5.0,'c_plane',1.0, 2.7607401823899,0.9938026469487302,414.26204873668246,199.11851242492003, True,'gan_barrier', 0.7644635745759463,16.101320489828733,0.045326299189929184,199.11851242492003, True),
-  (10.0,5.0,'a_plane',0.0, 2.7536855039474144,0.995447267555754,416.42559645016,203.3837631919083, True,'gan_barrier', 0.76572866735058,77.77720721948545,0.009749172967685281,203.3837631919083, True),
-  (10.0,5.0,'a_plane',1.0, 2.7536855039474144,0.995447267555754,416.42559645016,203.3837631919083, True,'gan_barrier', 0.76572866735058,77.77720721948545,0.009749172967685281,203.3837631919083, True),
+  (10.0,5.0,'c_plane',1.0, 2.62356145630085,0.9937775215477279,509.9676626928752,239.6542665203483, True,'gan_barrier', 0.7644442473444061,3.3565320401670538,0.1855007634140094,239.6542665203483, True),
+  (10.0,5.0,'a_plane',0.0, 2.62142054158179,0.9968159983065192,507.71840605272666,243.96997654297428, True,'gan_barrier', 0.7667815371588609,16.182066035963686,0.04524092472073569,243.96997654297428, True),
+  (10.0,5.0,'a_plane',1.0, 2.62142054158179,0.9968159983065192,507.71840605272666,243.96997654297428, True,'gan_barrier', 0.7667815371588609,16.182066035963686,0.04524092472073569,243.96997654297428, True),
   (10.0,30.0,'c_plane',0.0, float('nan'),0.0,float('nan'),float('nan'), False,'gan_barrier', float('nan'),float('nan'),float('nan'),float('nan'), False),
-  (10.0,30.0,'c_plane',1.0, 2.7609383050315426,0.9938026469487302,454.55545900520525,210.43197548582563, True,'gan_barrier', 0.7644635745759463,10.394501831143588,0.0685066712532436,210.43197548582563, True),
-  (10.0,30.0,'a_plane',0.0, 2.765314396547345,0.995447267555754,453.06671410160766,207.52800590761424, True,'gan_barrier', 0.76572866735058,66.2570554319813,0.011424900914526663,207.52800590761424, True),
-  (10.0,30.0,'a_plane',1.0, 2.765314396547345,0.995447267555754,453.06671410160766,207.52800590761424, True,'gan_barrier', 0.76572866735058,66.2570554319813,0.011424900914526663,207.52800590761424, True),
+  (10.0,30.0,'c_plane',1.0, 2.627229792466645,0.9937775215477279,547.565960991559,251.10323517352518, True,'gan_barrier', 0.7644442473444061,2.1555424942849957,0.2617971638178855,251.10323517352518, True),
+  (10.0,30.0,'a_plane',0.0, 2.6286263491906823,0.9968159983065192,549.1118028124371,248.1591852909512, True,'gan_barrier', 0.7667815371588609,13.761265046104434,0.05277939692471898,248.1591852909512, True),
+  (10.0,30.0,'a_plane',1.0, 2.6286263491906823,0.9968159983065192,549.1118028124371,248.1591852909512, True,'gan_barrier', 0.7667815371588609,13.761265046104434,0.05277939692471898,248.1591852909512, True),
 ]
 
 pin_ok = True
@@ -438,8 +458,8 @@ for (h, Rr, orient, scr, E_X_eV, overlap_sq, dE_e_meV, dE_h_meV, valid, reservoi
             pin_ok = False
             print('PIN FAIL reservoir_energy_eV h=%g R=%g %s scr=%g: got %r expected %r'
                   % (h, Rr, orient, scr, lv_pin.reservoir_energy_eV, _expected_iso_reservoir_energy_eV))
-ck('PIN isolated-dot c-plane/nonpolar E_X/overlap/escape-depths/valid/reservoir_kind/rates '
-   'bit-identical to commit 17a333f across the (h,R,orientation,screening) grid', pin_ok)
+ck('PIN isolated-dot c-plane/nonpolar 17a333f grid (physics columns re-pinned 2026-09-23: erfcx Coulomb, '
+   'anisotropic strain, corrected electron-mass axes), valid/reservoir_kind/rates-valid columns unchanged from 17a333f', pin_ok)
 ck('PIN isolated-dot reservoir_energy_eV is now the T-only bulk GaN edge (device.py agreement, finding d)',
    pin_ok)
 
@@ -458,8 +478,13 @@ ck('QCSE gate retains a physical c-plane row', _physical_lv.valid)
 # eth=min(er,ce)/hth=min(hr,ch), not the isolated-dot continuum ce/ch (the
 # exact Opus re-review fixture: h=7, R=5, w=3.5, screening=1, where the
 # z-excited state sits 33 meV ABOVE eth but 88.69 meV below ce, so the old
-# ee1<ce criterion wrongly admitted it).
-b_sys = NitrideDotSystem(geometry_type='qw_fluctuation', height_nm=7., radius_nm=5.,
+# ee1<ce criterion wrongly admitted it).  Fixture moved 2026-09-23
+# (strain-mass audit) to R=4 nm: with the corrected, heavier in-plane
+# electron mass (me_xy 0.209) the R=5 nm lateral p state now sits below eth
+# and is legitimately admitted as the split (33.0 meV), which would mask the
+# z-excited admission rule this check isolates; at R=4 nm it is above eth
+# again, and the z-excited premise (ee1 36 meV above eth) is unchanged.
+b_sys = NitrideDotSystem(geometry_type='qw_fluctuation', height_nm=7., radius_nm=4.,
                           wl_thickness_nm=3.5, screening_fraction=1.)
 b_lv = levels(b_sys, 300.)
 d_b = ingaN(b_sys.x_in); m_b = binary('GaN')
@@ -496,8 +521,11 @@ ck('C GaN-barrier row (both carriers select the plateau): edge fields equal the 
 
 # ---- (E) mixed-carrier reservoir_kind: electron and hole select DIFFERENT
 # channels (found by scanning H/R/w/screening for e_is_qw != h_is_qw).
+# Re-scanned 2026-09-23 (strain-mass audit): the old screening 0.7 point is
+# no longer mixed (both carriers select the QW); screening 0.5 at the same
+# H/R/w is.
 mixed_sys = NitrideDotSystem(geometry_type='qw_fluctuation', height_nm=3.5, radius_nm=20.,
-                              wl_thickness_nm=1.75, screening_fraction=0.7)
+                              wl_thickness_nm=1.75, screening_fraction=0.5)
 mixed_lv = levels(mixed_sys, 300.)
 mixed_ind = independent_qw(mixed_sys)
 ck('E mixed fixture: production and independent recompute agree the carriers select different channels',
@@ -525,7 +553,7 @@ ck('E mixed fixture: the two per-carrier edge fields report the two DIFFERENT se
 # solve landing at exactly 300 K.
 _mixed_design = DeviceDesign.load(str(ROOT / "cards" / "nitride-qw-fluctuation-pulse-design.yaml"))
 _mixed_design = copy.deepcopy(_mixed_design)
-_mixed_design.nitride["dot"].update(height_nm=3.5, radius_nm=20., wl_thickness_nm=1.75, screening_fraction=0.7)
+_mixed_design.nitride["dot"].update(height_nm=3.5, radius_nm=20., wl_thickness_nm=1.75, screening_fraction=0.5)
 _mixed_design.drive.diode["wl_thickness_nm"] = 1.75
 
 def _zero_applied_field(diode, *, T_j_K, current_uA=None, junction_voltage_V=None, field_polarity=1, external_field_kVcm=0.0):
@@ -558,16 +586,23 @@ ck('F orientation_factor docstring now documents the growth-axis mass swap nitri
 
 # ---- (G) the two QW cards' provenance text no longer claims
 # reservoir_kind='ingan_qw' at their own default (screening_fraction=0.0)
-# geometry, where the resolved value is 'gan_barrier'.
+# geometry.  Re-pinned 2026-09-23 (audit-nitride-strain-mass): the resolved
+# value is now 'mixed' (was 'gan_barrier'), and the card prose says so; the
+# prose must also agree with the live device.evaluate() of the card itself
+# at 300 K (bare levels() at the card geometry without the card's own
+# drive field still resolves 'gan_barrier', so the card is the reference).
 for _card_path in (ROOT / "cards" / "nitride-qw-fluctuation-pulse-design.yaml",
                     ROOT / "cards" / "nitride-qw-fluctuation-set-design.yaml"):
     _card_text = _card_path.read_text(encoding='utf-8')
     _card_flat = _card_text.replace('\n', ' ')
     while '  ' in _card_flat:
         _card_flat = _card_flat.replace('  ', ' ')
-    ck('G %s provenance text states the correct gan_barrier default (not the stale ingan_qw claim)'
+    ck('G %s provenance text states the correct mixed default (not the stale ingan_qw or gan_barrier claim)'
        % _card_path.name,
-       "reservoir_kind='gan_barrier'" in _card_flat and 'screening_fraction=0.0) BOTH' in _card_flat)
+       "screening_fraction=0.0) the two carriers select DIFFERENT channels" in _card_flat
+       and "so reservoir_kind='mixed'" in _card_flat
+       and "reservoir_kind='gan_barrier' " not in _card_flat.replace("(was 'gan_barrier'", "")
+       and evaluate(DeviceDesign.load(str(_card_path)), [300.])["scalars"]["reservoir_kind"] == 'mixed')
 
 # Astra review fixtures: selected plateau masses enter the bulk-channel DOS
 # prefactor, and radial p states must lie below that same selected continuum.
@@ -579,8 +614,12 @@ ck('Astra GaN escape channel exposes GaN reservoir masses for detailed balance',
    chan_lv.escape_h_matrix_xy == m_q.mh_xy and chan_lv.escape_h_matrix_xy != d_q.mh_xy)
 ck('Astra detailed-balance prefactor uses the selected escape-channel mass',
    _chan_rates['valid'] and abs(_chan_rates['escape_prefactor_ns']-_chan_prefactor) < 1e-9*max(1.,_chan_prefactor))
+# Radius moved 5 -> 3.5 nm on 2026-09-23 (strain-mass audit): with the
+# corrected, heavier in-plane electron mass the R=5 nm p states fall below
+# the selected threshold and are legitimately admitted; at 3.5 nm both lie
+# above it again.
 _radial_fixture = levels(NitrideDotSystem(geometry_type='qw_fluctuation', height_nm=3.5,
-    radius_nm=5., wl_thickness_nm=3., screening_fraction=0.), 300.)
+    radius_nm=3.5, wl_thickness_nm=3., screening_fraction=0.), 300.)
 ck('Astra radial excited states above selected escape thresholds are rejected',
    _radial_fixture.valid and math.isnan(_radial_fixture.sp_split_e_meV)
    and math.isnan(_radial_fixture.sp_split_h_meV))

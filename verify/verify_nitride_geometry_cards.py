@@ -339,8 +339,15 @@ def check_qw_reservoir_wiring():
         # unscreened tilt sends one carrier to the GaN plateau, so the
         # reservoir is the barrier; with the field screened both carriers
         # stay in the well and the reservoir is the InGaN QW.
-        ok(f"[{label}] scalars['reservoir_kind'] == 'gan_barrier' at screening 0 (pinned)",
-           s["reservoir_kind"] == "gan_barrier")
+        # Re-pinned 2026-09-23 (strain-mass audit: corrected Rinke 2008
+        # electron-mass axes and the Yan 2014 anisotropic strain shift move
+        # the well/plateau edges): at screening 0 the two carriers now
+        # select DIFFERENT channels, so the label is 'mixed' (was
+        # 'gan_barrier'). The cards' own prose was updated in audit C4 to
+        # say 'mixed' and to name the carriers (electron in the InGaN well
+        # by only ~1.1 meV, hole on the GaN plateau; label fragile).
+        ok(f"[{label}] scalars['reservoir_kind'] == 'mixed' at screening 0 (pinned)",
+           s["reservoir_kind"] == "mixed")
         import copy as _copy
         d1 = _copy.deepcopy(design)
         d1.nitride["dot"]["screening_fraction"] = 1.0
@@ -537,9 +544,8 @@ ALLOWED_EVIDENCE_STATUS = {"full_text", "abstract_only", "figure_reading", "miss
 ALLOWED_EVIDENCE_KIND = {"source_transcription", "non_gating_comparison", "missing_evidence"}
 
 # Independently-typed literals (NOT read back from the ledger file) for the
-# source-transcription cross-check -- ../_goal/nitride_digests.md Sec. 7d/
-# 7e/8, transcribed by this verifier a second time, independently of
-# whatever the ledger file itself says.
+# source-transcription cross-check -- transcribed by this verifier a second
+# time, independently of whatever the ledger file itself says.
 WANG_LINEWIDTH_220K_MEV = 19.0
 WANG_LINEWIDTH_220K_TOL_MEV = 0.4
 WANG_G2_RAW_220K = 0.47

@@ -334,7 +334,7 @@ def _():
        "with F_p=1 reproduces today's g2_op at the gainp favourable corner "
        "(frozen 2026-09-07, before this change; the code path is unchanged "
        "at F_p=1 in 'auto' mode so this value is bit-identical pre- and "
-       "post-change)")
+       "post-change; re-pinned 2026-09-23 for the aperture cross-term fix)")
 def _():
     import warnings
     from fsim_core.device import DeviceDesign
@@ -350,8 +350,17 @@ def _():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         g2_op = dev_eval(d, T_grid=[230.0])["scalars"]["g2_op"]
-    G2_OP_AUTO_2026_09_07 = 0.44392483496636415
-    assert abs(g2_op - G2_OP_AUTO_2026_09_07) < 1e-9, g2_op
+    # Re-pinned 2026-09-23 (spec audit-edge-cards-label, additional task 3):
+    # the audit-device-composition aperture cross-term fix (device.py
+    # aperture composition now uses the exact three-source factorial-moment
+    # law 1 - s^2(1-g_t)/((1+lam)s+b)^2, reviewed separately) moves this
+    # value from 0.44392483496636415 (frozen 2026-09-07) to
+    # 0.4414191233937186 -- the same gainp no-cancellation favourable-corner
+    # value the card's finding_1b_record literal now quotes. The loading
+    # path this check guards (auto == capped_poisson at F_p = 1) is
+    # unchanged; only the downstream aperture composition moved.
+    G2_OP_AUTO_2026_09_23 = 0.4414191233937186
+    assert abs(g2_op - G2_OP_AUTO_2026_09_23) < 1e-9, g2_op
 
 
 @check("finding 2: unknown drive.loading_model raises ValueError")

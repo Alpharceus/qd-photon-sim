@@ -30,12 +30,14 @@ from fsim_core.dbr import (
     invert_kappa,
     penetration_depth,
     planar_purcell,
+    planar_total_rate,
     power_RT,
     quarter_wave_stack,
     qw_peak_reflectivity,
     rt_amplitudes,
     stopband_edges_analytic,
     transfer_matrix,
+    _r_oblique,
 )
 from tests.oracles.em_oracles import fresnel_slab  # verify-side use is allowed
 
@@ -344,6 +346,178 @@ def _():
     assert slope > 0.0, slope
     est = -E0 * dndt / N_C  # dE/E = -dn/n with n ~ n_c (mode-weighted)
     assert 0.5 < slope / est < 2.0, (slope, est)
+
+
+# ------------------------------------ 12b: total planar rate (audit H5 fix)
+#
+# planar_purcell is the 1-D ON-AXIS LDOS; planar_total_rate is the angle-
+# integrated total rate that may be used as F_P. Expectations below are
+# closed forms / identities / an independent second integration, never
+# numbers produced by the code under test.
+
+def _fresnel_tangential(n1, n2, s, pol):
+    """Textbook single-interface Fresnel r (exp(-i w t), decaying branch
+    Im(cos) >= 0), written for TANGENTIAL E: TE r_s = (n1c1-n2c2)/(n1c1+n2c2);
+    TM tangential-E r = (n1/c1 - n2/c2)/(n1/c1 + n2/c2) (= -r_p of the
+    H-field convention). Born & Wolf ch. 1.5."""
+    c1 = cmath.sqrt(1 - (s / n1) ** 2)
+    c2 = cmath.sqrt(1 - (s / n2) ** 2)
+    if c2.imag < 0:
+        c2 = -c2
+    if pol == "s":
+        a, b = n1 * c1, n2 * c2
+    else:
+        a, b = n1 / c1, n2 / c2
+    return (a - b) / (a + b)
+
+
+def _macleod_r(layers, lam, n0, n_sub, s, pol, kap=0.0):
+    """Independent oblique reflection (Macleod characteristic-matrix
+    method, conjugated to exp(-i w t)); every layer and the substrate get
+    an absorption index kap (the incidence medium n0 stays lossless).
+    Vectorized over real s."""
+    def eta_c(n):
+        c = np.sqrt(1 - (s / n) ** 2 + 0j)
+        c = np.where(c.imag < 0, -c, c)
+        return (n * c if pol == "s" else n / c), c
+    B = np.ones_like(s, dtype=complex)
+    C, _ = eta_c(n_sub + 1j * kap)
+    for L in reversed(layers):
+        e, c = eta_c(L.n + 1j * kap)
+        dl = 2 * np.pi / lam * (L.n + 1j * kap) * L.d_nm * c
+        B, C = (np.cos(dl) * B - 1j * np.sin(dl) / e * C,
+                -1j * e * np.sin(dl) * B + np.cos(dl) * C)
+    e0, _ = eta_c(n0)
+    Y = C / B
+    return (e0 - Y) / (e0 + Y)
+
+
+def _lossy_real_axis_rate(top, bottom, n_c, d_c, z, lam, n_in, n_out,
+                          kap, n_th=200000):
+    """Second method for planar_total_rate: real-axis theta integral of the
+    in-plane dipole rate with a small absorption kap in every mirror layer
+    and the substrate (the spacer stays lossless), which broadens the
+    guided-mode poles into resolvable Lorentzians (small-loss limit)."""
+    dth = 0.5 * np.pi / n_th
+    th = (np.arange(n_th) + 0.5) * dth
+    u, sn = np.cos(th), np.sin(th)
+    s = n_c * sn
+    k0 = 2 * np.pi / lam
+    e1 = np.exp(2j * k0 * n_c * u * z)
+    e2 = np.exp(2j * k0 * n_c * u * (d_c - z))
+    acc = 0.0
+    for pol, w in (("s", 1.0), ("p", u**2)):
+        r1 = _macleod_r(list(reversed(top)), lam, n_c, n_in, s, pol, kap)
+        r2 = _macleod_r(bottom, lam, n_c, n_out, s, pol, kap)
+        acc = acc + w * np.real((1 + r1 * e1) * (1 + r2 * e2) / (1 - r1 * r2 * e1 * e2))
+    return 0.75 * float(np.sum(sn * acc)) * dth
+
+
+@check("_r_oblique: s = 0 reduces to rt_amplitudes (TE and TM, 10/16 stack), "
+       "and a bare interface equals the textbook Fresnel r incl. TIR")
+def _():
+    top, spacer, bottom = cavity_stack(N_H, N_L, N_C, 10, 16, LAM0)
+    rb = rt_amplitudes(bottom, LAM0, n_in=N_C, n_out=N_H)[0]
+    for pol in ("s", "p"):
+        ra = _r_oblique(bottom, LAM0, N_C, N_H, np.array([0.0]), pol)[0]
+        assert abs(ra - rb) < 1e-12, (pol, ra, rb)
+    for n1, n2 in ((3.4, 1.0), (1.0, 3.5), (3.4, 3.0)):
+        for s in (0.0, 0.3 * min(n1, n2), 0.9 * n1):
+            for pol in ("s", "p"):
+                got = _r_oblique([], LAM0, n1, n2, np.array([s]), pol)[0]
+                exp = _fresnel_tangential(n1, n2, s, pol)
+                assert abs(got - exp) < 1e-12, (n1, n2, s, pol, got, exp)
+
+
+@check("planar_total_rate homogeneous medium (no mirrors, n_in = n_out = "
+       "n_c): Gamma/Gamma_bulk = 1 within 1e-3 (in-plane, vertical, isotropic)")
+def _():
+    for orient in ("inplane", "vertical", "isotropic"):
+        F = planar_total_rate([], [], N_C, 300.0, 70.0, LAM0, n_in=N_C,
+                              n_out=N_C, orientation=orient)
+        assert abs(F - 1.0) < 1e-3, (orient, F)
+
+
+@check("planar_total_rate perfect mirror: in-plane dipole at 4 distances "
+       "matches Drexhage/Chance-Prock-Silbey 1-(3/2)[sin x/x + cos x/x^2 - "
+       "sin x/x^3] within 1e-2 (vertical 1+3[sin x/x^3 - cos x/x^2] too)")
+def _():
+    # perfect mirror = semi-infinite n_out -> infinity (r -> -1 for both
+    # polarizations in the tangential-E convention); top side is bare n_c.
+    d_c, n_pec = 2000.0, 1e9
+    k = 2 * np.pi * N_C / LAM0
+    for x in (1.0, 3.0, 6.0, 10.0):
+        d = x / (2 * k)
+        Fi = planar_total_rate([], [], N_C, d_c, d_c - d, LAM0, n_in=N_C,
+                               n_out=n_pec, orientation="inplane")
+        Fv = planar_total_rate([], [], N_C, d_c, d_c - d, LAM0, n_in=N_C,
+                               n_out=n_pec, orientation="vertical")
+        ci = 1 - 1.5 * (math.sin(x) / x + math.cos(x) / x**2 - math.sin(x) / x**3)
+        cv = 1 + 3 * (math.sin(x) / x**3 - math.cos(x) / x**2)
+        assert abs(Fi - ci) < 1e-2, (x, Fi, ci)
+        assert abs(Fv - cv) < 1e-2, (x, Fv, cv)
+
+
+@check("planar_total_rate translation identity: a spacer-index layer of "
+       "thickness t added to a mirror == widening the spacer by t "
+       "(reflection-phase convention), within 1e-6")
+def _():
+    top, spacer, bottom = cavity_stack(N_H, N_L, N_C, 10, 16, LAM0)
+    t = 37.0
+    for z in (0.0, 60.0):
+        a = planar_total_rate(top, [Layer(N_C, t)] + bottom, N_C, spacer.d_nm,
+                              z, LAM0, n_out=N_H)
+        b = planar_total_rate(top, bottom, N_C, spacer.d_nm + t, z, LAM0,
+                              n_out=N_H)
+        assert abs(a - b) < 1e-6, (z, a, b)
+
+
+@check("planar_total_rate deformed contour == independent small-absorption "
+       "real-axis integral (Macleod matrices, kappa_abs 1e-4) within 2e-3, "
+       "10/16 pairs, antinodes z = 0 and d_c/2")
+def _():
+    top, spacer, bottom = cavity_stack(3.5, 3.0, 3.4, 10, 16, 668.0)
+    for z in (0.0, 0.5 * spacer.d_nm):
+        F = planar_total_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                              n_out=3.5)
+        ref = _lossy_real_axis_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                                    1.0, 3.5, 1e-4)
+        print(f"        z={z:6.1f} nm: contour {F:.5f}  lossy real-axis {ref:.5f}")
+        assert abs(F - ref) < 2e-3, (z, F, ref)
+
+
+@check("planar_total_rate geometry-sweep ladder (3.5/3.0/3.4, 668 nm, top "
+       "10/14/18, bottom +6, centre antinode): total-rate factor in [1.0, 1.3] "
+       "while the 1-D on-axis value is >> 10; converged in n_theta and path depth")
+def _():
+    for nt in (10, 14, 18):
+        top, spacer, bottom = cavity_stack(3.5, 3.0, 3.4, nt, nt + 6, 668.0)
+        z = 0.5 * spacer.d_nm
+        F1 = planar_purcell(top, bottom, 3.4, spacer.d_nm, z, 668.0, n_out=3.5)
+        Ft = planar_total_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                               n_out=3.5)
+        Ft2 = planar_total_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                                n_out=3.5, n_theta=40000)
+        Ft3 = planar_total_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                                n_out=3.5, contour_depth=0.02)
+        print(f"        top={nt:2d}: F_planar_1d_onaxis {F1:8.1f}   "
+              f"F_total_planar {Ft:.4f}")
+        assert 1.0 <= Ft <= 1.3, (nt, Ft)
+        assert F1 > 10.0, (nt, F1)
+        assert abs(Ft - Ft2) < 1e-4 and abs(Ft - Ft3) < 1e-4, (nt, Ft, Ft2, Ft3)
+
+
+@check("planar_total_rate pinned to the reviewer's independent ladder value "
+       "(3.5/3.0/3.4, 668 nm, top 10 / bottom 16, n_out 3.5): centre antinode "
+       "1.0163, interface antinode 0.9749, within 1e-3")
+def _():
+    # [DR] independent Parratt real-axis integration, review 2026-09-23
+    # (reviewer-computed, not produced by planar_total_rate).
+    top, spacer, bottom = cavity_stack(3.5, 3.0, 3.4, 10, 16, 668.0)
+    for z, ref in ((0.5 * spacer.d_nm, 1.0163), (0.0, 0.9749)):
+        F = planar_total_rate(top, bottom, 3.4, spacer.d_nm, z, 668.0,
+                              n_out=3.5)
+        assert abs(F - ref) < 1e-3, (z, F, ref)
 
 
 # -------------------------------------------------------------- 12: hygiene

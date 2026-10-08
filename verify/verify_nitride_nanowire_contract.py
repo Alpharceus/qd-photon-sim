@@ -4,11 +4,9 @@ This is a (T)/(N) source-transcription and structural-consistency check
 (README.md's five-way split): it PARSES `docs/nitride_nanowire_contract.md`
 and `verify/data/nitride_nanowire_anchors.yaml` and asserts that the
 contract's module table, card schema, row-column list, VERDICT format, and
-sweep-grid arithmetic are internally consistent AND match the nine spec
-files under `.workers/specs/nitride-nanowire-*.md` that this contract
-transcribes. It never re-verifies future production solvers (pieces 2-9
-are implemented and reviewed separately); it verifies the FROZEN INTERFACE
-those pieces are built against.
+sweep-grid arithmetic are internally consistent. It never re-verifies future
+production solvers (pieces 2-9 are implemented and reviewed separately); it
+verifies the FROZEN INTERFACE those pieces are built against.
 
 Unlike the previous revision of this file, every check below reads real
 text from the document/ledger/spec files -- there is no `literal ==
@@ -422,29 +420,43 @@ def check_dataclass_card_binding(doc_text: str, ok) -> None:
                mapped <= all_leaves)
 
 
-# fix-3 LOW 10: "every card Default cell that is a number equals the live
-# dataclass default." A Default cell counts as "a number" only when it is
-# a bare numeric literal, optionally followed by a short trailing
-# parenthetical note that itself contains no digits (e.g. "1.0 (air)",
-# "2.0 (each barrier)") -- a note that itself carries a competing number
-# (e.g. occupied_dot_access's documented "1.0 [A]" conservative-partner
-# override, or shell_multiplier's two conditional defaults) marks a
-# deliberate card-level override or family-conditioned value, not a plain
-# dataclass default, and is intentionally left unchecked here. Scoped to
-# the three dataclasses with a single, exact-name-set Card schema
+# fix-3 LOW 10, hardened in audit C4 (Part C): "every card Default cell
+# that is a number equals the live dataclass default." The earlier parser
+# accepted a number only when its trailing parenthetical note carried NO
+# digits or commas, and SILENTLY skipped every other cell -- which left
+# reservoir_state_count_e/h (note mentions "2.0"), growth_step_nm (note says
+# "c/2"), occupied_dot_access and shell_multiplier unchecked with no signal.
+# Now the LEADING number of the cell is compared whatever the note says,
+# and a live int/float leaf is skipped only when it is on the explicit
+# allow-list below (with its reason); any other live int/float leaf whose
+# cell has no leading number FAILS loudly (card_default_parseable_*). An
+# allow-list entry that is stale (the leaf is gone, or its cell now agrees
+# with the live default, so it no longer needs the exemption) also fails.
+# Scoped to the three dataclasses with a single, exact-name-set Card schema
 # subsection (photonics, surface, injector); NitrideNanowireSystem and
 # NitrideWireDiode have renamed/family-duplicated leaves spread across
 # several subsections (see DATACLASS_CARD_BINDING above) and are not
-# safely checkable by this simple per-subsection rule.
+# safely checkable by this per-subsection rule.
 _NUMBER_CELL_RE = re.compile(
     r"^(?P<num>[-+]?\d+\.?\d*(?:[eE][-+]?\d+)?)"
-    r"(?:\s*\((?P<note>[A-Za-z_ /\-`]*)\))?$"
+    r"(?:\s*\((?P<note>.*)\))?$"
 )
+
+# (class_name, leaf) -> reason. Deliberately NOT compared to the live
+# dataclass default; every entry must still exist and still differ.
+DELIBERATELY_UNCHECKED_DEFAULT_LEAVES = {
+    ("NitrideNanowireSurfaceParams", "shell_multiplier"):
+        "family/shell-conditioned: the cell lists two conditional defaults "
+        "(1.0 for shell `none`, 0.1 for `AlGaN`); the dataclass carries only the AlGaN value",
+    ("NitrideNanowireSurfaceParams", "occupied_dot_access"):
+        "documented card-level override: the cards' headline 0.05 [DR] replaces the "
+        "dataclass's conservative 1.0 [A] partner (Composition rules bullet 8)",
+}
 
 
 def _parse_number_cell(cell: str):
-    """Return the float value of `cell` if it is a bare number (optionally
-    with a short, digit-free parenthetical note), else None."""
+    """Return the float value of the LEADING number of `cell` (a bare number,
+    optionally followed by one parenthetical note of any content), else None."""
     m = _NUMBER_CELL_RE.match(cell.strip())
     if not m:
         return None
@@ -461,7 +473,7 @@ CARD_DEFAULT_LIVE_BINDING = [
 ]
 
 
-def check_card_defaults_match_live(doc_text: str, ok) -> None:
+def _card_default_cells(doc_text: str):
     card_section = get_section(doc_text, "## Card schema\n", "## Row columns\n")
     tables = find_all_subsection_tables(card_section, "### ")
     by_subsection_rows: dict[str, tuple[list[str], list[list[str]]]] = {}
@@ -469,8 +481,13 @@ def check_card_defaults_match_live(doc_text: str, ok) -> None:
         m = re.match(r"`([^`]+)`", name.strip())
         key = m.group(1) if m else name.strip()
         by_subsection_rows[key] = (header, rows)
+    return by_subsection_rows
 
-    for spec_key, class_name, subsection, rename in CARD_DEFAULT_LIVE_BINDING:
+
+def check_card_defaults_match_live(doc_text: str, ok, binding=None) -> None:
+    by_subsection_rows = _card_default_cells(doc_text)
+    seen_allow = set()
+    for spec_key, class_name, subsection, rename in (binding or CARD_DEFAULT_LIVE_BINDING):
         live_mod = LIVE_MODULES.get(spec_key)
         cls = getattr(live_mod, class_name, None) if live_mod is not None else None
         if cls is None or not dataclasses.is_dataclass(cls):
@@ -497,12 +514,41 @@ def check_card_defaults_match_live(doc_text: str, ok) -> None:
                 continue
             cell = row[default_idx] if default_idx < len(row) else ""
             parsed = _parse_number_cell(cell)
-            if parsed is None:
-                # not a bare-number cell (a family-conditioned or
-                # documented-override default) -- not this check's target.
+            matches = parsed is not None and abs(parsed - float(live_default)) < 1e-9 * max(1.0, abs(float(live_default)))
+            if (class_name, leaf) in DELIBERATELY_UNCHECKED_DEFAULT_LEAVES:
+                seen_allow.add((class_name, leaf))
+                ok(f"card_default_allowlist_not_stale_{class_name}_{leaf}", not matches)
                 continue
-            ok(f"card_default_matches_live_{class_name}_{leaf}",
-               abs(parsed - float(live_default)) < 1e-9 * max(1.0, abs(float(live_default))))
+            ok(f"card_default_parseable_{class_name}_{leaf}", parsed is not None)
+            if parsed is not None:
+                ok(f"card_default_matches_live_{class_name}_{leaf}", matches)
+    if binding is None:
+        for class_name, leaf in DELIBERATELY_UNCHECKED_DEFAULT_LEAVES:
+            ok(f"card_default_allowlist_entry_present_{class_name}_{leaf}",
+               (class_name, leaf) in seen_allow)
+
+
+def check_card_defaults_loud_fail_fixture(ok) -> None:
+    """C4 regression pin: the hardened parser must (a) read the leading number
+    of a cell whose note carries digits/commas, and (b) FAIL -- not skip -- a
+    live int/float leaf whose cell drifts or has no leading number."""
+    ok("card_default_parser_reads_leading_number_despite_digit_note",
+       _parse_number_cell("1.0 (fix-3 correction: was documented 2.0, drifted)") == 1.0
+       and _parse_number_cell("0.2593 (GaN c-axis bilayer spacing c/2)") == 0.2593
+       and _parse_number_cell("see bullet 8, 0.05") is None)
+    binding = [b for b in CARD_DEFAULT_LIVE_BINDING if b[1] == "NitrideNanowireInjectorParams"]
+    if not binding:
+        ok("card_default_loud_fail_fixture_binding_found", False)
+        return
+    def _doc(cell):
+        return ("## Card schema\n\n### `" + binding[0][2] + "`\n\n| Leaf | Default |\n|---|---|\n"
+                "| `reservoir_state_count_e` | " + cell + " |\n\n## Row columns\n")
+    for label, cell, expect_fail in (("drifted_digit_note", "2.0 (spin, 2 states)", True),
+                                     ("unparseable", "two (spin)", True),
+                                     ("matching_digit_note", "1.0 (was 2.0, drifted)", False)):
+        got = []
+        check_card_defaults_match_live(_doc(cell), lambda n, v: got.append(bool(v)), binding=binding)
+        ok(f"card_default_loud_fail_fixture_{label}", bool(got) and ((not all(got)) if expect_fail else all(got)))
 
 
 def check_row_columns(doc_text: str, ok) -> None:
@@ -661,6 +707,66 @@ def check_evidence_semantics(doc_text: str, ok) -> None:
     ok("cavity_enabled_false_documented", "cavity.enabled` is `false`" in section or "cavity.enabled` is false" in section)
 
 
+def check_audit_capture_leak_semantics(doc_text: str, ok) -> None:
+    """Physics audit H1/H2/M4 + single-selection (2026-09-23): the contract
+    states the resolved meaning of S_dot and of the leak channel, and the
+    LIVE transport module agrees with it (not only the text)."""
+    section = get_section(doc_text, "## Composition rules for the device piece" + chr(10), "## Module table" + chr(10))
+    flat = " ".join(section.split())
+    ok("audit_S_dot_is_retention_not_overlap",
+       "`S_dot`" in flat and "CAPTURE-RETENTION" in flat and "NOT the electron-hole overlap" in flat
+       and "`S_dot = 1.0`" in flat)
+    ok("audit_leak_is_thermal_escape_priced_in_levels",
+       "THERMAL ESCAPE, not pre-capture bypass" in flat and "NO leak channel" in flat
+       and "`r_leakage_s` are identically 0" in flat and "(N_res/2)" in flat)
+    ok("audit_background_single_selection_documented", "spectrally selected ONCE" in flat)
+    ok("audit_vj_ceiling_documented", "min(V_bi, E_g(GaN, T)/q)" in flat and "out_of_model" in flat)
+    mod = LIVE_MODULES.get("transport")
+    if mod is None:
+        ok("audit_live_transport_importable", False)
+        return
+    prov = mod._PROVENANCE
+    ok("audit_live_provenance_S_dot", "NOT the electron-hole overlap" in prov.get("S_dot", ""))
+    ok("audit_live_provenance_leak", "NO leak channel" in prov.get("leak", ""))
+    d = mod.wire_pin(preset="deshpande_2013_30nm")
+    r = mod.evaluate_injection(d, I_uA=.001, T_K=300., tau_pulse_ns=.1, E_X_eV=2.84, reservoir_energy_eV=3.4,
+                               barrier_e_eV=.04, barrier_h_eV=.02, surface_reservoir_ns=1., tau_cap_ps=10.,
+                               S_dot=1., w_meV=2., eta_rad_matrix=1., eta_total=.01)
+    ok("audit_live_leak_columns_zero",
+       r["valid"] and r["r_leakage_s"] == 0. and r["eta_inj"] == 1. and r["r_e_leak_ratio"] == 0. and r["r_h_leak_ratio"] == 0.)
+
+
+def check_audit_loading_window(doc_text: str, ok) -> None:
+    """Audit C6 (2026-09-23, M3; user decision Q6): the contract documents
+    the explicit loading window (card leaf, default, gate semantics, the
+    audit's closed-form values) and the opt-in sweep axis, and the LIVE
+    device module agrees (keyword default None, card leaf read, default
+    tau_pulse_ns)."""
+    comp = " ".join(get_section(doc_text, "## Composition rules for the device piece" + chr(10),
+                                "## Module table" + chr(10)).split())
+    ok("audit_c6_loading_window_leaf_documented",
+       "`drive.diode.loading_window_ns`" in comp and "defaults to `drive.diode.tau_pulse_ns`" in comp
+       and "`invalid loading window`" in comp)
+    ok("audit_c6_gate_semantics_documented",
+       "the second-carrier gate `gate_ns` IS the window" in comp
+       and "the counting gate stays the card gate" in comp
+       and "0.0030 / 0.0299 / 0.1408 at 0.1 / 1 / 5 ns" in comp)
+    grid = " ".join(get_section(doc_text, "## Sweep grid, VERDICT format, and output paths" + chr(10),
+                                "## Evidence and verdict semantics" + chr(10)).split())
+    ok("audit_c6_opt_in_axis_documented",
+       "--loading-window-cut" in grid and "{0.1, 0.3, 1, 3, 10} ns" in grid and "OFF by default" in grid)
+    mod = LIVE_MODULES.get("device")
+    fn = getattr(mod, "evaluate_nanowire", None) if mod is not None else None
+    ok("audit_c6_live_keyword_default_none",
+       fn is not None and inspect.signature(fn).parameters.get("loading_window_ns") is not None
+       and inspect.signature(fn).parameters["loading_window_ns"].default is None
+       and inspect.signature(fn).parameters["loading_window_ns"].kind == inspect.Parameter.KEYWORD_ONLY)
+    src = inspect.getsource(mod) if mod is not None else ""
+    ok("audit_c6_live_device_reads_leaf_and_defaults_to_pulse",
+       'd.drive.diode.get("loading_window_ns")' in src and "loading_window = pulse if lw_raw is None" in src
+       and "loading_window_ns=loading_window" in src)
+
+
 def check_ledger_rules(anchors: dict, ok) -> None:
     for anchor_id, row in anchors.items():
         missing_fields = REQUIRED_ANCHOR_FIELDS - set(row)
@@ -810,9 +916,17 @@ def main() -> int:
     check_card_schema(doc_text, ok)
     check_dataclass_card_binding(doc_text, ok)
     check_card_defaults_match_live(doc_text, ok)
+    check_card_defaults_loud_fail_fixture(ok)
+    # audit C4 (contract review M6 partial): a live module that fails to
+    # import used to drop every binding check that needs it SILENTLY
+    # (714/714 passed with the device module renamed away); fail loudly.
+    for _key, _modname in LIVE_MODULE_NAMES.items():
+        ok(f"live_module_imports_{_key}", LIVE_MODULES.get(_key) is not None)
     check_row_columns(doc_text, ok)
     check_verdict_and_grid(doc_text, ok)
     check_evidence_semantics(doc_text, ok)
+    check_audit_capture_leak_semantics(doc_text, ok)
+    check_audit_loading_window(doc_text, ok)
     check_ledger_rules(anchors, ok)
     check_source_transcription_literals(doc_text, anchors, ok)
 

@@ -401,6 +401,33 @@ def check_card(path: Path, anchors: dict) -> set:
     ok(f"{tag}: single_dot_selection.density_cm2 matches design.aperture.density_cm2",
        values_equal(sds.get("density_cm2"), density_cm2))
 
+    # ---- 6b. static (non-headline) labelling (spec audit-edge-cards-label,
+    # user decision Q2, 2026-09-23): the card keeps drive.finite_pulse=false
+    # (so every card-level number is the static per-pulse loading), and
+    # must SAY so -- in meta.note, in drive.finite_pulse's own source, and
+    # next to the quoted operating-point and favourable-corner numbers --
+    # while naming the headline model (drive.finite_pulse=true) and its g2.
+    STATIC_LABEL = "static (non-headline)"
+    fp_source = " ".join(str(sources.get("drive.finite_pulse", {}).get("source", "")).split())
+    ok(f"{tag}: drive.finite_pulse is still false (labelled, not switched)",
+       design.drive.finite_pulse is False)
+    ok(f"{tag}: meta.note labels card-level numbers {STATIC_LABEL!r} and names the "
+       "headline model drive.finite_pulse: true",
+       STATIC_LABEL in " ".join(str(raw_doc.get("meta", {}).get("note", "")).split())
+       and "drive.finite_pulse: true" in " ".join(str(raw_doc.get("meta", {}).get("note", "")).split()))
+    ok(f"{tag}: drive.finite_pulse source carries the {STATIC_LABEL!r} label, the "
+       "HEADLINE_MODEL pointer, and cites the files its headline g2 values come from",
+       STATIC_LABEL in fp_source and "HEADLINE_MODEL" in fp_source
+       and "out/rt_edge/verdict.md" in fp_source
+       and ".workers/review/audit-device-opus-findings.md" in fp_source)
+    ok(f"{tag}: drive.I_uA source and finding_1b_record label their quoted numbers "
+       f"{STATIC_LABEL!r}",
+       STATIC_LABEL in " ".join(str(sources.get("drive.I_uA", {}).get("source", "")).split())
+       and STATIC_LABEL in " ".join(str(provenance.get("finding_1b_record", "")).split()))
+    m_head = re.search(r"300 K finite-pulse g2_op ([0-9.]+) against static ([0-9.]+)", fp_source)
+    ok(f"{tag}: drive.finite_pulse source quotes a 300 K finite-pulse/static g2_op pair",
+       m_head is not None)
+
     # ---- 7. evaluate() at the card's own thermal.T_hs: must not raise
     t0 = time.perf_counter()
     try:
@@ -438,6 +465,21 @@ def check_card(path: Path, anchors: dict) -> set:
            all(k in quoted and math.isfinite(quoted[k]) and math.isfinite(actual_metrics[k])
                and math.isclose(quoted[k], actual_metrics[k], rel_tol=1e-6)
                for k in actual_metrics))
+        # 6b continued: the quoted 300 K pair matches fresh evaluations --
+        # the static half is this very evaluate() (card as shipped), the
+        # headline half a copy with only drive.finite_pulse switched on
+        # (quoted to 7 decimals -> abs 1e-6).
+        if m_head is not None and design.thermal.T_hs == 300.0:
+            fp_design = copy.deepcopy(design)
+            fp_design.drive.finite_pulse = True
+            fp_design.drive.cw = False
+            fp_g2 = float(evaluate(fp_design, T_grid=[300.0])["scalars"]["g2_op"])
+            ok(f"{tag}: quoted 300 K static g2_op ({m_head.group(2)}) matches this fresh "
+               f"card-level evaluate ({float(sc['g2_op'])!r}) and the quoted headline "
+               f"finite-pulse g2_op ({m_head.group(1)}) matches a fresh finite_pulse=true "
+               f"evaluate ({fp_g2!r}), abs 1e-6",
+               abs(float(m_head.group(2)) - float(sc["g2_op"])) < 1e-6
+               and abs(float(m_head.group(1)) - fp_g2) < 1e-6)
         # Lemma 1 regression: rho_op is transport-intrinsic and must not
         # depend on the collection levers (NA, R_back, or L_um).
         default_collection = copy.deepcopy(design)

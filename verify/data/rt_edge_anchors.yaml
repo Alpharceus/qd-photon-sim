@@ -328,3 +328,53 @@ anchors:
     tag: V
     status: verified
     verification: "web:https://pubs.aip.org/aip/jap/article-abstract/110/6/063108/151233 -- confirmed 2026-09-05 by reading the full text (open-access mirror, kops.uni-konstanz.de): 'the XX binding energy of ~7 meV allows to clearly identify the X and XX decay channels' -- matches this anchor's value (the paper does not itself state an explicit +/-1 meV uncertainty on this particular number; the tolerance here is a reading-precision estimate). Not in ../_goal/paper_digests.md (outside the fact-checked six-paper digest set)."
+  # Audit H4 (.workers/review/audit-photonics-opus-findings.md, 2026-09-22):
+  # waveguide.beta_factor now uses the energy-normalised Purcell area, not
+  # the nonlinear-optics (int I)^2/int I^2 area (2x too large for a
+  # Gaussian). This anchor pins the corrected HKUST-ridge guided-mode beta.
+  # It is a [DR] closed-form evaluation, not a measured value: Lecamp 2007
+  # does not tabulate a beta for an AlInP/AlGaInP ridge, so this claim has
+  # one derived source by construction.
+  - id: lecamp07-hkust-ridge-guided-beta
+    claim: hkust_ridge_guided_beta
+    value: 0.0408
+    unit: fraction
+    tolerance: {rel: 0.03}
+    conditions: "[DR] Guided-mode spontaneous-emission beta (both propagation directions) of the scalar effective-index HKUST ridge (fsim_core.waveguide.hkust_ridge_stack): Al0.52In0.48P claddings 1000 nm each, (Al0.50Ga0.50)0.51In0.49P core 2 x 148 nm, GaAs0.60P0.40 wells 2 x 1 nm, 2 nm InP dot sheet at the vertical antinode; 2000 nm ridge width, 1200 nm etch depth, 668 nm, TE; indices from materials.py (Schubert et al., JAP 77, 3416 (1995)). F_wg = (3/(4 pi)) (lambda/n_dot)^2 (n_g/n_dot) / A_P = 0.0425 with n_g = 4.335 (5 nm finite difference) and energy-normalised Purcell area A_P = int eps|E|^2 dA / (eps_dot |E(r_dot)|^2) = 0.2534 um^2; beta = F/(1+F) = 0.0408. Independently re-derived by .workers/review/audit-scripts/photonics_waveguide_checks.py (0.04251 / 0.04078). Not a device measurement."
+    source: "Lecamp, Lalanne & Hugonin, Physical Review Letters 99, 023902 (2007)"
+    doi: "10.1103/PhysRevLett.99.023902"
+    locator: "Eq. (2) guided-mode Purcell factor and the energy-normalised effective-area definition that follows it (equation number as cited in fsim_core/waveguide.py; not re-read against the PDF in this pass)"
+    tag: DR
+    status: verified
+    verification: "derived: closed-form evaluation of the Lecamp 2007 formula on the solved HKUST ridge mode, reproduced by the independent audit script .workers/review/audit-scripts/photonics_waveguide_checks.py (A_P 0.2534 um^2, F 0.04251, beta 0.04078) and pinned in verify/verify_waveguide.py."
+
+# Shared verifier envelopes (spec audit-edge-cards-label, additional task 2,
+# 2026-09-23). NOT evidence anchors: no claim, no DOI, never scored by
+# verify_rt_edge_papers.py's two-source rule (every ledger loader reads only
+# the `anchors` list above). One source of truth for the ridge guided-mode
+# beta class envelope used by verify_waveguide.py ('ridge beta class'),
+# verify_device_rt.py (2 um ridge fixture) and verify_rt_edge_papers.py
+# ('evaluator cross-check [edge_extraction_efficiency]'), replacing the three
+# separate pre-/post-audit-H4 bounds (0.003, 0.03) / (0.003, 0.03) /
+# (0.006, 0.06).
+envelopes:
+  ridge_guided_beta:
+    lo: 0.0060
+    hi: 0.067
+    unit: fraction
+    tag: E
+    base_class: {lo: 0.003, hi: 0.03}
+    area_ratio: {lo: 2.0, hi: 2.32}
+    derivation: >
+      [E] The pre-audit-H4 ridge class 0.3%-3% (beta computed with the
+      nonlinear-optics area (int I)^2/int I^2) mapped onto the energy-
+      normalised Purcell area of Lecamp, Lalanne & Hugonin, Physical Review
+      Letters 99, 023902 (2007): F = beta/(1-beta) scales by the area ratio
+      r = A_nl/A_P, beta' = rF/(1+rF). The lower bound uses the exact
+      Gaussian ratio r = 2 [DR] (0.003 -> 0.00598), the upper bound the
+      largest ratio actually solved, r = 2.32 on the HKUST ridge [DR]
+      (audit H4, .workers/review/audit-photonics-opus-findings.md; 0.03 ->
+      0.06695); bounds rounded to 0.0060 / 0.067. verify_waveguide.py
+      re-derives both from this closed form and re-measures r on the HKUST
+      ridge. Deliberately NOT the bare factor-2 rescale (0.006, 0.06): the
+      RT edge cards' beta (~0.057) would sit within 5% of 0.06.

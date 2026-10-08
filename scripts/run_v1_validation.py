@@ -1,5 +1,5 @@
-"""V1 (work order v3): device-tier validation against the two measured
-g2(T) series reaching toward/into room temperature.
+"""V1 validation: device-tier validation against the two measured g2(T)
+series reaching toward/into room temperature.
 
 Laferriere 2023 (InAsP/InP nanowire, O-band, optical): model ENVELOPE over
 the 16 corners of the published-unknown [E] ranges (delta_xx, Gamma, w, mu)

@@ -24,8 +24,10 @@ def ck(label, value):
 # (defined once in nitride_levels.py) vs an INDEPENDENTLY typed literal
 # here, not the same literal compared to itself.
 g=binary('GaN'); inn=binary('InN')
-ck('T Rinke 2008 GaN electron mass target',g.me_xy==.186 and g.me_z==.209)
-ck('T Rinke 2008 InN electron mass target',inn.me_xy==.065 and inn.me_z==.068)
+# Axis per Rinke 2008 Table V + App. A Eq. (A5): m_e-par (along c) = me_z
+# (strain-mass audit 2026-09-23; the two axes were swapped before).
+ck('T Rinke 2008 GaN electron mass target',g.me_z==.186 and g.me_xy==.209)
+ck('T Rinke 2008 InN electron mass target',inn.me_z==.065 and inn.me_xy==.068)
 ck('T Deshpande 2013 geometry/source target',
    NL.DESHPANDE2013_HEIGHT_NM==2.0 and NL.DESHPANDE2013_DIAMETER_NM==25.0
    and NL.DESHPANDE2013_X_IN==.25 and NL.DESHPANDE2013_X_NM==436.56
@@ -269,6 +271,33 @@ rd=rates(lv_ref,250,n_dot_cm2=2e10,tau_cap_scales_with_density=True)
 rf=rates(lv_ref,250,n_dot_cm2=2e10,tau_cap_scales_with_density=False)
 ck('N density convention and actual-temperature DOS',rd['tau_cap_ps_used']==5 and rd['escape_prefactor_ns']>rf['escape_prefactor_ns'])
 
+# ---- (N14) Coulomb term, physics audit 2026-09-23 (nitride_levels:339
+# medium). Frozen-orbital Gaussian envelopes with a fixed e-h z offset d:
+# the relative in-plane density is exp(-rho^2/L^2)/(pi L^2), L^2 = l_e^2 +
+# l_h^2, so <1/sqrt(rho^2+d^2)> = sqrt(pi)/L * erfcx(d/L) [DR] (closed form,
+# Abramowitz & Stegun 1964, 7.1.2). The old quadrature form
+# sqrt(pi)/sqrt(L^2+2d^2) fails this by 33% at d/L = 0.5.
+from scipy.special import erfcx as _erfcx
+_K=1.439964; _eps=10.3; _le,_lh=3.0,4.0; _L=math.hypot(_le,_lh)
+def _eb_ref(dd): return _K/_eps*math.sqrt(math.pi)/_L*float(_erfcx(dd/_L))
+_cf_ok=True
+for _x in (0.,.25,.5,1.,2.):
+    _got=NL._coulomb_binding_eV(_le,_lh,_x*_L,_eps); _ref=_eb_ref(_x*_L)
+    if not abs(_got-_ref)<=1e-9*abs(_ref):
+        print('N14 d/L=%g got %.12g ref %.12g'%(_x,_got,_ref)); _cf_ok=False
+ck('N14 Coulomb <1/r> = sqrt(pi)/L*erfcx(d/L) at d/L=0,0.25,0.5,1,2 (1e-9 rel)',_cf_ok)
+# Seeded Monte Carlo over the two Gaussians separately (electron width l_e,
+# hole width l_h; per-component sigma = l/sqrt(2) for density exp(-r^2/l^2)),
+# N = 2,000,000 pairs, seed 20260923, at d/L = 0.5.
+_rng=np.random.default_rng(20260923); _N=2_000_000
+_re=_rng.normal(0.,_le/math.sqrt(2.),(_N,2)); _rh=_rng.normal(0.,_lh/math.sqrt(2.),(_N,2))
+_dd=.5*_L; _mc=_K/_eps*float(np.mean(1./np.sqrt(((_re-_rh)**2).sum(1)+_dd*_dd)))
+_code=NL._coulomb_binding_eV(_le,_lh,_dd,_eps)
+print('N14 MC (N=%d, seed 20260923) E_b at d/L=0.5: %.4f meV vs code %.4f meV'%(_N,_mc*1e3,_code*1e3))
+ck('N14 Coulomb matches seeded Monte Carlo 1/|r| average at d/L=0.5 within 1%',abs(_code-_mc)<=.01*_mc)
+_d5=5.*_L; _pc=_K/(_eps*_d5); _c5=NL._coulomb_binding_eV(_le,_lh,_d5,_eps)
+ck('N14 Coulomb large-separation limit: d/L=5 within 2% of point charge 1/d',abs(_c5-_pc)<=.02*_pc)
+
 # ---- (N12) cache: identical args are exactly equal (and the SAME cached
 # object), different T_K/numerical controls never collide.
 a=levels(NitrideDotSystem(),300.); b=levels(NitrideDotSystem(),300.); c=levels(NitrideDotSystem(),250.)
@@ -289,6 +318,41 @@ for h in range(1,6):
             print('N sweep corner h=%d T=%d FAILED valid=%s reasons=%s'%(h,T,q.valid,q.invalid_reasons))
             sweep_ok=False
 ck('N unscreened height x T sweep: valid=True and positive finite rates at every corner',sweep_ok)
+
+# ---- (N15) audit C0/D1 physical validity floor: a dot whose polarization
+# drop |F|*h_eff reaches the strained InGaN gap is Zener-broken (unscreened
+# field not self-consistent) and must be INVALID with the field_collapse
+# reason.  Synthetic fixture = the committed cavity-sweep row whose E_X had
+# collapsed to about 0.48 meV (x=0.4, h=5 nm, R=15 nm, T=273 K, diode field
+# +183.355792 kV/cm, unscreened).  Expectation computed independently from
+# nitride_materials (gap and field), not from the levels solver [DR].
+NL._levels_cached.cache_clear()
+_zs=NitrideDotSystem(height_nm=5.,radius_nm=15.,x_in=.4,external_field_kVcm=183.355792)
+_zT=273.
+_zgan=binary('GaN'); _zmat=ingaN(.4)
+_zbe=band_edges(_zmat,_zT,substrate=_zgan)
+_zgap=_zbe['Ec_eV']-_zbe['Ev_eV']
+_zF=polarization_field(_zmat,_zgan,_zT,external_field_kVcm=183.355792)
+_zdrop=abs(_zF)*1e-4*5.
+_zorig=NL._field_drop_exceeds_gap
+try:
+    NL._field_drop_exceeds_gap=lambda *a: False
+    NL._levels_cached.cache_clear()
+    _zraw=levels(_zs,_zT)
+finally:
+    NL._field_drop_exceeds_gap=_zorig
+    NL._levels_cached.cache_clear()
+_zlv=levels(_zs,_zT)
+print('N15 Zener floor: gap %.4f eV, |F|*h %.4f eV, pre-floor E_X %.4f meV, reasons %s'%(_zgap,_zdrop,_zraw.E_X_eV*1e3,_zlv.invalid_reasons))
+ck('N15 collapsed x=0.4 h=5nm dot: pre-floor E_X ~0.5 meV (0<E_X<2 meV) and |F|*h >= gap (independent materials calc)',
+   _zraw.valid and 0.<_zraw.E_X_eV<2e-3 and _zdrop>=_zgap)
+ck('N15 collapsed x=0.4 h=5nm dot is invalid with the field_collapse reason',
+   (not _zlv.valid) and _zlv.invalid_reasons==(NL.ZENER_REASON,) and math.isnan(_zlv.E_X_eV))
+_zn=levels(NitrideDotSystem(),300.); _zn3=levels(NitrideDotSystem(height_nm=3.,x_in=.4),230.)
+_zng=band_edges(ingaN(.25),300.,substrate=_zgan); _zn3g=band_edges(ingaN(.4),230.,substrate=_zgan)
+ck('N15 normal dots stay valid below the floor (default x=0.25 h=3 @300K; x=0.4 h=3 @230K)',
+   _zn.valid and _zn3.valid and abs(_zn.field_kVcm)*3e-4<_zng['Ec_eV']-_zng['Ev_eV']
+   and abs(_zn3.field_kVcm)*3e-4<_zn3g['Ec_eV']-_zn3g['Ev_eV'])
 
 print('%d/%d nitride_levels checks passed'%(sum(x[1] for x in checks),len(checks)))
 for name,ok in checks:

@@ -16,10 +16,25 @@ standing constraints). Swept:
 
 Reported per cell: eps, g2(0) under Poisson (M-1) AND quiet rail (M-2,
 F_p=0.5, mu=0.7 -- the noise axis, composed analytically from the same
-eps/rho via F8), t_X, rho^2, ZPL weight Z(T), F_planar (1-D antinode LDOS
-[E->analytic-1D]) and F_eff = F_P kappa/(kappa+Gamma) (F6 iii). NOTE: the
-Purcell->retention coupling is deliberately NOT wired (roadmap item 13,
-"free upside"), so F_eff is reported, not fed back into rho/T_c.
+eps/rho via F8), t_X, rho^2, ZPL weight Z(T), and two cavity-rate columns:
+  * F_planar_1d_onaxis -- 1-D, ON-AXIS antinode LDOS (dbr.planar_purcell,
+    max over a 21-point z grid) [E->analytic-1D]. DIAGNOSTIC ONLY; it is
+    not a Purcell factor of any kind.
+  * F_total_planar -- the TOTAL emission-rate multiplier Gamma/Gamma_bulk
+    over ALL channels (cavity cone, leaky, guided) of an in-plane dipole at
+    the centre antinode, evaluated at the design wavelength only (NOT
+    averaged over the emitter line) (dbr.planar_total_rate)
+    [E->analytic-1D-planar]. 1.0 in the no-cavity rows. It is already the
+    whole rate change: it is NOT passed through purcell_eff /
+    kappa/(kappa+Gamma) and NOT fed to device.py as d.cavity.F_P (which
+    device.py reads as a mode-only single-Lorentzian factor).
+Audit H5 (fixed 2026-09-23): the former F_eff column was purcell_eff of the
+1-D on-axis number (96..1128), reported as a Purcell factor 53-87; the
+planar total rate is ~1.01-1.02, as expected for planar DBR microcavities
+(Bjork et al., PRA 44, 669 (1991); Benisty et al., IEEE JQE 34, 1612
+(1998)). The F_eff column is removed; read F_total_planar instead. NOTE:
+the Purcell->retention coupling is deliberately NOT wired (roadmap item 13),
+so F_total_planar is reported, not fed back into rho/T_c.
 
 CSV bundle -> out/tier_geometry/.
 """
@@ -32,8 +47,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from fsim_core.cavity import purcell_eff
-from fsim_core.dbr import cavity_stack, cavity_mode, planar_purcell
+from fsim_core.dbr import (cavity_stack, cavity_mode, planar_purcell,
+                            planar_total_rate)
 from fsim_core.device import evaluate
 from fsim_core.integrator import g2_from
 from fsim_core.loading import f8_g2
@@ -58,17 +73,24 @@ PAIR_LADDER = [10, 12, 14, 16, 18]
 
 
 def dbr_solve(lambda0):
-    """kappa + F_planar per top-pair count at this design wavelength."""
+    """kappa, the 1-D on-axis LDOS (diagnostic) and the total-rate
+    multiplier F_total_planar (all channels; reported, never used as a
+    cavity-mode F_P) per top-pair count at this design wavelength. The
+    dot sits at the centre antinode of the lambda spacer (z = d_c/2, the
+    standard QD placement) [A]."""
     out = {}
     for n_top in PAIR_LADDER:
         top, spacer, bottom = cavity_stack(N_H, N_L, N_C, n_top, n_top + 6,
                                            lambda0)
         mode = cavity_mode(top + [spacer] + bottom, lambda0, n_out=N_H)
         zs = np.linspace(0.0, spacer.d_nm, 21)
-        F = max(planar_purcell(top, bottom, N_C, spacer.d_nm, z, lambda0,
-                               n_out=N_H) for z in zs)
+        F1 = max(planar_purcell(top, bottom, N_C, spacer.d_nm, z, lambda0,
+                                n_out=N_H) for z in zs)
+        Ft = planar_total_rate(top, bottom, N_C, spacer.d_nm,
+                               0.5 * spacer.d_nm, lambda0, n_out=N_H)
         out[n_top] = {"kappa": mode["kappa_meV"], "Q": mode["Q"],
-                      "F_planar": float(F)}
+                      "F_planar_1d_onaxis": float(F1),
+                      "F_total_planar": float(Ft)}
     return out
 
 
@@ -87,25 +109,23 @@ def run_cells(T_hs, T_track, lambda0, dbr):
             if cav != "none":
                 d.cavity.kappa = dbr[cav]["kappa"]
                 d.cavity.T_track = T_track
-                d.cavity.F_P = dbr[cav]["F_planar"]
                 d.cavity.dEdT_cav = -0.1311   # T3-computed [E]
             s = evaluate(d, T_grid=[T_hs])["scalars"]
             eps, rho = float(s["eps_op"]), float(s["rho_op"])
-            gam = float(s["gamma_op"])
             g2_p = float(s["g2_op"])                       # Poisson M-1
             g2_q = float(g2_from(float(f8_g2(MU_Q, FP_Q, eps)), rho)) \
                 if eps < 1.0 else np.nan                   # quiet M-2 (F8)
             kap = dbr[cav]["kappa"] if cav != "none" else np.nan
-            Fpl = dbr[cav]["F_planar"] if cav != "none" else 1.0
+            F1d = dbr[cav]["F_planar_1d_onaxis"] if cav != "none" else 1.0
+            Ftot = dbr[cav]["F_total_planar"] if cav != "none" else 1.0
             rows.append({
                 "T_hs_K": T_hs, "dot": dot_name,
                 "cavity_top_pairs": cav, "kappa_meV": kap,
                 "eps": eps, "g2_poisson": g2_p, "g2_quiet": g2_q,
                 "t_x": float(s["t_x_op"]), "rho2": rho**2,
                 "Z_zpl": float(zpl_weight(PhononParams(**geom), float(s["T_j_op"]))),
-                "F_planar": Fpl,
-                "F_eff": float(purcell_eff(Fpl, kap, gam))
-                if cav != "none" else 1.0,
+                "F_planar_1d_onaxis": F1d,
+                "F_total_planar": Ftot,     # total-rate multiplier, all channels
                 "brightness_ok": bool(s["t_x_op"] >= 0.3),
             })
     return rows
@@ -116,7 +136,8 @@ dbr120 = dbr_solve(668.0)
 dbr300 = dbr_solve(695.0)
 for n, v in dbr120.items():
     print(f"  668 nm  top={n:2d}: kappa={v['kappa']:.3f} meV  Q={v['Q']:.0f}  "
-          f"F_planar={v['F_planar']:.0f}")
+          f"F_planar_1d_onaxis={v['F_planar_1d_onaxis']:.0f}  "
+          f"F_total_planar={v['F_total_planar']:.3f}")
 
 print("\nsweeping 120 K (tracked at 120, 668 nm)...")
 rows = run_cells(120.0, 120.0, 668.0, dbr120)
@@ -134,14 +155,14 @@ for T in (120.0, 300.0):
     print(f"\n===== T_hs = {T:.0f} K "
           f"({'120-tracked/668' if T == 120 else '300-tracked/695'} nm) =====")
     hdr = (f"{'dot':28s} {'cav':>4s} {'kappa':>6s} {'eps':>7s} {'g2_P':>7s} "
-           f"{'g2_Q':>7s} {'t_X':>6s} {'Z':>5s} {'F_eff':>6s} {'bright':>6s}")
+           f"{'g2_Q':>7s} {'t_X':>6s} {'Z':>5s} {'F_tot':>6s} {'bright':>6s}")
     print(hdr)
     for r in sub:
         kap = f"{r['kappa_meV']:.2f}" if np.isfinite(r["kappa_meV"]) else "slit"
         print(f"{r['dot']:28s} {str(r['cavity_top_pairs']):>4s} {kap:>6s} "
               f"{r['eps']:7.4f} {r['g2_poisson']:7.4f} "
               f"{r['g2_quiet'] if np.isfinite(r['g2_quiet']) else float('nan'):7.4f} "
-              f"{r['t_x']:6.3f} {r['Z_zpl']:5.3f} {r['F_eff']:6.1f} "
+              f"{r['t_x']:6.3f} {r['Z_zpl']:5.3f} {r['F_total_planar']:6.3f} "
               f"{'ok' if r['brightness_ok'] else 'FAIL':>6s}")
 
 # best purity-with-brightness cell per T
@@ -153,7 +174,7 @@ for T in (120.0, 300.0):
         print(f"\nbest (t_X>=0.3) @ {T:.0f} K: {best['dot']} | "
               f"cav {best['cavity_top_pairs']} | g2_quiet={best['g2_quiet']:.4f} "
               f"g2_P={best['g2_poisson']:.4f} t_X={best['t_x']:.3f} "
-              f"F_eff={best['F_eff']:.1f}")
+              f"F_total_planar={best['F_total_planar']:.3f}")
     else:
         print(f"\nbest @ {T:.0f} K: NO cell meets the brightness floor")
 print(f"\nbundle -> {OUT}")

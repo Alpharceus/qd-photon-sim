@@ -6,19 +6,159 @@ from __future__ import annotations
 
 import csv
 import json
+import textwrap
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.patheffects  # noqa: E402  (label halos)
 import matplotlib.pyplot as plt
 import numpy as np
 
+import fsim_theme
 from fsim_core.card import Tag
 from fsim_core.fitting import FitResult, V_A_TOL
 from fsim_core.integrator import g2_of_T, solve_Tc
 
-TAG_COLORS = {Tag.V: "#1a9641", Tag.DR: "#e3a21a", Tag.E: "#e3a21a", Tag.A: "#d7191c"}
+# Provenance is metadata, not hue (studio-02 / 02-charts section 3): tags are
+# drawn as line-form chips ([V] solid, [DR] solid+inset, [E] outline, [A]
+# dashed outline). The name is kept for importers; it now maps onto the
+# ordinal tag ramp (V darkest -> A lightest) instead of green/amber/red.
+_ORD = fsim_theme.load_tokens()["color"]["light"]["ordinal_tag"]
+TAG_COLORS = {Tag.V: _ORD[0], Tag.DR: _ORD[1], Tag.E: _ORD[2], Tag.A: _ORD[3]}
+
+
+# ------------------------------------------------------------------ theme helpers
+
+def _rgba_tuple(css: str) -> tuple:
+    """'rgba(82,81,78,0.10)' -> matplotlib RGBA tuple."""
+    r, g, b, a = (float(v) for v in css[css.index("(") + 1:css.index(")")].split(","))
+    return (r / 255.0, g / 255.0, b / 255.0, a)
+
+
+def _palette(mode: str = "light") -> SimpleNamespace:
+    tok = fsim_theme.load_tokens()
+    c = tok["color"][mode]
+    m = tok["mark"]
+    return SimpleNamespace(
+        s=c["series"], ink1=c["ink-1"], ink2=c["ink-2"], muted=c["muted"], ref=c["ref"],
+        ref_wash=_rgba_tuple(c["ref-wash"]), surface=c["surface"], grid=c["grid"],
+        status=c["status"], div=c["div"], ordinal=c["ordinal_tag"],
+        band=m["band_opacity"], band_overlap=m["overlap_band_opacity"],
+        edge_w=m["edge_width"], edge_a=m["edge_opacity"], ref_w=0.8)
+
+
+@contextmanager
+def _themed(mode: str = "light"):
+    """Apply the fsim matplotlib style for one figure function only: the
+    rcParams are restored on exit, so importing/using fsim_viz never leaks
+    style into a caller's own plots."""
+    with plt.rc_context():
+        fsim_theme.apply_matplotlib(mode)
+        yield _palette(mode)
+
+
+def _ref_h(ax, y, label, P, *, va="bottom"):
+    """Threshold reference: 1px `ref` ink with a direct right-edge label."""
+    ax.axhline(y, color=P.ref, lw=P.ref_w, zorder=1.5)
+    if label:
+        ax.annotate(label, xy=(1.0, y), xycoords=("axes fraction", "data"),
+                    xytext=(-3, 2 if va == "bottom" else -2), textcoords="offset points",
+                    ha="right", va=va, fontsize=8, color=P.ink2)
+
+
+def _ref_v(ax, x, label, P):
+    """Vertical reference (T_c, T_target, ...): `ref` ink rule, label at top."""
+    ax.axvline(x, color=P.ref, lw=P.ref_w, zorder=1.5)
+    if label:
+        ax.annotate(label, xy=(x, 1.0), xycoords=("data", "axes fraction"),
+                    xytext=(0, 3), textcoords="offset points", ha="center", va="bottom",
+                    fontsize=8, color=P.ink1)
+
+
+def _band(ax, x, lo, hi, color, P, *, overlap=False, label=None, edge_ls=("-", "-"),
+          edge_labels=(None, None)):
+    """Envelope rule: fill in the series hue at 12% (8% when bands overlap)
+    with lo/hi edge lines at 1.25 pt / 60% -- never an unlabeled blend."""
+    ax.fill_between(x, lo, hi, color=color, alpha=P.band_overlap if overlap else P.band,
+                    lw=0, label=label)
+    ax.plot(x, lo, color=color, lw=P.edge_w, alpha=P.edge_a, ls=edge_ls[0], label=edge_labels[0])
+    ax.plot(x, hi, color=color, lw=P.edge_w, alpha=P.edge_a, ls=edge_ls[1], label=edge_labels[1])
+
+
+def _tc_interval(ax, lo, hi, P, *, unit="K"):
+    """T_c as an interval: ref-wash span labelled 'T_c lo-hi K', or the
+    'not crossed in range' label when either end is NaN."""
+    if lo == lo and hi == hi:
+        ax.axvspan(lo, hi, color=P.ref_wash, lw=0, zorder=0.5)
+        ax.annotate(f"T$_c$ {lo:.0f}–{hi:.0f} {unit}", xy=(0.5 * (lo + hi), 1.0),
+                    xycoords=("data", "axes fraction"), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=8,
+                    color=P.ink1)
+    else:
+        ax.annotate("T$_c$ not crossed in range", xy=(0.99, 0.97), xycoords="axes fraction",
+                    ha="right", va="top", fontsize=8, color=P.ink2)
+
+
+_CHIP_STYLE = {  # line-form grammar: face, edge, linestyle, text colour key
+    "V": ("ink1", "ink1", "-", "surface"),
+    "DR": ("ink2", "ink1", "-", "surface"),
+    "E": (None, "ink2", "-", "ink1"),
+    "A": (None, "ink2", "--", "ink1"),
+}
+
+
+def _tag_of(tag) -> str:
+    return tag.name if isinstance(tag, Tag) else str(tag).strip("[]").upper()
+
+
+def _chip(fig, x, y, text, tag, P, *, ha="left"):
+    fc, ec, ls, tc = _CHIP_STYLE[_tag_of(tag)]
+    fig.text(x, y, text, ha=ha, va="bottom", fontsize=8.5, family="monospace",
+             color=getattr(P, tc),
+             bbox=dict(boxstyle="square,pad=0.35", fc=getattr(P, fc) if fc else "none",
+                       ec=getattr(P, ec), ls=ls, lw=0.9))
+
+
+def _status_chip(fig, x, y, ok: bool, word: str, P, *, ha="right"):
+    """Verdicts use the status pair with an icon AND a word, never hue alone."""
+    col = P.status["pass"] if ok else P.status["fail"]
+    fig.text(x, y, ("✓ " if ok else "✗ ") + word, ha=ha, va="bottom", fontsize=8.5,
+             color=P.ink1, fontweight=600,
+             bbox=dict(boxstyle="square,pad=0.35", fc=(*matplotlib.colors.to_rgb(col), 0.14),
+                       ec=col, lw=1.0))
+
+
+def _status_ax(ax, ok: bool, word: str, P):
+    """Axes-level verdict chip (icon + word), top-right above the plot."""
+    col = P.status["pass"] if ok else P.status["fail"]
+    ax.text(1.0, 1.02, ("✓ " if ok else "✗ ") + word, transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=8.5, fontweight=600, color=P.ink1,
+            bbox=dict(boxstyle="square,pad=0.3", fc=(*matplotlib.colors.to_rgb(col), 0.14),
+                      ec=col, lw=1.0))
+
+
+def _title(fig, text, tag, P, *, y=1.0, width_chars=None, status=None):
+    """Figure title in ink (wrapped to the figure width) with the tag-chain
+    chip on the line above it, left; an optional (ok, word) verdict chip on
+    the right of the same line."""
+    if width_chars is None:
+        width_chars = int(fig.get_figwidth() * 11.5)
+    lines = textwrap.wrap(text, width_chars) or [""]
+    fig.suptitle("\n".join(lines), fontsize=10, color=P.ink1, y=y, va="bottom")
+    chip_y = y + (0.175 * len(lines) + 0.06) / fig.get_figheight()  # inches -> fig frac
+    _chip(fig, 0.01, chip_y, f"tag chain [{_tag_of(tag)}]", tag, P)
+    if status is not None:
+        _status_chip(fig, 0.99, chip_y, status[0], status[1], P)
+
+
+def _data_marks(P):
+    """Measured ([V]) points: ink markers with a surface ring + error bars."""
+    return dict(color=P.ink1, mfc=P.ink1, mec=P.surface, mew=1.0, ecolor=P.ink2,
+                elinewidth=0.9, capsize=3, zorder=5)
 
 
 def _write_csv(path: Path, header: list[str], rows) -> None:
@@ -71,61 +211,57 @@ def phase0_bundle(fit: FitResult, card_path: Path, outdir: Path) -> dict:
         Path(card_path).read_text(encoding="utf-8"), encoding="utf-8")
 
     # ---- figure
-    tagc = TAG_COLORS[fit.tag]
-    fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
+    with _themed("light") as P:
+        fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
 
-    ax = axes[0]
-    val = ~upper
-    ax.errorbar(Ts_d[val], g2_d[val], yerr=err_d[val], fmt="o", color="#333333",
-                capsize=3, label="data (Fig. 5)", zorder=5)
-    if upper.any():
-        ax.errorbar(Ts_d[upper], g2_d[upper], yerr=err_d[upper], fmt="v",
-                    color="#333333", capsize=3, uplims=True, zorder=5,
-                    label="upper bound")
-    ax.plot(Ts, g2_m, color="#2166ac", lw=2, label="F-series model")
-    ax.axhline(0.5, color="#888888", ls=":", lw=1)
-    if np.isfinite(Tc):
-        ax.axvline(Tc, color="#d7191c", ls="--", lw=1.2)
-        ax.annotate(f"$T_c$ = {Tc:.0f} K", (Tc, 0.52), color="#d7191c", fontsize=9,
-                    ha="right", rotation=90)
-    ax.set_xlabel("T (K)")
-    ax.set_ylabel("$g^{(2)}(0)$")
-    ax.set_ylim(0, max(0.7, g2_m.max() * 1.05))
-    ax.legend(frameon=False, fontsize=8)
-    ax.set_title("V-a fit: $g^{(2)}(T)$, published windows", fontsize=10)
+        ax = axes[0]
+        val = ~upper
+        ax.errorbar(Ts_d[val], g2_d[val], yerr=err_d[val], fmt="o", ms=6,
+                    label="data (Fig. 5) [V]", **_data_marks(P))
+        if upper.any():
+            ax.errorbar(Ts_d[upper], g2_d[upper], yerr=err_d[upper], fmt="v", ms=7,
+                        uplims=True, label="upper bound (≤)", **_data_marks(P))
+        ax.plot(Ts, g2_m, color=P.s[0], lw=2, label="F-series model")
+        _ref_h(ax, 0.5, "$g^{(2)}(0)$ = 0.5 ceiling", P)
+        if np.isfinite(Tc):
+            _ref_v(ax, Tc, f"T$_c$ = {Tc:.0f} K", P)
+        ax.set_xlabel("T (K)")
+        ax.set_ylabel("$g^{(2)}(0)$")
+        ax.set_ylim(0, max(1.0, float(np.nanmax(g2_m)) * 1.02))
+        ax.legend(fontsize=8, loc="upper left")
+        ax.set_title("V-a fit: $g^{(2)}(T)$, published windows", fontsize=10, pad=14)
 
-    ax = axes[1]
-    ax.plot(Ts, eps_m, color="#5e3c99", lw=2, label=r"$\varepsilon(T)=t_{XX}/t_X$")
-    ax.plot(Ts, rho_m**2, color="#e66101", lw=2, label=r"$\rho(T)^2$")
-    ax.plot(Ts, rho_m**2 * (1 - eps_m), color="#333333", lw=1.4, ls="--",
-            label=r"$\rho^2(1-\varepsilon)$")
-    ax.axhline(0.5, color="#888888", ls=":", lw=1)
-    ax.set_xlabel("T (K)")
-    ax.set_ylim(0, 1.05)
-    ax.legend(frameon=False, fontsize=8)
-    ax.set_title("decomposition (master ceiling at 1/2)", fontsize=10)
+        ax = axes[1]
+        ax.plot(Ts, eps_m, color=P.s[1], lw=2, label=r"$\varepsilon(T)=t_{XX}/t_X$")
+        ax.plot(Ts, rho_m**2, color=P.s[2], lw=2, label=r"$\rho(T)^2$")
+        ax.plot(Ts, rho_m**2 * (1 - eps_m), color=P.ink2, lw=1.4, ls="--",
+                label=r"$\rho^2(1-\varepsilon)$")
+        _ref_h(ax, 0.5, "1/2 master ceiling", P)
+        ax.set_xlabel("T (K)")
+        ax.set_ylim(0, 1.05)
+        ax.legend(fontsize=8)
+        ax.set_title("decomposition (master ceiling at 1/2)", fontsize=10, pad=14)
 
-    ax = axes[2]
-    ax.plot(Ts, gam_m, color="#2166ac", lw=2)
-    gA, gAv, gAt, T_anchor = fit.gamma_anchor
-    ax.errorbar([T_anchor], [gAv], yerr=[gAt], fmt="s", color="#d7191c",
-                capsize=4, label="published anchor")
-    ax.plot([T_anchor], [gA], "x", color="#2166ac", ms=9, mew=2, label="model @ anchor")
-    ax.set_xlabel("T (K)")
-    ax.set_ylabel(r"$\Gamma$ (meV)")
-    ax.legend(frameon=False, fontsize=8)
-    ax.set_title(r"$\Gamma(T)$ vs anchor", fontsize=10)
+        ax = axes[2]
+        ax.plot(Ts, gam_m, color=P.s[0], lw=2, label="model Γ(T)")
+        gA, gAv, gAt, T_anchor = fit.gamma_anchor
+        ax.errorbar([T_anchor], [gAv], yerr=[gAt], fmt="s", ms=6,
+                    label="published anchor [V]", **_data_marks(P))
+        ax.plot([T_anchor], [gA], "o", mfc="none", mec=P.s[0], ms=10, mew=1.8,
+                label="model @ anchor", zorder=6)
+        ax.set_xlabel("T (K)")
+        ax.set_ylabel(r"$\Gamma$ (meV)")
+        ax.legend(fontsize=8)
+        ax.set_title(r"$\Gamma(T)$ vs anchor", fontsize=10, pad=14)
 
-    status = "PASS" if fit.passed else "FAIL"
-    fig.suptitle(
-        f"{Path(card_path).stem}: V-a fit [{status} at ±{V_A_TOL}]   "
-        f"tag chain {fit.tag.label}" + ("  — PLACEHOLDER DATA" if fit.notes else ""),
-        fontsize=11, color=tagc, y=1.02,
-    )
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"phase0_fit.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        status = "PASS" if fit.passed else "FAIL"
+        fig.tight_layout()
+        _title(fig, f"{Path(card_path).stem}: V-a fit [{status} at ±{V_A_TOL}]   "
+                    f"tag chain {fit.tag.label}" + ("  — PLACEHOLDER DATA" if fit.notes else ""),
+               fit.tag, P, y=1.0, status=(fit.passed, f"{status} at ±{V_A_TOL}"))
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"phase0_fit.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
     return {"outdir": str(outdir), "Tc": Tc}
 
@@ -149,45 +285,47 @@ def phase1_bundle(drive: dict, thermal: dict, outdir: Path) -> dict:
                    zip(d_um, *[col for I in thermal["currents_uA"]
                                for col in (per_I[I][0], per_I[I][1])]))
 
-    fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
+    with _themed("light") as P:
+        fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
 
-    ax = axes[0]
-    for e, f in drive["curves"].items():
-        ax.plot(mus, f, lw=2, label=rf"$\varepsilon$ = {e}")
-    ax.axvline(drive["mu_op"], color="#888888", ls="--", lw=1)
-    ax.annotate(rf"$\mu_{{op}}$ = {drive['mu_op']}", (drive["mu_op"], 1.85),
-                fontsize=8, ha="left", color="#555555")
-    ax.axhline(2.0, color="#888888", ls=":", lw=1)
-    ax.set_xscale("log")
-    ax.set_xlabel(r"mean loading $\mu$")
-    ax.set_ylabel(r"$g^{(2)}(\mu)\,/\,\varepsilon$")
-    ax.set_ylim(0.95, 2.1)
-    ax.legend(frameon=False, fontsize=8)
-    ax.set_title("F1b: finite-$\\mu$ drive penalty (cap-2)", fontsize=10)
+        ax = axes[0]
+        for i, (e, f) in enumerate(drive["curves"].items()):
+            ax.plot(mus, f, lw=2, color=P.s[i % len(P.s)], label=rf"$\varepsilon$ = {e}")
+        ax.axvline(drive["mu_op"], color=P.ref, lw=P.ref_w)
+        ax.annotate(rf"$\mu_{{op}}$ = {drive['mu_op']}", (drive["mu_op"], 1.85),
+                    xytext=(3, 0), textcoords="offset points",
+                    fontsize=8, ha="left", color=P.ink1)
+        _ref_h(ax, 2.0, "2", P, va="top")
+        ax.set_xscale("log")
+        ax.set_xlabel(r"mean loading $\mu$")
+        ax.set_ylabel(r"$g^{(2)}(\mu)\,/\,\varepsilon$")
+        ax.set_ylim(0.95, 2.1)
+        ax.legend(fontsize=8)
+        ax.set_title("F1b: finite-$\\mu$ drive penalty (cap-2)", fontsize=10)
 
-    for ax, tpl in zip(axes[1:], thermal["templates"]):
-        per_I = thermal["templates"][tpl]
-        for I, color in zip(thermal["currents_uA"], ("#2166ac", "#e66101", "#d7191c")):
-            lo, hi = per_I[I]
-            lo = np.where(np.isinf(lo), np.nan, lo)  # runaway region: gap, not a line
-            hi = np.where(np.isinf(hi), np.nan, hi)
-            ax.fill_between(d_um, lo, hi, alpha=0.25, color=color, lw=0)
-            ax.plot(d_um, hi, color=color, lw=1.5,
-                    label=f"{I} µA" + (" (runaway ←)" if np.isnan(hi).any() else ""))
-        ax.set_xlabel("mesa diameter (µm)")
-        ax.set_ylabel(r"$\Delta T_J$ (K)")
-        ax.set_yscale("log")
-        ax.legend(frameon=False, fontsize=8, title="CW drive", title_fontsize=8)
-        ax.set_title(f"{tpl}: $T_J-T_{{hs}}$ @ {thermal['T_hs']:.0f} K "
-                     f"(band: epi-k range)", fontsize=10)
+        for ax, tpl in zip(axes[1:], thermal["templates"]):
+            per_I = thermal["templates"][tpl]
+            for k, I in enumerate(thermal["currents_uA"]):
+                color = P.s[k % len(P.s)]
+                lo, hi = per_I[I]
+                lo = np.where(np.isinf(lo), np.nan, lo)  # runaway region: gap, not a line
+                hi = np.where(np.isinf(hi), np.nan, hi)
+                # several current bands share one axis -> overlap rule (8% + edges)
+                _band(ax, d_um, lo, hi, color, P, overlap=True,
+                      label=f"{I} µA" + (" (runaway ←)" if np.isnan(hi).any() else ""))
+            ax.set_xlabel("mesa diameter (µm)")
+            ax.set_ylabel(r"$\Delta T_J$ (K)")
+            ax.set_yscale("log")
+            ax.legend(fontsize=8, title="CW drive (band: epi-k range)", title_fontsize=8)
+            ax.set_title(f"{tpl}: $T_J-T_{{hs}}$ @ {thermal['T_hs']:.0f} K "
+                         f"(band: epi-k range)", fontsize=10)
 
-    fig.suptitle("Phase 1 — Module D drive penalty and Module A junction-heating envelopes "
-                 "(tag chain [A]: requirement envelopes, not predictions)",
-                 fontsize=10, color="#d7191c", y=1.02)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"phase1_drive_thermal.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        fig.tight_layout()
+        _title(fig, "Phase 1 — Module D drive penalty and Module A junction-heating envelopes "
+                    "(tag chain [A]: requirement envelopes, not predictions)", "A", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"phase1_drive_thermal.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
     return {"outdir": str(outdir)}
 
 
@@ -204,26 +342,24 @@ def vb_figure(vb: dict, outdir: Path) -> None:
                ((T, r["g2"], r["err"], l, h)
                 for T, r, l, h in zip(Ts, vb["data"], lo, hi)))
 
-    fig, ax = plt.subplots(figsize=(5.6, 3.9))
-    ax.fill_between(Ts, lo, hi, alpha=0.25, color="#2166ac", lw=0,
-                    label="F1 reachable envelope (swept [E] inputs)")
-    ax.errorbar(Ts, [r["g2"] for r in vb["data"]], yerr=[r["err"] for r in vb["data"]],
-                fmt="o", color="#333333", capsize=4, ms=8, label="measured (Fig. 5)", zorder=5)
-    ax.axhline(0.5, color="#d7191c", ls=":", lw=1.5)
-    ax.annotate("Theorem-0 saturated bound (ε→1, μ→∞)", (90, 0.51), fontsize=8,
-                color="#d7191c")
-    ax.set_xlabel("T (K)")
-    ax.set_ylabel("$g^{(2)}(0)$")
-    ax.set_ylim(0, 1.0)
-    ax.legend(frameon=False, fontsize=8, loc="upper left")
-    ok = bool(vb["covered_delta"])
-    ax.set_title("V-b (Laferrière): ε→1 limit under published windows — "
-                 + ("CONSISTENT" if ok else "NOT COVERED"),
-                 fontsize=10, color="#1a9641" if ok else "#d7191c")
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"vb_laferriere.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+    with _themed("light") as P:
+        fig, ax = plt.subplots(figsize=(5.6, 3.9))
+        _band(ax, Ts, lo, hi, P.s[0], P, label="F1 reachable envelope (swept [E] inputs)")
+        ax.errorbar(Ts, [r["g2"] for r in vb["data"]], yerr=[r["err"] for r in vb["data"]],
+                    fmt="o", ms=7, label="measured (Fig. 5) [V]", **_data_marks(P))
+        _ref_h(ax, 0.5, "Theorem-0 saturated bound (ε→1, μ→∞)", P)
+        ax.set_xlabel("T (K)")
+        ax.set_ylabel("$g^{(2)}(0)$")
+        ax.set_ylim(0, 1.0)
+        ax.legend(fontsize=8, loc="upper left")
+        ok = bool(vb["covered_delta"])
+        ax.set_title("V-b (Laferrière): ε→1 limit under published windows", fontsize=10,
+                     pad=22)
+        _status_ax(ax, ok, "CONSISTENT" if ok else "NOT COVERED", P)
+        fig.tight_layout()
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"vb_laferriere.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def cavity_design_figure(cv: dict, outdir: Path) -> None:
@@ -237,44 +373,40 @@ def cavity_design_figure(cv: dict, outdir: Path) -> None:
                ["kappa_meV"] + [f"eps_delta_{d:.1f}" for d in cv["deltas"]],
                ((k, *row) for k, row in zip(cv["kappas"], cv["eps_band"])))
 
-    fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
-    ax = axes[0]
-    ax.plot(cv["Ts"], cv["det_meV"], color="#2166ac", lw=2)
-    ax.axhline(0, color="#888888", ls=":", lw=1)
-    ax.axvline(cv["T_target"], color="#d7191c", ls="--", lw=1.2)
-    ax.annotate(f"$T_{{target}}$ = {cv['T_target']:.0f} K",
-                (cv["T_target"], cv["det_meV"].max() * 0.7),
-                color="#d7191c", fontsize=9, rotation=90, ha="right")
-    ax.set_xlabel("T (K)")
-    ax.set_ylabel("X–mode detuning (meV)")
-    ax.set_title("mode-tracking rule (F6 iv): mode red of\ncryogenic line, zero at $T_{target}$",
-                 fontsize=9)
+    with _themed("light") as P:
+        fig, axes = plt.subplots(1, 3, figsize=(12.5, 3.8))
+        ax = axes[0]
+        ax.plot(cv["Ts"], cv["det_meV"], color=P.s[0], lw=2)
+        _ref_h(ax, 0, "zero detuning", P)
+        _ref_v(ax, cv["T_target"], f"$T_{{target}}$ = {cv['T_target']:.0f} K", P)
+        ax.set_xlabel("T (K)")
+        ax.set_ylabel("X–mode detuning (meV)")
+        ax.set_title("mode-tracking rule (F6 iv): mode red of\ncryogenic line, zero at "
+                     "$T_{target}$", fontsize=9, pad=14)
 
-    ax = axes[1]
-    ax.fill_between(cv["kappas"], cv["eps_band"].min(axis=1), cv["eps_band"].max(axis=1),
-                    alpha=0.3, color="#5e3c99", lw=0)
-    ax.plot(cv["kappas"], cv["eps_band"].min(axis=1), color="#5e3c99", lw=1.5,
-            label=rf"$\Delta$ = {cv['deltas'][-1]:.1f} meV")
-    ax.plot(cv["kappas"], cv["eps_band"].max(axis=1), color="#5e3c99", lw=1.5, ls="--",
-            label=rf"$\Delta$ = {cv['deltas'][0]:.1f} meV")
-    ax.set_xlabel(r"cavity $\kappa$ (meV)")
-    ax.set_ylabel(r"$\varepsilon$ at $T_{target}$ (cavity filter)")
-    ax.legend(frameon=False, fontsize=8)
-    ax.set_title(rf"cavity-only $\varepsilon$; $\Gamma(T_t)$ = {cv['gam_t']:.1f} meV [A proxy]",
-                 fontsize=9)
+        ax = axes[1]
+        eps_lo, eps_hi = cv["eps_band"].min(axis=1), cv["eps_band"].max(axis=1)
+        _band(ax, cv["kappas"], eps_lo, eps_hi, P.s[0], P, edge_ls=("-", "--"),
+              edge_labels=(rf"$\Delta$ = {cv['deltas'][-1]:.1f} meV",
+                           rf"$\Delta$ = {cv['deltas'][0]:.1f} meV"))
+        ax.set_xlabel(r"cavity $\kappa$ (meV)")
+        ax.set_ylabel(r"$\varepsilon$ at $T_{target}$ (cavity filter)")
+        ax.legend(fontsize=8)
+        ax.set_title(rf"cavity-only $\varepsilon$; $\Gamma(T_t)$ = {cv['gam_t']:.1f} meV "
+                     "[A proxy]", fontsize=9, pad=14)
 
-    ax = axes[2]
-    ax.plot(cv["kappas"], cv["Feff"], color="#e66101", lw=2)
-    ax.set_xlabel(r"cavity $\kappa$ (meV)")
-    ax.set_ylabel(r"$F_{eff}/F_P = \kappa/(\kappa+\Gamma)$")
-    ax.set_title("spectral-overlap Purcell penalty (F6 iii)", fontsize=9)
+        ax = axes[2]
+        ax.plot(cv["kappas"], cv["Feff"], color=P.s[0], lw=2)
+        ax.set_xlabel(r"cavity $\kappa$ (meV)")
+        ax.set_ylabel(r"$F_{eff}/F_P = \kappa/(\kappa+\Gamma)$")
+        ax.set_title("spectral-overlap Purcell penalty (F6 iii)", fontsize=9, pad=14)
 
-    fig.suptitle("Phase 2 — Module B design rules (tag chain [A]: requirement envelopes; "
-                 "κ, F_P, G await MEEP/COMSOL)", fontsize=10, color="#d7191c", y=1.03)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"phase2_cavity_design.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        fig.tight_layout()
+        _title(fig, "Phase 2 — Module B design rules (tag chain [A]: requirement envelopes; "
+                    "κ, F_P, G await MEEP/COMSOL)", "A", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"phase2_cavity_design.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def phase3_packet_figure(m: dict, s: dict, a: dict, r: dict, outdir: Path) -> None:
@@ -301,77 +433,100 @@ def phase3_packet_figure(m: dict, s: dict, a: dict, r: dict, outdir: Path) -> No
                ["input", "envelope_narrowing_K"],
                ((k, v) for k, v in r["ranked"]))
 
-    fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.6))
+    with _themed("light") as P:
+        fig, axes = plt.subplots(2, 2, figsize=(11.5, 8.6))
 
-    ax = axes[0, 0]
-    cf = ax.contourf(m["deltas"], m["rhos"], m["Tc"], levels=np.arange(50, 425, 25),
-                     cmap="viridis")
-    cs = ax.contour(m["deltas"], m["rhos"], m["Tc"], levels=[77, 120, 200, 300],
-                    colors="white", linewidths=1.2)
-    ax.clabel(cs, fmt="%.0f K", fontsize=7)
-    ax.plot(m["deltas"], m["rho_req"][g_lo], color="#d7191c", lw=2)
-    ax.plot(m["deltas"], m["rho_req"][g_hi], color="#d7191c", lw=2, ls="--")
-    ax.fill_between(m["deltas"], m["rho_req"][g_lo], m["rho_req"][g_hi],
-                    color="#d7191c", alpha=0.25, lw=0,
-                    label=r"$\rho$ required for 300 K [$\Gamma$(300) 6–7 meV]")
-    ax.axvline(5.0, color="#e3a21a", ls=":", lw=1.5)
-    ax.annotate(">50% of (211)B dots", (5.05, 0.615), rotation=90, fontsize=7,
-                color="#e3a21a")
-    for p in m["points"]:
-        ax.plot(p["delta"], p["rho"], "o", color="#ffffff", mec="#333333", ms=7)
-        ax.annotate(p["name"], (p["delta"] + 0.15, p["rho"] - 0.012), fontsize=6.5)
-    plt.colorbar(cf, ax=ax, label="$T_c$ (K)")
-    ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
-    ax.set_ylabel(r"signal purity $\rho$")
-    ax.legend(frameon=False, fontsize=7, loc="lower right")
-    ax.set_title("(ii) master-ceiling map: $T_c(\\Delta,\\rho)$, narrow-filter bound",
-                 fontsize=9)
+        ax = axes[0, 0]
+        # sequential blue ramp in 50 K bands (no rainbow), ink contours with a halo
+        cf = ax.contourf(m["deltas"], m["rhos"], m["Tc"], levels=np.arange(50, 450, 50),
+                         cmap="fsim_seq")
+        cs = ax.contour(m["deltas"], m["rhos"], m["Tc"], levels=[77, 120, 200],
+                        colors=P.ink1, linewidths=0.9)
+        lbl = ax.clabel(cs, fmt="%.0f K", fontsize=7, colors=P.ink1)
+        cs300 = ax.contour(m["deltas"], m["rhos"], m["Tc"], levels=[300],
+                           colors=P.ink1, linewidths=2.0)
+        lbl += ax.clabel(cs300, fmt={300: "300 K target"}, fontsize=7.5, colors=P.ink1)
+        for t in lbl:
+            t.set_path_effects([matplotlib.patheffects.withStroke(linewidth=2.5,
+                                                                   foreground=P.surface)])
+        _band(ax, m["deltas"], m["rho_req"][g_lo], m["rho_req"][g_hi], P.s[1], P,
+              edge_ls=("-", "--"),
+              label=r"$\rho$ required for 300 K [$\Gamma$(300) 6–7 meV]")
+        ax.axvline(5.0, color=P.ref, lw=P.ref_w)
+        ax.annotate(">50% of (211)B dots", (5.0, 0.615), xytext=(3, 0),
+                    textcoords="offset points", rotation=90, fontsize=7, color=P.ink1)
+        for i, p in enumerate(m["points"]):
+            ax.plot(p["delta"], p["rho"], "o", mfc=P.surface, mec=P.ink1, mew=1.2, ms=6,
+                    zorder=6)
+            # alternate leader-line offsets so neighbouring labels never collide
+            dy = (14 if i % 2 == 0 else -16) + 4 * (i // 2 % 2)
+            ax.annotate(p["name"], (p["delta"], p["rho"]), xytext=(10, dy),
+                        textcoords="offset points", fontsize=6.5, color=P.ink1,
+                        arrowprops=dict(arrowstyle="-", color=P.ink2, lw=0.6,
+                                        shrinkA=0, shrinkB=3),
+                        path_effects=[matplotlib.patheffects.withStroke(
+                            linewidth=2.5, foreground=P.surface)], zorder=7)
+        plt.colorbar(cf, ax=ax, label="$T_c$ (K)")
+        ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
+        ax.set_ylabel(r"signal purity $\rho$")
+        ax.legend(fontsize=7, loc="lower right")
+        ax.grid(False)
+        ax.set_title("(ii) master-ceiling map: $T_c(\\Delta,\\rho)$, narrow-filter bound",
+                     fontsize=9)
 
-    ax = axes[0, 1]
-    colors = {77.0: "#2166ac", 120.0: "#e66101"}
-    for T_hs, e in s["envelopes"].items():
-        band = e["band"]
-        ax.fill_between(s["deltas"], band[:, 0], band[:, 1], alpha=0.3,
-                        color=colors[T_hs], lw=0)
-        ax.plot(s["deltas"], band[:, 1], color=colors[T_hs], lw=1.8,
-                label=f"$T_{{hs}}$ = {T_hs:.0f} K (worst case)")
-    ax.axhline(0.5, color="#888888", ls=":", lw=1)
-    ax.axhline(0.1, color="#888888", ls=":", lw=1)
-    ax.set_xlabel(r"$\Delta_{XX}$ (meV)  [A: unmeasured on InP/GaAsP]")
-    ax.set_ylabel("$g^{(2)}(0)$ envelope")
-    ax.set_yscale("log")
-    ax.legend(frameon=False, fontsize=7)
-    ax.set_title("(i) staged device envelope, electrical, w=$\\Gamma$ convention",
-                 fontsize=9)
+        ax = axes[0, 1]
+        for k, (T_hs, e) in enumerate(s["envelopes"].items()):
+            band = e["band"]
+            _band(ax, s["deltas"], band[:, 0], band[:, 1], P.s[k % len(P.s)], P,
+                  overlap=len(s["envelopes"]) > 1,
+                  label=f"$T_{{hs}}$ = {T_hs:.0f} K (band; upper edge = worst case)")
+        _ref_h(ax, 0.5, "$g^{(2)}(0)$ = 0.5 ceiling", P)
+        _ref_h(ax, 0.1, "$g^{(2)}(0)$ = 0.1", P)
+        ax.set_xlabel(r"$\Delta_{XX}$ (meV)  [A: unmeasured on InP/GaAsP]")
+        ax.set_ylabel("$g^{(2)}(0)$ envelope")
+        ax.set_yscale("log")
+        ax.legend(fontsize=7)
+        ax.set_title("(i) staged device envelope, electrical, w=$\\Gamma$ convention",
+                     fontsize=9)
 
-    ax = axes[1, 0]
-    cf = ax.contourf(a["diams"], a["dens"], a["g2pen"],
-                     levels=[0, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0], cmap="magma_r")
-    cs = ax.contour(a["diams"], a["dens"], a["Nw"], levels=[1.0], colors="#2166ac",
-                    linewidths=1.5)
-    ax.clabel(cs, fmt="$N_w$=%.0f", fontsize=7)
-    ax.set_yscale("log")
-    plt.colorbar(cf, ax=ax, label="F5 aperture $g^{(2)}$ penalty")
-    ax.set_xlabel("aperture diameter (µm)")
-    ax.set_ylabel("QD density (cm$^{-2}$)")
-    ax.set_title(f"(iii) F5 aperture/density rules (w = {a['w']:.1f} meV)", fontsize=9)
+        ax = axes[1, 0]
+        cf = ax.contourf(a["diams"], a["dens"], a["g2pen"],
+                         levels=[0, 0.01, 0.05, 0.1, 0.2, 0.5, 1.0], cmap="fsim_seq")
+        cs = ax.contour(a["diams"], a["dens"], a["Nw"], levels=[1.0], colors=P.ink1,
+                        linewidths=1.5)
+        for t in ax.clabel(cs, fmt="$N_w$=%.0f", fontsize=7, colors=P.ink1):
+            t.set_path_effects([matplotlib.patheffects.withStroke(linewidth=2.5,
+                                                                   foreground=P.surface)])
+        ax.set_yscale("log")
+        ax.grid(False)
+        plt.colorbar(cf, ax=ax, label="F5 aperture $g^{(2)}$ penalty")
+        ax.set_xlabel("aperture diameter (µm)")
+        ax.set_ylabel("QD density (cm$^{-2}$)")
+        ax.set_title(f"(iii) F5 aperture/density rules (w = {a['w']:.1f} meV)", fontsize=9)
 
-    ax = axes[1, 1]
-    items = r["ranked"][::-1]
-    ax.barh([r["labels"][k] for k, _ in items], [v for _, v in items],
-            color="#2166ac")
-    ax.set_xlabel(f"$T_c$ envelope narrowing (K) out of {r['width_full']:.0f} K total")
-    ax.set_title("(iv) measurement-priority ranking (in-house queue)", fontsize=9)
-    ax.tick_params(axis="y", labelsize=7)
+        ax = axes[1, 1]
+        items = r["ranked"][::-1]
+        vals = [v for _, v in items]
+        ax.barh(["\n".join(textwrap.wrap(str(r["labels"][k]), 28)) for k, _ in items], vals,
+                color=P.s[0], height=0.5)
+        vmax = max(vals) if vals else 1.0
+        for yi, v in enumerate(vals):
+            ax.annotate(f"{v:.0f} K", (v, yi), xytext=(3, 0), textcoords="offset points",
+                        va="center", ha="left", fontsize=7.5, color=P.ink2,
+                        family="monospace")
+        ax.set_xlim(0, vmax * 1.15 if vmax > 0 else 1.0)
+        ax.grid(axis="y", visible=False)
+        ax.set_xlabel(f"$T_c$ envelope narrowing (K) out of {r['width_full']:.0f} K total")
+        ax.set_title("(iv) measurement-priority ranking (in-house queue)", fontsize=9)
+        ax.tick_params(axis="y", labelsize=7)
 
-    fig.suptitle("Phase 3 — requirement envelopes and design rules "
-                 "(tag chain [A]: every panel inherits unmeasured inputs; "
-                 "see the packet note for the chains)",
-                 fontsize=10, color="#d7191c", y=1.0)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"phase3_packet.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        fig.tight_layout()
+        _title(fig, "Phase 3 — requirement envelopes and design rules "
+                    "(tag chain [A]: every panel inherits unmeasured inputs; "
+                    "see the packet note for the chains)", "A", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"phase3_packet.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def spec_figure(staged_rows: list, k300_rows: list, be_curves: dict, outdir: Path) -> None:
@@ -396,53 +551,53 @@ def spec_figure(staged_rows: list, k300_rows: list, be_curves: dict, outdir: Pat
                ["label", "b_e", "G_required"],
                ((label, be, g) for label, (bes, gs) in be_curves.items() for be, g in zip(bes, gs)))
 
-    fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4))
+    with _themed("light") as P:
+        fig, axes = plt.subplots(1, 2, figsize=(11.0, 4.4))
 
-    ax = axes[0]
-    groups = {}
-    for r in staged_rows:
-        groups.setdefault((r["T_op"], r["target_g2"]), []).append(r)
-    colors = ["#2166ac", "#e66101", "#5e3c99", "#1a9641"]
-    for (i, ((T_op, target), rs)) in enumerate(sorted(groups.items())):
-        rs = sorted(rs, key=lambda r: r["delta_xx"])
-        deltas = [r["delta_xx"] for r in rs]
-        kmax = [r["kappa_max"] for r in rs]
-        ax.plot(deltas, kmax, "o-", color=colors[i % len(colors)], lw=1.8,
-                label=f"staged $T_{{op}}$={T_op:.0f} K, target={target:.2f}")
-    k_groups = {}
-    for k in k300_rows:
-        k_groups.setdefault(k["gamma300"], []).append(k)
-    for i, (g300, ks) in enumerate(sorted(k_groups.items())):
-        ks = sorted(ks, key=lambda k: k["delta"])
-        deltas = [k["delta"] for k in ks]
-        kmax = [k["kappa_max"] for k in ks]
-        ax.plot(deltas, kmax, "s--", color="#888888" if i else "#333333", lw=1.4,
-                label=rf"300 K, $\Gamma$(300)={g300:.1f} meV")
-    ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
-    ax.set_ylabel(r"$\kappa_{max}$ (meV)  [cavity linewidth ceiling]")
-    ax.legend(frameon=False, fontsize=7)
-    ax.set_title("kappa ceiling vs splitting (F6 i inverted)", fontsize=9)
+        ax = axes[0]
+        groups = {}
+        for r in staged_rows:
+            groups.setdefault((r["T_op"], r["target_g2"]), []).append(r)
+        for (i, ((T_op, target), rs)) in enumerate(sorted(groups.items())):
+            rs = sorted(rs, key=lambda r: r["delta_xx"])
+            deltas = [r["delta_xx"] for r in rs]
+            kmax = [r["kappa_max"] for r in rs]
+            ax.plot(deltas, kmax, "o-", color=P.s[i % len(P.s)], lw=1.8, ms=4,
+                    label=f"staged $T_{{op}}$={T_op:.0f} K, target={target:.2f}")
+        k_groups = {}
+        for k in k300_rows:
+            k_groups.setdefault(k["gamma300"], []).append(k)
+        for i, (g300, ks) in enumerate(sorted(k_groups.items())):
+            ks = sorted(ks, key=lambda k: k["delta"])
+            deltas = [k["delta"] for k in ks]
+            kmax = [k["kappa_max"] for k in ks]
+            ax.plot(deltas, kmax, "s--", color=P.ink2 if i else P.ink1, lw=1.4, ms=4,
+                    label=rf"300 K, $\Gamma$(300)={g300:.1f} meV")
+        ax.set_xlabel(r"$\Delta_{XX}$ (meV)")
+        ax.set_ylabel(r"$\kappa_{max}$ (meV)  [cavity linewidth ceiling]")
+        ax.legend(fontsize=7)
+        ax.set_title("kappa ceiling vs splitting (F6 i inverted)", fontsize=9)
 
-    ax = axes[1]
-    for i, (label, (bes, gs)) in enumerate(sorted(be_curves.items())):
-        finite = np.isfinite(gs)
-        ax.plot(np.asarray(bes)[finite], gs[finite], lw=1.8,
-                color=plt.get_cmap("tab10")(i % 10), label=label)
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_xlabel(r"injection background $b_e$ (signal units)")
-    ax.set_ylabel(r"$G_{required}$ (collection gain)")
-    ax.legend(frameon=False, fontsize=7)
-    ax.set_title("cavity gain requirement vs background (F6 ii inverted)", fontsize=9)
+        ax = axes[1]
+        for i, (label, (bes, gs)) in enumerate(sorted(be_curves.items())):
+            finite = np.isfinite(gs)
+            ax.plot(np.asarray(bes)[finite], gs[finite], lw=1.8,
+                    color=P.s[i % len(P.s)], label=label)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(r"injection background $b_e$ (signal units)")
+        ax.set_ylabel(r"$G_{required}$ (collection gain)")
+        ax.legend(fontsize=7)
+        ax.set_title("cavity gain requirement vs background (F6 ii inverted)", fontsize=9)
 
-    fig.suptitle("Spec mode — design-target requirement sheets (tag chain [A]: "
-                 "necessary conditions from the validated model, not existence proofs "
-                 "-- kappa/V~ achievability is MEEP's question, R_th/mesa is COMSOL's)",
-                 fontsize=9.5, color="#d7191c", y=1.04)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"spec_figure.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        fig.tight_layout()
+        _title(fig, "Spec mode — design-target requirement sheets (tag chain [A]: "
+                    "necessary conditions from the validated model, not existence proofs "
+                    "-- kappa/V~ achievability is MEEP's question, R_th/mesa is COMSOL's)",
+               "A", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"spec_figure.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def zhao_fit_figure(rows: list, curve: dict, I_th: float, outdir: Path) -> None:
@@ -460,49 +615,61 @@ def zhao_fit_figure(rows: list, curve: dict, I_th: float, outdir: Path) -> None:
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+    with _themed("light") as P:
+        fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2))
+        # model (sim) = filled slot colour; measured (published) = hollow ink marker
+        colors = {"normal": P.s[0], "quiet": P.s[1]}
+        pub_marker = {"normal": "o", "quiet": "s"}
+        g2_max = 1.0
 
-    ax = axes[0]
-    colors = {"normal": "#2166ac", "quiet": "#5e3c99"}
-    for i, r in enumerate(rows):
-        x = i
-        ax.errorbar([x - 0.08], [r["sim_g2"]], yerr=[r["sim_se"]], fmt="o", ms=8,
-                    color=colors[r["pump"]], capsize=4, label=f"{r['pump']} (sim)" if i < 2 else None)
-        ax.errorbar([x + 0.08], [r["published_g2"]], yerr=[r["published_err"]], fmt="s", ms=8,
-                    color=colors[r["pump"]], mfc="white", capsize=4,
-                    label=f"{r['pump']} (published)" if i < 2 else None)
-    ax.axhline(1.0, color="#888888", ls=":", lw=1.2)
-    ax.set_xticks(range(len(rows)))
-    ax.set_xticklabels([r["pump"] for r in rows])
-    ax.set_ylabel("$g^{(2)}(0)$")
-    ax.set_title("I = 4 $I_{th}$: sim (filled) vs Zhao et al. (open)", fontsize=9.5)
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, frameon=False, fontsize=7, loc="best")
+        ax = axes[0]
+        for i, r in enumerate(rows):
+            x = i
+            ax.errorbar([x - 0.08], [r["sim_g2"]], yerr=[r["sim_se"]], fmt="o", ms=8,
+                        color=colors[r["pump"]], capsize=4,
+                        label=f"{r['pump']} (sim)" if i < 2 else None)
+            ax.errorbar([x + 0.08], [r["published_g2"]], yerr=[r["published_err"]],
+                        fmt=pub_marker.get(r["pump"], "s"), ms=8, color=P.ink1, mfc=P.surface,
+                        mec=P.ink1, ecolor=P.ink2, capsize=4,
+                        label=f"{r['pump']} (published) [V]" if i < 2 else None)
+            g2_max = max(g2_max, r["sim_g2"] + r["sim_se"], r["published_g2"] + r["published_err"])
+        _ref_h(ax, 1.0, "$g^{(2)}(0)$ = 1", P)
+        ax.set_xticks(range(len(rows)))
+        ax.set_xticklabels([r["pump"] for r in rows])
+        ax.set_ylabel("$g^{(2)}(0)$")
+        ax.set_ylim(0, g2_max * 1.05)
+        ax.set_title("I = 4 $I_{th}$: sim (filled) vs Zhao et al. (open)", fontsize=9.5)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, fontsize=7, loc="lower right")
 
-    ax = axes[1]
-    for label, mk, col in (("normal", "o-", "#2166ac"), ("quiet", "s-", "#5e3c99")):
-        c = curve[label]
-        g2 = np.asarray(c["g2"])
-        se = np.asarray(c["se"])
-        ax.plot(c["I"], g2, mk, color=col, lw=1.8, ms=6, label=f"{label} (sim)")
-        ax.fill_between(c["I"], g2 - se, g2 + se, color=col, alpha=0.25, lw=0)
-    for r in rows:
-        ax.errorbar([4.0], [r["published_g2"]], yerr=[r["published_err"]], fmt="s", ms=7,
-                    color=colors[r["pump"]], mfc="white", capsize=4)
-    ax.axhline(1.0, color="#888888", ls=":", lw=1.2)
-    ax.set_xlabel(r"$I / I_{th}$")
-    ax.set_ylabel("$g^{(2)}(0)$")
-    ax.legend(frameon=False, fontsize=7.5, loc="best")
-    ax.set_title(f"g$^{{(2)}}$(0) vs pump strength ($I_{{th}}$ raw axis = {I_th:.3f})", fontsize=9.5)
+        ax = axes[1]
+        for label, mk in (("normal", "o-"), ("quiet", "s-")):
+            c = curve[label]
+            g2 = np.asarray(c["g2"])
+            se = np.asarray(c["se"])
+            ax.plot(c["I"], g2, mk, color=colors[label], lw=1.8, ms=5, label=f"{label} (sim)")
+            ax.fill_between(c["I"], g2 - se, g2 + se, color=colors[label], alpha=0.10, lw=0,
+                            label=f"{label} ±SE")
+            g2_max = max(g2_max, float(np.nanmax(g2 + se)))
+        for r in rows:
+            ax.errorbar([4.0], [r["published_g2"]], yerr=[r["published_err"]],
+                        fmt=pub_marker.get(r["pump"], "s"), ms=7, color=P.ink1, mfc=P.surface,
+                        mec=P.ink1, ecolor=P.ink2, capsize=4, zorder=6)
+        _ref_h(ax, 1.0, "$g^{(2)}(0)$ = 1", P)
+        ax.set_xlabel(r"$I / I_{th}$")
+        ax.set_ylabel("$g^{(2)}(0)$")
+        ax.set_ylim(0, g2_max * 1.05)
+        ax.legend(fontsize=7.5, loc="lower right")
+        ax.set_title(f"g$^{{(2)}}$(0) vs pump strength ($I_{{th}}$ raw axis = {I_th:.3f})",
+                     fontsize=9.5)
 
-    fig.suptitle("cards/zhao.yaml Tier-2 fit -- fsim_core.sde stochastic drive engine "
-                 "(tag chain [E]: literature-class tuned rate-equation model; "
-                 "see run_zhao_fit.py for the honest verdict)",
-                 fontsize=9, color="#d7191c", y=1.03)
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"zhao_fit_figure.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+        fig.tight_layout()
+        _title(fig, "cards/zhao.yaml Tier-2 fit -- fsim_core.sde stochastic drive engine "
+                    "(tag chain [E]: literature-class tuned rate-equation model; "
+                    "see run_zhao_fit.py for the honest verdict)", "E", P, y=1.0)
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"zhao_fit_figure.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)
 
 
 def vc_reischle_figure(vc: dict, outdir: Path) -> None:
@@ -515,24 +682,23 @@ def vc_reischle_figure(vc: dict, outdir: Path) -> None:
                ["w_meV", "rho_lo", "rho_hi", "rho_required", "rho_required_err"],
                ((w, l, h, vc["rho_req"], vc["rho_req_err"]) for w, l, h in zip(ws, lo, hi)))
 
-    fig, ax = plt.subplots(figsize=(5.4, 3.8))
-    ax.fill_between(ws, lo, hi, alpha=0.3, color="#2166ac", lw=0,
-                    label=r"digitized $\rho(w)$ (zero-level conventions)")
-    ax.plot(ws, lo, color="#2166ac", lw=1.2)
-    ax.plot(ws, hi, color="#2166ac", lw=1.2)
-    ax.axhspan(vc["rho_req"] - vc["rho_req_err"], vc["rho_req"] + vc["rho_req_err"],
-               color="#d7191c", alpha=0.35, lw=0)
-    ax.axhline(vc["rho_req"], color="#d7191c", lw=1.5,
-               label=rf"$\rho$ required by $g^{{(2)}}$ = {vc['g2']}$\pm${vc['g2_err']}")
-    ax.set_xlabel("detection window $w$ (meV)")
-    ax.set_ylabel(r"signal fraction $\rho$")
-    ax.set_ylim(0.7, 1.0)
-    ax.legend(frameon=False, fontsize=8, loc="lower left")
-    verdict = "CONSISTENT" if vc["consistent"] else "INCONSISTENT"
-    ax.set_title(f"V-c (Reischle, 100 MHz, ~40 K): trion, $\\varepsilon\\approx 0$ — "
-                 f"{verdict}", fontsize=10,
-                 color="#1a9641" if vc["consistent"] else "#d7191c")
-    fig.tight_layout()
-    for ext in ("pdf", "svg", "png"):
-        fig.savefig(outdir / f"vc_reischle.{ext}", bbox_inches="tight", dpi=200)
-    plt.close(fig)
+    with _themed("light") as P:
+        fig, ax = plt.subplots(figsize=(5.4, 3.8))
+        _band(ax, ws, lo, hi, P.s[0], P,
+              label=r"digitized $\rho(w)$ (zero-level conventions)")
+        ax.axhspan(vc["rho_req"] - vc["rho_req_err"], vc["rho_req"] + vc["rho_req_err"],
+                   color=P.ref_wash, lw=0)
+        ax.axhline(vc["rho_req"], color=P.ref, lw=1.2,
+                   label=rf"$\rho$ required by $g^{{(2)}}$ = {vc['g2']}$\pm${vc['g2_err']}")
+        ax.set_xlabel("detection window $w$ (meV)")
+        ax.set_ylabel(r"signal fraction $\rho$")
+        ax.set_ylim(0.7, 1.0)
+        ax.legend(fontsize=8, loc="lower left")
+        verdict = "CONSISTENT" if vc["consistent"] else "INCONSISTENT"
+        ax.set_title("V-c (Reischle, 100 MHz, ~40 K): trion, $\\varepsilon\\approx 0$",
+                     fontsize=10, pad=22)
+        _status_ax(ax, bool(vc["consistent"]), verdict, P)
+        fig.tight_layout()
+        for ext in ("pdf", "svg", "png"):
+            fig.savefig(outdir / f"vc_reischle.{ext}", bbox_inches="tight", dpi=200)
+        plt.close(fig)

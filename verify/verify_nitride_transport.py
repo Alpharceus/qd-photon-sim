@@ -47,13 +47,21 @@ check("aperture partition makes 100 ps resolved mu order unity or below",ld_revi
 
 # The strained-gap fix lowers the default x=0.15 electron leakage barrier;
 # these [DR] regression literals are independently frozen from the corrected
-# edge construction (Rinke 2008 volume shift + Tsai 2020 VBO).  The valence
-# barrier is unchanged because only Ec had reused the shifted Ev reference.
+# edge construction (Tsai 2020 VBO + 0.7/0.3 Ec/Ev partition [A]).  The valence
+# barrier is unchanged by that fix because only Ec had reused the shifted Ev
+# reference.  Re-pinned 2026-09-23 (audit-nitride-strain-mass): the A-gap
+# strain shift is now the anisotropic Yan et al., PRB 90, 125118 (2014)
+# Eq. (3) form, dEg = (acz-D1-D3) ezz + (act-D2-D4) 2 exx with the Table III
+# GaN/InN literals linear in x, replacing the Rinke 2008 volume form
+# a_V (2 exx + ezz).  Independent recomputation (Varshni + Wu bowing + VCA
+# strain, literals only): dE_c = Eg_GaN - (x*1.15 + Eg_act + 0.7 dEg),
+# dE_v = x*1.15 - 0.3 dEg; the same script with the old volume dEg gives the
+# previous pins 0.29430835927037746 / 0.12318373956523015 exactly.
 lk_gap=d.eta_inj(300.)
 check("numerical corrected x=0.15 conduction transport barrier",
-      abs(lk_gap.dE_c_eff_eV-0.29430835927037746)<1e-12)
+      abs(lk_gap.dE_c_eff_eV-0.35129617050905404)<1e-12)
 check("numerical x=0.15 valence transport barrier remains consistent",
-      abs(lk_gap.dE_v_eff_eV-0.12318373956523015)<1e-12)
+      abs(lk_gap.dE_v_eff_eV-0.14760708723894858)<1e-12)
 
 # --- Regression checks for the Opus review findings on commit b91a3a5 ---
 
