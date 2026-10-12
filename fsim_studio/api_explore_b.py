@@ -33,6 +33,8 @@ import math
 
 import numpy as np
 
+from fsim_core.fit_bundle import fit_params_path
+
 from . import CARDS, OUT
 from .tags import widest
 
@@ -112,7 +114,7 @@ PHONON_DOMAIN = {"T": (1.0, 300.0), "l_xy": (2.0, 8.0), "l_z": (1.0, 4.0), "alph
 PHONON_DEFAULTS = {"T": 100.0, "l_xy": 4.5, "l_z": 1.5, "alpha": None, "gamma_zpl": 0.5, "w": 2.0,
                    "kappa": None, "kappa_on": 1.0, "F_cav": 1.0, "delta": 0.0}
 # V-a fit (out/phase0/fit_params.json [DR]) feeds effective_gamma_zpl
-FIT_JSON = OUT / "phase0" / "fit_params.json"
+FIT_JSON = fit_params_path()
 PHONON_T_FRAMES = (4.0, 20.0, 40.0, 60.0, 80.0, 100.0, 130.0, 160.0, 200.0, 230.0, 260.0, 300.0)
 OMEGA_GRID = np.linspace(-25.0, 25.0, 5001)   # photon energy relative to the ZPL, blue positive
 DELTA_GRID = np.linspace(-12.0, 12.0, 49)     # line offset from the filter centre

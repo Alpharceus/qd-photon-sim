@@ -54,7 +54,8 @@ def main():
         assert code == 200, (url, code, d)
         return d
 
-    fit = json.loads((ROOT / "out/phase0/fit_params.json").read_text(encoding="utf-8"))["params"]
+    from fsim_core.fit_bundle import load_fit_params
+    fit = load_fit_params()["params"]
     try:
         # ================================================================ controls / tags
         code, ctl = get("/api/explore/a/controls")

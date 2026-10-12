@@ -37,7 +37,8 @@ def main():
     from fsim_core import studio_support as ss
     from fsim_core.spectral import epsilon_narrow_filter
 
-    fit = json.loads((ROOT / "out/phase0/fit_params.json").read_text(encoding="utf-8"))["params"]
+    from fsim_core.fit_bundle import load_fit_params
+    fit = load_fit_params()["params"]
     P = {k: fit[k] for k in ("a_esc", "E_a", "b_p", "E_b")}
     kB = 8.617333262e-2   # meV/K (CODATA), written out here independently of integrator.KB
 

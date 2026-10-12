@@ -41,7 +41,8 @@ def main():
     jm = app.config["JOB_MANAGER"]
     try:
         card = load_card(ROOT / "cards" / "chatzarakis.yaml")
-        fit = json.loads((ROOT / "out/phase0/fit_params.json").read_text(encoding="utf-8"))
+        from fsim_core.fit_bundle import load_fit_params
+        fit = load_fit_params()
         p = fit["params"]
         rows = sorted(card.datasets["g2_vs_T"].rows, key=lambda r: r["T"])
         Ts = np.array([r["T"] for r in rows])

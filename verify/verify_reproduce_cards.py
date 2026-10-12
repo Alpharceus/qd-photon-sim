@@ -58,18 +58,11 @@ def ev_chatz_va():
 
 
 def _ensure_class_proxy():
-    """device.class_proxy_params() reads the gitignored out/phase0/fit_params.json.  On a
-    clean clone it is absent: rebuild the same dict from the in-memory V-a fit and patch
-    the module function (same values to ~1e-8, p0 audit), so the item still runs."""
-    import fsim_core.device as dev
-    if (ROOT / "out" / "phase0" / "fit_params.json").is_file():
-        return "out/phase0/fit_params.json"
-    from fsim_core.fitting import fit_phase0
-    fit = fit_phase0(_chatz_card())
-    keep = {k: float(fit.params[k]) for k in ("gamma0", "a_ac", "b_lo", "E_lo", "r_xx",
-                                              "a_esc", "E_a", "b_p", "E_b", "b0", "beta")}
-    dev.class_proxy_params = lambda: dict(keep)
-    return "in-memory fit_phase0"
+    """device.class_proxy_params() resolves the V-a bundle through fsim_core.fit_bundle (out/ if
+    present, else the tracked snapshot fsim_core/data/phase0_fit_params.json), so a clean clone
+    runs every item; this only reports which file was used."""
+    from fsim_core.fit_bundle import fit_params_source
+    return fit_params_source()
 
 
 def _base_design(DeviceDesign, lineshape, geom, alpha=None, rho_one=True):

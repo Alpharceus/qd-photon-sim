@@ -60,7 +60,8 @@ _ROOT = Path(__file__).resolve().parents[1]
 def class_proxy_params() -> dict:
     """Arsenide-class Gamma/retention parameters from the V-a joint fit [A as
     proxy for unmeasured platforms]."""
-    p = json.loads((_ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+    from .fit_bundle import load_fit_params
+    p = load_fit_params()["params"]
     return {k: p[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo", "r_xx",
                               "a_esc", "E_a", "b_p", "E_b", "b0", "beta")}
 

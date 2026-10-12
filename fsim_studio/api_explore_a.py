@@ -29,11 +29,12 @@ import warnings
 import numpy as np
 from flask import Response, request
 
-from . import OUT
+from fsim_core.fit_bundle import fit_params_path, fit_params_source
+
 from .serialize import dumps
 from .tags import widest
 
-FIT_JSON = OUT / "phase0" / "fit_params.json"
+FIT_JSON = fit_params_path()
 FIT_KEYS = ("a_esc", "E_a", "b_p", "E_b")
 WIRE_MAX = 2001          # curve points sent to the browser (display decimation only)
 
@@ -174,7 +175,7 @@ def _fit():
     p = d.get("params", {})
     missing = [k for k in FIT_KEYS if p.get(k) is None]
     if missing:
-        raise ExploreAError(f"fit bundle out/phase0/fit_params.json lacks {missing}", missing=missing)
+        raise ExploreAError(f"fit bundle {fit_params_source()} lacks {missing}", missing=missing)
     return {k: float(p[k]) for k in FIT_KEYS}
 
 
@@ -293,7 +294,7 @@ def cw_g2_explore(r, gamma_X, eps, rho, irf_fwhm_ps, irf_shape, pump_ratio, T, t
                   "fsim_core.cw_g2.g2_cw_zero", "fsim_core.cw_g2.g2_cw_zero_low_pump",
                   "fsim_core.cw_g2.g2_cw", "fsim_core.cw_g2.steady_state",
                   "fsim_core.studio_support.g2_cw_high_pump_limit"],
-        "params_source": ("escape rates: out/phase0/fit_params.json V-a fit [DR]" if T is not None
+        "params_source": (f"escape rates: {fit_params_source()} V-a fit [DR]" if T is not None
                           else "no thermal escape (k_X = k_XX = 0)"),
     }
 
@@ -373,7 +374,7 @@ def pulsed_explore(r, tau_on, period, gamma_X, eps, pump_ratio, T, gate_mode, et
         "elapsed_ms": ms, "point_ms": ms_point,
         "calls": ["fsim_core.cw_g2.escape_rates_from_retention", "fsim_core.pulse_counting.pulse_g2",
                   "fsim_core.pulse_counting.deterministic_cycle_g2", "fsim_core.loading.f1b_g2"],
-        "params_source": ("escape rates: out/phase0/fit_params.json V-a fit [DR]" if T is not None
+        "params_source": (f"escape rates: {fit_params_source()} V-a fit [DR]" if T is not None
                           else "no thermal escape (k_X = k_XX = 0)"),
     }
 
