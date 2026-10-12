@@ -1,0 +1,282 @@
+# Material registry data for fsim_core.compose.materials (P2).
+# Content source: .workers/devlib/p1-physics-brief.md section 4. Every number is a leaf
+#   {value | range | value_from | range_from, unit, tag in V/DR/E/A, source[, convert][, band][, scale]}
+# `value_from` / `range_from` import a number from the repo (roots: PhononParams, LinewidthParams,
+# DOT_PRESETS, E_LO_MEV) instead of copying it. `convert` turns the stored energy into the
+# ParamSpec unit: ueV_to_rate / meV_to_rate = (E / hbar) in 1/ns, hbar = 6.582119569e-4 meV ns.
+# Ranges are envelopes, never averaged; the registry default is the declared midpoint (log mean for
+# scale: log), "midpoint, not a prediction".
+schema: fsim-materials/1
+
+_shared:
+  gaas_Dc:  &gaas_Dc  {value: -14.6, unit: eV, tag: E, source: "Krummheuer, Axt, Kuhn, Phys. Rev. B 65, 195313 (2002), GaAs-class [E]"}
+  gaas_Dv:  &gaas_Dv  {value: -4.8,  unit: eV, tag: E, source: "Krummheuer, Axt, Kuhn, Phys. Rev. B 65, 195313 (2002), GaAs-class [E]"}
+  gaas_rho: &gaas_rho {value: 5370.0, unit: kg/m^3, tag: E, source: "bulk GaAs density, Krummheuer 2002 class [E]"}
+  gaas_c:   &gaas_c   {value: 5110.0, unit: m/s, tag: E, source: "GaAs LA sound velocity, Krummheuer 2002 class [E]"}
+  gaas_nlo: &gaas_nlo {value: 36.0, unit: meV, tag: E, source: "GaAs LO phonon energy (brief section 4) [E]"}
+  alpha0:   &alpha0   {value: 0.0, unit: ps^2, tag: A, source: "sentinel: 0 = compute alpha from D_c, D_v, rho, c_LA, l_xy, l_z via qd_gf.coupling_alpha_ps2. Pin to e.g. 0.027 ps^2 (Ramsay-class InGaAs [E], brief section 4)"}
+  knr0:     &knr0     {value: 0.0, unit: 1/ns, tag: A, source: "assumption: no photonless escape; set > 0 for non-radiative loss [A]"}
+  sd0:      &sd0      {value: 0.0, unit: ueV, tag: A, source: "assumption: no spectral diffusion (transform-limited-class dot); raise for charge-noise-limited devices [A]"}
+  tausd0:   &tausd0   {value: 10.0, unit: ns, tag: A, source: "assumed spectral-diffusion correlation time; only matters with sigma_sd > 0 [A]"}
+  xxr:      &xxr      {value: 2.0, unit: "1", tag: DR, source: "XX radiative rate = 2 x X (two decay channels, cascade; Schweickert-class XX 125 ps vs X about 250 ps) [DR]", band: [0.5, 2.5]}
+
+materials:
+  inas_gaas_sk:
+    label: "InAs/GaAs Stranski-Krastanov dot (900-980 nm)"
+    summary: "Self-assembled InAs dot in a GaAs matrix, 900-980 nm band (also 1.3 um DWELL). Class ranges from the physics brief section 4; anchors: Somaschi 2016 tau_bulk 1.3 ns, Mueller 2014 E_b 2.3 meV."
+    refs: ["Somaschi et al., Nature Photonics 10, 340 (2016) [V]", "Mueller et al., Nature Photonics 8, 224 (2014) [V]", "Krummheuer et al., Phys. Rev. B 65, 195313 (2002) [E]", "Kuhlmann et al., Nature Communications 6, 8204 (2015) [E]"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 930.0, unit: nm, tag: E, source: "brief section 4 band 900-980 nm; 930 nm = Somaschi/Ding class [E]", band: [900.0, 980.0]}
+      tau_bare_ns: {range: [0.8, 1.3], unit: ns, tag: E, source: "brief section 4 [E]; the upper end 1.3 ns is the bulk lifetime used by Somaschi et al., Nat. Photon. 10, 340 (2016) [V]"}
+      fss_ueV: {range: [10.0, 50.0], unit: ueV, tag: E, source: "brief section 4: 0-100 ueV, typical 10-50 [E]; typical band used as the range", band: [0.0, 100.0]}
+      E_b_meV: {range: [1.0, 4.0], unit: meV, tag: E, source: "brief section 4: +1 to +4 meV [E]; Mueller et al., Nat. Photon. 8, 224 (2014) measured 2.3 meV [V] (set E_b_meV = 2.3 to reproduce)"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [0.0, 1.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "0-1 ueV excess linewidth, transform-limited at 4 K, Kuhlmann et al., Nat. Commun. 6, 8204 (2015) class [E]; converted gamma* = E/hbar"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "linear acoustic slope 0.1-1 ueV/K (10-40 K), brief section 4 [E]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: *gaas_Dc
+      D_v_eV: *gaas_Dv
+      rho_kg_m3: *gaas_rho
+      c_LA_m_s: *gaas_c
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "Gaussian confinement length, brief section 4 [E]"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "Gaussian confinement length, brief section 4 [E]"}
+      n_host: {value: 3.5, unit: "1", tag: E, source: "GaAs index at 930 nm, brief section 4 [E]", band: [3.3, 3.7]}
+      E_LO_meV: *gaas_nlo
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  ingaas_gaas:
+    label: "InGaAs/GaAs Stranski-Krastanov dot (920-980 nm)"
+    summary: "Self-assembled InGaAs dot in GaAs, 920-980 nm (Thomas/Quilter class). Same GaAs phonon matrix as InAs/GaAs; class ranges from the brief."
+    refs: ["Thomas et al., Phys. Rev. Lett. 126, 233601 (2021) [class]", "Krummheuer et al., Phys. Rev. B 65, 195313 (2002) [E]"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 950.0, unit: nm, tag: E, source: "brief section 4 band 920-980 nm; 950 nm midpoint [E]", band: [920.0, 980.0]}
+      tau_bare_ns: {range: [0.8, 1.2], unit: ns, tag: E, source: "brief section 4 [E]"}
+      fss_ueV: {range: [5.0, 50.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range: [1.0, 3.0], unit: meV, tag: E, source: "brief section 4: +1 to +3 meV [E]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [0.0, 1.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "as InAs/GaAs, brief section 4 [E]"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "as InAs/GaAs, brief section 4 [E]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: *gaas_Dc
+      D_v_eV: *gaas_Dv
+      rho_kg_m3: *gaas_rho
+      c_LA_m_s: *gaas_c
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "as InAs/GaAs, brief section 4 [E]"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "as InAs/GaAs, brief section 4 [E]"}
+      n_host: {value: 3.5, unit: "1", tag: E, source: "GaAs index near 950 nm, brief section 4 [E]", band: [3.3, 3.7]}
+      E_LO_meV: *gaas_nlo
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  gaas_algaas_droplet:
+    label: "GaAs/AlGaAs droplet-etched dot (770-800 nm)"
+    summary: "Local-droplet-etched GaAs dot in AlGaAs, 770-800 nm. Anchors: Schweickert 2018 XX lifetime 125 ps, Piccinini 2025 E_b about 4.0 meV."
+    refs: ["Schweickert et al., Applied Physics Letters 112, 093106 (2018) [V]", "Piccinini et al., 2025 [V] (E_b about 4.0 meV, as recorded in the physics brief)"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 785.0, unit: nm, tag: E, source: "brief section 4 band 770-800 nm [E]", band: [770.0, 800.0]}
+      tau_bare_ns: {range: [0.2, 0.3], unit: ns, tag: E, source: "X lifetime 0.2-0.3 ns, brief section 4 [E] (X about 250 ps in the Schweickert-class device)"}
+      fss_ueV: {range: [0.0, 10.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range: [3.5, 4.0], unit: meV, tag: E, source: "brief section 4: 3.5-4.0 meV; Piccinini et al. 2025 about 4.0 meV [V] (as recorded in the physics brief)"}
+      gamma_xx_ratio: {value: 2.0, unit: "1", tag: DR, source: "Schweickert et al., APL 112, 093106 (2018): XX lifetime 125 ps [V] vs X about 250 ps [E] gives 2.0 [DR]", band: [0.5, 2.5]}
+      gamma_star_4K_ns: {range: [0.0, 2.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "0-2 ueV, brief section 4 [E]"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "GaAs-class linear slope, brief section 4 (InAs/GaAs row) [E]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: *gaas_Dc
+      D_v_eV: *gaas_Dv
+      rho_kg_m3: *gaas_rho
+      c_LA_m_s: *gaas_c
+      l_xy_nm: {range: [5.0, 8.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      l_z_nm: {range: [2.0, 3.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      n_host: {range: [3.4, 3.7], unit: "1", tag: E, source: "brief section 4: 3.7 GaAs, 3.4 Al0.3GaAs at 780 nm [E]"}
+      E_LO_meV: *gaas_nlo
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  inas_inp_cband:
+    label: "InAs/InP dot (O-band to C-band, 1.3-1.55 um)"
+    summary: "InAs/InP telecom dot; the lambda_nm parameter covers O-band (about 1310 nm) and C-band (about 1550 nm). InP phonon constants are the repo qd_gf.PhononParams defaults (Vurgaftman 2001 class)."
+    refs: ["Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001) [DR]"]
+    varshni: InP
+    params:
+      lambda_nm: {value: 1550.0, unit: nm, tag: E, source: "C-band; set about 1310 nm for O-band, brief section 4 band 1.3-1.55 um [E]", band: [1260.0, 1600.0]}
+      tau_bare_ns: {range: [1.0, 2.0], unit: ns, tag: E, source: "brief section 4 [E]"}
+      fss_ueV: {range: [10.0, 100.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range: [-1.0, 3.0], unit: meV, tag: E, source: "brief section 4: -1 to +3 meV, both signs reported [E]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [5.0, 50.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "5-50 ueV non-resonant class, brief section 4 [E]; converted gamma* = E/hbar"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "no InAs/InP slope in the brief; InAs/GaAs class 0.1-1 ueV/K reused [A]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value_from: PhononParams.D_e_eV, unit: eV, tag: DR, source: "fsim_core.qd_gf.PhononParams default = InP a_c, Vurgaftman et al., J. Appl. Phys. 89, 5815 (2001) [DR]"}
+      D_v_eV: {value_from: PhononParams.D_h_eV, unit: eV, tag: DR, source: "fsim_core.qd_gf.PhononParams default = InP a_v, Vurgaftman 2001 [DR]"}
+      rho_kg_m3: {value_from: PhononParams.rho_m_kg_m3, unit: kg/m^3, tag: DR, source: "fsim_core.qd_gf.PhononParams default, bulk InP [DR]"}
+      c_LA_m_s: {value_from: PhononParams.c_s_m_s, unit: m/s, tag: DR, source: "fsim_core.qd_gf.PhononParams default, InP LA [DR]"}
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      l_z_nm: {range: [1.5, 2.5], unit: nm, tag: E, source: "brief section 4 [E]"}
+      n_host: {value: 3.17, unit: "1", tag: E, source: "InP index at 1550 nm, brief section 4 [E]", band: [3.1, 3.3]}
+      E_LO_meV: {value_from: E_LO_MEV.InP, unit: meV, tag: E, source: "fsim_core.linewidth.E_LO_MEV InP entry (brief section 4: 43 meV InP)"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  inas_ingaas_metamorphic_cband:
+    label: "InAs/InGaAs metamorphic dot on GaAs (C-band)"
+    summary: "InAs dot under an InGaAs metamorphic buffer on GaAs emitting near 1.55 um. [E] class-only, not anchored: the physics brief has no row for this system; GaAs-matrix phonon and InAs/GaAs dot ranges are extrapolated."
+    refs: ["Physics brief section 4 has no dedicated row; InAs/GaAs SK row reused [A]"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 1550.0, unit: nm, tag: A, source: "C-band target of the metamorphic platform; no brief row [A]", band: [1250.0, 1600.0]}
+      tau_bare_ns: {range: [0.8, 2.0], unit: ns, tag: A, source: "InAs/GaAs 0.8-1.3 ns extended to longer wavelength; no brief row [A]"}
+      fss_ueV: {range: [10.0, 100.0], unit: ueV, tag: A, source: "no brief row; InAs/InP-class span reused [A]"}
+      E_b_meV: {range: [0.0, 4.0], unit: meV, tag: A, source: "no brief row; InAs/GaAs class widened to include zero [A]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [0.0, 10.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "no brief row; between transform-limited InAs/GaAs and non-resonant InAs/InP [A]"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "InAs/GaAs class reused [A]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: *gaas_Dc
+      D_v_eV: *gaas_Dv
+      rho_kg_m3: *gaas_rho
+      c_LA_m_s: *gaas_c
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: A, source: "InAs/GaAs class reused [A]"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: A, source: "InAs/GaAs class reused [A]"}
+      n_host: {value: 3.4, unit: "1", tag: A, source: "GaAs-class index near 1.55 um [A]", band: [3.3, 3.6]}
+      E_LO_meV: *gaas_nlo
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  inp_gainp_red:
+    label: "InP/GaInP dot (640-700 nm)"
+    summary: "Red InP/GaInP dot, the repo's anchored platform: InP phonon constants, DOT_PRESETS binding-energy band and the anchored linewidth model (gamma0, a_ac, E_LO) are imported from the repo, not copied."
+    refs: ["Bommer et al., 2011 (gamma0 0.25 meV, via fsim_core.linewidth) [DR]", "Chatzarakis-class E_b 5.9 meV (fsim_core.presets) [DR]"]
+    varshni: InP
+    params:
+      lambda_nm: {value: 670.0, unit: nm, tag: E, source: "brief section 4 band 640-700 nm [E]", band: [640.0, 700.0]}
+      tau_bare_ns: {range: [0.5, 1.0], unit: ns, tag: E, source: "brief section 4 [E]"}
+      fss_ueV: {range: [50.0, 200.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range_from: [DOT_PRESETS.staged-inp-gaasp.delta_xx, DOT_PRESETS.piezo-variant.delta_xx], unit: meV, tag: DR, source: "fsim_core.presets.DOT_PRESETS staged-inp-gaasp (3.5) to piezo-variant (8.0); the Chatzarakis-class 5.9 meV lies inside (brief section 4: 3.5-8)"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {value_from: LinewidthParams.gamma0, convert: meV_to_rate, unit: meV, tag: DR, source: "fsim_core.linewidth.LinewidthParams.gamma0 (anchored non-resonant single-dot width, Bommer 2011 class) divided by hbar. This is the NON-RESONANT linewidth proxy (brief trap 3), not a resonant gamma*"}
+      a_ac_ns_per_K: {value_from: LinewidthParams.a_ac, convert: meV_to_rate, unit: meV, tag: DR, source: "fsim_core.linewidth.LinewidthParams.a_ac (Ortner 2004 InGaAs class) divided by hbar; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value_from: PhononParams.D_e_eV, unit: eV, tag: DR, source: "fsim_core.qd_gf.PhononParams default = InP a_c (Vurgaftman 2001) [DR]"}
+      D_v_eV: {value_from: PhononParams.D_h_eV, unit: eV, tag: DR, source: "fsim_core.qd_gf.PhononParams default = InP a_v (Vurgaftman 2001) [DR]"}
+      rho_kg_m3: {value_from: PhononParams.rho_m_kg_m3, unit: kg/m^3, tag: DR, source: "fsim_core.qd_gf.PhononParams default, bulk InP [DR]"}
+      c_LA_m_s: {value_from: PhononParams.c_s_m_s, unit: m/s, tag: DR, source: "fsim_core.qd_gf.PhononParams default, InP LA [DR]"}
+      l_xy_nm: {value_from: PhononParams.l_xy_nm, unit: nm, tag: DR, source: "fsim_core.qd_gf.PhononParams default (lens-dot class proxy) [DR]"}
+      l_z_nm: {value_from: PhononParams.l_z_nm, unit: nm, tag: DR, source: "fsim_core.qd_gf.PhononParams default (lens-dot class proxy) [DR]"}
+      n_host: {value: 3.5, unit: "1", tag: E, source: "GaInP index at 670 nm, brief section 4 [E]", band: [3.3, 3.7]}
+      E_LO_meV: {value_from: E_LO_MEV.InP, unit: meV, tag: E, source: "fsim_core.linewidth.E_LO_MEV InP entry (brief section 4: 43 meV)"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  ingan_gan:
+    label: "InGaN/GaN dot (400-520 nm)"
+    summary: "Wurtzite InGaN/GaN dot. [E] class-only, not anchored (phonon and linewidth numbers): brief trap 10 forbids claiming a reproduced high-T paper on these. Varshni slope from fsim_core.nitride_materials (GaN)."
+    refs: ["fsim_core.nitride_materials (GaN Varshni data)", "Physics brief section 4 and trap 10 [E]"]
+    varshni: GaN
+    params:
+      lambda_nm: {value: 450.0, unit: nm, tag: E, source: "brief section 4 band 400-520 nm [E]", band: [400.0, 520.0]}
+      tau_bare_ns: {range: [1.0, 20.0], unit: ns, tag: E, scale: log, source: "QCSE-dependent, brief section 4 [E]"}
+      fss_ueV: {range: [500.0, 5000.0], unit: ueV, tag: E, scale: log, source: "brief section 4 [E]"}
+      E_b_meV: {range: [-10.0, 0.0], unit: meV, tag: A, source: "brief section 4: antibinding typical (negative delta_xx in the repo nitride cards); the magnitude band is an assumption [A]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [0.0, 2.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "no resonant linewidth in the brief for nitrides; GaAs-class placeholder [A]. Spectral diffusion is carried by sigma_sd_ueV"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "placeholder, GaAs class [A]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value: -8.0, unit: eV, tag: E, source: "brief section 4: a_c about -5 to -11 eV (Vurgaftman 2003 anisotropic) [E]; midpoint -8", band: [-11.0, -5.0]}
+      D_v_eV: {value: 0.0, unit: eV, tag: A, source: "brief gives only a_c; only D_c - D_v enters alpha, so D_v = 0 [A]"}
+      rho_kg_m3: {value: 6150.0, unit: kg/m^3, tag: E, source: "GaN density, brief section 4 [E]"}
+      c_LA_m_s: {value: 8000.0, unit: m/s, tag: E, source: "GaN LA velocity, brief section 4 [E]"}
+      l_xy_nm: {range: [2.0, 4.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      n_host: {value: 2.45, unit: "1", tag: E, source: "GaN index at 450 nm, brief section 4 [E]", band: [2.3, 2.6]}
+      E_LO_meV: {value: 90.0, unit: meV, tag: E, source: "brief section 4 [E]"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: {range: [500.0, 2000.0], unit: ueV, tag: E, source: "0.5-2 meV spectral diffusion at 4 K, brief section 4 (GaN/AlN row, applied to InGaN as the same class) [E]"}
+      tau_sd_ns: *tausd0
+
+  gan_aln:
+    label: "GaN/AlN dot (250-320 nm)"
+    summary: "Wurtzite GaN/AlN dot, deep-UV to near-UV. [E] class-only, not anchored to a paper (brief trap 10); spectral diffusion of 0.5-2 meV at 4 K dominates the linewidth."
+    refs: ["Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003) [E]", "Physics brief section 4 and trap 10 [E]"]
+    varshni: GaN
+    params:
+      lambda_nm: {value: 290.0, unit: nm, tag: E, source: "brief section 4 band 250-320 nm [E]", band: [250.0, 320.0]}
+      tau_bare_ns: {range: [1.0, 10.0], unit: ns, tag: E, scale: log, source: "QCSE-dependent, brief section 4 [E]"}
+      fss_ueV: {range: [1000.0, 7000.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range: [-10.0, 10.0], unit: meV, tag: E, source: "brief section 4: -10 to +10 meV, antibinding common [E]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [0.0, 2.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "no resonant linewidth in the brief; GaAs-class placeholder [A]"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "placeholder, GaAs class [A]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value: -8.0, unit: eV, tag: E, source: "brief section 4: a_c about -5 to -11 eV (Vurgaftman 2003) [E]; midpoint -8", band: [-11.0, -5.0]}
+      D_v_eV: {value: 0.0, unit: eV, tag: A, source: "brief gives only a_c; only D_c - D_v enters alpha, so D_v = 0 [A]"}
+      rho_kg_m3: {value: 6150.0, unit: kg/m^3, tag: E, source: "GaN density, brief section 4 [E]"}
+      c_LA_m_s: {value: 8000.0, unit: m/s, tag: E, source: "brief section 4 [E]"}
+      l_xy_nm: {range: [2.0, 3.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      l_z_nm: {range: [1.0, 1.5], unit: nm, tag: E, source: "brief section 4 [E]"}
+      n_host: {range: [2.1, 2.8], unit: "1", tag: E, source: "brief section 4: GaN 2.6-2.8, AlN 2.1-2.2 at 300 nm [E]"}
+      E_LO_meV: {value: 92.0, unit: meV, tag: E, source: "brief section 4 [E]"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: {range: [500.0, 2000.0], unit: ueV, tag: E, source: "0.5-2 meV spectral diffusion at 4 K, brief section 4 [E]"}
+      tau_sd_ns: *tausd0
+
+  cdse_znse:
+    label: "CdSe/ZnSe dot (500-560 nm)"
+    summary: "II-VI CdSe/ZnSe dot with large biexciton binding. [E] class-only, not anchored to a paper (brief trap 10)."
+    refs: ["Physics brief section 4 and trap 10 [E]"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 530.0, unit: nm, tag: E, source: "brief section 4 band 500-560 nm [E]", band: [500.0, 560.0]}
+      tau_bare_ns: {range: [0.2, 0.5], unit: ns, tag: E, source: "brief section 4 [E]"}
+      fss_ueV: {range: [100.0, 1000.0], unit: ueV, tag: E, source: "brief section 4 [E]"}
+      E_b_meV: {range: [20.0, 25.0], unit: meV, tag: E, source: "brief section 4 [E]"}
+      gamma_xx_ratio: *xxr
+      gamma_star_4K_ns: {range: [100.0, 1000.0], unit: ueV, tag: E, convert: ueV_to_rate, source: "0.1-1 meV at 4 K, brief section 4 [E]; converted gamma* = E/hbar"}
+      a_ac_ns_per_K: {range: [0.1, 1.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "placeholder, GaAs class [A]; LO term not included"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value: -3.7, unit: eV, tag: E, source: "CdSe gap deformation potential a_gap about -3.7 eV, brief section 4 [E]"}
+      D_v_eV: {value: 0.0, unit: eV, tag: A, source: "brief gives only a_gap; D_v = 0 [A]"}
+      rho_kg_m3: {value: 5260.0, unit: kg/m^3, tag: E, source: "ZnSe matrix density, brief section 4 [E]"}
+      c_LA_m_s: {value: 4000.0, unit: m/s, tag: E, source: "ZnSe LA velocity, brief section 4 [E]"}
+      l_xy_nm: {range: [2.0, 3.0], unit: nm, tag: E, source: "brief section 4 [E]"}
+      l_z_nm: {range: [1.0, 1.5], unit: nm, tag: E, source: "brief section 4 [E]"}
+      n_host: {value: 2.6, unit: "1", tag: E, source: "ZnSe index at 520 nm, brief section 4 [E]", band: [2.5, 2.7]}
+      E_LO_meV: {value: 31.0, unit: meV, tag: E, source: "ZnSe LO phonon, brief section 4 [E]"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: *sd0
+      tau_sd_ns: *tausd0
+
+  cspbbr3_colloidal:
+    label: "CsPbBr3 colloidal nanocrystal"
+    summary: "[E] class-only, not anchored: perovskite nanocrystal placeholder. The brief has no row, so every number is an unsourced class guess tagged A. Use only as an envelope."
+    refs: ["No paper anchor; class placeholder"]
+    varshni: GaAs
+    params:
+      lambda_nm: {value: 515.0, unit: nm, tag: A, source: "green CsPbBr3 emission, class guess; no brief row [A]", band: [450.0, 530.0]}
+      tau_bare_ns: {range: [0.5, 5.0], unit: ns, tag: A, scale: log, source: "class guess for a single nanocrystal; no brief row [A]"}
+      fss_ueV: {range: [100.0, 1000.0], unit: ueV, tag: A, source: "class guess; no brief row [A]"}
+      E_b_meV: {range: [-20.0, 20.0], unit: meV, tag: A, source: "class guess spanning both signs; no brief row [A]"}
+      gamma_xx_ratio: {value: 1.0, unit: "1", tag: A, source: "class guess; the XX/X rate ratio of nanocrystals is not established here [A]", band: [0.1, 4.0]}
+      gamma_star_4K_ns: {range: [50.0, 1000.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "class guess; no brief row [A]"}
+      a_ac_ns_per_K: {range: [0.5, 5.0], unit: ueV, tag: A, convert: ueV_to_rate, source: "class guess; LO term not included [A]"}
+      alpha_ps2: *alpha0
+      D_c_eV: {value: -3.0, unit: eV, tag: A, source: "soft-lattice class guess; no brief row [A]"}
+      D_v_eV: {value: 0.0, unit: eV, tag: A, source: "class guess; only D_c - D_v enters alpha [A]"}
+      rho_kg_m3: {value: 4800.0, unit: kg/m^3, tag: A, source: "class guess for CsPbBr3 density; no brief row [A]"}
+      c_LA_m_s: {value: 2500.0, unit: m/s, tag: A, source: "class guess for a soft lattice; no brief row [A]"}
+      l_xy_nm: {value: 3.0, unit: nm, tag: A, source: "class guess; no brief row [A]", band: [2.0, 5.0]}
+      l_z_nm: {value: 3.0, unit: nm, tag: A, source: "class guess (nearly spherical); no brief row [A]", band: [2.0, 5.0]}
+      n_host: {value: 2.0, unit: "1", tag: A, source: "organic-ligand / polymer host class guess [A]", band: [1.4, 2.5]}
+      E_LO_meV: {value: 18.0, unit: meV, tag: A, source: "class guess; no brief row [A]"}
+      k_nr_ns: *knr0
+      sigma_sd_ueV: {value: 0.0, unit: ueV, tag: A, source: "assumption: none; blinking and spectral diffusion are not modelled [A]"}
+      tau_sd_ns: *tausd0
