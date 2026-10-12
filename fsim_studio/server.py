@@ -341,4 +341,7 @@ def create_app(job_manager=None, port: int | None = None) -> Flask:
     # ------------------------------------------------------------ explorers B (api_explore_b.py)
     from . import api_explore_b
     api_explore_b.register(app)
+    # ------------------------------------------------------------ composer + papers (api_compose.py)
+    from . import api_compose
+    api_compose.register(app)
     return app
