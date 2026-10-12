@@ -1,0 +1,64 @@
+# Schlehahn et al., arXiv:1510.07314 (2015), APL 108, 021104 (2016): GHz single photons from an electrically gated QD microlens (cw optical pump).
+# Numbers from .workers/devlib/papers/schlehahn2015_ghz.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+meta:
+  id: schlehahn2015_ghz
+  role: paper-device
+  cite: "A. Schlehahn, R. Schmidt, C. Hopfmann, J.-H. Schulze, A. Strittmatter, T. Heindel, L. Gantz, E. R. Schmidgall, D. Gershoni, S. Reitzenstein, Generating single photons at GHz modulation-speed using electrically controlled quantum dot microlenses, arXiv:1510.07314 (2015); Appl. Phys. Lett. 108, 021104 (2016)"
+  arxiv: "1510.07314"
+  extraction: ".workers/devlib/papers/schlehahn2015_ghz.yaml"
+  read_level: V-full
+  summary: "InGaAs QD microlens in a p-i-n diode, 10 K, cw 651 nm optical pump with the bias square-wave gated below the EL onset (tunnelling empties the dot at low bias): radiative lifetime 1.75 ns (TRPL), gated decay 270 ps, g2(0) 0.3 raw at 1 GHz (1 ns bins, ~300 ps HBT resolution)"
+  notes:
+    - "GATED ESCAPE (brief 2.3, trap 4): the optical pump is cw; the electrical square wave only toggles tunnelling-out. The electrical_pulsed drive is used as the closest stand-in: the pump window is the high-bias half period (0.5 ns at 1 GHz) and the dark half carries the escape k_off. This is a CRUDE mapping of a cw pump gated by escape, not a validated model of that scheme."
+    - "EL DECAY != RADIATIVE LIFETIME: 1.75 ns (TRPL at zero bias, no modulation) is the radiative lifetime and enters tau_bare_ns; the 270 ps decay of the gated emission is 1/(Gamma + k_off). k_off = 1/0.27 - 1/1.75 = 3.13/ns is DERIVED from these two paper numbers, so the 270 ps item is a calibration of drive.k_esc_off_ns; the gated decay is never used as the lifetime."
+    - "BINNED g2 (trap 6): 0.3 is the central-bin g2 of a 1 GHz histogram whose bin equals the period (1 ns), so neighbouring peaks (decay 3.7/ns) and the ~300 ps detector response leak into it; the engine observable is g2_binned (closed form g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} plus the IRF leak), not the peak-area g2. Its floor at g2_0 = 0 is already 0.16 (IRF-free), 0.2+ with the IRF."
+    - "PUMP: the optical pump power and the loading per period are not given, so mu is an E range and the g2 comparison is a prediction item only."
+    - "NOT CARDED: optical pulse FWHM 2.13 ns (0.1 V) to 0.86 ns (1.1 V) at 82 MHz (the k_off(V) curve of the WKB tunnelling form: needs the field model); EL onset voltage; the max 3 GHz generator."
+device:
+  T_K: {value: 10.0, unit: K, tag: V, where: "extraction (He-flow cryostat at 10 K; uEL spectrum at 20 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      tau_bare_ns: {value: 1.75, unit: ns, tag: V, where: "calibrated (fits): text p.5 / Fig 3a (radiative lifetime 1.75 ns, TRPL at zero bias, 82 MHz pulsed optical excitation, no electrical modulation)"}
+  structure:
+    kind: bulk_planar
+    params: {}
+  drive:
+    kind: electrical_pulsed
+    params:
+      mechanism: {value: "M-3 pulsed", unit: "", tag: A, source: "stand-in for a cw optical pump gated by bias-dependent escape: pump window = high-bias half period (see meta.notes)"}
+      tau_on_ns: {value: 0.5, unit: ns, tag: DR, where: "text p.3-6 (1 GHz square wave): half of the 1 ns period, assumed 50 % duty cycle"}
+      I_uA: {range: [0.000016, 0.00064], unit: uA, tag: E, source: "effective current into the dot for mu = 0.05-2 over 0.5 ns (mu = I tau / e); the optical pump power and loading per period are not given. M-3 multiplies eta_capture twice, so eta_capture is held at 1"}
+      eta_capture: {value: 1.0, unit: "1", tag: A, source: "held at 1; loading efficiency folded into I_uA"}
+      f_rep_MHz: {value: 1000.0, unit: MHz, tag: V, where: "text p.6 (1 GHz modulation, g2 histogram with 1 ns bins)"}
+      k_esc_off_ns: {value: 3.133, unit: 1/ns, tag: DR, where: "calibrated (fits): 1/0.270 - 1/1.75 per ns from the gated decay 270 ps and the radiative lifetime 1.75 ns (text p.5), conversion ours; tunnelling out in the low-bias half period"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      irf_ps: {value: 300.0, unit: ps, tag: V, where: "text p.6 (HBT resolution about 300 ps)"}
+reported:
+  - {id: tau_rad, observable: tau_ps, value: 1750.0, tag: V, where: "text p.5 / Fig 3a (radiative lifetime 1.75 ns, zero bias)", note: "no error printed"}
+  - {id: tau_EL_gated, observable: tau_EL_ps, value: 270.0, tag: V, where: "text p.5 / Fig 3a (decay time of the electrically gated emission, 1 GHz, cw excitation)", note: "factor 6.5 shorter than the lifetime; no error printed"}
+  - {id: g2_binned_1GHz, observable: g2_binned, value: 0.3, tag: V, where: "text p.6 / Fig 3b (g2(0) = 0.3 at 1 GHz, 1 ns bin = inverse modulation speed, HBT resolution about 300 ps)", note: "raw central bin, no error printed"}
+series: []
+reproduce:
+  - item: tau_rad
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "calibration: tau_bare_ns is set to the zero-bias TRPL lifetime (no Purcell effect in a microlens); 5 % because no error is printed"
+    expect: pass
+  - item: tau_EL_gated
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "calibration: k_esc_off_ns is derived from this decay and the lifetime, so 1/(Gamma + k_off) can only agree (brief 2.3); 5 % because no error is printed"
+    expect: pass
+  - item: g2_binned_pred
+    class: P
+    observable: g2_binned
+    tol_reason: "reported central-bin g2 0.3 is NOT tested: the optical pump power (mu) is not given and the pulsed-window stand-in for a gated cw pump is crude, so a model value from re-excitation alone is not a validated comparison; the model number (peak-area g2_0 re-excited at the pump window, binned with the 300 ps response) is stated for the record"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_rad]}
+  - {param: drive.k_esc_off_ns, fitted_to: [tau_EL_gated]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

@@ -39,8 +39,8 @@ OBS_INCOHERENT_PULSED = _COMMON | _PULSED | {"hom_vs_dt"}
 OBS_CW_RESONANT = _COMMON | {"g2_tau", "inversion"}
 OBS_INCOHERENT_CW = _COMMON | {"hom_I", "hom_V"}
 # devlib-p10e: EL decay time, binned (GHz) histogram g2 and gated HOM for pulsed electrical drives; IRF-convolved g2 for cw
-OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated"}
-OBS_ELECTRICAL_CW = _COMMON | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf"}
+OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated", "spectral_overlap"}
+OBS_ELECTRICAL_CW = _COMMON | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf", "spectral_overlap"}
 
 
 @dataclass(frozen=True)
@@ -584,6 +584,80 @@ ELECTRICAL_CW = PlannedDrive(
 
 
 # ======================================================================
+# stark_gated_resonant (devlib-p10e2): cw/periodic resonant laser, electrical Stark gate tunes the dot INTO resonance
+# ======================================================================
+_SRC_CAO = ("Cao et al., Nano Lett. 15, 2015 (electrically gated resonant emission): Rabi period 1.6 ns at 500 nW, "
+            "300 ps gate at 200 MHz [V per the devlib extraction]; class defaults otherwise [A]")
+
+
+def _plan_stark_gated(self, vals, em, rt):
+    """Coherent rect Rabi window with a time-dependent detuning det_X(t) (plan.det_profile).
+
+    Paper convention: Delta = omega_L - omega_X (positive = laser BLUE of the dot). det_off_meV is Delta OUTSIDE the
+    gate (dot detuned by the bias), det_on_meV is Delta INSIDE the gate (0 = on resonance); the plan stores the repo
+    det_X = omega_X - omega_L = -Delta (det_profile = (-det_off, -det_on, t_gate_ps, t_r_ps)). The laser is on
+    throughout; the Rabi window of the solver is t_gate + 6 t_r (RC edges included), the rest of the period is dark
+    (off-gate excitation ~ Omega^2 Gamma_2/(4 det_off^2) is negligible for |det_off| >> hbar Gamma_2, brief 2.1)."""
+    g = _getter(self, vals)
+    d_off, d_on = float(g("det_off_meV")), float(g("det_on_meV"))
+    t_gate = _positive("t_gate_ps", g("t_gate_ps"))
+    t_r = _nonneg("t_r_ps", g("t_r_ps"))
+    f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
+    period = _positive("rabi_period_ns", g("rabi_period_ns"))
+    p_ref = _positive("power_ref_nW", g("power_ref_nW"))
+    p = _nonneg("power_nW", g("power_nW"))
+    omega = 2.0 * math.pi / period * math.sqrt(p / p_ref)          # Omega ~ sqrt(P)
+    width = t_gate + 6.0 * t_r
+    pulse = Pulse(shape="rect", fwhm_ps=width, area_rad=omega * width * 1e-3, detuning_meV=-d_off)
+    inputs = {**_pulse_inputs("rect", width), "omega_ns": omega, "rabi_period_ns": period, "power_nW": p,
+              "Delta_off_paper_meV": d_off, "Delta_on_paper_meV": d_on, "t_gate_ps": t_gate, "t_r_ps": t_r,
+              "detuning_convention": "repo det_X = omega_X - omega_L = -Delta_paper; det_profile in repo convention"}
+    jit = _nonneg("hom_jitter_ps", g("hom_jitter_ps")) * 1e-3
+    hg = _nonneg("hom_gate_ps", g("hom_gate_ps"))
+    if hg > 0.0:
+        inputs["hom_gate"] = {"start_ns": _nonneg("hom_gate_start_ps", g("hom_gate_start_ps")) * 1e-3,
+                              "width_ns": hg * 1e-3, "jitter_ns": jit}
+    return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(pulse,),
+                     needs=frozenset({"td_detuning"}), inputs=inputs,
+                     det_profile=(-d_off, -d_on, t_gate, t_r))
+
+
+STARK_GATED_RESONANT = PlannedDrive(
+    kind="stark_gated_resonant", label="Stark-gated resonant laser (electrical gate)",
+    summary="Resonant laser held at a fixed frequency; an electrical gate (QCSE) tunes the dot into resonance for "
+            "t_gate once per period (Cao-type). Time-dependent detuning (off, on, gate width, RC edge) and the Rabi "
+            "frequency from the measured period and power; optional detection-gate HOM (Bennett-type).",
+    params=(
+        _P("det_off_meV", "meV", 5.0, lo=-30.0, hi=30.0, tag="A", source=_SRC_CAO,
+           help="Laser detuning OUTSIDE the gate, paper convention Delta = omega_L - omega_X (positive = laser BLUE of "
+                "the dot). Must be >> hbar Gamma_2 so the off-gate excitation is negligible."),
+        _P("det_on_meV", "meV", 0.0, lo=-30.0, hi=30.0, tag="A", source=_SRC_CAO,
+           help="Laser detuning INSIDE the gate, same convention (0 = on resonance)."),
+        _P("t_gate_ps", "ps", 300.0, lo=1.0, hi=1e4, scale="log", tag="A", source=_SRC_CAO,
+           help="Width of the electrical gate (boxcar) during which the dot is tuned to det_on."),
+        _P("t_r_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_CAO,
+           help="RC time constant of the gate edges (0 = sharp). The Rabi window is t_gate + 6 t_r."),
+        _P("rabi_period_ns", "ns", 1.6, lo=0.05, hi=100.0, scale="log", tag="A", source=_SRC_CAO,
+           help="Period 2 pi / Omega of the measured Rabi oscillation at power_ref_nW."),
+        _P("power_ref_nW", "nW", 500.0, lo=0.01, hi=1e6, scale="log", tag="A", source=_SRC_CAO,
+           help="Laser power at which rabi_period_ns was measured."),
+        _P("power_nW", "nW", 500.0, lo=0.0, hi=1e6, tag="A", source=_SRC_CAO,
+           help="Laser power used; the Rabi frequency scales as sqrt(power / power_ref_nW)."),
+        _P("f_rep_MHz", "MHz", 200.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_CAO,
+           help="Gate repetition rate."),
+        _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
+           help="Detection-gate width T of a gated HOM; 0 = off. Observable hom_I_gated."),
+        _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
+           help="Time after the excitation at which the HOM gate opens."),
+        _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
+           help="Std dev of the relative emission-time delay of the two photons inside the HOM gate (Gaussian)."),
+    ),
+    refs=("p3-electrical-brief.md 2.1 (Cao 2015 gated resonance), 2.2 (Bennett gate); polaron.PulseTrain det_profile",),
+    provides=frozenset({"coherent_pulse"}),
+    observables=OBS_COHERENT_PULSED | {"g2_binned", "hom_I_gated", "spectral_overlap"}, planner=_plan_stark_gated)
+
+
+# ======================================================================
 # needs_physics placeholders (full ParamSpecs so the UI can show them greyed)
 # ======================================================================
 _E_BRIEF = "physics brief 2.3 class range [E]"
@@ -606,7 +680,7 @@ from . import drives_phonon as _dp  # noqa: E402
 
 PHONON_ASSISTED, SUPER, DICHROMATIC, ARP = _dp.PHONON_ASSISTED, _dp.SUPER, _dp.DICHROMATIC, _dp.ARP
 
-DRIVES = (RESONANT_PULSE, TPE, CW_RESONANT, ABOVE_BAND, P_SHELL, ELECTRICAL_PULSED, ELECTRICAL_CW,
+DRIVES = (RESONANT_PULSE, TPE, CW_RESONANT, ABOVE_BAND, P_SHELL, ELECTRICAL_PULSED, ELECTRICAL_CW, STARK_GATED_RESONANT,
           PHONON_ASSISTED, SUPER, DICHROMATIC, ARP)
 
 for _d in DRIVES:

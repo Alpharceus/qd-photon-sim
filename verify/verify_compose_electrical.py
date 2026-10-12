@@ -496,6 +496,92 @@ check("9a. new observables registered and offered by the electrical drives",
       all(i in R.get("drive", "electrical_pulsed").observables for i in ("tau_EL_ps", "g2_binned", "hom_I_gated"))
       and all(i in R.get("drive", "electrical_cw").observables for i in ("tau_EL_ps", "g2_irf")))
 
+
+# ---- 10. devlib-p10e2: stark_gated_resonant drive, setup.irf_ps, spectral_overlap observable (independent anchors)
+sg = R.get("drive", "stark_gated_resonant")
+check("10a. stark_gated_resonant is ready and exposes the det profile (off, on, gate, RC edge), Rabi period / power, f_rep, "
+      "HOM gate + jitter; each with unit, tag, source, help",
+      sg.status == "ready" and all(any(p.name == n for p in sg.params) for n in
+      ("det_off_meV", "det_on_meV", "t_gate_ps", "t_r_ps", "rabi_period_ns", "power_nW", "power_ref_nW", "f_rep_MHz",
+       "hom_gate_ps", "hom_jitter_ps")) and all(p.help and p.source and p.tag in "VDREA" for p in sg.params))
+pl = sg.plan({"det_off_meV": 5.0, "det_on_meV": 0.2, "t_gate_ps": 300.0, "t_r_ps": 20.0, "power_nW": 125.0}, EM_C, RT_C)
+check("10b. paper convention Delta = omega_L - omega_X: Delta_off = +5 meV (laser blue) is stored as repo det_X = -5 in det_profile "
+      "and the pulse detuning; Omega = (2 pi / 1.6 ns) sqrt(125/500) (power scaling); needs td_detuning",
+      pl.det_profile == (-5.0, -0.2, 300.0, 20.0) and abs(pl.pulses[0].detuning_meV + 5.0) < 1e-12
+      and abs(pl.inputs["omega_ns"] - OM * 0.5) < 1e-12 and "td_detuning" in pl.needs and pl.family == "coherent")
+
+
+def cao_spec(drp=None, su=None):
+    return {"schema": "fsim-composed/1", "T_K": 4.2,
+            "material": {"kind": "inas_gaas_sk", "params": {"tau_bare_ns": 1.0, "gamma_star_4K_ns": 1.0, "a_ac_ns_per_K": 0.0,
+                                                          "alpha_ps2": 1e-9}},
+            "structure": {"kind": "bulk_planar", "params": {}},
+            "drive": {"kind": "stark_gated_resonant", "params": drp or {}}, "setup": {"kind": "lens_fibre_det", "params": su or {}},
+            "solver": "auto"}
+
+
+cao_e = engine.evaluate_spec(cao_spec({"det_off_meV": 0.5, "t_gate_ps": 300.0}))["scalars"]
+ref_gate = LS.run(DrivePlan("coherent", "pulsed", 200.0, pulses=(Pulse("rect", 300.0, OM * 0.3, detuning_meV=-0.5),),
+                            needs=frozenset({"td_detuning"}), det_profile=(-0.5, 0.0, 300.0, 0.0)), EM_C, RT_C)
+check("10c. engine end to end (Cao: T1 = T2 = 1 ns, 500 nW, 300 ps gate): g2 and n_ph == the direct LindbladSolver Stark-gate run "
+      "(blue laser, sign-flipped plan) and g2 within the Cao 0.028 +/- 0.010 (UC)",
+      abs(cao_e["g2_0"] - ref_gate.g2_0) < 1e-6 and abs(cao_e["n_ph"] - ref_gate.n_ph) < 1e-6 and abs(cao_e["g2_0"] - 0.028) <= 0.010,
+      f"g2 {cao_e['g2_0']:.5f} vs {ref_gate.g2_0:.5f}; n_ph {cao_e['n_ph']:.4f}")
+cao_blue = engine.evaluate_spec(cao_spec({"det_off_meV": 0.5, "t_gate_ps": 300.0, "t_r_ps": 20.0}))["scalars"]
+check("10d. an RC gate edge (t_r 20 ps; Rabi window t_gate + 6 t_r) stays finite and close to the sharp gate (within 20%)",
+      math.isfinite(cao_blue["g2_0"]) and rel(cao_blue["g2_0"], cao_e["g2_0"]) < 0.2, f"{cao_blue['g2_0']:.4f}")
+eh = engine.envelope(cao_spec({"det_off_meV": 5.0, "hom_gate_ps": 31.0}, {}), ["hom_I_gated"])
+check("10e. hom_I_gated offered by the new drive (31 ps gate, T2 = 1 ns): finite and above the ungated I = Gamma/(Gamma + gamma*) = 0.5",
+      math.isfinite(eh["hom_I_gated"]["central"]) and eh["hom_I_gated"]["central"] > 0.5,
+      f"{eh['hom_I_gated']['central']:.3f}")
+# setup.irf_ps: setup-level == drive-level, and the drive value takes precedence
+e_irf_s = engine.envelope(dict(espec({**M3, "f_rep_MHz": 1000.0, "k_esc_off_ns": K_OFF}, MAT, solver=SOLV),
+                               setup={"kind": "lens_fibre_det", "params": {"irf_ps": 300.0}}), ["g2_binned"])["g2_binned"]["central"]
+e_irf_d = engine.envelope(espec({**M3, "f_rep_MHz": 1000.0, "k_esc_off_ns": K_OFF, "irf_ps": 300.0}, MAT, solver=SOLV),
+                          ["g2_binned"])["g2_binned"]["central"]
+e_irf_0 = engine.envelope(espec({**M3, "f_rep_MHz": 1000.0, "k_esc_off_ns": K_OFF}, MAT, solver=SOLV), ["g2_binned"])["g2_binned"]["central"]
+e_irf_p = engine.envelope(dict(espec({**M3, "f_rep_MHz": 1000.0, "k_esc_off_ns": K_OFF, "irf_ps": 100.0}, MAT, solver=SOLV),
+                               setup={"kind": "lens_fibre_det", "params": {"irf_ps": 300.0}}), ["g2_binned"])["g2_binned"]["central"]
+check("10f. lens_fibre_det.irf_ps (default 0) == the electrical drive's irf_ps in g2_binned; an IRF raises the binned g2; the drive "
+      "value wins when both are set",
+      R.get("setup", "lens_fibre_det").param("irf_ps").default == 0.0 and abs(e_irf_s - e_irf_d) < 1e-12 and e_irf_s > e_irf_0
+      and abs(e_irf_p - engine.envelope(espec({**M3, "f_rep_MHz": 1000.0, "k_esc_off_ns": K_OFF, "irf_ps": 100.0}, MAT, solver=SOLV),
+                                        ["g2_binned"])["g2_binned"]["central"]) < 1e-12,
+      f"IRF 300 {e_irf_s:.4f}, 0 {e_irf_0:.4f}")
+
+
+def tophat_closed(delta, gam, w):
+    """Independent closed form: Lorentzian (FWHM gam, offset delta) through a top-hat of width w."""
+    return (math.atan((w / 2 - delta) / (gam / 2)) + math.atan((w / 2 + delta) / (gam / 2))) / math.pi
+
+
+def tam_spec(ratio):
+    gam_x = 55.0
+    return {"schema": "fsim-composed/1", "T_K": 300.0,
+            "material": {"kind": "gan_aln", "params": {"tau_bare_ns": 1000.0, "gamma_star_4K_ns": gam_x / HB, "a_ac_ns_per_K": 0.0,
+                                                       "E_b_meV": 47.0}},
+            "structure": {"kind": "bulk_planar", "params": {}},
+            "drive": {"kind": "electrical_cw", "params": {}},
+            "setup": {"kind": "lens_fibre_det", "params": {"filter_width_meV": 8.0, "xx_width_ratio": 80.0 / 55.0, "xx_x_ratio": ratio}},
+            "solver": "auto"}
+
+
+try:
+    eo = engine.envelope(tam_spec(0.34), ["spectral_overlap", "spectral_overlap:rho", "spectral_overlap:g2"])
+    eps_ind = tophat_closed(47.0, 80.0, 8.0) / tophat_closed(0.0, 55.0, 8.0)
+    rho_ind = 1.0 / (1.0 + 0.34 * eps_ind)
+    check("10g. spectral_overlap (Tamariz 2020: E_b 47, widths 55/80, window 8 meV) == the independent arctan closed form eps = 0.29; "
+          "rho = 1/(1 + 0.34 eps), g2 = 1 - rho^2 (brief 4.2: 0.17 at 6.5 kW/cm^2)",
+          abs(eo["spectral_overlap"]["central"] - eps_ind) < 2e-3 and abs(eo["spectral_overlap"]["central"] - 0.29) < 0.01
+          and abs(eo["spectral_overlap:rho"]["central"] - rho_ind) < 1e-3
+          and abs(eo["spectral_overlap:g2"]["central"] - (1 - rho_ind ** 2)) < 1e-3 and abs(eo["spectral_overlap:g2"]["central"] - 0.17) < 0.03,
+          f"eps {eo['spectral_overlap']['central']:.4f} vs {eps_ind:.4f}, g2 {eo['spectral_overlap:g2']['central']:.4f}")
+except Exception as exc:                                                   # noqa: BLE001
+    check("10g. spectral_overlap Tamariz anchor", False, repr(exc))
+no_f = engine.envelope(dict(tam_spec(0.0), setup={"kind": "lens_fibre_det", "params": {}}), ["spectral_overlap", "spectral_overlap:g2"])
+check("10h. no window and no XX light: eps = 1 (both lines fully collected) and g2 = 0 (rho = 1)",
+      abs(no_f["spectral_overlap"]["central"] - 1.0) < 1e-12 and abs(no_f["spectral_overlap:g2"]["central"]) < 1e-12)
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_electrical checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

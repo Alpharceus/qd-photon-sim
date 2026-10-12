@@ -85,6 +85,12 @@ Gated / binned / IRF observables (devlib-p10e, electrical drives). All [DR]; the
   * `g2_irf` (cw): the intrinsic dip g2_0 seen through a Gaussian IRF of FWHM irf_ps, 1 - (1 - g2_0) F with F the
     cw_g2 single-exponential dip factor at the dip recovery time 1/(Gamma + k + r); equals g2_0 when irf_ps = 0.
 
+Spectral leakage (devlib-p10e2, brief 4.2-4.3, nitride high-T): `spectral_overlap` = eps = t_XX/t_X, the XX-line
+transmission relative to X through the top-hat window (setup.filter_width_meV, offset filter_offset_meV; both lines
+Lorentzian, widths hbar(Gamma + k + gamma*) and xx_width_ratio times that; XX offset E_b = -delta_xx_meV), reusing
+`spectral.epsilon`. Conventions: rho = 1/(1 + (I_XX/I_X) eps) (setup.xx_x_ratio) and g2 = 1 - rho^2 (the uncorrelated
+Tamariz Eq. 4 form: valid when the XX photon is not correlated with the following X inside the coherence time).
+
 Tags. Each observable lists `deps`: tokens that are either a stage name (material | structure | drive |
 setup = the leaves that stage actually READ during the run, tracked by the engine) or an fnmatch pattern
 on leaf paths. Tag = widest(DR, tags of the matched leaves); DR is the floor because the model itself is
@@ -413,6 +419,8 @@ def _derive(c: Context) -> dict:
     else:
         d["hom_I_gated"] = NAN
         why["hom_I_gated"] = "no HOM detection gate set (drive.hom_gate_ps = 0)"
+    # spectral X/XX leakage through a top-hat window (nitride high-T bookkeeping, brief 4.2)
+    d.update(spectral_overlap_terms(c, em))
     # FX2b: XX-line stream of a TPE cascade (cascade solver only)
     for key in ("tau_XX_ps", "g2_XX", "hom_XX", "n_XX"):
         d[key] = float(res.extra[key]) if key in res.extra else NAN
@@ -435,6 +443,21 @@ def _derive(c: Context) -> dict:
     d["_warnings"] = warnings
     d["_why"] = why
     return d
+
+
+def spectral_overlap_terms(c, em) -> dict:
+    """eps = t_XX/t_X, rho = 1/(1 + ratio eps), g2 = 1 - rho^2 through the setup's top-hat window [DR]."""
+    from .. import spectral
+    w = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0)
+    off = float(_read(c, "setup", "filter_offset_meV", 0.0) or 0.0)
+    wr = float(_read(c, "setup", "xx_width_ratio", 1.5))
+    ratio = float(_read(c, "setup", "xx_x_ratio", 0.0) or 0.0)
+    gx = lb_hbar_ueV() * 1e-3 * (float(c.rt.Gamma_ns) + float(c.rt.k_nr_ns) + float(c.rt.gamma_star_ns))
+    res = spectral.epsilon(-float(em.delta_xx_meV), gx, wr * gx, w=w if w > 0.0 else None, dx=off)
+    eps = float(res.eps)
+    rho = 1.0 / (1.0 + ratio * eps)
+    return {"spectral_overlap": eps, "rho_spectral": rho, "g2_spectral": 1.0 - rho * rho,
+            "t_X_window": float(res.t_x), "t_XX_window": float(res.t_xx)}
 
 
 def lb_hbar_ueV():
@@ -504,6 +527,9 @@ _o("tau_EL_ps", "Electroluminescence decay time 1e3/(Gamma+k+k_off) of a gated d
    _ALL)
 _o("g2_binned", "Central-bin g2 of the pulsed histogram (bin = pulse period; EL decay leaks neighbouring peaks, IRF adds more)",
    "1", _ALL + ("setup",))
+_o("spectral_overlap", "X-XX spectral leakage eps = t_XX/t_X through the top-hat window (rho, g2 = 1 - rho^2 conventions)",
+   "1", _MS + ("setup.filter_*", "setup.xx_*"), ("intrinsic", "rho", "g2"),
+   key="spectral_overlap", by_conv={"intrinsic": "spectral_overlap", "rho": "rho_spectral", "g2": "g2_spectral"})
 _o("g2_irf", "g2(0) of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
 _o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), q^2 included", "1", _ALL + ("setup",))
 _o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)

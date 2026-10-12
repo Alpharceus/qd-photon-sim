@@ -1,0 +1,56 @@
+# Zhang et al., arXiv:1602.02325 (2016), APL 108, 153102 (2016): site-controlled InGaN/GaN nanopillar single-photon-emitting diode, 10 K, dc injection.
+# Numbers from .workers/devlib/papers/zhang2016_ingan_el.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+meta:
+  id: zhang2016_ingan_el
+  role: paper-device
+  cite: "L. Zhang, C.-H. Teng, P.-C. Ku, H. Deng, Site-controlled InGaN/GaN single-photon-emitting diode, arXiv:1602.02325 (2016); Appl. Phys. Lett. 108, 153102 (2016) (journal reference from the extraction record, not in the arXiv text)"
+  arxiv: "1602.02325"
+  extraction: ".workers/devlib/papers/zhang2016_ingan_el.yaml"
+  read_level: V-full
+  summary: "InGaN/GaN QW nanopillar (30 nm, 230 nm tall) dot in a p-i-n diode, 10 K, cw current at 5.7 V, ZPL at 3.06 eV, NA 0.5: g2(0) 0.42 raw / 0.38 after APD dark-count adjustment, antibunching time 4 ns, APD resolution ~200 ps"
+  notes:
+    - "TWO CONVENTIONS (trap 1): 0.42 is RAW (no background subtraction, residual from multi-exciton emission and background) and 0.38 is the same histogram after an APD dark-count adjustment. The engine raw adds darks and background together, so the dark-count adjusted value has no like-for-like counterpart; it is reported only. No background-corrected value exists in the paper."
+    - "BACKGROUND: the spectral signal-to-background fraction is NOT in the text. The raw g2 0.42 of an otherwise ideal two-level cw emitter (intrinsic g2 = 0) therefore only sets the background fraction: setup.laser_leak is calibrated so the raw value is reproduced (class C), giving rho = 1/(1 + B/S) = 0.76 (brief estimate 0.79 +/- 0.02). The electrical_cw drive has no background-only parameter, so the laser_leak slot carries the spectral background."
+    - "DIP TIME / PUMP: the 4 ns antibunching time is 1/tau_R = 1/tau_X + r with neither tau_X nor the pump rate r known (the paper has no lifetime); the dip time is not an engine observable, so it is reported only. The pump (mu, eta_capture) and the lifetime are registry class values, not paper inputs."
+    - "IRF (trap 2): with a 4 ns dip the 200 ps APD response reduces the dip depth by only ~2 % (brief factor 0.983, negligible). The IRF-convolved intrinsic g2 is stated as a prediction item."
+    - "NOT CARDED: PL bias shift -10 meV/V (QCSE), polarisation 0.70 +/- 0.04, I-V curve and series resistance, turn-on 4 V."
+device:
+  T_K: {value: 10.0, unit: K, tag: V, where: "extraction (10 K)"}
+  material:
+    kind: ingan_gan
+    params:
+      lambda_nm: {value: 405.2, unit: nm, tag: DR, where: "extraction (ZPL at 3.06 eV): 1239.842 / 3.06, conversion ours"}
+  structure:
+    kind: bulk_planar
+    params:
+      n: {value: 2.45, unit: "1", tag: E, source: "GaN refractive index near 405 nm, class value (the registry default 3.5 is GaAs); no extraction model in the paper"}
+  drive:
+    kind: electrical_cw
+    params:
+      mechanism: {value: "M-1 poisson-rail", unit: "", tag: A, source: "dc current injection (cw EL at 5.7 V); the pump rate is not given"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.5, unit: "1", tag: V, where: "extraction (collection NA 0.5, pinhole isolates one dot)"}
+      irf_ps: {value: 200.0, unit: ps, tag: V, where: "extraction (APD resolution about 200 ps)"}
+      laser_leak: {value: 0.313, unit: "1", tag: A, source: "calibrated (fits): spectral background-to-signal ratio B/S set so the model raw g2 equals 0.42 (rho = 0.76); the signal-to-background fraction is not in the text"}
+reported:
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.42, tag: V, where: "text p.4 / Fig 3d (g2(0) = 0.42 raw at 5.7 V, 10 K, no background subtraction)", note: "no error printed"}
+  - {id: g2_dca, observable: g2_0, convention: raw, value: 0.38, tag: V, where: "text p.4 / Fig 3d caption (0.38 after APD dark-count adjustment)", note: "dark counts removed, background kept: no engine counterpart; reported only"}
+  - {id: dip_time, observable: tau_ps, value: 4000.0, tag: V, where: "text p.4 / Fig 3d (antibunching time constant 4 ns, g2 = g0 + (1 - g0)(1 - exp(-|t|/tau)))", note: "1/(1/tau_X + r): includes the pump rate, NOT the lifetime; reported only"}
+series: []
+reproduce:
+  - item: g2_raw
+    class: C
+    tol: {abs: 0.01}
+    tol_reason: "calibration: the background fraction (setup.laser_leak) is set once so the model raw g2 equals 0.42, because the signal-to-background ratio is not in the text; no error is printed, 0.01 absolute as the digits quoted"
+    expect: pass
+  - item: g2_irf_pred
+    class: P
+    observable: g2_irf
+    tol_reason: "no reported IRF-convolved value: the paper quotes only the raw histogram; the model number (intrinsic g2 seen through the 200 ps APD response at the model dip time) is stated for the record"
+    expect: pass
+fits:
+  - {param: setup.laser_leak, fitted_to: [g2_raw]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

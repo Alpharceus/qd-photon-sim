@@ -1,0 +1,81 @@
+# Ellis et al., New J. Phys. 10, 043035 (2008) (arXiv:0804.0663): electrically pumped Purcell-enhanced single-photon LED, 200 ps pulses.
+# Numbers from .workers/devlib/papers/ellis2008.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+meta:
+  id: ellis2008
+  role: paper-device
+  cite: "D. J. P. Ellis, A. J. Bennett, S. J. Dewhurst, C. A. Nicoll, D. A. Ritchie, A. J. Shields, Cavity-enhanced radiative emission rate in a single-photon-emitting diode operating at 0.5 GHz, New J. Phys. 10, 043035 (2008)"
+  arxiv: "0804.0663"
+  extraction: ".workers/devlib/papers/ellis2008.yaml"
+  read_level: V-full
+  summary: "InAs X+ dot B in an oxide-aperture (2.4 um) lambda GaAs/AlGaAs microcavity LED (Q 1500-2800, V 1.42 um3), 48 K, 200 ps electrical pulses at 80/500 MHz: radiative rate 1.4/ns (TRPL, dc bias below turn-on) vs EL decay 1.59/ns, F_P 2.49, 14 % collection into NA 0.5, g2(0) 0.17 at 1 nA"
+  notes:
+    - "EL DECAY vs RADIATIVE RATE (brief 3, trap 4): the EL decay 1.59/ns of the pulsed diode includes tunnelling out in the dark-window bias state; the TRPL at dc bias just below turn-on (1.4/ns) is the radiative rate. The radiative rate enters material.tau_bare_ns (class C, fitted to 714 ps); the escape rate k_off = 1.59 - 1.4 = 0.19/ns is DERIVED from the same two paper numbers, so the EL-decay item is class C on drive.k_esc_off_ns (it can only agree), and tau_EL is never fed into Gamma0 or F_P."
+    - "F_P: the paper estimate (3/4pi^2)(lambda/n)^3 Q/V with V = 1.42 um3 and Q 1500-2800 gives 2.8 +/- 0.7; the registry phc_cavity entry implements the same formula in (lambda/n)^3 units. V = 1.42 um3 is converted with n = 3.5 (GaAs, our assumption: (0.935/3.5)^3 = 0.01906 um3 -> 74.5) and Q is the mid-point of the stated range, 2150 (a point, not an envelope, so the comparison with the MEASURED 2.49 (radiative-rate ratio, an independent measurement) is a real test). The structure is a micropillar-like oxide aperture; the phc_cavity adapter is used only because it takes (Q, V) directly."
+    - "PUMP: the 12 nA saturation current at 80 MHz is 937 electrons per pulse (0.75 uA during a 200 ps pulse); two dots share the carriers under the 2.4 um aperture (brief 11), so the injection efficiency is an E input ~1.5e-3 folded into I_uA (mu ~ 1.4, saturation; the M-3 pulsed pump multiplies eta_capture twice, so eta_capture is held at 1). g2(0) 0.17 is a different operating point (1 nA, 48 K, includes background from the neighbouring dot and the cavity mode), so it is a prediction item only."
+    - "NOT CARDED: g2 vs f_rep (the paper reports no increase from 80 to 500 MHz, no second number); 20x EL enhancement on resonance (needs the pump chain across detuning); the EL decay at other detunings."
+device:
+  T_K: {value: 48.0, unit: K, tag: V, where: "extraction (temperature-tuned 40-56 K onto the cavity mode; 48 K for the g2 measurements, Fig 4 caption)"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 935.0, unit: nm, tag: V, where: "text p.4 (HE11 cavity mode at 935 nm; the dot is tuned onto it)"}
+      tau_bare_ns: {value: 2.2565, unit: ns, tag: DR, where: "calibrated (fits): radiative rate on resonance 1.4/ns (text p.5) = Gamma0 (1 + F_P_eff) with F_P_eff = 2.158 from Q 2150, V 74.5 (lambda/n)^3, so Gamma0 = 0.443/ns; the off-resonance rate is not given numerically in the text"}
+  structure:
+    kind: phc_cavity
+    params:
+      Q: {value: 2150.0, unit: "1", tag: DR, where: "extraction (Q 1500-2800 for the HE11 mode; mid-point of the stated range)"}
+      V_lambda3: {value: 74.5, unit: "1", tag: DR, where: "text p.5 (mode volume 1.42 um3); in (lambda/n)^3 with lambda = 0.935 um and n = 3.5 (n is ours): 1.42 / 0.01906"}
+      eta_out: {value: 0.496, unit: "1", tag: A, source: "calibrated (fits): outcoupling set so the model first-lens brightness equals the 14 % collection of the paper (text p.5); the paper gives no cavity-to-NA 0.5 transfer"}
+  drive:
+    kind: electrical_pulsed
+    params:
+      mechanism: {value: "M-3 pulsed", unit: "", tag: A, source: "pulsed diode: 200 ps voltage pulses on a dc bias below turn-on"}
+      tau_on_ns: {value: 0.2, unit: ns, tag: V, where: "Fig 3 caption p.10 (200 ps-wide voltage pulses)"}
+      I_uA: {value: 0.001125, unit: uA, tag: E, source: "EFFECTIVE current into the dot: 0.75 uA during 200 ps (12 nA time-averaged at 80 MHz = 937 electrons per pulse, text p.5 / Fig 3a, conversion ours) times an injection efficiency 1.5e-3 (brief 11, eta_cap ~1e-3 class for two dots sharing the carriers) -> mu = 1.4 (saturation). The eta is folded in because the M-3 pulsed pump currently multiplies eta_capture twice (mu already contains it), so eta_capture is held at 1"}
+      eta_capture: {value: 1.0, unit: "1", tag: A, source: "held at 1: the injection efficiency is inside I_uA (see I_uA); avoids the double eta_capture factor of the M-3 pulsed pump"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.5 / Fig 3 caption (80 MHz)"}
+      k_esc_off_ns: {value: 0.19, unit: 1/ns, tag: DR, where: "calibrated (fits): 1.59/ns EL decay minus 1.4/ns radiative rate (text p.5): tunnelling out in the dark-window bias state"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.5, unit: "1", tag: V, where: "text p.5 (collection into NA = 0.5)"}
+reported:
+  - {id: F_P_measured, observable: F_P_peak, value: 2.49, err: 0.05, tag: V, where: "text p.5 / Fig 2f (Purcell factor from the radiative rate versus detuning)", note: "measured radiative rate ratio; the cavity estimate (Q, V) is 2.8 +/- 0.7"}
+  - {id: tau_rad_res, observable: tau_ps, value: 714.3, tag: DR, where: "text p.5 (radiative recombination rate ~1.4/ns on resonance, TRPL at dc bias just below turn-on): 1e3/1.4, conversion ours", note: "no error printed (~1.4)"}
+  - {id: tau_EL, observable: tau_EL_ps, value: 628.9, err: 7.9, tag: DR, where: "text p.5 (EL decay rate (1.59 +/- 0.02)e9 /s on resonance, 200 ps pulses): 1e3/1.59, error propagated, conversion ours", note: "contaminated by tunnelling out, not the radiative rate"}
+  - {id: collection_first_lens, observable: B_first_lens, value: 0.14, err: 0.01, tag: V, where: "text p.5 (collection efficiency into NA 0.5, (14 +/- 1) %, at resonance near saturation)", note: "photons into the first lens per pulse, derived assuming g2 = 0 and all decay via this state"}
+  - {id: g2_80MHz_1nA, observable: g2_0, convention: raw, value: 0.17, tag: V, where: "Fig 4 caption p.11 (g2(0) = 0.17 at 80 MHz, 1 nA, 48 K)", note: "raw histogram, no error printed; 1 nA is far below saturation and includes neighbour-dot and cavity-mode background"}
+series: []
+reproduce:
+  - item: F_P_measured
+    class: M
+    tol: {rel: 0.30}
+    tol_reason: "brief 6: +/-30 % (the paper own cavity estimate 2.8 +/- 0.7 carries 25 %, and V and n are converted by us). Model F_P from the paper formula with the mid-Q is compared with the independently MEASURED rate enhancement 2.49"
+    expect: pass
+  - item: tau_rad_res
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "calibration: tau_bare_ns is set so the on-resonance radiative lifetime is 714 ps (the off-resonance rate is not stated in the text); 5 % because the paper prints ~1.4 without an error"
+    expect: pass
+  - item: tau_EL
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: k_esc_off_ns = 1.59 - 1.4 = 0.19/ns is taken from the difference of these two paper numbers, so the EL decay 1/(Gamma + k_off) can only agree (brief 3); 2 sigma of the printed 0.02/ns"
+    expect: pass
+  - item: collection_first_lens
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: structure.eta_out is set once so the first-lens brightness at saturation equals 14 %; the paper gives no cavity-to-lens transfer, so the number is not a test"
+    expect: pass
+  - item: g2_80MHz_1nA_pred
+    class: P
+    observable: g2_0
+    convention: raw
+    tol_reason: "reported raw g2 0.17 (80 MHz, 1 nA, 48 K) is NOT tested: the injection efficiency at 1 nA (mu) and the neighbour-dot background are not stated, so any model value from re-excitation alone (0 to ~0.3 over mu 0.05-5) would be consistent; the central model value is stated for the record"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_rad_res]}
+  - {param: drive.k_esc_off_ns, fitted_to: [tau_EL]}
+  - {param: structure.eta_out, fitted_to: [collection_first_lens]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

@@ -310,6 +310,21 @@ LENS_FIBRE_DET = _LensFibreDet(
                        "V_raw = ((1 - g2) I - g2)(1 - eps_int)."),
         ParamSpec("zpl_filter", "", False, tag="A", source=_SRC,
                   help="Spectrally filter to the zero-phonon line (brightness x Z, HOM unity)."),
+        ParamSpec("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC,
+                  help="Detector timing response (Gaussian FWHM); 0 = off. Feeds the IRF-convolved cw dip (g2_irf) and "
+                       "the IRF leak of the binned GHz histogram (g2_binned). A drive-level irf_ps (electrical drives) "
+                       "takes precedence when non-zero."),
+        ParamSpec("filter_width_meV", "meV", 0.0, lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
+                  help="Top-hat spectral window width for the X / XX leakage (spectral_overlap); 0 = no window "
+                       "(both lines fully collected)."),
+        ParamSpec("filter_offset_meV", "meV", 0.0, lo=-500.0, hi=500.0, tag="A", source=_SRC, group="advanced",
+                  help="Offset of the X line from the window centre (negative = window blue of X)."),
+        ParamSpec("xx_width_ratio", "1", 1.5, lo=0.1, hi=10.0, tag="E", group="advanced",
+                  source="XX/X linewidth ratio ~1.5 (Tamariz et al. 2020: 80 vs 55 meV at 300 K) [E]",
+                  help="Width of the XX line as a multiple of the X linewidth hbar(Gamma + k + gamma*)."),
+        ParamSpec("xx_x_ratio", "1", 0.0, lo=0.0, hi=100.0, tag="A", source=_SRC, group="advanced",
+                  help="Unfiltered X-XX intensity ratio I_XX/I_X at the operating point (from the power exponents); "
+                       "0 = no XX light. Sets rho and g2 = 1 - rho^2 in the spectral_overlap observable."),
     ),
 )
 REGISTRY.register(LENS_FIBRE_DET)
