@@ -1,0 +1,74 @@
+meta:
+  id: piccinini2025
+  role: paper-device
+  cite: "C. Piccinini et al., Exciton and biexciton preparation via coherent swing-up excitation in a GaAs quantum dot embedded in a micropillar cavity, arXiv:2510.21428v2 (2025); journal not yet known"
+  arxiv: "2510.21428v2"
+  extraction: .workers/devlib/papers/piccinini2025.yaml
+  read_level: V-full
+  notes:
+    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans model g2 0.0036 to 26; the central value is 0.79. Read it as a vacuous envelope pass, not agreement."
+  summary: "GaAs/AlGaAs droplet QD (neutral X at 783.38 nm, XX binding 4.0 meV) in a low-Q micropillar (D 1.58 um), SUPER red-detuned pulses (-3.5, -7.5 meV), T 4 K: inversion ~95 percent, g2(0) 0.03"
+
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text experimental setup (closed-cycle cryostat at T = 4 K)"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 783.38, unit: nm, tag: V, where: "text p.1-2 and Fig 1a (neutral exciton X at 783.38 nm)"}
+      tau_bare_ns: {value: 0.2, unit: ns, tag: V, where: "abstract (decay time ~200 ps) and Methods (identical emission rate Gamma = (200 ps)^-1 for all transitions)"}
+      fss_ueV: {value: 12.0, unit: ueV, tag: V, where: "Fig 1 caption (FSS approx 12 ueV)"}
+      E_b_meV: {value: 4.0, unit: meV, tag: V, where: "text p.2 (biexciton at 785.38 nm, binding energy approx 4.0 meV)"}
+      gamma_xx_ratio: {value: 1.0, unit: "1", tag: V, where: "Methods (identical emission rate for all transitions, so Gamma_XX = Gamma_X)"}
+      gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: A, source: "Methods: the four-level master equation has no dephasing term (only radiative Lindblad terms); 0 is the paper's model, not a measured value"}
+      charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton X; trion under other detunings not carded)"}
+  structure:
+    kind: bulk_planar
+    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top (review item 4); pillar D 1.58 um (Fig 1 caption) is not modelled
+  drive:
+    kind: super
+    params:
+      delta1_meV: {value: -3.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta1 = -3.5 meV); paper convention Delta = omega_L - omega_X, red = negative"}
+      delta2_meV: {value: -7.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta2 = -7.5 meV); paper convention"}
+      shape: {value: rect, unit: "", tag: DR, where: "Methods Eq 4-5: square pulses with smooth corners (r = 10) centred at Delta_j"}
+      fwhm1_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 0.923 h/(pi dE) = 2.53 ps"}
+      fwhm2_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 2.53 ps (same laser, text p.2)"}
+      area1_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper: only powers (P1 = 30 uW, P2/P1 = 1.3) are given, and the power-to-area mapping (DBR transmission, ref 27) was not extracted; registry range [E]"}
+      area2_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper (see area1_pi); registry range [E]"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text Methods (80 MHz pulsed laser, 150 fs pulses)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.82, unit: "1", tag: V, where: "text p.1-2 setup (objective NA = 0.82; Methods gives 0.81)"}
+
+reported:
+  - {id: g2_SUPER, observable: g2_0, convention: raw, value: 0.03, err: 0.01, tag: V, where: "text p.2 and abstract: g2(0) = 0.03 +/- 0.01 for SUPER (same area-of-zero-peak method as TPE, raw)"}
+  - {id: inversion_SUPER, observable: inversion, convention: intrinsic, value: 0.95, tag: V, where: "abstract (near-unity exciton inversion, approx 95 percent); the main text does not say how it is derived, and it is stated relative to the maximum TPE population, not absolute"}
+  - {id: tau_decay, observable: tau_ps, convention: intrinsic, value: 200.0, tag: V, where: "abstract (monoexponential decay approx 200 ps); used as the input tau_bare_ns, so not a test item"}
+  - {id: g2_TPE, observable: g2_0, convention: raw, value: 0.009, err: 0.002, tag: V, where: "text p.2 (TPE reference, same method); TPE is not a carded drive"}
+
+series: []
+
+reproduce:
+  - item: tau_decay
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "the 200 ps decay is the input tau_bare_ns (measured in the pillar), so it agrees by construction; 5 % numerical floor"
+    expect: pass
+  - item: g2_SUPER
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "brief section 6: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
+    expect: pass
+  - item: inversion_SUPER_pred
+    class: P
+    observable: inversion
+    convention: intrinsic
+    tol_reason: "no comparison: the pulse areas are not derivable (Eq 6 needs the DBR field ratio F_j of ref 27, absent), so the 95 % inversion cannot be tested; the model inversion over the area envelope is recorded only"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
+
+history:
+  - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: structure -> bulk_planar (200 ps measured in pillar, no Purcell on top); tau_decay -> class C + fit on tau_bare_ns; fwhm1/2_ps -> 2.53 ps DR with rect shape (Methods Eq 4-5, 0.923 lambda^2/(pi c t_p)); area1/2_pi stay E ranges (Eq 6 needs the DBR field ratio F_j from ref 27, not given)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}

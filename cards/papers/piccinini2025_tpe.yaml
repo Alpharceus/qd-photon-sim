@@ -1,0 +1,52 @@
+meta:
+  id: piccinini2025_tpe
+  role: paper-device
+  cite: "C. Piccinini et al., Exciton and biexciton preparation via coherent swing-up excitation in a GaAs quantum dot embedded in a micropillar cavity, arXiv:2510.21428v2 (2025); journal not yet known"
+  arxiv: "2510.21428v2"
+  extraction: .workers/devlib/papers/piccinini2025.yaml
+  read_level: V-full
+  summary: "GaAs/AlGaAs droplet QD (X 783.38 nm, XX binding 4.0 meV) in a low-Q micropillar, TPE at the X-XX mean energy (Delta -2 meV = E_b/2), 4 K: g2(0) 0.009"
+
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text experimental setup (closed-cycle cryostat at T = 4 K)"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 783.38, unit: nm, tag: V, where: "text p.1-2 and Fig 1a (neutral exciton X at 783.38 nm)"}
+      tau_bare_ns: {value: 0.2, unit: ns, tag: V, where: "abstract (decay time ~200 ps) and Methods (identical emission rate Gamma = (200 ps)^-1 for all transitions)"}
+      fss_ueV: {value: 12.0, unit: ueV, tag: V, where: "Fig 1 caption (FSS approx 12 ueV)"}
+      E_b_meV: {value: 4.0, unit: meV, tag: V, where: "text p.2 (biexciton at 785.38 nm, binding energy approx 4.0 meV)"}
+      gamma_xx_ratio: {value: 1.0, unit: "1", tag: V, where: "Methods (identical emission rate for all transitions, so Gamma_XX = Gamma_X)"}
+      gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: A, source: "Methods: the four-level master equation has no dephasing term (only radiative Lindblad terms); 0 is the paper's model, not a measured value"}
+      charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton X; trion under other detunings not carded)"}
+  structure:
+    kind: bulk_planar
+    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top (review item 4); pillar D 1.58 um (Fig 1 caption) is not modelled
+  drive:
+    kind: tpe
+    params:
+      shape: {value: rect, unit: "", tag: DR, where: "Methods Eq 4-5: square pulses with smooth corners (same shaped laser)"}
+      fwhm_ps: {value: 2.53, unit: ps, tag: DR, where: "text p.2 FWHM 0.48 meV fixed for both schemes; t_p = 0.923 h/(pi dE) = 2.53 ps (Methods)"}
+      area_pi: {value: 1.0, unit: pi, tag: A, source: "TPE pulse area not stated for the g2 measurement; one TPE pi area assumed (saturation, Fig 1d Rabi oscillation)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: DR, where: "text p.2: TPE at the X-XX mean (784.38 nm); Delta_TPE = -2 meV = E_b/2 is exactly the two-photon resonance, i.e. zero offset"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text Methods (80 MHz pulsed laser)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.82, unit: "1", tag: V, where: "text p.1-2 setup (objective NA = 0.82; Methods gives 0.81)"}
+
+reported:
+  - {id: g2_TPE, observable: g2_0, convention: raw, value: 0.009, err: 0.002, tag: V, where: "text p.2 (TPE, area of zero peak / mean of outer peaks, Poisson error)"}
+
+series: []
+
+reproduce:
+  - item: g2_TPE
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "paper 2 sigma is 0.004; 0.01 absolute floor because background and re-excitation in the model are of that order; written before the run"
+    expect: pass
+fits: []
+
+history:
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: sibling card piccinini2025_tpe (tpe drive, E_b 4.0, Delta -2 meV = E_b/2), g2 0.009+-0.002 M"}

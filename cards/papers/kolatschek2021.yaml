@@ -1,0 +1,73 @@
+# Kolatschek et al., Nano Lett. 2021: O-band InGaAs QD in a flip-chip circular Bragg grating.
+# THREE different QD lines sit behind the abstract numbers and must not be mixed in one device. This file is
+# LINE 2 (the almost-resonant line used for the Purcell/lifetime measurement and the above-band power series).
+# Line 1 (g2 0.262, brightness 1.4 % / 23 %) is kolatschek2021_line1.yaml; the p-shell charged line (g2 0.0115 at 4 K,
+# 0.127 at 77 K) is kolatschek2021_pshell.yaml. CBG geometry (period, trench widths, disk radius) is NOT in the text.
+meta:
+  id: kolatschek2021
+  role: paper-device
+  cite: "S. Kolatschek, C. Nawrath, S. Bauer, J. Huang, J. Fischer, R. Sittig, M. Jetter, S. L. Portalupi, P. Michler, Bright Purcell enhanced single-photon source in the telecom O-band based on a quantum dot in a circular Bragg grating, Nano Letters (2021), arXiv:2107.03316 (volume/page not in the arXiv text)"
+  doi: 10.1021/acs.nanolett.1c02647
+  arxiv: "2107.03316"
+  extraction: .workers/devlib/papers/kolatschek2021.yaml
+  read_level: V-full
+  summary: "InGaAs/GaAs O-band dot (line 2, ~1302 nm, almost resonant) in a flip-chip CBG, 4 K, 775 nm above-band 3 ps pulses at 76 MHz; measured Purcell 4.0 (tau 300.8 ps vs 1209.4 ps outside), g2 0.70 and 550 kcps at saturation"
+  notes:
+    - "LINE 2 ONLY. Numbers belonging to line 1 (g2 0.262, 1.1 Mcps, 1.4 % end-to-end, 23 % first lens) and to the p-shell charged line (g2 0.0115, 0.026, 0.127; 355 kcps) are in the sibling cards and are deliberately absent here."
+    - "Main text read in full; the Methods/growth part was cut off in the extraction (V-full is for the main text). Material is entered as the InAs-on-InGaAs-metamorphic O/C-band registry kind (GaAs phonon constants); the paper does not name the buffer in the read text [A]."
+    - "F_P = 12 is the paper's 'maximally achievable Purcell factor for perfect spatial and spectral overlap at the measured Q' (text p.3, simulated 18.6 at Q ~ 200). The measured 4.0 is a lifetime ratio (total = 1 + F_P, i.e. F_P = 3.0) reduced by the unknown spatial overlap of this non-deterministic dot; the registry cbg kind has no position factor, so the overlap is an unmodelled MISSING INPUT. A range F_P in [3, 12] was rejected: it would pass by construction and say nothing."
+    - "tau_bare = 1209.4 ps is the mean over several OTHER dots outside the cavity (std 226.3 ps): entered as a +/-1 sigma range."
+    - "The 6.4 % setup efficiency was measured for line 1; reusing it for line 2 is an assumption [A]."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.3 (sample cooled to 4 K)"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {value: 1302.0, unit: nm, tag: DR, where: "text p.3 (line 1 at 1293 nm is ~9 nm blue of the cavity mode, so the mode is near 1302 nm; line 2 is 'almost resonant', text p.4)"}
+      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: V, where: "text p.4 (decay time outside the cavity: mean 1209.4 ps, standard deviation 226.3 ps over several QDs; +/-1 sigma)"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200)"}
+      Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "text p.4: line 2 is 'almost resonant' with the cavity mode, only a small spectral mismatch; no number given"}
+      eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8), a lower bound for a well-placed dot"}
+  drive:
+    kind: above_band
+    params:
+      pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; 'saturation' is quoted (Fig 3c) although the text says no clear count-rate saturation is observed, so P/P_sat >= 2 is an estimate"}
+      window_ps: {value: 3.0, unit: ps, tag: V, where: "text p.3 (775 nm pulsed laser, pulse width 3 ps); rectangular window of that length is an assumption [A]"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
+      eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused here for line 2"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
+reported:
+  - {id: tau_cav, observable: tau_ps, value: 300.8, err: 0.8, tag: V, where: "text p.4 / Fig 3b (decay time inside the cavity, line 2)"}
+  - {id: g2_sat, observable: g2_0, convention: raw, value: 0.70, err: 0.07, tag: V, where: "text p.4 / Fig 3c (above-band saturation; fit with cw dip and blinking envelope; strong refilling)"}
+  - {id: rate_sat, observable: rate_detected_Hz, value: 550000.0, tag: V, where: "text p.4 (g2-CORRECTED single-photon count rate on the detectors at saturation, above-band; no error given)"}
+reproduce:
+  - item: tau_cav
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 300.8 +/- 0.8 ps (2 sigma = 1.6 ps) is very tight, so the test is effectively exact: any ideal-overlap model that ignores the dot position will miss it"
+    expect: fail
+    reason: "missing input, not a numerical gap: the model gives 75-111 ps (F_P 12 at ideal overlap, tau_bare 1.0-1.4 ns) against the measured 300.8 ps; the paper itself attributes the factor ~3 (Purcell 4.0 vs 12) to the imperfect spatial overlap of the non-deterministically placed dot, and cbg has no position factor."
+  - item: g2_sat
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 0.70 +/- 0.07 (2 sigma = 0.14); the paper attributes this to refilling from carrier traps, not to a laser leak, so the test is whether the incoherent solver's re-excitation reaches that level"
+    expect: fail
+    reason: "model gap: the incoherent solver (3 ps pump window, capture 30 ps, no carrier-trap reservoir) gives g2 ~ 2e-3; the paper's 0.70 is strong refilling from nearby charge traps (and blinking), a mechanism the above_band drive does not contain."
+  - item: rate_sat
+    class: M
+    tol: {rel: 0.5}
+    tol_reason: "no error printed; a factor-1.5 band (50 percent) because pump saturation, the 6.4 % setup efficiency (measured on line 1) and the NA 0.6 table point are all assumed; blinking is not modelled"
+    expect: fail
+    reason: "model overestimates by ~6x (3.6 Mcps vs 0.55 Mcps): the model assumes unity pump saturation, ideal placement and no blinking. NOTE the paper 550 kcps is the g2-corrected true single-photon rate (p.4) while the model value is the raw detected rate, so the comparison is not like for like; the count-rate assumptions (6.4 % reused from line 1, NA 0.6 table point) are also not from this line."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 15: rate_sat reason rewritten (paper 550 kcps is the g2-corrected true single-photon rate vs the raw model rate)"}

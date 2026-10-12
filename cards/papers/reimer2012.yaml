@@ -1,0 +1,73 @@
+# Reimer et al., Nat. Commun. 3, 737 (2012): InAsP quantum dot in a tapered InP nanowire waveguide with a gold mirror.
+# Written from .workers/devlib/papers/reimer2012.yaml and the extracted text (read-only); the model is never tuned.
+meta:
+  id: reimer2012
+  role: paper-device
+  cite: "M. E. Reimer, G. Bulgarini, N. Akopian, M. Hocevar, M. Bouwes Bavinck, M. A. Verheijen, E. P. A. M. Bakkers, L. P. Kouwenhoven, V. Zwiller, Bright single-photon sources in bottom-up tailored nanowires, Nature Communications 3, 737 (2012)"
+  doi: 10.1038/ncomms1746
+  arxiv: "1203.5676"
+  extraction: .workers/devlib/papers/reimer2012.yaml
+  read_level: V-full
+  summary: "InAsP dot (X at 1.409 eV) in a tapered InP nanowire (D ~ 200 nm) on a gold mirror, 10 K, 3 ps above-band pump at 76 MHz, NA 0.75; extraction 0.30 raw / 0.42 corrected, g2 0.36 raw / 0.12 corrected, X lifetime 1.7 ns"
+  notes:
+    - "RAW vs CORRECTED. Extraction: 0.30 = X-only photons per pulse at the first lens (setup-calibrated, background subtracted); 0.42 = the same corrected for the roughly one quarter of captures that recombine as the charged exciton X-. g2: 0.36 = measured; 0.12 = Si-APD time response removed (background from the InP nanowire emission tail is still inside 0.12). The registry has no `corrected` convention for these observables, so the convention is stated in the item id and in `where`; the model has no X- channel and no background."
+    - "mirror_R = 0.30 is the paper's own post-hoc ASSUMPTION (modal reflectivity from Friedler et al., with IQE 95 % and 4 % PDMS-air loss) that makes the theory match the measured 42 %. It is entered as an input but NOT fitted here (no fit is run in this repo), so the 0.42 item is class M, not C; with a perfect mirror the paper's own theory gives 0.71 (2 deg taper) and 0.97 (1 deg taper, beta 0.95)."
+    - "CAUTION: extraction_raw passes (model 0.26 vs 0.30) while extraction_corrected fails (0.26 vs 0.42): the model has no X- channel, so n_ph -> 1 and its B_first_lens equals beta x eta_out; the raw pass is a partial cancellation of two gaps (extraction underestimated, charged-exciton loss absent), not a validation. tau_X passes at the edge of its 2 sigma band (model 1.5 ns, paper 1.7 +/- 0.1, allowance 0.2)."
+    - "Not modelled: the PDMS film (n = 1.5), the on-axis position of the dot, the measured 24x flux gain vs previous InAsP wires and the 2.4x mirror gain (those compare two devices)."
+    - "Emission is at 880 nm (1.409 eV) but the FDTD design wavelength is 950 nm; D/lambda = 220/950 = 0.23 (design) vs 200/880 = 0.23 here."
+device:
+  T_K: {value: 10.0, unit: K, tag: V, where: "Methods (raw text p.10): sample cooled to 10 K in a continuous-flow cryostat"}
+  material:
+    kind: inas_inp_cband
+    params:
+      lambda_nm: {value: 879.9, unit: nm, tag: DR, where: "text p.5 (X line at 1.409 eV; 1239.84/1.409, conversion mine)"}
+  structure:
+    kind: photonic_nanowire
+    params:
+      d_nm: {value: 200.0, unit: nm, tag: V, where: "text p.3 (example nanowire: diameter at the dot 200 nm, length 11.2 um, 2 deg taper at the tip; diameters 160-220 nm over the sample)"}
+      n_wire: {value: 3.37, unit: "1", tag: E, source: "InP refractive index near 880 nm, class value [E]; not stated in the paper"}
+      mirror_R: {value: 0.30, unit: "1", tag: A, source: "Reimer text p.6: modal reflectivity of the gold mirror 'assumed' 30 % from Friedler et al. so that theory matches the measured 42 %; the paper's own post-hoc assumption, not a measurement"}
+  drive:
+    kind: above_band
+    params:
+      pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; the count rate is quoted 'at saturation' (Fig 4a) so P/P_sat >= 2; envelope shows the effect"}
+      window_ps: {value: 3.0, unit: ps, tag: V, where: "Methods (raw text p.10): 744 nm, 3 ps Ti:sapphire pulses; rectangular window of that length is an assumption [A]"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "Methods (raw text p.10) / text p.6 (76 MHz, 24 MHz = 0.3 photons per pulse)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.75, unit: "1", tag: V, where: "Methods (raw text p.10): microscope objective NA 0.75"}
+reported:
+  - {id: extraction_raw, note: "same measurement as extraction_corrected (X-only raw vs charged-exciton-corrected); not a ledger item after review item 10", observable: B_first_lens, value: 0.30, tag: V, where: "text p.6 (RAW: X-only, 24 MHz / 76 MHz = 0.3 photons per pulse at the first lens, setup efficiency ~1 %, background subtracted; no error given)"}
+  - {id: extraction_corrected, observable: eta_extract, value: 0.42, tag: V, where: "text p.6 / abstract (CORRECTED for the ~1/4 of captures that form X-)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.36, tag: V, where: "text p.6 / Fig 4c (RAW: filtered X line near saturation, Si APD)"}
+  - {id: g2_corrected, observable: g2_0, value: 0.12, tag: V, where: "text p.6 / Fig 4c caption (CORRECTED for the finite APD time response; residual is nanowire-tail background)"}
+  - {id: tau_X, observable: tau_ps, value: 1700.0, err: 100.0, tag: V, where: "Fig 4 caption (X lifetime 1.7 ns +/- 0.1 ns)"}
+reproduce:
+  - item: extraction_corrected
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "no error printed; half the +/- 0.1 of brief section 6, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
+    expect: fail
+    reason: "model gap, not a missing input: with the paper's mirror_R 0.30 the nanowire adapter gives beta x eta_out = 0.26 against 0.42. The adapter's HE11 beta / taper (class E: taper_T 0.95, calibrated on GaAs-class wires) and its far-field acceptance are the unverified part; the paper's 0.42 also assumes IQE 95 % and a 4 % PDMS-air loss that are not in the model."
+  - item: g2_raw
+    class: M
+    tol: {abs: 0.1}
+    tol_reason: "no error printed; 0.1 absolute because the model has neither APD response nor background, and above-band re-excitation (pump range 2-10 P_sat) is the only g2 source"
+    expect: fail
+    reason: "model gap: the model has no background and no APD response, and above-band re-excitation at Gamma tau_window ~ 0.002 (3 ps window, 1.7 ns lifetime) gives g2 ~ 1e-4; the paper's 0.36 is dominated by APD response plus nanowire-tail background and carrier-reservoir multi-photon emission that the single-level incoherent solver does not represent."
+  - item: g2_corrected
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "no error printed; 0.05 absolute; the paper's 0.12 still contains the nanowire-tail background, which the model lacks, so only intrinsic re-excitation is compared"
+    expect: fail
+    reason: "model gap, same cause: the paper's 0.12 still contains the nanowire-tail background (stated in the text) and the model has no background channel, so the intrinsic 1e-4 cannot match; a laser_leak-like background input would be needed and the paper gives no number for it."
+  - item: tau_X
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 1.7 +/- 0.1 ns (2 sigma = 0.2 ns); tau_bare is the InAs/InP class default and F_bg = 1 (no Purcell gain, inhibition unknown), so this is an unfitted class-value comparison"
+    expect: pass
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 10: extraction_raw removed from reproduce (kept in reported; same measurement as the corrected value, a raw pass was a cancellation of two gaps); tol_reason note that mirror R 0.30 was chosen by the paper to match 42 percent so a pass would not be independent; taper_mfr_nm left at the registry default (the paper does not state the taper output mode size in the extraction)"}

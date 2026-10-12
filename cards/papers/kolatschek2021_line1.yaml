@@ -1,0 +1,63 @@
+# Kolatschek et al., Nano Lett. 2021: O-band InGaAs QD in a flip-chip circular Bragg grating -- LINE 1 ONLY.
+# Line 1 is the bright excitonic line at 1293 nm, ~9 nm blue of the cavity mode, above-band pumped (Fig 2): g2 0.262,
+# 1.1 Mcps true single-photon rate, 1.4 % end-to-end, 23 % first lens (a g2-corrected LOWER bound). It must not be mixed
+# with line 2 (Purcell 4.0, g2 0.70: kolatschek2021.yaml) or the p-shell charged line (kolatschek2021_pshell.yaml).
+meta:
+  id: kolatschek2021_line1
+  role: paper-device
+  cite: "S. Kolatschek, C. Nawrath, S. Bauer, J. Huang, J. Fischer, R. Sittig, M. Jetter, S. L. Portalupi, P. Michler, Bright Purcell enhanced single-photon source in the telecom O-band based on a quantum dot in a circular Bragg grating, Nano Letters (2021), arXiv:2107.03316 (volume/page not in the arXiv text)"
+  doi: 10.1021/acs.nanolett.1c02647
+  arxiv: "2107.03316"
+  extraction: .workers/devlib/papers/kolatschek2021.yaml
+  read_level: V-full
+  summary: "InGaAs/GaAs O-band dot (line 1, 1293 nm, 6.6 meV blue of the CBG mode) in a flip-chip CBG, 4 K, 775 nm above-band 3 ps pulses at 76 MHz; g2 0.262 raw, true single-photon rate 1.1 Mcps, first-lens brightness 0.23 (lower bound)"
+  notes:
+    - "LINE 1 ONLY (see the file header). The 23 % first-lens figure is g2-corrected, setup-calibrated (1.4 % / 6.4 %) and a LOWER bound because competing transitions (trions of the same dot) are not counted under above-band pumping; the model's n_ph also has no competing channel, so the comparison is like-for-like only in that sense."
+    - "1.4 % end-to-end and 1.1 Mcps are the same measurement divided by the repetition rate and linked to 0.23 by the 6.4 % setup efficiency, so only the first-lens brightness is put in the ledger (otherwise it would be counted twice)."
+    - "Detuning 6.6 meV = 1239.84/1293 - 1239.84/1302 eV: the 9 nm blue shift is rounded in the text ('around 9 nm') and the mode wavelength 1302 nm is derived, so the detuning is DR (the CBG mode is broad: Q = 130, kappa ~ 7 meV, so the Lorentzian is not very sensitive to it)."
+    - "F_P = 12 is the paper's ideal-overlap value at the measured Q; this dot's spatial overlap is unknown (non-deterministic placement) and there is no position factor in the cbg kind (see kolatschek2021.yaml)."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.3 (sample cooled to 4 K)"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {value: 1293.0, unit: nm, tag: V, where: "text p.3 (bright excitonic line at 1293 nm)"}
+      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: V, where: "text p.4 (decay time outside the cavity: mean 1209.4 ps, standard deviation 226.3 ps over several QDs; +/-1 sigma)"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200)"}
+      Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
+      detuning_ueV: {value: 6600.0, unit: ueV, tag: DR, where: "text p.3 (line at 1293 nm is around 9 nm blue-shifted with respect to the cavity mode; dot minus mode = +6.6 meV)"}
+      eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8), a lower bound for a well-placed dot"}
+  drive:
+    kind: above_band
+    params:
+      pump: {range: [0.5, 10.0], unit: "1", tag: E, source: "absolute pump power not given for the g2 measurement of Fig 2b (the line needed 'stronger pumping'); P/P_sat from 0.5 to 10 as an envelope"}
+      window_ps: {value: 3.0, unit: ps, tag: V, where: "text p.3 (775 nm pulsed laser, pulse width 3 ps); rectangular window of that length is an assumption [A]"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
+      eta_optics: {value: 0.064, unit: "1", tag: V, where: "text p.3 (setup efficiency 6.4 %, first lens to detector)"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
+reported:
+  - {id: g2_line1, observable: g2_0, convention: raw, value: 0.262, err: 0.001, tag: V, where: "text p.3 / Fig 2b (RAW: bin width = full repetition period, no blinking, up to 1.3 Mcps total)"}
+  - {id: B_first_lens, observable: B_first_lens, value: 0.23, tag: V, where: "abstract / text p.3 (g2-CORRECTED, setup-calibrated 1.4 % / 6.4 %; a lower bound; no error given)"}
+reproduce:
+  - item: g2_line1
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 0.262 +/- 0.001 (2 sigma = 0.002); the paper explains it by multi-photon re-excitation at the long decay time (decay overlaps neighbouring peaks) and the incoherent solver has no carrier reservoir beyond the capture time"
+    expect: fail
+    reason: "model gap: the incoherent solver (3 ps pump window, 30 ps capture) gives g2 ~ 4e-4; the paper's 0.262 comes from re-excitation/refilling over the long decay (neighbouring peaks overlap) that this single-level solver with no carrier reservoir does not reproduce."
+  - item: B_first_lens
+    class: M
+    tol: {abs: 0.1}
+    tol_reason: "no error printed and the value is a lower bound; 0.1 absolute (about half the value) because F_P overlap, the NA 0.6 table point and pump saturation are all assumed"
+    expect: fail
+    reason: "model overestimates: central 0.59 = n_ph 0.995 x beta 0.74 (F_P_eff 2.8 after the 6.6 meV detuning) x eta_out 0.8; the envelope [0.2325, 0.5912] (low edge at 0.5 P_sat) just misses the paper 0.23. The model has ideal placement and unity pump saturation, while the paper's 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions; the overlap is not quantifiable from the text."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}

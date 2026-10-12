@@ -1,0 +1,116 @@
+# Tomm et al., Nat. Nanotechnol. 16, 399 (2021): open tunable microcavity, InGaAs X+ dot, 4.2 K, pulsed resonant.
+# Every number below is from .workers/devlib/papers/tomm2021.yaml (arXiv v1 main text + Supplement read in full;
+# page = page of the arXiv v1 PDF; the published version may differ).
+# ONE dot throughout: QD1 (47.5 ps, 520 ps, F_P 10, g2 2.1%, HOM 91.6%, system efficiency 53%). The abstract's 57% is QD6 and is not used.
+# The pair (g = 4.16 GHz, kappa = 24.00 GHz) is the paper's own consistent H-mode set (Supp, p.11); 4g/kappa = 0.69 > 0.5, so the jc solver runs.
+meta:
+  id: tomm2021
+  role: paper-device
+  cite: "N. Tomm, A. Javadi, N. O. Antoniadis, D. Najer, M. C. Lobl, A. R. Korsch, R. Schott, S. R. Valentin, A. D. Wieck, A. Ludwig, R. J. Warburton, Nature Nanotechnology 16, 399 (2021) [arXiv v1 numbers]"
+  doi: "10.1038/s41565-020-00831-x"
+  arxiv: "2007.12654"
+  extraction: ".workers/devlib/papers/tomm2021.yaml"
+  read_level: V-full
+  summary: "InGaAs X+ dot (QD1) in an open microcavity, g/2pi 4.16 and kappa/2pi 24.00 GHz entered directly (jc solver), 5 ps pi pulse, 4.2 K; paper: tau 47.5 ps, F_P 10, g2 0.021, HOM 0.916 raw, 53% system efficiency"
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "p.11 (Supplement: sample held at T = 4.2 K in a bath cryostat)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 919.0, unit: nm, tag: DR, where: "Supp l.1019 (H mode at 919 nm used for g and F_P^H); QD1 sits on the H mode at resonance (p.3), so its wavelength is the mode wavelength (review item 6)"}
+      tau_bare_ns: {value: 0.52, unit: ns, tag: V, where: "p.3 text (QD1 decay time far detuned from the cavity: 520 ps; gamma/2pi = 0.30 GHz)"}
+      gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "Tomm gives no pure-dephasing number (only the phonon term A = 32 fs/K inside the excitation model); registry InGaAs class range 0-1 ueV (brief 4)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "no measured temperature slope; the non-resonant a_ac term would double count the class range already entered for gamma*"}
+      charge_state: {value: "X+", unit: "", tag: V, where: "p.3 text (positively charged trion X+ of QD1)"}
+  structure:
+    kind: open_cavity
+    params:
+      mode: {value: direct, unit: enum, tag: A, source: "g and kappa are entered directly (preferred route for Tomm, brief 3)"}
+      g_ueV: {value: 17.2, unit: ueV, tag: DR, where: "p.11 (Supplement): g/2pi = 4.16 GHz, derived by the authors from F_P^H = 9.6 and kappa/2pi = 24.00 GHz; converted hbar x 2 pi x 4.16 GHz = 17.20 ueV"}
+      kappa_ueV: {value: 99.26, unit: ueV, tag: DR, where: "p.11 (Supplement): kappa/2pi = 24.00 GHz (experimental H mode, Q = 13,600); converted hbar x 2 pi x 24.00 GHz = 99.26 ueV"}
+      eta_out: {value: 0.96, unit: "1", tag: V, where: "p.4 text (kappa_top/(gamma + kappa_total) = 96%, determined in the experiment)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "p.3 text (QD1 tuned into resonance with the H-polarised mode, Fig 2a)"}
+  drive:
+    kind: resonant_pulse
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated (transform-limited pulse of 60-100 GHz bandwidth)"}
+      fwhm_ps: {range: [3.0, 5.2], unit: ps, tag: V, where: "p.2-3 text (pulse bandwidth 60-100 GHz = 3-5 ps transform limit, intensity) and p.13 (Supp VIII: t_p = 5.2 ps used in the model)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "p.3 text (laser power set at the Rabi maximum = best pi pulse)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: A, source: "the real excitation is a laser 32 GHz detuned from the H mode driving the dot through the filtered V-mode tail (p.3, p.13); the model drives the dot with a resonant transform-limited pulse"}
+      f_rep_MHz: {value: 76.3, unit: MHz, tag: V, where: "p.3 text / Fig 2 caption (76.3 MHz repetition rate)"}
+      target: {value: "X+", unit: "", tag: V, where: "p.3 text (X+ resonance of QD1)"}
+      cross_pol: {value: true, unit: "", tag: V, where: "p.3 text (cross-polarised scheme, V laser, H photons)"}
+      laser_leak: {value: 0.003, unit: "1", tag: V, where: "p.4 text (laser light leaking into the detection channel, 0.3% of the total signal)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      eta_fibre: {value: 0.68, unit: "1", tag: V, where: "p.4 text (eta_optics = 68%: throughput from the microcavity to the output of the final single-mode fibre)"}
+      eps_int: {value: 0.0097, unit: "1", tag: DR, where: "extraction hom_interferometer_corrected: raw 0.916 -> 0.925 after the interferometer correction alone, eps = 1 - 0.916/0.925 = 0.0097 (paper (1-eps) = 0.995(25))"}
+      zpl_filter: {value: true, unit: "", tag: E, source: "kappa = 99 ueV is far below the phonon-sideband width, so the cavity passes only the ZPL (brief 3, Iles-Smith 2017): HOM without Z^2, efficiency x Z"}
+reported:
+  - {id: tau_res_jc, observable: tau_ps, value: 47.5, tag: V, where: "p.3 text (QD1 on resonance)", note: "raw decay time; the engine reports the jc 1/e time for tau_ps; no error quoted"}
+  - {id: tau_res_purcell, observable: tau_purcell_ps, value: 47.5, tag: V, where: "p.3 text (QD1 on resonance)", note: "same measured 47.5 ps compared with the weak-coupling Purcell formula 1e3/(Gamma + k): the adiabatic-elimination check of brief 7 trap 1"}
+  - {id: F_P_QD1, observable: F_P_eff, value: 10.0, tag: V, where: "p.3 text (F_P = 10 for QD1, 12 for QD6; Fig 2 caption prints 11 total)", note: "additional rate ratio = 520/47.5 - 1; H-mode-only value is 9.6 and the paper's calculated value is 11.4 (Supp p.10-11)"}
+  - {id: beta_H, observable: beta, value: 0.86, tag: V, where: "p.3 text / Fig 2 caption (Lorentzian fits, H-polarised mode)", note: "H-mode share of the total decay (2.87 of 3.33 GHz); the V mode is part of the denominator, which the one-mode model does not have; no error quoted"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.021, tag: V, where: "p.3-4 text / Fig 3a (QD1, pi pulse)", note: "raw; limited by 0.3% laser leakage and double excitation; no error quoted"}
+  - {id: hom_raw_1ns, observable: hom_I, convention: raw, value: 0.916, tag: V, where: "p.4 text / Fig 3b (1 ns, QD1)", note: "raw; includes the interferometer imperfection (1 - eps = 0.995(25)), which the model does not (eps_int = 0)"}
+  - {id: hom_true_1ns, observable: hom_I, convention: intrinsic, value: 0.96, tag: V, where: "p.4 Fig 3b label V = 96.0% (the text prints 96.7%, which disagrees with the figure)", note: "corrected for BOTH g2 and the interferometer, so the like-for-like model quantity is the intrinsic g2-free single-photon overlap, not the g2-only 'corrected' convention"}
+  - {id: sys_eff_QD1, observable: B_fibre, value: 0.53, err: 0.03, tag: V, where: "p.4 text (system efficiency at the output of the final fibre, QD1)", note: "calibrated, linearity-corrected; the 57% headline is QD6"}
+series: []
+reproduce:
+  - item: tau_res_jc
+    class: M
+    tol: {rel: 0.10}
+    tol_reason: "brief 6 tolerance +/-10%; no error quoted. g and kappa are entered (g derived by the authors from F_P^H, i.e. from the same decay data), so this is near source-transcription of the rate; what is tested is the JC dynamics at 4g/kappa = 0.69 and tau_bare = the 520 ps far-detuned time"
+    expect: pass
+  - item: tau_res_purcell
+    class: C
+    tol: {rel: 0.10}
+    tol_reason: "class C after review item 6 (the authors derived g from the lifetimes, Supp l.1016-1021); same +/-10% as the jc lifetime so the two formulations are judged alike; brief 7 trap 1 expects the Purcell number to be up to ~13% off at 2g/kappa = 0.36 in principle"
+    expect: pass
+  - item: F_P_QD1
+    class: C
+    tol: {rel: 0.10}
+    tol_reason: "class C after review item 6 (g_ueV derived by the authors from the lifetimes, Supp l.1016-1021); brief 6 +/-10% on F_P 10-12; no error quoted. The model value is the H-mode 4 g^2/(kappa hbar Gamma0) L only (V mode not modelled), expected a few percent below the total"
+    expect: pass
+  - item: beta_H
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "no error quoted; 0.05 absolute is an assumed size for a Lorentzian-fit branching ratio (not from the paper). The one-mode model has no V-mode channel, so beta = F/(1 + F)-like is expected to sit above beta_H"
+    expect: pass
+  - item: g2_raw
+    class: M
+    tol: {abs: 0.01}
+    tol_reason: "brief 6 window 0.01-0.03 around 0.021; no error quoted; raw model value includes 2 x 0.003 laser leak"
+    expect: pass
+  - item: hom_raw_1ns
+    class: M
+    tol: {abs: 0.02}
+    tol_reason: "brief 6 +/-0.02; gamma* is an envelope (0-1 ueV class range) because the paper gives none, so this is a genuine prediction; the 0.5% interferometer loss is below the tolerance"
+    expect: pass
+  - item: hom_true_1ns
+    class: M
+    tol: {abs: 0.02}
+    tol_reason: "brief 6 +/-0.02 (corrected 0.967); figure label 0.960 used, text 0.967 is inside the same band"
+    expect: pass
+  - item: sys_eff_QD1
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the paper's 3% calibration error (+/-0.06). Inputs eta_out 0.96 and eta_fibre 0.68 are measured in the paper; preparation, beta and Z are predicted. The paper's own product is 0.963 x 0.86 x 0.96 x 0.68 = 0.541, so a model without the V-mode loss and phonon-dephased preparation is expected to sit higher"
+    expect: pass
+  - item: eta_prep_pred
+    class: P
+    observable: eta_prep
+    expect: pass
+    tol_reason: "no comparison: the paper's 96.3% is its own theory value (Supp VIII), not a measurement"
+  - item: g2_intrinsic_pred
+    class: P
+    observable: g2_0
+    expect: pass
+    tol_reason: "no reported value: intrinsic g2 without the laser leak (re-excitation only)"
+fits:
+  - {param: structure.g_ueV, fitted_to: [F_P_QD1, tau_res_purcell]}
+history:
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription; expects recorded from the engine state at the time of the run", reason: "initial transcription"}
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "an earlier engine gave tau_res_jc 59.5, tau_res_purcell 55.5 and F_P 8.4 (fail); after the FX1 engine update all pass, expects set to pass", reason: "engine changed between runs (FX1 landing)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 6: F_P_QD1 and tau_res_purcell -> class C with fits on structure.g_ueV (authors derived g from the lifetimes, Supp l.1016-1021); lambda_nm -> 919.0 DR (Supp l.1019); setup.eps_int 0.0097 DR (0.916 -> 0.925 interferometer correction). tau_res_jc stays M; note beta_H and sys_eff_QD1 are near-transcription (g and eta_out/eta_fibre are paper inputs)"}

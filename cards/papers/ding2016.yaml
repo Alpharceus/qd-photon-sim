@@ -1,0 +1,130 @@
+# Ding et al., PRL 116, 020401 (2016): strictly resonant pulsed InAs/GaAs dot in a 2.5 um micropillar.
+# Every number below is from .workers/devlib/papers/ding2016.yaml (arXiv v2 read in full; page = arXiv v2 page).
+# The model is NOT tuned to the paper: F_P comes out of Q and the pillar geometry, not from the paper's 6.3.
+meta:
+  id: ding2016
+  role: paper-device
+  cite: "X. Ding, Y. He, Z.-C. Duan, N. Gregersen, M.-C. Chen, S. Unsleber, S. Maier, C. Schneider, M. Kamp, S. Hofling, C.-Y. Lu, J.-W. Pan, Phys. Rev. Lett. 116, 020401 (2016)"
+  doi: "10.1103/PhysRevLett.116.020401"
+  arxiv: "1601.00284"
+  extraction: ".workers/devlib/papers/ding2016.yaml"
+  read_level: V-full
+  summary: "InAs/GaAs dot, 2.5 um micropillar (Q 6124, 25.5/15 pairs), 3 ps pi pulse, 7.8 K; paper: tau 83.9 ps, F_P 6.3, 66% first-lens extraction, g2 0.009, HOM 0.964 raw / 0.985 corrected"
+device:
+  T_K: {value: 7.8, unit: K, tag: V, where: "p.2 text (QD-cavity resonance, shortest lifetime 83.9 ps at 7.8 K)"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 897.44, unit: nm, tag: V, where: "p.2 text (pulsed laser central wavelength; the emission wavelength is not stated separately)"}
+      tau_bare_ns: {value: 0.5878, unit: ns, tag: V, where: "p.2 text (587.8 ps decay at 28 K, >1 meV detuned; used as the bare-rate proxy per brief 6, it is NOT a bulk lifetime)"}
+      gamma_star_4K_ns: {range: [0.0, 0.565], unit: "1/ns", tag: DR, where: "p.2 text: homogeneous width 1.91(7) GHz vs lifetime-limited 1.89 GHz, excess 0.02 GHz, upper end = +1 sigma (0.09 GHz) x 2 pi; gamma*_repo = 2 pi x excess width"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is taken at the operating temperature from the measured resonant linewidth (brief trap 3); the non-resonant a_ac slope would double count it"}
+  structure:
+    kind: micropillar
+    params:
+      d_um: {value: 2.5, unit: um, tag: V, where: "p.2 text / Fig 1 caption (2.5 um diameter pillar)"}
+      N_top: {value: 15, unit: "1", tag: V, where: "p.2 text / Fig 1 caption (15 upper DBR pairs)"}
+      N_bot: {value: 25.5, unit: "1", tag: V, where: "p.2 text / Fig 1 caption (25.5 lower DBR pairs; the model truncates to 25)"}
+      Q_measured: {value: 6124, unit: "1", tag: V, where: "p.2 text (quality factor measured to be 6124)"}
+      mode_area: {value: gaussian, unit: enum, tag: E, source: "mode volume is not given in the paper; Gaussian HE11 area (w0 = d/2.7) class default; the cylinder class is a vacuous upper-V envelope (review item 1)"}
+      r_factor: {value: 0.513, unit: "1", tag: A, source: "calibrated: F_P 6.3 / ideal 12.28 (engine F_P_peak at r=1)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "p.2 text (QD on cavity resonance at 7.8 K)"}
+  drive:
+    kind: resonant_pulse
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated in the paper (Ti:sapphire, ~3 ps)"}
+      fwhm_ps: {range: [3.0, 7.0], unit: ps, tag: DR, where: "p.2 45 GHz excitation etalon (Lorentzian ~3.5 ps decay convolved with 3 ps)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "p.2 text (pi pulse, 24 nW laser power, Rabi maximum Fig 2b)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "p.2 text (strict s-shell resonant excitation)"}
+      f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "p.2 text (81 MHz repetition rate)"}
+      cross_pol: {value: true, unit: "", tag: V, where: "p.2 text (cross-polarised confocal microscope)"}
+      laser_leak: {range: [0.0, 0.002], unit: "1", tag: DR, where: "p.2 1/40 x 3/45 GHz (S/B 40:1 before the 3 GHz etalon; 3 GHz etalon passes 3/45 of the broadband leak)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.68, unit: "1", tag: V, where: "p.2 text (first objective lens NA = 0.68)"}
+      eta_pol: {value: 0.5, unit: "1", tag: V, where: "p.2 text (polarisation extinction ~50%)"}
+      eta_optics: {value: 0.6, unit: "1", tag: V, where: "p.2 text (optical path transmission ~60%)"}
+      eta_fibre: {value: 0.72, unit: "1", tag: V, where: "p.2 text (single-mode fibre coupling ~72%)"}
+      eta_det: {value: 0.33, unit: "1", tag: V, where: "p.2 text (detection efficiency ~33%)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width, brief 3)"}
+reported:
+  - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text (fit of lifetime vs detuning, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
+  - {id: tau_res, observable: tau_ps, value: 83.9, tag: V, where: "p.2 text / Fig 1c (7.8 K, on resonance)", note: "raw; detector time resolution ~63 ps; no error quoted"}
+  - {id: extraction_first_lens, observable: eta_extract, value: 0.66, tag: V, where: "p.2 text / abstract", note: "corrected: count rate divided by detector 33%, polariser 50%, optics 60%, fibre 72%, preparation 96%, assuming unit internal QE; fraction of GENERATED photons into the first lens (NA 0.68), i.e. beta x eta_out with NA included, polarisation not included"}
+  - {id: eta_prep_96, observable: eta_prep, value: 0.96, tag: V, where: "p.2 text (excited-state preparation efficiency ~96% at the pi pulse)", note: "estimated by the authors, method not given"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.009, err: 0.001, tag: V, where: "p.3 text / Fig 2c caption (intro p.1 prints 0.009(2))", note: "raw, after the 3 GHz etalon; zero-delay peak area / adjacent peak area"}
+  - {id: hom_raw_2p1ns, observable: hom_I, convention: raw, value: 0.964, err: 0.003, tag: V, where: "p.3 text / Fig 3 caption (2.1 ns delay, free-space set-up)"}
+  - {id: hom_corr_2p1ns, observable: hom_I, convention: corrected, value: 0.985, err: 0.004, tag: V, where: "p.3 text / abstract (2.1 ns, corrected with g2(0) = 0.009(1); p.4 summary prints 98.6%)"}
+  - {id: hom_raw_12p4ns, observable: hom_I, convention: raw, value: 0.959, err: 0.003, tag: V, where: "p.3-4 text / Fig 3 caption (12.4 ns delay)"}
+  - {id: hom_corr_12p4ns, observable: hom_I, convention: corrected, value: 0.978, err: 0.004, tag: V, where: "p.4 text (12.4 ns delay, g2-corrected)"}
+series: []
+reproduce:
+  - item: F_P_fit
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the paper's own fit uncertainty 0.4 (so +/-0.8); structure.r_factor is calibrated to this number (review item 1), so agreement is by construction"
+    expect: pass
+  - item: tau_res
+    class: C
+    tol: {rel: 0.10}
+    tol_reason: "brief 6 tolerance +/-10%; the paper quotes no error. Same calibrated r_factor as F_P_fit (tau_res = tau_bare/(1+F_P)), so a fitted item"
+    expect: pass
+  - item: extraction_first_lens
+    class: M
+    tol: {abs: 0.10}
+    tol_reason: "brief 6: +/-0.1 absolute on 0.66; the paper quotes no error and the chain factors (~33%, ~50%, ~60%, ~72%) are rounded. eta_out comes from the TMM mirror asymmetry and the Gaussian-NA model, not from the paper"
+    expect: fail
+    reason: "model 0.76 vs paper 0.66 (0.10 tol, 0.104 off): with r_factor calibrated to F_P 6.3 the beta is lower but the Gaussian-NA extraction overshoots; the paper's 0.66 is a back-corrected number with rounded chain factors."
+  - item: eta_prep_96
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "the authors' estimate has no stated method or error; 5 percentage points is the size of phonon-induced loss for a ~3 ps pi pulse at ~8 K in the brief's InGaAs class, which the two-level pure-state model does not contain"
+    expect: fail
+    reason: "engine FX2b open: eta_prep = P_X at the window end includes radiative decay during the 3-7 ps window and is biased low (0.77 vs sin^2 ~0.95); not a physics disagreement."
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "brief 6 window 0.005-0.02 for re-excitation plus laser leak; paper 2 sigma is only 0.002, so the 0.005 absolute floor is used; the post-etalon laser leak (envelope 0-2.5%) adds 2 f_leak to the raw value"
+    expect: fail
+    reason: "model 0.0255 vs 0.009: re-excitation in the F_P 6.3 pillar plus residual leak (envelope 0.016-0.039 does not reach 0.009); the paper's etalon-filtered leak and sub-ps timing are not fully modelled."
+  - item: hom_raw_2p1ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "brief 6 +/-0.02; gamma* is entered from the measured linewidth (range), so this is near source-transcription, not an independent test of dephasing"
+    expect: fail
+    reason: "model 0.906 vs 0.964: gamma* range and the g2/leak term in the raw convention pull the model low; the near-ST claim no longer holds once the pulse is 3-7 ps (envelope tops at 0.953)."
+  - item: hom_corr_2p1ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "brief 6 +/-0.02 for the corrected value; compared with the model g2-corrected convention (V + g2)/(1 - g2); same near-ST caveat as the raw value"
+    expect: fail
+    reason: "model 0.955 vs 0.985: same shortfall as the raw item (envelope tops at 0.9846, just below the paper minus 2 sigma and the 0.02 floor)."
+  - item: hom_raw_12p4ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "same tolerance as the 2.1 ns raw item (brief 6 +/-0.02)"
+    expect: fail
+    reason: "model 0.906 vs 0.959: same as 2.1 ns (model has no delay dependence beyond gamma*); envelope tops at 0.953."
+  - item: hom_corr_12p4ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "same tolerance as the 2.1 ns corrected item (brief 6 +/-0.02)"
+    expect: pass
+  - item: B_lens_pred
+    class: P
+    observable: B_first_lens
+    tol_reason: "no reported value: polarised first-lens photons per pulse (eta_pol 0.5 included); the paper's 0.63 (0.96 x 0.66) is derived, not stated"
+    expect: pass
+  - item: hom_I_pred
+    class: P
+    observable: hom_I
+    tol_reason: "no reported value: intrinsic g2-free single-emitter overlap Gamma/(Gamma + gamma*)"
+    expect: pass
+fits:
+  - {param: structure.r_factor, fitted_to: [F_P_fit, tau_res]}
+history:
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription", reason: "initial transcription"}
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "first run, before any expect was set", reason: "transcription fix, not a tolerance change: the first run showed HOM raw/corrected at 0.62/0.68 because the Z^2 factor was applied; the paper passes the RF through a 3 GHz etalon before HOM (p.2-3), so setup.zpl_filter=true was added; the rate_detected item was dropped because the 3.7e6 /s rate was measured BEFORE that etalon and cannot share a zpl_filter flag with the HOM items. All expects recorded from the run after this fix."}
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "during this session an earlier engine gave F_P_fit and tau_res as fail (cylinder mode volume, envelope [1.67,5.96]); after the FX1 engine update they pass via the envelope, expects set to pass", reason: "engine changed between runs (FX1 landing)"}
+  - {date: "2026-10-12", by: "sonnet card-fix", reason: "card-review item 1: mode_area -> gaussian (cylinder envelope was vacuous); r_factor 0.513 calibrated to F_P 6.3/12.28, F_P_fit+tau_res -> class C with fits; laser_leak -> [0,0.002] DR; fwhm_ps -> [3,7] DR (45 GHz etalon); added hom_raw_12p4ns, hom_corr_12p4ns; expects re-recorded from the post-fix run: extraction_first_lens, eta_prep_96, g2_raw, hom_raw_2p1ns, hom_corr_2p1ns, hom_raw_12p4ns pass -> fail (FX2b open for eta_prep)"}

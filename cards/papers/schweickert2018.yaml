@@ -1,0 +1,58 @@
+meta:
+  id: schweickert2018
+  role: paper-device
+  cite: "L. Schweickert, K. D. Jons, K. D. Zeuner, S. F. Covre da Silva, H. Huang, T. Lettner, M. Reindl, J. Zichi, R. Trotta, A. Rastelli, V. Zwiller, On-demand generation of background-free single photons from a solid-state source, Applied Physics Letters 112, 093106 (2018)"
+  doi: "10.1063/1.5020038"
+  arxiv: "1712.06937"
+  extraction: .workers/devlib/papers/schweickert2018.yaml
+  read_level: V-full
+  summary: "Droplet-etched GaAs/AlGaAs dot (E_b ~3.5 meV derived) on a low-Q planar DBR with Weierstrass SIL, 4 K, 7 ps TPE pi pulse at 80 MHz; XX-photon g2(0) raw 7.5e-5, X lifetime 210 ps, XX 125 ps"
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "extraction device.T_K (sample at 4 K); text p.2"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 792.9, unit: nm, tag: DR, where: "text p.3: TPE laser 793.8 nm = E_X - E_b/2 (laser 0.9 nm from the XX photon); E_X = 1.56194 eV + 1.77 meV = 1.56371 eV => 792.9 nm (derivation ours)"}
+      E_b_meV: {value: 3.53, unit: meV, tag: DR, where: "text p.3: laser at 793.8 nm detuned 0.9 nm from the XX photon (~795 nm); laser - XX photon = E_b/2 = 1.77 meV => E_b = 3.53 meV (derivation ours; the paper does not print E_b)"}
+      tau_bare_ns: {value: 0.21, unit: ns, tag: DR, where: "text p.3: X lifetime ~210 ps (approx), used as the effective bare lifetime in the bulk_planar structure (no Purcell factor in the paper); calibrated, see fits"}
+      gamma_xx_ratio: {value: 1.68, unit: "1", tag: DR, where: "text p.3: T1(X)/T1(XX) = 210 ps / 125 ps = 1.68 (XX is not Purcell enhanced in the model, so this is Gamma_XX/Gamma_X)"}
+      gamma_star_4K_ns: {range: [0.0, 3.04], unit: 1/ns, tag: E, source: "pure dephasing is not reported; registry class range for the droplet GaAs dot (brief section 4); only the P-class HOM prediction depends on it"}
+  structure:
+    kind: bulk_planar
+    params:
+      mirror: {value: true, unit: "", tag: V, where: "text p.2: planar low-Q cavity on a 9-pair Al0.95Ga0.05As/Al0.2Ga0.8As DBR (modelled as a back mirror, no Purcell effect)"}
+      sil: {value: weierstrass, unit: enum, tag: V, where: "text p.2: Weierstrass solid immersion lens plus aspheric lens"}
+      n_s: {range: [1.8, 2.2], unit: "1", tag: E, source: "SIL refractive index is not in the extraction; class range for a high-index glass/ZrO2 SIL. Affects only brightness, not tested here"}
+  drive:
+    kind: tpe
+    params:
+      shape: {value: gauss, unit: "", tag: V, where: "text p.3: pulse length 7 ps from an autocorrelator assuming a Gaussian pulse shape"}
+      fwhm_ps: {value: 7.0, unit: ps, tag: V, where: "text p.3: 7 ps (autocorrelator, Gaussian assumed; intensity FWHM)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.3: pi-pulse (peak power density 96 kW/cm^2)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.3: laser at 793.8 nm = half the ground-state-to-XX energy"}
+      f_rep_MHz: {value: 80.028, unit: MHz, tag: V, where: "Fig 3 / text p.3: side peaks 12.496 ns apart"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      coinc_window_ns: {value: 5.0, unit: ns, tag: V, where: "text p.3 (5 ns coincidence window, about 40x the XX lifetime)"}
+      dark_cps: {range: [0.0056, 0.017], unit: 1/s, tag: V, where: "abstract / text p.2: SSPD dark count rates 0.0056 and 0.017 /s (two detectors; envelope over both)"}
+reported:
+  - {id: g2_XX_raw, note: "XX channel not modelled (the solver reports the X-line stream); not a ledger item after review item 11", observable: g2_0, convention: raw, value: 7.5e-5, err: 1.6e-5, tag: V, where: "abstract / text p.3 / Fig 3: XX-photon g2(0) raw, no background subtraction (21 coincidences vs 279171 per side peak). NOTE the paper photon is XX; the solver reports the X-line stream of the TPE cascade"}
+  - {id: tau_X, observable: tau_ps, value: 210.0, tag: V, where: "text p.3: X lifetime ~210 ps (approx, accuracy limited by 20 ps jitter), no error given"}
+reproduce:
+  - item: tau_X
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "calibration: tau_bare_ns is set to this approximate lifetime (no Purcell factor in the paper); the paper gives no error so 5% is only a numerical floor"
+    expect: pass
+  - item: hom_X_prediction
+    class: P
+    observable: hom_I
+    convention: intrinsic
+    expect: pass
+    tol_reason: "no reported value for this paper; the model X-photon cascade overlap is stated, not compared"
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_X]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 11: g2_XX_raw removed from reproduce (kept in reported: the XX channel is not modelled); setup.coinc_window_ns 5 ns V (text p.3)"}

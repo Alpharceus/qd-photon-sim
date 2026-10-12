@@ -1,0 +1,61 @@
+meta:
+  id: thomas2021_res
+  role: paper-device
+  cite: "S. E. Thomas, M. Billard, N. Coste, S. C. Wein, Priya, H. Ollivier, O. Krebs, L. Tazairt, A. Harouri, A. Lemaitre, I. Sagnes, C. Anton, L. Lanco, N. Somaschi, J. C. Loredo, P. Senellart, Bright Polarized Single-Photon Source Based on a Linear Dipole, Phys. Rev. Lett. 126, 233601 (2021)"
+  doi: "10.1103/PhysRevLett.126.233601"
+  arxiv: "2007.04330v4"
+  extraction: .workers/devlib/papers/thomas2021.yaml
+  read_level: V-full
+  summary: "InGaAs QD (neutral X, linear dipole) in an electrically contacted micropillar, Q ~4000 (Sample A), RESONANT 13 ps pi pulse at max brightness, T ~8 K: g2(0) 0.039, Ms 0.915"
+
+device:
+  T_K: {value: 8.0, unit: K, tag: V, where: "text p.2 (device description: cooled to around 8 K for Sample A, 7 K for Sample B)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 924.82, unit: nm, tag: V, where: "text supplement (QD emission centred at 924.82 nm)"}
+      charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton, device A3; charged exciton only for Fig 2 on Sample B, not carded)"}
+  structure:
+    kind: generic_cavity
+    params:
+      kappa_ueV: {value: 300.0, unit: ueV, tag: V, where: "text p.1-2 (Sample A cavity linewidth ~300 ueV)"}
+      Q: {value: 4000.0, unit: "1", tag: V, where: "text p.1-2 (quality factor of around 4,000 for Sample A)"}
+      eta_out: {value: 0.65, unit: "1", tag: V, where: "text p.4 (extraction efficiency eta_ext ~0.65)"}
+      F_P: {range: [2.0, 10.0], unit: "1", tag: E, source: "Purcell factor not stated in the paper (extraction model_inputs_missing); class range for a Q~4000 pillar [E], envelope only"}
+  drive:
+    kind: resonant_pulse
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated"}
+      fwhm_ps: {value: 13.0, unit: ps, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps); intensity vs field FWHM convention not stated"}
+      area_pi: {value: 1.0, unit: pi, tag: A, source: "resonant excitation at the maximum-brightness (pi) pulse; absolute area not stated"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.3 (resonant excitation)"}
+      f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "text supplement (81 MHz repetition rate)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1 per brief section 5; resonant reference in cross-polarisation)"}
+
+reported:
+  - {id: g2_res, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
+  - {id: Ms_res, observable: hom_I, convention: corrected, value: 0.915, err: 0.001, tag: V, where: "text p.4 (g2-corrected, resonant excitation)"}
+
+series: []
+
+reproduce:
+  - item: g2_res
+    class: M
+    tol: {abs: 0.02}
+    tol_reason: "brief section 6 level +/-0.02 on g2; the paper's +/-0.002 is statistical only; F_P and NA are class ranges"
+    expect: pass
+  - item: Ms_res
+    class: M
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "brief section 6 level +/-0.05 on Ms (the paper's +/-0.001 is dominated by the model-level tolerance); gamma* is the registry class default"
+    expect: fail
+    reason: "model 0.58 (envelope 0.39-0.66) vs 0.915: the intrinsic overlap Gamma/(Gamma+gamma*) with the unfiltered phonon factor and the F_P class range 2-10 (unstated) is far below the paper value; the paper filters/collects essentially ZPL photons and reports near-unity overlap; model gap plus an unknown F_P input."
+
+fits: []
+
+history:
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
