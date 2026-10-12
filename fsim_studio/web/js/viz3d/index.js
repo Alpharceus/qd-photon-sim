@@ -25,6 +25,12 @@ import { buildBandProfile } from './builders/bandProfile.js';
 import { buildCascade } from './builders/cascade.js';
 import { buildSurface } from './builders/surface.js';
 import { buildLattice } from './builders/lattice.js';
+import { buildMicropillar } from './builders/micropillar.js';
+import { buildOpenCavity } from './builders/openCavity.js';
+import { buildBullseye } from './builders/bullseye.js';
+import { buildPhcWaveguide } from './builders/phcWaveguide.js';
+import { buildPhcCavity } from './builders/phcCavity.js';
+import { buildMesa } from './builders/mesa.js';
 import { renderFallback } from './fallback2d.js';
 import * as THREE from 'three';
 import { addFloor, solidBox } from './builders/floor.js';
@@ -41,11 +47,19 @@ function injectCss() {
   document.head.appendChild(link);
 }
 
+const COMPOSED = {
+  micropillar: buildMicropillar, open_cavity: buildOpenCavity, bullseye: buildBullseye,
+  phc_waveguide: buildPhcWaveguide, phc_cavity: buildPhcCavity, mesa: buildMesa,
+};
+
 function pickBuilder(kind, spec) {
   if (kind === 'device') {
     if (spec.variant === 'edge_ridge') return buildRidge;
     if (spec.variant?.startsWith('nanowire')) return buildNanowire;
     if (spec.variant === 'planar_cavity' || spec.variant === 'thermal_mesa') return buildPlanarCavity;
+    // composed devices (fsim_studio/scene_compose.py); anything else -> null -> the 2D message
+    const composed = COMPOSED[spec.variant];
+    if (composed && spec.card === 'composed' && spec.geometry) return composed;
   }
   if (kind === 'band' && (spec.variant === 'nitride' || spec.variant === 'inp')) return buildBandProfile;
   if (kind === 'cascade' && spec.overlays?.t_ns) return buildCascade;
