@@ -231,21 +231,22 @@ def _register_known_deviations():
         "d-i-a: In0.5Ga0.5As 3 nm x R 12 nm / GaAs (Chatzarakis geometry, no SSL)",
         f"E_X = {L.E_X_eV:.3f} eV", "1.30 eV (Chatzarakis et al., PRA 20, 034011 (2023), macro-PL QD band, <Al> = 0 reference)",
         f"{(1.30 - L.E_X_eV) * 1e3:+.0f} meV",
-        "no piezoelectric field (this (211)B-grown class has a strong built-in piezoelectric field along "
-        "growth, explicitly omitted, module docstring limitation); dot-to-dot size/composition spread "
-        "(single dots in the same paper range 1.283-1.44 eV)")
+        "dot level ~85 meV too deep (E_WL is fine): single-band, biaxial-strain disk limit for a 3D island "
+        "(R 8 nm still 1.225 eV); the omitted piezoelectric field is NOT the cause (it would red-shift E_X "
+        "further); dot-to-dot spread (single dots in the same paper range 1.283-1.44 eV)")
     deviation(
         "d-i-b: same dot, WL escape dE_pair_WL (0.8 nm WL, no SSL)",
         f"dE_pair_WL = {L.dE_pair_WL:.0f} meV", "110 +/- 10 meV (Chatzarakis et al., no-SSL Delta_E = E_WL - E_QD)",
-        f"{L.dE_pair_WL - 110:+.0f} meV", "same piezoelectric-field omission as d-i-a, plus the fixed 10 meV 2D-QW WL "
-        "exciton binding assumption")
+        f"{L.dE_pair_WL - 110:+.0f} meV", "the SAME single miss as d-i-a (dE_pair_WL = E_WL - E_X; E_WL is fine, the dot level is too deep), "
+        "plus the fixed 10 meV 2D-QW WL exciton binding assumption")
     Lc = lv("InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
     deviation(
         "d-i-c: same dot, WL embedded directly in bulk Al0.57Ga0.43As (0 nm GaAs spacer)",
         f"dE_pair_WL = {Lc.dE_pair_WL:.0f} meV", "240 +/- 20 meV (Chatzarakis et al., SSL sample, <Al> = 65%, Delta_E)",
         f"{Lc.dE_pair_WL - 240:+.0f} meV", "this is the ZERO-spacer idealised limit (matrix = barrier = "
         "Al0.57Ga0.43As, no intervening GaAs), an extreme end-member of the real digital-SSL structure, not a "
-        "fit to it; see also d-i-d, whose finite-spacer scan under-predicts the same SSL-induced shift")
+        "fit to it, so this comparison is ill-posed; the sample itself (0.86 nm GaAs, Al0.65) is compared "
+        "in verify_reproduce_cards dl_ssl_shift_faithful")
     d2 = None
     for d in (2.0,):
         S = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
@@ -255,9 +256,9 @@ def _register_known_deviations():
         "d-i-d: SSL-induced increase of dE_pair_WL at a 2 nm GaAs spacer",
         f"+{d2:.0f} meV", "+130 meV (Chatzarakis et al., SSL 240 meV minus no-SSL 110 meV, "
         "each +/- 10-20 meV)", f"{d2 - 130:+.0f} meV",
-        "treating the digital short-period (GaAs/AlAs) superlattice barrier as a uniform bulk Al0.57Ga0.43As "
-        "alloy at an effective distance underestimates the confinement of the true periodic structure, whose "
-        "local band profile briefly reaches the full AlAs barrier height each period")
+        "INPUT ERROR, not a model miss: this check uses an [A] 2 nm GaAs spacer and Al0.57, while the paper's "
+        "240 meV sample is <Al> = 65 % = GaAs 0.86 nm / AlAs 1.6 nm; with those inputs the shift is "
+        "131.6 meV vs 130 +/- 22 (verify_reproduce_cards dl_ssl_shift_faithful)")
     Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
     deviation(
         "d-ii-a: InP 3 nm x R 10 nm [A, dot size not measured] / Ga0.51In0.49P, Pryor VBO",
@@ -265,9 +266,13 @@ def _register_known_deviations():
         "lines) / ~1.84-1.95 eV (Reischle et al., APL 97, 143513 (2010), single-dot lines) -- both single-dot, "
         "not ensemble; dot size not reported in either paper",
         f"{(1.815 - Lr.E_X_eV) * 1e3:+.0f} to {(1.95 - Lr.E_X_eV) * 1e3:+.0f} meV",
+        "FLAGGED TRANSCRIPTION TO RE-CHECK: the -45 meV override has the opposite sign of the model-solid "
+        "+168 meV; with the model-solid VBO V_e = 222 meV (28 meV from Pryor; verify_reproduce_cards "
+        "kd_dl_pryor_Ve_modelsolid); override NOT changed (user decision). "
         "combines Pryor's isolated, measured unstrained VBO (-45 meV) with this module's own Vurgaftman bulk "
         "gaps and linear deformation-potential strain (module docstring limitation (iii)), compounded by the "
-        "same large-mismatch/no-k.p-mixing limitation as HKUST/Gu and the [A] dot size")
+        "same large-mismatch/no-k.p-mixing limitation as HKUST/Gu; dot size is UNPUBLISHED (h 1.5 nm / R 6 nm "
+        "gives 1.862 eV, h 2 / R 5 gives 1.817 eV, both in range), so this is an unknown input, not a solver miss")
     deviation(
         "d-ii-b: same dot, dot-matrix conduction band offset V_e",
         f"V_e = {Lr.V_e:.0f} meV", "~250 meV (240 meV DLTS) (Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), "
@@ -287,7 +292,9 @@ def _register_known_deviations():
         "0.887-0.953 eV (1301-1398 nm) (Laferriere et al., Nano Lett. 23, 962 (2023), single-dot, 4-300 K); "
         "typical InAs/InP telecom dot range 0.80-0.95 eV (1.3-1.55 um) [E]",
         f"{(0.80 - Lt.E_X_eV) * 1e3:.0f} meV below the typical-range lower edge",
-        "this preset is a pure InAs dot directly in InP; Laferriere's actual device is an InAs0.68P0.32 "
+        "this preset is a pure InAs dot directly in InP (range is a 4-300 K union; measured 0.887 eV at 300 K; "
+        "the faithful InAs0.68P0.32 preset brackets it at 0.815-0.947 eV, verify_reproduce_cards "
+        "dl_laf_EX_faithful_bracket); Laferriere's actual device is an InAs0.68P0.32 "
         "dot-in-a-rod inside an InAs0.5P0.5 rod inside the InP core -- the graded InAsP composition has a "
         "larger gap than pure InAs, so the real device is less confined (blue-shifted) than this simplified "
         "preset, in the observed direction")

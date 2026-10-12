@@ -19,8 +19,10 @@ MODEL (tag [E]). HONEST ACCURACY: tens of meV for a dot close to the
   mechanism in verify/verify_dot_levels.py's "known deviations" table rather
   than forced to pass: (i) large-mismatch 3D islands compared to an ensemble
   PL/lasing line (Gu et al. HKUST InP/GaAsP, ~160 meV, see below); (ii)
-  piezoelectric (211)B-grown dots, whose built-in field this model omits
-  entirely (Chatzarakis et al. InAs/GaAs, ~90-300 meV); (iii) combining one
+  Chatzarakis et al. InAs/GaAs E_X, ~85 meV too LOW (dot level too deep;
+  E_WL is fine): a single-band, biaxial-strain-for-a-3D-island limit. The
+  omitted piezoelectric field is NOT the reason (a built-in field red-shifts
+  E_X, so adding it would lower the model further); (iii) combining one
   paper's isolated, measured band-offset number (e.g. Pryor's InP/GaInP
   unstrained VBO) with this module's OWN bulk band gaps and linear
   deformation-potential strain, which are not the ingredients that

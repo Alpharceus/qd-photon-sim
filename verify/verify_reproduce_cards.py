@@ -153,6 +153,61 @@ def ev_reischle():
     return {"g2_op": float(r["scalars"]["g2_op"])}
 
 
+# devlib-rc2: faithful DC comparison for Reischle 2008 (QD C, 80 K).  Constants are paper inputs, fixed before the first run.
+REISCHLE_TAU_C_NS = 1.0       # [V] Reischle 2008: system recovery time ~1 ns from the rise of the antibunching dip
+REISCHLE_RHO_MEASURED = 0.88  # [V] Reischle 2008: measured rho = S/(S+B), QD C (80 K); TRANSCRIBED, not predicted
+REISCHLE_IRF_FWHM_PS = 693.0  # [V] 2 ln2 x 0.5 ns: the paper's fit-model IRF C exp(-|tau/0.5 ns|), exponential shape
+REISCHLE_APERTURE_UM = 0.46   # [V] nanosphere shadow-mask aperture
+REISCHLE_R_FLOOR_NS = 0.01    # [A] smallest realisable pump rate (r = 1/tau_c - gamma_X - k_X < 0 is not physical)
+REISCHLE_I_PROBE_UA = 0.001   # [A] low-current probe point (the paper's 11.9 mA runs the 1 um default mesa to thermal runaway)
+
+
+def ev_reischle_dc():
+    """Card-faithful DC comparison.  device.evaluate (EL-transport, drive.cw) supplies gamma_X, the 80 K retention S
+    (-> k_X, k_XX = 2 k_X as cw_g2.escape_rates_from_retention) and eps; cw_g2.cw_report (production) then gives the
+    intrinsic, with-background and IRF-convolved g2(0) at r fixed by the measured dip width.  The extraction is
+    cross-checked against device.evaluate's own g2_cw0 / g2_cw0_raw at the probe point (raises if it disagrees)."""
+    from fsim_core import cw_g2
+    from fsim_core.device import DeviceDesign, evaluate
+    d = DeviceDesign()
+    d.ret.mode = "confinement"
+    d.ret.preset = "InP/AlGaInP0.2/AlGaInP0.55 on GaAs"
+    d.drive.mode = "EL-transport"
+    d.drive.diode = {"preset": "red"}
+    d.drive.cw = True
+    d.drive.cw_irf_shape = "exponential"
+    d.drive.cw_irf_fwhm_ps = REISCHLE_IRF_FWHM_PS
+    d.drive.duty = 1.0
+    d.drive.n_dot_cm2 = 1e10
+    d.drive.I_uA = REISCHLE_I_PROBE_UA
+    d.aperture.diameter_um = REISCHLE_APERTURE_UM
+    d.thermal.T_hs = 80.0
+    sc = evaluate(d, [80.0])["scalars"]
+    gX, S, eps = float(sc["cw_gamma_X_ns"]), float(sc["S_resolved"]), float(sc["eps_op"])
+    r_dev, rho_dev = float(sc["cw_r_ns"]), float(sc["cw_rho_op"])
+    kX = gX * (1.0 / S - 1.0)
+    kXX = 2.0 * kX
+
+    def rep(r, rho):
+        return cw_g2.cw_report(r, gX, 2.0 * gX, kX, kXX, 1.0, eps, rho, REISCHLE_IRF_FWHM_PS,
+                               tau_max_ns=10.0, irf_shape="exponential")
+
+    chk = rep(r_dev, rho_dev)
+    for mine, theirs, name in ((chk["g2_meas0"], float(sc["g2_cw0"]), "g2_cw0"),
+                               (chk["g2_raw0"], float(sc["g2_cw0_raw"]), "g2_cw0_raw")):
+        if abs(mine - theirs) > 1e-3 * max(1.0, abs(theirs)):
+            raise RuntimeError(f"reischle_dc extraction disagrees with device.evaluate on {name}: {mine} vs {theirs}")
+    r_dip = 1.0 / REISCHLE_TAU_C_NS - gX - kX
+    r_set = max(r_dip, REISCHLE_R_FLOOR_NS)
+    r_hi = rep(r_set, 1.0)
+    r_m = rep(r_set, REISCHLE_RHO_MEASURED)
+    r_d = rep(r_set, rho_dev)
+    return {"g2_dot0": float(r_hi["g2_dot0"]), "g2_meas0_rho088": float(r_m["g2_meas0"]),
+            "g2_raw0_rho088": float(r_m["g2_raw0"]), "g2_raw0_rho_model": float(r_d["g2_raw0"]),
+            "r_set_ns": float(r_set), "r_dip_ns": float(r_dip), "gamma_X_ns": gX, "k_X_ns": float(kX),
+            "eps": eps, "rho_model": rho_dev, "tau_dip_ns": float(r_m["tau_dip"])}
+
+
 def ev_zhao():
     """scripts/run_zhao_fit.py main computation through production sde.py."""
     from fsim_core.sde import QDLaserParams, find_threshold, g2_vs_pump
@@ -166,8 +221,14 @@ def ev_zhao():
     return out
 
 
+SSL_GAAS_NM = 0.86  # [DR] <Al> = y/(x+y) = 16/(x+16) = 0.65 -> x = 8.6 A (Chatzarakis 2023 SSL sample)
+
+
 def ev_dot_levels():
+    from dataclasses import replace
+
     from fsim_core import dot_levels as D
+    from fsim_core import materials as M
     P = D.class_presets()
 
     def lv(name, **kw):
@@ -181,7 +242,21 @@ def ev_dot_levels():
     Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
     Lt = lv("InAs/InP/InP")
     Lg = lv("InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs", height_nm=5.5)
-    return {"chatz_EX_eV": float(L.E_X_eV), "chatz_dEWL_meV": float(L.dE_pair_WL),
+    # devlib-rc2 faithful SSL: the paper's <Al> = 65 % sample = GaAs 8.6 A / AlAs 16 A -> 0.86 nm GaAs layer, Al0.65 barrier [DR]
+    Sf = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
+    Sf = replace(Sf, barrier=M.AlGaAs(0.65))
+    Sf.geometry.matrix_thickness_nm = SSL_GAAS_NM
+    shift_f = D.levels(Sf).dE_pair_WL - L.dE_pair_WL
+    # devlib-rc2 Pryor model-solid VBO (E_v0(dot) - E_v0(matrix) of the module's own materials, +0.168 eV)
+    Sr = P["InP/GaInP/AlGaInP0.55 on GaAs"]()
+    vbo_ms = Sr.dot.p["vbo"] - Sr.matrix.p["vbo"]
+    Lms = D.levels(replace(Sr, vbo_override_eV={"dot-matrix": vbo_ms}))
+    # devlib-rc2 Laferriere faithful preset (presets.LEVEL_PRESETS), 300 K, axial-rod vs radial-InP matrix bracket
+    from fsim_core import presets as PR
+    e_rod = D.levels(PR.level_system("laferriere-inasp-0.68", T=300.0, matrix="rod")).E_X_eV
+    e_inp = D.levels(PR.level_system("laferriere-inasp-0.68", T=300.0, matrix="inp")).E_X_eV
+    return {"ssl_shift_faithful_meV": float(shift_f), "pryor_Ve_modelsolid_meV": float(Lms.V_e),
+            "laf_faithful_lo_eV": float(min(e_rod, e_inp)), "laf_faithful_hi_eV": float(max(e_rod, e_inp)),"chatz_EX_eV": float(L.E_X_eV), "chatz_dEWL_meV": float(L.dE_pair_WL),
             "ssl0_dEWL_meV": float(Lc.dE_pair_WL), "ssl_shift_meV": float(shift),
             "reischle_EX_eV": float(Lr.E_X_eV), "pryor_Ve_meV": float(Lr.V_e),
             "laf_EX_eV": float(Lt.E_X_eV), "gu_EX_eV": float(Lg.E_X_eV)}
@@ -195,12 +270,16 @@ def ev_nitride():
     zh = NitrideDotSystem(height_nm=NL.ZHANG2013_HEIGHT_NM,
                           radius_nm=NL.ZHANG2013_DIAMETER_NM / 2., x_in=NL.ZHANG2013_X_IN)
     lv_d, lv_z = levels(desh, 300.), levels(zh, 300.)
+    lv_d25 = levels(desh, 25.)  # devlib-rc2: temperature-matched to the 25 K measurement
     if not (lv_d.valid and lv_z.valid):
         raise RuntimeError(f"planar nitride levels not bound: {lv_d.invalid_reasons} {lv_z.invalid_reasons}")
     r_z = rates(lv_z, 300., tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)
     from scripts import run_nitride_cavity as sweep
     row = sweep._row("C000", "comparison", "rectangular", {"T_hs": 300.}, {}, True)
-    return {"desh2013_lambda_nm": float(lv_d.lambda_nm), "zhang2013_tau_ns": float(1. / r_z["gamma_X0_ns"]),
+    if not lv_d25.valid:
+        raise RuntimeError(f"planar nitride 25 K levels not bound: {lv_d25.invalid_reasons}")
+    return {"desh2013_lambda_nm": float(lv_d.lambda_nm), "desh2013_lambda_nm_25K": float(lv_d25.lambda_nm),
+            "zhang2013_tau_ns": float(1. / r_z["gamma_X0_ns"]),
             "desh2014_g2": float(row["g2"])}
 
 
@@ -219,12 +298,12 @@ def ev_nanowire():
 
 
 EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_dev_ibm": ev_chatz_dev_ibm, "laf_mid": ev_laf_mid,
-              "reischle": ev_reischle, "zhao": ev_zhao, "dot_levels": ev_dot_levels,
+              "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "dot_levels": ev_dot_levels,
               "nitride": ev_nitride, "nanowire": ev_nanowire}
 
 
 # ----------------------------------------------------------------------------- judging
-def judge(item, model, se=None):
+def judge(item, model, se=None, hi=None):
     """Return (outcome 'pass'|'fail', paper-text, tol-text).  Tolerance logic only; no model-derived numbers."""
     paper, tol = item["paper"], item["tol"]
     kind = tol["kind"]
@@ -248,6 +327,11 @@ def judge(item, model, se=None):
             raise ValueError(f"{item['id']}: combined_sigma needs a model standard error")
         lim = tol.get("k", 1.0) * math.hypot(se, paper["err"])
         return abs(model - paper["value"]) <= lim, f"{paper['value']}+-{paper['err']}", f"+-{lim:.4f} ({tol.get('k', 1.0):g} sigma)"
+    if kind == "contained":  # measured value inside the model bracket [model, hi]
+        if hi is None:
+            raise ValueError(f"{item['id']}: contained needs source_hi")
+        ok = model - 1e-12 <= paper["value"] <= hi + 1e-12
+        return ok, f"{paper['value']} in", f"[{model:.3f}, {hi:.3f}]"
     if kind == "regression":
         ok = abs(model - paper["pin"]) <= tol["value"] + 1e-12
         return ok, f"pin {paper['pin']}", f"+-{tol['value']}"
@@ -292,7 +376,8 @@ def evaluate_ledger(led, run_all=False, verbose=True):
         else:
             try:
                 model = cache[group][key]
-                ok, ptxt, ttxt = judge(it, model, cache[group].get(key + "__se"))
+                hi = cache[group][it["source_hi"].split(".", 1)[1]] if "source_hi" in it else None
+                ok, ptxt, ttxt = judge(it, model, cache[group].get(key + "__se"), hi)
                 res.update(outcome="pass" if ok else "fail", model=model, paper_txt=ptxt, tol_txt=ttxt)
             except Exception as exc:
                 res.update(outcome="error", model=None, detail=f"{type(exc).__name__}: {exc}")
