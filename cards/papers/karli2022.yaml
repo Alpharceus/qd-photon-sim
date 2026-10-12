@@ -1,0 +1,75 @@
+# Karli et al., arXiv:2203.00712v1 (published Nano Lett. 22, 6567 (2022)): first experimental SUPER (red-detuned two-pulse swing-up) excitation of a GaAs/AlGaAs droplet dot.
+# Numbers from .workers/devlib/papers/karli2022.yaml (main text and appendix read; Table II powers used for the pulse-2 area; plots not read).
+# Absolute pulse areas are not printed: area1 follows from the paper swing-up (Rabi) condition and the printed detunings, area2 from the Table II power ratio (see the leaves).
+# The pulse-pair counts (Fig 2) are detector counts, not populations, so no series is carded.
+meta:
+  id: karli2022
+  role: paper-device
+  cite: "Y. Karli, F. Kappe, V. Remesh, T. K. Bracht, J. Muenzberg, S. Covre da Silva, T. Seidelmann, V. M. Axt, A. Rastelli, D. E. Reiter, G. Weihs, SUPER Scheme in Action: Experimental Demonstration of Red-detuned Excitation of a Quantum Dot, arXiv:2203.00712v1 (2022); published Nano Lett. 22, 6567 (2022) per survey"
+  arxiv: "2203.00712"
+  extraction: .workers/devlib/papers/karli2022.yaml
+  read_level: V-full
+  summary: "GaAs/AlGaAs droplet dot (X at 798.66 nm) in a weak planar lambda-cavity, 8 K, SUPER pulses Delta1 -4.9 / Delta2 -10.6 meV (~7 ps, 76 MHz, NA 0.77); decay 165.1 ps, g2 raw 0.19(3) / background-corrected 0.02(6), theory inversion ~97%"
+device:
+  T_K: {value: 8.0, unit: K, tag: V, where: "Fig 1 caption (quantum dot held at 8 K)"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 798.66, unit: nm, tag: V, where: "text p.2-3 / Fig 2: neutral exciton X at 798.66 nm (extraction record)"}
+      tau_bare_ns: {value: 0.1651, unit: ns, tag: V, where: "text p.4: monoexponential decay 165.1(6) ps, measured in the device (planar cavity); used as the effective bare lifetime, calibration"}
+      E_b_meV: {value: 4.0, unit: meV, tag: V, where: "App. Sec V B / Fig 4: 3-level run with E_B(XX) = 4 meV (SUPER still works); two-level SUPER does not use it"}
+      gamma_star_4K_ns: {range: [0.0, 3.04], unit: "1/ns", tag: E, source: "no dephasing number in the paper (its model has none); registry droplet class range 0-2 ueV (brief 4)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is an envelope at the quoted 8 K; no T slope measured"}
+  structure:
+    kind: bulk_planar
+    params: {}   # the 165.1 ps decay is measured in the weak planar cavity (9/2 DBR pairs), so no extra Purcell factor is applied on top
+  drive:
+    kind: super
+    params:
+      shape: {value: gauss, unit: "", tag: V, where: "text p.1-2 Sec II A: Gaussian-shaped excitation pulses (two Gaussian SLM masks, sigma 0.2 meV, App. Eq. 3)"}
+      delta1_meV: {value: -4.9, unit: meV, tag: V, where: "text p.2-3 / Table II: Delta1 = -4.9 meV; paper convention Delta = hbar(omega_i - omega_0), red = negative"}
+      delta2_meV: {value: -10.6, unit: meV, tag: V, where: "text p.3-4 / Table II: Delta2 = -10.6 meV, paper convention"}
+      fwhm1_ps: {value: 7.0, unit: ps, tag: DR, where: "App. Sec V A: calculated temporal duration of the detuned pulse pair ~7 ps; taken as the intensity FWHM of each pulse (the 0.2 meV Gaussian masks alone would give 5.5 ps)"}
+      fwhm2_ps: {value: 7.0, unit: ps, tag: DR, where: "App. Sec V A: ~7 ps for both pulses (same mask width, same shaper)"}
+      area1_pi: {value: 14.84, unit: pi, tag: DR, where: "derived: swing-up condition |Delta2 - Delta1| = hbar Omega_Rabi,1 = sqrt((hbar Omega_1)^2 + Delta1^2) (text p.2) gives hbar Omega_1 = sqrt(5.7^2 - 4.9^2) = 2.912 meV peak; Gaussian area = Omega_pk * s0 * sqrt(2 pi) with s0 = fwhm/(2 sqrt(ln 2)), i.e. Omega_pk * fwhm * 1.5051 = 4.424/ps * 7 ps * 1.5051 = 14.8 pi"}
+      area2_pi: {value: 12.35, unit: pi, tag: DR, where: "derived: pulse area scales as sqrt(power) at equal widths; Table II at operating point T1 = 0.5 (15.5 uW) and T2 = 0.64 (interpolated 10.7 uW between 0.7 uW at T2 = 0 and 10.9 uW at T2 = 0.65): area2 = 14.84 pi * sqrt(10.74/15.5) = 12.35 pi"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.1 Sec II B: Ti:sapphire 76 MHz repetition rate (extraction record)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.77, unit: "1", tag: V, where: "text p.2: cold aspheric lens NA = 0.77"}
+      laser_leak: {value: 0.0989, unit: "1", tag: DR, where: "text p.4 / App. Sec V C: background-to-signal ratio from rho = 0.91(1) (signal / total counts): (1 - rho)/rho = 0.0989; enters raw g2 as 2 f_leak, so the raw g2 is guaranteed by it (class C)"}
+reported:
+  - {id: tau_decay, observable: tau_ps, value: 165.1, err: 0.6, tag: V, where: "text p.4: exponential fit 165.1(6) ps (SNSPD, 20 ps resolution)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.19, err: 0.03, tag: V, where: "text p.4 / Table I: g2_meas(0) = 0.19(3), fit a + b exp(-|t|/c) normalised to a, 100 ps bins"}
+  - {id: g2_corr, observable: g2_0, convention: intrinsic, value: 0.02, err: 0.06, tag: V, where: "text p.4 / Table I: background-corrected g2(0) = 1 + (g2_meas - 1)/rho^2 = 0.02(6), rho = 0.91(1)"}
+  - {id: g2_post, observable: g2_0, convention: intrinsic, value: 0.073, err: 0.003, tag: V, where: "text p.4 / Table I: peak-area ratio 0.073(3), meaningful only with on/off post-selection", note: "not a ledger item: post-selected method, different definition"}
+  - {id: g2_res_samedot, observable: g2_0, convention: intrinsic, value: 0.016, err: 0.001, tag: V, where: "text p.4 / Table I: resonant excitation of the same dot (ref 46)", note: "not a ledger item: different drive"}
+  - {id: inversion_theory, observable: inversion, convention: intrinsic, value: 0.97, tag: V, where: "text p.4: maximum exciton occupation about 97% in the considered parameter window (two-level model, no phonons)", note: "paper theory, maximised over (Delta2, T2); a theory-vs-model check, not a measurement"}
+reproduce:
+  - item: tau_decay
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the measured in-device decay is entered as material.tau_bare_ns (weak planar cavity, no extra Purcell); 2 sigma of the printed 0.6 ps"
+    expect: pass
+  - item: g2_raw
+    class: C
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "calibration: setup.laser_leak is derived from the printed background fraction rho = 0.91, which is exactly what raises the raw g2 to 0.19; 2 sigma of the printed 0.03 is 0.06, abs 0.02 numerical floor"
+    expect: pass
+  - item: g2_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.06 (0.12). The paper uncertainty is large (the correction divides by rho^2), so a pass is weak evidence; the model intrinsic re-excitation g2 of red-detuned SUPER pulses is expected to be close to 0"
+    expect: pass
+  - item: inversion_theory
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "brief section 6: inversion +/-0.05. The paper 97% is its own phonon-free two-level maximum over the (Delta2, T2) window; the model includes the 8 K LA-phonon polaron solver and the pulse areas come from the swing-up rule at the 7 ps width, not from a scan, so a few percent shortfall is expected"
+    expect: fail
+    reason: "model gap / missing input, not a few percent: with the areas derived from the paper swing-up rule (14.8 pi, 12.4 pi at 7 ps) the model inversion is 0.27 against the paper 0.97 theory maximum. SUPER inversion depends sharply on both areas (the paper tunes T2 experimentally and its model uses a broadband spectrum of integrated area 470 pi through 0.2 meV Gaussian masks, not Gaussian pulses of fixed width), and the absolute areas are not printed; the rule-derived areas are only approximate (the Table II power ratio, the 7 ps width taken as intensity FWHM, and the phonon renormalisation sqrt(Z) of the model Rabi frequency all shift them)."
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
+  - {param: setup.laser_leak, fitted_to: [g2_raw]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}

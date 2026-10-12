@@ -1,0 +1,61 @@
+# Tamariz et al., arXiv:2001.09805 (2020): GaN/AlN Stranski-Krastanov quantum dots on Si(111), single-photon emission at 300 K.
+# Numbers from .workers/devlib/papers/tamariz2020.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+meta:
+  id: tamariz2020
+  role: paper-device
+  cite: "S. Tamariz, G. Callsen, J. Stachurski, K. Shojiki, R. Butte, N. Grandjean, Towards bright and pure single photon emitters at 300 K based on GaN quantum dots on silicon, arXiv:2001.09805 (2020); ACS Photonics (2020)"
+  arxiv: "2001.09805"
+  extraction: ".workers/devlib/papers/tamariz2020.yaml"
+  read_level: V-full
+  summary: "GaN QD2 in planar AlN on Si (no cavity), 300 K, cw above-band 266 nm excitation, NA 0.55: g2(0) 0.17 +/- 0.08 at 6.5 kW/cm2, linewidth 55 meV, count rate 1.9e6 /s at the sample surface"
+  notes:
+    - "NITRIDE HIGH T: the engine has NO LO-phonon Gamma(T) term yet (material E_LO_meV is a reference only; build() uses gamma*(T) = gamma*(4 K) + a_ac (T - 4 K), tag in materials.py). The linewidth item therefore tests the missing term: the paper's Eq. 1 constants Gamma_0 = 1 meV and gamma_A = 18 ueV/K are entered, the 3.57 eV Gamma_LO term cannot be. A nitride/electrical round will add the term; until then the item is an honest expected fail."
+    - "g2: the paper fits the QD2 g2(tau) traces with a multi-level X-XX cascade model plus spectral diffusion, convolved with the IRF. The registry cw above_band drive has a two-level capture model with only an uncorrelated-background fraction (bg_frac) standing in for the XX leak into the 8 meV window (text p.5) and no IRF or spectral diffusion; the absolute pump (kW/cm2 -> rate) is not convertible, so pump and bg_frac are E envelopes and a g2 pass is weak."
+    - "COUNT RATE: 1.9 +/- 0.7e6 /s is loss-corrected 'at the sample surface' (NA 0.55 objective, 8 meV window), not a first-lens or detector rate in the registry's sense, so it is reported only."
+    - "NOT CARDED: XX binding energy 47 meV (QD2) and XX broadening ~80 meV lie outside the gan_aln registry range (E_b -10..10 meV) and the cw above_band drive has no cascade; the exciton decay time tau_d is only from ensemble TRPL (value not in the main text), so tau_bare stays at the registry class range."
+device:
+  T_K: {value: 300.0, unit: K, tag: V, where: "text p.5 Fig 4 (QD2 g2 traces at T = 300 K)"}
+  material:
+    kind: gan_aln
+    params:
+      lambda_nm: {value: 275.5, unit: nm, tag: E, source: "QD2 energy not stated in the main text; emission of the probed QDs is 4.2-4.6 eV and the Supp calibration refers to ~4.5 eV (1239.84 / 4.5 = 275.5 nm); class value"}
+      gamma_star_4K_ns: {value: 1628.7, unit: "1/ns", tag: DR, where: "text p.4 Eq. 1: Gamma_0 = 1 +/- 0.1 meV at T = 0 plus gamma_A x 4 K = 0.072 meV = 1.072 meV at 4 K, divided by hbar = 6.582e-4 meV ns (conversion mine); FWHM of the ensemble-mean line, so gamma* in the linewidth sense hbar (Gamma + k + gamma*)"}
+      a_ac_ns_per_K: {value: 27.35, unit: "1/ns/K", tag: DR, where: "text p.4 Eq. 1: gamma_A = 18 +/- 2 ueV/K = 0.018 meV/K / 6.582e-4 meV ns (conversion mine)"}
+      E_LO_meV: {value: 102.0, unit: meV, tag: V, where: "text p.4 Eq. 1 (E_LO about 102 meV from the PL data); reference only, the engine has no LO term"}
+  structure:
+    kind: bulk_planar
+    params:
+      n: {value: 2.2, unit: "1", tag: E, source: "AlN refractive index near 275 nm, class value; the paper does not give an extraction model (brightness metric is the count rate at the sample surface)"}
+  drive:
+    kind: above_band
+    params:
+      cw: {value: true, unit: "", tag: V, where: "text p.2 / Methods (cw 266 nm laser, above-band excitation)"}
+      pump: {range: [0.1, 1.0], unit: "1", tag: E, source: "kW/cm2 -> pump rate conversion not available; at the lowest power (6.5 kW/cm2) the surface count rate is 1.9e6 /s against ~1e7 /s maximum (Fig 3b inset), i.e. well below saturation; envelope"}
+      bg_frac: {range: [0.0, 0.3], unit: "1", tag: E, source: "XX leak into the 8 meV X window limits purity (text p.5) but the fraction rho = I_X / (I_X + I_XX) is not printed for QD2 at 6.5 kW/cm2; envelope for the uncorrelated background"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.55, unit: "1", tag: V, where: "extraction (objective NA 0.55 for the count rate at the sample surface)"}
+reported:
+  - {id: g2_best_300K, observable: g2_0, convention: raw, value: 0.17, err: 0.08, tag: V, where: "text p.5 / abstract (QD2, 300 K, 6.5 kW/cm2, 8 meV band pass; fit to the raw histogram with the IRF-convolved model)", note: "IRF-convolved fit of raw data, not background-subtracted"}
+  - {id: g2_avg_300K, observable: g2_0, convention: raw, value: 0.23, err: 0.05, tag: V, where: "text p.6 (average over probed QDs at 20 kW/cm2, emission 4.4-4.6 eV)", note: "different power and several dots; reported only (same model output as g2_best_300K)"}
+  - {id: linewidth_300K, observable: linewidth_ueV, value: 55000.0, err: 7000.0, tag: V, where: "text p.4 (mean FWHM 55 meV at 300 K over 112 emission lines; the 7 meV is the standard deviation across lines, used as err)", note: "ensemble spread, not a measurement error of one line; Eq. 1 constants Gamma_0 and gamma_A are entered, the LO term is not"}
+  - {id: count_rate_surface, observable: rate_detected_Hz, value: 1900000.0, err: 700000.0, tag: V, where: "text p.5 (count rate at the sample surface 1.9 +/- 0.7e6 /s, 300 K, 6.5 kW/cm2, 8 meV window, detection losses calibrated)", note: "loss-corrected to the sample surface; not a registry detected rate, reported only"}
+series: []
+reproduce:
+  - item: g2_best_300K_pred
+    class: P
+    observable: g2_0
+    convention: raw
+    tol_reason: "reported raw g2 0.17 +/- 0.08 (QD2, 300 K) is NOT tested: the only free input is bg_frac [0, 0.3] E (the XX leak fraction is not printed for QD2) and the pump range, giving a model envelope [0, 0.51] that contains the paper value and every other plausible value (a vacuous pass as class M); no stated input narrows it. Central model value 0.28 is stated for the record. Moved from class M by sonnet card-reconcile"
+    expect: pass
+  - item: linewidth_300K
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the 7 meV line-to-line spread (14 meV) because the paper quotes no single-line error; the paper's Eq. 1 low-order constants are inputs, the Gamma_LO term (3.57 eV, E_LO 102 meV) which dominates at 300 K has no engine counterpart"
+    expect: fail
+    reason: "known engine gap: the engine has no LO-phonon Gamma(T) term (a nitride/electrical round will add it). Model linewidth is Gamma_0 + gamma_A T only (about 6.4 meV) against the paper's 55 meV mean; the missing LO term contributes tens of meV at 300 K (Gamma_LO / (exp(E_LO/kT) - 1) = 3.57 eV / 50.7 = 70 meV for the Eq. 1 fit)."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: g2_best_300K M -> P (envelope [0, 0.51] from the unstated bg_frac 0-0.3 is vacuous; no stated input narrows it); item renamed g2_best_300K_pred, outcome still pass"}

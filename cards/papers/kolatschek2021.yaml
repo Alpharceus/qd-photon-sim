@@ -31,6 +31,7 @@ device:
       F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200)"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "text p.4: line 2 is 'almost resonant' with the cavity mode, only a small spectral mismatch; no number given"}
+      table_mode: {value: total, unit: enum, tag: E, source: "the paper simulated extraction above 80 percent into NA 0.6 is the whole-device collection efficiency, FX3a table_mode total"}
       eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8), a lower bound for a well-placed dot"}
   drive:
     kind: above_band
@@ -71,3 +72,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 15: rate_sat reason rewritten (paper 550 kcps is the g2-corrected true single-photon rate vs the raw model rate)"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}

@@ -14,7 +14,7 @@ meta:
   notes:
     - "P-SHELL CHARGED LINE ONLY (see header). g2 0.0115 is a fit with a blinking envelope (blinking ~100 ns limits the rate to ~25 % of the unblinked case) normalised accordingly; the fitted values scatter 0.01-0.02 across pump powers (text p.5). The 40 K and 77 K points use a wider spectral window (0.1 nm instead of 0.04 nm)."
     - "Wavelength: the text gives only the p-shell (1207 nm) and that the line is blue of the cavity mode; entered as a range 1280-1301 nm [E]. Detuning from the mode: range 0-8 meV [E]. F_P: 12 (text p.3, DR)."
-    - "After review item 3 F_P is the paper value 12 (text p.3), eta_blink = 0.25 (blinking, V), so rate_4K is no longer a vacuous envelope pass: the model is ~2.4x high (8.6e5 vs 3.55e5). NOTE g2_4K passes with the abs 0.01 tolerance, which is weak against a model value of 0.002 (not changed; tolerances are never tuned)."
+    - "After review item 3 F_P is the paper value 12 (text p.3), eta_blink = 0.25 (blinking, V), so rate_4K is no longer a vacuous envelope pass: the model is ~2.6x high (9.3e5 vs 3.55e5). NOTE g2_4K passes with the abs 0.01 tolerance, which is weak against a model value of 0.002 (not changed; tolerances are never tuned)."
     - "The model has no temperature-dependent thermal escape to higher levels in this engine path, so the g2 vs T series is a test of whether the phonon/retention bookkeeping reproduces the rise from 0.0115 to 0.127; the paper gives no activation energy."
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "text p.5 (4 K; temperature increased to 40 K and 77 K for the series)"}
@@ -72,7 +72,7 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
     expect: fail
-    reason: "model 8.6e5 (envelope 5.6e5-9.6e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.4x high; no unblinked count rate is printed to separate the factors."
+    reason: "model 9.3e5 (envelope 7.7e5-9.7e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
   - item: g2_vs_T
     class: M
     tol: {metric: rms_rel, max: 0.5}
@@ -89,3 +89,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}

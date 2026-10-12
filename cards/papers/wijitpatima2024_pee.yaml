@@ -1,0 +1,55 @@
+# Wijitpatima et al., arXiv:2406.08057v1 (2024), sibling of wijitpatima2024: the same eCBG2 at SATURATION pump (800 nm
+# wetting-layer excitation, flat-band bias 1.5 V) for the photon extraction efficiency; the g2/HOM/lifetime items at 4 uW
+# (70 percent of saturation) are in wijitpatima2024.yaml.
+meta:
+  id: wijitpatima2024_pee
+  role: paper-device
+  cite: "S. Wijitpatima, N. Auler, P. Mudi, T. Funk, A. Barua, B. Shrestha, I. Limame, S. Rodt, D. Reuter, S. Reitzenstein, Bright electrically contacted circular Bragg grating resonators with deterministically integrated quantum dots, arXiv:2406.08057v1 (12 Jun 2024)"
+  doi: null
+  arxiv: "2406.08057"
+  extraction: .workers/devlib/papers/wijitpatima2024.yaml
+  read_level: V-full
+  summary: "eCBG2 (mazy ridge, no Purcell) at saturation pump, 4 K, 1.5 V flat band: PEE 30.4 +/- 3.4 % into NA 0.81 at 7.3 % setup efficiency vs FEM 31.93 %"
+  notes:
+    - "Structure and table as in wijitpatima2024 (cbg F_P 0, table_mode total with the paper's FEM PEE 31.93 percent for the fabricated eCBG2). The PEE is n/(eta_setup f) with n = 1.77 +/- 0.34 MHz at saturation (800 nm), f = 80 MHz, eta_setup = 7.3 +/- 0.8 percent (Table 3, text p.16-17)."
+    - "BFL is near-determined by the FEM table input (0.3193) times the model preparation and blinking factors, so agreement says the chain does not lose much, not that the extraction is predicted independently: the paper's own claim is the simulation/experiment conformity for eCBG2. Read a pass as weak. eCBG1 (12.6 % vs 24.53 % simulated, direct ridge, polarisation loss) is a different device and not carded."
+    - "The pump is only known to be 'saturation' (no P/P_sat): range 3 to 10 [E]; brightness 1 - exp(-P/P_sat) is 0.95 to 1."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.16 and Methods (closed-cycle cryostat, 4 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 912.7, unit: nm, tag: V, where: "Table 3 (p.16): eCBG2 emission wavelength 912.7 nm (below the class lower bound 920 nm, a UI warning only)"}
+      tau_bare_ns: {value: 0.78, unit: ns, tag: DR, where: "text p.20 / Fig 6a: 0.78 ns at 1 uW, the lowest-power lifetime of the same dot; no Purcell enhancement (p.21)"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 0.0, unit: "1", tag: DR, where: "text p.21: 'non-enhanced recombination lifetime' (the CBG gives no Purcell gain); additional rate ratio 0"}
+      table_mode: {value: total, unit: enum, tag: E, source: "the paper PEE is the total extraction of all emission (grating far-field redistribution), FX3a table_mode total"}
+      eta_table: {value: "0.81:0.3193", unit: "", tag: V, where: "Table 3 (p.16): simulated PEE 31.93 percent of eCBG2 at NA 0.81, two perpendicular in-plane dipoles at 912.7 nm"}
+  drive:
+    kind: above_band
+    params:
+      pump: {range: [3.0, 10.0], unit: "1", tag: E, source: "text p.16: saturation optical pump power at 800 nm, absolute P/P_sat not stated; 3 to 10 so that 1 - exp(-P/P_sat) is 0.95 to 1"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.16 (pulsed 80 MHz Ti:sapphire at 800 nm)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.81, unit: "1", tag: V, where: "Methods p.23: cold aspheric objective NA 0.81"}
+      eta_pol: {value: 1.0, unit: "1", tag: A, source: "the PEE is quoted as total, so no extra polarisation loss is applied"}
+      eta_optics: {value: 0.073, unit: "1", tag: DR, where: "text p.16: uPL setup efficiency (7.3 +/- 0.8) percent measured with a cw laser at the QD wavelength"}
+      eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside the 7.3 percent setup efficiency"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "inside the 7.3 percent setup efficiency"}
+reported:
+  - {id: BFL_eCBG2, observable: B_first_lens, convention: intrinsic, value: 0.304, err: 0.034, tag: V, where: "text p.17 / Table 3 and abstract: PEE (30.4 +/- 3.4) percent of eCBG2 into NA 0.81 at saturation, 1.5 V"}
+series: []
+reproduce:
+  - item: BFL_eCBG2
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the paper's 3.4 percent (setup efficiency 7.3 +/- 0.8 percent and the rate error); the model chain is the FEM table times preparation and blinking, so this checks that the chain loses little rather than predicting the extraction"
+    expect: pass
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total works for F_P 0, so mesa_reflector workaround replaced by cbg F_P 0 + the same FEM table"}

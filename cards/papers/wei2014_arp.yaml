@@ -1,0 +1,82 @@
+# Wei et al., Nano Lett. 14, 6515 (2014) per arXiv metadata (arXiv:1405.1991v1): resonant X- of an InGaAs dot in a planar microcavity driven by positively chirped 30 ps pulses (rapid adiabatic passage).
+# Numbers from .workers/devlib/papers/wei2014_arp.yaml (whole 5-page PDF read, no supplement, plots not read).
+# The phonon parameters of the paper simulation (Fig 2 caption) are entered as material phonon parameters; the chirp is derived from the 3 ps -> 30 ps stretching.
+# The Lorentzian excess linewidth sets gamma* (class C item linewidth); the HOM/g2 are then predictions.
+meta:
+  id: wei2014_arp
+  role: paper-device
+  cite: "Y.-J. Wei, Y.-M. He, M.-C. Chen, Y.-N. Hu, Y. He, D. Wu, C. Schneider, M. Kamp, S. Hofling, C.-Y. Lu, J.-W. Pan, Deterministic and Robust Generation of Single Photons on a Chip with 99.5% Indistinguishability Using Rapid Adiabatic Passage, Nano Lett. 14, 6515 (2014) per arXiv metadata; arXiv:1405.1991v1"
+  arxiv: "1405.1991"
+  extraction: .workers/devlib/papers/wei2014_arp.yaml
+  read_level: V-full
+  summary: "InGaAs X- trion in a planar 5/24-pair DBR microcavity, 4.2 K, positively chirped 30 ps pulses (3 ps TL, 1.6 pi, 82 MHz, 1 GHz etalon): g2 raw 0.003(2), HOM raw 0.979(6) / corrected 0.995(7) at 4 ns, Lorentzian linewidth 0.48(5) GHz vs 0.39(2) GHz lifetime limit"
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "Fig 2 caption: simulation temperature 4.2 K (cryostat temperature of the experiment, text p.2)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      tau_bare_ns: {value: 0.408, unit: ns, tag: DR, where: "text p.3: lifetime-limited homogeneous linewidth 0.39(2) GHz, T1 = 1/(2 pi 0.39 GHz) = 0.408 ns (the lifetime itself is not printed); measured in the planar cavity, entered as the effective bare lifetime"}
+      gamma_star_4K_ns: {value: 0.565, unit: "1/ns", tag: DR, where: "text p.3 / Fig 3b: Lorentzian homogeneous linewidth 0.48(5) GHz vs lifetime limit 0.39(2) GHz: excess 0.09 GHz, gamma*_repo = 2 pi 0.09e9 /s = 0.565 /ns (error band of the excess is +/-0.054 GHz, i.e. gamma* 0.04-1.0 /ns)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured linewidth at the experiment temperature; no slope measured"}
+      alpha_ps2: {value: 0.022, unit: ps^2, tag: V, where: "Fig 2 caption: J(w) = alpha w^3 exp[-(w/w_c)^2] with alpha = 0.022 (printed 'ps^-2'; J(w) in 1/ps with w in 1/ps requires alpha in ps^2, Ramsay-class 0.027 ps^2, brief 2.2), pinned in place of the deformation-potential computation"}
+      l_xy_nm: {value: 3.613, unit: nm, tag: DR, where: "Fig 2 caption: w_c = 2 /ps; registry cutoff exp[-(E/E_c)^2] with E_c = hbar sqrt2 c_s/l gives l = sqrt2 c_s / w_c = 1.4142 * 5110 m/s / 2e12 /s = 3.613 nm (registry c_s = 5110 m/s)"}
+      l_z_nm: {value: 3.613, unit: nm, tag: DR, where: "same cutoff as l_xy_nm (single confinement length)"}
+  structure:
+    kind: bulk_planar
+    params: {}   # planar 5/24-pair DBR microcavity (text p.2) with no pillar; the lifetime-limited linewidth already contains any cavity effect, so no Purcell factor is applied on top
+  drive:
+    kind: arp
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "transform-limited pulses are sech (p.2); the registry ARP drive offers only the Gaussian envelope"}
+      fwhm_ps: {value: 3.0, unit: ps, tag: V, where: "text p.2: transform-limited 3 ps pulses stretched to 30 ps"}
+      chirp_ps2: {value: 32.3, unit: ps^2, tag: DR, where: "text p.2 / Fig 1: 3 ps pulse stretched to 30 ps by two gratings; for a Gaussian the stretched FWHM is FWHM_0 sqrt(1 + (phi2/s0^2)^2) with s0 = 3/(2 sqrt(ln 2)) = 1.80 ps, so phi2 = s0^2 sqrt(99) = 32.3 ps^2 (positive chirp, frequency rising)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.2: resonant excitation, sweep centred on the X- resonance"}
+      area_pi: {value: 1.6, unit: pi, tag: V, where: "Fig 4 caption: saturated pulse area 1.6 pi for the HOM measurement; read as the area of the transform-limited equivalent at equal energy (the g2 pulse area is not stated and is taken equal)"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: V, where: "text p.4: 82 MHz repetition rate"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: Fabry-Perot etalon of 1 GHz bandwidth in the HOM path (narrower than the ~0.5 GHz ZPL plus sideband selection); also isolates the ZPL from the cross-polarised laser"}
+      eta_det: {value: 0.2, unit: "1", tag: V, where: "text p.4: detection efficiency ~20% (overall collection ~1%)"}
+      eps_int: {value: 0.005, unit: "1", tag: V, where: "text p.4: first-order Mach-Zehnder interference visibility 0.995, so eps_int = 1 - 0.995"}
+      coinc_window_ns: {value: 3.2, unit: ns, tag: V, where: "text p.4: raw HOM visibility from counts within a 3.2 ns window around zero delay"}
+reported:
+  - {id: linewidth_hom, observable: linewidth_ueV, value: 1.985, err: 0.207, tag: DR, where: "text p.3 / Fig 3b: Lorentzian homogeneous linewidth 0.48(5) GHz x 4.1357 ueV/GHz = 1.985 +/- 0.207 ueV (FWHM)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.003, err: 0.002, tag: V, where: "text p.3 / Fig 4a: g2(0) = 0.003(2), zero-delay peak over the mean of the adjacent six (caption) or seven (text) peaks, positively chirped pulses"}
+  - {id: hom_raw, observable: hom_V, convention: raw, value: 0.979, err: 0.006, tag: V, where: "text p.4 / Fig 4b: raw HOM visibility 0.979(6), 4 ns delay, 1.6 pi, 3.2 ns window"}
+  - {id: hom_corr, observable: hom_V, convention: corrected, value: 0.995, err: 0.007, tag: V, where: "text p.4 / abstract: corrected HOM 0.995(7) (corrections: g2(0) 0.003 and Mach-Zehnder visibility 0.995)", note: "the model corrected convention removes g2 only, not the interferometer term"}
+
+reproduce:
+  - item: linewidth_hom
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: gamma* is derived from this Lorentzian linewidth minus the lifetime limit, so linewidth = hbar(Gamma + gamma*) agrees by construction; 2 sigma of the printed 0.05 GHz"
+    expect: pass
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "2 sigma of the printed 0.002 (0.004); abs 0.005 floor. The model g2 is the chirped-pulse re-excitation term plus nothing else (no background entered: the paper gives none)"
+    expect: fail
+    reason: "model gap: model raw g2 0.0277 against 0.003(2). The model chirped-pulse transfer is incomplete (inversion 0.68; 0.67 with phonons switched off, so it is not a phonon effect) and the remaining population is re-excited, raising g2; whether the Gaussian ARP transfer or the end-of-window eta_prep bookkeeping (radiative decay inside the 8-sigma window, 30 ps chirped pulse) is responsible could not be separated within this card."
+  - item: hom_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.006 (0.012). gamma* is taken from the CW Lorentzian linewidth (excess 0.09 GHz), which predicts a lifetime-limited-ish overlap Gamma/(Gamma + gamma*) = 0.81, below the paper; the 4 ns / 1 GHz-etalon measurement samples dephasing much more slowly than the scanning FPI linewidth, so this is a prediction, not a transcription"
+    expect: fail
+    reason: "model gap, as anticipated in tol_reason: the model raw visibility is 0.757 (overlap 0.789 with gamma* 0.565 /ns, zpl_filter on) against 0.979(6). The paper own Voigt analysis puts a 0.55 GHz Gaussian (spectral diffusion) component on top of the 0.48 GHz Lorentzian, i.e. the scanning-FPI linewidth is dominated by slow wandering that does not degrade 4 ns HOM; an instantaneous-dephasing gamma* from that width therefore over-penalises the overlap. The g2 contribution (0.028) lowers the raw value by a further ~0.03."
+  - item: hom_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.007 (0.014); the model removes g2 only (the paper also removes the 0.995 interferometer term), compared with the g2-only model convention"
+    expect: fail
+    reason: "same model gap as hom_raw: g2-corrected model visibility 0.807 against 0.995(7), limited by the CW-linewidth gamma* (overlap 0.79); the interferometer term the paper also removes is not the cause."
+  - item: inversion_pred
+    class: P
+    observable: inversion
+    convention: intrinsic
+    tol_reason: "no reported inversion number (population only plotted in Fig 2b); the model chirped-pulse inversion at 1.6 pi is stated for the record"
+    expect: pass
+fits:
+  - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_hom]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}

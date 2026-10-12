@@ -12,7 +12,7 @@ meta:
   notes:
     - "RAW vs CORRECTED. Extraction: 0.30 = X-only photons per pulse at the first lens (setup-calibrated, background subtracted); 0.42 = the same corrected for the roughly one quarter of captures that recombine as the charged exciton X-. g2: 0.36 = measured; 0.12 = Si-APD time response removed (background from the InP nanowire emission tail is still inside 0.12). The registry has no `corrected` convention for these observables, so the convention is stated in the item id and in `where`; the model has no X- channel and no background."
     - "mirror_R = 0.30 is the paper's own post-hoc ASSUMPTION (modal reflectivity from Friedler et al., with IQE 95 % and 4 % PDMS-air loss) that makes the theory match the measured 42 %. It is entered as an input but NOT fitted here (no fit is run in this repo), so the 0.42 item is class M, not C; with a perfect mirror the paper's own theory gives 0.71 (2 deg taper) and 0.97 (1 deg taper, beta 0.95)."
-    - "CAUTION: extraction_raw passes (model 0.26 vs 0.30) while extraction_corrected fails (0.26 vs 0.42): the model has no X- channel, so n_ph -> 1 and its B_first_lens equals beta x eta_out; the raw pass is a partial cancellation of two gaps (extraction underestimated, charged-exciton loss absent), not a validation. tau_X passes at the edge of its 2 sigma band (model 1.5 ns, paper 1.7 +/- 0.1, allowance 0.2)."
+    - "CAUTION (updated after engine FX3a): the model has no X- channel, so n_ph -> 1 and its B_first_lens equals beta0 x eta_out. extraction_corrected now passes (model 0.378 vs 0.42) but weakly (mirror R 0.30 was chosen by the paper to match 42 percent); the raw 0.30 measurement is the same measurement before the X- correction and is not an item. tau_X now fails (model 986 ps vs 1.7 ns) because the coherent bottom mirror speeds the rate by (1 + beta|r|)."
     - "Not modelled: the PDMS film (n = 1.5), the on-axis position of the dot, the measured 24x flux gain vs previous InAsP wires and the 2.4x mirror gain (those compare two devices)."
     - "Emission is at 880 nm (1.409 eV) but the FDTD design wavelength is 950 nm; D/lambda = 220/950 = 0.23 (design) vs 200/880 = 0.23 here."
 device:
@@ -26,6 +26,7 @@ device:
     params:
       d_nm: {value: 200.0, unit: nm, tag: V, where: "text p.3 (example nanowire: diameter at the dot 200 nm, length 11.2 um, 2 deg taper at the tip; diameters 160-220 nm over the sample)"}
       n_wire: {value: 3.37, unit: "1", tag: E, source: "InP refractive index near 880 nm, class value [E]; not stated in the paper"}
+      mirror_phase_ok: {value: true, unit: bool, tag: V, where: "text (nanowire standing-wave paragraph, raw l.202-206): the dot sits at an antinode of the HE11 standing wave and the reflected light must be in phase at the emitter"}
       mirror_R: {value: 0.30, unit: "1", tag: A, source: "Reimer text p.6: modal reflectivity of the gold mirror 'assumed' 30 % from Friedler et al. so that theory matches the measured 42 %; the paper's own post-hoc assumption, not a measurement"}
   drive:
     kind: above_band
@@ -48,8 +49,8 @@ reproduce:
     class: M
     tol: {abs: 0.05}
     tol_reason: "no error printed; half the +/- 0.1 of brief section 6, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
-    expect: fail
-    reason: "model gap, not a missing input: with the paper's mirror_R 0.30 the nanowire adapter gives beta x eta_out = 0.26 against 0.42. The adapter's HE11 beta / taper (class E: taper_T 0.95, calibrated on GaAs-class wires) and its far-field acceptance are the unverified part; the paper's 0.42 also assumes IQE 95 % and a 4 % PDMS-air loss that are not in the model."
+    expect: pass
+    reason: "engine FX3a: model 0.378 vs 0.42 (within 0.05). The nanowire beta0 is now the upward collected fraction with the coherent mirror (R 0.30, antinode) and the new HE11 beta. Weak pass: mirror R 0.30 is the paper's own post-hoc choice to match 42 percent, taper_T 0.95 is a class value, and the paper's IQE 95 % / 4 % PDMS loss are not in the model; do not read as an independent prediction."
   - item: g2_raw
     class: M
     tol: {abs: 0.1}
@@ -66,8 +67,10 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 1.7 +/- 0.1 ns (2 sigma = 0.2 ns); tau_bare is the InAs/InP class default and F_bg = 1 (no Purcell gain, inhibition unknown), so this is an unfitted class-value comparison"
-    expect: pass
+    expect: fail
+    reason: "engine FX3a: model 986 ps vs 1700 +/- 100 ps. With the paper-stated antinode placement the coherent bottom mirror now speeds the total rate by (1 + beta|r|) (R 0.30) on top of the class tau_bare (InAs/InP default) and F_bg 1; the paper's 1.7 ns includes any leaky-mode inhibition and the dot's true bare lifetime, neither of which is a stated input (a F_bg < 1 inhibition and tau_bare are unknown), so the earlier pass was an accident of the incoherent mirror."
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 10: extraction_raw removed from reproduce (kept in reported; same measurement as the corrected value, a raw pass was a cancellation of two gaps); tol_reason note that mirror R 0.30 was chosen by the paper to match 42 percent so a pass would not be independent; taper_mfr_nm left at the registry default (the paper does not state the taper output mode size in the extraction)"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: coherent bottom mirror rate boost (1 + beta|r|) now applied (mirror_phase_ok added as V, paper states antinode placement): tau_X pass -> fail (model ~1700 -> 986 ps); extraction_corrected fail -> pass (model 0.26 -> 0.378, weak: R 0.30 chosen by paper)"}

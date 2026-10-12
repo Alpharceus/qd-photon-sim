@@ -1,0 +1,75 @@
+# Nowak et al., Nat. Commun. 5, 3240 (2014): in-situ-lithography InGaAs QD in an electrically contacted (connected) micropillar.
+# Numbers from .workers/devlib/papers/nowak2014.yaml and the raw text (page = published PDF page). Model not tuned.
+meta:
+  id: nowak2014
+  role: paper-device
+  cite: "A. K. Nowak, S. L. Portalupi, V. Giesz, O. Gazzano, C. Dal Savio, P.-F. Braun, K. Karrai, C. Arnold, L. Lanco, I. Sagnes, A. Lemaitre, P. Senellart, Deterministic and electrically tunable bright single-photon source, Nature Communications 5, 3240 (2014)"
+  doi: "10.1038/ncomms4240"
+  extraction: ".workers/devlib/papers/nowak2014.yaml"
+  read_level: V-full
+  summary: "InGaAs QD1 (X) in a connected micropillar (16/36 DBR pairs, Q 1300, effective volume of a 4.1 um pillar), 35 K, cw above-band 850 nm excitation, bias -0.45 V Stark tuning to resonance, NA 0.4: F_P 0.8 (theory 1.1), tau_X 0.82 ns, extraction 53 +/- 9 %, 4.08 MHz detected"
+  notes:
+    - "BIAS: the electrical bias (-0.45 V) is only the Stark tuning knob that brings X onto the pillar mode (and shifts the carrier capture); there is no electrical injection. The card therefore enters detuning 0 and no bias leaf; the 1.4 meV tuning range is not an input."
+    - "DRIVE: cw non-resonant optical pumping. In the registry the cw pump P/P_sat is the pump RATE in units of the total X decay rate (engine tag A), not the paper's laser power P/P_sat; the absolute pump is unknown, so it is an E envelope. The cw drive exposes no per-cycle brightness (B_*) observable, so the paper's 37 % brightness per cycle (B = I_X tau_X sqrt(1 - g2) / 2) is reported only; the occupation-corrected extraction 53 % is compared through eta_extract."
+    - "F_P: the measured 0.8 +/- 0.08 is tau_ref / tau_X - 1 with tau_ref = 1.45 +/- 0.1 ns from reference QDs in the planar cavity at the same voltage. tau_ref is entered as the bare lifetime, so the tau_X item and the measured F_P are the same comparison (reported F_P only); the independent check of the engine's cavity model is the paper's THEORY value 1.1 (Q 1300, effective volume of a 4.1 um isolated pillar)."
+    - "NOT CARDED: g2(0) < 0.2 up to saturation (deconvolved) is an upper bound, not a value; the CX line (tau 0.88 +/- 0.16 ns, brightness 17 +/- 6 %, p_X 0.69 / p_CX 0.31) is a different transition."
+device:
+  T_K: {value: 35.0, unit: K, tag: V, where: "text p.4 (X brought through the mode resonance by operating the device at 35 K; Fig 4d caption: X at T = 35 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 929.4, unit: nm, tag: DR, where: "Fig 3d-e / Fig 4 axes p.4 (X line at 1.334 eV near the mode); 1239.84 / 1.334, conversion mine"}
+      tau_bare_ns: {value: 1.45, unit: ns, tag: V, where: "text p.4 (average X lifetime tau_ref = 1.45 +/- 0.1 ns of reference QDs in the planar cavity at the same applied voltage)"}
+  structure:
+    kind: micropillar
+    params:
+      d_um: {value: 4.1, unit: um, tag: DR, where: "text p.4-5 (the connected pillar has the same effective volume as an isolated pillar of 4.1 um diameter, from the fundamental mode energy); an equivalent-volume diameter, not the geometric one"}
+      N_top: {value: 16, unit: "1", tag: V, where: "Methods p.6 (top Bragg mirror 16 pairs, gradually p-doped)"}
+      N_bot: {value: 36, unit: "1", tag: V, where: "Methods p.6 (bottom Bragg mirror 36 pairs, gradually n-doped)"}
+      Q_measured: {value: 1300.0, unit: "1", tag: V, where: "text p.4 (Q = 1300 for the mode of this connected pillar; planar cavity Q around 1300, Methods p.6)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "text p.4 (X resonant with the cavity mode at U = -0.45 V)"}
+  drive:
+    kind: above_band
+    params:
+      cw: {value: true, unit: "", tag: V, where: "text p.4 (the device is optically excited with a continuous-wave laser at 850 nm)"}
+      pump: {range: [0.5, 5.0], unit: "1", tag: E, source: "absolute pump rate in units of the X decay rate is not given (power series up to 100 uW, saturation P_sat only in Fig 4f); the count rate is quoted 'at saturation' so the rate is of order the decay rate; envelope shows the effect"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.4, unit: "1", tag: V, where: "text p.5 (microscope objective with numerical aperture 0.4, sufficient to collect the mode full radiation pattern)"}
+      eta_optics: {value: 1.0, unit: "1", tag: A, source: "the paper gives only the whole-setup detection efficiency 0.0084, entered as eta_det; the optics factor is set to 1 so the product is not counted twice"}
+      eta_det: {value: 0.0084, unit: "1", tag: V, where: "text p.5 (detection efficiency of the whole setup eta = 0.0084 +/- 0.0008, includes optics, spectrometer and detector)"}
+reported:
+  - {id: tau_X, observable: tau_ps, value: 820.0, err: 30.0, tag: V, where: "text p.4 (tau_X = 0.82 +/- 0.03 ns at g = 0, from the deconvolved autocorrelation rise time, X resonant at -0.45 V)", note: "deconvolved with the 350 ps setup response"}
+  - {id: F_P_theory, observable: F_P_eff, value: 1.1, tag: V, where: "text p.4 (expected Purcell factor 1.1 for Q = 1300 and the effective volume of a 4.1 um isolated pillar)", note: "the paper's own theory number, no error"}
+  - {id: F_P_measured, observable: F_P_eff, value: 0.8, err: 0.08, tag: V, where: "text p.4 (F_P = tau_ref / tau_X - 1 = 0.8 +/- 0.08)", note: "derived from the two lifetimes; tau_ref is an input here, so not a separate test (reported only)"}
+  - {id: extraction, observable: eta_extract, value: 0.53, err: 0.09, tag: V, where: "text p.5 / abstract (extraction efficiency 53 +/- 9 % in NA 0.4: brightness 37 % divided by p_X = 0.69)", note: "occupation-corrected; the paper's expected beta Q/Q0 is 0.52 (F_P 1.1)"}
+  - {id: rate_det, observable: rate_detected_Hz, value: 4080000.0, tag: V, where: "text p.5 (photon count rate on the detector 4.08 MHz at saturation, X line; the error printed is garbled in the text layer)", note: "equals 0.48 +/- 0.05 GHz in the first lens divided by the whole-setup efficiency 0.0084"}
+  - {id: brightness_X, observable: B_first_lens, value: 0.37, err: 0.07, tag: V, where: "text p.5 (source brightness B = I_X tau_X sqrt(1 - g2(0)) / 2 = 37 +/- 7 % collected photons per cycle)", note: "per excitation cycle of a cw source; the cw drive has no B_* observable, so reported only"}
+series: []
+reproduce:
+  - item: tau_X
+    class: M
+    tol: {k_sigma: 2, rel: 0.10}
+    tol_reason: "brief 6 lifetime window 10 % (the paper's 2 sigma is only 0.06 ns = 7 %); tau_ref is entered as the bare lifetime, so the test is the engine's Purcell factor from Q 1300 and the 4.1 um equivalent pillar; the paper's own theory (1.1) and measurement (0.8) differ by 30 % in F_P"
+    expect: fail
+    reason: "model 715 ps vs 820 ps (105 ps off, tolerance 82 ps): the engine F_P = 1.03 (see F_P_theory) agrees with the paper's THEORY 1.1, not with the measured 0.8 (tau_ref 1.45 ns / 1.8 = 806 ps); a model-versus-measurement gap of the paper's own, not a missing input."
+  - item: F_P_theory
+    class: M
+    tol: {abs: 0.3}
+    tol_reason: "no error on a theory number; 0.3 absolute is the paper's own gap between theory 1.1 and measurement 0.8, i.e. the scatter of the cavity estimate; the engine derives F_P from Q, d, the DBR stack and the Gaussian HE11 area (mode_area gaussian is a class default, not from the paper)"
+    expect: pass
+  - item: extraction
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 9 % (0.18); the paper's expected value 0.52 uses beta Q/Q0 with Q = Q0 and F_P 1.1, the engine takes beta and eta_out from F_P and the DBR mirror asymmetry"
+    expect: pass
+  - item: rate_det
+    class: M
+    tol: {rel: 0.20}
+    tol_reason: "20 percent: the brightness error is 19 % (7/37) and the whole-setup efficiency 10 %; the pump (E envelope) sets the model rate between zero and saturation, so a pass is weak"
+    expect: fail
+    reason: "model 3.06e6 /s (envelope 1.39e6-3.48e6 over the pump range) vs 4.08e6: the paper value is above the whole envelope (17 % over the top). The cw incoherent pump saturates as P/(1 + P) (at most 0.83 at the E bound 5), and the model extraction 0.494 is 7 % below the paper's 0.53, so the model first-lens rate tops out near 4.1e8 /s against the paper's 4.8e8 /s; the detected rate also relies on the paper's whole-setup efficiency 0.0084 being entered once."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

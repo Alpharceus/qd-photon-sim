@@ -1,0 +1,73 @@
+# Munsch et al., arXiv:1209.5269 (PRL 110, 177402, 2013): GaAs photonic trumpet with InAs QDs on a gold-silica mirror.
+# Every number below is from .workers/devlib/papers/munsch2013_trumpet.yaml and the raw text (page = arXiv v1 page).
+# The model is NOT tuned to the paper. Line 2 (the 0.75 line) is a BIEXCITON; the exciton-level adapter is used only for
+# the geometry-set quantities (beta x eta_out), which do not depend on which recombination line is observed.
+meta:
+  id: munsch2013_trumpet
+  role: paper-device
+  cite: "M. Munsch, N. S. Malik, J. Bleuse, E. Dupuy, A. Delga, J.-M. Gerard, J. Claudon, N. Gregersen, J. Mork, The photonic trumpet: an efficient, broadband interface between a solid-state quantum emitter and a Gaussian beam, Phys. Rev. Lett. 110, 177402 (2013)"
+  arxiv: "1209.5269"
+  extraction: ".workers/devlib/papers/munsch2013_trumpet.yaml"
+  read_level: V-full
+  summary: "InAs/GaAs dot (line 2 at 907.1 nm) in a 12 um GaAs photonic trumpet (bottom d 200-240 nm, alpha 6.5 deg, top 1.55 um) on an Au-SiO2 mirror, 5 K, pulsed above-band, NA 0.75: first-lens efficiency 0.75 +/- 0.1 (theory 0.89), beta 0.96, g2* 0.02"
+  notes:
+    - "LINE: line 2 (907.1 nm) is the biexciton and carries the headline 0.75 at saturation; lines 1 and 3 (exciton, 902.5 / 935.1 nm) give 0.61 / 0.41. The registry level scheme is an exciton: only beta x eta_out (geometry) is compared, which is line independent; the dot lifetime T1 of the lines is printed only inside Fig 4c (not in the text layer), so no lifetime item exists."
+    - "MIRROR: the paper's |r| = 0.95 is an AMPLITUDE modal reflectivity and its Eq. 1 includes the coherent standing-wave boost (1 + |r|)^2 / (1 + beta |r|). The engine's mirror_R is an incoherent POWER return (R = |r|^2 = 0.9025 entered) with no phase, so it cannot reproduce the paper's emitter-on-antinode enhancement; this is a documented model gap, not an input error."
+    - "NOT CARDED: T_Gauss values (0.93 at h 15 um, 0.71 for d2 = 1.55 um at NA 0.8) are Gaussian-mode transmission of the taper, a different quantity from the engine's HE11 far-field acceptance at the setup NA; T_HE11 > 0.994 for alpha < 5 deg is the taper_T upper bound only."
+device:
+  T_K: {value: 5.0, unit: K, tag: V, where: "Fig 4 caption p.4 (micro-PL spectrum measured at T = 5 K)"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 907.1, unit: nm, tag: V, where: "text p.3 (line 2, biexciton, lambda = 907.1 nm: the 0.75 line)"}
+  structure:
+    kind: photonic_nanowire
+    params:
+      d_nm: {range: [200.0, 240.0], unit: nm, tag: V, where: "text p.3 (bottom part of the trumpet has a diameter in the 200-240 nm range; design d1 = 240 nm)"}
+      n_wire: {value: 3.45, unit: "1", tag: V, where: "text p.1 (GaAs, n = 3.45)"}
+      taper_T: {range: [0.95, 0.994], unit: "1", tag: DR, where: "text p.2: T_HE11 > 0.994 for alpha < 5 deg and > 0.95 for alpha up to 15 deg; the fabricated alpha is 6.5 deg (text p.3), so between the two bounds"}
+      mirror_R: {value: 0.9025, unit: "1", tag: DR, where: "text p.3 (amplitude modal reflectivity |r| = 0.95 of the gold-silica mirror, Eq. 1); power R = |r|^2 = 0.9025, conversion mine (incoherent power return in the engine, see notes)"}
+      taper_mfr_nm: {range: [450.0, 775.0], unit: nm, tag: E, source: "top-facet mode-field radius is not stated; upper end = top facet radius 775 nm (d2 = 1.55 um, text p.3), lower end = 0.29 d2 class value; the Gaussian profile of the facet mode is only shown in Fig 4a"}
+  drive:
+    kind: above_band
+    params:
+      pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "pump power in numbers is only in Fig 4c; line 2 is quoted 'driven to saturation' (text p.4), so P/P_sat >= 2; envelope shows the effect"}
+      window_ps: {range: [3.0, 10.0], unit: ps, tag: E, source: "pulse duration of the pulsed pump laser is not stated (text p.3); class range 3-10 ps for a Ti:sapphire / diode pump; rectangular window is an assumption [A]"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.75, unit: "1", tag: V, where: "text p.3 (commercial microscope objective, NA = 0.75)"}
+reported:
+  - {id: eta_line2, observable: eta_extract, value: 0.75, err: 0.1, tag: V, where: "text p.4 / abstract (first-lens external efficiency of line 2 at saturation, multi-photon corrected, setup calibrated with a laser at the emission wavelength)", note: "defined as the probability to collect a single photon in the first lens per excitation pulse; compared here with beta x eta_out at NA 0.75 (occupation taken as 1 at saturation)"}
+  - {id: eta_theory, observable: eta_extract, value: 0.89, tag: V, where: "text p.3 Eq. 1 and p.4 (theory limit for the fabricated geometry: 0.5 beta (1 + |r|)^2 / (1 + beta |r|) T_Gauss with beta 0.96, |r| 0.95, T_Gauss 0.93)", note: "the paper's own theory, NA 0.8, not a measurement; the 0.89 uses T_Gauss of a 15 um trumpet (0.93)"}
+  - {id: beta_design, observable: beta, value: 0.96, tag: V, where: "text p.1 (beta of the HE11 mode reaches 0.96 at d1 = 240 nm, lambda = 950 nm; beta > 0.9 over more than 100 nm)", note: "design value at lambda 950 nm; the card lambda is 907.1 nm and d is the fabricated 200-240 nm range"}
+  - {id: eta_line1, observable: eta_extract, value: 0.61, tag: V, where: "text p.4 (line 1, exciton at 902.5 nm)", note: "different dot and wavelength; reported only, occupation of an above-band exciton line is < 1"}
+  - {id: g2_star_line1, observable: g2_0, value: 0.02, tag: V, where: "text p.4 (line 1 background-removed g2*(0) = 0.02, Poissonian background assumed independent of the signal; raw g2(0) of all lines is < 0.5, values only inside Fig 4c)", note: "background-removed, raw/IRF-limited by the 300 ps APDs; no error printed"}
+series: []
+reproduce:
+  - item: eta_line2
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.1 (0.2); the paper's own theory limit is 0.89, so this is a loose check; written before the run"
+    expect: pass
+  - item: eta_theory
+    class: M
+    tol: {abs: 0.10}
+    tol_reason: "no error on a theory number; 0.10 absolute equals the paper's measurement error and the engine adapter is an HE11 + coherent-mirror approximation of the paper's eigenmode-expansion calculation; written before the run"
+    expect: pass
+    reason: "engine FX3a: model 0.910 (envelope 0.819-0.944) vs the paper's own 0.89. The engine now has the coherent antinode boost (beta/2)(1 + |r|)^2/(1 + beta|r|) of Munsch Eq. 1 (mirror_phase_ok true) and a new HE11 beta (0.94). Weak test: the engine formula is the paper's own Eq. 1 without T_Gauss, so agreement mostly checks the beta estimator and the taper_mfr envelope, not an independent prediction."
+  - item: beta_design
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "no error on a design value; the paper states beta > 0.9 over more than 100 nm, so 0.05 absolute around 0.96 is the width of that plateau; the card lambda and d differ from the design point (950 nm, 240 nm)"
+    expect: pass
+    reason: "engine FX3a: model 0.9425 (envelope 0.9245-0.9508 over d 200-240 nm) vs 0.96 (0.9 plateau). The new HE11 beta estimator (module estimator with leaky-mode screening, X0 calibrated to the Bleuse 2011 peak ~0.95 [E]) reaches the plateau; weak test since the screening constant is calibrated to a ~0.95 peak of the same class of wire."
+  - item: g2_star_line1
+    class: M
+    tol: {abs: 0.02}
+    tol_reason: "no error printed; 0.02 absolute = the value itself: the model has no background and no APD response, so this only tests that a 3-10 ps above-band window gives a clean single-photon emitter (a weak test: the model intrinsic g2 is ~1e-4)"
+    expect: pass
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription; taper_mfr_nm now exists in the registry and is entered as an E range (not stated in the paper)"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: new HE11 beta + coherent bottom mirror (mirror_phase_ok): eta_theory fail -> pass (model 0.75 -> 0.91), beta_design fail -> pass (model 0.817 -> 0.9425)"}

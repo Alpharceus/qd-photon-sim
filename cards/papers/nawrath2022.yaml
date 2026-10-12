@@ -1,0 +1,143 @@
+# Nawrath et al., arXiv:2207.12898 (2022): C-band InAs/InGaAs QD (positively charged trion, QD1) in a non-deterministically
+# placed flip-chip CBG, p-shell pulsed excitation at 1530 nm, 76/152/228 MHz, 4 K and 40 K.
+# F_P is the ADDITIONAL rate ratio (total 3 -> F_P 1.98); the lifetime item is therefore a calibration, not a test.
+meta:
+  id: nawrath2022
+  role: paper-device
+  cite: "C. Nawrath, R. Joos, S. Kolatschek, S. Bauer, P. Pruy, F. Hornung, J. Fischer, J. Huang, P. Vijayan, R. Sittig, M. Jetter, S. L. Portalupi, P. Michler, High emission rate from a Purcell-enhanced, triggered source of pure single photons in the telecom C-band, arXiv:2207.12898 (2022) (Adv. Quantum Technol. 2023 per survey)"
+  doi: null
+  arxiv: "2207.12898"
+  extraction: .workers/devlib/papers/nawrath2022.yaml
+  read_level: V-full
+  summary: "InAs/InGaAs C-band trion (1555 nm) in a lambda-cavity flip-chip CBG, p-shell pulses, 4 K / 40 K: tau 0.52 ns (ref 1.55 ns), first-lens 17.4 % (NA 0.6), g2 0.0113 (post-selected), 3.91e6 cps detected at 76 MHz"
+  notes:
+    - "Supplementary material is not in the PDF: the setup efficiency split, linewidth, blinking duty vs power and the p-shell relaxation rates are not available. The setup chain is back-calculated from main-text numbers: eta_optics x eta_fibre = 6.3 % / 17.4 % = 0.361 and eta_det = 3.91e6 / 4.77e6 = 0.82 (both DR, p.2-3)."
+    - "The CBG is non-deterministically placed; the paper attributes the Purcell shortfall (3 measured vs 16.6 FDTD) and, by implication, part of the brightness shortfall to a QD-to-centre offset (supp). eta_table is the paper's FDTD whole-device first-lens efficiency (above 85 percent at NA 0.6, table_mode total), so the model has no handle on the offset and B_first_lens is expected to be high."
+    - "F_P: total lifetime ratio 1.55/0.52 = 2.98 -> additional rate ratio 1.98 (repo convention total = 1 + F_P L); the paper rounds the ratio to 3. The reference mean 1.55 ns has sd 0.37 ns (6 trions); tau_bare is that mean."
+    - "V_TPI,analyt 8.1 percent: the paper gives no linewidth in the main text, so gamma* is fitted to it (class C) and no HOM item is a test."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.2 / Methods (continuous-flow cryostat, 4 K; 40 K via the heater)"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {value: 1555.0, unit: nm, tag: A, source: "extraction: cavity mode centred about 1555 nm and QD1 in resonance with it (p.2, Fig 1c); exact line wavelength is in the figure only"}
+      tau_bare_ns: {value: 1.55, unit: ns, tag: V, where: "text p.2: mean decay time 1.55 ns (sd 0.37 ns) of 6 trion transitions outside CBGs on the same sample"}
+      eta_blink: {value: 0.70, unit: "1", tag: V, where: "text p.3: source active about 70 % of the time at saturation (blinking)"}
+      charge_state: {value: "X+", unit: "", tag: DR, where: "text p.2: attributed to a positively charged trion (supplementary)"}
+      gamma_star_4K_ns: {value: 17.4, unit: "1/ns", tag: A, source: "fitted to the HOM visibility V_TPI,analyt (item hom_V_TPI, class C): the main text gives no linewidth"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 1.98, unit: "1", tag: DR, where: "text p.2: 1.55 ns / 0.52 ns = 2.98 total decay-rate ratio, minus 1 for the additional ratio (paper rounds to 3)"}
+      Q: {value: 160.0, unit: "1", tag: DR, where: "text p.2: cavity FWHM 9.74 nm at about 1555 nm gives Q about 160 (computed from the paper numbers)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "text p.2: QD1 in resonance with the cavity mode"}
+      eta_table: {value: "0.6:0.85", unit: "", tag: V, where: "text p.2 / Fig 1a: FDTD collection efficiency into NA 0.6 above 85 percent (max above 92 percent), the whole-device total first-lens efficiency at the ideal F_P 16.6"}
+      table_mode: {value: total, unit: enum, tag: E, source: "the FDTD number is total extraction of the device (grating far-field redistribution), FX3a table_mode total; F_P 1.98 only sets the rate"}
+  drive:
+    kind: p_shell
+    params:
+      pump: {range: [2.0, 5.0], unit: "1", tag: E, source: "absolute P/P_sat is not stated; the 5.01 uW point of Fig 2b,c is at or near the saturation of the rate (text p.3 'at saturation'), so P/P_sat of 2 to 5"}
+      window_ps: {value: 3.0, unit: ps, tag: A, source: "ps pulses (Methods), width not stated; 3 ps reused as the group's laser figure"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.2: 76 MHz base repetition rate (Fig 2a)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: V, where: "text p.4 Methods: microscope objective NA 0.6"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.4 Methods: both polarisation components are split onto two SNSPDs, so none is discarded"}
+      eta_optics: {value: 0.361, unit: "1", tag: DR, where: "text p.2: end-to-end 6.3 % / first-lens 17.4 % = 0.361 (the paper's own setup efficiency; FCSPCR is already corrected for detector efficiency)"}
+      eta_fibre: {value: 1.0, unit: "1", tag: A, source: "fibre coupling is inside the 0.361 setup efficiency"}
+      eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2-3: raw detected 3.91e6 / corrected FCSPCR 4.77e6 = 0.82 (also 0.83 at 40 K, 0.82 at 152 and 228 MHz)"}
+reported:
+  - {id: tau_QD1, observable: tau_ps, value: 520.0, tag: V, where: "text p.2 / Fig 1d: decay time 0.52 ns of QD1 in the CBG under non-resonant 850 nm excitation (raw fit, no error given)"}
+  - {id: BFL_76, observable: B_first_lens, convention: intrinsic, value: 0.174, tag: V, where: "text p.2-3 and abstract: first-lens collection efficiency 17.4 % (NA 0.6), the end-to-end 6.3 % divided by the paper's setup efficiency (supp)"}
+  - {id: g2_ps_76, observable: g2_0, convention: raw, value: 0.0113, tag: V, where: "text p.2: post-selected g2(0) 1.13e-2 over +/-6.58 ns, dark-count corrected only (4 K, 5.01 uW, 76 MHz); no error given"}
+  - {id: g2_analyt_76, observable: g2_0, convention: intrinsic, value: 0.0072, err: 0.004, tag: V, where: "text p.2: g2_analyt(0) = (7.2 +/- 4.0)e-3 from the analytic evaluation of the fit function without the offset (4 K, 76 MHz)"}
+  - {id: hom_V_TPI, observable: hom_V, convention: raw, value: 0.081, err: 0.0338, tag: V, where: "text p.4: V_TPI,analyt = (8.10 +/- 3.38) % for photons 6.6 ns apart (152 MHz, 7.7 uW), analytic fit, no g2 or beam-splitter correction stated"}
+  - {id: rate_det_76_4K, observable: rate_detected_Hz, convention: intrinsic, value: 3910000.0, tag: V, where: "text p.2: raw detected count rate 3.91e6 /s at 5.01 uW, 76 MHz, 4 K (record; the 4 K point is in rate_vs_T)"}
+series:
+  - id: rate_vs_T
+    x: {path: T_K, unit: K}
+    y: {observable: rate_detected_Hz}
+    tag: V
+    where: "text p.2-3: raw detected count rate 3.91e6 /s at 4 K and 2.47e6 /s at 40 K (5.01 uW, 76 MHz); numbers printed in the text, not digitised"
+    digitized: false
+    points: [[4.0, 3910000.0], [40.0, 2470000.0]]
+  - id: rate_vs_frep
+    x: {path: drive.f_rep_MHz, unit: MHz}
+    y: {observable: rate_detected_Hz}
+    tag: V
+    where: "text p.3: raw detected count rates 3.91e6 (76 MHz), 7.75e6 (152 MHz, 10.02 uW), 11.37e6 /s (228 MHz, 15.03 uW) at 4 K, same energy per pulse"
+    digitized: false
+    points: [[76.0, 3910000.0], [152.0, 7750000.0], [228.0, 11370000.0]]
+  - id: g2_ps_vs_T
+    x: {path: T_K, unit: K}
+    y: {observable: g2_0, convention: raw}
+    tag: V
+    where: "text p.2-3: post-selected g2 1.13e-2 at 4 K and 4.89e-2 at 40 K (5.01 uW, 76 MHz); printed in the text, not digitised"
+    digitized: false
+    points: [[4.0, 0.0113], [40.0, 0.0489]]
+  - id: g2_ps_vs_frep
+    x: {path: drive.f_rep_MHz, unit: MHz}
+    y: {observable: g2_0, convention: raw}
+    tag: V
+    where: "text p.3: post-selected g2 1.13e-2 (76 MHz), 1.51e-2 (152 MHz), 2.32e-2 (228 MHz) at 4 K; printed in the text, not digitised"
+    digitized: false
+    points: [[76.0, 0.0113], [152.0, 0.0151], [228.0, 0.0232]]
+reproduce:
+  - item: tau_QD1
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "F_P 1.98 is derived from this very lifetime and the reference mean 1.55 ns, so the total lifetime agrees by construction; 5 % is a numerical floor"
+    expect: pass
+  - item: BFL_76
+    class: M
+    tol: {rel: 0.3}
+    tol_reason: "no error printed; 30 % covers the setup-efficiency calibration (the 17.4 % is back-computed with it) and the unstated P/P_sat; the QD-to-CBG offset is not covered, which is the point of the test"
+    expect: fail
+    reason: "model 0.562 (envelope 0.501-0.576 over pump P/P_sat 2-5, FX3a table_mode total with the paper's FDTD >85 percent) vs 0.174: eta_table is the FDTD whole-device efficiency of a centred emitter while the paper attributes the lost Purcell (3 vs 16.6) and, implicitly, brightness to a QD-to-CBG offset of unknown size (supp); the offset is a missing input, not a transcription error."
+  - item: g2_ps_76
+    class: M
+    tol: {abs: 0.005}
+    tol_reason: "no error printed; post-selected over a full period with only dark counts removed, so 0.005 absolute (about 40 % of the value) as the model-level purity tolerance"
+    expect: fail
+    reason: "model 5e-4 vs 0.0113: the p_shell path has no background, second-QD or trap-refilling contribution (the paper sees a refilling dip and a second QD at low power); p_refill and bg_frac are unstated, not entered."
+  - item: g2_analyt_76
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the paper's own large error 0.004 (fit-function evaluation, offset excluded); weak against a model value near zero, noted"
+    expect: pass
+  - item: hom_V_TPI
+    class: C
+    tol: {abs: 0.01}
+    tol_reason: "gamma* is fitted to this visibility because the main text gives no linewidth; agreement within 0.01 is the fit residual, not a test"
+    expect: pass
+  - item: rate_vs_T
+    class: M
+    tol: {metric: rms_rel, max: 0.3}
+    tol_reason: "two printed raw detector rates (a 37 % fall from 4 to 40 K); 0.3 rms relative deviation means the model must put the 4 K rate within about 30 % and not be T-flat by more than the fall"
+    expect: fail
+    reason: "model rate scale ~3.2x the paper (rms_rel 3.11 after FX3a): the same ~3.2x brightness overshoot as BFL_76 (offset) plus a model rate that falls only 7 percent from 4 to 40 K against the paper 37 percent (no thermal escape without E_act, k0, which the paper does not give)."
+  - item: rate_vs_frep
+    class: M
+    tol: {metric: rms_rel, max: 0.3}
+    tol_reason: "three printed raw rates scaling with the repetition rate at fixed energy per pulse; 0.3 rms relative as for rate_vs_T"
+    expect: fail
+    reason: "model rate vs the paper 3.91e6 / 7.75e6 / 11.37e6 (rms_rel 2.28 after FX3a): the shape is right (rate proportional to f_rep, dot fully recovered at 4.4 ns) but the absolute scale is ~3.2x high, the same offset-driven overshoot as BFL_76."
+  - item: g2_ps_vs_T
+    class: M
+    tol: {metric: rms_rel, max: 0.5}
+    tol_reason: "two printed post-selected values (factor 4.3 rise); 0.5 rms relative means the model must reproduce the rise to within about 50 percent"
+    expect: fail
+    reason: "model flat at 5.4e-4 vs 0.0113 / 0.0489: no thermal escape or background rise with T in the p_shell path (E_act, k0 not given by the paper), plus the missing refilling/background term of g2_ps_76."
+  - item: g2_ps_vs_frep
+    class: M
+    tol: {metric: rms_rel, max: 0.5}
+    tol_reason: "three printed post-selected values (factor 2 rise from peak overlap and refilling); 0.5 rms relative"
+    expect: fail
+    reason: "model flat at 5.4e-4 vs 0.0113 / 0.0151 / 0.0232: the paper rise comes from peak overlap and refilling, neither in the p_shell path (p_refill, bg_frac not given)."
+fits:
+  - {param: structure.F_P, fitted_to: [tau_QD1]}
+  - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_TPI]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.598 (eta_out 0.90 x beta 0.664 product, cavity-only semantics) -> 0.85 (paper FDTD >85 percent total, V), table_mode total"}

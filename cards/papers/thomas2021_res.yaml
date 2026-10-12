@@ -59,3 +59,4 @@ fits: []
 
 history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: Ms_res checked and is NOT tautological here (gamma* is the registry class default, not derived from Ms; model 0.600 vs 0.915 fails); the circularity is the other way: thomas2021.yaml enters gamma* 0.65/ns inverted from this Ms_res, which is why thomas2021 Ms_BFL is a transfer test, not an independent one. No class change"}

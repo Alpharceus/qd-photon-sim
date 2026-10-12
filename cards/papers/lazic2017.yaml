@@ -1,0 +1,61 @@
+# Lazic et al., arXiv:1706.03599 (2017): ordered InGaN/GaN dot-in-a-wire arrays as single-photon emitters, 10 K, cw above-band HBT.
+# Numbers from .workers/devlib/papers/lazic2017.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+# Card = the DISPERSED ("lying") single nanowire, the cleaner of the two measured devices (rho = 0.92).
+meta:
+  id: lazic2017
+  role: paper-device
+  cite: "S. Lazic, E. Chernysheva, Z. Gacevic, N. Garcia-Lepetit, H. P. van der Meulen, M. Muller, F. Bertram, P. Veit, J. Christen, A. Torres-Pardo, J. M. Gonzalez Calbet, E. Calleja, J. M. Calleja, Ordered arrays of InGaN/GaN dot-in-a-wire nanostructures as single photon emitters, arXiv:1706.03599 (2017)"
+  arxiv: "1706.03599"
+  extraction: ".workers/devlib/papers/lazic2017.yaml"
+  read_level: V-full
+  summary: "InGaN/GaN dot-in-a-wire (200 nm GaN wire, apex In-rich centre, ~488 nm), 10 K, cw above-band He-Cd excitation, NA 0.73: lying wire g2(0) 0.20 +/- 0.04 raw (0.06 +/- 0.04 background-corrected), X lifetime 1.34 ns (TRPL) / 1.19 ns (antibunching)"
+  notes:
+    - "GEOMETRY: the lying wire is dispersed on Si and viewed from the side; the registry's photonic_nanowire adapter is a VERTICAL HE11 wire (taper, mirror, top-facet far field) and is not valid for this geometry, so no extraction or brightness item is carded (the paper reports none). The structure only supplies the radiative rate factor F_bg (1.0, class value; no Purcell gain is claimed)."
+    - "BACKGROUND: rho = S / (S + B) = 0.92 (lying) and 0.72 (standing) is estimated from the emission spectrum recorded on the HBT detectors (text p.7); the engine's uncorrelated background fraction is bg_frac = 1 - rho. The paper's own correction g2cor = [g2 - (1 - rho^2)] / rho^2 (Eq. 5) is exactly the inverse of the engine's background mixing, so g2_raw agrees with Eq. 5 up to the IRF term (0.20 vs 1 - rho^2 = 0.154); this is the physics the paper itself invokes, not an independent mechanism."
+    - "LIFETIME: the TRPL 1.34 +/- 0.03 ns of the single lying-wire dot is entered as the bare lifetime; the antibunching-extrapolated 1/tau_X = 0.84 +/- 0.10 /ns (tau 1.19 +/- 0.14 ns, Eq. 6, text p.7) is the SAME dot measured a second way, so comparing it with the model would only compare the paper with itself and it is reported only."
+    - "NOT CARDED: standing-wire g2 0.65 +/- 0.15 (rho 0.72; background from neighbouring wires, a different device); linear polarisation ~92 %; linewidths 350-650 ueV at 350 ueV resolution; QCSE field estimate."
+device:
+  T_K: {value: 10.0, unit: K, tag: V, where: "text p.5-7 (g2, TRPL and mu-PL all at 10 K)"}
+  material:
+    kind: ingan_gan
+    params:
+      lambda_nm: {value: 488.1, unit: nm, tag: E, source: "example PL band A centred at 2.54 eV (Fig 2b, text p.4; 1239.84 / 2.54); the energy of the dot used for the g2 measurement is not stated; emission tunable 2.35-2.85 eV"}
+      tau_bare_ns: {value: 1.34, unit: ns, tag: V, where: "text p.7 / Fig 5d caption (mono-exponential TRPL decay of an individual lying-wire QD: 1.34 +/- 0.03 ns)"}
+  structure:
+    kind: photonic_nanowire
+    params:
+      d_nm: {value: 200.0, unit: nm, tag: V, where: "text p.2 (GaN nanowires about 500 nm tall and 200 nm in diameter)"}
+      n_wire: {value: 2.45, unit: "1", tag: E, source: "GaN refractive index near 490 nm, class value; the registry default 3.45 is GaAs"}
+      taper_T: {value: 1.0, unit: "1", tag: A, source: "bare dot-in-a-wire, no taper (text p.2)"}
+      mirror_R: {value: 0.0, unit: "1", tag: A, source: "no bottom mirror: dispersed on Si or as-grown on GaN/sapphire (text p.2); no extraction item is carded"}
+  drive:
+    kind: above_band
+    params:
+      cw: {value: true, unit: "", tag: V, where: "text p.3 (cw He-Cd laser at 325 or 442 nm for the HBT measurements)"}
+      pump: {range: [0.05, 1.0], unit: "1", tag: E, source: "the pump of the g2 histogram is not stated; the rate-vs-power slope of Fig 5c is not given in the text, only the zero-pump intercept 0.84 /ns; envelope from low to near-saturating pump"}
+      bg_frac: {value: 0.08, unit: "1", tag: DR, where: "text p.7 (signal-to-total ratio rho = S / (S + B) = 0.92 for the lying nanowire, estimated from the spectrum recorded with the HBT detectors); bg_frac = 1 - rho, conversion mine"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.73, unit: "1", tag: V, where: "text p.2 (100x microscope objective, NA = 0.73, spot ~1.5 um)"}
+reported:
+  - {id: g2_raw_lying, observable: g2_0, convention: raw, value: 0.20, err: 0.04, tag: V, where: "text p.6 (antibunching value g2(0) = 0.20 +/- 0.04 for dispersed individual nanowires, from the Eq. 3 fit convolved with the 350 ps IRF)", note: "fit of the raw histogram (IRF-convolved), includes the background; not background-subtracted"}
+  - {id: g2_corr_lying, observable: g2_0, convention: intrinsic, value: 0.06, err: 0.04, tag: V, where: "text p.7 (background-corrected g2cor(0) = 0.06 +/- 0.04, rho = 0.92, Eq. 5)", note: "corrected with the paper's own rho; compared with the model intrinsic g2 (no background channel)"}
+  - {id: tau_antibunching, observable: tau_ps, value: 1190.0, err: 140.0, tag: V, where: "text p.7 (1/tau_X = 0.84 +/- 0.10 /ns extrapolated to zero pump, tau_X = 1.19 +/- 0.14 ns)", note: "same dot as the TRPL 1.34 ns input; reported only"}
+series: []
+reproduce:
+  - item: g2_raw_lying
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.04 (0.08); the background fraction is taken from the paper's own spectrum (rho 0.92) and the paper's Eq. 5 inverts the same mixing, so a pass checks the bookkeeping plus a clean single-photon core, not an independent mechanism; IRF and dark counts are not modelled"
+    expect: pass
+  - item: g2_corr_lying
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.04 (0.08); the model intrinsic g2 of a two-level cw above-band emitter is ~0, so this checks that the corrected paper value is consistent with an ideal emitter (weak test)"
+    expect: fail
+    reason: "convention gap (the tol_reason expectation of ~0 was wrong): model 0.154 vs 0.06. The engine's intrinsic g2 already includes the bg_frac mixing (1 - rho^2 = 0.1536 at bg_frac 0.08), and there is no background-removed g2 observable, so the background-corrected paper number cannot be compared like with like; the correct model counterpart (core g2 ~0) is not exposed. Not a physics disagreement."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review (tol_reason correction, no tol change): g2_corr_lying tol_reason says the intrinsic g2 of a two-level cw emitter is ~0; the engine intrinsic g2 includes the bg_frac mixing (1 - rho^2 = 0.1536 at bg_frac 0.08), so the model-vs-paper comparison is a convention gap; the existing reason text already states this"}

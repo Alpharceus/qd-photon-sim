@@ -80,8 +80,7 @@ reproduce:
     class: M
     tol: {abs: 0.05}
     tol_reason: "the authors' estimate has no stated method or error; 5 percentage points is the size of phonon-induced loss for a ~3 ps pi pulse at ~8 K in the brief's InGaAs class, which the two-level pure-state model does not contain"
-    expect: fail
-    reason: "engine FX2b open: eta_prep = P_X at the window end includes radiative decay during the 3-7 ps window and is biased low (0.77 vs sin^2 ~0.95); not a physics disagreement."
+    expect: pass
   - item: g2_raw
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -92,20 +91,17 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "brief 6 +/-0.02; gamma* is entered from the measured linewidth (range), so this is near source-transcription, not an independent test of dephasing"
-    expect: fail
-    reason: "model 0.906 vs 0.964: gamma* range and the g2/leak term in the raw convention pull the model low; the near-ST claim no longer holds once the pulse is 3-7 ps (envelope tops at 0.953)."
+    expect: pass
   - item: hom_corr_2p1ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "brief 6 +/-0.02 for the corrected value; compared with the model g2-corrected convention (V + g2)/(1 - g2); same near-ST caveat as the raw value"
-    expect: fail
-    reason: "model 0.955 vs 0.985: same shortfall as the raw item (envelope tops at 0.9846, just below the paper minus 2 sigma and the 0.02 floor)."
+    expect: pass
   - item: hom_raw_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "same tolerance as the 2.1 ns raw item (brief 6 +/-0.02)"
-    expect: fail
-    reason: "model 0.906 vs 0.959: same as 2.1 ns (model has no delay dependence beyond gamma*); envelope tops at 0.953."
+    expect: pass
   - item: hom_corr_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
@@ -128,3 +124,4 @@ history:
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "first run, before any expect was set", reason: "transcription fix, not a tolerance change: the first run showed HOM raw/corrected at 0.62/0.68 because the Z^2 factor was applied; the paper passes the RF through a 3 GHz etalon before HOM (p.2-3), so setup.zpl_filter=true was added; the rate_detected item was dropped because the 3.7e6 /s rate was measured BEFORE that etalon and cannot share a zpl_filter flag with the HOM items. All expects recorded from the run after this fix."}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "during this session an earlier engine gave F_P_fit and tau_res as fail (cylinder mode volume, envelope [1.67,5.96]); after the FX1 engine update they pass via the envelope, expects set to pass", reason: "engine changed between runs (FX1 landing)"}
   - {date: "2026-10-12", by: "sonnet card-fix", reason: "card-review item 1: mode_area -> gaussian (cylinder envelope was vacuous); r_factor 0.513 calibrated to F_P 6.3/12.28, F_P_fit+tau_res -> class C with fits; laser_leak -> [0,0.002] DR; fwhm_ps -> [3,7] DR (45 GHz etalon); added hom_raw_12p4ns, hom_corr_12p4ns; expects re-recorded from the post-fix run: extraction_first_lens, eta_prep_96, g2_raw, hom_raw_2p1ns, hom_corr_2p1ns, hom_raw_12p4ns pass -> fail (FX2b open for eta_prep)"}
+  - {date: "2026-10-12", by: "sonnet card-fix", reason: "engine change landed while the cards were being written (eta_prep redefined as a probability, P_X(end) + photons emitted in the window; HOM path also changed): re-run --only ding2016 at the end of the session", note: "eta_prep_96 fail -> pass (model 0.9994, envelope 0.998-1.000 vs 0.96, tol 0.05; the earlier low model value was the engine FX2b definition bias, not physics; the +0.04 over the authors' ~96 percent is within tolerance but the two-level model has no phonon loss); hom_raw_2p1ns, hom_corr_2p1ns, hom_raw_12p4ns fail -> pass (model 0.928 / 0.9785 / 0.928, paper values 0.964 / 0.985 / 0.959 inside the envelopes' tolerance); extraction_first_lens (0.764) and g2_raw (0.0255) still fail. M tests 5/7"}

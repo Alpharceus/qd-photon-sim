@@ -1,0 +1,98 @@
+# Koong et al., arXiv:2009.02121v1 (published PRL 126, 047403 (2021)): asymmetric dichromatic excitation (DPE) of an InGaAs X1- trion in a planar cavity.
+# Numbers from .workers/devlib/papers/koong2021.yaml (main text and SI pp.8-9 read; rest of SI not read; plots not read).
+# The phonon parameter set is the paper SI simulation set (GaAs-class, Eqs S1-S5) and is entered as material phonon parameters;
+# the experimental temperature is not stated (simulations use 4 K).
+# Pulse areas are given only in pi multiples (areas are the paper simulation axis); the first oscillation maximum at C = -0.65 is 5 pi (Fig 3d).
+meta:
+  id: koong2021
+  role: paper-device
+  cite: "Z. X. Koong, E. Scerri, M. Rambach, M. Cygorek, M. Brotons-Gisbert, R. Picard, Y. Ma, S. I. Park, J. D. Song, E. M. Gauger, B. D. Gerardot, Coherent Dynamics in Quantum Emitters under Dichromatic Excitation, arXiv:2009.02121v1 (2020); published PRL 126, 047403 (2021) per survey"
+  arxiv: "2009.02121"
+  extraction: .workers/devlib/papers/koong2021.yaml
+  read_level: V-full
+  summary: "InGaAs X1- trion (968.8 nm, T1 687 ps, CW linewidth 2.43 ueV) in a planar cavity, asymmetric dichromatic pulses (C = -0.65, +/-0.6 meV, 0.5 meV sidebands, 5 pi, 80.3 MHz): inversion ~0.8 measured / ~0.6 simulated, g2 raw 0.016, HOM raw 0.29, ZPL fraction ~92%"
+device:
+  T_K: {value: 4.0, unit: K, tag: A, source: "experimental temperature not stated in the text read; 4 K is the temperature of the paper SI simulations (Sec I)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 968.8, unit: nm, tag: V, where: "text p.2: X1- ZPL at omega_0 = 1.280 eV (968.8 nm)"}
+      tau_bare_ns: {value: 0.687, unit: ns, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns under pulsed RF; measured in the planar-cavity sample, entered as the effective bare lifetime (calibration)"}
+      gamma_star_4K_ns: {value: 2.23, unit: "1/ns", tag: DR, where: "SI Sec II p.9: CW (dc Stark scan) Lorentzian FWHM 2.43(6) ueV minus the lifetime limit hbar/T1 = 0.96 ueV gives 1.47 ueV excess; gamma*_repo = 1.47e-3 meV / 6.582e-4 meV ns = 2.23 /ns"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured CW linewidth at the experiment temperature; no slope measured"}
+      D_c_eV: {value: 7.0, unit: eV, tag: V, where: "SI Sec I p.8: electron deformation potential D_e = 7.0 eV (J(w) uses D_e - D_h)"}
+      D_v_eV: {value: -3.5, unit: eV, tag: V, where: "SI Sec I p.8: hole deformation potential D_h = -3.5 eV"}
+      rho_kg_m3: {value: 5370.0, unit: "kg/m^3", tag: V, where: "SI Sec I p.8: density 5370 kg/m3"}
+      c_LA_m_s: {value: 5110.0, unit: "m/s", tag: V, where: "SI Sec I p.8: speed of sound c_s = 5110 m/s"}
+      l_xy_nm: {value: 3.0, unit: nm, tag: DR, where: "SI Eq S3: J cutoff exp(-w^2 a_e^2 / 2 c_s^2) equals the registry exp[-(E/E_c)^2] with E_c = hbar sqrt2 c_s / l for l = a_e = 3.0 nm; the hole radius a_h = a_e/1.15 is dropped (single confinement length)"}
+      l_z_nm: {value: 3.0, unit: nm, tag: DR, where: "SI Eq S3: spherical dot a_e = 3.0 nm (see l_xy_nm)"}
+  structure:
+    kind: bulk_planar
+    params: {}   # charge-tunable planar cavity, no pillar; the measured T1 already contains any cavity effect, so no Purcell factor is applied on top
+  drive:
+    kind: dichromatic
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "experimental sidebands are razor-blade-limited spectra (p.2); the SI simulation uses rectangular frequency boxes, which the registry drive does not offer; Gaussian assumed"}
+      delta_meV: {value: 0.6, unit: meV, tag: V, where: "text p.2: separation of the red and blue sidebands 1.2 meV, i.e. +/-0.6 meV (SI Sec I: Delta = 0.6 meV)"}
+      asymmetry: {value: 0.212, unit: "1", tag: DR, where: "text p.2-4: contrast C = (I_B - I_R)/(I_B + I_R) = -0.65 at the optimum, so a = I_blue/I_red = (1 + C)/(1 - C) = 0.35/1.65 = 0.212"}
+      fwhm_ps: {value: 3.65, unit: ps, tag: DR, where: "text p.2: each sideband 0.5 meV wide; Gaussian transform limit 0.441 h / 0.5 meV = 0.441 * 4135.7 ueV ps / 500 ueV = 3.65 ps intensity FWHM"}
+      area_pi: {value: 5.0, unit: pi, tag: V, where: "Fig 3 caption (d): first oscillation maximum at pulse area 5 pi for C = -0.65 (simulation axis); the measured operating power is not given as an area"}
+      f_rep_MHz: {value: 80.3, unit: MHz, tag: V, where: "text p.2: mode-locked laser repetition rate 80.3 MHz"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b) / text p.2: 120 ueV grating spectral filter after the collection fibre isolates the ZPL from the phonon sideband"}
+      eta_det: {value: 0.9, unit: "1", tag: V, where: "text p.2: SNSPD detection efficiency ~90% at ~950 nm"}
+reported:
+  - {id: tau_X, observable: tau_ps, value: 687.0, err: 3.0, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.016, err: 0.001, tag: V, where: "text p.4 / Fig 4a: g2(0) = 0.016(1) at C = -0.65, raw"}
+  - {id: inversion_sim, observable: inversion, convention: intrinsic, value: 0.60, tag: V, where: "text p.4 / Fig 3d: simulated final occupation ~60% with phonons at 5 pi, C = -0.65 (path-integral, rectangular spectral boxes, 0.4 meV, T = 4 K)", note: "paper simulation, no error stated"}
+  - {id: inversion_meas, observable: inversion, convention: intrinsic, value: 0.80, tag: V, where: "text p.4 / abstract: measured inversion efficiency ~80% (C ~ -0.65)", note: "paper text attributes the 0.8 vs 0.6 gap to a pulse-shape mismatch between simulation and experiment; no error stated"}
+  - {id: Z_zpl, observable: Z_phonon, value: 0.92, tag: V, where: "SI Sec II p.8: ZPL fraction ~92% from the polaron fit of the CW resonance-fluorescence spectrum (previously cited parameters, not the Sec I simulation set)", note: "approximate, no error stated"}
+  - {id: hom_raw_10ns, observable: hom_V, convention: raw, value: 0.29, err: 0.02, tag: V, where: "text p.5 / SI Sec III: raw V_HOM = 0.29(2) over a 10 ns window, photons 12.5 ns apart"}
+  - {id: hom_postsel_100ps, observable: hom_V, convention: raw, value: 0.81, err: 0.12, tag: V, where: "text p.5: temporally post-selected V_HOM = 0.81(12) in a 0.1 ns window", note: "not a ledger item: temporal post-selection is not modelled"}
+  - {id: hom_deconv, observable: hom_V, convention: corrected, value: 0.95, err: 0.01, tag: V, where: "text p.4-5: deconvolved fit amplitude V_deconv = 0.95(1) with 1/e dip width tau_C = 0.33(2) ns", note: "not a ledger item: the zero-delay fit amplitude is not the time-integrated overlap"}
+reproduce:
+  - item: tau_X
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the measured T1 is entered as material.tau_bare_ns (planar cavity, no Purcell on top); 2 sigma of the printed 3 ps"
+    expect: pass
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "2 sigma of the printed 0.001 is only 0.002; abs 0.005 floor because the paper gives no background fraction and the model has no laser leak or dark counts entered (pure re-excitation term)"
+    expect: fail
+    reason: "model gap / missing input: the model raw g2 is 0.0088 (re-excitation of a 3.65 ps dichromatic pair at T1 687 ps) against 0.016(1); the 0.007 shortfall exceeds the 0.005 floor and is plausibly unmodelled background or blinking in the paper histogram (no background fraction is given, so none was entered)."
+  - item: inversion_sim
+    class: M
+    tol: {abs: 0.10}
+    tol_reason: "brief section 6: inversion +/-0.05-0.1 for phonon-driven schemes; the paper 0.60 is its own exact path-integral number for rectangular spectral boxes (0.4 meV) while the model uses Gaussian pulses (0.5 meV) and a weak-coupling dressed-state phonon solver, so 0.1 absolute"
+    expect: pass
+  - item: inversion_meas
+    class: M
+    tol: {abs: 0.10}
+    tol_reason: "same 0.1 absolute; the paper itself reports 0.8 measured against 0.6 simulated (pulse-shape mismatch), so a model at the simulation value is expected to miss the measurement"
+    expect: fail
+    reason: "as predicted in tol_reason: model 0.649 sits on the paper simulation (0.60) and 0.15 below the measured 0.80; the paper attributes this gap to an experimental pulse shape not reproduced by its own rectangular-box simulation, which the model (Gaussian pulses) cannot close either."
+  - item: Z_zpl
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "the paper value ~92% is approximate (no error) and comes from a polaron fit with other cited parameters, so 0.05 absolute against the model Z(T) for the SI simulation set"
+    expect: pass
+  - item: hom_raw_10ns
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.02 (0.04). gamma* is the point value from the CW linewidth (1.47 ueV excess), not from the HOM dip, so the 12.5 ns raw visibility is a prediction; drive-induced phonon dephasing (the paper dip T2* = 0.66 ns) is not in the engine's HOM and eps_int is not stated (0)"
+    expect: fail
+    reason: "model gap: the model raw visibility is 0.38 (overlap 0.39 at the CW-linewidth gamma* 2.23 /ns) against 0.29(2); the paper own dip analysis gives T2* = 0.66 ns (gamma*_repo ~3 /ns, I ~ 0.32), i.e. extra dephasing under dichromatic driving (excitation-induced phonon dephasing, which the engine HOM does not carry, since its gamma* is a fixed material number) that the weak-excitation CW linewidth does not contain."
+  - item: hom_I_pred
+    class: P
+    observable: hom_I
+    convention: intrinsic
+    tol_reason: "no reported intrinsic overlap; the model time-integrated overlap is stated for the record against the paper dip-derived T2*/(2T1)-type value"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_X]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}

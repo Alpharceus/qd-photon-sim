@@ -1,0 +1,90 @@
+# Tripathi et al., arXiv:2604.23422v2 (2026): O-BAND (1303 nm, not C-band) InGaAs/GaAs QD on Si in an electrically contacted
+# CBG (eCBG 1), p-shell-like quasi-resonant 1225 nm ps pulses at 80 MHz, 4-77 K. The reverse bias is Stark tuning only
+# (no carrier injection) and is not modelled; the device is carded at 1 V, where nearly all of the data were taken.
+meta:
+  id: tripathi2026
+  role: paper-device
+  cite: "S. Tripathi, K. Gaur, P. Mudi, P. Ludewig, A. Kosarev, K. Volz, I. Limame, S. Reitzenstein, Stark-tunable O-band single-photon sources based on deterministically fabricated quantum dot - circular Bragg gratings on silicon, arXiv:2604.23422v2 (10 Jun 2026)"
+  doi: null
+  arxiv: "2604.23422"
+  extraction: .workers/devlib/papers/tripathi2026.yaml
+  read_level: V-full
+  summary: "InGaAs O-band X (1302.9 nm) in an electrically contacted CBG on Si, quasi-resonant pulses at saturation, 4-77 K: tau 0.775 ns in the CBG vs 0.913 ns planar, g2 raw 1.83 % (4 K) to 6.63 % (77 K), X rate 440 kcps at 4.1 % setup efficiency"
+  notes:
+    - "Pump level: the T series and the 4 K saturation g2 are 'at saturation'; the lifetime and the low-power g2 (0.0249 raw, 0.0078 fit at 0.16 P_sat) are at a different pump. The card is built at saturation (pump P/P_sat 2-5 [E]); the low-power g2 is therefore kept in reported but not in the ledger. The model lifetime does not depend on the pump (no re-excitation in the p_shell path)."
+    - "Structure: the eCBG is optimised for extraction with near-unity Purcell (FEM 0.7-1.6; measured total rate ratio 0.913/0.775 = 1.178). Carded as cbg with table_mode total (engine FX3a): the FEM PEE 0.26 is the total first-lens efficiency of all emission, and F_P = 0.178 only sets the RATE. F_P is set from the lifetimes and is a calibration (fits). The planar reference QDs are nominally identical and measured under identical excitation, so 0.913 ns is the bare lifetime in this environment. (Before FX3a it was carded as mesa_reflector because cbg capped extraction at F_P/(1+F_P).)"
+    - "Extraction: 21.7 % (3.0) is n/(f eta_setup) with n = 440 kcps (X) + 270 kcps (X+-) from two different lines, i.e. up to two photons per pulse from one dot; a single-line model cannot reach it by construction. The X line alone is 440 kcps / (80 MHz x 0.041) = 0.134 (DR) and is the ledger item; the 21.7 % is in reported only. Table entry 0.81:0.26 is the paper's 3D FEM PEE for the QD displaced by 78 nm (the experimentally relevant case)."
+    - "The 4.1 % is the independently calibrated whole-setup detection efficiency (objective to SNSPD count); entered as eta_optics with eta_fibre = eta_det = 1 so that rate_detected_Hz = f B_first_lens x 0.041."
+    - "No indistinguishability or linewidth number usable for gamma* (the 171 ueV FWHM at 1 V is spectrometer-limited, extraction); gamma* stays the class default and no HOM item exists."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.7 and p.9 (4 K; 20, 40 and 77 K for the series)"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {value: 1302.9, unit: nm, tag: V, where: "extraction: neutral exciton X at 0.9516 eV, 1302.90 nm (Fig 3a/Sec 3)"}
+      tau_bare_ns: {value: 0.913, unit: ns, tag: V, where: "text p.8: lifetime 0.913 +/- 0.029 ns of nominally identical QDs in unpatterned planar regions, same excitation and bias (single exponential)"}
+      charge_state: {value: "X", unit: "", tag: V, where: "text p.7, p.9: neutral exciton X analysed"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 0.178, unit: "1", tag: DR, where: "text p.8: 0.913 ns / 0.775 ns = 1.178 total decay-rate ratio CBG vs planar, so additional ratio 0.178 (FEM Purcell factor 0.7-1.6, near unity, p.8); set from the lifetimes (class C)"}
+      eta_table: {value: "0.81:0.26", unit: "", tag: DR, where: "text p.4: 3D FEM PEE 26 percent into NA 0.81 for the QD displaced 78 nm from the mesa centre (31 percent centred, 37-40 percent ideal 2.5D design); TOTAL first-lens efficiency of the device"}
+      table_mode: {value: total, unit: enum, tag: E, source: "the paper PEE is the total extraction of all emission (grating far-field redistribution), FX3a table_mode total"}
+  drive:
+    kind: p_shell
+    params:
+      pump: {range: [2.0, 5.0], unit: "1", tag: E, source: "the T series and the 4 K g2 are 'at saturation' (text p.9) with no absolute P/P_sat; 2 to 5 as for the other p-shell cards"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.7 (laser repetition rate 80 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.81, unit: "1", tag: V, where: "text p.4 and Methods: collection objective NA 0.81"}
+      eta_pol: {value: 1.0, unit: "1", tag: A, source: "polarisation selection of the detection path is not stated; the PEE is quoted as total, so no extra loss is applied"}
+      eta_optics: {value: 0.041, unit: "1", tag: DR, where: "text p.7: independently calibrated setup detection efficiency 4.1 +/- 0.3 percent, objective to SNSPD count"}
+      eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside the 4.1 percent setup detection efficiency"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "inside the 4.1 percent setup detection efficiency"}
+reported:
+  - {id: tau_cbg, observable: tau_ps, value: 775.0, err: 22.0, tag: V, where: "text p.8: spontaneous emission decay time (0.775 +/- 0.022) ns of X in eCBG 1 at 1 V and 0.16 P_sat (single exponential fit)"}
+  - {id: tau_planar, observable: tau_ps, value: 913.0, err: 29.0, tag: V, where: "text p.8: 0.913 +/- 0.029 ns planar reference; used as the input tau_bare_ns, record only"}
+  - {id: BFL_X, observable: B_first_lens, convention: intrinsic, value: 0.134, err: 0.01, tag: DR, where: "text p.7: X rate 440 kcps at saturation (1120 nm OPO excitation, 1 V) / (80 MHz x 0.041); error from the 7 percent setup-efficiency uncertainty only"}
+  - {id: PEE_total, observable: B_first_lens, convention: intrinsic, value: 0.217, err: 0.03, tag: V, where: "text p.7 and abstract: PEE (21.7 +/- 3.0) percent from X 440 kcps + X+- 270 kcps = 710 kcps; sums two lines, so not a ledger item"}
+  - {id: g2_low_fit, observable: g2_0, convention: intrinsic, value: 0.0078, err: 0.0012, tag: V, where: "text p.9 / Fig 4b: fit value at 0.16 P_sat, 1 V (different pump from the card), record only"}
+  - {id: g2_low_raw, observable: g2_0, convention: raw, value: 0.0249, err: 0.0021, tag: V, where: "text p.9: raw peak-area value at 0.16 P_sat, 1 V (different pump from the card), record only"}
+  - {id: g2_sat_4K, observable: g2_0, convention: raw, value: 0.0183, err: 0.0021, tag: V, where: "text p.9 and abstract: raw g2(0) (1.83 +/- 0.21) percent at saturation, 4 K"}
+series:
+  - id: g2_vs_T
+    x: {path: T_K, unit: K}
+    y: {observable: g2_0, convention: raw}
+    tag: V
+    where: "text p.9 / Fig 5: raw g2(0) at saturation 1.83 percent (4 K), 2.00 (20 K), 4.52 (40 K), 6.63 percent (77 K); numbers printed in the text, not digitised"
+    digitized: false
+    points: [[4.0, 0.0183, 0.0021], [20.0, 0.0200, 0.0029], [40.0, 0.0452, 0.0034], [77.0, 0.0663, 0.0056]]
+reproduce:
+  - item: tau_cbg
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "F_P 0.178 (total rate ratio 1.178) is set from this lifetime and the planar reference 0.913 ns, so it agrees by construction; 5 percent numerical floor"
+    expect: pass
+  - item: BFL_X
+    class: M
+    tol: {rel: 0.3}
+    tol_reason: "the 440 kcps carries no error; the 4.1 +/- 0.3 percent setup efficiency gives 7 percent, and 30 percent covers the unknown absolute pump and the line partition between X and X+-"
+    expect: fail
+    reason: "model 0.248 (envelope 0.221-0.254 over pump 2-5) vs 0.134: the model extraction is the entered 0.26 FEM table times a near-unity preparation of the X state, while the real dot splits its carriers between X (440 kcps) and X+- (270 kcps) and other lines; the model has no charge-state partition. The headline 21.7 percent (both lines summed) would agree within 2 sigma but is not a like-for-like quantity."
+  - item: g2_sat_4K
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "raw peak-area value at saturation; 0.01 absolute (about half of the value) as the model-level purity tolerance of the other p-shell cards, since the paper g2 is dominated by re-excitation and background that are unstated inputs"
+    expect: fail
+    reason: "model 0.0034 (envelope 0.0023-0.0045) vs 0.0183: the paper saturation g2 is dominated by re-excitation and uncorrelated background (the text itself attributes the T rise to background photons in the window), which the p_shell path lacks (p_refill, bg_frac unstated, not entered); model gap, not a card input."
+  - item: g2_vs_T
+    class: M
+    tol: {metric: rms_rel, max: 0.5}
+    tol_reason: "four printed raw values spanning a factor 3.6; 0.5 rms relative means the model must track the rise with temperature within about 50 percent"
+    expect: fail
+    reason: "model flat at 3.4e-3 (rms_rel 0.88) vs 0.0183 -> 0.0663: the paper rise with temperature is phonon dephasing broadening the line into the detection window plus background; the p_shell path has no thermal escape (E_act, k0 not given) and no T-dependent background term."
+fits:
+  - {param: structure.F_P, fitted_to: [tau_cbg]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total now collects all emission at the FEM table, so mesa_reflector workaround replaced by cbg F_P 0.178 (rate_factor 1.178 -> F_P 0.178) + table 0.81:0.26"}

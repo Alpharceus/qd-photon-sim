@@ -1,0 +1,102 @@
+# Joos et al., arXiv:2310.20647 (2023): C-band In(Ga)As QD (X+, 1551 nm) in a CBG, coherent SUPER excitation (two ps fibre lasers,
+# Delta1 = -4 nm, Delta2 = -10.75 nm) at 152 MHz, UNFILTERED branch only. The etalon-filtered values (0.79 GHz, V_TPI 0.508,
+# g2 0.026) and the LA-phonon branch (Delta = -2 nm) are in reported/notes and not in the ledger: no etalon model, and the
+# LA branch needs its own card (different blinking duty 94 %, different linewidth).
+meta:
+  id: joos2023
+  role: paper-device
+  cite: "R. Joos, S. Bauer, C. Rupp, S. Kolatschek, W. Fischer, C. Nawrath, P. Vijayan, R. Sittig, M. Jetter, S. L. Portalupi, P. Michler, Triggered telecom C-band single-photon source with high brightness, high indistinguishability and sub-GHz spectral linewidth, arXiv:2310.20647 (2023)"
+  doi: null
+  arxiv: "2310.20647"
+  extraction: .workers/devlib/papers/joos2023.yaml
+  read_level: V-full
+  summary: "C-band X+ (1551 nm) in a CBG (Purcell 4.3, tau ~500 ps), SUPER pulses (-2.06, -5.54 meV), 152 MHz, T not stated: unfiltered g2 0.076 (raw), eta_end 5.36 %, V_TPI 0.104, line 4.94 GHz per doublet peak"
+  notes:
+    - "Temperature is not stated in the main text (supplement); 4 K is assumed [A]."
+    - "Lifetime and Purcell: 'lifetime about 500 ps owing to a Purcell enhancement of 4.3(8)' (supp I). Bare lifetime = 0.5 ns x 4.3 = 2.15 ns and F_P (additional) = 3.3 are both derived from those two numbers, so the lifetime is a calibration (class C), not a test; the 4.3 is the paper's own ratio to a reference lifetime, not an independent measurement."
+    - "gamma*: the single-peak linewidth 4.94 GHz (Gaussian-dominated Voigt, doublet from line jumps, Lorentzian fixed at the 0.32 GHz Fourier limit) is entered as a Lorentzian: gamma* = 2 pi x 4.94 GHz - Gamma_total = 31.04 - 2.0 = 29.0 /ns [DR]. This overstates the dephasing seen on the 6.6 ns timescale (the paper says only broadening within the photon separation reduces V_TPI), so the HOM item is a real test with a known bias toward low V."
+    - "Pulse areas: only the powers (P1 = 350 nW, P2 = 700 nW at 76 MHz, ratio 2) are given, not the absolute areas or the pulse widths. The operating point is the edge of the SUPER resonance found by the Fig 2b scan, so the areas are set to the model inversion maximum at area2/area1 = sqrt(2) (same pulse width) [A, decision; rejected: an area range 0-20 pi, under which any g2 or brightness item would pass vacuously]. Pulse widths stay at the class 5 ps default."
+    - "Setup: the engine B_fibre excludes eta_optics, so the like-for-like quantity is the raw detected rate CR_raw = 6.50 MHz (rate_detected_Hz = f B_fibre eta_optics eta_det); the paper end-to-end efficiency 5.36 % = CR_end/f with CR_end = CR_raw/0.768 x (1 - g2/2) = 8.14 MHz is kept in this note only; the optics split is in the supplement. eta_optics 0.361 is borrowed from the same group's Nawrath 2022 setup (6.3 % end-to-end / 17.4 % first-lens) [A]."
+device:
+  T_K: {value: 4.0, unit: K, tag: A, source: "temperature not stated in the main text; the same group's other C-band dots are measured at 4 K"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {value: 1551.0, unit: nm, tag: V, where: "text p.2 and p.3: positively charged exciton at 1551 nm"}
+      tau_bare_ns: {value: 2.15, unit: ns, tag: DR, where: "text p.2: lifetime about 500 ps and Purcell enhancement 4.3(8): 0.5 ns x 4.3 = 2.15 ns"}
+      eta_blink: {value: 0.67, unit: "1", tag: V, where: "text p.5: QD optically active 67 percent of the time under SUPER pumping"}
+      charge_state: {value: "X+", unit: "", tag: V, where: "text p.2: positively charged exciton"}
+      gamma_star_4K_ns: {value: 29.0, unit: "1/ns", tag: DR, where: "text p.4: single-peak linewidth 4.94 GHz FWHM: 2 pi x 4.94 - Gamma_total (2.0 /ns) = 29.0 /ns, treated as a Lorentzian (see notes)"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 3.3, unit: "1", tag: DR, where: "text p.2: Purcell enhancement 4.3(8) as the total decay-rate ratio, minus 1 for the additional ratio"}
+      eta_table: {value: "0.6:0.85", unit: "", tag: A, source: "no FDTD figure in the joos main text; same platform as Nawrath 2022 whose FDTD whole-device first-lens efficiency into NA 0.6 is above 85 percent (p.2 there); total semantics"}
+      table_mode: {value: total, unit: enum, tag: E, source: "same-platform whole-device FDTD extraction, FX3a table_mode total; F_P 3.3 only sets the rate"}
+  drive:
+    kind: super
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated (ps fibre lasers)"}
+      delta1_meV: {value: -2.0616, unit: meV, tag: DR, where: "text p.3: Delta1 = 4 nm red of the 1551 nm line: 1239842 meV nm / 1551^2 x 4 nm; paper convention Delta = omega_L - omega_X, red negative"}
+      delta2_meV: {value: -5.5405, unit: meV, tag: DR, where: "text p.3: Delta2 = 2.7 Delta1 = 10.75 nm red: 1239842 / 1551^2 x 10.75 nm; paper convention"}
+      area1_pi: {value: 9.4, unit: pi, tag: A, source: "calibrated: model inversion maximum (0.587) of the first SUPER maximum at area2 = sqrt(2) area1, 5 ps pulses; the powers P2/P1 = 2 (text p.3) fix only the ratio"}
+      area2_pi: {value: 13.29, unit: pi, tag: A, source: "sqrt(2) x area1 (P2 = 2 P1 at equal pulse width, text p.3)"}
+      f_rep_MHz: {value: 152.0, unit: MHz, tag: V, where: "text p.3: all measurements at f_rep = 152 MHz (MZI doubles the 76 MHz of the lasers)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the main text; 0.6 of the same group's Nawrath 2022 setup"}
+      eta_pol: {range: [0.95, 1.0], unit: "1", tag: V, where: "text p.2: emission more than 95 percent polarised; the PBS selects it, so the polarised-stream loss is between 0 and 5 percent"}
+      eta_optics: {value: 0.361, unit: "1", tag: A, source: "borrowed from Nawrath 2022 (end-to-end 6.3 % / first-lens 17.4 %): optics split of this setup is in the supplement"}
+      eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside eta_optics"}
+      eta_det: {value: 0.768, unit: "1", tag: V, where: "text p.3: detection efficiency 76.8 percent"}
+reported:
+  - {id: tau_dev, observable: tau_ps, value: 500.0, tag: V, where: "text p.2: lifetime of about 500 ps (approximate, no error), supp I"}
+  - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 4.94(5) GHz = h x 4.94 GHz = 20.43 ueV; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
+  - {id: g2_super_raw, observable: g2_0, convention: raw, value: 0.076, err: 0.001, tag: V, where: "text p.3-4 / Fig 2c: g2(0) = 0.076(1), coincidences integrated over one repetition period, dark counts corrected only, vs the Poisson-level peak"}
+  - {id: rate_raw_super, observable: rate_detected_Hz, convention: intrinsic, value: 6500000.0, tag: V, where: "text p.3: raw detected count rate CR_raw = 6.50 MHz at 152 MHz (end-to-end 5.36 percent = CR_raw / 0.768 x (1 - g2/2) / f); no error given"}
+  - {id: hom_V_super, observable: hom_V, convention: raw, value: 0.104, err: 0.014, tag: V, where: "text p.4 / Fig 2 caption: V_TPI = 0.104(14), central-peak area parallel vs orthogonal, 6.6 ns separation, unfiltered"}
+  - {id: g2_etalon_super, observable: g2_0, convention: raw, value: 0.026, err: 0.001, tag: V, where: "text p.5 / Fig 4c: etalon-filtered (0.79 GHz) g2(0) = 0.026(1); the etalon is not modelled, record only"}
+  - {id: hom_V_etalon_super, observable: hom_V, convention: raw, value: 0.508, err: 0.018, tag: V, where: "text p.5 / Fig 4e (0.504(14) in the intro/conclusion): etalon-filtered V_TPI; filter-limited, record only"}
+series: []
+reproduce:
+  - item: tau_dev
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "bare lifetime and F_P are both derived from this ~500 ps and the Purcell 4.3, so the total lifetime agrees by construction; 5 percent numerical floor"
+    expect: pass
+  - item: linewidth_peak
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "gamma* is entered from this linewidth (2 pi x 4.94 GHz minus the radiative rate), so the model linewidth agrees by construction; 5 percent numerical floor"
+    expect: pass
+  - item: g2_super_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "brief section 6 level: g2 +/-0.02 at model level (the paper +/-0.001 is statistical only); the raw value integrates a full period against the Poisson peak, so it contains the re-excitation and the phonon-pumped background that the model computes"
+    expect: fail
+    reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (each laser alone gives about a tenth of the SUPER intensity, text p.3) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
+  - item: rate_raw_super
+    class: M
+    tol: {rel: 0.5}
+    tol_reason: "no error printed; 50 percent because the optics transmission (and so the detected rate) is borrowed from another paper's setup (supplement not available) and the pulse widths are unstated"
+    expect: fail
+    reason: "model 1.41e7 (envelope 1.37e7-1.45e7 over eta_pol 0.95-1) vs 6.5e6, 2.2x high (FX3a: table_mode total, extraction 0.85): the model preparation at the calibrated areas (inversion 0.59) times the borrowed eta_optics 0.361 and the 0.85 extraction table overshoot; the optics split (supplement) and the true pulse areas are the missing inputs."
+  - item: hom_V_super
+    class: M
+    tol: {k_sigma: 2, abs: 0.03}
+    tol_reason: "2 sigma of the paper 0.014 is 0.028; 0.03 absolute as the model-level visibility tolerance. The Lorentzian-equivalent gamma* from the 4.94 GHz Gaussian-dominated line over-dephases, so the model is biased low; the test is whether V is of order 0.1"
+    expect: fail
+    reason: "model 0.047 vs 0.104(14): gamma* from the 4.94 GHz Gaussian-dominated, doublet line treated as a Lorentzian over-dephases the 6.6 ns interference (the paper says only broadening on the photon-separation timescale matters); the model has no way to separate fast and slow spectral diffusion. Model gap, biased low as flagged in the notes."
+  - item: inversion_super_pred
+    class: P
+    observable: inversion
+    convention: intrinsic
+    tol_reason: "no reported inversion; the model inversion at the calibrated areas is stated, not compared"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_dev]}
+  - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_peak]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.69 (eta_out 0.90 x beta(F_P 3.3) 0.767 product, cavity-only semantics) -> 0.85 (Nawrath same-platform FDTD total, A), table_mode total"}

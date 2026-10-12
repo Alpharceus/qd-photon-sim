@@ -15,6 +15,8 @@ device:
     params:
       lambda_nm: {value: 924.82, unit: nm, tag: V, where: "text supplement (QD emission centred at 924.82 nm)"}
       charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton, device A3; charged exciton only for Fig 2 on Sample B, not carded)"}
+      gamma_star_4K_ns: {value: 0.65, unit: "1/ns", tag: DR, where: "text p.4: resonant Ms = 0.915(1) (g2-corrected); inverted with I = Gamma/(Gamma + gamma*_repo), Gamma = (1 + F_P)/tau_bare at the MIDPOINT F_P = 6 of the unstated class range [2, 10] [E] and tau_bare 1.0 ns (registry class): Gamma = 7/ns, gamma*_repo = Gamma (1/0.915 - 1) = 0.65/ns. The F_P midpoint is an estimate, so the value inherits that uncertainty (F_P 2 -> 0.28, F_P 10 -> 1.02 /ns)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured resonant coherence at the operating temperature (brief trap 3); the non-resonant a_ac slope would double count it"}
   structure:
     kind: generic_cavity
     params:
@@ -59,13 +61,12 @@ reproduce:
     tol: {abs: 0.02}
     tol_reason: "brief section 6: purity 0.954 with g2 +/-0.02 at model level; the paper's +/-0.001 is statistical only and is not used as the model tolerance"
     expect: fail
-    reason: "model 0.18 (envelope 0.063-0.33 over F_P 2-10, area 5-20 pi) vs 0.046: the paper value sits below the whole envelope; re-excitation within the 19.5 ps pulse at the modelled areas is too high, and the absolute pulse area and Purcell factor are unstated inputs (E ranges)."
+    reason: "model 0.18 (envelope 0.064-0.33 over F_P 2-10, area 5-20 pi) vs 0.046: the paper value sits below the whole envelope; re-excitation within the 19.5 ps pulse at the modelled areas is too high, and the absolute pulse area and Purcell factor are unstated inputs (E ranges)."
   - item: Ms_BFL
     class: M
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "brief section 6: I 0.909 +/-0.05 at model level (the paper's +/-0.004 is dominated by the model-level tolerance)"
-    expect: fail
-    reason: "model 0.49 (envelope 0.36-0.56) vs 0.909: the polaron phonon factor and the fast total decay at the modelled F_P leave the intrinsic overlap far below the paper's value, which also includes the paper's spectral-filter-free near-unity ZPL emission; missing physics (ZPL-dominated detection) or unknown F_P, not a card input."
+    expect: pass
   - item: pQD_BFL
     class: M
     tol: {abs: 0.05}
@@ -78,3 +79,4 @@ history:
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 5: detuning_meV -> 0.580 DR (1340.6 x 0.4/924.82); fwhm_ps -> 19.5 V; BFL_best removed from reproduce (eta_ext 0.65 already contains beta; kept in reported); added pQD_BFL (inversion 0.77 = 0.50/0.65, DR, M, abs 0.05)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: phonon_assisted is now available; g2_BFL, Ms_BFL, pQD_BFL expect unavailable -> fail (real outcomes: model 0.18 / 0.49 / 0.395 vs 0.046 / 0.909 / 0.77)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card input: gamma* entered (FX2b diagnosis)", note: "material.gamma_star_4K_ns 0.65 /ns DR (from resonant Ms 0.915 at F_P midpoint 6, tau_bare 1.0 ns) and a_ac_ns_per_K 0 A; first run with the input: g2_BFL fail (0.184), Ms_BFL fail (0.49 -> 0.711, envelope 0.60-0.756), pQD_BFL fail (0.395), expects unchanged. Final re-run at the end of the session (a concurrent engine change had landed in the HOM path): Ms_BFL model 0.871 (envelope 0.782-0.911, paper 0.909 inside) -> expect fail -> pass; g2_BFL (0.184) and pQD_BFL (0.395) still fail. Note gamma* 0.65 was itself derived from the resonant Ms 0.915 at F_P = 6, so the Ms_BFL pass is a transfer from the resonant to the phonon-assisted drive, not an independent dephasing test"}
