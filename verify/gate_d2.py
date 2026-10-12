@@ -16,6 +16,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "verify"))
+from _phase0_fit import phase0_params  # noqa: E402
 
 from fsim_core.design_meta import default_ranged
 from fsim_core.device import DeviceDesign, evaluate, evaluate_envelope
@@ -47,7 +49,7 @@ def _staged_design() -> DeviceDesign:
         placeholder does not model. I_uA == I_ref_uA (both 10) keeps the
         channel's current-scaling factor at 1 either way.
     """
-    fitp = json.loads((ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+    fitp = phase0_params()  # in-memory V-a fit (clone-safe; verify/_phase0_fit.py)
     d = DeviceDesign(name="gate-d2-staged")
     d.dot.r_xx = fitp["r_xx"]
     d.drive.V = 1.9
