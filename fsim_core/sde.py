@@ -525,3 +525,163 @@ def g2_vs_pump(params: QDLaserParams, I_over_Ith: float, n_runs: int,
     g2_se = float(np.std(g2s, ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan")
     return dict(g2_mean=g2_mean, g2_se=g2_se, g2_per_run=g2s, mean_S_per_run=means,
                 mean_S=float(np.mean(means)), R_pump=r["R_pump"], n_runs=n_runs)
+
+
+# ================================================================ output-flux counting statistics
+#
+# ADDITIVE (devlib-rc1 / p2-rootcause section 6, fix Z1). g2_vs_pump above
+# uses the INTRACAVITY photon-number variance, which cannot show the quiet-pump
+# (sub-Poissonian) effect Zhao et al. measure on the OUTPUT flux. The functions
+# below count the output photons of the SAME SDE (same noise draws, same
+# order, so the same seed gives the same trajectories as _integrate).
+#
+# Input-output relation of the model: the cavity loses photons through the
+# single loss channel d_loss = R_loss*dt + dW_loss, R_loss = S/tau_p
+# (kappa = 1/tau_p), with dW_loss ~ sqrt(R_loss*dt)*N(0,1) the SAME shot-noise
+# increment that is subtracted from S. The output flux (kappa*n plus its output
+# partition noise) is therefore dN_out = d_loss exactly, i.e. every photon
+# leaving S is an output photon (100 % extraction; apply eta_det afterwards).
+# The counting number in a window T_w is N = sum of d_loss over the window.
+
+def _integrate_output(params: QDLaserParams, I_over_Ith: float, t_end: float, dt: float,
+                      n_runs: int = 1, seed: Optional[int] = None, disable_stim: bool = False,
+                      F_pump: Optional[float] = None) -> dict:
+    """Same Ito-Euler loop as _integrate (identical RNG draw order and update
+    equations, so identical trajectories for the same seed) but stores the
+    per-step OUTPUT increment d_loss, shape (n_runs, n_steps), instead of the
+    reservoir histories. Also returns the final S (for bit-consistency checks
+    against _integrate)."""
+    seed = params.seed if seed is None else seed
+    F_pump = params.F_pump if F_pump is None else F_pump
+    R_pump = I_over_Ith * params.I_ref
+    n_steps = int(round(t_end / dt))
+    rng = np.random.default_rng(seed)
+
+    ss = steady_state(params, I_over_Ith, disable_stim=disable_stim)
+    N_RS = np.full(n_runs, ss["N_RS"])
+    N_ES = np.full(n_runs, ss["N_ES"])
+    N_GS = np.full(n_runs, ss["N_GS"])
+    S = np.full(n_runs, ss["S"])
+    out_hist = np.empty((n_runs, n_steps))
+
+    for i in range(n_steps):
+        r = _rates(N_RS, N_ES, N_GS, S, R_pump, params)
+
+        xi_pump, xi_cap, xi_esc1, xi_rel, xi_esc2 = rng.standard_normal((5, n_runs))
+        xi_rsspon, xi_esspon, xi_gsspon, xi_stim, xi_loss, xi_spon = rng.standard_normal((6, n_runs))
+
+        dW_pump = np.sqrt(np.maximum(F_pump, 0.0) * R_pump * dt) * xi_pump if F_pump > 0 else 0.0
+        dW_cap = np.sqrt(r["R_cap"] * dt) * xi_cap
+        dW_esc1 = np.sqrt(r["R_esc1"] * dt) * xi_esc1
+        dW_rel = np.sqrt(r["R_rel"] * dt) * xi_rel
+        dW_esc2 = np.sqrt(r["R_esc2"] * dt) * xi_esc2
+        dW_rsspon = np.sqrt(r["R_RS_spon"] * dt) * xi_rsspon
+        dW_esspon = np.sqrt(r["R_ES_spon"] * dt) * xi_esspon
+        dW_gsspon = np.sqrt(r["R_GS_spon"] * dt) * xi_gsspon
+        dW_loss = np.sqrt(r["R_loss"] * dt) * xi_loss
+        dW_spon = np.sqrt(r["R_spon_mode"] * dt) * xi_spon
+
+        if disable_stim:
+            stim_drift = 0.0
+            dW_stim = 0.0
+        else:
+            stim_drift = r["R_stim"] * dt
+            dW_stim = np.sqrt(r["R_stim_total"] * dt) * xi_stim
+
+        d_pump = R_pump * dt + dW_pump
+        d_cap = r["R_cap"] * dt + dW_cap
+        d_esc1 = r["R_esc1"] * dt + dW_esc1
+        d_rel = r["R_rel"] * dt + dW_rel
+        d_esc2 = r["R_esc2"] * dt + dW_esc2
+        d_rsspon = r["R_RS_spon"] * dt + dW_rsspon
+        d_esspon = r["R_ES_spon"] * dt + dW_esspon
+        d_gsspon = r["R_GS_spon"] * dt + dW_gsspon
+        d_loss = r["R_loss"] * dt + dW_loss
+        d_spon = r["R_spon_mode"] * dt + dW_spon
+        d_stim = stim_drift + dW_stim
+
+        N_RS = N_RS + d_pump + d_esc1 - d_cap - d_rsspon
+        N_ES = N_ES + d_cap + d_esc2 - d_esc1 - d_rel - d_esspon
+        N_GS = N_GS + d_rel - d_esc2 - d_stim - d_gsspon
+        S = S + d_stim - d_loss + d_spon
+
+        N_RS = np.maximum(N_RS, 0.0)
+        N_ES = np.maximum(N_ES, 0.0)
+        N_GS = np.maximum(N_GS, 0.0)
+        S = np.maximum(S, 0.0)
+        out_hist[:, i] = d_loss
+
+    return dict(d_loss=out_hist, S_final=S, n_steps=n_steps, n_burn=int(round(n_steps * BURNIN_FRAC)),
+                dt=dt, R_pump=R_pump, steady_state=ss, F_pump=F_pump)
+
+
+def output_counting_stats(params: QDLaserParams, I_over_Ith: float, window_ns,
+                          n_runs: int = 32, t_end: float = 12.0e-9, dt: float = 2.0e-13,
+                          seed: Optional[int] = None, disable_stim: bool = False,
+                          F_pump: Optional[float] = None, eta_det: float = 1.0) -> dict:
+    """Output-flux counting statistics of the same SDE as g2_vs_pump (same
+    seeding: seed=None -> params.seed; n_runs vectorized trajectories; MC
+    standard error across runs). Units follow the module (seconds for t_end,
+    dt) except window_ns, which is in nanoseconds (scalar or sequence).
+
+    Output flux: dN_out = d_loss = (S/tau_p) dt + dW_loss per step (see the
+    section comment above); N(T_w) is its sum over non-overlapping windows of
+    T_w in the post-burn-in tail (BURNIN_FRAC discarded; windows are cut from
+    the start of the tail, a remainder shorter than T_w is dropped).
+
+    Per window length, per run: Fano F = Var(N)/<N> (ddof=1 over that run's
+    windows), then mean and standard error across runs (a window length that
+    leaves < 2 windows per run is returned as nan). squeezing_dB =
+    10 log10(F) (negative = sub-Poissonian). The binomial detection-efficiency
+    image is F_det = 1 - eta_det*(1 - F) (F8b lemma); eta_det=1 = no loss.
+
+    The estimator is a long-window (low-frequency) counting Fano, the
+    quiet-pump observable. Short-window Fano (<~ 100 ps) is dominated by the
+    output partition noise (~9-11 for every F_pump, p2-rootcause section 6)
+    and is not a pump-statistics probe.
+
+    g2_out0: zero-delay normalised coherence of the output flux, estimated as
+    1 + (Var(n) - <n>)/<n>^2 over single-step counts n = d_loss (window = dt,
+    the T_w -> 0 photon-counting form of the paper's Var = (g2-1)<n>^2 + <n>
+    relation, which subtracts the shot-noise <n>). It is NOT the quiet-pump
+    observable and is returned for consistency only; g2 of the long-window
+    output flux is not defined by the model. Because the per-step fresh
+    shot noise of d_loss has variance R_loss*dt with Gaussian (not Poisson)
+    statistics, treat g2_out0 as a coarse diagnostic, not a calibration target.
+
+    Returns dict: windows_ns, fano, fano_se, squeezing_dB, squeezing_dB_se,
+    fano_det, n_windows (per run), mean_counts (mean N per window), g2_out0,
+    g2_out0_se, n_runs, R_pump."""
+    r = _integrate_output(params, I_over_Ith, t_end, dt, n_runs=n_runs, seed=seed,
+                          disable_stim=disable_stim, F_pump=F_pump)
+    tail = r["d_loss"][:, r["n_burn"]:]
+    n_tail = tail.shape[1]
+    wins = np.atleast_1d(np.asarray(window_ns, dtype=float))
+    fano, fano_se, sq, sq_se, nwin, mcount = [], [], [], [], [], []
+    for w in wins:
+        k = int(round(w * 1.0e-9 / dt))
+        nw = n_tail // k if k >= 1 else 0
+        nwin.append(int(nw))
+        if nw < 2:
+            fano.append(float("nan")); fano_se.append(float("nan"))
+            sq.append(float("nan")); sq_se.append(float("nan")); mcount.append(float("nan"))
+            continue
+        counts = tail[:, :nw * k].reshape(n_runs, nw, k).sum(axis=2)
+        mean_c = counts.mean(axis=1)
+        F_run = counts.var(axis=1, ddof=1) / np.maximum(mean_c, 1e-300)
+        F = float(F_run.mean())
+        se = float(F_run.std(ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan")
+        fano.append(F); fano_se.append(se)
+        sq.append(10.0 * np.log10(F) if F > 0 else float("nan"))
+        sq_se.append(10.0 / np.log(10.0) * se / F if F > 0 else float("nan"))
+        mcount.append(float(mean_c.mean()))
+    fano = np.array(fano)
+    mean_n = tail.mean(axis=1)
+    var_n = tail.var(axis=1, ddof=1)
+    g2_run = 1.0 + (var_n - mean_n) / np.maximum(mean_n, 1e-300) ** 2
+    return dict(windows_ns=wins, fano=fano, fano_se=np.array(fano_se),
+                squeezing_dB=np.array(sq), squeezing_dB_se=np.array(sq_se),
+                fano_det=1.0 - eta_det * (1.0 - fano), n_windows=nwin, mean_counts=np.array(mcount),
+                g2_out0=float(g2_run.mean()),
+                g2_out0_se=float(g2_run.std(ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan"),
+                n_runs=n_runs, R_pump=r["R_pump"])
