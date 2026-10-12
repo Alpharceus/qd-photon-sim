@@ -88,9 +88,9 @@ async function numberTagAudit(page) {
     let a = await numberTagAudit(page);
     check("index: every number has a tag chip", a.n > 20 && a.bad.length === 0, `${a.n} numbers; bad ${a.bad.slice(0, 5).join(",")}`);
     const rail = await page.$eval('.rail-item[data-ws="library"]', (e) => ({ cur: e.getAttribute("aria-current"), svg: !!e.querySelector("svg path") }));
-    check("rail: Library item (7th) with its glyph, current on #/library", rail.cur === "page" && rail.svg);
+    check("rail: Library item (9th, after Compose + Papers) with its glyph, current on #/library", rail.cur === "page" && rail.svg);
     const railIdx = await page.$$eval(".rail-item", (els) => els.findIndex((e) => e.dataset.ws === "library"));
-    check("rail: Library is item 7", railIdx === 6, `${railIdx + 1}`);
+    check("rail: Library is item 9 (Compose + Papers inserted after Designer, 2026-10-12)", railIdx === 8, `${railIdx + 1}`);
     const picker = await page.$$eval("#card-picker optgroup", (gs) => gs.map((g) => ({ label: g.label, n: g.querySelectorAll("option").length })));
     const lit = picker.find((g) => g.label === "Literature");
     check("picker: second group 'Literature' lists the parameter cards", picker[0]?.label === "Design" && lit && lit.n >= 10, JSON.stringify(picker));

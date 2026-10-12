@@ -1,0 +1,130 @@
+/* Composer workspace (devlib-p11). Same machined vocabulary as the Designer: it reuses the board,
+   mount, sheet, run bar, shelf, readout and chart-card rules from app.css and only adds what the
+   Composer has that the Designer does not: a 4-mount chain, kind chips, the chip picker, the
+   parameter form's tag selector and edited rim, the tier strip, and the validity issue list. The
+   beam stays the only reserved ink; RUN is the only filled control. */
+
+.ws-compose { overflow: hidden; }
+.composer { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); height: 100%; min-height: 0; }
+.composer.is-loading .board, .composer.is-loading .shelf { gap: 14px; }
+.ws-compose .board-table { grid-template-rows: minmax(270px, 1fr) auto auto auto; }
+.ws-compose .chain { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.sk-chain { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.compose-seed { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--fs-cap); color: var(--ink-1); border: 1px dashed var(--ink-2); padding: 3px 8px; width: fit-content; max-width: 100%; }
+.seed-note { margin: 0; }
+
+/* tier presets (context strip) */
+.tier-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -4px; }
+.tier-chip { gap: 4px; cursor: pointer; }
+.tier-chip:hover:not(:disabled) { border-color: var(--rim-hi); color: var(--ink-1); }
+.tier-chip:disabled { border-style: dashed; opacity: 0.6; cursor: not-allowed; }
+
+/* mounts: a div with a kind chip and an open-sheet body */
+.ws-compose .mount { cursor: default; min-height: 128px; }
+.ws-compose .mount.has-issue { border-style: dashed; border-color: var(--ink-2); }
+.kind-chip {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 26px; padding: 2px 6px 2px 8px;
+  background: var(--surface); border: 1px solid var(--rim); border-radius: var(--radius); color: var(--ink-1); text-align: left;
+}
+.kind-chip:hover { border-color: var(--ink-2); }
+.kc-label { font-family: var(--font-label); font-weight: 600; font-size: calc(12.5px * var(--k)); letter-spacing: 0.02em; line-height: 1.15; min-width: 0; }
+.mount-body { display: flex; flex-direction: column; gap: 6px; flex: 1; border: 0; background: none; padding: 0; text-align: left; color: inherit; border-radius: 1px; }
+.mount-body:hover .mount-foot { color: var(--ink-2); }
+.ws-compose .mount.is-open { border-color: var(--ink-1); box-shadow: var(--shadow-mount), inset 0 -2px 0 var(--ink-1); }
+.mount-issue { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-cap); color: var(--ink-1); }
+
+/* temperature plate */
+.temp-plate { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.temp-num { width: 84px; font-size: calc(18px * var(--k)); font-weight: 500; }
+.temp-chip { display: inline-flex; }
+
+/* parameter form */
+.pf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px; padding: 4px 14px 8px; }
+.pf-item { padding: 0 8px; margin: 2px -8px; border: 1px solid transparent; border-radius: var(--radius); min-width: 0; }
+.pf-item.is-edited { border: 1px dashed var(--ink-2); background: color-mix(in oklab, var(--plate), var(--ink-1) 3%); }
+.pf-foot { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; padding-bottom: 6px; }
+.pf-help { margin: 0; font-size: 11.5px; color: var(--ink-2); flex: 1 1 100%; }
+.pf-src { margin: 0; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; flex: 1; min-width: 0; }
+.pf-reset { font-size: 11px; }
+.pf-tagsel { display: inline-flex; gap: 2px; margin-left: 4px; }
+.pf-tagsel .tag { opacity: 0.45; min-width: 20px; }
+.pf-tagsel .tag.is-on { opacity: 1; border-width: 2px; }
+.pf-adv { margin: 0 14px 10px; border: 1px solid var(--rim); border-radius: var(--radius); background: var(--surface); }
+.pf-adv > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; cursor: pointer; list-style: none; }
+.pf-adv > summary::-webkit-details-marker { display: none; }
+.pf-adv > summary::after { content: ""; width: 8px; height: 8px; border-right: 1.5px solid var(--ink-2); border-bottom: 1.5px solid var(--ink-2); transform: rotate(45deg); margin-left: 6px; transition: transform 160ms var(--ease-out); }
+.pf-adv[open] > summary::after { transform: rotate(225deg); }
+.pf-adv-n { margin-left: auto; font-size: var(--fs-cap); color: var(--muted); }
+.pf-adv .pf-grid { padding-top: 0; }
+.sheet-refs { margin: 0 14px 4px; font-size: var(--fs-cap); color: var(--ink-2); }
+.sheet-refs ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 3px; }
+.sheet-refs summary { cursor: pointer; color: var(--muted); }
+
+/* chip picker */
+.cp-pop { padding-bottom: 12px; }
+.cp-note { margin: 0 0 10px; font-size: var(--fs-cap); color: var(--muted); }
+.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.cp-entry {
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px; text-align: left; padding: 9px 10px;
+  background: var(--surface); border: 1px solid var(--rim); border-radius: var(--radius); color: var(--ink-1);
+}
+.cp-entry:hover:not([aria-disabled="true"]) { border-color: var(--ink-1); }
+.cp-entry[aria-selected="true"] { border-color: var(--ink-1); box-shadow: inset 0 -2px 0 var(--ink-1); }
+.cp-entry[aria-disabled="true"] { opacity: 0.55; border-style: dashed; cursor: not-allowed; }
+.cp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.cp-label { font-family: var(--font-label); font-weight: 600; font-size: calc(13.5px * var(--k)); line-height: 1.2; }
+.cp-badge { flex: none; font-family: var(--font-label); font-weight: 600; font-size: 10.5px; letter-spacing: var(--label-tracking); text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--ink-2); border-radius: 2px; padding: 1px 5px; }
+.cp-needs_physics { border-style: dashed; }
+.cp-sum { font-size: 12px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.cp-ref { font-size: 11px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cp-why { display: flex; gap: 4px; align-items: flex-start; font-size: 11.5px; color: var(--ink-1); border-top: 1px dashed var(--ink-2); padding-top: 4px; }
+
+/* run bar extras */
+.ws-compose .rb-left { gap: 8px; }
+.rb-sub { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.rb-f { display: flex; flex-direction: column; gap: 2px; }
+.rb-fl { font-family: var(--font-label); font-weight: 600; font-size: 11px; letter-spacing: var(--label-tracking); text-transform: uppercase; color: var(--muted); }
+.rb-in { width: 84px; }
+.rb-path { max-width: 220px; }
+.rb-obs { position: relative; }
+.rb-obs > summary { list-style: none; cursor: pointer; }
+.rb-obs > summary::-webkit-details-marker { display: none; }
+.rb-obs-list { position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 10; width: min(360px, 80vw); max-height: 260px; overflow: auto; display: grid; gap: 2px; padding: 8px 10px; background: var(--plate); border: 1px solid var(--rim-hi); border-radius: var(--radius); box-shadow: var(--shadow-pop); }
+.rb-check { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 2px 0; }
+
+/* shelf extras */
+.plaque-issues { list-style: none; margin: 0; padding: 0 12px; display: grid; gap: 4px; }
+.plaque-issues li { display: flex; gap: 6px; align-items: baseline; font-size: var(--fs-cap); color: var(--ink-1); }
+.plaque-issues li.warn { color: var(--ink-2); }
+.pi-k { font-family: var(--font-mono); font-size: 11px; color: var(--muted); flex: none; }
+.pi-t { min-width: 0; overflow-wrap: anywhere; }
+.pi-notes li { color: var(--ink-2); }
+.shelf-labels { display: flex; flex-wrap: wrap; gap: 6px; }
+.shelf-labels:empty { display: none; }
+.pf-note { margin: 0; font-size: 12px; color: var(--ink-2); padding: 3px 0; border-bottom: 1px dotted var(--grid); }
+
+/* flat plate when the viewer has no builder */
+.vp-chain { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 4px 0; }
+.vp-link { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; background: #1a1d22; border: 1px solid #2c2f35; color: #e8e7e2; min-width: 110px; }
+.vp-lk { font-family: var(--font-label); font-weight: 600; font-size: 10.5px; letter-spacing: var(--label-tracking); text-transform: uppercase; color: #9a9890; }
+.vp-lv { font-size: 12.5px; }
+
+@media (max-width: 1280px) { .ws-compose .chain { gap: 12px; } }
+@media (max-width: 1100px) {
+  .composer { grid-template-columns: minmax(0, 1fr); overflow: auto; height: 100%; }
+  .ws-compose { overflow: auto; }
+  .ws-compose .board-table { overflow: visible; grid-template-rows: 320px auto auto auto; }
+  .ws-compose .shelf { overflow: visible; border-left: 0; border-top: 1px solid var(--rim); }
+}
+@media (max-width: 760px) {
+  .ws-compose, .composer { overflow: visible; height: auto; }
+  .ws-compose .board-table { grid-template-rows: 320px auto auto auto; }
+  .ws-compose .chain { grid-template-columns: repeat(4, 150px); }
+  .ws-compose .chain-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+  .ws-compose .chain-wrap { margin: 0 -12px; padding: 0 12px; min-width: 0; }
+  .temp-plate { grid-template-columns: 1fr auto; }
+  .temp-plate .hs-control { grid-column: 1 / -1; grid-row: 2; }
+  .temp-plate .hs-keys { grid-column: 1 / -1; }
+  .pf-grid { grid-template-columns: minmax(0, 1fr); }
+  .rb-in { width: 76px; }
+}

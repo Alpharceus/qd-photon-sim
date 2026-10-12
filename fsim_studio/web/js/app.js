@@ -18,16 +18,49 @@ import { tagChip, normTag } from "./ui/tagChip.js";
 import { toast, popover, closePopover } from "./ui/controls.js";
 import { initInspector, inspectField, inspectNumber, closeInspector, isInspectorOpen } from "./ui/inspector.js";
 import { setChartTheme, loadTemplate, rerenderCharts } from "./charts/theme.js";
+import { comingSoon } from "./ui/comingSoon.js";
 
 const WORKSPACES = [
   { id: "overview", label: "Overview", icon: "overview", load: () => import("./workspaces/overview.js") },
   { id: "design", label: "Designer", icon: "design", load: () => import("./workspaces/designer.js") },
+  { id: "compose", label: "Composer", icon: "compose", load: () => import("./workspaces/composer.js") },
+  { id: "papers", label: "Papers", icon: "papers", load: loadPapers },
   { id: "compare", label: "Compare", icon: "compare", load: () => import("./workspaces/compare.js") },
   { id: "results", label: "Results", icon: "results", load: () => import("./workspaces/results.js") },
   { id: "explain", label: "Explain", icon: "explain", load: () => import("./workspaces/explain.js") },
   { id: "story", label: "Story", icon: "story", load: () => import("./workspaces/story.js") },
   { id: "library", label: "Library", icon: "library", load: () => import("./workspaces/library.js") },
 ];
+
+// Rail glyphs for the two workspaces icons.js does not draw (same 24-unit grid, 1.5px stroke).
+const EXTRA_ICONS = {
+  compose: '<rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><path d="M17 13.5v7M13.5 17h7"/>',
+  papers: '<path d="M6.5 3.5h8l4 4v13h-12z"/><path d="M14.5 3.5v4h4"/><path d="M9.5 12h6M9.5 15.5h6"/>',
+};
+function railIcon(name) {
+  if (!EXTRA_ICONS[name]) return icon(name, { size: 22 });
+  const span = document.createElement("span");
+  span.className = "ico";
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${EXTRA_ICONS[name]}</svg>`;
+  return span;
+}
+
+// Papers is another coder's module (workspaces/papers.js + css/papers.css). Until it ships the
+// route shows the coming-soon plate; once it loads, its stylesheet is attached on demand.
+async function loadPapers() {
+  try {
+    const mod = await import("./workspaces/papers.js");
+    return mod;
+  } catch (e) {
+    console.warn("papers workspace not available yet", e?.message);
+    return {
+      mount(el) {
+        comingSoon(el, { iconName: "library", title: "Papers", body: "The paper-device library lands with the next build step. Reproduce published devices and open them in the Composer.", action: { href: "#/compose", label: "Open the Composer" } });
+      },
+      unmount() {},
+    };
+  }
+}
 
 // Fixed, ranked platform roster (DIRECTION: the roster is finite and ranked).
 export const PLATFORMS = [
@@ -116,7 +149,7 @@ function buildContextBar() {
   const picker = h("select.card-picker#card-picker", {
     "aria-label": "Design card",
     // Literature (parameter) cards route to the Library page, design cards to the Designer.
-    on: { change: (e) => { const v = e.target.value; ctx.navigate(v.startsWith("lib:") ? `#/library/${v.slice(4)}` : `#/design/${v}`); } },
+    on: { change: (e) => { const v = e.target.value; ctx.navigate(v.startsWith("lib:") ? `#/library/${v.slice(4)}` : v.startsWith("cmp:") ? `#/compose/${v.slice(4)}` : `#/design/${v}`); } },
   });
 
   const runChip = h("button.id-chip#run-chip", {
@@ -154,7 +187,9 @@ function buildContextBar() {
 
 function syncContextBar() {
   const card = state.get("card");
-  const plat = platformOf(card);
+  const rt = state.get("route") || {};
+  const onCompose = rt.ws === "compose" || rt.ws === "papers";
+  const plat = onCompose ? null : platformOf(card);
   for (const t of els.ctx.querySelectorAll(".roster-tab")) {
     const on = plat && t.dataset.platform === plat.id;
     t.setAttribute("aria-selected", on ? "true" : "false");
@@ -163,14 +198,16 @@ function syncContextBar() {
   const picker = document.getElementById("card-picker");
   if (picker) {
     clear(picker);
-    const list = cards.filter((c) => c.kind === "design" && (!plat || plat.match(c)));
+    const list = cards.filter((c) => c.kind === "design" && c.platform !== "composed" && (!plat || plat.match(c)));
     const r = state.get("route") || {};
     const libCard = r.ws === "library" ? (r.args?.[0] || "") : null;
     if (libCard === "") picker.append(h("option", { value: "", disabled: true, selected: true, hidden: true }, "Literature card"));
-    picker.append(h("optgroup", { label: "Design" }, list.map((c) => h("option", { value: c.name, selected: libCard === null && c.name === card }, c.name.replace(/-design$/, "")))));
+    picker.append(h("optgroup", { label: "Design" }, list.map((c) => h("option", { value: c.name, selected: libCard === null && !onCompose && c.name === card }, c.name.replace(/-design$/, "")))));
+    const cmp = cards.filter((c) => c.kind === "design" && c.platform === "composed");
+    if (cmp.length) picker.append(h("optgroup", { label: "Composed" }, cmp.map((c) => h("option", { value: `cmp:${c.name}`, selected: r.ws === "compose" && r.args?.[0] === c.name }, c.name))));
     const lit = cards.filter((c) => c.kind === "param");
     if (lit.length) picker.append(h("optgroup", { label: "Literature" }, lit.map((c) => h("option", { value: `lib:${c.name}`, selected: libCard === c.name }, c.name))));
-    picker.disabled = !list.length && !lit.length;
+    picker.disabled = !list.length && !lit.length && !cmp.length;
     // studio-p2a: an unsaved preset design is not a card; the picker says so
     if (card === UNSAVED_CARD && state.get("draft")) picker.prepend(h("option", { value: "", disabled: true, selected: true }, "unsaved design"));
   }
@@ -232,7 +269,7 @@ function buildRail() {
   els.rail.append(
     h("ul.rail-list", WORKSPACES.map((w) => h("li",
       h("a.rail-item", { href: `#/${w.id}`, dataset: { ws: w.id }, "aria-label": w.label },
-        icon(w.icon, { size: 22 }), h("span.rail-label", w.label))))));
+        railIcon(w.icon), h("span.rail-label", w.label))))));
 }
 
 function syncRail(ws) {
@@ -265,6 +302,11 @@ async function route() {
     }
   }
   const r = parseHash();
+  // a saved composed card belongs to the Composer, not the Designer
+  if (r.ws === "design" && r.args[0] && cards.some((c) => c.name === r.args[0] && c.platform === "composed")) {
+    history.replaceState(null, "", `#/compose/${r.args[0]}`);
+    return route();
+  }
   let ws = WORKSPACES.find((w) => w.id === r.ws) ? r.ws : "overview";
   let args = r.args;
   if (!location.hash || location.hash === "#" || location.hash === "#/") history.replaceState(null, "", "#/overview");
