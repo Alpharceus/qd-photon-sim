@@ -59,10 +59,11 @@ reported:
 series: []
 reproduce:
   - item: tau_res_jc
-    class: M
+    class: C
     tol: {rel: 0.10}
     tol_reason: "brief 6 tolerance +/-10%; no error quoted. g and kappa are entered (g derived by the authors from F_P^H, i.e. from the same decay data), so this is near source-transcription of the rate; what is tested is the JC dynamics at 4g/kappa = 0.69 and tau_bare = the 520 ps far-detuned time"
     expect: pass
+    reason: "FX4: g (structure.g_ueV) is derived by the authors from F_P^H, i.e. from the same decay data as the on-resonance lifetime, so tau_res_jc is a calibration check of the JC dynamics, not an unfitted test; model 43.2 ps vs 47.5"
   - item: tau_res_purcell
     class: C
     tol: {rel: 0.10}
@@ -74,10 +75,11 @@ reproduce:
     tol_reason: "class C after review item 6 (g_ueV derived by the authors from the lifetimes, Supp l.1016-1021); brief 6 +/-10% on F_P 10-12; no error quoted. The model value is the H-mode 4 g^2/(kappa hbar Gamma0) L only (V mode not modelled), expected a few percent below the total"
     expect: pass
   - item: beta_H
-    class: M
+    class: C
     tol: {abs: 0.05}
     tol_reason: "no error quoted; 0.05 absolute is an assumed size for a Lorentzian-fit branching ratio (not from the paper). The one-mode model has no V-mode channel, so beta = F/(1 + F)-like is expected to sit above beta_H"
     expect: pass
+    reason: "FX4: beta_H is the H-mode share of the same Lorentzian decay fits that gave g (structure.g_ueV), so it is a calibration check, not an unfitted test; model 0.892 vs 0.86"
   - item: g2_raw
     class: M
     tol: {abs: 0.01}
@@ -109,8 +111,9 @@ reproduce:
     expect: pass
     tol_reason: "no reported value: intrinsic g2 without the laser leak (re-excitation only)"
 fits:
-  - {param: structure.g_ueV, fitted_to: [F_P_QD1, tau_res_purcell]}
+  - {param: structure.g_ueV, fitted_to: [F_P_QD1, tau_res_purcell, tau_res_jc, beta_H]}
 history:
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription; expects recorded from the engine state at the time of the run", reason: "initial transcription"}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "an earlier engine gave tau_res_jc 59.5, tau_res_purcell 55.5 and F_P 8.4 (fail); after the FX1 engine update all pass, expects set to pass", reason: "engine changed between runs (FX1 landing)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 6: F_P_QD1 and tau_res_purcell -> class C with fits on structure.g_ueV (authors derived g from the lifetimes, Supp l.1016-1021); lambda_nm -> 919.0 DR (Supp l.1019); setup.eps_int 0.0097 DR (0.916 -> 0.925 interferometer correction). tau_res_jc stays M; note beta_H and sys_eff_QD1 are near-transcription (g and eta_out/eta_fibre are paper inputs)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: tau_res_jc and beta_H class M -> C and added to fits[g_ueV].fitted_to (g derived from the same lifetimes / decay fits); expects unchanged (pass)"}

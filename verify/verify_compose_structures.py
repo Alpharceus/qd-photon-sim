@@ -213,7 +213,8 @@ F1d = dbr.planar_purcell(top, bottom, 3.5, dc, 0.5 * dc, 670.0, n_in=1.0, n_out=
 check("planar_dbr notes quote the 1-D LDOS but F_P stays 0", any(f"{F1d:.3g}" in n for n in rpd.notes) and rpd.F_P == 0.0)
 
 # photonic_nanowire vs nitride_nanowire_photonics.response
-rw_ = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, "taper_T": 0.95, "mirror_R": 0.9}, em=em0, NA=0.75)
+rw_ = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, "taper_T": 0.95, "mirror_R": 0.9,
+                                 "mirror_phase_ok": True}, em=em0, NA=0.75)      # FX4: the antinode case is explicit
 pm = nwp.NitrideNanowirePhotonicsParams(family="vertical_photonic", NA=0.75, n_wire=3.45, n_group_override=3.6,
                                          taper_transmission=0.95, bottom_reflectivity=0.9, radiative_rate_factor=1.0)
 nr = nwp.response(pm, lambda_nm=670.0, outer_radius_nm=110.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
@@ -295,7 +296,7 @@ nw = {"d_nm": 200.0, "n_wire": 3.37}
 
 
 def up_extraction(**kw):
-    rr = resp("photonic_nanowire", {**nw, **kw}, em=emn, NA=1.0)         # NA 1: HE11 acceptance is exactly 1
+    rr = resp("photonic_nanowire", {**nw, "mirror_phase_ok": True, **kw}, em=emn, NA=1.0)   # NA 1: HE11 acceptance is exactly 1
     return rr.beta0 * rr.eta_out
 
 
@@ -305,8 +306,8 @@ bw /= 0.95
 check("nanowire mirror (FX3a, coherent): extraction(R)/extraction(0) = (1 + |r|)^2/(1 + beta|r|)  (R 1 and R 0.3)",
       abs(x1 / x0 - 4.0 / (1 + bw)) < 1e-9 and abs(x3 / x0 - (1 + math.sqrt(0.3)) ** 2 / (1 + bw * math.sqrt(0.3))) < 1e-9,
       f"{x1 / x0:.6f} {x3 / x0:.6f}")
-rn = resp("photonic_nanowire", {**nw, "mirror_R": 0.3}, em=emn, NA=0.75)
-rt_ = resp("photonic_nanowire", {**nw, "mirror_R": 0.3, "taper_mfr_nm": 1000.0}, em=emn, NA=0.75)
+rn = resp("photonic_nanowire", {**nw, "mirror_R": 0.3, "mirror_phase_ok": True}, em=emn, NA=0.75)
+rt_ = resp("photonic_nanowire", {**nw, "mirror_R": 0.3, "mirror_phase_ok": True, "taper_mfr_nm": 1000.0}, em=emn, NA=0.75)
 bare = nwp.response(nwp.NitrideNanowirePhotonicsParams(
     family="vertical_photonic", NA=0.75, n_wire=3.37, taper_transmission=0.95, bottom_reflectivity=0.3,
     radiative_rate_factor=1.0, n_group_override=3.6), lambda_nm=879.9, outer_radius_nm=100.0,
@@ -401,6 +402,29 @@ check("nanowire HE11 beta -> 0 for a vanishing wire and is below the peak for d/
 bm = beta_wire(240.0 / 950.0, lam=950.0)
 check("nanowire HE11 beta at the Munsch 2013 design point (d 240 nm, lambda 950 nm) vs the paper's 0.96 [V]: within 0.05 "
       "(not tuned; the plateau beta > 0.9)", abs(bm - 0.96) < 0.05, f"{bm:.4f}")
+
+# ---- FX4 (final review 7, 8, 10)
+rwd = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, "taper_T": 0.95, "mirror_R": 0.9}, em=em0, NA=0.75)
+check("FX4: photonic_nanowire mirror_phase_ok defaults to False (incoherent power return, rate unchanged, [A])",
+      R.get("structure", "photonic_nanowire").param("mirror_phase_ok").default is False and rwd.F_bg == 1.0
+      and abs(rwd.beta0 - 0.5 * 2.0 * rw0.beta0 * 1.9) < 1e-13)
+emo = make_em(E_X_meV=1450.0, lambda_nm=855.0, n_host=1.0, gamma0_ns=1.0)
+ro1 = resp("open_cavity", {}, em=emo)
+ro2 = resp("open_cavity", {"pol_dipole": 0.5}, em=emo)
+ro3 = resp("open_cavity", {"pol_collect": 0.5}, em=emo)
+check("FX4: open_cavity pol_dipole = cos^2 enters g^2 (g x sqrt, F_P x pol_dipole), not the collection factor",
+      abs(ro2.g_meV / ro1.g_meV - math.sqrt(0.5)) < 1e-12 and abs(ro2.F_P / ro1.F_P - 0.5) < 1e-12 and ro2.pol_factor == 1.0)
+check("FX4: open_cavity pol_collect is brightness only (response pol_factor), g and F_P unchanged",
+      ro3.pol_factor == 0.5 and ro3.g_meV == ro1.g_meV and ro3.F_P == ro1.F_P)
+rg = resp("open_cavity", {"mode": "geometry", "ROC_um": 20.0, "L_um": 2.0}, em=emo)
+w0_ref = math.sqrt((0.855 / math.pi) * math.sqrt(2.0 * 18.0))
+check("FX4: structure response carries the open-cavity waist w0^2 = (lambda/pi) sqrt(L (ROC - L)) in extra (scene reads it)",
+      abs(rg.extra["waist_um"] - w0_ref) < 1e-12 and rg.extra["stable"] is True
+      and resp("open_cavity", {"ROC_um": 2.0, "L_um": 5.0}, em=emo).extra["waist_um"] is None)
+rm = resp("micropillar", {}, em=em_d)
+check("FX4: micropillar response carries the quarter-wave layer thicknesses lambda/4n (scene reads them)",
+      abs(rm.extra["t_high_nm"] - em_d.lambda_nm / (4 * 3.5)) < 1e-9 and abs(rm.extra["t_low_nm"] - em_d.lambda_nm / (4 * 2.95)) < 1e-9
+      and abs(rm.extra["spacer_unit_nm"] - em_d.lambda_nm / 3.5) < 1e-9)
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_structures checks passed")

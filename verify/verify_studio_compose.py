@@ -287,7 +287,7 @@ def run_checks(tmp):
     check("9 GET /api/papers lists the card with cite, read_level, kinds, class counts, n items",
           row is not None and row["cite"] == paper.meta["cite"] and row["read_level"] == paper.meta["read_level"]
           and row["kinds"]["material"] == paper.device["material"]["kind"]
-          and row["n_items"] == len(paper.reproduce) and set(row["classes"]) == {"C", "M", "T", "P"}
+          and row["n_items"] == len(paper.reproduce) and set(row["classes"]) == {"C", "M", "T", "P", "R"}
           and row["last_outcome"] is None)
     g = j(c.get(f"/api/papers/{pid}"))
     check("9b GET /api/papers/<id> == the loaded paper (device, reported, series, reproduce, inputs_from_paper)",

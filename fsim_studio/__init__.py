@@ -27,10 +27,19 @@ _SEP = bytes(1)  # a single NUL separator between name and contents
 
 
 def _core_files() -> list:
-    """fsim_core/**/*.py plus fsim_core/compose/data/*.yaml, sorted by relative path."""
+    """fsim_core/**/*.py plus fsim_core/compose/data/*.yaml, sorted by relative path, plus the fit-parameter file
+    fit_bundle resolves (out/phase0/fit_params.json or the tracked snapshot), keyed "fit_params/<name>"."""
     core = ROOT / "fsim_core"
     files = list(core.rglob("*.py")) + list((core / "compose" / "data").glob("*.yaml"))
-    return sorted(((p.relative_to(core).as_posix(), p) for p in files), key=lambda t: t[0])
+    out = [(p.relative_to(core).as_posix(), p) for p in files]
+    try:
+        from fsim_core.fit_bundle import fit_params_path
+        fp = Path(fit_params_path())
+        if fp.is_file():
+            out.append((f"fit_params/{fp.name}", fp))
+    except Exception:                                     # noqa: BLE001  (hash must never break the server)
+        pass
+    return sorted(out, key=lambda t: t[0])
 
 
 def _core_signature() -> tuple:
@@ -39,8 +48,8 @@ def _core_signature() -> tuple:
 
 
 def fsim_core_hash() -> str:
-    """sha256 over every fsim_core/**/*.py source and fsim_core/compose/data/*.yaml
-    (sorted by relative path). Part of every
+    """sha256 over every fsim_core/**/*.py source, fsim_core/compose/data/*.yaml and the fit-parameter file
+    fit_bundle resolves (sorted by relative path). Part of every
     cache key, so a physics change invalidates cached results automatically.
     Memoized on the (name, mtime, size) signature of the sources, so an edit
     while the server runs produces the new hash (H14)."""

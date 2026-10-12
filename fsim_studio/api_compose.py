@@ -200,7 +200,7 @@ def paper_summary(paper, path) -> dict:
     meta = _pget(paper, "meta", {}) or {}
     device = _pget(paper, "device", {}) or {}
     repro = _pget(paper, "reproduce", []) or []
-    classes = {"C": 0, "M": 0, "T": 0, "P": 0}
+    classes = {"C": 0, "M": 0, "T": 0, "P": 0, "R": 0}
     for it in repro:
         c = it.get("class") if isinstance(it, dict) else None
         if c in classes:

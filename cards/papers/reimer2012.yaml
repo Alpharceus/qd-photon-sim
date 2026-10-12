@@ -46,11 +46,11 @@ reported:
   - {id: tau_X, observable: tau_ps, value: 1700.0, err: 100.0, tag: V, where: "Fig 4 caption (X lifetime 1.7 ns +/- 0.1 ns)"}
 reproduce:
   - item: extraction_corrected
-    class: M
+    class: R
     tol: {abs: 0.05}
     tol_reason: "no error printed; half the +/- 0.1 of brief section 6, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
     expect: pass
-    reason: "engine FX3a: model 0.378 vs 0.42 (within 0.05). The nanowire beta0 is now the upward collected fraction with the coherent mirror (R 0.30, antinode) and the new HE11 beta. Weak pass: mirror R 0.30 is the paper's own post-hoc choice to match 42 percent, taper_T 0.95 is a class value, and the paper's IQE 95 % / 4 % PDMS loss are not in the model; do not read as an independent prediction."
+    reason: "FX4: the bottom-mirror R = 0.30 was chosen by the paper itself so that its own theory matches 42 percent, so the comparison is model against the paper's tuned theory (class R, not a test); model 0.378"
   - item: g2_raw
     class: M
     tol: {abs: 0.1}
@@ -74,3 +74,4 @@ history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 10: extraction_raw removed from reproduce (kept in reported; same measurement as the corrected value, a raw pass was a cancellation of two gaps); tol_reason note that mirror R 0.30 was chosen by the paper to match 42 percent so a pass would not be independent; taper_mfr_nm left at the registry default (the paper does not state the taper output mode size in the extraction)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: coherent bottom mirror rate boost (1 + beta|r|) now applied (mirror_phase_ok added as V, paper states antinode placement): tau_X pass -> fail (model ~1700 -> 986 ps); extraction_corrected fail -> pass (model 0.26 -> 0.378, weak: R 0.30 chosen by paper)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: extraction_corrected class M -> R (mirror R 0.30 chosen by the paper to match its own theory); expect unchanged (pass)"}

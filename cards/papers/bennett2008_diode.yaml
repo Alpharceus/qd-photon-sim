@@ -53,10 +53,11 @@ reported:
 series: []
 reproduce:
   - item: hom_dc_reference
-    class: M
+    class: R
     tol: {abs: 0.002}
     tol_reason: "3.75 % is the textbook T2/2T1 evaluated from T1 and T2* of the same paper, so only the engine convention (gamma*_repo = 2/T2*, Lindblad overlap Gamma/(Gamma + gamma*)) is tested, not an independent measurement; 0.002 absolute (about 5 % of the value, three significant digits quoted)"
     expect: pass
+    reason: "FX4: 3.75 percent is the textbook T2/2T1 evaluated from the same paper's T1 and T2*, i.e. the paper's theory value (gamma* is entered from T2*), so the item only checks the engine convention (class R, not a test). Class T is not possible: hom_I is not a passthrough of an input; model 0.0373"
   - item: hom_corr_gated
     class: M
     tol: {k_sigma: 2}
@@ -66,3 +67,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b gated HOM (Gaussian gate, gate-displacement jitter)", note: "the gate is now a Gaussian window (drive.hom_gate_shape gauss, FWHM 31 ps centred at 50 ps) instead of a top-hat: hom_corr_gated model 0.736 -> 0.656 (closed form erfcx(gamma* sigma_g)), paper 0.64 +/- 0.04, expect fail -> pass; hom_dc_reference unchanged. Also removed the false 'M-3 multiplies eta_capture twice' wording of the I_uA source (eta_capture stays 1; no number moves)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_dc_reference class M -> R (theory value from the T1 and T2* that are inputs; convention check only); expect unchanged (pass)"}

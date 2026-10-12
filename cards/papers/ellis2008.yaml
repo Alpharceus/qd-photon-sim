@@ -52,6 +52,8 @@ reproduce:
     tol: {rel: 0.30}
     tol_reason: "brief 6: +/-30 % (the paper own cavity estimate 2.8 +/- 0.7 carries 25 %, and V and n are converted by us). Model F_P from the paper formula with the mid-Q is compared with the independently MEASURED rate enhancement 2.49"
     expect: pass
+    weak: true
+    weak_reason: "the ideal (unfitted, perfectly aligned) model F_P 2.19 lies below the measured 2.49 and passes only through rel 30 percent; the sign of the gap is the physics (ideal < measured is not expected) and the tolerance is wide"
   - item: tau_rad_res
     class: C
     tol: {rel: 0.05}
@@ -80,3 +82,4 @@ fits:
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b eta_capture fix", note: "the M-3 pulsed pump no longer multiplies eta_capture twice; workaround undone: I_uA 0.001125 uA (eta folded in) -> the paper-derived 0.75 uA (12 nA at 80 MHz = 937 electrons over 200 ps) and eta_capture 1.0 -> 0.0015 [E]; mu = 1.4 unchanged, so every ledger number is identical"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: F_P_measured flagged weak (model 2.19 < measured 2.49, rel 30 percent tol); expect unchanged (pass)"}

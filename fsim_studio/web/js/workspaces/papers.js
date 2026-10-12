@@ -25,6 +25,7 @@ const CLASS_INFO = {
   M: { label: "Unfitted", tip: "Unfitted comparison: the model was built from other inputs and then compared with this paper number. The only class that counts as a test." },
   T: { label: "Transcription", tip: "Transcription: the observable passes an input taken from this paper straight through, so it can only agree. It is not a test." },
   P: { label: "Prediction", tip: "Prediction: the paper reports no value for this observable. The model number is stated, not tested." },
+  R: { label: "Paper reference", tip: "Paper reference: the reported number is the paper's own theory or simulation (or was tuned by the paper), so the comparison is model against another model. It is shown, not counted as a test." },
 };
 
 const READ_INFO = {
@@ -63,10 +64,14 @@ function tolHuman(str) {
   return parts.length > 1 ? `${parts.join(" or ")} (whichever is larger)` : parts[0];
 }
 
-/** Items that are tests (class M) and how many of them the model agrees with. Calibration, transcription and prediction items are not tests. */
+/** Items that are tests (class M) and how many of them the model agrees with. Calibration, transcription, prediction and paper-reference (R)
+ *  items are not tests. Agreement counts the CENTRAL value within the tolerance only: "pass-envelope" (paper value inside the input
+ *  envelope but the central value misses) is counted apart as inRange, never as agreement. Weak passes are flagged in the ledger. */
 function agreement(items) {
   const tested = items.filter((i) => i.cls === "M");
-  return { tested: tested.length, agree: tested.filter((i) => i.outcome === "pass").length };
+  const agreed = tested.filter((i) => i.outcome === "pass");
+  return { tested: tested.length, agree: agreed.length, inRange: tested.filter((i) => i.outcome === "pass-envelope").length,
+    weak: agreed.filter((i) => i.weak).length };
 }
 
 const NARROW = window.matchMedia("(max-width: 1100px)");
@@ -141,7 +146,7 @@ function buildShell() {
   d.filters = h("div.pp-filters", { role: "group", "aria-label": "Filter the catalogue by material, structure or drive" });
   d.count = h("p.pp-count", { "aria-live": "polite" });
   d.key = h("p.pp-key", { hidden: true, title: "What an agreement is worth" },
-    h("b", "M"), " unfitted test", h("span.pp-key-sep", "·"), h("b", "C"), " calibration", h("span.pp-key-sep", "·"), h("b", "T"), " transcription", h("span.pp-key-sep", "·"), h("b", "P"), " prediction");
+    h("b", "M"), " unfitted test", h("span.pp-key-sep", "·"), h("b", "C"), " calibration", h("span.pp-key-sep", "·"), h("b", "T"), " transcription", h("span.pp-key-sep", "·"), h("b", "P"), " prediction", h("span.pp-key-sep", "·"), h("b", "R"), " paper reference");
   d.plaques = h("div.pp-plaques", skeleton("plaque", { lines: 4 }), skeleton("plaque", { lines: 4 }));
   // On a phone the catalogue folds behind "Papers (n)" and the chosen paper comes first; on desktop it is always open.
   d.catN = h("span.pp-cat-n");
@@ -290,7 +295,7 @@ function lastBadge(lo, id) {
 
 function classCounts(c) {
   return h("div.pp-classes", { role: "group", "aria-label": "Items per evidence class" },
-    ["M", "C", "T", "P"].map((k) => h("span.pp-cc", { class: c?.[k] ? "" : "is-zero", dataset: { cls: k }, title: `${c?.[k] || 0} ${CLASS_INFO[k].label.toLowerCase()} item(s). ${CLASS_INFO[k].tip}` },
+    ["M", "C", "T", "P", "R"].filter((k) => k !== "R" || c?.R != null).map((k) => h("span.pp-cc", { class: c?.[k] ? "" : "is-zero", dataset: { cls: k }, title: `${c?.[k] || 0} ${CLASS_INFO[k].label.toLowerCase()} item(s). ${CLASS_INFO[k].tip}` },
       h("span.pp-cc-k", k), h("span.pp-cc-n", String(c?.[k] || 0)))));
 }
 
@@ -323,7 +328,7 @@ function renderPick() {
     h("div.cp-top", h("div", h("h2.cp-title", "Choose a paper"))),
     h("p.pp-empty-body", "Open a plaque on the left. Reproduce runs the composed engine on the device built from that paper and fills the model column; nothing is run until you press it, except that an already-cached result for the same card bytes and engine is shown at once."),
     h("p.pp-empty-body", "Class badges say what an agreement is worth: ",
-      ...["M", "C", "T", "P"].map((k) => [classBadge(k), " "]), "Only M items are tests.")));
+      ...["M", "C", "T", "P", "R"].map((k) => [classBadge(k), " "]), "Only M items are tests, and only when the central model value is within the tolerance; a paper value that is merely inside the input envelope is shown as IN RANGE ONLY and is not counted.")));
 }
 
 async function openPaper(id) {
@@ -367,18 +372,21 @@ function classBadge(k) {
 function outcomeBadge(outcome) {
   const o = String(outcome || "error").toLowerCase();
   const spec = o === "pass" ? ["vb-pass", "check", "PASS"]
-    : o === "fail" ? ["vb-fail", "cross", "FAIL"]
-      : o === "unavailable" ? ["vb-info", "info", "UNAVAILABLE"]
-        : ["vb-fail", "warn", "ERROR"];
-  return h("span.vb.vb-sm.pp-outcome", { class: spec[0], dataset: { outcome: o } }, icon(spec[1], { size: 12 }), h("span.vb-word", spec[2]));
+    : o === "pass-envelope" ? ["vb-info pp-envelope", "info", "IN RANGE ONLY"]
+      : o === "fail" ? ["vb-fail", "cross", "FAIL"]
+        : o === "unavailable" ? ["vb-info", "info", "UNAVAILABLE"]
+          : ["vb-fail", "warn", "ERROR"];
+  const b = h("span.vb.vb-sm.pp-outcome", { class: spec[0], dataset: { outcome: o } }, icon(spec[1], { size: 12 }), h("span.vb-word", spec[2]));
+  if (o === "pass-envelope") b.title = "The central model value misses the tolerance; the paper value lies inside the model's input envelope only. Not counted as agreement.";
+  return b;
 }
 
 /** Outcome differs from the card's expectation: a split badge (outcome | LEDGER MISMATCH). */
 function mismatchBadge(outcome, expect) {
   const o = String(outcome || "error").toLowerCase();
-  const word = o === "pass" ? "PASS" : o === "fail" ? "FAIL" : o === "unavailable" ? "UNAVAILABLE" : "ERROR";
-  const ico = o === "pass" ? "check" : o === "unavailable" ? "info" : o === "fail" ? "cross" : "warn";
-  const half = o === "pass" ? "is-pass" : o === "unavailable" ? "is-info" : "is-fail";
+  const word = o === "pass" ? "PASS" : o === "pass-envelope" ? "IN RANGE ONLY" : o === "fail" ? "FAIL" : o === "unavailable" ? "UNAVAILABLE" : "ERROR";
+  const ico = o === "pass" ? "check" : o === "unavailable" || o === "pass-envelope" ? "info" : o === "fail" ? "cross" : "warn";
+  const half = o === "pass" ? "is-pass" : o === "unavailable" || o === "pass-envelope" ? "is-info" : "is-fail";
   return h("span.vb.vb-sm.vb-split.pp-outcome.pp-mismatch", {
     dataset: { outcome: o, mismatch: "1" }, role: "img",
     "aria-label": `${word}; ledger mismatch: the card expected ${String(expect).toUpperCase()}`,
@@ -542,6 +550,8 @@ function outcomeCell(r) {
   const why = [["Ledger reason", it.reason], ["Tolerance reason", it.tol_reason], ["Engine note", it.note]].filter(([, v]) => v);
   return h("td.pp-outcome-cell", { dataset: { match: mismatch ? "0" : "1", label: "Outcome" } },
     mismatch ? mismatchBadge(it.outcome, it.expect) : outcomeBadge(it.outcome),
+    it.weak && it.outcome === "pass" ? h("span.label-chip.pp-weak", { title: it.weak_reason || "weak pass", dataset: { weak: "1" } }, icon("warn", { size: 12 }), " WEAK PASS") : null,
+    it.weak && it.outcome === "pass" && it.weak_reason ? h("p.pp-note.pp-weak-why", it.weak_reason) : null,
     !mismatch && it.expect !== "pass" ? h("p.pp-note", `as the card expected (${it.expect})`) : null,
     why.length ? h("details.pp-more", h("summary", "why"), why.map(([k, v]) => h("p.pp-why", h("span.pp-why-k", k), v))) : null);
 }
@@ -575,7 +585,7 @@ function row(r) {
     h("th.pp-item", { scope: "row" },
       h("span.pp-item-obs", obsNode(obs, conv)),
       h("span.pp-item-id", r.id),
-      h("span.pp-item-meta", classBadge(r.cls), h("span.pp-item-kind", r.cls === "P" ? "prediction" : ser ? "series" : "scalar"))),
+      h("span.pp-item-meta", classBadge(r.cls), h("span.pp-item-kind", r.cls === "P" ? "prediction" : r.cls === "R" ? "paper reference" : ser ? "series" : "scalar"))),
     paperCell(r), modelCell(r), tolCell(r),
     outcomeCell(r), inputsCell(r));
 }
@@ -590,21 +600,24 @@ function renderSummary() {
   const n = items.length;
   const nMatch = items.filter((i) => i.match).length;
   const ledgerOk = n > 0 && nMatch === n;
-  const { tested, agree } = agreement(items);
+  const { tested, agree, inRange, weak } = agreement(items);
   const cnt = (o) => items.filter((i) => i.outcome === o).length;
   const rep = res.report || {};
   const status = !tested ? "info" : agree === tested ? "pass" : "fail";
   const word = !tested ? "NO TESTED ITEMS" : `MODEL AGREES ON ${agree} OF ${tested} TESTED ITEM${tested === 1 ? "" : "S"}`;
   const notTests = items.length - tested;
   const calib = items.filter((i) => i.cls === "C").length, pred = items.filter((i) => i.cls === "P").length, trans = items.filter((i) => i.cls === "T").length;
-  host.append(h("section.plaque.pp-plaque-sum", { class: `plaque-${status}`, dataset: { status, agree: String(agree), tested: String(tested) }, "aria-label": "Reproduce summary" },
+  const refs = items.filter((i) => i.cls === "R").length;
+  host.append(h("section.plaque.pp-plaque-sum", { class: `plaque-${status}`, dataset: { status, agree: String(agree), tested: String(tested), inRange: String(inRange), weak: String(weak) }, "aria-label": "Reproduce summary" },
     h("div.plaque-top",
       h("div.plaque-word", icon(status === "pass" ? "check" : status === "fail" ? "cross" : "info", { size: 18 }), h("span", word)),
       h("div.plaque-denom", h("span.k", "tested items agree"), h("span.v", tested ? `${agree} / ${tested}` : "0 / 0"))),
     h("div.plaque-reasons",
-      h("span.plaque-kv", h("span.k", "tested"), h("span.v", "unfitted (M) items only")),
-      notTests ? h("span.plaque-kv", h("span.k", "not tests"), h("span.v", [calib ? `${calib} calibrated` : "", trans ? `${trans} transcribed` : "", pred ? `${pred} predicted` : ""].filter(Boolean).join(" · "))) : null,
-      h("span.plaque-kv", h("span.k", "outcomes"), h("span.v", `${cnt("pass")} pass · ${cnt("fail")} fail · ${cnt("unavailable")} unavailable${cnt("error") ? ` · ${cnt("error")} error` : ""}`))),
+      h("span.plaque-kv", h("span.k", "tested"), h("span.v", "unfitted (M) items, central value within tolerance")),
+      inRange ? h("span.plaque-kv", { dataset: { role: "in-range" } }, h("span.k", "in range only"), h("span.v", `${inRange} tested item${inRange === 1 ? "" : "s"}: paper value inside the input envelope, central value misses (not counted)`)) : null,
+      weak ? h("span.plaque-kv", { dataset: { role: "weak" } }, h("span.k", "weak passes"), h("span.v", `${weak} of the ${agree} agreeing item${agree === 1 ? "" : "s"} cannot discriminate (flagged in the card)`)) : null,
+      notTests ? h("span.plaque-kv", h("span.k", "not tests"), h("span.v", [calib ? `${calib} calibrated` : "", trans ? `${trans} transcribed` : "", pred ? `${pred} predicted` : "", refs ? `${refs} paper reference${refs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · "))) : null,
+      h("span.plaque-kv", h("span.k", "outcomes"), h("span.v", `${cnt("pass")} pass · ${cnt("pass-envelope")} in range only · ${cnt("fail")} fail · ${cnt("unavailable")} unavailable${cnt("error") ? ` · ${cnt("error")} error` : ""}`))),
     // the ledger is a secondary line: it says the run reproduces what the card recorded, failures included
     h("p.pp-ledger-line", { class: ledgerOk ? "" : "is-off", dataset: { ledger: ledgerOk ? "ok" : "off" } },
       icon(ledgerOk ? "check" : "warn", { size: 14 }),

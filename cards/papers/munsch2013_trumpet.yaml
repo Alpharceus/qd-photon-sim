@@ -12,7 +12,7 @@ meta:
   summary: "InAs/GaAs dot (line 2 at 907.1 nm) in a 12 um GaAs photonic trumpet (bottom d 200-240 nm, alpha 6.5 deg, top 1.55 um) on an Au-SiO2 mirror, 5 K, pulsed above-band, NA 0.75: first-lens efficiency 0.75 +/- 0.1 (theory 0.89), beta 0.96, g2* 0.02"
   notes:
     - "LINE: line 2 (907.1 nm) is the biexciton and carries the headline 0.75 at saturation; lines 1 and 3 (exciton, 902.5 / 935.1 nm) give 0.61 / 0.41. The registry level scheme is an exciton: only beta x eta_out (geometry) is compared, which is line independent; the dot lifetime T1 of the lines is printed only inside Fig 4c (not in the text layer), so no lifetime item exists."
-    - "MIRROR: the paper's |r| = 0.95 is an AMPLITUDE modal reflectivity and its Eq. 1 includes the coherent standing-wave boost (1 + |r|)^2 / (1 + beta |r|). The engine's mirror_R is an incoherent POWER return (R = |r|^2 = 0.9025 entered) with no phase, so it cannot reproduce the paper's emitter-on-antinode enhancement; this is a documented model gap, not an input error."
+    - "MIRROR: the paper's |r| = 0.95 is an AMPLITUDE modal reflectivity and its Eq. 1 includes the coherent standing-wave boost (1 + |r|)^2 / (1 + beta |r|) for an emitter on an antinode (text p.3). The card enters the POWER reflectivity mirror_R = |r|^2 = 0.9025 and sets mirror_phase_ok = true (antinode placement stated by the paper), so the engine applies the coherent boost (beta/2)(1 + |r|)^2/(1 + beta|r|) and the rate factor 1 + beta|r|, i.e. the paper's Eq. 1 without T_Gauss. eta_theory and beta_design therefore compare the model with the paper's own theory (class R, not tests); only the measured eta_line2 is a comparison with data."
     - "NOT CARDED: T_Gauss values (0.93 at h 15 um, 0.71 for d2 = 1.55 um at NA 0.8) are Gaussian-mode transmission of the taper, a different quantity from the engine's HE11 far-field acceptance at the setup NA; T_HE11 > 0.994 for alpha < 5 deg is the taper_T upper bound only."
 device:
   T_K: {value: 5.0, unit: K, tag: V, where: "Fig 4 caption p.4 (micro-PL spectrum measured at T = 5 K)"}
@@ -25,8 +25,9 @@ device:
     params:
       d_nm: {range: [200.0, 240.0], unit: nm, tag: V, where: "text p.3 (bottom part of the trumpet has a diameter in the 200-240 nm range; design d1 = 240 nm)"}
       n_wire: {value: 3.45, unit: "1", tag: V, where: "text p.1 (GaAs, n = 3.45)"}
+      mirror_phase_ok: {value: true, unit: bool, tag: V, where: "text p.3 Eq. 1 (the emitter sits on an antinode of the standing wave in front of the gold-silica mirror; the coherent boost (1 + |r|)^2 / (1 + beta |r|) is the paper formula)"}
       taper_T: {range: [0.95, 0.994], unit: "1", tag: DR, where: "text p.2: T_HE11 > 0.994 for alpha < 5 deg and > 0.95 for alpha up to 15 deg; the fabricated alpha is 6.5 deg (text p.3), so between the two bounds"}
-      mirror_R: {value: 0.9025, unit: "1", tag: DR, where: "text p.3 (amplitude modal reflectivity |r| = 0.95 of the gold-silica mirror, Eq. 1); power R = |r|^2 = 0.9025, conversion mine (incoherent power return in the engine, see notes)"}
+      mirror_R: {value: 0.9025, unit: "1", tag: DR, where: "text p.3 (amplitude modal reflectivity |r| = 0.95 of the gold-silica mirror, Eq. 1); power R = |r|^2 = 0.9025, conversion mine (the engine takes the POWER R = |r|^2 and applies the coherent field boost with |r| = sqrt(R) because mirror_phase_ok is true)"}
       taper_mfr_nm: {range: [450.0, 775.0], unit: nm, tag: E, source: "top-facet mode-field radius is not stated; upper end = top facet radius 775 nm (d2 = 1.55 um, text p.3), lower end = 0.29 d2 class value; the Gaussian profile of the facet mode is only shown in Fig 4a"}
   drive:
     kind: above_band
@@ -51,24 +52,27 @@ reproduce:
     tol_reason: "2 sigma of the printed 0.1 (0.2); the paper's own theory limit is 0.89, so this is a loose check; written before the run"
     expect: pass
   - item: eta_theory
-    class: M
+    class: R
     tol: {abs: 0.10}
     tol_reason: "no error on a theory number; 0.10 absolute equals the paper's measurement error and the engine adapter is an HE11 + coherent-mirror approximation of the paper's eigenmode-expansion calculation; written before the run"
     expect: pass
-    reason: "engine FX3a: model 0.910 (envelope 0.819-0.944) vs the paper's own 0.89. The engine now has the coherent antinode boost (beta/2)(1 + |r|)^2/(1 + beta|r|) of Munsch Eq. 1 (mirror_phase_ok true) and a new HE11 beta (0.94). Weak test: the engine formula is the paper's own Eq. 1 without T_Gauss, so agreement mostly checks the beta estimator and the taper_mfr envelope, not an independent prediction."
+    reason: "FX4: 0.89 is the paper's own Eq. 1 theory limit (beta 0.96, |r| 0.95, T_Gauss 0.93), which the engine reproduces with the same formula, so this is model against the paper's theory (class R, not a test)"
   - item: beta_design
-    class: M
+    class: R
     tol: {abs: 0.05}
     tol_reason: "no error on a design value; the paper states beta > 0.9 over more than 100 nm, so 0.05 absolute around 0.96 is the width of that plateau; the card lambda and d differ from the design point (950 nm, 240 nm)"
     expect: pass
-    reason: "engine FX3a: model 0.9425 (envelope 0.9245-0.9508 over d 200-240 nm) vs 0.96 (0.9 plateau). The new HE11 beta estimator (module estimator with leaky-mode screening, X0 calibrated to the Bleuse 2011 peak ~0.95 [E]) reaches the plateau; weak test since the screening constant is calibrated to a ~0.95 peak of the same class of wire."
+    reason: "FX4: 0.96 is the paper's own design-point beta from its eigenmode-expansion theory, and the engine HE11 estimator has its screening constant calibrated to the Bleuse 2011 peak of the same wire class, so this is model against theory (class R, not a test)"
   - item: g2_star_line1
     class: M
     tol: {abs: 0.02}
     tol_reason: "no error printed; 0.02 absolute = the value itself: the model has no background and no APD response, so the model background-corrected g2 (g2_0:bg_corrected, which equals the intrinsic g2 here) only tests that a 3-10 ps above-band window gives a clean single-photon emitter (a weak test: ~1e-3)"
     expect: pass
+    weak: true
+    weak_reason: "tol abs 0.02 equals the paper value 0.02 and the model has no background or APD response (model ~1e-3): the test only shows a clean single-photon core"
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription; taper_mfr_nm now exists in the registry and is entered as an E range (not stated in the paper)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: new HE11 beta + coherent bottom mirror (mirror_phase_ok): eta_theory fail -> pass (model 0.75 -> 0.91), beta_design fail -> pass (model 0.817 -> 0.9425)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b background-corrected g2 convention", note: "g2_star_line1 (background-removed g2*) now compares g2_0:bg_corrected like for like; the card has no background channel, so the value equals the intrinsic g2 and does not move (0.000858, pass)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: eta_theory and beta_design class M -> R (paper theory numbers); g2_star_line1 flagged weak (tol = value); mirror_phase_ok true set explicitly (V, Eq. 1 antinode) because the engine default is now false; MIRROR note rewritten (the engine now applies the coherent boost)"}

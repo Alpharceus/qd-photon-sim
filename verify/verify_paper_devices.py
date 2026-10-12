@@ -6,7 +6,9 @@ For every card in cards/papers (files starting with "_" skipped) it validates th
 runs the composed engine at the paper's device and prints one line per ledger item. Exit 0 iff every
 card passes schema + class rules AND every outcome equals the card's `expect` (known gaps are recorded
 as `expect: fail|unavailable` with a reason; any flip in either direction breaks the run for review).
-Only class M items count as tests (printed as "M tests: x/y pass").
+Only class M items count as tests; the honest count is "M tests (central within tolerance): x/y" -- a paper value
+that is only inside the input envelope (outcome pass-envelope) is NOT a pass, and class R (paper theory /
+simulation reference) is never a test. Weak passes (`weak: true` in the ledger) are counted separately.
 """
 from __future__ import annotations
 
@@ -41,7 +43,8 @@ def item_line(pid: str, r) -> str:
         what = f"prediction model {_num(r.model)}"
     tol = f" tol {r.tol_str}" if r.tol_str else ""
     why = f" -- {r.note}" if r.note and r.outcome in ("unavailable", "error") else ""
-    return (f"{pid} {r.id} {r.cls} {what}{tol} {r.outcome.upper()} "
+    weak = f" [WEAK: {r.weak_reason}]" if r.weak and r.outcome == "pass" else ""
+    return (f"{pid} {r.id} {r.cls} {what}{tol} {r.outcome.upper()}{weak} "
             f"(expect {r.expect}) {'MATCH' if r.match else 'MISMATCH'}{why}")
 
 
@@ -99,7 +102,9 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
             reports = list(ex.map(_run_card, [p.path for p in loaded]))
     else:
         reports = [PP.reproduce(p) for p in loaded]
-    m_n = m_pass = 0
+    m_n = m_pass = m_env = m_weak = 0
+    r_tot = {o: 0 for o in PP.OUTCOMES}
+    c_tot = {c: 0 for c in PP.CLASSES}
     for p, rep in zip(loaded, reports):
         for r in rep.items:
             total += 1
@@ -109,11 +114,23 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
             print(f"{p.id} note: central run invalid/unavailable: {'; '.join(rep.invalid_reasons)}")
         summ = rep.class_summary()
         print(f"{p.id} classes: " + ", ".join(
-            f"{c}={s['n']} (pass {s['pass']}, fail {s['fail']}, unavail {s['unavailable']}, err {s['error']})"
+            f"{c}={s['n']} (pass {s['pass']}, envelope {s['pass-envelope']}, fail {s['fail']}, "
+            f"unavail {s['unavailable']}, err {s['error']})"
             for c, s in summ.items() if s["n"]))
         m_n += summ["M"]["n"]
         m_pass += summ["M"]["pass"]
-    print(f"M tests: {m_pass}/{m_n} pass")
+        m_env += summ["M"]["pass-envelope"]
+        m_weak += sum(1 for r in rep.items if r.cls == "M" and r.outcome == "pass" and r.weak)
+        for c in PP.CLASSES:
+            c_tot[c] += summ[c]["n"]
+        for o in PP.OUTCOMES:
+            r_tot[o] += summ["R"][o]
+    print(f"M tests (central within tolerance): {m_pass}/{m_n}")
+    print(f"M pass-envelope (paper value inside the input envelope only, not a pass): {m_env}")
+    print(f"M weak passes (flagged weak in the ledger, included in the {m_pass} above): {m_weak}")
+    print(f"R paper theory/simulation references (not tests): {c_tot['R']} (pass {r_tot['pass']}, "
+          f"envelope {r_tot['pass-envelope']}, fail {r_tot['fail']}, unavail {r_tot['unavailable']})")
+    print("per-class item counts: " + ", ".join(f"{c}={c_tot[c]}" for c in PP.CLASSES))
     print(f"{matched}/{total} paper-device checks matched ledger")
     return exit_code(reports, schema_ok=schema_fail == 0)
 
@@ -201,6 +218,41 @@ def self_test() -> int:
     check("ranged input: paper brightness lies inside the model [min,max]",
           by["brightness"].lo < by["brightness"].paper < by["brightness"].hi
           and by["brightness"].lo < by["brightness"].hi)
+    be = by["brightness_env"]
+    check("FX4: central misses the tolerance but the paper value is inside [min,max] -> pass-envelope (not pass)",
+          be.outcome == "pass-envelope" and be.lo < be.paper < be.hi and abs(be.model - be.paper) > 2 * be.err
+          and be.match)
+    summ = rep.class_summary()
+    check("FX4: pass-envelope is not counted in the M pass count", summ["M"]["pass"] == 2 and summ["M"]["pass-envelope"] == 1
+          and summ["M"]["n"] == 4, str(summ["M"]))
+    check("FX4: class R item is reported, counted as R and not as an M test",
+          by["g2_theory"].cls == "R" and by["g2_theory"].outcome == "pass" and summ["R"]["n"] == 1)
+
+    def weak_no_reason(d):
+        for e in d["reproduce"]:
+            if e["item"] == "g2":
+                e["weak"] = True
+    rejected("FX4: weak: true without weak_reason is rejected", weak_no_reason, "weak_reason")
+
+    def env_expect_pass(d):
+        for e in d["reproduce"]:
+            if e["item"] == "brightness_env":
+                e["expect"] = "pass"
+                e.pop("reason", None)
+    d_e = copy.deepcopy(raw)
+    env_expect_pass(d_e)
+    rep_e = PP.reproduce(PP.paper_from_dict(d_e, stem="_fixture"))
+    check("FX4: ledger expecting pass on an envelope-only item mismatches (an envelope is not a pass)",
+          not rep_e.matched and exit_code([rep_e]) == 1)
+
+    wk = copy.deepcopy(raw)
+    for e in wk["reproduce"]:
+        if e["item"] == "g2":
+            e["weak"], e["weak_reason"] = True, "synthetic weak pass"
+    rep_w = PP.reproduce(PP.paper_from_dict(wk, stem="_fixture"))
+    gw = {r.id: r for r in rep_w.items}["g2"]
+    check("FX4: weak flag and reason carried on the result", gw.weak and gw.weak_reason == "synthetic weak pass"
+          and "[WEAK: synthetic weak pass]" in item_line("_fixture", gw))
     check("known gap is recorded as expect fail and is a fail", by["tau_scalar"].outcome == "fail"
           and by["tau_scalar"].match)
     check("P item reports a model number and no comparison",

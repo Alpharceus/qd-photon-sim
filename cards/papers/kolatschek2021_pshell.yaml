@@ -67,6 +67,8 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.01}
     tol_reason: "paper 0.0115 +/- 0.0002 is a fit value whose own scatter across pump powers is 0.01-0.02, so 0.01 absolute; the p-shell scheme has no re-excitation, so the model should give a small g2 with no background or fit envelope"
     expect: pass
+    weak: true
+    weak_reason: "model g2 0.0019 is 6x below the paper 0.0115; abs 0.01 tolerance (plus the fit scatter 0.01-0.02) makes any g2 < 0.02 pass, so the test cannot discriminate"
   - item: rate_4K
     class: M
     tol: {rel: 0.5}
@@ -90,3 +92,4 @@ history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}

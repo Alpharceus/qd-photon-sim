@@ -25,7 +25,7 @@ estimate / class range, [A] assumption.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import numpy as np
@@ -182,16 +182,24 @@ def _path(name):
     return f"structure.{name}"
 
 
+@dataclass(frozen=True)
+class StructureResponseX(StructureResponse):
+    """StructureResponse plus `extra`: geometry numbers the structure itself derived (open-cavity waist, DBR layer
+    thicknesses) so the 3D scene reads them from the response instead of re-deriving them (FX4, final review 10)."""
+    extra: dict = field(default_factory=dict)
+
+
 def _cavity_resp(entry, em, *, F_P, kappa_meV, detuning_meV, g_meV=None, F_bg=1.0, beta0=0.0,
-                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None, tag_floor=""):
+                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None, tag_floor="", extra=None):
     E_mode = em.E_X_meV - detuning_meV
     if g_meV is None and kappa_meV:
         g_meV = g_from_purcell(F_P, kappa_meV, em.gamma0_ns)
-    return StructureResponse(F_P=float(F_P), kappa_meV=None if kappa_meV is None else float(kappa_meV),
+    return StructureResponseX(F_P=float(F_P), kappa_meV=None if kappa_meV is None else float(kappa_meV),
                              E_mode_meV=float(E_mode), g_meV=None if g_meV is None else float(g_meV),
                              F_bg=float(F_bg), beta0=float(beta0), eta_out=float(eta_out),
                              eta_out_fn=eta_out_fn, pol_factor=float(pol_factor),
-                             notes=tuple(notes), inputs=dict(inputs or {}), tag_floor=tag_floor)
+                             notes=tuple(notes), inputs=dict(inputs or {}), tag_floor=tag_floor,
+                             extra=dict(extra or {}))
 
 
 _COMMON_NOTE_EFFNA = ("eta_out includes the far-field/NA collection at the setup NA; "
@@ -276,7 +284,8 @@ def _micropillar_calc(v, em):
     eo = v.f("eta_out")
     if eo >= 0:
         eta_mirror = eo
-    return dict(lam=lam, n_c=n_c, L_pen_nm=L_pen, L_eff_um=L_eff_um, V_um3=V_um3, Tt=Tt, Tb=Tb,
+    return dict(t_high_nm=lam / (4.0 * n_h), t_low_nm=lam / (4.0 * n_l), spacer_unit_nm=lam / n_c,
+                lam=lam, n_c=n_c, L_pen_nm=L_pen, L_eff_um=L_eff_um, V_um3=V_um3, Tt=Tt, Tb=Tb,
                 Q_planar=Qpl, Q_sw=Qsw, Q_calc=Qcalc, Q=Q, eta_mirror=eta_mirror, w0=w0,
                 V_norm=V_um3 / (lam * 1e-3 / n_c) ** 3)
 
@@ -307,7 +316,9 @@ def _micropillar(self, vals, em, T_K, NA):
               "beta0": _path("beta0"), "F_bg": _path("F_bg")}
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=v.pos("F_bg"),
                         beta0=v.frac("beta0"), eta_out=fn(NA), eta_out_fn=fn, pol_factor=1.0,
-                        notes=notes, inputs=inputs, tag_floor="E")           # dbr.penetration_depth, n_c = n_high [E]
+                        notes=notes, inputs=inputs, tag_floor="E",           # dbr.penetration_depth, n_c = n_high [E]
+                        extra={"t_high_nm": c["t_high_nm"], "t_low_nm": c["t_low_nm"],
+                               "spacer_unit_nm": c["spacer_unit_nm"], "w0_um": c["w0"], "L_eff_um": c["L_eff_um"]})
 
 
 MICROPILLAR = _Struct(
@@ -374,11 +385,23 @@ def _open_cavity(self, vals, em, T_K, NA):
                  "eta_out = T_top/(T_top + T_bot + loss) [DR]; fibre / mode-match is not included (enter via eta_out in direct mode)"]
         inputs = {"F_P": _path("ROC_um"), "kappa_meV": _path("L_um"), "eta_out": _path("T_top"),
                   "E_mode_meV": _path("detuning_ueV")}
+    R_g, L_g = v.f("ROC_um"), v.f("L_um")
+    lam_g = em.lambda_nm * 1e-3
+    waist = math.sqrt((lam_g / math.pi) * math.sqrt(L_g * (R_g - L_g))) if 0.0 < L_g < R_g else None
+    pol_d = v.frac("pol_dipole")
+    if pol_d < 1.0:
+        F_P *= pol_d
+        g *= math.sqrt(pol_d)
+        notes.append(f"pol_dipole = {pol_d:.4g}: dipole cos^2 folded into g^2 (g x sqrt) and F_P [DR]")
+    notes.append("pol_collect is a brightness-only collection factor (response pol_factor); the dipole alignment pol_dipole "
+                 "is in g^2 [FX4]")
     notes.append("g is returned so the regime test can compare 4g with kappa + Gamma; large g -> strong coupling (JC)")
-    inputs.update({"F_bg": _path("F_bg"), "beta0": _path("beta0"), "pol_factor": _path("pol_factor")})
+    inputs.update({"F_bg": _path("F_bg"), "beta0": _path("beta0"), "pol_factor": _path("pol_collect"),
+                   "F_P": inputs["F_P"] + "+" + _path("pol_dipole"), "g_meV": inputs.get("g_meV", inputs["F_P"]) + "+" + _path("pol_dipole")})
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, g_meV=g, F_bg=v.pos("F_bg"),
-                        beta0=v.frac("beta0"), eta_out=eta, pol_factor=v.frac("pol_factor"),
-                        notes=notes, inputs=inputs)
+                        beta0=v.frac("beta0"), eta_out=eta, pol_factor=v.frac("pol_collect"),
+                        notes=notes, inputs=inputs,
+                        extra={"waist_um": waist, "stable": waist is not None})
 
 
 OPEN_CAVITY = _Struct(
@@ -401,7 +424,12 @@ OPEN_CAVITY = _Struct(
         _p("eta_out", "1", 0.5, 0.0, 1.0, help="Mode-to-detector outcoupling incl. fibre match (direct mode).", visible_if={"mode": "direct"}),
         _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help="Dot minus mode energy; positive = dot above the mode."),
         _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
-        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Polarisation factor (mode splitting / dipole alignment)."),
+        _p("pol_collect", "1", 1.0, 0.0, 1.0,
+           help="Polarisation collection factor (brightness only): fraction of the cavity output reaching the detector in the "
+                "detected polarisation (mode splitting / analyser); it does not change the dot-cavity coupling."),
+        _p("pol_dipole", "1", 1.0, 0.0, 1.0,
+           help="Dipole alignment cos^2(angle(dipole, cavity field)): scales g^2 (and F_P) of the dot-cavity coupling; "
+                "g -> g sqrt(pol_dipole). 1 = aligned.", group="advanced"),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background decay rate in units of Gamma0."),
     ),
     refs=(_REF_TOMM, _REF_PURCELL), eta_hint=(0.2, 0.7), viz="open_cavity", fn=_open_cavity)
@@ -685,7 +713,7 @@ PHOTONIC_NANOWIRE = _Struct(
         _p("taper_T", "1", 0.95, 0.0, 1.0, tag="E", source="Bleuse 2011 / Claudon 2010 class 0.9-0.95 [E]", help="Taper transmission."),
         _p("mirror_R", "1", 0.9, 0.0, 1.0, tag="E", source="bottom-mirror class [E]; Munsch 2013 |r| = 0.95 -> R = 0.9025 [V]",
            help="Bottom-mirror POWER reflectivity R = |r|^2 (the field reflectivity |r| = sqrt(R) sets the coherent boost)."),
-        _p("mirror_phase_ok", "bool", True, tag="A", source="emitter placed on a field antinode, as designed in Munsch 2013 [A]",
+        _p("mirror_phase_ok", "bool", False, tag="A", source="dot-mirror phase unknown unless the paper states antinode placement: incoherent power return [A] (FX4; Munsch 2013 designs an antinode, set True for such devices)",
            help="True: the dot sits on a standing-wave antinode (rate x (1 + beta|r|), upward fraction (beta/2)(1 + |r|)^2/(1 + beta|r|)). "
                 "False: phase unknown, incoherent power return (1 + R)/2.", sweepable=False),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="E", source="Gamma_HE11/Gamma_0 ~ 1; < 1 for leaky-mode inhibition [E]",

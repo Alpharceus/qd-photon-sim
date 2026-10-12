@@ -535,8 +535,16 @@ def _derive(c: Context) -> dict:
         why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
     eps = float(_read(c, "setup", "eps_int", 0.0))
     if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
-        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2)
+        # FX4: the overlap I is the SIGNAL stream's, so rho^2 = (1 - g2_raw)/(1 - g2_signal) must use the signal g2 (before
+        # the drive-embedded bg_frac); g2_0 already contains that background and would double-count it (final review 1).
+        g2_sig = float(res.extra.get("g2_signal", g2))
+        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2_sig)
         d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
+        # FX4: a corrected visibility above 1 is outside the physical (single-photon M_s) range (final review 6)
+        if d["hom_V_corr"] > 1.0 + 1e-6:          # 1e-6 = the solvers' Richardson HOM tolerance (numerical noise of an ideal emitter)
+            d["hom_V_corr"] = NAN
+            why["hom_V_corr"] = ("corrected visibility > 1: engine's multi-photon convention differs from the "
+                                 "paper's M_s")
     else:
         d["hom_V_raw"] = d["hom_V_corr"] = NAN
     if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0:

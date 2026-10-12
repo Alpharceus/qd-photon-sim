@@ -45,17 +45,22 @@ reported:
 series: []
 reproduce:
   - item: g2_raw_lying
-    class: M
+    class: C
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.04 (0.08); the background fraction is taken from the paper's own spectrum (rho 0.92) and the paper's Eq. 5 inverts the same mixing, so a pass checks the bookkeeping plus a clean single-photon core, not an independent mechanism; IRF and dark counts are not modelled"
     expect: pass
+    reason: "FX4: bg_frac = 1 - rho is taken from the paper's own spectrum and the raw g2 follows from the same mixing law (Eq. 5 inverts it), so g2_raw_lying is a transcription of rho, a calibration check not an unfitted test; model 0.154 vs 0.20 +/- 0.04"
   - item: g2_corr_lying
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.04 (0.08); the model value is g2_0:bg_corrected, the paper's Eq. 5 applied to the model raw g2 with rho = 0.92, which returns the clean single-photon core of a two-level cw above-band emitter (~0), so this checks that the corrected paper value is consistent with an ideal emitter (weak test)"
     expect: pass
-fits: []
+    weak: true
+    weak_reason: "the model background-corrected g2 is the exact inverse of the mixing law and returns ~0; tol 2 sigma of 0.04 accepts any value below 0.14, so the test cannot discriminate"
+fits:
+  - {param: drive.bg_frac, fitted_to: [g2_raw_lying]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b background-corrected g2 convention", note: "g2_corr_lying now compares g2_0:bg_corrected = (g2_raw - (1 - rho^2))/rho^2 (rho = 1 - bg_frac = 0.92) instead of the intrinsic g2, which already contained the bg_frac mixing (0.1536): model 0.154 -> 0 (the clean core), paper 0.06 +/- 0.04, expect fail -> pass; g2_raw_lying unchanged"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review (tol_reason correction, no tol change): g2_corr_lying tol_reason says the intrinsic g2 of a two-level cw emitter is ~0; the engine intrinsic g2 includes the bg_frac mixing (1 - rho^2 = 0.1536 at bg_frac 0.08), so the model-vs-paper comparison is a convention gap; the existing reason text already states this"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_raw_lying class M -> C with fits (drive.bg_frac from the paper's rho); g2_corr_lying flagged weak (inverse returns 0, tol accepts anything below 0.14); expects unchanged (pass)"}

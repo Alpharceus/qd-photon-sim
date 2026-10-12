@@ -58,7 +58,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "brief section 6: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
-    expect: pass
+    expect: pass-envelope
+    reason: "FX4: central model 0.789 misses 0.03 +/- 0.02 by far; the paper value lies inside the input envelope [0.0036, 26] only, which spans four orders of magnitude, so it is not a pass"
   - item: inversion_SUPER_pred
     class: P
     observable: inversion
@@ -72,3 +73,4 @@ history:
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: structure -> bulk_planar (200 ps measured in pillar, no Purcell on top); tau_decay -> class C + fit on tau_bare_ns; fwhm1/2_ps -> 2.53 ps DR with rect shape (Methods Eq 4-5, 0.923 lambda^2/(pi c t_p)); area1/2_pi stay E ranges (Eq 6 needs the DBR field ratio F_j from ref 27, not given)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_SUPER expect pass -> pass-envelope: the paper value is inside the input envelope [0.0036, 26] only (central 0.789); an envelope of that width cannot discriminate, so it is no longer counted as a pass"}

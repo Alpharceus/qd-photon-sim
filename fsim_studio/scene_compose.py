@@ -6,7 +6,7 @@ builders micropillar | open_cavity | bullseye | phc_waveguide | phc_cavity | mes
 unsupported structure kind, or a spec that does not resolve, gives the fallback descriptor
 (variant/builder "fallback2d"): the front end then shows the existing 2D view.
 
-Three-layer rule (as scene.py): this module only reads the registries, resolves the spec's leaves
+Three-layer rule (as scene.py): this module only reads the registries and the structure response's `extra` geometry (FX4), resolves the spec's leaves
 (`compose.params.resolve_leaf` / `central`) and does unit-only arithmetic; the browser never
 computes physics.  Numbers in `geometry` are one of
 
@@ -31,6 +31,7 @@ import math
 
 from fsim_core.compose import registry as _registry
 from fsim_core.compose.params import central, resolve_leaf
+from fsim_core.compose.spec import T_K_SPEC
 
 SCHEMA = "fsim.scene/1"
 FALLBACK = "fallback2d"
@@ -150,6 +151,22 @@ def _resolve_block(axis, blk, entry):
     return out
 
 
+def _structure_extra(spec, sent, sblk, mblk):
+    """The structure's own derived geometry numbers (StructureResponse.extra, FX4): built through the registry's
+    material.build -> structure.response chain at the spec's central values, so the scene never re-derives them."""
+    ment = _registry.get("material", mblk.get("kind"))
+    T = spec.get("T_K")
+    T_K = 5.0
+    try:
+        T_K = float(central(resolve_leaf(T, T_K_SPEC, "T_K")))
+    except Exception:
+        pass
+    mv = {k: v[0] for k, v in _resolve_block("material", mblk, ment).items()}
+    sv = {k: v[0] for k, v in _resolve_block("structure", sblk, sent).items()}
+    em = ment.build(mv, T_K)
+    return dict(getattr(sent.response(sv, em, T_K, 0.75), "extra", {}) or {})
+
+
 def _false_colour(lam):
     return bool(lam is not None and lam > 700.0)
 
@@ -190,7 +207,7 @@ def _layer(name, t_nm, role, tag, source, n=None, material=""):
 
 # ---------------------------------------------------------------- per-kind descriptors
 
-def _micropillar(vals, lam, S):
+def _micropillar(vals, lam, S, ex):
     d_um = vals["d_um"][0]
     n_top, n_bot = int(vals["N_top"][0]), int(vals["N_bot"][0])     # registry: fractional counts truncated
     nh, nl = vals["n_high"][0], vals["n_low"][0]
@@ -200,11 +217,11 @@ def _micropillar(vals, lam, S):
     S.reg("n_high", nh, vals["n_high"][1], "structure.n_high")
     S.reg("n_low", nl, vals["n_low"][1], "structure.n_low")
     S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
-    t_h, t_l = lam / (4.0 * nh), lam / (4.0 * nl)
-    S.derived("t_high_nm", t_h, ["material.lambda_nm", "structure.n_high"], "nm", "quarter wave lambda/4n")
-    S.derived("t_low_nm", t_l, ["material.lambda_nm", "structure.n_low"], "nm", "quarter wave lambda/4n")
+    t_h, t_l = float(ex["t_high_nm"]), float(ex["t_low_nm"])       # from the structure response (FX4)
+    S.derived("t_high_nm", t_h, ["material.lambda_nm", "structure.n_high"], "nm", "quarter wave lambda/4n (structure response)")
+    S.derived("t_low_nm", t_l, ["material.lambda_nm", "structure.n_low"], "nm", "quarter wave lambda/4n (structure response)")
     order = S.disp("micropillar", "cavity_order")
-    spacer = order * lam / nh
+    spacer = order * float(ex["spacer_unit_nm"])
     S.derived("spacer_nm", spacer, ["material.lambda_nm", "structure.n_high"], "nm", "cavity order x lambda/n_high")
     S.disp("micropillar", "dot_frac")
     sub = S.disp("micropillar", "substrate_um")
@@ -221,7 +238,7 @@ def _micropillar(vals, lam, S):
     return layers, labels, ["d_um", "N_top", "N_bot", "n_high", "n_low", "lambda_nm"]
 
 
-def _open_cavity(vals, lam, S):
+def _open_cavity(vals, lam, S, ex):
     roc, L = vals["ROC_um"][0], vals["L_um"][0]
     S.reg("ROC_um", roc, vals["ROC_um"][1], "structure.ROC_um")
     S.reg("L_um", L, vals["L_um"][1], "structure.L_um")
@@ -241,11 +258,11 @@ def _open_cavity(vals, lam, S):
     S.geometry["stable"] = bool(stable)
     S.src["stable"] = {"tag": "DR", "display_default": False, "kind": "derived", "from": ["structure.ROC_um", "structure.L_um"],
                        "unit": "", "note": "plano-concave stability 0 < L < ROC"}
-    if stable:
-        w0 = math.sqrt(lam_um / math.pi * math.sqrt(L * (roc - L)))
+    if stable and ex.get("waist_um") is not None:
+        w0 = float(ex["waist_um"])                    # from the structure response (FX4)
         zr = math.pi * w0 * w0 / lam_um
         S.derived("waist_um", w0, ["material.lambda_nm", "structure.L_um", "structure.ROC_um"], "um",
-                  "TEM00 waist on the planar mirror, w0^2 = (lambda/pi) sqrt(L (ROC - L))")
+                  "TEM00 waist on the planar mirror, w0^2 = (lambda/pi) sqrt(L (ROC - L)) (structure response)")
         S.derived("rayleigh_um", zr, ["waist_um", "material.lambda_nm"], "um", "z_R = pi w0^2 / lambda")
     else:
         S.geometry["waist_um"] = None
@@ -445,9 +462,9 @@ def describe(spec, display=None) -> dict:
         vals = _resolve_block("structure", sblk, sent)
         S = _Src()
         if builder == "micropillar":
-            layers, labels, keys = _micropillar(vals, lam, S)
+            layers, labels, keys = _micropillar(vals, lam, S, _structure_extra(spec, sent, sblk, mblk))
         elif builder == "open_cavity":
-            layers, labels, keys = _open_cavity(vals, lam, S)
+            layers, labels, keys = _open_cavity(vals, lam, S, _structure_extra(spec, sent, sblk, mblk))
         elif builder == "bullseye":
             layers, labels, keys = _bullseye(vals, lam, S)
         elif builder == "phc_waveguide":

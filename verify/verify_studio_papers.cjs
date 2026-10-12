@@ -123,10 +123,10 @@ async function getJSON(url) {
         check("table rows == reproduce items", rowN === detail.reproduce.length, `${rowN} vs ${detail.reproduce.length}`);
         const badge = await page.evaluate(() => [...document.querySelectorAll(".pp-table tbody tr")].map((tr) => {
           const o = tr.querySelector(".pp-outcome");
-          return !!(o && o.querySelector("svg") && /PASS|FAIL|UNAVAILABLE|ERROR/.test(o.textContent));
+          return !!(o && o.querySelector("svg") && /PASS|IN RANGE ONLY|FAIL|UNAVAILABLE|ERROR/.test(o.textContent));
         }));
         check("every outcome badge shows icon + word", badge.length > 0 && badge.every(Boolean));
-        const cls = await page.evaluate(() => [...document.querySelectorAll(".pp-table tbody tr")].every((tr) => /^[CMTP]/.test(tr.querySelector(".pp-cls")?.textContent || "") && tr.querySelector(".pp-cls")?.title));
+        const cls = await page.evaluate(() => [...document.querySelectorAll(".pp-table tbody tr")].every((tr) => /^[CMTPR]/.test(tr.querySelector(".pp-cls")?.textContent || "") && tr.querySelector(".pp-cls")?.title));
         check("every row has a class badge with a tooltip", cls);
         const clsIn = await page.evaluate(() => [...document.querySelectorAll(".pp-table tbody tr")].every((tr) => tr.querySelector("th.pp-item .pp-cls") && !tr.querySelector("td .pp-cls")) && [...document.querySelectorAll(".pp-table tbody .pp-cls")].every((b) => { const bg = getComputedStyle(b).backgroundColor; return bg === "rgba(0, 0, 0, 0)" || bg === "transparent"; }));
         check("the class chip is an outline badge inside the Item cell", clsIn);
@@ -158,6 +158,21 @@ async function getJSON(url) {
           return !o || !o.classList.contains("pp-mismatch") || /LEDGER MISMATCH/.test(o.textContent);
         }));
         check("a ledger mismatch is a labelled split badge", mm);
+        // FX4: pass-envelope is its own outline badge and is not counted in "MODEL AGREES ON k OF N"
+        const envInfo = await page.evaluate(() => ({
+          envRows: [...document.querySelectorAll(".pp-table tbody tr[data-outcome='pass-envelope']")].map((tr) => ({ cls: tr.dataset.cls, txt: tr.querySelector(".pp-outcome")?.textContent || "", filled: getComputedStyle(tr.querySelector(".pp-outcome")).backgroundColor })),
+          mPass: [...document.querySelectorAll(".pp-table tbody tr[data-cls='M'][data-outcome='pass']")].length,
+          mAll: [...document.querySelectorAll(".pp-table tbody tr[data-cls='M']")].length,
+          mEnv: [...document.querySelectorAll(".pp-table tbody tr[data-cls='M'][data-outcome='pass-envelope']")].length,
+          ag: Number(document.querySelector(".pp-plaque-sum")?.dataset.agree), te: Number(document.querySelector(".pp-plaque-sum")?.dataset.tested),
+          inr: Number(document.querySelector(".pp-plaque-sum")?.dataset.inRange),
+          rRows: [...document.querySelectorAll(".pp-table tbody tr[data-cls='R']")].map((tr) => tr.querySelector(".pp-item-kind")?.textContent),
+        }));
+        check("FX4: the plaque counts only central-within-tolerance M passes; in-range-only items are counted apart",
+          envInfo.ag === envInfo.mPass && envInfo.te === envInfo.mAll && envInfo.inr === envInfo.mEnv, JSON.stringify({ ag: envInfo.ag, mPass: envInfo.mPass, te: envInfo.te, inr: envInfo.inr, mEnv: envInfo.mEnv }));
+        check("FX4: a pass-envelope outcome shows the outline badge 'IN RANGE ONLY' (never a filled PASS)",
+          envInfo.envRows.every((r) => /IN RANGE ONLY/.test(r.txt) && !/^PASS/.test(r.txt.trim()) && (r.filled === "rgba(0, 0, 0, 0)" || r.filled === "transparent")), JSON.stringify(envInfo.envRows));
+        check("FX4: class R items are labelled 'paper reference'", envInfo.rRows.every((t) => /paper reference/.test(t || "")), JSON.stringify(envInfo.rRows));
         check("summary plaque shows n / N", /\d+ \/ \d+/.test(await page.locator("#workspace .pp-plaque-sum").innerText()));
         if (hasSeries) {
           await page.waitForSelector("#workspace .pp-ov .js-plotly-plot", { timeout: 30000 }).catch(() => {});
@@ -277,6 +292,41 @@ async function getJSON(url) {
       await page.waitForTimeout(800);
       check("Open in Composer navigates to #/compose", page.url().endsWith("#/compose"), page.url());
     }
+
+    // FX4: exercise the pass-envelope / weak / paper-reference rendering on cards that have them (ledger-driven, no physics pinned)
+    const fx4 = async (id, want) => {
+      const det = await getJSON(`/api/papers/${id}`);
+      const led = det.reproduce || [];
+      if (!led.some(want.ledger)) return check(`FX4 ${id}: card has the expected ledger entries`, false, "ledger lacks them");
+      await page.goto(`${BASE}/#/papers/${id}`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector("#workspace .pp-reproduce", { timeout: 20000 });
+      await page.waitForSelector('#workspace[data-ready="1"]', { timeout: 30000 });
+      await page.locator("#pp-reproduce").click();
+      await page.waitForSelector('#workspace .pp-main[data-state="done"]', { timeout: 120000 });
+      const got = await page.evaluate(() => ({
+        env: [...document.querySelectorAll(".pp-table tbody tr[data-outcome='pass-envelope']")].map((tr) => ({ cls: tr.dataset.cls, txt: tr.querySelector(".pp-outcome")?.textContent || "", bg: getComputedStyle(tr.querySelector(".pp-outcome")).backgroundColor })),
+        weak: [...document.querySelectorAll(".pp-table tbody tr .pp-weak")].map((e) => e.textContent.trim()),
+        refs: [...document.querySelectorAll(".pp-table tbody tr[data-cls='R']")].map((tr) => tr.querySelector(".pp-item-kind")?.textContent),
+        mPass: document.querySelectorAll(".pp-table tbody tr[data-cls='M'][data-outcome='pass']").length,
+        ag: Number(document.querySelector(".pp-plaque-sum")?.dataset.agree), inr: Number(document.querySelector(".pp-plaque-sum")?.dataset.inRange),
+        kv: [...document.querySelectorAll(".pp-plaque-sum .plaque-kv")].map((e) => e.textContent),
+      }));
+      want.assert(got, check, id);
+      await shot(`fx4-${id}`);
+    };
+    await fx4("madsen2014", {
+      ledger: (e) => e.expect === "pass-envelope" && e.weak === true || e.weak === true,
+      assert: (g, ck, id) => {
+        ck(`FX4 ${id}: pass-envelope row shows the outline badge IN RANGE ONLY, not counted in the plaque`, g.env.length >= 1 && g.env.every((r) => /IN RANGE ONLY/.test(r.txt) && (r.bg === "rgba(0, 0, 0, 0)" || r.bg === "transparent")) && g.ag === g.mPass && g.inr === g.env.filter((r) => r.cls === "M").length && g.kv.some((t) => /in range only/.test(t)), JSON.stringify({ env: g.env.length, ag: g.ag, mPass: g.mPass, inr: g.inr }));
+        ck(`FX4 ${id}: a weak pass is flagged WEAK PASS`, g.weak.length >= 1 && g.weak.every((t) => /WEAK PASS/.test(t)), g.weak.join("|"));
+      },
+    });
+    await fx4("munsch2013_trumpet", {
+      ledger: (e) => e.class === "R",
+      assert: (g, ck, id) => {
+        ck(`FX4 ${id}: class R rows are labelled 'paper reference' and are not among the tested items`, g.refs.length >= 1 && g.refs.every((t) => /paper reference/.test(t || "")) && g.kv.some((t) => /paper reference/.test(t)), g.refs.join("|"));
+      },
+    });
 
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | ").slice(0, 300));
   } catch (e) {

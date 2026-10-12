@@ -831,6 +831,45 @@ def main():
     check("16f. the cw drives offer B_first_lens_Hz / B_fibre_Hz / rate_detected_Hz",
           all(o in R.get("drive", k).observables for k in ("electrical_cw", "cw_resonant", "above_band") for o in ("B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz")))
 
+    # ---- FX4 (final review 1, 2, 6): real paper devices through the real registry
+    import copy as _copy
+    import yaml as _yaml
+
+    def card_spec(cid, drive_extra=None):
+        raw = _yaml.safe_load((ROOT / "cards" / "papers" / f"{cid}.yaml").read_text(encoding="utf-8"))
+        d = _copy.deepcopy(raw["device"])
+        for k, v in (drive_extra or {}).items():
+            d["drive"]["params"][k] = {"value": v, "unit": "1" if k == "bg_frac" or k == "p_trion" else "ps", "tag": "A",
+                                      "source": "FX4 check"}
+        return {"schema": "fsim-composed/1", **d}
+
+    I0 = None
+    vc, ok_bg = [], True
+    for bg_ in (0.0, 0.1, 0.3, 0.5):
+        sc_b = engine.evaluate_spec(card_spec("somaschi2016_qd1", {"bg_frac": bg_}))["scalars"]
+        I0 = sc_b["hom_I"] if I0 is None else I0
+        vc.append(sc_b["hom_V_corr"])
+        ok_bg &= near(sc_b["hom_I"], I0, rel=1e-12)
+        # independent: V_raw = rho^2 I - g2_raw with rho = 1 - bg (no leak / dark counts on this card)
+        want_raw = (1.0 - bg_) ** 2 * sc_b["hom_I"] - sc_b["g2_raw"]
+        ok_bg &= near(sc_b["hom_V_raw"], want_raw, ab=1e-9)
+    check("FX4-1. HOM with bg_frac: V_corr = I/(1 - g2_signal) is invariant under bg_frac 0..0.5 and V_raw = rho^2 I - g2_raw",
+          ok_bg and max(vc) - min(vc) < 1e-9, f"V_corr {[round(v, 6) for v in vc]}")
+    sc_t0 = engine.evaluate_spec(card_spec("tomm2021"))["scalars"]
+    sc_t1 = engine.evaluate_spec(card_spec("tomm2021", {"p_trion": 1e-6}))["scalars"]
+    check("FX4-2. JC regime with p_trion 1e-6: still the JC solver, valid, tau within 1e-4 (relative) of p_trion 0 "
+          "(trion = post-processing on the JC result)",
+          sc_t1["solver"] == "jc" and sc_t1["valid"] and near(sc_t1["tau_ps"], sc_t0["tau_ps"], rel=1e-4),
+          f"{sc_t0['tau_ps']:.5f} vs {sc_t1['tau_ps']:.5f}")
+    sc_e = engine.evaluate_spec(card_spec("tomm2021", {"eid_ps": 1.0}))["scalars"]
+    check("FX4-2b. JC regime with EID: result invalid with the reason 'JC regime: EID not supported by the JC solver'",
+          (not sc_e["valid"]) and any("JC regime: EID not supported by the JC solver" in r for r in sc_e["invalid_reasons"]),
+          str(sc_e["invalid_reasons"]))
+    sc_w = engine.evaluate_spec(card_spec("wang2019b"))["scalars"]
+    check("FX4-6. corrected HOM visibility > 1 -> NaN with the reason 'corrected visibility > 1: ...' (never a pass)",
+          not math.isfinite(sc_w["hom_V_corr"]) and "corrected visibility > 1" in sc_w.get("hom_V_corr_invalid_reason", "")
+          and math.isfinite(sc_w["hom_V_raw"]))
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

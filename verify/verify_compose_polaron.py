@@ -663,10 +663,10 @@ pl_cas = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math
                    inputs={"eid_ps": 10.0, "T_K": 4.2})
 pl_ok = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),), inputs={"eid_ps": 10.0, "T_K": 4.2})
 check("EID-e. lindblad accepts EID on pulsed two-level plans (runs on the polaron step propagators, phonons off) and refuses it for cw / TPE; "
-      "jc refuses EID and p_trion",
+      "jc refuses EID (p_trion is post-processed on the JC result since FX4; plain Rates without a cavity mode is refused)",
       LS_.supports(pl_ok, em_l, RT_L)[0] and not LS_.supports(pl_cw, em_l, RT_L)[0] and not LS_.supports(pl_cas, em_l, RT_L)[0]
       and not R.get("solver", "jc").supports(DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),),
-                                                       inputs={"p_trion": 0.1}), em_l, RT_L)[0])
+                                                       inputs={"eid_ps": 10.0}), em_l, RT_L)[0])
 r_lin = LS_.run(pl_ok, em_l, RT_L)
 r_pol = SOLVER.run(replace(eid_plan(math.pi, 10.0, 10.0, "gauss"), f_rep_MHz=80.0), EM_NP, RT_L)
 check("EID-f. LindbladSolver with eid_ps == the polaron solver without phonons (inversion, g2, n_ph, HOM identical)",

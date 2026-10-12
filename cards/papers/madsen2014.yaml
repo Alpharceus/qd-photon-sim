@@ -50,13 +50,15 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 2.1 % (4.2 %); the printed error is statistical only and the value assumes alpha eps equal to the bulk QD, so the agreement is loose; the envelope over the unstated cavity inputs (overlap, detuning, eta_out, F_bg) is wide, so a pass is a weak test"
-    expect: pass
-    reason: "WEAK PASS (second review): model 0.53 with envelope 0.14-0.79 over spatial_overlap 0.05-1 [E]; the paper states nothing that narrows the dot position or overlap (only that QD1 is slightly inhibited), so the lower bound was kept and the pass is not evidence. The envelope contains 0.443 because it spans most of the physically allowed range"
+    expect: pass-envelope
+    reason: "FX4: central model 0.530 vs 0.443 +/- 0.021 misses the 2 sigma window; 0.443 lies inside the envelope [0.145, 0.787] only (spatial_overlap 0.05-1 [E], nothing in the paper narrows it), so it is not a pass"
   - item: g2_2p1Psat
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 5 % (10 %); the paper's value is a raw number with large error bars, so this only checks that the model emitter is clearly antibunched at 2.1 P_sat (a weak test: model intrinsic g2 ~1e-4)"
     expect: pass
+    weak: true
+    weak_reason: "tol 2 sigma of the printed 0.05 accepts any g2 below 0.14 while the model g2 is ~1e-3: the test only shows the emitter is clearly antibunched, it cannot discriminate"
   - item: tau_X_QD1
     class: M
     tol: {rel: 0.15}
@@ -67,3 +69,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: eta_X_QD1 envelope wide (spatial_overlap 0.05-1); paper states no dot position so the range is unchanged and the pass is recorded as weak (note only, no tol or input change)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: eta_X_QD1 expect pass -> pass-envelope (paper value inside the envelope [0.145, 0.787] only, central 0.530 misses 0.443 +/- 0.042); g2_2p1Psat flagged weak (tol accepts any g2 < 0.14)"}

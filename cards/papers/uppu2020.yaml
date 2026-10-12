@@ -84,8 +84,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.96 +/- 0.02 (2 sigma = 0.04); gamma* is the material class default (paper gives no pure dephasing), so this is an unfitted comparison"
-    expect: fail
-    reason: "engine FX2c: model 1.001 (V_corr = I/(1 - g2) is uncapped and can exceed 1 slightly) vs 0.96 +/- 0.02. The paper's corrected 0.96 additionally divides out the beam-splitter imbalance R 0.476 / T 0.524 and the classical visibility 0.995 (Eq. C2), which the model's g2-only corrected convention does not apply; hom_raw (model 0.939 vs 0.93) still agrees. Convention mismatch, not a physics failure."
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1. The paper's 0.96 also divides out the beam-splitter imbalance R 0.476 / T 0.524 and the classical visibility 0.995 (Eq. C2), which the model's g2-only corrected convention does not apply; hom_raw (model 0.939 vs 0.93) still agrees"
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
@@ -97,3 +97,4 @@ history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr expect fail -> unavailable (V_corr > 1 is now invalid, NaN)"}

@@ -72,13 +72,16 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute per brief section 6; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
-    expect: pass
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.951). The previous pass accepted 1.001 against 0.951 through abs 0.05, ten times the paper error"
   - item: hom_corr_2ns
     class: M
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.973 +/- 0.005; 0.05 absolute as for 13 ns; the model has no delay dependence, so the same model value is compared with the 2 ns paper number"
-    expect: pass
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.973). The previous pass accepted 1.001 against 0.973 through abs 0.05, ten times the paper error"
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}

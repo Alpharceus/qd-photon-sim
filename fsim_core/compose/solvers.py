@@ -372,7 +372,7 @@ class RateSolver(Solver):
                                     gate_ns=plan.gate_ns)
             return SolverResult(g2_0=float(bgf(out["g2"])), n_ph=float(out["mean_counts"]), I_single=NAN,
                                 inversion=None,
-                                extra={"p_loaded": 1.0 - math.exp(-r * tau_on),
+                                extra={"p_loaded": 1.0 - math.exp(-r * tau_on), "g2_signal": float(out["g2"]),
                                        "converged": bool(out["converged"]), "notes": reasons, **extra_el},
                                 valid=bool(out["converged"]),
                                 reasons=() if out["converged"] else ("periodic steady state did not converge",))
@@ -382,6 +382,7 @@ class RateSolver(Solver):
         P = cw_g2.steady_state(r, gX, gXX, kX, kXX, pr)
         return SolverResult(g2_0=float(bgf(g2[0])), n_ph=NAN, I_single=NAN, inversion=None,
                             extra={"flux_ns": float(gX * P[1]), "tau_dip_ns": 1.0 / (gX + kX + r),
+                                   "g2_signal": float(g2[0]),
                                    "series": {"g2_tau": _series_xy(taus, g2)}, "notes": reasons,
                                    **_el_extras(plan, rt)})
 
@@ -705,6 +706,26 @@ class _CavOut:
         return s
 
 
+JC_EID_REASON = "JC regime: EID not supported by the JC solver"
+
+
+class _JCRegimeFallback:
+    """auto-selection wrapper (FX4): the plan is in the JC regime (strong coupling or 4g/kappa > 0.5) but needs
+    excitation-induced dephasing, which the JC solver does not model. The weak-coupling solver still runs, but its
+    result is marked INVALID with JC_EID_REASON instead of being passed off as a valid number."""
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def run(self, plan, em, rt):
+        res = self._inner.run(plan, em, rt)
+        return SolverResult(g2_0=res.g2_0, n_ph=res.n_ph, I_single=res.I_single, inversion=res.inversion,
+                            extra=dict(res.extra), valid=False, reasons=tuple(res.reasons) + (JC_EID_REASON,))
+
+
 class JCSolver(Solver):
     name = "jc"
     label = "Jaynes-Cummings (dot + cavity)"
@@ -720,12 +741,12 @@ class JCSolver(Solver):
             return False, "; ".join(bad)
         if "cascade" in plan.needs:
             return False, "jc: no biexciton"
-        if _eid(plan) > 0.0 or _p_trion(plan) > 0.0:
-            return False, "jc: excitation-induced dephasing / dark-trion branch are not modelled"
+        if _eid(plan) > 0.0:
+            return False, JC_EID_REASON
         why = _pulsed_coherent_check(plan)
         if why:
             return False, why
-        if rt.kappa_ns is None or rt.g_ns <= 0.0:
+        if getattr(rt, "kappa_ns", None) is None or getattr(rt, "g_ns", 0.0) <= 0.0:
             return False, "jc needs a cavity mode (kappa and g)"
         return True, ""
 
@@ -790,6 +811,19 @@ class JCSolver(Solver):
         return tau_slow * 1e3, n_cav, n_leak, tau * 1e3
 
     def run(self, plan, em, rt):
+        res = self._run(plan, em, rt)
+        pt = _p_trion(plan)
+        if pt > 0.0 and plan.pulses:
+            # FX4: dark-trion branch as per-pulse post-processing on the JC result (lifetime, HOM unchanged; photons,
+            # inversion and preparation x (1 - p); g2 / (1 - p)); the cavity occupation at the window end scales too [E]
+            area = math.sqrt(sum(float(q.area_rad) ** 2 for q in plan.pulses))
+            p_t = _polaron.trion_probability(pt, area)
+            res = _polaron.apply_trion(res, p_t)
+            if p_t > 0.0 and "n_cav_end" in res.extra:
+                res.extra["n_cav_end"] = float(res.extra["n_cav_end"]) * (1.0 - p_t)
+        return res
+
+    def _run(self, plan, em, rt):
         p = plan.pulses[0]
         dur = p.fwhm_ps * 1e-3
         build = self._builder(plan, em, rt)
@@ -876,6 +910,9 @@ def select(plan, em, rt, requested="auto", want_hom=True):
         s = _get("solver", n)
         ok, why = s.supports(plan, em, rt)
         if ok:
+            if plan.family == "coherent" and "jc" in order and n != "jc" and any(
+                    i == f"jc: {JC_EID_REASON}" for i in issues):
+                return _JCRegimeFallback(s), issues
             return s, issues
         issues.append(f"{n}: {why}")
     return None, issues or ["no solver registered for this plan"]

@@ -63,20 +63,23 @@ reproduce:
     expect: fail
     reason: "model 0.18 (envelope 0.064-0.33 over F_P 2-10, area 5-20 pi) vs 0.046: the paper value sits below the whole envelope; re-excitation within the 19.5 ps pulse at the modelled areas is too high, and the absolute pulse area and Purcell factor are unstated inputs (E ranges)."
   - item: Ms_BFL
-    class: M
+    class: C
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "brief section 6: I 0.909 +/-0.05 at model level (the paper's +/-0.004 is dominated by the model-level tolerance)"
     expect: pass
+    reason: "FX4: material.gamma_star_4K_ns (0.65 /ns) was inverted from the same paper's resonant Ms 0.915 (p.4), the same quantity at the same coherence, so Ms_BFL (0.909) is a calibration check, not an unfitted test; model 0.871 [0.782, 0.911]"
   - item: pQD_BFL
     class: M
     tol: {abs: 0.05}
     tol_reason: "brief section 6 level +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
     expect: fail
     reason: "model occupation 0.395 central (envelope 0.10-0.63) vs 0.77: the unknown absolute pulse area (5-20 pi class range) dominates the envelope; the central point is low and 0.77 lies above the envelope top 0.63."
-fits: []
+fits:
+  - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
 
 history:
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 5: detuning_meV -> 0.580 DR (1340.6 x 0.4/924.82); fwhm_ps -> 19.5 V; BFL_best removed from reproduce (eta_ext 0.65 already contains beta; kept in reported); added pQD_BFL (inversion 0.77 = 0.50/0.65, DR, M, abs 0.05)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: phonon_assisted is now available; g2_BFL, Ms_BFL, pQD_BFL expect unavailable -> fail (real outcomes: model 0.18 / 0.49 / 0.395 vs 0.046 / 0.909 / 0.77)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card input: gamma* entered (FX2b diagnosis)", note: "material.gamma_star_4K_ns 0.65 /ns DR (from resonant Ms 0.915 at F_P midpoint 6, tau_bare 1.0 ns) and a_ac_ns_per_K 0 A; first run with the input: g2_BFL fail (0.184), Ms_BFL fail (0.49 -> 0.711, envelope 0.60-0.756), pQD_BFL fail (0.395), expects unchanged. Final re-run at the end of the session (a concurrent engine change had landed in the HOM path): Ms_BFL model 0.871 (envelope 0.782-0.911, paper 0.909 inside) -> expect fail -> pass; g2_BFL (0.184) and pQD_BFL (0.395) still fail. Note gamma* 0.65 was itself derived from the resonant Ms 0.915 at F_P = 6, so the Ms_BFL pass is a transfer from the resonant to the phonon-assisted drive, not an independent dephasing test"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: Ms_BFL class M -> C with fits (material.gamma_star_4K_ns was derived from the resonant Ms 0.915 of the same paper); expect unchanged (pass)"}

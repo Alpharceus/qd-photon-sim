@@ -65,8 +65,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.01}
     tol_reason: "same near-unity 1% absolute (paper 2 sigma 0.009); compared with the model g2-only corrected convention, the same correction the paper applies"
-    expect: pass
-    reason: "engine FX2c: model 0.920 (envelope 0.848-1.004) overlaps 0.9956 +/- 0.01 only at the top of the gamma* 0-1 ueV envelope; the corrected convention V_corr = I/(1 - g2) is now allowed to exceed 1 slightly (not capped). Weak pass: the central value 0.92 is still far below the paper (same gap as M_raw, emission during the long pulse), and the pass comes from the width of the gamma* envelope, not from agreement."
+    expect: pass-envelope
+    reason: "FX4: central model 0.920 vs 0.9956 +/- 0.0045 is far outside the window; 0.9956 lies inside the envelope [0.848, 0.999] only at the top of the gamma* 0-1 ueV range, so it is not a pass (same gap as M_raw: emission during the long pulse)"
   - item: brightness_res
     class: M
     tol: {k_sigma: 2}
@@ -88,3 +88,4 @@ history:
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription; expects recorded from the engine state at the time of the run", reason: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 12: laser_leak range [0, 0.03] E -> [0, 0.003] DR (p.4 few percent times etalon/pulse bandwidth)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation V_corr = I/(1-g2) (uncapped, can exceed 1): M_corr fail -> pass (model 0.89 [0.82,0.97] -> 0.920 [0.848,1.004]; envelope-driven, weak)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: M_corr expect pass -> pass-envelope (central 0.920; paper value only at the top of the gamma* envelope [0.848, 0.999])"}

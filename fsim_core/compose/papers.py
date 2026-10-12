@@ -7,11 +7,16 @@ never tuned to the paper; a mismatch is a recorded result, not a bug to hide.
 
 Classes (design 3.1): C calibration (fitted, listed in `fits[].fitted_to`), M unfitted comparison
 (the only class that counts as a test), T transcription (observable is a passthrough of an input that
-was itself taken from this paper), P prediction (no reported value; the model number is just stated).
+was itself taken from this paper), P prediction (no reported value; the model number is just stated),
+R paper theory / simulation reference (FX4: the reported number is the paper's OWN theory or simulation, so
+the comparison checks the model against another model; shown, never counted as a test).
 
-Outcome of one item: pass | fail | unavailable | error (error never matches a ledger).
-  scalar pass iff |model - paper| <= max(k_sigma*err, abs, rel*|paper|) OR (ranged inputs) paper lies in
-  the model [min, max] envelope; series pass iff rms_rel over the points <= tol.max.
+Outcome of one item: pass | pass-envelope | fail | unavailable | error (error never matches a ledger).
+  scalar pass iff |model - paper| <= max(k_sigma*err, abs, rel*|paper|) (the CENTRAL value is within tolerance);
+  pass-envelope iff the central value fails but (ranged inputs) the paper value lies in the model [min, max]
+  envelope (FX4: reported, NOT counted as a pass or as an M test pass: an envelope of any width contains the
+  paper value somewhere); series pass iff rms_rel over the points <= tol.max.
+  Weak passes: a ledger entry may carry `weak: true` + `weak_reason` (the test is real but cannot discriminate).
   unavailable iff a chosen drive is `needs_physics`, the solver is unavailable, the central run is flagged
   invalid (e.g. strong coupling, `valid` False) or the model value is not finite.
 Raw vs corrected: the reported convention is compared with the SAME model convention only.
@@ -33,8 +38,9 @@ from .solvers import SolverUnavailable
 from .spec import AXIS_KEYS, SCHEMA, ComposedSpec, validate_spec
 
 READ_LEVELS = ("V-full", "V-abs", "V-snip")
-CLASSES = ("C", "M", "T", "P")
-EXPECTS = ("pass", "fail", "unavailable")
+CLASSES = ("C", "M", "T", "P", "R")
+EXPECTS = ("pass", "pass-envelope", "fail", "unavailable")
+OUTCOMES = ("pass", "pass-envelope", "fail", "unavailable", "error")
 REPORTED_TAGS = ("V", "DR")
 SCALAR_TOL_KEYS = ("k_sigma", "abs", "rel")
 DEFAULT_DIR = "cards/papers"
@@ -84,13 +90,15 @@ class ItemResult:
     hi: float = float("nan")
     tol: dict = field(default_factory=dict)
     tol_str: str = ""
-    outcome: str = "error"             # pass | fail | unavailable | error
+    outcome: str = "error"             # pass | pass-envelope | fail | unavailable | error
     expect: str = "pass"
     match: bool = False
     inputs: list = field(default_factory=list)   # device leaves (from this paper) the observable depends on
     note: str = ""
     tol_reason: str = ""
     reason: str = ""
+    weak: bool = False                 # FX4: a pass that cannot discriminate (reason in weak_reason)
+    weak_reason: str = ""
 
     @property
     def request(self) -> str:
@@ -111,7 +119,7 @@ class ReproduceReport:
         return all(i.match for i in self.items)
 
     def class_summary(self) -> dict:
-        out = {c: {"n": 0, "pass": 0, "fail": 0, "unavailable": 0, "error": 0} for c in CLASSES}
+        out = {c: {"n": 0, **{o: 0 for o in OUTCOMES}} for c in CLASSES}
         for i in self.items:
             out[i.cls]["n"] += 1
             out[i.cls][i.outcome] += 1
@@ -323,6 +331,12 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
         cls = e.get("class")
         if cls not in CLASSES:
             P.append(f"{w}: class must be one of {list(CLASSES)}, got {cls!r}")
+        if e.get("weak") is not None and not isinstance(e.get("weak"), bool):
+            P.append(f"{w}: weak must be true or false")
+        if e.get("weak") is True and not _nonempty(e.get("weak_reason")):
+            P.append(f"{w}: weak: true needs a non-empty weak_reason")
+        if cls == "R" and e.get("weak"):
+            P.append(f"{w}: class R is never counted, so it carries no weak flag")
         if e.get("expect") not in EXPECTS:
             P.append(f"{w}: expect must be one of {list(EXPECTS)}, got {e.get('expect')!r}")
         elif e["expect"] != "pass" and not _nonempty(e.get("reason")):
@@ -354,6 +368,8 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
                      f"leaf (passthrough_of={pt!r})")
         if cls == "M" and item in fitted:
             P.append(f"{w}: class M item is fitted")
+        if cls == "R" and item in fitted:
+            P.append(f"{w}: class R item is fitted")
         # tolerance
         tol = e.get("tol")
         if not isinstance(tol, dict) or not tol:
@@ -437,7 +453,7 @@ def _scalar_outcome(paper, err, model, lo, hi, tol) -> str:
     if abs(model - paper) <= allow:
         return "pass"
     if hi > lo and lo <= paper <= hi:
-        return "pass"
+        return "pass-envelope"            # FX4: the paper value is inside the input envelope only; not a pass
     return "fail"
 
 
@@ -465,7 +481,8 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
                 oid, conv = ent["y"]["observable"], ent["y"].get("convention", "intrinsic")
         r = ItemResult(id=item, cls=e["class"], kind=kind, observable=oid, convention=conv,
                        expect=e["expect"], where=ent.get("where", ""), tol=dict(e.get("tol") or {}),
-                       tol_reason=e.get("tol_reason", ""), reason=e.get("reason", ""))
+                       tol_reason=e.get("tol_reason", ""), reason=e.get("reason", ""),
+                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""))
         if kind == "scalar":
             r.paper, r.err = float(ent["value"]), (None if ent.get("err") is None else float(ent["err"]))
         if r.tol:
@@ -521,7 +538,7 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             r.outcome, r.note = "unavailable", "model run flagged invalid: " + "; ".join(rep_reasons)
         elif not math.isfinite(r.model):
             r.outcome = "unavailable"
-            r.note = scalars_reason(central, r.observable) or "model value not finite"
+            r.note = scalars_reason(central, r.observable, r.convention) or "model value not finite"
         elif r.kind == "predict":
             r.outcome, r.note = "pass", "prediction (no reported value); model run valid"
         else:
@@ -561,5 +578,10 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
     return report
 
 
-def scalars_reason(scalars: dict, oid: str) -> str:
-    return str(scalars.get(f"{oid}_invalid_reason", "") or "")
+def scalars_reason(scalars: dict, oid: str, convention: str = "intrinsic") -> str:
+    r = str(scalars.get(f"{oid}_invalid_reason", "") or "")
+    if r:
+        return r
+    o = _observable(oid)                       # convention -> the derived key the engine reports (e.g. hom_V_corr)
+    key = (getattr(o, "by_conv", None) or {}).get(convention) if o is not None else None
+    return str(scalars.get(f"{key}_invalid_reason", "") or "") if key else ""
