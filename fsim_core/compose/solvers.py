@@ -16,7 +16,7 @@ RatesEx) onto it:
                        loading, window re-excitation ignored [A]). Anchor (brief 2.3):
                        I = [g_r/(g_r + Gamma_t)] Gamma_t/(Gamma_t + gamma*) with g_r = 1/tau_cap.
   jc                   dot + cavity mode (Fock cutoff 3) via lindblad.build_system(cavity=...).
-                       Lifetime (instantaneous pi), photons per excitation (exact, projected
+                       Lifetime (slowest radiative-sector Liouvillian eigenvalue), photons per excitation (exact, projected
                        Laplace solve), pulsed g2 / mean photons through resonant_source._stats and
                        cavity-output HOM through pulsed_indistinguishability.
 
@@ -391,8 +391,12 @@ class JCSolver(Solver):
         return build
 
     def lifetime(self, plan, em, rt):
-        """(tau_ps, n_cav, n_leak): 1/e time of the emitted flux after its peak for an instantaneous
-        pi pulse (X, vacuum), and photons per excitation from the exact projected Laplace solve."""
+        """(tau_ps, n_cav, n_leak, tau_1e_ps): tau_ps = 1/|Re lambda| of the slowest decay eigenvalue of the
+        Liouvillian restricted to the one-excitation population/coherence sector span{|X,0>, |G,1>} x its dual
+        (the radiative sector reached by an instantaneous pi pulse); for a weakly coupled dot it is the Purcell
+        lifetime, for strong coupling the slow polariton population decay (= 1/(2 |Re lambda_M|) of the
+        non-Hermitian 2x2 amplitude matrix) [DR]. tau_1e_ps is the old 1/e time of the emitted flux after its
+        peak (informational: it mixes both eigenmodes). Photons per excitation: exact projected Laplace solve."""
         build = self._builder(plan, em, rt)
         s = build(0.0)
         dim, nc = s.dim, self.FOCK
@@ -411,6 +415,17 @@ class JCSolver(Solver):
         ip = int(np.argmax(flux))
         target = flux[ip] / math.e
         tau = NAN
+        # radiative sector: vec(|a><b|) with a, b in {|X,0>, |G,1>} (the Lindbladian is closed on it)
+        ia, ib = 1 * nc + 0, 0 * nc + 1
+
+        def _idx(i, j):
+            E = np.zeros((dim, dim), dtype=complex)
+            E[i, j] = 1.0
+            return int(np.nonzero(lb.vec(E))[0][0])
+        sec = [_idx(i, j) for i in (ia, ib) for j in (ia, ib)]
+        lam_sec = np.linalg.eigvals(s.L[np.ix_(sec, sec)])
+        slow = float(np.min(np.abs(lam_sec.real)))
+        tau_slow = 1.0 / slow if slow > 0 else NAN
         for i in range(ip, len(times) - 1):
             if flux[i + 1] <= target <= flux[i]:
                 f = (flux[i] - target) / (flux[i] - flux[i + 1])
@@ -421,13 +436,13 @@ class JCSolver(Solver):
         x = solve(-(s.L - P), Q @ lb.vec(rho0))
         n_cav = float(kap * (lb.vec((a.conj().T @ a).T) @ x).real)
         n_leak = float(gl * (lb.vec(s.ops["P_X"].T) @ x).real)
-        return tau * 1e3, n_cav, n_leak
+        return tau_slow * 1e3, n_cav, n_leak, tau * 1e3
 
     def run(self, plan, em, rt):
         p = plan.pulses[0]
         dur = p.fwhm_ps * 1e-3
         build = self._builder(plan, em, rt)
-        tau_ps, n_cav, n_leak = self.lifetime(plan, em, rt)
+        tau_ps, n_cav, n_leak, tau_1e_ps = self.lifetime(plan, em, rt)
         s0, sd = build(0.0), build(1.0)
         kap = float(rt.kappa_ns)
         J = float(rt.Gamma_bg_ns) * lb.jump_super(s0.ops["c_X"]) + kap * lb.jump_super(s0.ops["a"])
@@ -444,10 +459,11 @@ class JCSolver(Solver):
             I = NAN
             reasons.append(f"jc HOM failed: {type(ex).__name__}: {ex}")
         tot = n_cav + n_leak
+        b0 = float(rt.beta0)
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=I,
                             inversion=pop_X,
-                            extra={"tau_jc_ps": float(tau_ps), "n_cav_inst": n_cav, "n_leak_inst": n_leak,
-                                   "beta": (n_cav / tot) if tot > 0 else NAN, "notes": reasons},
+                            extra={"tau_jc_ps": float(tau_ps), "tau_1e_ps": float(tau_1e_ps), "n_cav_inst": n_cav, "n_leak_inst": n_leak,
+                                   "beta": ((n_cav + b0 * n_leak) / tot) if tot > 0 else NAN, "notes": reasons},
                             reasons=())
 
     def eta_seconds(self, plan, n_points):

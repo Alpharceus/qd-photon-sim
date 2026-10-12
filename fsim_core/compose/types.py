@@ -45,6 +45,7 @@ class StructureResponse:
     pol_factor: float = 1.0
     notes: tuple = ()
     inputs: dict = field(default_factory=dict)
+    tag_floor: str = ""              # widest provenance tag of constants hidden inside response() ("" = none); tag_of applies it
 
 
 @dataclass(frozen=True)

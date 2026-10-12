@@ -416,13 +416,13 @@ def _card():
 
 
 def _L_closed(src):
-    """Self-consistent Purcell overlap at zero cavity detuning from the QUADRATIC
-    L (w + kappa) = kappa with w = hbar G0 (m + b L) [ueV], b = m F_P (enhanced) or
-    F_P (dot): hbar G0 b L^2 + (hbar G0 m + kappa) L - kappa = 0 (closed form; the
-    module solves the same equation with Brent's method)."""
+    """Purcell overlap at zero cavity detuning with the DOT line width (compose review finding 2: no Purcell
+    channel in the width): L = kappa/(w + kappa), w = hbar G0 m ('dot': closed form) or
+    w = hbar G0 (m + (m - 1) F_P L) ('enhanced', gamma* = (m - 1) Gamma): the quadratic
+    hbar G0 (m - 1) F_P L^2 + (hbar G0 m + kappa) L - kappa = 0 (module: Brent root)."""
     h = lb.HBAR_MEV_NS * 1e3 * src.gamma0_ns
     m, F, k = src.hom_width_multiple, src.F_P, src.kappa_ueV
-    b = m * F if src.dephasing_mode == "enhanced" else F
+    b = (m - 1.0) * F if src.dephasing_mode == "enhanced" else 0.0
     if b == 0.0:
         return k / (h * m + k)
     B = h * m + k
@@ -442,7 +442,7 @@ def _m1():
     # eta is the product of the documented factors (independent recomputation from the card numbers)
     c = out["eta_components"]
     ok &= relerr(out["eta"], c["n_ph"] * c["beta"] * c["eta_out"] * c["Z"] * c["demux"] * c["circuit"] * c["det"]) < 1e-14
-    L = _L_closed(src)                      # self-consistent overlap, line = hbar (Gamma + gamma*) (finding 8)
+    L = _L_closed(src)                      # overlap with the dot line hbar (Gamma0 + gamma*) (compose review finding 2)
     ok &= relerr(c["beta"], (src.beta0 + src.F_P * L) / (1.0 + src.F_P * L)) < 1e-12
     for mode in ("enhanced", "dot"):
         sm = rs.source_from_card(card, dephasing_mode=mode, F_P=7.0, kappa_ueV=50.0)

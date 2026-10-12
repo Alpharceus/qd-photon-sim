@@ -32,9 +32,9 @@ CURVE_OBS = (("g2", "g2_0"), ("g2_raw", "g2_raw"), ("hom_I", "hom_I"), ("B_first
              ("B_fibre", "B_fibre"), ("rate_detected_Hz", "rate_detected_Hz"), ("Gamma_ns", "Gamma_ns"),
              ("tau_ps", "tau_ps"), ("F_P_eff", "F_P_eff"), ("Z_phonon", "Z_phonon"), ("inversion", "inversion"))
 SCALAR_OBS = (  # every registered chain value reported at the operating point (intrinsic convention)
-    "lambda_nm", "F_P_eff", "beta", "eta_out", "eta_extract", "T_NA", "eta_pol", "eta_prep", "eta_rad",
+    "lambda_nm", "F_P_eff", "F_P_peak", "beta", "eta_out", "eta_extract", "T_NA", "eta_pol", "eta_prep", "eta_rad",
     "eta_prep_x_eta_rad", "inversion", "Z_phonon", "Z_filt", "gamma_star_ns", "Gamma_ns", "n_ph", "tau_ps",
-    "tau_purcell_ps", "linewidth_ueV", "detuning_ueV", "g2_0", "g2_raw", "hom_I", "hom_V_raw", "hom_V_corr",
+    "tau_1e_ps", "tau_purcell_ps", "linewidth_ueV", "detuning_ueV", "g2_0", "g2_raw", "hom_I", "hom_V_raw", "hom_V_corr",
     "B_first_lens", "B_lens", "B_fibre", "rate_detected_Hz")
 
 
@@ -112,6 +112,7 @@ def _notes(ctx) -> list:
     n = list(ctx.rt.notes) + list(ctx.sr.notes) + list(ctx.select_issues)
     n += [str(x) for x in ctx.res.extra.get("notes", [])]
     n += [r for r in ctx.res.reasons]
+    n += list(ctx.d.get("_warnings", []))
     n.append("phonons (tier P0): HOM factor Z^2 unfiltered, efficiency x Z ZPL-filtered, never both")
     return n
 
@@ -162,7 +163,7 @@ def evaluate_spec(spec, T_grid=None) -> dict:
         o = obs_mod.get_observable(oid)
         v = o.compute(ctx, "intrinsic")
         scalars[oid] = v
-        tag, inputs = obs_mod.tag_of(o, leaves, reads)
+        tag, inputs = obs_mod.tag_of(o, leaves, reads, ctx.sr.tag_floor)
         prov[oid] = {"tag": tag, "inputs": inputs}
         if not math.isfinite(v):
             r = o.invalid_reason(ctx)
@@ -215,7 +216,9 @@ def envelope(spec, observables, max_corners: int = 16, n_lhs: int = 32) -> dict:
     elif any(l.kind == "choice" for l in leaves.values()):
         pts += [{**base, **p} for p in lhs(leaves, n_lhs)]
     vals = {r: [] for r in observables}
-    central_val, nfail, reads = {}, 0, None
+    central_val, nfail, ninvalid, floor = {}, 0, 0, ""
+    reads = {a: set() for a in AXIS_KEYS}
+    central_valid = True
     for i, p in enumerate(pts):
         try:
             c = _run_point(entries, p, float(p["T_K"]), spec.solver)
@@ -224,8 +227,17 @@ def envelope(spec, observables, max_corners: int = 16, n_lhs: int = 32) -> dict:
                 raise
             nfail += 1
             continue
-        if reads is None:
-            reads = c.reads
+        for a in AXIS_KEYS:                       # union of the leaves read at ANY point (a point may take another branch)
+            reads[a] |= c.reads[a]
+        if c.sr.tag_floor:
+            floor = obs_mod.widest_tag(floor, c.sr.tag_floor) if floor else c.sr.tag_floor
+        valid, _why = _validity(c)
+        if not valid:
+            if i == 0:
+                central_valid = False             # the central point is always reported (min <= central <= max)
+            else:
+                ninvalid += 1                     # other invalid points are left out of the range
+                continue
         for r in observables:
             v = _value_of(c, r)
             if i == 0:
@@ -236,11 +248,12 @@ def envelope(spec, observables, max_corners: int = 16, n_lhs: int = 32) -> dict:
     for r in observables:
         oid, _ = obs_mod.parse_request(r)
         o = obs_mod.get_observable(oid)
-        tag, inputs = obs_mod.tag_of(o, leaves, reads)
+        tag, inputs = obs_mod.tag_of(o, leaves, reads, floor)
         v = vals[r]
         out[r] = {"range": [min(v), max(v)] if v else [float("nan")] * 2, "central": central_val[r],
                   "tag": tag, "inputs": inputs, "n_points": len(v)}
-    out["_meta"] = {"n_points": len(pts), "n_failed": nfail, "range_note": RANGE_NOTE}
+    out["_meta"] = {"n_points": len(pts), "n_failed": nfail, "n_invalid": ninvalid,
+                   "central_valid": central_valid, "range_note": RANGE_NOTE}
     return out
 
 
@@ -254,7 +267,8 @@ def series(spec, path: str, values, observables) -> dict:
         raise KeyError(f"unknown leaf path {path!r}; known: {sorted(leaves)}")
     base = _central_values(leaves)
     y = {r: [] for r in observables}
-    failed, reads = [], None
+    failed, floor = [], ""
+    reads = {a: set() for a in AXIS_KEYS}
     for i, x in enumerate(values):
         p = {**base, path: x}
         try:
@@ -264,15 +278,18 @@ def series(spec, path: str, values, observables) -> dict:
             for r in observables:
                 y[r].append(float("nan"))
             continue
-        reads = reads or c.reads
+        for a in AXIS_KEYS:
+            reads[a] |= c.reads[a]
+        if c.sr.tag_floor:
+            floor = obs_mod.widest_tag(floor, c.sr.tag_floor) if floor else c.sr.tag_floor
         for r in observables:
             y[r].append(_value_of(c, r))
     tags = {}
     for r in observables:
         o = obs_mod.get_observable(obs_mod.parse_request(r)[0])
-        tags[r] = obs_mod.tag_of(o, leaves, reads or {a: set() for a in AXIS_KEYS})[0]
+        tags[r] = obs_mod.tag_of(o, leaves, reads, floor)[0]
     return {"path": path, "unit": leaves[path].unit, "x": [float(v) for v in values],
-            "y": {r: np.asarray(v, dtype=float) for r, v in y.items()}, "tag": tags, "failed": failed}
+            "y": {r: [float(t) for t in v] for r, v in y.items()}, "tag": tags, "failed": failed}
 
 
 def estimate(spec, n_points: int = 1) -> float:

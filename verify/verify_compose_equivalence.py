@@ -258,6 +258,22 @@ if out is not None:
         raise KeyError(f"none of {names} in engine scalars {sorted(sc)}")
 
     rtol = 1e-9
+
+    def zeff_ref(s_):
+        """Cavity sideband filter Z_eff of the Fock source (compose review finding 4): independent trapezoid of the
+        IBM sideband spectrum times the cavity Lorentzian, (Z + int S_sb T)/(Z + int S_sb). bs_figure_of_merit has no
+        cavity filtering (unfiltered output: efficiency x 1, I x Z^2), so the engine differs from it by exactly
+        Z_eff on eta and (Z/Z_eff)^2 / Z^2 on I when zpl_output is False."""
+        from fsim_core import qd_gf
+        r_ = rs.source_rates(s_)
+        ph = qd_gf.PhononParams(alpha_ps2=s_.phonon_alpha_ps2)
+        om, sb, z = qd_gf._spectrum_parts(ph, float(s_.T_K), float(rs.lb.HBAR_MEV_NS * (r_["Gamma"] + r_["gamma_star"])))
+        kap = s_.kappa_ueV * 1e-3
+        T_ = (kap / 2) ** 2 / ((om + s_.cav_detune_ueV * 1e-3) ** 2 + (kap / 2) ** 2)
+        tsb = sum(0.5 * (om[i + 1] - om[i]) * (sb[i] * T_[i] + sb[i + 1] * T_[i + 1]) for i in range(len(om) - 1))
+        area = sum(0.5 * (om[i + 1] - om[i]) * (sb[i] + sb[i + 1]) for i in range(len(om) - 1))
+        return z, (z + tsb) / (z + area)
+    z_f, zeff_f = zeff_ref(src)
     try:
         g2_e = pick("g2_0")
         eta_e = (pick("rate_detected_Hz") / (src.f_rep_MHz * 1e6)) if "rate_detected_Hz" in sc else pick("eta")
@@ -266,12 +282,13 @@ if out is not None:
         # I_p = pulse_factor x Gamma/(Gamma + gamma*) (resonant_source._pulse_physics), times the unfiltered
         # phonon factor Z^2 (hom_phonon_factor). No spectral diffusion (that is the pairwise hom_matrix).
         rr = rs.source_rates(src)
-        I_ref = fom["pulse_factor"] * rr["Gamma"] / (rr["Gamma"] + rr["gamma_star"]) * fom["hom_phonon_factor"]
+        I_ref = (fom["pulse_factor"] * rr["Gamma"] / (rr["Gamma"] + rr["gamma_star"]) * fom["hom_phonon_factor"]
+                 * (1.0 / zeff_f ** 2))
         check("engine g2 == bs_figure_of_merit g2 (rtol 1e-9)", math.isclose(g2_e, fom["g2"][0], rel_tol=rtol),
               f"{g2_e} vs {fom['g2'][0]}")
-        check("engine efficiency == bs_figure_of_merit eta (rtol 1e-9)", math.isclose(eta_e, fom["eta"], rel_tol=rtol),
-              f"{eta_e} vs {fom['eta']}")
-        check("engine hom_I == pulse_factor x Gamma/(Gamma+gamma*) x Z^2 of bs_figure_of_merit (rtol 1e-9)",
+        check("engine efficiency == bs_figure_of_merit eta x Z_eff of the cavity sideband filter (rtol 1e-9)",
+              math.isclose(eta_e, fom["eta"] * zeff_f, rel_tol=rtol), f"{eta_e} vs {fom['eta'] * zeff_f}")
+        check("engine hom_I == pulse_factor x Gamma/(Gamma+gamma*) x (Z/Z_eff)^2 (bs_figure_of_merit with the cavity sideband filter, rtol 1e-9)",
               math.isclose(I_e, I_ref, rel_tol=rtol), f"{I_e} vs {I_ref}")
     except KeyError as e:
         check("engine scalars contain the Fock figures of merit", False, str(e))
@@ -288,6 +305,9 @@ if out is not None:
             I_v = (fom_v["pulse_factor"] * rr_v["Gamma"] / (rr_v["Gamma"] + rr_v["gamma_star"])
                    * fom_v["hom_phonon_factor"])
             eta_v = sc_v["rate_detected_Hz"] / (s_v.f_rep_MHz * 1e6)
+            zf_v = 1.0 if s_v.zpl_output else zeff_ref(s_v)[1]
+            fom_v = {**fom_v, "eta": fom_v["eta"] * zf_v}
+            I_v = I_v / zf_v ** 2
             ok = (math.isclose(sc_v["g2_0"], fom_v["g2"][0], rel_tol=1e-9)
                   and math.isclose(eta_v, fom_v["eta"], rel_tol=1e-9)
                   and math.isclose(sc_v["hom_I"], I_v, rel_tol=1e-9))

@@ -192,6 +192,19 @@ def main():
     check("7a. V_corr(0.925, 0.021) = 0.966 +- 0.001", abs(v - 0.966) < 1e-3, f"{v:.5f}")
     check("7b. raw/corrected round trip", abs(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.03), 0.03) - 0.9) < 1e-12)
 
+    # 7c. cavity sideband filter limits (review finding 4) and g2_raw without background (finding 11)
+    from fsim_core import qd_gf as _qg
+    _ph = _qg.PhononParams(alpha_ps2=0.0181)
+    _Z = _qg.zpl_weight(_ph, 4.0)
+    z0, ze_narrow = OB.cavity_sideband_filter(_ph, 4.0, 1e-6, 0.0, 1e-3)
+    _, ze_wide = OB.cavity_sideband_filter(_ph, 4.0, 1e5, 0.0, 1e-3)
+    check("7c. Z_eff limits: kappa -> 0 gives Z (ZPL filter), kappa -> inf gives 1 (unfiltered); Z <= Z_eff(150 ueV) <= 1",
+          abs(ze_narrow - _Z) < 2e-4 and abs(ze_wide - 1.0) < 1e-4 and z0 == _Z
+          and _Z <= OB.cavity_sideband_filter(_ph, 4.0, 0.15, 0.0, 1e-3)[1] <= 1.0,
+          f"Z {_Z:.5f}, narrow {ze_narrow:.5f}, wide {ze_wide:.5f}")
+    check("7d. g2_raw = g2 when the background is zero, also at zero signal",
+          OB.g2_with_background(0.03, 0.0, 0.0) == 0.03 and OB.g2_with_background(0.03, 1e5, 0.0) == 0.03)
+
     # 8. incoherent S3d HOM vs closed form
     ok, det = True, ""
     for relax in (0.05, 2.0):
@@ -232,6 +245,25 @@ def main():
           sc["jc_recommended"] and engine.evaluate_spec({**spec(
               mat={"gamma0_ns": exact(yT, "1/ns")}, st={"g_ns": exact(gT, "1/ns"), "kappa_ns": exact(kT, "1/ns")},
               drp={"fwhm_ps": 3.0, "shape": "gauss"})})["scalars"]["solver"] == "jc")
+
+    # 9d. Tomm 47.5 ps (measured, Nat. Nanotechnol. 16, 399 (2021) [V]); tolerance PRE-REGISTERED at +-15% before the
+    # run (tol_reason: the paper's own Purcell-model F_P and the dot-to-dot spread; the JC model uses the entered g,
+    # kappa, gamma only). Not tuned: the value is reported either way.
+    tau_T = sc["tau_ps"]
+    print(f"      Tomm: tau_ps (slowest Liouvillian eigenvalue) = {tau_T:.2f} ps, tau_1e_ps = {sc['tau_1e_ps']:.2f} ps, "
+          f"measured 47.5 ps, Purcell {sc['tau_purcell_ps']:.2f} ps")
+    check("9d. Tomm: JC tau_ps within +-15% of the measured 47.5 ps (pre-registered)", abs(tau_T / 47.5 - 1.0) <= 0.15,
+          f"{tau_T:.2f} ps, deviation {100 * (tau_T / 47.5 - 1):+.1f}%")
+    # independent: single-excitation amplitude matrix M = [[-G/2, -i g], [-i g, -kappa/2]] (own code, no Lindblad);
+    # populations decay at -2 Re(lambda_M); the verifier material has gamma* = 0 (population modes unaffected by dephasing).
+    Mmat = np.array([[-yT / 2, -1j * gT], [-1j * gT, -kT / 2]])
+    tau_M = 1e3 / (-2.0 * np.linalg.eigvals(Mmat).real.max())
+    check("9e. tau_ps == 1/(2|Re lambda_M|) of the 2x2 non-Hermitian JC matrix (independent, rel 1e-3)",
+          abs(tau_T / tau_M - 1.0) < 1e-3, f"{tau_T:.3f} vs {tau_M:.3f} ps")
+    check("9f. tau_1e_ps (old 1/e-after-peak) is reported and differs from the eigenvalue lifetime",
+          math.isfinite(sc["tau_1e_ps"]) and abs(sc["tau_1e_ps"] - tau_T) > 1.0, f"{sc['tau_1e_ps']:.2f} ps")
+    check("9g. F_P_peak is the structure's F_P (passthrough) and F_P_eff = F_P_peak x L",
+          abs(sc["F_P_eff"] - sc["F_P_peak"] * sc["L"]) < 1e-12 * max(1.0, sc["F_P_peak"]), f"{sc['F_P_peak']:.3f} {sc['F_P_eff']:.3f}")
 
     # 10. tags and envelope
     sp = spec(mat={"lambda_nm": exact(900.0, "nm", "V"), "gamma0_ns": exact(1.0, "1/ns", "V")},

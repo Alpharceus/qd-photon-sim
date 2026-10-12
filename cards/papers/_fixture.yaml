@@ -22,7 +22,7 @@ device:
 reported:
   - {id: lambda, observable: lambda_nm, value: 900.0, tag: DR, where: "synthetic fixture"}
   - {id: g2, observable: g2_0, value: 0.007, err: 0.002, tag: DR, where: "synthetic fixture"}
-  - {id: brightness, observable: B_first_lens, value: 0.45, err: 0.05, tag: DR, where: "synthetic fixture"}
+  - {id: brightness, observable: B_first_lens, value: 0.40, err: 0.05, tag: DR, where: "synthetic fixture (moved 0.45 -> 0.40 after FX1 cavity sideband filtering narrowed the envelope; synthetic value, no paper)"}
   - {id: tau_scalar, observable: tau_ps, value: 300.0, err: 10.0, tag: DR, where: "synthetic fixture"}
 series:
   - id: tau_vs_FP

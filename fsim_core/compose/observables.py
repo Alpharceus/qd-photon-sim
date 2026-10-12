@@ -6,13 +6,29 @@ Brightness accounting (brief 5), every factor is reported:
     B_fibre = B_lens x eta_fibre
     counts  = f_rep x B_fibre x eta_optics x eta_det                   (eta_pol appears once, in B_lens)
 
+Cavity filtering of the phonon sideband (review finding 4) [E: Iles-Smith et al., Nat. Photonics 11, 521
+(2017); Grange et al., PRL 114, 193601 (2015)]. A structure with a finite kappa transmits only the part of the
+emission spectrum inside its Lorentzian T(E) = (kappa/2)^2/((E - E_mode)^2 + (kappa/2)^2). With the unit-area
+IBM spectrum S = Z lorentzian(ZPL) + S_sb (qd_gf), the ZPL photons that reach the cavity channel are already
+counted by the Purcell overlap L inside beta, so only the sideband needs filtering:
+
+    Z_eff = (Z + int S_sb(E) T(E) dE)/(Z + int S_sb)       Z <= Z_eff <= 1
+    q     = Z/Z_eff                                         ZPL fraction of the collected light
+    efficiency x Z_eff,   hom_I = I x q^2                   (I_ZPL x (ZPL fraction)^2)
+
+limits: kappa -> inf (T = 1) gives Z_eff = 1, q = Z: the unfiltered result (efficiency x 1, I x Z^2);
+kappa -> 0 gives Z_eff = Z, q = 1: the ZPL-filter result (efficiency x Z, I x 1). Broadband structures
+(kappa None) keep the unfiltered behaviour; setup.zpl_filter forces Z_eff = Z, q = 1. The sideband is
+assumed to see the same cavity Lorentzian as the ZPL (no Purcell re-weighting of the sidebands) and the
+background-channel photons are filtered the same way (conservative) [A].
+
 n_ph is the solver's photons per pulse into the radiative channel. It replaces the product
 eta_prep x eta_rad of the brief because it equals that product without re-excitation and also contains
 re-excitation (both factors are reported separately: `eta_prep`, `eta_rad`, `eta_prep_x_eta_rad`).
 T_NA = 1: the structure's response() already received the setup NA, so eta_out contains the NA
 collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL,
-else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor Z^2 UNFILTERED, efficiency x Z FILTERED,
-never both.
+Z_eff (below) for a finite-kappa structure, else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor
+Z^2 UNFILTERED, efficiency x Z FILTERED, never both; a cavity interpolates between the two.
 
 g2: `g2_0` is intrinsic. `g2_raw` adds uncorrelated Poissonian background of rate B = f_leak S + dark
 (S = detected signal rate): g2_raw = 1 - rho^2 (1 - g2), rho = S/(S + B) -> g2 + 2 f_leak for small leak.
@@ -59,8 +75,21 @@ def hom_v_corrected(V_raw, g2):
     return (V_raw + g2) / (1.0 - g2)
 
 
+def cavity_sideband_filter(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
+    """(Z, Z_eff) of the cavity-filtered output (module doc): detuning_meV = E_ZPL - E_mode."""
+    import numpy as np
+    omega, s_sb, z = qd_gf._spectrum_parts(ph, float(T_K), float(gamma_zpl_meV))
+    sb_area = float(np.trapezoid(s_sb, omega))
+    xc = omega + float(detuning_meV)
+    acc = (kappa_meV / 2.0) ** 2 / (xc ** 2 + (kappa_meV / 2.0) ** 2)
+    t_sb = float(np.trapezoid(s_sb * acc, omega))
+    return float(z), float((z + t_sb) / (z + sb_area))
+
+
 def g2_with_background(g2, signal_rate, background_rate):
     s, b = signal_rate, background_rate
+    if b == 0.0:
+        return g2                                  # no background: g2_raw = g2 even at zero signal
     if s <= 0.0:
         return NAN
     rho = s / (s + b)
@@ -108,10 +137,19 @@ def _derive(c: Context) -> dict:
     em, sr, rt, plan, res, su = c.em, c.sr, c.rt, c.plan, c.res, c.setup
     d: dict[str, Any] = {}
     why: dict[str, str] = {}
+    warnings: list = []
     Gamma, k = float(rt.Gamma_ns), float(rt.k_nr_ns)
     ph = em.phonon
     Z = float(qd_gf.zpl_weight(ph, c.T_K)) if ph is not None else 1.0
-    Zf = Z if su.zpl_filter else 1.0
+    kap = sr.kappa_meV
+    if su.zpl_filter:
+        Zf, q = Z, 1.0
+    elif ph is not None and kap is not None and kap > 0.0 and sr.E_mode_meV is not None:
+        _, Zf = cavity_sideband_filter(ph, c.T_K, float(kap), float(em.E_X_meV) - float(sr.E_mode_meV),
+                                       lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)))
+        q = Z / Zf
+    else:
+        Zf, q = 1.0, Z
     beta = float(res.extra.get("beta", rt.beta))
     eta_pol = float(su.eta_pol) * float(sr.pol_factor)
     n_ph = float(res.n_ph)
@@ -119,12 +157,12 @@ def _derive(c: Context) -> dict:
     f_rep = float(plan.f_rep_MHz) * 1e6 if plan.f_rep_MHz else None
     d.update(Z_phonon=Z, Z_filt=Zf, beta=beta, eta_out=float(sr.eta_out), T_NA=1.0, eta_pol=eta_pol,
              eta_rad=Gamma / (Gamma + k), n_ph=n_ph, Gamma_ns=Gamma, gamma_star_ns=float(rt.gamma_star_ns),
-             F_P_eff=float(rt.F_P_eff), lambda_nm=float(em.lambda_nm),
-             linewidth_ueV=float(rt.linewidth_ueV) if k == 0 else
-             lb_hbar_ueV() * (Gamma + k + float(rt.gamma_star_ns)),
-             detuning_ueV=float(rt.detuning_ueV))
+             F_P_eff=float(rt.F_P_eff), F_P_peak=float(sr.F_P), lambda_nm=float(em.lambda_nm),
+             linewidth_ueV=lb_hbar_ueV() * (Gamma + k + float(rt.gamma_star_ns)),
+             detuning_ueV=float(rt.detuning_ueV), hom_zpl_fraction=q)
     d["tau_purcell_ps"] = 1e3 / (Gamma + k)
     d["tau_ps"] = float(res.extra["tau_jc_ps"]) if "tau_jc_ps" in res.extra else d["tau_purcell_ps"]
+    d["tau_1e_ps"] = float(res.extra["tau_1e_ps"]) if "tau_1e_ps" in res.extra else d["tau_ps"]
     d["eta_extract"] = beta * d["eta_out"]
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
     if res.inversion is None and "p_loaded" in res.extra:
@@ -151,9 +189,17 @@ def _derive(c: Context) -> dict:
     bg = leak * S + float(su.dark_cps) if math.isfinite(S) else NAN
     d["laser_leak_used"] = leak
     d["g2_0"] = g2
-    d["g2_raw"] = g2_with_background(g2, S, bg) if math.isfinite(bg) else (g2 if leak == 0 and su.dark_cps == 0 else NAN)
+    if leak == 0 and su.dark_cps == 0:
+        d["g2_raw"] = g2                                       # no background: raw = intrinsic, whatever S is
+    elif math.isfinite(bg):
+        d["g2_raw"] = g2_with_background(g2, S, bg)
+        if not math.isfinite(d["g2_raw"]):
+            why["g2_raw"] = "no detected signal (S <= 0) with a non-zero background: g2_raw undefined"
+    else:
+        d["g2_raw"] = NAN
+        why["g2_raw"] = "background rate needs the detected signal rate S, which is unavailable"
     I1 = float(res.I_single)
-    d["hom_I"] = I1 * (1.0 if su.zpl_filter else Z * Z) if math.isfinite(I1) else NAN
+    d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
     if not math.isfinite(d["hom_I"]):
         why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
     eps = float(c.vals.get("setup", {}).get("eps_int", 0.0))
@@ -162,6 +208,11 @@ def _derive(c: Context) -> dict:
         d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
     else:
         d["hom_V_raw"] = d["hom_V_corr"] = NAN
+    if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0:
+        warnings.append("cross-polarised collection with eta_pol = 1: an unpolarised (trion / unpolarised X) emitter loses "
+                        "1/2 in a cross-polarised setup unless the structure is polarisation-selective (brief trap 9); "
+                        "set setup.eta_pol = 0.5 if that applies [A]")
+    d["_warnings"] = warnings
     d["_why"] = why
     return d
 
@@ -198,7 +249,8 @@ _ALL = ("material", "structure", "drive")
 _CH = ("material", "structure", "drive", "setup")
 _o("lambda_nm", "Emission wavelength", "nm", ("material.lambda_nm", "material.E_X_meV"),
    passthrough_of="material.lambda_nm")
-_o("F_P_eff", "Effective Purcell factor F_P L", "1", _MS, passthrough_of="structure.F_P")
+_o("F_P_eff", "Effective Purcell factor F_P L", "1", _MS)
+_o("F_P_peak", "Cavity-mode Purcell factor at zero detuning (structure.F_P)", "1", _MS, passthrough_of="structure.F_P")
 _o("beta", "Beta factor", "1", _MS, passthrough_of="structure.beta")
 _o("eta_out", "Extraction into the collected mode", "1", ("structure",))
 _o("eta_extract", "Extraction beta x eta_out", "1", _MS)
@@ -209,11 +261,13 @@ _o("eta_rad", "Radiative efficiency Gamma/(Gamma+k)", "1", _MS)
 _o("eta_prep_x_eta_rad", "eta_prep x eta_rad", "1", _ALL)
 _o("inversion", "Inversion after the pulse", "1", _ALL)
 _o("Z_phonon", "ZPL weight Z(T)", "1", ("material",))
-_o("Z_filt", "ZPL filter factor", "1", ("material", "setup.zpl_filter"))
+_o("Z_filt", "ZPL / cavity sideband filter factor", "1", ("material", "structure", "setup.zpl_filter"))
+_o("hom_zpl_fraction", "ZPL fraction q of the collected light (hom_I = I q^2)", "1", ("material", "structure", "setup.zpl_filter"))
 _o("gamma_star_ns", "Pure dephasing (repo convention)", "1/ns", ("material",))
 _o("Gamma_ns", "Radiative rate", "1/ns", _MS)
 _o("n_ph", "Photons per pulse", "1", _ALL)
-_o("tau_ps", "Lifetime (JC 1/e when solver jc, else Purcell)", "ps", _MS)
+_o("tau_ps", "Lifetime (slowest Liouvillian decay eigenvalue when solver jc, else Purcell)", "ps", _ALL)
+_o("tau_1e_ps", "JC flux 1/e time after the peak (informational; = tau_ps for non-jc)", "ps", _ALL)
 _o("tau_purcell_ps", "Purcell lifetime 1e3/(Gamma+k)", "ps", _MS)
 _o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)
 _o("detuning_ueV", "Emitter minus cavity detuning", "ueV", _MS)
@@ -266,10 +320,14 @@ def resolve_inputs(obs, leaves: dict, reads: dict) -> list:
     return [p for p in out if not (p in seen or seen.add(p))]
 
 
-def tag_of(obs, leaves: dict, reads: dict):
-    """(tag, inputs): widest of DR and the tags of the leaves the observable depends on."""
+def tag_of(obs, leaves: dict, reads: dict, floor: str = ""):
+    """(tag, inputs): widest of DR and the tags of the leaves the observable depends on. `floor` is the
+    structure response's tag_floor (constants hidden inside response(), e.g. DBR penetration [E]); it applies
+    to observables that depend on the structure."""
     inputs = resolve_inputs(obs, leaves, reads)
     tags = [leaves[p].tag for p in inputs]
+    if floor and ("structure" in obs.deps or any(p.startswith("structure.") for p in inputs)):
+        return widest_tag("DR", floor, *tags), inputs
     if inputs and not any(t in STAGES for t in obs.deps):      # pure passthrough of entered leaves
         return widest_tag(*tags), inputs
     return widest_tag("DR", *tags), inputs

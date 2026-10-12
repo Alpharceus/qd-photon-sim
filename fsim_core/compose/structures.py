@@ -38,10 +38,10 @@ from .types import StructureResponse
 
 # hbar = 6.582119569e-16 eV s (CODATA 2018) = lindblad.HBAR_MEV_NS [V].
 HBAR_MEV_NS = 6.582119569e-4
-D_OVER_W0 = 2.7          # micropillar d / w0 [E] (Ding et al., PRL 116, 020401 (2016) class; w0 ~ d/2.7)
+D_OVER_W0 = 2.7          # default micropillar d / w0 [E]: HE11 Gaussian approximation (Gerard et al., PRL 81, 1110 (1998) class); a ParamSpec leaf "d_over_w0"
 
 _REF_PURCELL = "[DR] F_P = (3/(4 pi^2)) (lambda/n)^3 Q/V (Purcell, Phys. Rev. 69, 681 (1946))"
-_REF_GERARD = "[E] Gerard et al., Phys. Rev. Lett. 81, 1110 (1998): micropillar V = pi d^2/4 L_eff class"
+_REF_GERARD = "[E] Gerard et al., Phys. Rev. Lett. 81, 1110 (1998): micropillar Q/V class (V = (pi/4) w0^2 L_eff here; the cylinder pi d^2/4 L_eff is an upper bound)"
 _REF_TOMM = "[V] Tomm et al., Nat. Nanotechnol. 16, 399 (2021): g/2pi 4.16, kappa/2pi 23.3, gamma/2pi 0.30 GHz, F_P ~ 10"
 _REF_SOMASCHI = "[V] Somaschi et al., Nat. Photonics 10, 340 (2016): F_P 7.6, beta 0.88, eta_out 0.70"
 _REF_LECAMP = "[DR] Lecamp, Lalanne & Hugonin, Phys. Rev. Lett. 99, 023902 (2007): F_wg = (3/(4 pi)) (lambda/n)^2 (n_g/n)/A_eff"
@@ -183,7 +183,7 @@ def _path(name):
 
 
 def _cavity_resp(entry, em, *, F_P, kappa_meV, detuning_meV, g_meV=None, F_bg=1.0, beta0=0.0,
-                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None):
+                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None, tag_floor=""):
     E_mode = em.E_X_meV - detuning_meV
     if g_meV is None and kappa_meV:
         g_meV = g_from_purcell(F_P, kappa_meV, em.gamma0_ns)
@@ -191,7 +191,7 @@ def _cavity_resp(entry, em, *, F_P, kappa_meV, detuning_meV, g_meV=None, F_bg=1.
                              E_mode_meV=float(E_mode), g_meV=None if g_meV is None else float(g_meV),
                              F_bg=float(F_bg), beta0=float(beta0), eta_out=float(eta_out),
                              eta_out_fn=eta_out_fn, pol_factor=float(pol_factor),
-                             notes=tuple(notes), inputs=dict(inputs or {}))
+                             notes=tuple(notes), inputs=dict(inputs or {}), tag_floor=tag_floor)
 
 
 _COMMON_NOTE_EFFNA = ("eta_out includes the far-field/NA collection at the setup NA; "
@@ -253,9 +253,16 @@ def _micropillar_calc(v, em):
     L_pen = dbr.penetration_depth(n_h, n_l, lam, n_c, "L")      # nm, medium n_c, low-index layer first
     L_eff_um = (lam / n_c + 2.0 * L_pen) * 1e-3
     d = v.pos("d_um")
-    w0 = d / D_OVER_W0
-    area = math.pi * d * d / 4.0 if v("mode_area") == "cylinder" else math.pi * w0 * w0 / 2.0
-    V_um3 = area * L_eff_um
+    w0 = d / v.pos("d_over_w0")
+    # V = int eps|E|^2 / (eps|E|^2)_max. Transverse: Gaussian HE11 profile, int exp(-2 r^2/w0^2) 2 pi r dr = pi w0^2/2.
+    # Longitudinal: the standing wave halves the energy integral, int n^2|E|^2 dz/(n_c^2|E_max|^2) = L_eff/2
+    # (reviewer's TMM of the 25/40-pair GaAs/AlAs stack: 489.1 nm = L_eff/2 = 978.3/2 nm). V = (pi/4) w0^2 L_eff [DR/E].
+    # "cylinder" is the OLD pi d^2/4 x L_eff: it neither halves L_eff nor uses the HE11 area (J0 hard-wall area is only
+    # 0.2695 x pi d^2/4, Gaussian 0.274x), so it is an UPPER BOUND on V, i.e. a LOWER BOUND on F_P.
+    if v("mode_area") == "cylinder":
+        V_um3 = math.pi * d * d / 4.0 * L_eff_um
+    else:
+        V_um3 = (math.pi / 4.0) * w0 * w0 * L_eff_um
     Rt = dbr.qw_peak_reflectivity(1.0, n_c, n_h, n_l, Nt)
     Rb = dbr.qw_peak_reflectivity(n_h, n_c, n_h, n_l, Nb)
     Tt, Tb = 1.0 - Rt, 1.0 - Rb
@@ -278,28 +285,29 @@ def _micropillar(self, vals, em, T_K, NA):
     v = _V(self, vals)
     c = _micropillar_calc(v, em)
     r_factor, pol = v.frac("r_factor"), v.frac("pol_factor")
-    F_P = (3.0 / (4.0 * math.pi ** 2)) * (c["lam"] * 1e-3 / c["n_c"]) ** 3 * c["Q"] / c["V_um3"] * r_factor
+    F_P = (3.0 / (4.0 * math.pi ** 2)) * (c["lam"] * 1e-3 / c["n_c"]) ** 3 * c["Q"] / c["V_um3"] * r_factor * pol
     det = v.f("detuning_ueV") * 1e-3
     kappa = (em.E_X_meV - det) / c["Q"]
     lam, w0, em_ = c["lam"], c["w0"], c["eta_mirror"]
     fn = lambda NA_: em_ * T_NA(NA_, lam, w0)          # noqa: E731
     notes = [_COMMON_NOTE_EFFNA,
-             f"V_eff = {'pi d^2/4' if v('mode_area') == 'cylinder' else 'pi w0^2/2 (w0 = d/2.7 [E])'} x L_eff, "
+             f"V_eff = {'pi d^2/4 x L_eff (UPPER bound on V, lower bound on F_P)' if v('mode_area') == 'cylinder' else '(pi/4) w0^2 L_eff (Gaussian HE11 area pi w0^2/2 x standing-wave L_eff/2; w0 = d/' + format(v.f('d_over_w0'), 'g') + ' [E])'}, "
              f"L_eff = lambda/n + 2 L_pen, L_pen = lambda/(4 dn) n_h n_l/n_c^2 = {c['L_pen_nm']:.0f} nm "
              f"(dbr.penetration_depth, low-index layer first) [DR/E]; V/(lambda/n)^3 = {c['V_norm']:.2f}",
-             "the cylinder volume pi d^2/4 over-fills the Gaussian mode, so F_P is typically 2-3x below "
-             "measured micropillars (Ding 2016); mode_area='gaussian' is the closer class [E]",
+             "the ideal F_P (r_factor = pol_factor = 1, zero detuning) bounds a measured F_P from above; the measured/ideal "
+             "ratio is r x cos^2(pol) x spectral overlap (Ding 2016: ideal ~13 vs measured 6.3, ratio ~0.47) [DR/E]",
              f"Q = {c['Q']:.0f} ({'measured, entered by the user' if v.f('Q_measured') > 0 else 'computed: 1/Q = 1/Q_planar + 1/Q_sw'}); "
              f"Q_planar = {c['Q_planar']:.0f} from DBR T_top = {c['Tt']:.2e}, T_bot = {c['Tb']:.2e} [DR], "
              f"Q_sw = {c['Q_sw']:.0f} (A d^alpha, [A])",
              "fractional DBR pair counts are truncated to integers (dbr uses int(n_pairs))",
-             "position factor r_factor is folded into F_P; pol_factor is returned separately in pol_factor"]
+             "position factor r_factor and polarisation factor pol_factor (cos^2 dipole-field) are both folded into F_P (brief 3); "
+             "the response pol_factor is 1"]
     inputs = {"F_P": _path("Q_measured") if v.f("Q_measured") > 0 else _path("d_um"),
               "kappa_meV": _path("detuning_ueV"), "eta_out": _path("N_top"), "pol_factor": _path("pol_factor"),
               "beta0": _path("beta0"), "F_bg": _path("F_bg")}
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=v.pos("F_bg"),
-                        beta0=v.frac("beta0"), eta_out=fn(NA), eta_out_fn=fn, pol_factor=pol,
-                        notes=notes, inputs=inputs)
+                        beta0=v.frac("beta0"), eta_out=fn(NA), eta_out_fn=fn, pol_factor=1.0,
+                        notes=notes, inputs=inputs, tag_floor="E")           # dbr.penetration_depth, n_c = n_high [E]
 
 
 MICROPILLAR = _Struct(
@@ -316,11 +324,14 @@ MICROPILLAR = _Struct(
         _p("loss_rt", "1", 1e-4, 0.0, 0.1, help="Round-trip absorption / scattering loss of the planar cavity.", group="advanced"),
         _p("Q_sw_1um", "1", 200.0, 1.0, 1e9, scale="log", help="Sidewall-scattering Q of a 1 um pillar, Q_sw = A d^alpha.", group="advanced"),
         _p("Q_sw_alpha", "1", 4.0, 0.0, 8.0, help="Diameter exponent of the sidewall-scattering Q.", group="advanced"),
-        _p("mode_area", "enum", "cylinder", choices=("cylinder", "gaussian"),
-           help="Mode area: pi d^2/4 (cylinder) or pi w0^2/2 with w0 = d/2.7 (Gaussian).", group="advanced"),
+        _p("mode_area", "enum", "gaussian", choices=("gaussian", "cylinder"),
+           help="Mode volume: Gaussian HE11 V = (pi/4) w0^2 L_eff (default) or 'cylinder' V = pi d^2/4 x L_eff "
+                "(upper bound on V = lower bound on F_P).", group="advanced"),
+        _p("d_over_w0", "1", D_OVER_W0, 1.5, 4.0, tag="E", source="HE11 Gaussian approximation w0 ~ d/2.7 [E] (Gerard et al., PRL 81, 1110 (1998) class)",
+           help="Pillar diameter over Gaussian waist radius, w0 = d/(d_over_w0).", group="advanced"),
         _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help="Dot minus mode energy; positive = dot above the mode."),
         _p("r_factor", "1", 1.0, 0.0, 1.0, help="Position factor |E(r)|^2/|E_max|^2 of the dot (folded into F_P)."),
-        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Polarisation factor cos^2(angle(dipole, cavity field))."),
+        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Polarisation factor cos^2(angle(dipole, cavity field)); folded into F_P."),
         _p("eta_out", "1", -1.0, -1.0, 1.0, help="Mirror outcoupling override; negative = computed T_top/(T_top+T_bot+loss)."),
         _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="A", source="leaky rate = Gamma0 [A], Somaschi 2016 (beta 0.88 at F_P 7.6) [V]",
@@ -410,8 +421,14 @@ def _cbg(self, vals, em, T_K, NA):
     leak = v.f("leak")
     if leak < 0:
         raise ValueError("cbg.leak must be >= 0")
-    fn = eta_table_fn(v("eta_table"))
+    tab = eta_table_fn(v("eta_table"))
+    # the table is the TOTAL first-lens efficiency (= beta x eta_out, as the papers quote it); engine eta_out is
+    # table/beta at resonance, beta_res = F_P/(1 + leak + F_P), so beta(L) x eta_out reproduces the table at L = 1
+    beta_res = F_P / (1.0 + leak + F_P) if F_P > 0 else 0.0
+    fn = (lambda NA_: min(tab(NA_) / beta_res, 1.0)) if beta_res > 0 else (lambda NA_: 0.0)      # noqa: E731
     notes = [_COMMON_NOTE_EFFNA,
+             f"eta_table = TOTAL first-lens efficiency (beta x eta_out); eta_out = table/beta_res with beta_res = "
+             f"F_P/(1 + F_P + leak) = {beta_res:.3f} (capped at 1) [DR]",
              "no mode solver: F_P, Q and the far-field table are entered numbers [A] (FDTD / COMSOL values)",
              f"beta = F_P/(1 + F_P + leak) via F_bg = 1 + leak = {1.0 + leak:.3g} [DR]",
              "eta_out(NA) from the table: piecewise linear, flat above the last point, eta0 (NA/NA0)^2 below the first [A]"]
@@ -430,7 +447,7 @@ CBG = _Struct(
            help="Cavity-mode Purcell factor at zero detuning (additional rate ratio)."),
         _p("Q", "1", 150.0, 20.0, 1000.0, tag="E", source="CBG Q ~ 100-300 class [E]", help="Quality factor (broad: kappa ~ 5-10 meV)."),
         _p("eta_table", "", "0.7:0.6", tag="A", source="single FDTD-class point (NA 0.7 -> 0.6) [A]; Wang 2019 PRL 0.62 at F 11.3 [V-abs]",
-           help="Far-field efficiency table 'NA:eta[, NA:eta ...]' (efficiency into the first lens versus its NA)."),
+           help="TOTAL first-lens efficiency table 'NA:eta[, NA:eta ...]' (= beta x eta_out at resonance, as quoted in the papers)."),
         _p("leak", "1", 0.0, 0.0, 10.0, help="Extra leaky decay in units of Gamma0 (beta = F_P/(1 + F_P + leak))."),
         _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help="Dot minus mode energy; positive = dot above the mode."),
     ),
@@ -501,11 +518,13 @@ def _phc_waveguide(self, vals, em, T_K, NA):
         inputs = {"F_P": _path("beta_direct")}
     else:
         F, _ = waveguide.beta_factor(v.pos("A_eff_um2"), em.lambda_nm, em.n_host, v.pos("n_g"), v.frac("pos_factor"))
+        F *= v.frac("pol_factor")                 # cos^2 dipole-mode overlap folded into F_wg (brief 3)
+        notes.append("pol_factor (cos^2 dipole-mode) is folded into F_wg; the response pol_factor is 1")
         inputs = {"F_P": _path("A_eff_um2")}
     inputs.update({"F_bg": _path("F_bg"), "eta_out": _path("eta_coupler")})
     return StructureResponse(F_P=float(F), kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=F_bg, beta0=0.0,
                              eta_out=v.frac("eta_coupler") * v.frac("eta_prop"), eta_out_fn=None,
-                             pol_factor=v.frac("pol_factor"), notes=tuple(notes), inputs=inputs)
+                             pol_factor=1.0, notes=tuple(notes), inputs=inputs)
 
 
 PHC_WAVEGUIDE = _Struct(
@@ -521,7 +540,7 @@ PHC_WAVEGUIDE = _Struct(
         _p("eta_coupler", "1", 0.7, 0.0, 1.0, tag="E", source="grating-coupler class [E]", help="End-coupler efficiency."),
         _p("eta_prop", "1", 0.95, 0.0, 1.0, tag="E", source="short-waveguide propagation [E]", help="Propagation transmission to the coupler."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help="Leaky / background decay rate in units of Gamma0 (< 1 inhibited)."),
-        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Dipole-to-mode polarisation factor."),
+        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Dipole-to-mode polarisation factor cos^2 (folded into F_wg; ignored when beta_direct is used)."),
     ),
     refs=(_REF_LECAMP,), eta_hint=(0.1, 0.8), fn=_phc_waveguide)
 
@@ -564,7 +583,8 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
     inputs = {"beta0": _path("d_nm"), "eta_out": _path("taper_T"), "F_bg": _path("F_bg")}
     return StructureResponse(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=v.pos("F_bg"),
                              beta0=float(beta), eta_out=float(min(max(eta_out, 0.0), 1.0)), eta_out_fn=fn,
-                             pol_factor=1.0, notes=tuple(notes), inputs=inputs)
+                             pol_factor=1.0, notes=tuple(notes), inputs=inputs,
+                             tag_floor="A")                     # Marcuse / multimode envelopes calibrated on GaAs/InAs wires [A]
 
 
 PHOTONIC_NANOWIRE = _Struct(
@@ -625,7 +645,7 @@ def _planar_dbr(self, vals, em, T_K, NA):
     return StructureResponse(F_P=0.0, kappa_meV=float(kappa) if kappa_ok else None,
                              E_mode_meV=float(mode["E_cav_meV"]), g_meV=None, F_bg=float(F_tot),
                              beta0=v.frac("beta0"), eta_out=float(Tt / (Tt + Tb)), eta_out_fn=None,
-                             pol_factor=1.0, notes=tuple(notes), inputs=inputs)
+                             pol_factor=1.0, notes=tuple(notes), inputs=inputs, tag_floor="E")
 
 
 PLANAR_DBR = _Struct(
@@ -746,7 +766,8 @@ def _edge_ridge(self, vals, em, T_K, NA):
     notes.extend(e.notes)
     inputs = {"F_P": _path("ridge_width_nm"), "eta_out": _path("L_um"), "F_bg": _path("alpha_cm"), "beta0": _path("R_back")}
     return StructureResponse(F_P=float(e.F_wg), kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0,
-                             eta_out=float(eta_out), eta_out_fn=None, pol_factor=1.0, notes=tuple(notes), inputs=inputs)
+                             eta_out=float(eta_out), eta_out_fn=None, pol_factor=1.0, notes=tuple(notes), inputs=inputs,
+                             tag_floor="E")                     # waveguide.hkust_ridge_stack is an [E] stack
 
 
 EDGE_RIDGE = _Struct(
@@ -777,9 +798,10 @@ def nitride_cavity_args(v, em, T_K):
         detuning_offset_meV=v.f("detuning_offset_meV"), purcell_enabled=bool(v("purcell_enabled")))
     ex = em.E_X_meV * 1e-3
     track = v.f("E_X_track_eV") if v.f("E_X_track_eV") > 0 else ex
+    # em.delta_xx_meV: NEGATIVE = bound; nitride_cavity.response wants delta_xx POSITIVE = binding (E_XX = E_X - delta_xx)
     gam = HBAR_MEV_NS * (em.gamma0_ns + em.k_nr_ns + em.gamma_star_ns)
     kw = dict(T_K=T_K, E_X_eV=ex, E_X_track_eV=track, gamma_X_meV=gam, gamma_XX_meV=gam * em.gamma_xx_ratio,
-              delta_xx_meV=em.delta_xx_meV, gamma_X0_ns=em.gamma0_ns, gamma_XX0_ns=em.gamma0_ns)
+              delta_xx_meV=-em.delta_xx_meV, gamma_X0_ns=em.gamma0_ns, gamma_XX0_ns=em.gamma0_ns)
     return prm, kw
 
 

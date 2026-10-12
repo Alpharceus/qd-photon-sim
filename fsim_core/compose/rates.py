@@ -4,17 +4,22 @@
     beta  = (beta0 F_bg + F_P L)/(F_bg + F_P L)                                      [DR]
     k_nr                                   photonless loss, kept separate (not Purcell-enhanced)
 
-L is the overlap of the emitter line with the cavity Lorentzian
-(spectral.cavity_transmission). The emitter line FWHM depends on Gamma, which
-depends on L, so L is solved self-consistently with the linewidth
+L is the overlap of the DOT line with the cavity Lorentzian
+(spectral.cavity_transmission):
 
-    w(L) = hbar (Gamma(L) + gamma*)           [ueV, hbar in ueV ns]
-    L    = cavity_transmission(detuning, w(L), kappa)
+    w_dot = hbar (Gamma_bg + k_nr + gamma*_repo)       [ueV, hbar in ueV ns]
+    L     = cavity_transmission(detuning, w_dot, kappa)
 
-by Brent's method on (0, 1] (unique root: T decreases in w, w increases in L),
-exactly as resonant_source.source_rates (checked against it in
-verify/verify_compose_engine.py check 6 at F_bg = 1, k_nr = 0). Broadband
-structures (kappa None) have L = 1.
+with Gamma_bg = Gamma0 F_bg the decay into everything EXCEPT the cavity mode
+[DR]. Adiabatic elimination of the cavity gives the cavity-channel rate
+R = 4 g^2/(kappa + gamma_d) x Lorentzian(Delta; kappa + gamma_d) with
+gamma_d = Gamma_bg + k_nr + gamma*_repo the dot's own dephasing/decay width;
+the Purcell-enhanced rate is the OUTPUT of that channel, not part of the
+width the cavity filter sees, so there is no self-consistent root solve
+[DR; review finding 2]. (Tomm 2021: L 0.89 -> 0.987, tau 54.2 -> ~49 ps with
+the old Purcell-broadened width, measured 47.5 ps.) The same expression is
+used by resonant_source.source_rates. Broadband structures (kappa None)
+have L = 1.
 
 Units and conventions (physics brief section 2): rates in 1/ns, energies in meV,
 hbar = 6.582e-4 meV ns. gamma* is the REPO pure-dephasing rate = 2 x the
@@ -27,8 +32,9 @@ g < (kappa + Gamma_bg + gamma*_repo)/4, i.e. the textbook condition
 g > (kappa + gamma_tot)/4 with gamma_tot = Gamma_bg + 2 gamma*_textbook. Here
 Gamma_bg = Gamma0 F_bg is the emitter decay into everything EXCEPT the cavity
 mode (the cavity-mediated part is what the coupling competes with, so the
-Purcell-enhanced Gamma must not enter). Regime "strong" when the inequality is
-reversed. The JC flag of brief section 3 is jc_recommended = 4 g/kappa > 0.5
+Purcell-enhanced Gamma must not enter) and the photonless loss k_nr is included
+like everywhere else (g > (kappa + Gamma_bg + k_nr + gamma*_repo)/4). Regime
+"strong" when the inequality is reversed. The JC flag of brief section 3 is jc_recommended = 4 g/kappa > 0.5
 (adiabatic-elimination error ~ (2g/kappa)^2).
 """
 from __future__ import annotations
@@ -36,8 +42,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from typing import Optional
-
-from scipy.optimize import brentq
 
 from .. import lindblad as lb
 from ..spectral import cavity_transmission
@@ -58,7 +62,9 @@ class RatesEx(Rates):
     cav_minus_dot_ns: float = 0.0           # omega_cavity - omega_dot, 1/ns
     Gamma_bg_ns: float = 0.0                # Gamma0 F_bg: decay not into the cavity mode
     Gamma0_ns: float = 0.0                  # bare radiative rate
-    linewidth_ueV: float = 0.0              # emitter FWHM used for L, hbar (Gamma + gamma*)
+    linewidth_ueV: float = 0.0              # emitter FWHM hbar (Gamma + k_nr + gamma*) (Purcell-broadened, informational)
+    dot_linewidth_ueV: float = 0.0          # width used for L: hbar (Gamma_bg + k_nr + gamma*), no Purcell channel
+    beta0: float = 0.0                      # background-channel collected fraction (the structure's beta0)
 
 
 def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
@@ -77,11 +83,9 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
     else:
         detuning_ueV = 0.0
 
+    w_dot = h * (G0 * F_bg + k + gs)              # dot line width without the Purcell channel [DR]
     if has_cav:
-        def resid(L):
-            w = h * (G0 * (F_bg + F_P * L) + gs)
-            return float(cavity_transmission(detuning_ueV, w, kappa_ueV)) - L
-        L = float(brentq(resid, 0.0, 1.0, xtol=1e-15, rtol=8.9e-16))
+        L = float(cavity_transmission(detuning_ueV, w_dot, kappa_ueV))
     else:
         L = 1.0
 
@@ -102,10 +106,10 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
     regime = "weak"
     jc = False
     if has_cav and g_ns > 0.0:
-        crit = (kappa_ns + Gamma_bg + gs) / 4.0
+        crit = (kappa_ns + Gamma_bg + k + gs) / 4.0
         if g_ns > crit:
             regime = "strong"
-            notes.append(f"strong coupling: g = {g_ns:.4g}/ns > (kappa + Gamma_bg + gamma*)/4 = {crit:.4g}/ns")
+            notes.append(f"strong coupling: g = {g_ns:.4g}/ns > (kappa + Gamma_bg + k_nr + gamma*)/4 = {crit:.4g}/ns")
         jc = 4.0 * g_ns / kappa_ns > 0.5
         if jc:
             notes.append(f"4g/kappa = {4.0 * g_ns / kappa_ns:.3g} > 0.5: adiabatic elimination (Purcell) "
@@ -114,4 +118,5 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
     return RatesEx(Gamma_ns=Gamma, gamma_star_ns=gs, k_nr_ns=k, L=L, F_P_eff=FPL, beta=beta,
                    regime=regime, notes=tuple(notes), jc_recommended=bool(jc), g_ns=g_ns,
                    kappa_ns=kappa_ns, detuning_ueV=detuning_ueV, cav_minus_dot_ns=cav_minus_dot,
-                   Gamma_bg_ns=Gamma_bg, Gamma0_ns=G0, linewidth_ueV=h * (Gamma + gs))
+                   Gamma_bg_ns=Gamma_bg, Gamma0_ns=G0, linewidth_ueV=h * (Gamma + k + gs),
+                   dot_linewidth_ueV=w_dot, beta0=float(sr.beta0))

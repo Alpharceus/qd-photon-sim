@@ -55,14 +55,51 @@ class V:
 
 em0 = make_em()
 
-# 1. F_P closed form identity (micropillar, measured Q) -- independent re-derivation of L_pen and V
+# 1. micropillar F_P: arithmetic regression of V = (pi/4) w0^2 L_eff (w0 = d/2.7), PLUS the independent checks below
 lam, n_h, n_l, d, Q = 670.0, 3.5, 2.95, 2.5, 6124.0
 Lpen = lam / (4 * (n_h - n_l)) * n_h * n_l / n_h ** 2             # first_layer='L', n_c = n_h
 Leff = (lam / n_h + 2 * Lpen) * 1e-3
-Vum = math.pi * d * d / 4 * Leff
+Vum = math.pi / 4 * (d / 2.7) ** 2 * Leff
 F_ref = 3 / (4 * math.pi ** 2) * (lam * 1e-3 / n_h) ** 3 * Q / Vum
 r = resp("micropillar", {"Q_measured": Q, "d_um": d, "n_high": n_h, "n_low": n_l})
-check("F_P closed form (micropillar, Q 6124, d 2.5 um)", abs(r.F_P / F_ref - 1) < 1e-12, f"{r.F_P:.12g} vs {F_ref:.12g}")
+check("F_P arithmetic (micropillar, Q 6124, d 2.5 um): V = (pi/4) w0^2 L_eff, w0 = d/2.7",
+      abs(r.F_P / F_ref - 1) < 1e-12, f"{r.F_P:.12g} vs {F_ref:.12g}")
+
+# 1b. review finding 1/14: the IDEAL F_P must bound the measured one from above. Ding et al., PRL 116, 020401 (2016):
+# d 2.5 um, Q 6124, lambda 897 nm, GaAs/AlAs; measured F_P = 6.3 [V] (= ideal x r x cos^2 x spectral overlap < ideal).
+em_d = make_em(lambda_nm=897.0, E_X_meV=1239.84198 / 0.897)
+rdg = resp("micropillar", {"Q_measured": 6124.0, "d_um": 2.5}, em=em_d)
+check("Ding ideal F_P (d 2.5, Q 6124, 897 nm, GaAs/AlAs) >= measured 6.3 (ideal bounds measured from above)",
+      rdg.F_P >= 6.3, f"ideal F_P = {rdg.F_P:.3f}")
+rdc = resp("micropillar", {"Q_measured": 6124.0, "d_um": 2.5, "mode_area": "cylinder"}, em=em_d)
+check("cylinder option is an upper bound on V: F_P(cylinder) < F_P(gaussian)", rdc.F_P < rdg.F_P,
+      f"{rdc.F_P:.3f} < {rdg.F_P:.3f}")
+rdp = resp("micropillar", {"Q_measured": 6124.0, "d_um": 2.5, "pol_factor": 0.5, "r_factor": 0.8}, em=em_d)
+check("pol_factor and r_factor are folded into F_P (response pol_factor = 1)",
+      abs(rdp.F_P / rdg.F_P - 0.4) < 1e-12 and rdp.pol_factor == 1.0)
+
+
+def tmm_half_length_nm(lam_nm, nh, nl, nc, Nt, Nb):
+    """Independent TMM (own code, not fsim_core.dbr): int n^2|E|^2 dz/(nc^2 |E_max|^2) over both mirrors plus the
+    cavity, with the field started at the spacer antinode (E = 1, H = 0) and propagated outward through each side:
+    half spacer lam/(2 nc), then Nt/Nb x (low lam/(4 nl), high lam/(4 nh)) [the order the repo's micropillar uses]."""
+    def side(N):
+        layers = [(nc, lam_nm / (2 * nc))] + [(nl, lam_nm / (4 * nl)), (nh, lam_nm / (4 * nh))] * N
+        E, H, tot = 1.0 + 0j, 0j, 0.0
+        for n, dz in layers:
+            k = 2 * math.pi * n / lam_nm
+            zs = np.linspace(0.0, dz, 400)
+            Ez = E * np.cos(k * zs) + 1j * H / n * np.sin(k * zs)
+            tot += np.trapezoid(n * n * np.abs(Ez) ** 2, zs)
+            E, H = E * math.cos(k * dz) + 1j * H / n * math.sin(k * dz), 1j * n * E * math.sin(k * dz) + H * math.cos(k * dz)
+        return tot / (nc * nc)
+    return side(Nt) + side(Nb)
+
+
+cd = S._micropillar_calc(V("micropillar", {"d_um": 2.5}), em_d)
+Lz = tmm_half_length_nm(897.0, 3.5, 2.95, 3.5, 25, 40)
+check("TMM identity: int n^2|E|^2 dz / (n_c^2 |E_max|^2) = L_eff/2 within 1% (standing wave halves the energy length)",
+      abs(Lz / (0.5 * cd["L_eff_um"] * 1e3) - 1) < 0.01, f"{Lz:.1f} nm vs L_eff/2 = {0.5 * cd['L_eff_um'] * 1e3:.1f} nm")
 r2 = resp("generic_cavity", {"F_P": 7.3, "Q": 5000.0})
 check("generic_cavity returns F_P and kappa = E_mode/Q exactly",
       r2.F_P == 7.3 and abs(r2.kappa_meV - 1850.0 / 5000.0) < 1e-15)
@@ -204,7 +241,10 @@ fn = S.eta_table_fn("0.5:0.2, 0.9:0.6")
 check("eta table: interpolation, flat above, cone scaling below",
       abs(fn(0.7) - 0.4) < 1e-12 and fn(1.0) == 0.6 and abs(fn(0.25) - 0.05) < 1e-12)
 rcb = resp("cbg", {"eta_table": "0.5:0.2, 0.9:0.6"}, NA=0.7)
-check("cbg eta_out follows the table at NA", abs(rcb.eta_out - 0.4) < 1e-12 and rcb.eta_out_fn(0.9) == 0.6)
+bres = 10.0 / 11.0                                                   # beta at resonance, F_P 10, leak 0, beta0 0
+check("cbg eta_table is the TOTAL efficiency: eta_out = table/beta_res and beta x eta_out = table at L = 1",
+      abs(rcb.eta_out - 0.4 / bres) < 1e-12 and abs(rcb.eta_out_fn(0.9) - 0.6 / bres) < 1e-12
+      and abs(bres * rcb.eta_out - 0.4) < 1e-12)
 mp = resp("micropillar", {"eta_out": 0.5}, NA=0.7)
 check("micropillar eta_out override replaces the mirror asymmetry (T_NA still applied)",
       abs(mp.eta_out - 0.5 * S.T_NA(0.7, 670.0, 2.5 / 2.7)) < 1e-15)
