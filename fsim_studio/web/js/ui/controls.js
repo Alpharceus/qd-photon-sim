@@ -73,7 +73,9 @@ export function popover(anchor, content, { label = "Details", onClose } = {}) {
   pop.style.top = `${r.bottom + 8}px`;
   const away = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) closePopover(); };
   const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); closePopover(); anchor.focus(); } };
-  setTimeout(() => document.addEventListener("pointerdown", away), 0);
+  // Attach the outside-click listener on the next tick, but only if this popover is still the open one
+  // (a popover closed before the tick must not leave a stale listener that closes the next one).
+  setTimeout(() => { if (openPop && openPop.pop === pop) document.addEventListener("pointerdown", away); }, 0);
   document.addEventListener("keydown", esc, true);
   openPop = { pop, cleanup: () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc, true); onClose?.(); } };
   pop.focus();

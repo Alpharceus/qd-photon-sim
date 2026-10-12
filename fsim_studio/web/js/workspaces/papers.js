@@ -11,6 +11,7 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest } from "../ui/tagChip.js";
 import { skeleton, errorState, toast } from "../ui/controls.js";
 import { fmt, isNum } from "../ui/format.js";
+import { sym } from "../ui/readout.js";
 import { paperOverlay } from "../charts/paperOverlay.js";
 
 const AXES = [
@@ -32,23 +33,62 @@ const READ_INFO = {
   "V-snip": "Read from a snippet only",
 };
 
+// Display notation of the observables the ledgers use (labels only; the registry's own names are sentences).
+const OBS_SYM = {
+  g2_0: "g^{(2)}(0)", g2_XX: "g^{(2)}(0) of the XX line", hom_I: "HOM overlap I", hom_V: "HOM visibility V", hom_XX: "HOM overlap of the XX line",
+  F_P_eff: "Effective Purcell factor F_{P}·L", tau_ps: "Lifetime τ", tau_XX_ps: "XX lifetime τ_{XX}", tau_purcell_ps: "Purcell lifetime τ_{P}",
+  Gamma_ns: "Radiative rate Γ", beta: "β factor", eta_extract: "Extraction β·η_{out}", eta_prep: "State preparation η_{prep}", eta_rad: "Radiative efficiency η_{rad}",
+  B_fibre: "Brightness into the fibre", B_first_lens: "First-lens brightness", rate_detected_Hz: "Detected count rate", Z_phonon: "ZPL weight Z",
+  inversion: "Inversion after the pulse", linewidth_ueV: "Emitter linewidth",
+};
+
+/** "raw g(2)(0)": the convention in words, then the observable in notation (intrinsic is the default and stays silent). */
+function obsNode(obs, conv) {
+  const base = OBS_SYM[obs] || String(obs || "").replace(/_/g, " ");
+  const c = conv && conv !== "intrinsic" ? `${conv} ` : "";
+  return h("span.pp-obsl", { title: "paper and model are compared in the same convention only" }, c, OBS_SYM[obs] ? sym(base) : base);
+}
+
+/** The ledger's tolerance string in words: "2sigma|abs0.005" -> "±2 sigma or ±0.005 abs (whichever is larger)". */
+function tolHuman(str) {
+  if (!str) return "";
+  const parts = String(str).split("|").map((t) => {
+    let m;
+    if ((m = /^([\d.]+)sigma$/.exec(t))) return `±${m[1]} sigma`;
+    if ((m = /^rel([\d.]+)%$/.exec(t))) return `±${m[1]}%`;
+    if ((m = /^abs(.+)$/.exec(t))) return `±${m[1]} abs`;
+    if ((m = /^(.+)<=(.+)$/.exec(t))) return `${m[1].replace(/_/g, " ")} at most ${m[2]}`;
+    return t;
+  });
+  return parts.length > 1 ? `${parts.join(" or ")} (whichever is larger)` : parts[0];
+}
+
+/** Items that are tests (class M) and how many of them the model agrees with. Calibration, transcription and prediction items are not tests. */
+function agreement(items) {
+  const tested = items.filter((i) => i.cls === "M");
+  return { tested: tested.length, agree: tested.filter((i) => i.outcome === "pass").length };
+}
+
+const NARROW = window.matchMedia("(max-width: 1100px)");
 let P = null;
 
 export function mount(el, ctx) {
   P = {
     el, ctx, list: [], id: null, paper: null, result: null, resultCached: false, running: false,
     charts: [], seq: 0, filters: { material: null, structure: null, drive: null }, dom: {},
-    job: null, timer: null, t0: 0, eta: 5, listErr: null,
+    job: null, timer: null, t0: 0, eta: 5, listErr: null, agree: {},
   };
   el.classList.add("ws-papers");
   ensureCss();
   el.dataset.ready = "0";
   buildShell();
+  NARROW.addEventListener("change", syncFold);
   loadList().then(() => { if (P) update(P.ctx.args); });
 }
 
 export function unmount() {
   if (!P) return;
+  NARROW.removeEventListener("change", syncFold);
   stopJob();
   disposeCharts();
   P.el.classList.remove("ws-papers");
@@ -69,6 +109,9 @@ export function update(args) {
   P.result = null;
   P.resultCached = false;
   syncSelected();
+  P.dom.grid.dataset.sel = id ? "1" : "0";
+  syncFold();
+  if (id && NARROW.matches) window.scrollTo?.(0, 0);
   if (!id) { renderPick(); P.el.dataset.ready = P.listDone ? "1" : "0"; return; }
   openPaper(id);
 }
@@ -97,16 +140,32 @@ function buildShell() {
   const d = P.dom;
   d.filters = h("div.pp-filters", { role: "group", "aria-label": "Filter the catalogue by material, structure or drive" });
   d.count = h("p.pp-count", { "aria-live": "polite" });
+  d.key = h("p.pp-key", { hidden: true, title: "What an agreement is worth" },
+    h("b", "M"), " unfitted test", h("span.pp-key-sep", "·"), h("b", "C"), " calibration", h("span.pp-key-sep", "·"), h("b", "T"), " transcription", h("span.pp-key-sep", "·"), h("b", "P"), " prediction");
   d.plaques = h("div.pp-plaques", skeleton("plaque", { lines: 4 }), skeleton("plaque", { lines: 4 }));
-  d.cat = h("aside.pp-cat", { "aria-label": "Paper catalogue" }, d.filters, d.count, d.plaques);
+  // On a phone the catalogue folds behind "Papers (n)" and the chosen paper comes first; on desktop it is always open.
+  d.catN = h("span.pp-cat-n");
+  d.fold = h("details.pp-cat-fold", { open: true },
+    h("summary.pp-cat-sum", h("span.engrave", "Papers"), d.catN),
+    h("div.pp-cat-body", d.filters, d.count, d.key, d.plaques));
+  d.fold.addEventListener("toggle", () => { if (!NARROW.matches && !d.fold.open) d.fold.open = true; });
+  d.cat = h("aside.pp-cat", { "aria-label": "Paper catalogue" }, d.fold);
   d.main = h("section.pp-main", { "aria-label": "Paper device", dataset: { state: "idle" } });
+  d.grid = h("div.pp-grid", { dataset: { sel: "0" } }, d.cat, d.main);
   P.el.append(h("div.papers",
     h("header.ws-head.pp-head",
       h("div", h("h1.ws-title", "Papers"),
         h("p.ws-sub", "Each card builds a device from only what one paper reports, runs the composed engine, and records per reported number whether the model agrees. A mismatch is a recorded result, never tuned away.")),
       h("div.pp-head-links",
         h("a.btn.btn-quiet", { href: "#/library", title: "The older literature parameter cards (V-a tiers)" }, icon("library", { size: 16 }), "Literature cards (legacy tiers)"))),
-    h("div.pp-grid", d.cat, d.main)));
+    d.grid));
+}
+
+/** Narrow screens: the catalogue is a disclosure, closed once a paper is chosen. Wide screens: always open. */
+function syncFold() {
+  const f = P?.dom?.fold;
+  if (!f) return;
+  f.open = NARROW.matches ? !P.id : true;
 }
 
 async function loadList() {
@@ -121,6 +180,21 @@ async function loadList() {
   if (!P) return;
   P.listDone = true;
   renderCatalogue();
+  prefetchAgreement();
+}
+
+/** A cached result comes back inline from the reproduce endpoint (nothing is computed), so the list can lead with agreement. */
+async function prefetchAgreement() {
+  const seq = P?.seq;
+  for (const p of (P?.list || []).filter((x) => x.last_outcome?.cached && !P.agree[x.id]).slice(0, 40)) {
+    if (!P || P.listErr) return;
+    try {
+      const resp = await P.ctx.api.postJSON(`/api/papers/${encodeURIComponent(p.id)}/reproduce`, {});
+      if (!P) return;
+      if (resp.result?.items) P.agree[p.id] = agreement(resp.result.items);
+    } catch { /* the list keeps its ledger-only badge */ }
+  }
+  if (P && seq === P.seq) renderCatalogue();
 }
 
 function kindsOf(axis) {
@@ -151,6 +225,8 @@ function renderCatalogue() {
     }
   }
   clear(d.plaques);
+  d.catN.textContent = P.list.length ? ` (${P.list.length})` : "";
+  d.key.hidden = !P.list.length;
   if (P.listErr) {
     d.count.textContent = "";
     d.plaques.append(errorState({ title: "Could not read the paper catalogue", message: P.listErr.message, actions: [{ label: "Retry", fn: () => { loadList(); } }] }));
@@ -195,13 +271,21 @@ function readBadge(level) {
     h("span.pp-read-k", "read"), h("span.pp-read-v", level || "?"));
 }
 
-function lastBadge(lo) {
+/** Last outcome on a list plaque: what was tested first ("5/7 AGREE"), the ledger as a quiet second part. */
+function lastBadge(lo, id) {
   if (!lo) return h("span.vb.vb-sm.vb-info.pp-last", { dataset: { status: "none" }, title: "No reproduce result is cached for this card and engine yet" }, icon("minus", { size: 12 }), h("span.vb-word", "NOT RUN"));
   if (lo.n_items == null) return h("span.vb.vb-sm.vb-info.pp-last", { dataset: { status: "info" } }, icon("info", { size: 12 }), h("span.vb-word", "CACHED"));
-  const ok = !!lo.all_match;
-  return h("span.vb.vb-sm.pp-last", { class: ok ? "vb-pass" : "vb-fail", dataset: { status: ok ? "pass" : "fail" },
-    title: `${lo.n_match} of ${lo.n_items} ledger items gave the outcome the card expected (this is ledger agreement, not model-equals-paper)` },
-  icon(ok ? "check" : "cross", { size: 12 }), h("span.vb-word", ok ? "LEDGER MATCH" : "LEDGER MISMATCH"), h("span.pp-frac", `${lo.n_match}/${lo.n_items}`));
+  const ag = P.agree[id] || (lo.n_tested != null ? { tested: lo.n_tested, agree: lo.n_agree } : null);
+  const ledger = h("span.pp-ledger", { title: `${lo.n_match} of ${lo.n_items} ledger items gave the outcome the card expected. This says the run reproduces the recorded results, including recorded failures; it is not model-equals-paper.` }, `ledger ${lo.n_match}/${lo.n_items}`);
+  if (!ag || !ag.tested) {
+    // agreement not known from the list alone: never show a green word for the ledger alone
+    return h("span.pp-last-wrap", h("span.vb.vb-sm.vb-info.pp-last", { dataset: { status: "info" }, title: ag ? "This card has no unfitted (M) test items" : "Open the paper to see how many tested items the model agrees with" },
+      icon("info", { size: 12 }), h("span.vb-word", ag ? "NO TESTS" : "OPEN TO SEE")), ledger);
+  }
+  const ok = ag.agree === ag.tested;
+  return h("span.pp-last-wrap", h("span.vb.vb-sm.pp-last", { class: ok ? "vb-pass" : "vb-fail", dataset: { status: ok ? "pass" : "fail" },
+    title: `The model agrees with the paper on ${ag.agree} of ${ag.tested} tested (M) items.` },
+  icon(ok ? "check" : "cross", { size: 12 }), h("span.vb-word", "AGREE"), h("span.pp-frac", `${ag.agree}/${ag.tested}`)), ledger);
 }
 
 function classCounts(c) {
@@ -218,7 +302,7 @@ function plaque(p) {
     h("div.pp-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${p.kinds[a.key]}` }, p.kinds[a.key].replace(/_/g, " ")) : null)),
     h("div.pp-row", readBadge(p.read_level), classCounts(p.classes)),
     h("div.pp-foot",
-      lastBadge(p.last_outcome),
+      lastBadge(p.last_outcome, p.id),
       h("span.id-chip.is-static", { title: "Catalog ID" }, h("span.id-k", "ID"), h("span.id-v", `FS-paper-${p.id}`))));
 }
 
@@ -380,8 +464,8 @@ function renderTable() {
   const rs = rows();
   if (!rs.length) { host.append(h("p.pp-hint.pad", "This card has an empty reproduce ledger.")); return; }
   const th = (t, extra = {}) => h("th", { scope: "col", ...extra }, t);
-  host.append(h("div.table-wrap", h("table.data-table.pp-table",
-    h("thead", h("tr", th("Item"), th("Paper"), th("Convention"), th("Model"), th("Δ and tolerance"), th("Class"), th("Outcome"), th("Inputs from paper"))),
+  host.append(h("div.table-wrap.pp-table-wrap", h("table.data-table.pp-table",
+    h("thead", h("tr", th("Item"), th("Paper"), th("Model"), th("Tolerance"), th("Outcome"), th("Inputs from paper"))),
     h("tbody", rs.map(row)))));
 }
 
@@ -389,78 +473,74 @@ function paperCell(r) {
   const rep = reportedOf(r.id);
   const ser = seriesOf(r.id);
   if (r.cls === "P" || (!rep && !ser)) {
-    return h("td.pp-paper", h("span.pp-muted", "no paper value"));
+    return h("td.pp-paper", { dataset: { label: "Paper" } }, h("span.pp-muted", "no paper value"));
   }
   if (ser) {
     const tag = normTag(ser.tag);
-    return h("td.pp-paper", h("div.pp-val",
+    return h("td.pp-paper", { dataset: { label: "Paper" } }, h("div.pp-val",
       h("span.pp-num", `${ser.points.length} points`), tagChip(tag, { title: ser.where, size: "sm" }),
       ser.digitized ? h("span.label-chip.pp-dig", { title: ser.method || "digitised from a figure" }, "digitised") : null),
     h("p.pp-where", { title: ser.where }, ser.where));
   }
   const tag = normTag(rep.tag);
   const err = isNum(rep.err) ? h("span.pp-err-v", { title: "paper-quoted uncertainty" }, ` ± ${fmt(rep.err)}`) : null;
-  return h("td.pp-paper", h("div.pp-val", h("span.pp-num", fmt(rep.value)), err, tagChip(tag, { title: rep.where, size: "sm" })),
+  return h("td.pp-paper", { dataset: { label: "Paper" } }, h("div.pp-val", h("span.pp-num", fmt(rep.value)), err, tagChip(tag, { title: rep.where, size: "sm" })),
     h("p.pp-where", { title: rep.where }, rep.where));
-}
-
-function convCell(r) {
-  const it = r.item;
-  const rep = reportedOf(r.id);
-  const ser = seriesOf(r.id);
-  const conv = it?.convention || rep?.convention || ser?.y?.convention || r.ledger?.convention || "intrinsic";
-  const obs = it?.observable || rep?.observable || ser?.y?.observable || r.ledger?.observable || "";
-  return h("td.pp-conv", h("span.pp-obs", obs), h("span.label-chip.pp-conv-chip", { title: "paper and model are compared in the same convention only" }, conv));
 }
 
 function bracket(lo, hi) {
   return h("span.pp-range", { title: "model [min, max] over the ranged inputs: an envelope, never a mean" }, `[${fmt(lo)}, ${fmt(hi)}]`);
 }
 
+/** Model value with ONE tag chip; the difference from the paper sits right under it, in absolute and relative terms. */
 function modelCell(r) {
   const it = r.item;
-  if (!it) return h("td.pp-model", h("span.pp-muted", "not run"));
+  const td = (...kids) => h("td.pp-model", { dataset: { label: "Model" } }, ...kids);
+  if (!it) return td(h("span.pp-muted", "not run"));
   const ser = it.kind === "series" ? P.result?.model_series?.find((s) => s.id === it.id) : null;
   const tag = normTag(ser?.tag) || modelTag(it.inputs);
   if (it.outcome === "unavailable" || it.outcome === "error" || !isNum(it.model)) {
-    return h("td.pp-model", h("span.pp-muted", "n/a"), it.note ? h("p.pp-note", it.note) : null);
+    return td(h("span.pp-muted", "n/a"), it.note ? h("p.pp-note", it.note) : null);
   }
-  if (!tag) return h("td.pp-model", h("span.pp-muted", "n/a"), h("p.pp-note", "no provenance tag; number withheld"));
+  if (!tag) return td(h("span.pp-muted", "n/a"), h("p.pp-note", "no provenance tag; number withheld"));
   if (it.kind === "series") {
-    return h("td.pp-model", h("div.pp-val", h("span.pp-k", "rms rel"), h("span.pp-num", fmt(it.model)), tagChip(tag, { title: "widest tag of the model curve", size: "sm" })),
+    return td(h("div.pp-val", h("span.pp-k", "rms rel"), h("span.pp-num", fmt(it.model)), tagChip(tag, { title: "widest tag of the model curve", size: "sm" })),
       isNum(it.lo) && isNum(it.hi) ? h("p.pp-note", "curve ", bracket(it.lo, it.hi)) : null);
   }
   const ranged = isNum(it.lo) && isNum(it.hi) && Math.abs(it.hi - it.lo) > 1e-9 * Math.max(Math.abs(it.hi), Math.abs(it.lo), 1e-300);
-  return h("td.pp-model", h("div.pp-val", h("span.pp-num", fmt(it.model)), tagChip(tag, { title: "widest tag of the inputs this observable depends on", size: "sm" })),
-    ranged ? h("p.pp-note", bracket(it.lo, it.hi), tagChip(tag, { title: "same tag as the central value", size: "sm" })) : null);
+  let delta = null;
+  if (it.kind === "scalar" && isNum(it.paper)) {
+    const d = it.model - it.paper;
+    const sign = d > 0 ? "+" : d < 0 ? "−" : "";
+    const rel = it.paper !== 0 ? ` (${sign}${fmt(Math.abs(d / it.paper) * 100, { sig: 2 })}%)` : "";
+    delta = h("p.pp-delta", { title: "model minus paper at the central point; the percentage is relative to the paper value" }, h("span.pp-k", "Δ"), h("span.pp-num.pp-delta-v", `${sign}${fmt(Math.abs(d))}${rel}`));
+  }
+  return td(h("div.pp-val", h("span.pp-num", fmt(it.model)), tagChip(tag, { title: "widest tag of the inputs this observable depends on", size: "sm" })),
+    delta, ranged ? h("p.pp-note", bracket(it.lo, it.hi)) : null);
 }
 
-function deltaCell(r) {
+function tolCell(r) {
   const it = r.item;
-  const tol = it?.tol_str || tolText(r.ledger?.tol);
-  const tolEl = tol ? h("span.pp-tol", { title: it?.tol_reason || r.ledger?.tol_reason || "" }, `tol ${tol}`) : h("span.pp-muted", "no tolerance");
-  if (!it || it.kind !== "scalar" || !isNum(it.model) || !isNum(it.paper)) {
-    return h("td.pp-delta", it && it.kind === "series" && isNum(it.model) ? h("span.pp-num", `rms ${fmt(it.model)}`) : h("span.pp-muted", "n/a"), h("br"), tolEl);
-  }
-  const d = it.model - it.paper;
-  return h("td.pp-delta", h("span.pp-num", { title: "model minus paper, central point" }, `${d > 0 ? "+" : d < 0 ? "−" : ""}${fmt(Math.abs(d))}`), h("br"), tolEl);
+  const tol = tolHuman(it?.tol_str || tolText(r.ledger?.tol));
+  const why = it?.tol_reason || r.ledger?.tol_reason || "";
+  return h("td.pp-tolc", { dataset: { label: "Tolerance" } }, tol ? h("span.pp-tol", { title: why }, tol) : h("span.pp-muted", "none stated"));
 }
 
 function tolText(t) {
   if (!t || typeof t !== "object") return "";
   if (t.metric) return `${t.metric}<=${t.max}`;
-  return Object.entries(t).map(([k, v]) => `${k} ${v}`).join(", ");
+  return Object.entries(t).map(([k, v]) => (k === "k_sigma" ? `${v}sigma` : k === "rel" ? `rel${Number(v) * 100}%` : k === "abs" ? `abs${v}` : `${k} ${v}`)).join("|");
 }
 
 function outcomeCell(r) {
   const it = r.item;
   if (!it) {
-    return h("td.pp-outcome-cell", h("span.pp-expect", { title: "the outcome the card records before any run" }, `ledger expects ${String(r.expect).toUpperCase()}`),
+    return h("td.pp-outcome-cell", { dataset: { label: "Outcome" } }, h("span.pp-expect", { title: "the outcome the card records before any run" }, `ledger expects ${String(r.expect).toUpperCase()}`),
       r.ledger?.reason ? h("p.pp-note", r.ledger.reason) : null);
   }
   const mismatch = it.outcome !== it.expect;
   const why = [["Ledger reason", it.reason], ["Tolerance reason", it.tol_reason], ["Engine note", it.note]].filter(([, v]) => v);
-  return h("td.pp-outcome-cell", { dataset: { match: mismatch ? "0" : "1" } },
+  return h("td.pp-outcome-cell", { dataset: { match: mismatch ? "0" : "1", label: "Outcome" } },
     mismatch ? mismatchBadge(it.outcome, it.expect) : outcomeBadge(it.outcome),
     !mismatch && it.expect !== "pass" ? h("p.pp-note", `as the card expected (${it.expect})`) : null,
     why.length ? h("details.pp-more", h("summary", "why"), why.map(([k, v]) => h("p.pp-why", h("span.pp-why-k", k), v))) : null);
@@ -469,12 +549,13 @@ function outcomeCell(r) {
 function inputsCell(r) {
   const it = r.item;
   const set = new Set(P.paper.inputs_from_paper || []);
-  if (!it) return h("td.pp-inputs", h("span.pp-muted", "run to list"));
+  const td = (...kids) => h("td.pp-inputs", { dataset: { label: "Inputs from paper" } }, ...kids);
+  if (!it) return td(h("span.pp-muted", "run to list"));
   const ins = it.inputs || [];
-  if (!ins.length) return h("td.pp-inputs", h("span.pp-muted", it.outcome === "unavailable" ? "no model run" : "none"));
+  if (!ins.length) return td(h("span.pp-muted", it.outcome === "unavailable" ? "no model run" : "none"));
   const nPaper = ins.filter((k) => set.has(k)).length;
   const near = ins.length > 0 && nPaper === ins.length;
-  return h("td.pp-inputs", h("details.pp-in", { dataset: { fromPaper: String(nPaper), total: String(ins.length) } },
+  return td(h("details.pp-in", { dataset: { fromPaper: String(nPaper), total: String(ins.length) } },
     h("summary", `${nPaper} of ${ins.length} from the paper`),
     near ? h("p.pp-note.pp-near", icon("warn", { size: 12 }), " every input comes from this paper: the item is near-transcription") : null,
     h("ul.pp-in-list", ins.map((k) => {
@@ -486,10 +567,16 @@ function inputsCell(r) {
 
 function row(r) {
   const it = r.item;
+  const rep = reportedOf(r.id);
+  const ser = seriesOf(r.id);
+  const obs = it?.observable || rep?.observable || ser?.y?.observable || r.ledger?.observable || "";
+  const conv = it?.convention || rep?.convention || ser?.y?.convention || r.ledger?.convention || "intrinsic";
   return h("tr", { dataset: { item: r.id, cls: r.cls, outcome: it?.outcome || "", state: it ? "run" : "ledger" } },
-    h("th.pp-item", { scope: "row" }, h("span.pp-item-id", r.id), h("span.pp-item-kind", r.cls === "P" ? "prediction" : seriesOf(r.id) ? "series" : "scalar")),
-    paperCell(r), convCell(r), modelCell(r), deltaCell(r),
-    h("td.pp-class", classBadge(r.cls)),
+    h("th.pp-item", { scope: "row" },
+      h("span.pp-item-id", r.id),
+      h("span.pp-item-obs", obsNode(obs, conv)),
+      h("span.pp-item-meta", classBadge(r.cls), h("span.pp-item-kind", r.cls === "P" ? "prediction" : ser ? "series" : "scalar"))),
+    paperCell(r), modelCell(r), tolCell(r),
     outcomeCell(r), inputsCell(r));
 }
 
@@ -502,19 +589,28 @@ function renderSummary() {
   const items = res.items;
   const n = items.length;
   const nMatch = items.filter((i) => i.match).length;
-  const ok = n > 0 && nMatch === n;
-  const Ms = items.filter((i) => i.cls === "M");
-  const Mpass = Ms.filter((i) => i.outcome === "pass").length;
+  const ledgerOk = n > 0 && nMatch === n;
+  const { tested, agree } = agreement(items);
   const cnt = (o) => items.filter((i) => i.outcome === o).length;
   const rep = res.report || {};
-  const status = ok ? "pass" : "fail";
-  host.append(h("section.plaque.pp-plaque-sum", { class: `plaque-${status}`, dataset: { status }, "aria-label": "Reproduce summary" },
+  const status = !tested ? "info" : agree === tested ? "pass" : "fail";
+  const word = !tested ? "NO TESTED ITEMS" : `MODEL AGREES ON ${agree} OF ${tested} TESTED ITEM${tested === 1 ? "" : "S"}`;
+  const notTests = items.length - tested;
+  const calib = items.filter((i) => i.cls === "C").length, pred = items.filter((i) => i.cls === "P").length, trans = items.filter((i) => i.cls === "T").length;
+  host.append(h("section.plaque.pp-plaque-sum", { class: `plaque-${status}`, dataset: { status, agree: String(agree), tested: String(tested) }, "aria-label": "Reproduce summary" },
     h("div.plaque-top",
-      h("div.plaque-word", icon(ok ? "check" : "cross", { size: 18 }), h("span", ok ? "LEDGER MATCHES" : "LEDGER MISMATCH")),
-      h("div.plaque-denom", h("span.k", "items as expected"), h("span.v", `${nMatch} / ${n}`))),
+      h("div.plaque-word", icon(status === "pass" ? "check" : status === "fail" ? "cross" : "info", { size: 18 }), h("span", word)),
+      h("div.plaque-denom", h("span.k", "tested items agree"), h("span.v", tested ? `${agree} / ${tested}` : "0 / 0"))),
     h("div.plaque-reasons",
-      h("span.plaque-kv", h("span.k", "M tests"), h("span.v", `${Mpass} / ${Ms.length} pass`)),
+      h("span.plaque-kv", h("span.k", "tested"), h("span.v", "unfitted (M) items only")),
+      notTests ? h("span.plaque-kv", h("span.k", "not tests"), h("span.v", [calib ? `${calib} calibrated` : "", trans ? `${trans} transcribed` : "", pred ? `${pred} predicted` : ""].filter(Boolean).join(" · "))) : null,
       h("span.plaque-kv", h("span.k", "outcomes"), h("span.v", `${cnt("pass")} pass · ${cnt("fail")} fail · ${cnt("unavailable")} unavailable${cnt("error") ? ` · ${cnt("error")} error` : ""}`))),
+    // the ledger is a secondary line: it says the run reproduces what the card recorded, failures included
+    h("p.pp-ledger-line", { class: ledgerOk ? "" : "is-off", dataset: { ledger: ledgerOk ? "ok" : "off" } },
+      icon(ledgerOk ? "check" : "warn", { size: 14 }),
+      h("span", h("b", `Ledger: ${nMatch}/${n} outcomes as the card expected.`), ledgerOk
+        ? " The run gives the results the card recorded, recorded failures included. This is a regression check, not agreement with the paper."
+        : " At least one outcome differs from the card's record: that flip needs a human review before the card changes.")),
     rep.valid === false && rep.invalid_reasons?.length
       ? h("p.plaque-reason", icon("warn", { size: 14 }), ` Run flagged invalid: ${rep.invalid_reasons.join("; ")}`) : null,
     h("p.plaque-source", `${P.resultCached ? "cached result for this card and engine" : "fresh run"} · card sha256 ${String(res.card_sha256 || "").slice(0, 12)}${rep.solver ? ` · solver ${rep.solver}` : ""}`),
@@ -600,6 +696,7 @@ async function reproduce({ auto = false } = {}) {
     P.running = false;
     P.result = result;
     P.resultCached = !!resp.cached;
+    if (Array.isArray(result?.items)) P.agree[id] = agreement(result.items);
     setRunState("done", `${result.items?.length ?? 0} items · ${resp.cached ? "cached result" : "fresh run"}${resp.run_id ? ` · ${resp.run_id}` : ""}`);
     P.dom.main.dataset.state = "done";
     renderSummary();

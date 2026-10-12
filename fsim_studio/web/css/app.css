@@ -156,6 +156,13 @@ code { font-family: var(--font-mono); font-size: 0.92em; }
 .id-chip .id-k { font-family: var(--font-label); font-weight: 600; letter-spacing: var(--label-tracking); font-size: var(--fs-cap); color: var(--muted); padding: 0 7px; border-right: 1px solid var(--rim); height: 100%; display: flex; align-items: center; background: var(--plate); }
 .id-chip .id-v { padding: 0 9px; }
 .id-chip.is-static { height: 24px; }
+/* top bar: the run chip never pushes its neighbours; a long catalog ID ends in an ellipsis (full ID in the title) */
+.ctx-card[hidden] { display: none; }
+#run-chip { flex: 0 1 auto; min-width: 0; max-width: 230px; white-space: nowrap; }
+#run-chip .id-v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.result-tag { white-space: nowrap; flex: none; }
+.ctx-spacer { min-width: 0; }
+.roster { flex: 0 1 auto; overflow: hidden; }
 button.id-chip:hover:not(:disabled) { border-color: var(--rim-hi); }
 .result-tag { display: flex; align-items: center; gap: 7px; }
 .why-btn {
@@ -783,9 +790,12 @@ html[data-present] .wordmark { padding-left: 20px; }
   .ctx-present .btn-txt { display: none; }
   .rail { position: fixed; left: 0; right: 0; bottom: 0; height: 58px; z-index: 40; grid-row: auto; }
   .rail-list, .rail:hover .rail-list, .rail:focus-within .rail-list { position: static; width: 100%; height: 100%; display: flex; padding: 0; border-right: 0; border-top: 1px solid var(--rim); box-shadow: none; clip-path: none; }
-  .rail-list li { flex: 1; }
+  .rail-list li { flex: 1 1 0; min-width: 0; }
+  /* nine destinations in 390 px: icons for all, the label only for the current one (which takes the room) */
+  .rail-list li:has(> .rail-item[aria-current="page"]) { flex: 2.6 1 0; }
   .rail-item { flex-direction: column; justify-content: center; gap: 2px; height: 100%; padding: 0; }
-  .rail-label { opacity: 1; font-size: 10px; }
+  .rail-label { display: none; opacity: 1; font-size: 10px; }
+  .rail-item[aria-current="page"] .rail-label { display: block; }
   .rail-item[aria-current="page"]::before { left: 20%; right: 20%; top: 0; bottom: auto; width: auto; height: 2px; }
   .board { padding: 12px 12px 0; }
   .board-head { flex-direction: column; gap: 8px; }

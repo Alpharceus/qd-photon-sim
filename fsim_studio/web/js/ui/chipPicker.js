@@ -9,6 +9,12 @@ import { popover, closePopover } from "./controls.js";
 
 const STATUS_WORD = { ready: "ready", needs_physics: "awaiting physics", tier: "tier" };
 
+/** A validator message for a greyed entry: numpy noise and the Python exception name removed, one clamp. */
+function tidyReason(text) {
+  const t = String(text || "").replace(/np\.(?:u?int|float)\d+\(([^)]*)\)/g, "$1").replace(/^(?:[A-Za-z]+Error:\s*)/, "").replace(/\s+/g, " ").trim();
+  return t.length > 150 ? `${t.slice(0, 147)}...` : t;
+}
+
 /** First sentence-ish reference, trimmed for the card. */
 function refLine(refs) {
   if (!refs || !refs.length) return "";
@@ -56,7 +62,10 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
   pop.style.width = `${w}px`;
   const r = anchor.getBoundingClientRect();
   pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - w - 12))}px`;
-  pop.style.maxHeight = `${Math.max(240, window.innerHeight - r.bottom - 24)}px`;
+  // tall cards: use up to ~620 px, sliding up over the chain when there is not enough room below the chip
+  const cap = Math.min(620, window.innerHeight - 72);
+  pop.style.maxHeight = `${cap}px`;
+  pop.style.top = `${Math.max(56, Math.min(r.bottom + 8, window.innerHeight - cap - 16))}px`;
 
   // Async compatibility: one validate per candidate (the swap is the only change).
   let open = true;
@@ -82,7 +91,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
         btn.setAttribute("aria-disabled", "true");
         const why = btn.querySelector(".cp-why");
         why.hidden = false;
-        why.replaceChildren(icon("warn", { size: 13 }), document.createTextNode(` ${res.reason}`));
+        why.replaceChildren(icon("warn", { size: 13 }), document.createTextNode(` ${tidyReason(res.reason)}`));
         btn.title = res.reason;
       }
     }).catch(() => {}).finally(done);

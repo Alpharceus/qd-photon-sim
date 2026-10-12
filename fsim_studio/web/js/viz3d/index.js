@@ -15,6 +15,50 @@ import WebGL from 'three/addons/capabilities/WebGL.js';
 import { Stage, BLOOM_LAYER } from './core/stage.js';
 import { Hud } from './core/hud.js';
 import { Labels } from './core/labels.js';
+
+// ---- readout labels: the scene sends code names ("F P", "lambda nm", "V lambda3"); the plate shows notation.
+const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', rho: 'ρ', sigma: 'σ', tau: 'τ', chi: 'χ', phi: 'φ', omega: 'ω', pi: 'π' };
+const UNIT_TEXT = { um: 'µm', um2: 'µm²', ueV: 'µeV', 'um^2': 'µm²' };
+const unitKey = (u) => String(u || '').toLowerCase().replace(/µ/g, 'u').replace(/[^a-z0-9]/g, '');
+function symNode(parts) {
+  const out = document.createElement('span');
+  out.className = 'sym';
+  for (const [kind, text] of parts) {
+    if (kind === 't') { out.appendChild(document.createTextNode(text)); continue; }
+    const e = document.createElement(kind);
+    e.textContent = text;
+    out.appendChild(e);
+  }
+  return out;
+}
+function readoutLabel(key, unit) {
+  if (key === 'V_lambda3') return symNode([['t', 'V/(λ/n)'], ['sup', '3']]);
+  const words = String(key).split('_').filter(Boolean);
+  if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) words.pop();
+  const base = words[0] || String(key);
+  const g = (w) => GREEK[w] || w;
+  if (words.length === 1) {
+    if (GREEK[base] || base.length <= 2) return symNode([['t', g(base)]]);
+    return null;                                      // a plain word: keep the engraved caps
+  }
+  if (base.length > 2 && !GREEK[base]) return null;   // "waist um" -> plain "WAIST"
+  return symNode([['t', g(base)], ['sub', words.slice(1).map(g).join(' ')]]);
+}
+function symbolizeReadouts(root) {
+  for (const row of root.querySelectorAll('.v3-readout')) {
+    const unitEl = row.querySelector('.v3-readout-unit');
+    const unit = unitEl?.textContent || '';
+    const lab = row.querySelector('.v3-readout-label');
+    const node = readoutLabel(row.dataset.key, unit);
+    if (lab && node) lab.replaceChildren(node);
+    else if (lab) {
+      // plain word: drop the unit token that the unit column already shows
+      const words = lab.textContent.split(' ');
+      if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) lab.textContent = words.slice(0, -1).join(' ');
+    }
+    if (unitEl && UNIT_TEXT[unit]) unitEl.textContent = UNIT_TEXT[unit];
+  }
+}
 import { axesBadges } from './core/scale.js';
 import { ScaleBar } from './core/scale.js';
 import { updateLineResolution } from './builders/common.js';
@@ -187,6 +231,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     }
     stage.contextLost = () => useFallback(current, 'WebGL context lost');
     hud.setReadouts(s.scalars, built.readoutKeys);
+    symbolizeReadouts(hud.readouts);
     // Compact (< ~1000 x 500): callouts become numbered pins keyed in a
     // list, the readout plate shows 4 rows + "+N more", and every control
     // group merges into one bar under the canvas.  Narrow (< 560 wide): the
@@ -198,7 +243,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     const compact = () => { const r = rect0(); return r.width < 1000 || r.height < 500; };
     const narrow = () => rect0().width < 560;
     const tiny = () => { const r = rect0(); return r.width < 480 || r.height < 300; };
-    hud.setNotes([...(s.labels || []), ...(built.extraNotes || [])], [...badges], { open: !compact() });
+    hud.setNotes([...(s.labels || []), ...(built.extraNotes || [])], [...badges], { open: false });
     const pins = labels.pinned();
     hud.setKey(pins);
     stage.afterCss = () => {

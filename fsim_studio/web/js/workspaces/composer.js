@@ -6,7 +6,7 @@
 import { h, clear, svgEl, debounce, reducedMotion } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest, tagDash, tagWidth } from "../ui/tagChip.js";
-import { createReadout } from "../ui/readout.js";
+import { createReadout, sym, paramName, paramLabelNode } from "../ui/readout.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fmt, fmtSeconds, isNum, unitText } from "../ui/format.js";
 import { chartCard } from "../charts/chartCard.js";
@@ -28,13 +28,14 @@ const TSWEEP_MAX = 31;
 const SERIES_MAX = 200;
 const T_SOURCE = "operating temperature set in the Composer";
 // Readouts on the shelf: observable id, label, unit, which result field carries the number.
+// `sym` is the display notation (sub/superscripts, never engraved caps); `label` is its plain-text twin.
 const READOUTS = [
-  { key: "g2_0", label: "g²(0)", unit: "", curve: "g2" },
-  { key: "hom_I", label: "I_HOM", unit: "" },
+  { key: "g2_0", label: "g²(0)", sym: "g^{(2)}(0)", unit: "", curve: "g2" },
+  { key: "hom_I", label: "I_HOM", sym: "I_{HOM}", unit: "" },
   { key: "B_first_lens", label: "B, first lens", unit: "" },
   { key: "rate_detected_Hz", label: "Detected rate", unit: "Hz" },
-  { key: "F_P_eff", label: "F_P · L", unit: "" },
-  { key: "tau_ps", label: "τ", unit: "ps" },
+  { key: "F_P_eff", label: "F_P · L", sym: "F_{P}·L", unit: "" },
+  { key: "tau_ps", label: "τ", sym: "τ", unit: "ps" },
 ];
 const DEFAULT_OBS = ["g2_0", "hom_I", "B_first_lens"];
 const DEFAULT_EXAMPLE = "example-pillar-resonant";
@@ -252,50 +253,38 @@ function renderAll() {
 
 // ================================================================ BOARD
 function renderBoard() {
-  const tiers = S.reg.tiers || [];
   const head = h("header.board-head",
     h("div.bh-titles",
-      h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
+      h("div.bh-titleline",
+        h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
+        S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited")),
       S.seed ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
-      h("p.board-desc", "Pick any dot, structure, drive and setup from the registry. Every value keeps its provenance tag; edits are yours and default to [A].")),
+      h("ol.board-desc.board-steps", { "aria-label": "How to compose a device" },
+        h("li", h("b.bs-n", "1"), "Start from an example"),
+        h("li", h("b.bs-n", "2"), "Click a mount's kind to swap it, its body to edit values"),
+        h("li", h("b.bs-n", "3"), "RUN"))),
     h("div.bh-meta",
-      S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited"),
       h("div.bh-keys",
         S.dom.saveBtn = h("button.btn.btn-outline.bh-save", { type: "button", "aria-haspopup": "dialog", on: { click: (e) => saveAsPopover(e.currentTarget) } }, icon("download", { size: 16 }), "Save as composed card"))));
 
-  const tierStrip = tiers.length ? h("div.tier-strip", { role: "group", "aria-label": "Tier presets" },
-    h("span.engrave", "Tiers"),
-    tiers.map((t) => {
-      const design = t.handoff === "design" && (t.cards || []).length;
-      const here = t.handoff === "compose";
-      const on = design || here;
-      const b = h("button.chip.tier-chip", {
-        type: "button", dataset: { tier: t.id, handoff: t.handoff || "" }, disabled: !on,
-        title: design ? `${t.summary} Opens ${t.cards[0]} in the Designer.`
-          : here ? `${t.summary} Opens here as a composed spec.`
-          : `${t.summary} This tier has no spec mapping, so it cannot open here.`,
-        on: { click: async () => {
-          if (design) { S.ctx.navigate(`#/design/${t.cards[0]}`); return; }
-          if (!here) return;
-          try {
-            const d = await S.ctx.api.getJSON(`/api/compose/tier/${encodeURIComponent(t.id)}`);
-            await openDesign(d.design, d.design.name);
-          } catch (e) { toast(`Could not open ${t.label}: ${e.message}`, { kind: "error" }); }
-        } },
-      }, t.label, on ? icon("chevronRight", { size: 12 }) : null);
-      return b;
-    })) : null;
-
-  const exampleStrip = (S.examples || []).length ? h("div.tier-strip.example-strip", { role: "group", "aria-label": "Example devices" },
-    h("span.engrave", "Examples"),
-    S.examples.map((ex) => h("button.chip.tier-chip.example-chip", {
-      type: "button", dataset: { example: ex.name }, "aria-pressed": String(S.exampleName === ex.name),
-      title: ex.summary, on: { click: () => openDesign(ex.design, ex.name) },
-    }, ex.label))) : null;
+  // One "Start from:" row: Examples and Tiers are two menus (sentence-case names, not engraved caps).
+  const tiers = S.reg.tiers || [];
+  const exs = S.examples || [];
+  const curEx = exs.find((e) => e.name === S.exampleName);
+  const menuBtn = (cls, text, kind, title) => h(`button.btn.btn-outline.start-btn.${cls}`, {
+    type: "button", "aria-haspopup": "menu", "aria-expanded": "false", title, dataset: { menu: kind, example: kind === "examples" ? (S.exampleName || "") : "" },
+    on: { click: (e) => openStartMenu(e.currentTarget, kind) },
+  }, h("span.start-btn-t", text), icon("chevronDown", { size: 14 }));
+  const startRow = (exs.length || tiers.length) ? h("div.start-row", { role: "group", "aria-label": "Start from" },
+    h("span.start-k", "Start from:"),
+    exs.length ? menuBtn("start-examples", curEx ? `Example: ${curEx.label}` : "Examples", "examples", "Replace the chain by a worked example device") : null,
+    tiers.length ? menuBtn("start-tiers", "Tiers", "tiers", "Replace the chain by a literature tier (or open its Designer card)") : null) : null;
 
   S.dom.viewport = h("div.viewport-slot", { "aria-label": "Device model", role: "region" });
+  S.dom.vmNote = h("span.vm-note", "");
+  S.dom.vmId = h("span.id-chip.is-static.vm-id", { hidden: true, title: "Catalog ID of this device" }, h("span.id-k", "DEVICE"), S.dom.vmNote);
   const viewportMount = h("div.viewport-mount",
-    h("div.vm-rail", h("span.engrave", "Device model"), S.dom.vmNote = h("span.vm-note", "")),
+    h("div.vm-rail", h("span.engrave", "Device model"), S.dom.vmId),
     S.dom.viewport, h("span.post", { "aria-hidden": "true" }));
 
   S.dom.beamSvg = svgEl("svg", { class: "beam-svg", "aria-hidden": "true" });
@@ -311,7 +300,51 @@ function renderBoard() {
   const table = h("div.board-table", viewportMount,
     h("div.chain-wrap", h("div.chain-scroll", S.dom.chain), S.dom.beamCap),
     S.dom.temp, S.dom.sheet);
-  return h("section.board", { "aria-label": "Breadboard" }, head, tierStrip, exampleStrip, table, S.dom.runbar);
+  return h("section.board", { "aria-label": "Breadboard" }, head, startRow, table, S.dom.runbar);
+}
+
+/** The Examples / Tiers menu: a popover list (buttons keep the example-chip / tier-chip hooks). */
+function openStartMenu(anchor, kind) {
+  const close = () => { closePopover(); anchor.setAttribute("aria-expanded", "false"); };
+  let items;
+  if (kind === "examples") {
+    items = (S.examples || []).map((ex) => h("button.start-item.example-chip", {
+      type: "button", dataset: { example: ex.name }, "aria-pressed": String(S.exampleName === ex.name), title: ex.summary,
+      on: { click: () => { close(); openDesign(ex.design, ex.name); } },
+    }, h("span.si-name", ex.label), ex.summary ? h("span.si-sum", ex.summary) : null));
+  } else {
+    items = (S.reg.tiers || []).map((t) => {
+      const design = t.handoff === "design" && (t.cards || []).length;
+      const here = t.handoff === "compose";
+      const on = design || here;
+      return h("button.start-item.tier-chip", {
+        type: "button", dataset: { tier: t.id, handoff: t.handoff || "" }, disabled: !on,
+        title: design ? `${t.summary} Opens ${t.cards[0]} in the Designer.`
+          : here ? `${t.summary} Opens here as a composed spec.`
+          : `${t.summary} This tier has no spec mapping, so it cannot open here.`,
+        on: { click: async () => {
+          close();
+          if (design) { S.ctx.navigate(`#/design/${t.cards[0]}`); return; }
+          if (!here) return;
+          try {
+            const d = await S.ctx.api.getJSON(`/api/compose/tier/${encodeURIComponent(t.id)}`);
+            await openDesign(d.design, d.design.name);
+          } catch (e) { toast(`Could not open ${t.label}: ${e.message}`, { kind: "error" }); }
+        } },
+      }, h("span.si-name", t.label, on ? null : h("span.si-off", "not mapped")),
+      h("span.si-sum", design ? "Opens in the Designer" : here ? "Opens here" : t.summary || ""));
+    });
+  }
+  const pop = popover(anchor, h("div.start-menu", { role: "group", "aria-label": kind === "examples" ? "Example devices" : "Tier presets" },
+    h("h2.why-title", kind === "examples" ? "Example devices" : "Literature tiers"), h("div.start-list", items)), { label: kind === "examples" ? "Example devices" : "Tier presets", onClose: () => anchor.setAttribute("aria-expanded", "false") });
+  pop.classList.add("start-pop");
+  anchor.setAttribute("aria-expanded", "true");
+  const w = Math.min(460, window.innerWidth - 24);
+  pop.style.width = `${w}px`;
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = `${Math.max(12, Math.min(r.left, window.innerWidth - w - 12))}px`;
+  pop.style.maxHeight = `${Math.max(240, window.innerHeight - r.bottom - 24)}px`;
+  queueMicrotask(() => (pop.querySelector('[aria-pressed="true"]') || pop.querySelector(".start-item:not(:disabled)"))?.focus());
 }
 
 // ---------------------------------------------------------------- mounts
@@ -323,37 +356,45 @@ function leafText(p, raw) {
   return { text: typeof v === "number" ? fmt(v) : typeof v === "boolean" ? (v ? "on" : "off") : String(v), unit: u, tag: l.tag, ranged: false };
 }
 
+/** One-line kind label for the mount: the registry label without its trailing parenthetical (the picker shows it whole). */
+const shortKind = (label) => String(label).replace(/\s*\([^)]*\)\s*$/, "").trim() || String(label);
+
 function renderMounts() {
   for (const a of AXES) {
     const host = S.dom.mountHost[a.key];
     const e = entry(a.key);
     const params = S.spec[a.key].params;
-    const main = e.params.filter((p) => p.group !== "advanced").slice(0, 3);
+    // three summary rows: the fields you edited first, then the first main fields
+    const mainAll = e.params.filter((p) => p.group !== "advanced");
+    const edited = e.params.filter((p) => params[p.name] !== undefined);
+    const shown = [...edited, ...mainAll.filter((p) => params[p.name] === undefined)].slice(0, 3);
     const tags = e.params.map((p) => readLeaf(p, params[p.name]).tag);
     const wide = widest(tags);
-    const nEdit = e.params.filter((p) => params[p.name] !== undefined).length;
+    const nEdit = edited.length;
     const bad = issuesFor(a.key).filter((i) => i.level === "error");
     const open = S.openAxis === a.key;
-    const vals = h("div.mount-vals", main.map((p) => {
+    const vals = h("div.mount-vals", shown.map((p) => {
       const t = leafText(p, params[p.name]);
-      return h("div.mv", { title: `${p.name}: ${p.help || ""}` },
-        h("span.mv-k", p.name),
+      return h("div.mv", { class: params[p.name] !== undefined ? "is-edited" : "", title: `${p.name}: ${p.help || ""}` },
+        h("span.mv-k", paramLabelNode(p.name, p.unit)),
         h("span.mv-line", h("span.mv-v", t.text), h("span.mv-u", t.unit), tagChip(t.tag, { size: "sm", title: p.source })));
     }));
     const mount = h("div.mount", { class: `${open ? "is-open" : ""} ${bad.length ? "has-issue" : ""}`, dataset: { axis: a.key, rim: wide || "" }, role: "group", "aria-label": `${a.label} mount: ${e.label}` },
       h("span.mount-head", h("span.engrave", a.label), wide ? tagChip(wide, { size: "sm", title: "widest tag of this mount's inputs" }) : null),
       h("span.mount-aperture", { "aria-hidden": "true" }),
       h("button.kind-chip", {
-        type: "button", dataset: { axis: a.key, kind: e.kind }, "aria-haspopup": "dialog", title: e.summary,
+        type: "button", dataset: { axis: a.key, kind: e.kind }, "aria-haspopup": "dialog", title: `${e.label}. ${e.summary || ""} Click to swap the kind.`,
+        "aria-label": `${a.label} kind: ${e.label}. Swap it`,
         on: { click: (ev) => openPicker(a, ev.currentTarget) },
-      }, h("span.kc-label", e.label), icon("chevronDown", { size: 14 })),
+      }, h("span.kc-label", shortKind(e.label)), icon("chevronDown", { size: 14 })),
       h("button.mount-body", {
         type: "button", dataset: { axis: a.key }, "aria-expanded": String(open),
         "aria-label": `Open the ${a.label} parameter sheet`,
         on: { click: () => toggleSheet(a.key) },
       }, vals,
       bad.length ? h("span.mount-issue", icon("warn", { size: 13 }), `${bad.length} issue${bad.length === 1 ? "" : "s"}`) : null,
-      h("span.mount-foot", `${e.params.length} field${e.params.length === 1 ? "" : "s"}${nEdit ? `, ${nEdit} edited` : ""}`)));
+      h("span.mount-foot", h("span.mf-edit", `${open ? "Close" : "Edit"} ${e.params.length} field${e.params.length === 1 ? "" : "s"}`, icon("chevronRight", { size: 13 })),
+        nEdit ? h("span.mf-n", `${nEdit} edited`) : null)));
     host.replaceChildren(mount, h("span.post", { "aria-hidden": "true" }));
   }
 }
@@ -457,19 +498,31 @@ function drawBeam() {
     if (!m) return null;
     const r = m.getBoundingClientRect();
     const ap = m.querySelector(".mount-aperture")?.getBoundingClientRect();
-    return { x: r.left - box.left + r.width / 2, y: ap ? ap.top - box.top + ap.height / 2 : r.top - box.top + r.height / 2 };
+    return { x: r.left - box.left + r.width / 2, y: ap ? ap.top - box.top + ap.height / 2 : r.top - box.top + r.height / 2, bottom: r.bottom - box.top, top: r.top - box.top };
   };
-  const drive = at("drive"), dot = at("material"), last = at("setup");
-  if (!drive || !dot || !last) return;
+  const drive = at("drive"), dot = at("material"), str = at("structure"), last = at("setup");
+  if (!drive || !dot || !str || !last) return;
   const y = dot.y;
-  svg.append(svgEl("path", { d: `M ${drive.x} ${y} L ${dot.x} ${y}`, class: "lead" }));
   const { a, text } = beamAlpha();
   const running = S.runState === "running";
-  const d = `M ${dot.x} ${y} L ${last.x} ${y}`;
+  // Phone: the chain is a 2x2 grid (drive, dot / structure, setup). The beam leaves the dot, runs down the
+  // right gutter, back along the gap between the rows, and enters the second row from the left.
+  const wrapped = Math.abs(str.y - dot.y) > 12;
+  svg.append(svgEl("path", { d: `M ${drive.x} ${y} L ${dot.x} ${y}`, class: "lead" }));
+  let d;
+  let stop;
+  if (wrapped) {
+    const xr = box.width - 2, xl = 2, ym = (dot.bottom + str.top) / 2, y2 = str.y;
+    d = `M ${dot.x} ${y} L ${xr} ${y} L ${xr} ${ym} L ${xl} ${ym} L ${xl} ${y2} L ${last.x} ${y2}`;
+    stop = `M ${last.x} ${y2 - 9} L ${last.x} ${y2 + 9}`;
+  } else {
+    d = `M ${dot.x} ${y} L ${last.x} ${y}`;
+    stop = `M ${last.x} ${y - 9} L ${last.x} ${y + 9}`;
+  }
   svg.append(svgEl("path", { d, class: "beam-halo", style: `opacity:${(a * 0.4).toFixed(3)}` }));
-  svg.append(svgEl("path", { d, class: `beam${running && !reducedMotion() ? " is-running" : ""}`, style: `opacity:${a.toFixed(3)}`, "data-alpha": a.toFixed(3) }));
+  svg.append(svgEl("path", { d, class: `beam${running && !reducedMotion() ? " is-running" : ""}`, style: `opacity:${a.toFixed(3)}`, "data-alpha": a.toFixed(3), "stroke-linejoin": "round" }));
   svg.append(svgEl("circle", { cx: dot.x, cy: y, r: 7, class: "beam-src", style: `opacity:${a.toFixed(3)}` }));
-  svg.append(svgEl("path", { d: `M ${last.x} ${y - 9} L ${last.x} ${y + 9}`, class: "beam-stop" }));
+  svg.append(svgEl("path", { d: stop, class: "beam-stop" }));
   S.dom.beamCap.textContent = text;
 }
 
@@ -556,7 +609,7 @@ function sweepPaths() {
     for (const p of entry(a.key).params) {
       const path = `${a.key}.${p.name}`;
       const r = resolved[path];
-      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${p.name}${p.unit && p.unit !== "enum" ? ` (${unitText(p.unit)})` : ""}` });
+      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${paramName(p.name, p.unit).text}${p.unit && p.unit !== "enum" && unitText(p.unit) ? ` (${unitText(p.unit)})` : ""}` });
     }
   }
   return out;
@@ -615,6 +668,7 @@ function syncRunbar() {
   S.dom.runBtn.title = !ok ? "The spec is not valid; the plaque lists why" : S.mode === "series" && !S.ser.obs.length ? "Choose at least one observable" : "";
   const eta = S.val?.eta_s;
   const n = pointsFor();
+  renderHint();
   S.dom.eta.textContent = !S.val ? "Validating"
     : !ok ? "Not runnable until the issues on the plaque are resolved"
     : isNum(eta) ? `${n} point${n === 1 ? "" : "s"}; estimated ${fmtSeconds(eta * n)} (${fmtSeconds(eta)} per point)` : `${n} point${n === 1 ? "" : "s"}`;
@@ -729,10 +783,11 @@ function renderShelf() {
   S.dom.plaqueHost = h("div.plaque-host");
   S.dom.status = h("div.shelf-status");
   S.dom.alert = h("div.shelf-alert");
+  S.dom.hint = h("p.shelf-hint", { hidden: true });
   S.dom.labels = h("div.shelf-labels");
   S.readouts = {};
   S.dom.readouts = h("div.readouts", { role: "group", "aria-label": "Key readouts" },
-    READOUTS.map((r) => (S.readouts[r.key] = createReadout({ key: r.key, label: r.label, onInspect: inspectKpi })).el));
+    READOUTS.map((r) => (S.readouts[r.key] = createReadout({ key: r.key, label: r.sym ? sym(r.sym) : r.label, labelText: r.label, onInspect: inspectKpi })).el));
   S.charts.series = chartCard({
     title: "Series", height: 280,
     build: () => buildSeries(), table: () => seriesTable(), filename: () => `${S?.run?.run_id || "fsim"}-series`,
@@ -752,7 +807,7 @@ function renderShelf() {
   return h("section.shelf", { "aria-label": "Instrument shelf" },
     S.dom.plaqueHost,
     h("div.shelf-bar", S.dom.status),
-    S.dom.alert, S.dom.labels, S.dom.readouts,
+    S.dom.alert, S.dom.hint, S.dom.labels, S.dom.readouts,
     S.charts.series.el, S.charts.tcurve.el, S.charts.hom.el, S.dom.notes);
 }
 
@@ -773,11 +828,12 @@ function inspectKpi(key, last) {
 }
 
 // ---------------------------------------------------------------- plaque
+// Before a run the validity is a status LINE (outline, icon + word); a filled plaque is a result.
 function renderPlaque() {
   if (!S?.dom?.plaqueHost) return;
   const v = S.val;
   const run = S.run?.scalars;
-  if (!v) { clear(S.dom.plaqueHost).append(h("section.plaque.plaque-none", h("div.plaque-word", icon("minus", { size: 18 }), h("span", "VALIDATING")))); return; }
+  if (!v) { clear(S.dom.plaqueHost).append(h("section.plaque.plaque-none.plaque-line", h("div.plaque-word", icon("minus", { size: 18 }), h("span", "VALIDATING")))); return; }
   const ok = v.ok;
   const errs = (v.issues || []).filter((i) => i.level === "error");
   const warns = (v.issues || []).filter((i) => i.level !== "error");
@@ -787,9 +843,11 @@ function renderPlaque() {
   const regime = run?.regime || (v.regime && v.regime !== "unknown" ? v.regime : null);
   const reasons = [...errs.map((i) => ({ k: i.path, t: i.message, lvl: "error" })), ...(runInvalid ? (run.invalid_reasons || []).map((r) => ({ k: "run", t: r, lvl: "error" })) : []), ...warns.map((i) => ({ k: i.path, t: i.message, lvl: "warn" }))];
   const notes = (run?.notes || []).filter((n) => /phonon|polaron|Z\^2|Z²/i.test(n));
-  clear(S.dom.plaqueHost).append(h("section.plaque", { class: `plaque-${status}`, "aria-label": "Validity", dataset: { status, ok: String(ok) } },
+  const result = !!run;
+  const word = result ? (status === "pass" ? "VALID RESULT" : "INVALID RESULT") : (status === "pass" ? "VALID" : "INVALID");
+  clear(S.dom.plaqueHost).append(h("section.plaque", { class: `plaque-${status}${result ? "" : " plaque-line"}`, "aria-label": "Validity", dataset: { status, ok: String(ok), kind: result ? "result" : "check" } },
     h("div.plaque-top",
-      h("div.plaque-word", icon(status === "pass" ? "check" : "cross", { size: 18 }), h("span", status === "pass" ? "VALID" : "INVALID")),
+      h("div.plaque-word", icon(status === "pass" ? "check" : "cross", { size: 18 }), h("span", word)),
       h("div.plaque-denom", h("span.k", "solver"), h("span.v", solver || "none"))),
     h("div.plaque-reasons",
       h("span.plaque-kv", h("span.k", "regime"), h("span.v", regime || "known after a run")),
@@ -797,6 +855,17 @@ function renderPlaque() {
     reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", r.t)))) : null,
     notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", n)))) : null,
     h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
+}
+
+/** The empty shelf says what fills it: RUN, and how long it takes. */
+function renderHint() {
+  if (!S?.dom?.hint) return;
+  const eta = S.val?.eta_s;
+  const empty = !S.run && !S.series && S.runState !== "running";
+  S.dom.hint.hidden = !empty;
+  if (!empty) return;
+  const n = pointsFor();
+  S.dom.hint.replaceChildren(icon("run", { size: 13 }), isNum(eta) && S.val?.ok ? `Press RUN to fill these (about ${fmtSeconds(eta * n)})` : "Press RUN to fill these once the chain is valid");
 }
 
 function renderStatus() {
@@ -825,6 +894,7 @@ function renderResults() {
     }));
   }
   renderPlaque();
+  renderHint();
   clear(S.dom.labels);
   const s = r?.scalars || {};
   const labels = r?.labels || [];
@@ -836,10 +906,10 @@ function renderResults() {
     const v = s[ro.key];
     const prov = r.provenance?.[ro.key];
     const tag = normTag(prov?.tag) || normTag(r.tag_chain);
-    const conv = captionFor(ro.key, s);
+    const cap = captionFor(ro.key, s);
     R.update({
       value: v, unit: ro.unit, tag, tagNote: prov?.inputs ? `${prov.inputs.length} inputs` : null,
-      qualifier: mid ? "range midpoint" : "", caption: conv, markChange: true,
+      qualifier: mid ? "range midpoint" : "", caption: cap.line, why: cap.why, markChange: true,
       reason: (s.invalid_reasons || [])[0] || `${ro.label} not computed for this spec`,
     });
   }
@@ -869,16 +939,18 @@ function renderResults() {
 function widestOf(tagMap) { return tagMap ? widest(Object.values(tagMap)) : null; }
 function loadingPlate() { return h("div.chart-loading", skeleton("chart", { lines: 0 }), h("p", "Evaluating; the curve draws when the job finishes.")); }
 
+/** KPI caption: one short plain line; the formula and convention detail sit behind "why". */
 function captionFor(key, s) {
   const obs = (S.reg.observables || []).find((o) => o.id === key);
   const conv = obs?.conventions?.[0] || "intrinsic";
-  if (key === "B_first_lens") return `${conv}: ${(s.brightness_convention || "").split(";")[0]}`.slice(0, 120);
-  if (key === "hom_I") return `${conv} overlap; γ* repo = 2 × textbook`;
-  if (key === "g2_0") return `${conv} (no laser leak, no dark counts)`;
-  if (key === "rate_detected_Hz") return "f_rep · B_fibre · η_optics · η_det";
-  if (key === "F_P_eff") return "additional rate ratio; total = 1 + F_P·L";
-  if (key === "tau_ps") return "1 / (Γ + k_nr)";
-  return conv;
+  const Conv = conv.charAt(0).toUpperCase() + conv.slice(1);
+  if (key === "B_first_lens") return { line: `${Conv} brightness, first lens`, why: String(s.brightness_convention || `${conv} brightness at the first collection lens`).replace(/;\s*/g, ". ") };
+  if (key === "hom_I") return { line: `${Conv} photon overlap`, why: `${conv} overlap of two photons. The dephasing rate γ* is the repo convention, twice the textbook γ*.` };
+  if (key === "g2_0") return { line: `${Conv}: source only`, why: `${conv} g(2)(0): no laser leakage and no dark counts are added.` };
+  if (key === "rate_detected_Hz") return { line: "Photons counted per second", why: "Detected rate = f_rep · B_fibre · η_optics · η_det." };
+  if (key === "F_P_eff") return { line: "Extra decay rate from the cavity", why: "F_P is the additional rate ratio, so the total decay rate is (1 + F_P·L) times the bare rate." };
+  if (key === "tau_ps") return { line: "Emission lifetime", why: "τ = 1 / (Γ + k_nr): radiative plus non-radiative decay." };
+  return { line: Conv, why: "" };
 }
 
 // ---------------------------------------------------------------- charts
@@ -993,6 +1065,7 @@ async function loadScene() {
   if (!S || seq !== S.sceneSeq) return;
   const note = scene.catalog_id ? scene.catalog_id : "";
   S.dom.vmNote.textContent = note;
+  S.dom.vmId.hidden = !note;
   const known = !scene.fallback && scene.builder && scene.builder !== "fallback2d" && scene.variant !== "fallback2d";
   if (!known) {
     try { S.scene?.dispose?.(); } catch { /* gone */ }

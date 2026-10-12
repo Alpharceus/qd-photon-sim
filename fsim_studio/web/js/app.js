@@ -184,6 +184,10 @@ function syncContextBar() {
     t.setAttribute("aria-selected", on ? "true" : "false");
     t.tabIndex = 0;
   }
+  // The Composer and Papers own their device / paper (named in the workspace itself): the Designer's
+  // card selector is out of place there, and it collided with the run chip at 1440 px.
+  const ctxCard = els.ctx.querySelector(".ctx-card");
+  if (ctxCard) ctxCard.hidden = onCompose;
   const picker = document.getElementById("card-picker");
   if (picker) {
     clear(picker);
@@ -223,6 +227,7 @@ function syncRunChips() {
   const runChip = document.getElementById("run-chip");
   if (runChip) {
     runChip.querySelector(".id-v").textContent = run?.run_id || "—";
+    runChip.title = run?.run_id ? `Run ${run.run_id}; click to copy` : "Run catalog ID; click to copy";
     runChip.setAttribute("aria-label", run?.run_id ? `Run ID ${run.run_id}; click to copy` : "Run ID: none yet");
     runChip.disabled = !run?.run_id;
   }
