@@ -1,0 +1,70 @@
+# FIXTURE for verify/verify_paper_devices.py --self-test. Every number below is MADE UP; this is not a
+# paper. It exercises each class (T, M, C, P), a ranged input, a ledger `expect: fail`, and a series.
+meta:
+  id: _fixture
+  role: paper-device
+  cite: "FIXTURE (synthetic): not a real publication"
+  read_level: V-snip
+  summary: "Synthetic InAs/GaAs dot in a generic cavity; values invented for the self-test"
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "synthetic fixture"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 900.0, unit: nm, tag: V, where: "synthetic fixture"}
+  structure:
+    kind: generic_cavity
+    params:
+      F_P: {value: 5.0, unit: "1", tag: DR, where: "synthetic fixture (pretend: fitted)"}
+      eta_out: {range: [0.4, 0.6], unit: "1", tag: E, source: "synthetic fixture class range"}
+  drive: {kind: resonant_pulse, params: {}}
+  setup: {kind: lens_fibre_det, params: {}}
+reported:
+  - {id: lambda, observable: lambda_nm, value: 900.0, tag: DR, where: "synthetic fixture"}
+  - {id: g2, observable: g2_0, value: 0.007, err: 0.002, tag: DR, where: "synthetic fixture"}
+  - {id: brightness, observable: B_first_lens, value: 0.45, err: 0.05, tag: DR, where: "synthetic fixture"}
+  - {id: tau_scalar, observable: tau_ps, value: 300.0, err: 10.0, tag: DR, where: "synthetic fixture"}
+series:
+  - id: tau_vs_FP
+    x: {path: structure.F_P, unit: "1"}
+    y: {observable: tau_ps}
+    tag: DR
+    where: "synthetic fixture"
+    digitized: true
+    method: "invented points, not digitised from any figure"
+    points: [[1, 520, 20], [3, 270, 10], [5, 180, 8], [8, 121, 6]]
+reproduce:
+  - item: lambda
+    class: T
+    tol: {abs: 0.001}
+    tol_reason: "passthrough of an input taken from the paper; must agree exactly"
+    expect: pass
+  - item: g2
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "synthetic: 2 sigma or half a percent absolute"
+    expect: pass
+  - item: brightness
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "synthetic: 2 sigma, or paper inside the eta_out envelope"
+    expect: pass
+  - item: tau_scalar
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "synthetic: 2 sigma"
+    expect: fail
+    reason: "synthetic known gap: the invented 300 ps is far from the model lifetime (~180 ps)"
+  - item: tau_vs_FP
+    class: C
+    tol: {metric: rms_rel, max: 0.1}
+    tol_reason: "synthetic: 10 percent rms over the points"
+    expect: pass
+  - item: g2_prediction
+    class: P
+    observable: hom_I
+    expect: pass
+    tol_reason: "no reported value; the model number is stated, not compared"
+fits:
+  - {param: structure.F_P, fitted_to: [tau_vs_FP]}
+history: []
