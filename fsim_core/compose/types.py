@@ -20,7 +20,7 @@ class EmitterModel:
     k_nr_ns: float                   # photonless loss rate
     gamma_star_ns: float             # pure dephasing, repo convention (coherence decays at (Gamma+gamma*)/2)
     phonon: Any                      # qd_gf.PhononParams
-    delta_xx_meV: float
+    delta_xx_meV: float              # E_XX - 2E_X in the resonant_source.FockSource convention: NEGATIVE = bound (binding energy E_b = -delta_xx_meV)
     gamma_xx_ratio: float
     fss_ueV: float
     transitions: frozenset

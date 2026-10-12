@@ -151,7 +151,7 @@ check("inas_inp_cband O-band (1310 nm) E_X = 946.4 meV",
 mu = R.get("material", "inas_gaas_sk")
 check("Mueller E_b = 2.3 meV [V] lies in the inas_gaas_sk range and is reproduced when overridden",
       mu.param("E_b_meV").lo <= 2.3 <= mu.param("E_b_meV").hi
-      and mu.build({"E_b_meV": 2.3}, 4.0).delta_xx_meV == 2.3)
+      and mu.build({"E_b_meV": 2.3}, 4.0).delta_xx_meV == -2.3)  # EmitterModel: negative = bound
 check("Somaschi tau_bulk = 1.3 ns [V] lies in the inas_gaas_sk tau range and gives Gamma0 = 1/1.3",
       mu.param("tau_bare_ns").lo <= 1.3 <= mu.param("tau_bare_ns").hi
       and abs(mu.build({"tau_bare_ns": 1.3}, 4.0).gamma0_ns - 1.0 / 1.3) < 1e-12)

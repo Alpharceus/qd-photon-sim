@@ -281,10 +281,18 @@ try:
     check("empty axis -> 'no <axis> registered yet'",
           not v6["ok"] and any(i["message"] == "no material registered yet" for i in v6["issues"]), v6["issues"])
 
-    # evaluate() on a composed design: validation passes -> NotImplementedError("compose engine: P5")
+    # evaluate() on a composed design dispatches to the compose engine (P5): the throwaway fixture
+    # entries have no runnable physics, so the engine answers with its own SolverUnavailable
+    # (or a result dict) -- never the legacy path and never the P1 stub.
+    from fsim_core.compose.engine import SolverUnavailable
     dd = DeviceDesign(name="t", platform="composed", composed=copy.deepcopy(GOOD))
-    ok, msg = raises(NotImplementedError, evaluate, dd, contains=("compose engine: P5",))
-    check("device.evaluate(composed) -> NotImplementedError('compose engine: P5')", ok, msg)
+    try:
+        _r = evaluate(dd); ok, msg = isinstance(_r, dict) and "scalars" in _r, f"returned {type(_r).__name__}"
+    except SolverUnavailable as _e:
+        ok, msg = True, f"SolverUnavailable: {_e}"
+    except Exception as _e:
+        ok, msg = False, f"{type(_e).__name__}: {_e}"
+    check("device.evaluate(composed) dispatches to the compose engine", ok, msg)
     dd2 = DeviceDesign(name="t", platform="composed", composed=d2)
     ok, msg = raises(ValueError, evaluate, dd2, contains=("drive.kind",))
     check("device.evaluate(composed, invalid) -> ValueError with the issues", ok, msg)

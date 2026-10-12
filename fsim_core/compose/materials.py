@@ -185,10 +185,11 @@ class DataMaterial(Material):
         inputs = {f: f"material.{p}" for f, p in _INPUT_FIELDS.items()}
         inputs["gamma_star_ns"] = "material.gamma_star_4K_ns+a_ac_ns_per_K"
         inputs["phonon"] = ("material.D_c_eV+D_v_eV+rho_kg_m3+c_LA_m_s+l_xy_nm+l_z_nm+alpha_ps2")
+        # delta_xx_meV in the resonant_source.FockSource convention: NEGATIVE = bound (E_b > 0).
         return EmitterModel(
             E_X_meV=HC_MEV_NM / lam, lambda_nm=lam, n_host=float(g("n_host")),
             gamma0_ns=1.0 / tau, k_nr_ns=float(g("k_nr_ns")), gamma_star_ns=gs, phonon=ph,
-            delta_xx_meV=float(g("E_b_meV")), gamma_xx_ratio=float(g("gamma_xx_ratio")),
+            delta_xx_meV=-float(g("E_b_meV")), gamma_xx_ratio=float(g("gamma_xx_ratio")),
             fss_ueV=float(g("fss_ueV")), transitions=frozenset(trans), dipole=str(g("dipole")),
             dEdT_meV_K=_dEdT_meV_K(self.varshni, T), sigma_sd_ueV=float(g("sigma_sd_ueV")),
             tau_sd_ns=float(g("tau_sd_ns")), inputs=inputs)

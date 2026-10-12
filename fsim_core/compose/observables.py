@@ -1,0 +1,275 @@
+"""Observables chain (design 2.6, physics brief section 5) and tag propagation.
+
+Brightness accounting (brief 5), every factor is reported:
+
+    B_lens  = n_ph x eta_pol x beta x eta_out x T_NA x Z_filt          (first lens, "B_first_lens")
+    B_fibre = B_lens x eta_fibre
+    counts  = f_rep x B_fibre x eta_optics x eta_det                   (eta_pol appears once, in B_lens)
+
+n_ph is the solver's photons per pulse into the radiative channel. It replaces the product
+eta_prep x eta_rad of the brief because it equals that product without re-excitation and also contains
+re-excitation (both factors are reported separately: `eta_prep`, `eta_rad`, `eta_prep_x_eta_rad`).
+T_NA = 1: the structure's response() already received the setup NA, so eta_out contains the NA
+collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL,
+else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor Z^2 UNFILTERED, efficiency x Z FILTERED,
+never both.
+
+g2: `g2_0` is intrinsic. `g2_raw` adds uncorrelated Poissonian background of rate B = f_leak S + dark
+(S = detected signal rate): g2_raw = 1 - rho^2 (1 - g2), rho = S/(S + B) -> g2 + 2 f_leak for small leak.
+Laser leak is counted once: the drive's (plan.inputs["laser_leak"]) when nonzero, else the setup's.
+
+HOM: `hom_I` = single-photon wavepacket overlap (intrinsic, g2-free) x phonon factor.
+hom_V_raw = ((1 - g2_raw) I - g2_raw) (1 - eps_int) [E: Ollivier et al., PRL 126, 063602 (2021);
+Santori 2002 form], eps_int from a setup param "eps_int" if present else 0 [A]; it uses g2_raw, the g2 a
+measurement of the same stream would see. hom_V_corr = (V_raw + g2)/(1 - g2) (Tomm: 0.925, 0.021 ->
+0.966). Compare raw to raw and corrected to corrected, never across.
+
+Tags. Each observable lists `deps`: tokens that are either a stage name (material | structure | drive |
+setup = the leaves that stage actually READ during the run, tracked by the engine) or an fnmatch pattern
+on leaf paths. Tag = widest(DR, tags of the matched leaves); DR is the floor because the model itself is
+derived. T_K is an operating condition and does not enter tags [A].
+"""
+from __future__ import annotations
+
+import fnmatch
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
+from .. import qd_gf
+from .params import widest_tag
+from .registry import Observable, register
+
+NAN = float("nan")
+STAGES = ("material", "structure", "drive", "setup")
+BRIGHTNESS_CONVENTION = ("B_lens = n_ph * eta_pol * beta * eta_out * T_NA * Z_filt (first lens; T_NA is "
+                         "inside eta_out); B_fibre = B_lens * eta_fibre; detected = f_rep * B_fibre * "
+                         "eta_optics * eta_det. n_ph = photons per pulse from the solver "
+                         "(= eta_prep * eta_rad without re-excitation).")
+
+
+def hom_v_raw(I, g2, eps_int=0.0):
+    """Predicted raw visibility V_raw = ((1 - g2) I - g2)(1 - eps_int)."""
+    return ((1.0 - g2) * I - g2) * (1.0 - eps_int)
+
+
+def hom_v_corrected(V_raw, g2):
+    """g2-corrected visibility V_corr = (V_raw + g2)/(1 - g2) (Tomm 0.925, 0.021 -> 0.966)."""
+    return (V_raw + g2) / (1.0 - g2)
+
+
+def g2_with_background(g2, signal_rate, background_rate):
+    s, b = signal_rate, background_rate
+    if s <= 0.0:
+        return NAN
+    rho = s / (s + b)
+    return 1.0 - rho * rho * (1.0 - g2)
+
+
+class TrackedVals(Mapping):
+    """Read-tracking view of one stage's parameter values (any access, including `in`, `get` and
+    iteration of items/values, counts as a read)."""
+
+    def __init__(self, data: dict, reads: set):
+        self._d = dict(data)
+        self._r = reads
+
+    def __getitem__(self, k):
+        v = self._d[k]
+        self._r.add(k)
+        return v
+
+    def __iter__(self):
+        return iter(self._d)
+
+    def __len__(self):
+        return len(self._d)
+
+
+class Context:
+    """Everything an observable needs for one (T) point."""
+
+    def __init__(self, em, sr, rt, plan, res, setup, T_K, vals, reads):
+        self.em, self.sr, self.rt, self.plan, self.res, self.setup = em, sr, rt, plan, res, setup
+        self.T_K = float(T_K)
+        self.vals = vals                      # {stage: {param: value}} (untracked copies)
+        self.reads = reads                    # {stage: set(param names)}
+        self._d = None
+
+    @property
+    def d(self) -> dict:
+        if self._d is None:
+            self._d = _derive(self)
+        return self._d
+
+
+def _derive(c: Context) -> dict:
+    em, sr, rt, plan, res, su = c.em, c.sr, c.rt, c.plan, c.res, c.setup
+    d: dict[str, Any] = {}
+    why: dict[str, str] = {}
+    Gamma, k = float(rt.Gamma_ns), float(rt.k_nr_ns)
+    ph = em.phonon
+    Z = float(qd_gf.zpl_weight(ph, c.T_K)) if ph is not None else 1.0
+    Zf = Z if su.zpl_filter else 1.0
+    beta = float(res.extra.get("beta", rt.beta))
+    eta_pol = float(su.eta_pol) * float(sr.pol_factor)
+    n_ph = float(res.n_ph)
+    pulsed = plan.timing == "pulsed"
+    f_rep = float(plan.f_rep_MHz) * 1e6 if plan.f_rep_MHz else None
+    d.update(Z_phonon=Z, Z_filt=Zf, beta=beta, eta_out=float(sr.eta_out), T_NA=1.0, eta_pol=eta_pol,
+             eta_rad=Gamma / (Gamma + k), n_ph=n_ph, Gamma_ns=Gamma, gamma_star_ns=float(rt.gamma_star_ns),
+             F_P_eff=float(rt.F_P_eff), lambda_nm=float(em.lambda_nm),
+             linewidth_ueV=float(rt.linewidth_ueV) if k == 0 else
+             lb_hbar_ueV() * (Gamma + k + float(rt.gamma_star_ns)),
+             detuning_ueV=float(rt.detuning_ueV))
+    d["tau_purcell_ps"] = 1e3 / (Gamma + k)
+    d["tau_ps"] = float(res.extra["tau_jc_ps"]) if "tau_jc_ps" in res.extra else d["tau_purcell_ps"]
+    d["eta_extract"] = beta * d["eta_out"]
+    d["inversion"] = NAN if res.inversion is None else float(res.inversion)
+    if res.inversion is None and "p_loaded" in res.extra:
+        d["eta_prep"] = float(res.extra["p_loaded"])
+    else:
+        d["eta_prep"] = d["inversion"]
+    d["eta_prep_x_eta_rad"] = d["eta_prep"] * d["eta_rad"]
+    if pulsed and math.isfinite(n_ph):
+        B = n_ph * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
+        d["B_lens"] = B
+        d["B_fibre"] = B * float(su.eta_fibre)
+        S = f_rep * d["B_fibre"] * float(su.eta_optics) * float(su.eta_det) if f_rep else NAN
+    else:
+        d["B_lens"] = d["B_fibre"] = NAN
+        why["B_lens"] = why["B_fibre"] = "continuous drive: brightness per pulse undefined (see rate_detected_Hz)"
+        flux = res.extra.get("flux_ns")
+        S = (float(flux) * 1e9 * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
+             * float(su.eta_optics) * float(su.eta_det)) if flux is not None else NAN
+    d["rate_detected_Hz"] = S
+    if not math.isfinite(S):
+        why["rate_detected_Hz"] = "no photon flux available from the solver / plan"
+    leak = float(plan.inputs.get("laser_leak", 0.0) or 0.0) or float(su.laser_leak)
+    g2 = float(res.g2_0)
+    bg = leak * S + float(su.dark_cps) if math.isfinite(S) else NAN
+    d["laser_leak_used"] = leak
+    d["g2_0"] = g2
+    d["g2_raw"] = g2_with_background(g2, S, bg) if math.isfinite(bg) else (g2 if leak == 0 and su.dark_cps == 0 else NAN)
+    I1 = float(res.I_single)
+    d["hom_I"] = I1 * (1.0 if su.zpl_filter else Z * Z) if math.isfinite(I1) else NAN
+    if not math.isfinite(d["hom_I"]):
+        why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
+    eps = float(c.vals.get("setup", {}).get("eps_int", 0.0))
+    if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
+        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps)
+        d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
+    else:
+        d["hom_V_raw"] = d["hom_V_corr"] = NAN
+    d["_why"] = why
+    return d
+
+
+def lb_hbar_ueV():
+    from .. import lindblad
+    return lindblad.HBAR_MEV_NS * 1e3
+
+
+@dataclass(frozen=True)
+class _Obs(Observable):
+    key: str = ""
+    by_conv: Any = None                      # {convention: derived key}
+
+    def compute(self, ctx, convention="intrinsic") -> float:
+        if convention not in self.conventions:
+            raise ValueError(f"observable {self.id!r} has no convention {convention!r}; "
+                             f"known: {list(self.conventions)}")
+        key = (self.by_conv or {}).get(convention, self.key or self.id)
+        return float(ctx.d[key])
+
+    def invalid_reason(self, ctx, convention="intrinsic") -> str:
+        key = (self.by_conv or {}).get(convention, self.key or self.id)
+        return ctx.d["_why"].get(key, ctx.d["_why"].get(self.id, ""))
+
+
+def _o(id_, label, unit, deps, conventions=("intrinsic",), passthrough_of=None, key="", by_conv=None):
+    return register(_Obs(id=id_, label=label, unit=unit, deps=tuple(deps), conventions=tuple(conventions),
+                         passthrough_of=passthrough_of, key=key or id_, by_conv=by_conv))
+
+
+_MS = ("material", "structure")
+_ALL = ("material", "structure", "drive")
+_CH = ("material", "structure", "drive", "setup")
+_o("lambda_nm", "Emission wavelength", "nm", ("material.lambda_nm", "material.E_X_meV"),
+   passthrough_of="material.lambda_nm")
+_o("F_P_eff", "Effective Purcell factor F_P L", "1", _MS, passthrough_of="structure.F_P")
+_o("beta", "Beta factor", "1", _MS, passthrough_of="structure.beta")
+_o("eta_out", "Extraction into the collected mode", "1", ("structure",))
+_o("eta_extract", "Extraction beta x eta_out", "1", _MS)
+_o("T_NA", "NA transmission (inside eta_out)", "1", ("setup.NA",))
+_o("eta_pol", "Polarisation factor", "1", ("setup.eta_pol", "structure"))
+_o("eta_prep", "State-preparation probability", "1", _ALL)
+_o("eta_rad", "Radiative efficiency Gamma/(Gamma+k)", "1", _MS)
+_o("eta_prep_x_eta_rad", "eta_prep x eta_rad", "1", _ALL)
+_o("inversion", "Inversion after the pulse", "1", _ALL)
+_o("Z_phonon", "ZPL weight Z(T)", "1", ("material",))
+_o("Z_filt", "ZPL filter factor", "1", ("material", "setup.zpl_filter"))
+_o("gamma_star_ns", "Pure dephasing (repo convention)", "1/ns", ("material",))
+_o("Gamma_ns", "Radiative rate", "1/ns", _MS)
+_o("n_ph", "Photons per pulse", "1", _ALL)
+_o("tau_ps", "Lifetime (JC 1/e when solver jc, else Purcell)", "ps", _MS)
+_o("tau_purcell_ps", "Purcell lifetime 1e3/(Gamma+k)", "ps", _MS)
+_o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)
+_o("detuning_ueV", "Emitter minus cavity detuning", "ueV", _MS)
+_o("g2_0", "g2(0)", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw"),
+   by_conv={"intrinsic": "g2_0", "raw": "g2_raw"})
+_o("g2_raw", "g2(0) with laser leak and dark counts", "1", _CH, key="g2_raw")
+_o("hom_I", "HOM overlap I", "1", _ALL + ("setup",), ("intrinsic", "raw", "corrected"),
+   by_conv={"intrinsic": "hom_I", "raw": "hom_V_raw", "corrected": "hom_V_corr"})
+_o("hom_V", "HOM visibility (raw|corrected)", "1", _CH, ("raw", "corrected"),
+   by_conv={"raw": "hom_V_raw", "corrected": "hom_V_corr"})
+_o("hom_V_raw", "HOM visibility, raw", "1", _CH, key="hom_V_raw")
+_o("hom_V_corr", "HOM visibility, g2-corrected", "1", _CH, key="hom_V_corr")
+_o("B_first_lens", "First-lens brightness", "1", _CH, key="B_lens")
+_o("B_lens", "First-lens brightness (alias of B_first_lens)", "1", _CH, key="B_lens")
+_o("B_fibre", "Brightness into the fibre", "1", _CH)
+_o("rate_detected_Hz", "Detected count rate", "Hz", _CH)
+
+
+def get_observable(oid):
+    from .registry import get
+    return get("observable", oid)
+
+
+def parse_request(spec_str):
+    """'id' or 'id:convention' -> (id, convention)."""
+    if ":" in spec_str:
+        a, b = spec_str.split(":", 1)
+        return a, b
+    return spec_str, "intrinsic"
+
+
+def resolve_inputs(obs, leaves: dict, reads: dict) -> list:
+    """Leaf paths an observable depends on (module doc)."""
+    out: list = []
+
+    def stage_paths(stage):
+        return [f"{stage}.{n}" for n in sorted(reads.get(stage, ())) if f"{stage}.{n}" in leaves]
+
+    fallback = None
+    for tok in obs.deps:
+        if tok in STAGES:
+            out += stage_paths(tok)
+        else:
+            hit = [p for p in leaves if fnmatch.fnmatchcase(p, tok)]
+            out += hit
+            fallback = fallback or tok.split(".")[0]
+    if not out and fallback in STAGES:
+        out = stage_paths(fallback)
+    seen = set()
+    return [p for p in out if not (p in seen or seen.add(p))]
+
+
+def tag_of(obs, leaves: dict, reads: dict):
+    """(tag, inputs): widest of DR and the tags of the leaves the observable depends on."""
+    inputs = resolve_inputs(obs, leaves, reads)
+    tags = [leaves[p].tag for p in inputs]
+    if inputs and not any(t in STAGES for t in obs.deps):      # pure passthrough of entered leaves
+        return widest_tag(*tags), inputs
+    return widest_tag("DR", *tags), inputs
