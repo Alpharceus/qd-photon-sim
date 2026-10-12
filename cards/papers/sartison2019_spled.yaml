@@ -9,9 +9,9 @@ meta:
   read_level: V-full
   summary: "InP/(Al)GaInP red dot (X, EL decay 599 ps) in an oxide-aperture (8 um) LED, 4 K, 200 ps electrical pulses at 200 MHz (Vdc 2.2 V, Vpp 3.9 V): g2(0) 0.42 raw / 0.41 dark-count corrected / 0.23 +/- 0.05 background corrected"
   notes:
-    - "THREE CONVENTIONS (trap 1): 0.42 +/- 0.02 is RAW (2 ns window, darks and spectral background included), 0.41 +/- 0.03 is dark-count corrected, 0.23 +/- 0.05 is background corrected with g_bgc = (g_dcc - (1 - rho^2))/rho^2. The model intrinsic g2 (no background channel) is compared with 0.23 only; the raw value is a calibration of the background fraction; the dark-count corrected value has no engine counterpart (the engine raw adds darks and background together) and is reported only."
+    - "THREE CONVENTIONS (trap 1): 0.42 +/- 0.02 is RAW (2 ns window, darks and spectral background included), 0.41 +/- 0.03 is dark-count corrected, 0.23 +/- 0.05 is background corrected with g_bgc = (g_dcc - (1 - rho^2))/rho^2. The model background-corrected g2 (g2_0:bg_corrected: the paper formula applied to the model raw g2 with drive.bg_frac, which returns the signal g2) is compared with 0.23 only; the raw value is a calibration of drive.bg_frac; the dark-count corrected value has no engine counterpart (the engine raw adds darks and background together) and is reported only."
     - "EL DECAY vs RADIATIVE LIFETIME (trap 4): 599 ps is the decay of the triggered EL of a gated diode, i.e. 1/(Gamma + k_off), an UPPER bound on the radiative lifetime. It is entered as tau_bare_ns (the brief tau_X) with k_esc_off = 0, so the item is a calibration; the true radiative lifetime may be longer."
-    - "PULSE SHAPE (trap 3): the authors attribute the residual g2 to background and to re-excitation by the Gaussian tails of the excitation pulse (p.9, text). The card uses a Gaussian pump profile with intensity FWHM = the nominal 200 ps; the RC (diode) rise is not given. The brief shape band for a clean rectangle is 0.14, Gaussian 0.20, RC(100 ps) 0.24 at mu 3 (cascade); the electrical drives have a TWO-LEVEL pump only (no XX cascade switch), whose g2 keeps rising with mu instead of saturating near 0.135 - a model gap of the electrical drive family, not of the card."
+    - "PULSE SHAPE (trap 3): the authors attribute the residual g2 to background and to re-excitation by the Gaussian tails of the excitation pulse (p.9, text). The card uses a Gaussian pump profile with intensity FWHM = the nominal 200 ps and the CASCADE (cap-2) loading of the electrical drive (devlib-fx3b): strong pumping parks the dot in XX, so the model g2 saturates (brief 1.3: rect 0.135, Gaussian 0.20 at mu 3) instead of rising like the two-level pump of the earlier card (0.285). The RC (diode) rise is not given."
     - "PUMP: no current or carriers per pulse are given (the pulse amplitude is the voltage Vpp 3.9 V, not a current), so mu is an E range [1, 4] (assumed near saturation); it controls g2 through re-excitation and is the dominant uncertainty."
     - "NOT CARDED: brightness / count rate (not in the text), temperature dependence, FSS-like oscillation amplitude 2.79 ueV, oxidation blue-shift 17.3 / 16.4 nm."
 device:
@@ -31,15 +31,16 @@ device:
       mechanism: {value: "M-3 pulsed", unit: "", tag: V, where: "text p.8 (pulse generator + bias tee, Vdc just below the excitation threshold)"}
       tau_on_ns: {value: 0.2, unit: ns, tag: V, where: "text p.8 (200 ps electrical pulses)"}
       pump_profile: {value: gauss, unit: "", tag: DR, where: "text p.9 (non-negligible tails in the Gaussian excitation pulse); the 200 ps taken as its intensity FWHM (assumption)"}
-      I_uA: {range: [0.0008, 0.0032], unit: uA, tag: E, source: "effective current into the dot for mu = 1-4 over 200 ps (mu = I tau / e); the carriers per pulse are not given, saturation assumed. M-3 multiplies eta_capture twice, so eta_capture is held at 1"}
-      eta_capture: {value: 1.0, unit: "1", tag: A, source: "held at 1; injection efficiency folded into I_uA"}
+      I_uA: {range: [0.0008, 0.0032], unit: uA, tag: E, source: "effective current into the dot for mu = eta_capture I tau / e = 1-4 over 200 ps; the carriers per pulse are not given (the pulse amplitude is the voltage Vpp 3.9 V), saturation assumed"}
+      eta_capture: {value: 1.0, unit: "1", tag: A, source: "no injection efficiency is given in the paper, so the E range of mu is carried by I_uA alone with eta_capture = 1 (the engine now applies eta_capture once: mu = eta_capture I tau / e)"}
+      cascade: {value: true, unit: "", tag: A, source: "brief 1.3: strong electrical pumping loads the biexciton (capacity 2); the dot parks in XX and g2 saturates then falls instead of rising like the two-level pump; pump_ratio_xx = 1 (equal G->X and X->XX loading rates) is the brief's setting"}
+      bg_frac: {value: 0.1509, unit: "1", tag: A, source: "calibrated (fits): uncorrelated background fraction of the detected light (rho = 1 - bg_frac), set so the model raw g2 equals 0.42; the paper-implied rho from its own dcc/bgc numbers is 0.875 (derived, not stated)"}
       f_rep_MHz: {value: 200.0, unit: MHz, tag: V, where: "text p.8 (200 MHz)"}
   setup:
     kind: lens_fibre_det
-    params:
-      laser_leak: {value: 0.1103, unit: "1", tag: A, source: "calibrated (fits): uncorrelated background-to-signal ratio B/S (rho = 1/(1 + B/S) = 0.90) set so the model raw g2 equals 0.42; the engine has no background-only parameter on the electrical drive, so the laser_leak slot is used as the spectral background. The paper-implied rho from its own dcc/bgc numbers is 0.875 (derived, not stated)"}
+    params: {}
 reported:
-  - {id: g2_bgc, observable: g2_0, convention: intrinsic, value: 0.23, err: 0.05, tag: V, where: "text p.9 (background-corrected g2(0) = 0.23 +/- 0.05 via g_bgc = (g_dcc - (1 - rho^2))/rho^2)", note: "rho not printed; compared with the model intrinsic g2 (no background channel)"}
+  - {id: g2_bgc, observable: g2_0, convention: bg_corrected, value: 0.23, err: 0.05, tag: V, where: "text p.9 (background-corrected g2(0) = 0.23 +/- 0.05 via g_bgc = (g_dcc - (1 - rho^2))/rho^2)", note: "rho not printed; compared with the model background-corrected g2 (the same formula applied to the model raw g2 with the calibrated bg_frac)"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.42, err: 0.02, tag: V, where: "text p.8-9 / abstract / Fig 4d (raw g2(0), 2 ns window, 60 pm spectral window)", note: "raw: darks and spectral background included"}
   - {id: g2_dcc, observable: g2_0, convention: raw, value: 0.41, err: 0.03, tag: V, where: "text p.9 (dark-count corrected value)", note: "dark counts removed, background kept: no engine counterpart; reported only"}
   - {id: tau_EL, observable: tau_EL_ps, value: 599.0, tag: V, where: "text p.8 / Fig 4b (decay time 599 ps under triggered EL, 200 MHz)", note: "EL decay of the gated diode, equal to 1/(Gamma + k_off); no error printed"}
@@ -48,12 +49,12 @@ reproduce:
   - item: g2_bgc
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.05 (0.10). Inputs: the paper tau 599 ps, 200 ps Gaussian pulse; mu is an E range [1, 4] and is the dominant uncertainty (the model central point is the midpoint of the I_uA range). The comparison is with the background-corrected value because the model intrinsic g2 contains no background; two-level pump only (no cascade), see meta.notes"
+    tol_reason: "2 sigma of the printed 0.05 (0.10). Inputs: the paper tau 599 ps, 200 ps Gaussian pulse, cascade (cap-2) loading; mu is an E range [1, 4] and is the dominant uncertainty (the model central point is the midpoint of the I_uA range). The model value is the engine's g2_0:bg_corrected (the paper's own formula applied to the model raw g2), which returns the signal g2; the calibrated bg_frac fixes only the raw value"
     expect: pass
   - item: g2_raw
     class: C
     tol: {k_sigma: 2}
-    tol_reason: "calibration: the background fraction (setup.laser_leak) is set once so the model raw g2 at the central pump equals 0.42, because rho is not printed; 2 sigma of the printed 0.02"
+    tol_reason: "calibration: the background fraction (drive.bg_frac) is set once so the model raw g2 at the central pump equals 0.42, because rho is not printed; 2 sigma of the printed 0.02"
     expect: pass
   - item: tau_EL
     class: C
@@ -61,7 +62,8 @@ reproduce:
     tol_reason: "calibration: tau_bare_ns is set to 599 ps (the EL decay, k_off = 0 assumed); 2 % absolute-time tolerance as no error is printed"
     expect: pass
 fits:
-  - {param: setup.laser_leak, fitted_to: [g2_raw]}
+  - {param: drive.bg_frac, fitted_to: [g2_raw]}
   - {param: material.tau_bare_ns, fitted_to: [tau_EL]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b eta_capture fix", note: "the M-3 pulsed pump no longer multiplies eta_capture twice, so the false 'held at 1' justification is removed (eta_capture stays 1 because the paper gives no injection efficiency; mu is the E range of I_uA). Workaround undone: setup.laser_leak (a laser) was the background stand-in, now drive.bg_frac (refit to the raw 0.42: 0.1103 B/S -> bg_frac 0.1509, rho 0.849); cascade (cap-2) loading switched on (brief 1.3); g2_bgc now compares g2_0:bg_corrected. g2_bgc model 0.285 -> 0.196 (paper 0.23 +/- 0.05, still pass); g2_raw 0.420 (calibration, pass); tau_EL unchanged"}

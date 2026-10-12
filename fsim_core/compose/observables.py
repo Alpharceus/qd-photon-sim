@@ -37,9 +37,18 @@ collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup 
 Z_eff (below) for a finite-kappa structure, else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor
 Z^2 UNFILTERED, efficiency x Z FILTERED, never both; a cavity interpolates between the two.
 
-g2: `g2_0` is intrinsic. `g2_raw` adds uncorrelated Poissonian background of rate B = f_leak S + dark
+g2: `g2_0` is intrinsic (it already contains a drive-embedded `bg_frac`, plan.inputs["bg_frac"], where a drive has one:
+above_band, p_shell, electrical). `g2_raw` adds uncorrelated Poissonian background of rate B = f_leak S + dark
 (S = detected signal rate): g2_raw = 1 - rho^2 (1 - g2), rho = S/(S + B) -> g2 + 2 f_leak for small leak.
 Laser leak is counted once: the drive's (plan.inputs["laser_leak"]) when nonzero, else the setup's.
+`g2_0:bg_corrected` (devlib-fx3b) is the paper convention g_bgc = (g2_raw - (1 - rho^2))/rho^2 with the BACKGROUND rho =
+(1 - bg_frac)/(1 + laser_leak) (drive-embedded fraction and laser leak; dark counts are not corrected, the "dark-count
+corrected" value of a paper is a separate number). It is the exact inverse of the mixing law, so it returns the signal
+g2 (Sartison, Lazic Eq. 5, Munsch g2*) and is what a background-corrected paper value is compared with.
+
+Photon rates (devlib-fx3b): `B_first_lens_Hz` / `B_fibre_Hz` = the photon rate into the first lens / fibre, before
+eta_optics and eta_det: pulsed f_rep x B_first_lens (B_fibre); cw (flux_ns = Gamma n_X,ss from the solver) x the same
+chain beta eta_out eta_pol Z_filt (x eta_fibre); `rate_detected_Hz` is that times eta_optics eta_det.
 
 Dark counts for a PULSED drive (devlib-fx2a (a)): the coincidence histogram integrates only a window
 `setup.coinc_window_ns` around each peak, so a detector's dark counts reach the central peak only inside that
@@ -79,9 +88,13 @@ Gated / binned / IRF observables (devlib-p10e, electrical drives). All [DR]; the
   * `g2_binned` = g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} (pulsed, histogram bin = the pulse period T,
     gamma = the EL decay rate), with the Gaussian detector IRF (drive input irf_ps, or setup.irf_ps if present) leaking
     more of every peak into the neighbours (`binned_g2`); the peak-area g2 is `g2_0`. (Brief 2.3, trap 6.)
-  * `hom_I_gated` = the time-filtered HOM overlap of the exciton photon inside a detection gate [t_g, t_g + T]
-    (`gated_hom`), optionally averaged over a Gaussian relative emission-time delay (`gated_hom_jitter`); times the
-    same ZPL-fraction q^2 as hom_I. Limits: T -> 0 gives 1, T -> inf gives (Gamma + k)/(Gamma + k + gamma*).
+  * `hom_I_gated` = the time-filtered HOM overlap of the exciton photon inside a detection gate on the emission-time
+    axis (`gated_hom`): a top-hat [t_g, t_g + T] or (devlib-fx3b, gate_shape "gauss") a Gaussian window of intensity
+    FWHM T centred at t_g (Bennett's 31 ps window is a Gaussian), optionally averaged over a Gaussian relative timing
+    jitter of the two photons' gates (`gated_hom_jitter`: the displaced gates share only part of the photon, so the
+    overlap is monotone non-increasing in the jitter and acts at any gate position); times the same ZPL-fraction q^2 as
+    hom_I. Limits: T -> 0 gives 1, T -> inf gives (Gamma + k)/(Gamma + k + gamma*). Full-line Gaussian-gate closed form
+    (gate far from the emission onset): I_T = e^{x^2} erfc(x), x = gamma* sigma_gate, independent of Gamma, k and the position.
   * `g2_irf` (cw): the intrinsic dip g2_0 seen through a Gaussian IRF of FWHM irf_ps, 1 - (1 - g2_0) F with F the
     cw_g2 single-exponential dip factor at the dip recovery time 1/(Gamma + k + r); equals g2_0 when irf_ps = 0.
 
@@ -150,51 +163,119 @@ def _gate_F(Gamma_d, gamma_star, lo, hi):
     return (2.0 / a) * (_int_exp(-2.0 * Gamma_d, lo, hi) - _int_exp(gamma_star - Gamma_d, lo, hi, shift=-a * hi))
 
 
-def gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss=0.0, delay_ns=0.0):
-    """Time-filtered HOM overlap of the photon of one excitation inside the detection gate [t_g, t_g + T] [DR].
+_GATE_SHAPES = ("rect", "gauss")
+
+
+def _gauss_sigma(fwhm_ns):
+    return float(fwhm_ns) / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+
+
+def _gauss_n(Gd, c, sig):
+    """int_0^inf exp(-(t - c)^2/(2 sig^2)) e^{-Gd t} dt (the Gaussian-window weight of an exponential emission that cannot
+    start before the excitation at t = 0)."""
+    from scipy.special import log_ndtr
+    return sig * math.sqrt(2.0 * math.pi) * math.exp(-Gd * c + 0.5 * Gd * Gd * sig * sig
+                                                     + float(log_ndtr((c - Gd * sig * sig) / sig)))
+
+
+def _gauss_F(Gd, gamma_star, c, sig):
+    """F = int_0^inf int_0^inf W(t) W(t') e^{-Gd (t + t')} e^{-gamma_star |t - t'|} dt dt', W(t) = exp(-(t - c)^2/(2 sig^2)).
+    Splitting at t' > t gives 2 int_0^inf W(t) e^{-(Gd - gs) t} [int_t^inf W(t') e^{-(Gd + gs) t'} dt'] dt and the inner
+    integral is a normal tail, so the double integral is one smooth 1-D quadrature (log-scaled against overflow)."""
+    from scipy.integrate import quad
+    from scipy.special import log_ndtr
+    a = Gd + gamma_star
+    b = Gd - gamma_star
+    k0 = -a * c + 0.5 * a * a * sig * sig + math.log(sig * math.sqrt(2.0 * math.pi))
+
+    def f(t):
+        return math.exp(-0.5 * ((t - c) / sig) ** 2 - b * t + k0 + float(log_ndtr(-(t - c + a * sig * sig) / sig)))
+    hi = c + 14.0 * sig + 2.0 * sig * sig * max(-b, 0.0)
+    pk = min(max(c - b * sig * sig, 0.0), hi)
+    return 2.0 * quad(f, 0.0, hi, points=[pk] if 0.0 < pk < hi else None, epsabs=0.0, epsrel=1e-11, limit=400)[0]
+
+
+def gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss=0.0, delay_ns=0.0, gate_shape="rect", shift_ns=0.0):
+    """Time-filtered HOM overlap of the photon of one excitation inside a detection gate [DR].
     Repo convention: population decay Gamma_d = Gamma + k_loss, coherence decay (Gamma_d + gamma*)/2, first-order
-    coherence G1(t, t') = Gamma e^{-Gamma_d (t + t')/2} e^{-gamma* |t' - t|/2} (t, t' >= 0). Two photons from
-    independent identical emitters, the second emitted `delay_ns` later, detected in the same gate:
-        I_T = int int_gate^2 G_A(t, t') G_B(t', t) / (n_A n_B),   n = int_gate Gamma e^{-Gamma_d (t - t_emit)} dt,
-    which is the Grange overlap I = 2 S / N^2 restricted to the gate (delay 0). Limits: T -> 0 gives 1;
-    T -> inf, t_g = 0 gives Gamma_d/(Gamma_d + gamma*) (= T2/(2 T1) for k = 0); the delay enters as
-    e^{Gamma_d delay} before the common start max(t_g, 0, delay) (Gamma_d |delay| for the unwindowed packet:
-    I(delay) = Gamma_d/(Gamma_d + gamma*) e^{-Gamma_d |delay|}). Returns dict(n_T, I_T): n_T = the fraction of the
-    photons that falls in the gate (per excitation, relative to the radiative yield Gamma/Gamma_d)."""
+    coherence G1(t, t') = Gamma e^{-Gamma_d (t + t')/2} e^{-gamma* |t' - t|/2} (t, t' >= 0). The gate is a window on the
+    EMISSION-time axis. Two photons from independent identical emitters (the second emitted `delay_ns` later) are
+    detected through their own gates A and B, which are displaced from each other by `shift_ns` (B - A; A is moved by
+    -shift/2 and B by +shift/2 about the nominal position, so the mean position is unchanged). Only the part of the
+    wavepackets inside BOTH gates interferes (the gate acts on the field amplitude a(t) = sqrt(W(t)), so the
+    interfering amplitude is sqrt(W_A W_B)):
+        I_T = int int sqrt(W_A W_B)(t) sqrt(W_A W_B)(t') G_A(t, t') G_B(t', t) / (n_A n_B),   n = int W n(t) dt,
+    which is the Grange overlap I = 2 S / N^2 restricted to the gate (delay = shift = 0).
+      gate_shape "rect"  : W = 1 on [t_gate, t_gate + T] (closed form below).
+      gate_shape "gauss" : W = exp(-(t - t_gate)^2/(2 sigma^2)), T = INTENSITY FWHM = 2.3548 sigma, t_gate = the gate
+                           CENTRE (Bennett's 31 ps window is a Gaussian). One smooth 1-D quadrature (_gauss_F).
+    Limits: T -> 0 gives 1; T -> inf, t_gate = 0 gives Gamma_d/(Gamma_d + gamma*) (= T2/(2 T1) for k = 0); a delay
+    enters as e^{Gamma_d delay} before the common start (I(delay) = Gamma_d/(Gamma_d + gamma*) e^{-Gamma_d |delay|}
+    for the unwindowed packet). Returns dict(n_T, I_T, num, nn): n_T = the fraction of the photons that falls in
+    gate A (per excitation, relative to the radiative yield Gamma/Gamma_d); num, nn the unnormalised overlap numerator
+    and n_A n_B (used to weight a jitter average by the detected-pair probability)."""
     Gamma, gamma_star, t_g, T = float(Gamma), float(gamma_star), float(t_gate_ns), float(T_ns)
+    if gate_shape not in _GATE_SHAPES:
+        raise ValueError(f"gate_shape {gate_shape!r} not in {_GATE_SHAPES}")
     Gd = Gamma + float(k_loss)
-    d = float(delay_ns)
-    E = t_g + T
+    d, h = float(delay_ns), 0.5 * float(shift_ns)
     if not (T > 0.0 and Gd > 0.0):
         return {"n_T": 0.0, "I_T": NAN}
-    lo = max(t_g, 0.0, d)
-    n_A = Gamma * _int_exp(-Gd, max(t_g, 0.0), E)
-    n_B = Gamma * math.exp(Gd * d) * _int_exp(-Gd, max(t_g, d), E) if E > d else 0.0
-    if not (n_A > 0.0 and n_B > 0.0):
-        return {"n_T": n_A / (Gamma / Gd) if n_A > 0.0 else 0.0, "I_T": NAN, "num": 0.0, "nn": 0.0}
-    num = Gamma ** 2 * math.exp(Gd * d) * _gate_F(Gd, gamma_star, lo, E)
+    cA, cB = t_g - h, t_g + h
+    if gate_shape == "gauss":
+        if d != 0.0:
+            raise ValueError("gate_shape 'gauss' supports delay_ns = 0 (use shift_ns for the relative gate timing)")
+        sig = _gauss_sigma(T)
+        nA = Gamma * _gauss_n(Gd, cA, sig)
+        nB = Gamma * _gauss_n(Gd, cB, sig)
+        # sqrt(W_A W_B) = exp(-(t - cbar)^2/(2 sig^2)) exp(-(cB - cA)^2/(8 sig^2)); the amplitude factor enters twice
+        cbar = 0.5 * (cA + cB)
+        num = Gamma ** 2 * math.exp(-((cB - cA) ** 2) / (4.0 * sig * sig)) * _gauss_F(Gd, gamma_star, cbar, sig)
+        den = nA * nB
+        return {"n_T": float(nA / (Gamma / Gd)), "I_T": float(num / den) if den > 0.0 else NAN, "num": float(num),
+                "nn": float(den)}
+    a0, a1 = cA, cA + T
+    b0, b1 = cB, cB + T
+    lo = max(a0, b0, 0.0, d)
+    hi = min(a1, b1)
+    n_A = Gamma * _int_exp(-Gd, max(a0, 0.0), a1) if a1 > max(a0, 0.0) else 0.0
+    n_B = Gamma * math.exp(Gd * d) * _int_exp(-Gd, max(b0, d), b1) if b1 > max(b0, d) else 0.0
+    if not (n_A > 0.0 and n_B > 0.0 and hi > lo):
+        return {"n_T": n_A / (Gamma / Gd) if n_A > 0.0 else 0.0, "I_T": NAN if not (n_A > 0.0 and n_B > 0.0) else 0.0,
+                "num": 0.0, "nn": n_A * n_B}
+    num = Gamma ** 2 * math.exp(Gd * d) * _gate_F(Gd, gamma_star, lo, hi)
     return {"n_T": float(n_A / (Gamma / Gd)), "I_T": float(num / (n_A * n_B)), "num": float(num),
             "nn": float(n_A * n_B)}
 
 
-def gated_hom_jitter(Gamma, gamma_star, t_gate_ns, T_ns, sigma_ns, k_loss=0.0, n_nodes=161):
-    """Gate-filtered HOM overlap averaged over a Gaussian RELATIVE emission-time delay of std `sigma_ns`
-    (Bennett 2008: the Stark sweep jitters the emission time) [DR/A]. The average is over COINCIDENCES,
-        I = int P(d) N(d) dd / int P(d) n_A n_B(d) dd,   N = the gate-restricted overlap numerator of gated_hom,
-    i.e. each delay is weighted by its detected-pair probability (the brief's unweighted int P I_T lets the vanishing
-    detection probability of a late partner inflate I_T -> 1 near d -> T). Trapezoid on +/- 6 sigma; sigma = 0
-    returns gated_hom. The jitter is the one [A] input of the Bennett comparison; for two independent sources with
-    per-photon jitter s use sigma = sqrt(2) s."""
+def gated_hom_jitter(Gamma, gamma_star, t_gate_ns, T_ns, sigma_ns, k_loss=0.0, n_nodes=161, gate_shape="rect"):
+    """Gate-filtered HOM overlap averaged over a Gaussian RELATIVE timing jitter of the two photons' detection gates
+    (std `sigma_ns` of the displacement between gate A and gate B; Bennett 2008: the Stark sweep jitters the gate
+    position) [DR/A]. Both photons are emitted together (pulsed excitation); a displaced gate keeps only the common
+    part of the two windows, so I_T(shift) is non-increasing in |shift| and its Gaussian average
+        I = int P(s) I_T(s) ds                (the brief's per-pair average; a pair whose windows do not overlap adds 0)
+    is MONOTONICALLY non-increasing in sigma, equals gated_hom at sigma = 0, and acts even when the gate opens well
+    after the excitation (the earlier emission-delay model of this function did neither). Trapezoid of the normal density
+    over +/- 6 sigma, restricted to the shifts where the two gates still overlap (so sigma >> T is resolved).
+    The coincidence-weighted average int P N / int P n_A n_B differs by < 0.01 for sigma <= T/2 (Bennett gate) but
+    plateaus at large sigma because a gate pushed before the excitation loses its photons (clipping at t = 0), which
+    would break the monotone limit; the per-pair form is kept [A]. For two independent sources with per-photon gate
+    jitter s use sigma = sqrt(2) s."""
     import numpy as np
     if not sigma_ns > 0.0:
-        return gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss)["I_T"]
-    x = np.linspace(-6.0, 6.0, int(n_nodes))
-    w = np.exp(-0.5 * x * x)
-    g = [gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss, delay_ns=float(sigma_ns * xi)) for xi in x]
-    num = np.array([v["num"] for v in g])
-    nn = np.array([v["nn"] for v in g])
-    den = float(np.sum(w * nn))
-    return float(np.sum(w * num) / den) if den > 0.0 else NAN
+        return gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss, gate_shape=gate_shape)["I_T"]
+    sg = float(sigma_ns)
+    # I_T(s) vanishes beyond the gate overlap: |s| < T (top-hat) / e^{-s^2/(4 sigma_g^2)} (Gaussian, cut at 12 sigma_g); the
+    # nodes cover min(6 sigma, that support), so a jitter >> T is not aliased onto a few nodes
+    support = float(T_ns) if gate_shape == "rect" else 12.0 * _gauss_sigma(T_ns)
+    L = min(6.0 * sg, support)
+    s_ = np.linspace(-L, L, int(n_nodes))
+    pdf = np.exp(-0.5 * (s_ / sg) ** 2) / (sg * math.sqrt(2.0 * math.pi))
+    v = np.empty(s_.size)
+    for i, si in enumerate(s_):
+        it = gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss, gate_shape=gate_shape, shift_ns=float(si))["I_T"]
+        v[i] = it if math.isfinite(it) else 0.0
+    return float(np.trapezoid(pdf * v, s_))
 
 
 def binned_g2(g2_0, gamma_ns, T_bin_ns, irf_ps=0.0):
@@ -374,6 +455,15 @@ def _derive(c: Context) -> dict:
         S = (float(flux) * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
              * float(su.eta_optics) * float(su.eta_det)) if flux is not None else NAN
     d["rate_detected_Hz"] = S
+    # FX3b: photon rates into the first lens / fibre (before eta_optics, eta_det), cw (flux = Gamma n_X,ss) and pulsed (f_rep B)
+    if pulsed and f_rep and math.isfinite(d["B_lens"]):
+        d["B_first_lens_Hz"], d["B_fibre_Hz"] = f_rep * d["B_lens"], f_rep * d["B_fibre"]
+    elif not pulsed and res.extra.get("flux_ns") is not None:
+        Bl = float(res.extra["flux_ns"]) * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
+        d["B_first_lens_Hz"], d["B_fibre_Hz"] = Bl, Bl * float(su.eta_fibre)
+    else:
+        d["B_first_lens_Hz"] = d["B_fibre_Hz"] = NAN
+        why["B_first_lens_Hz"] = why["B_fibre_Hz"] = "no photon flux available from the solver / plan"
     if not math.isfinite(S):
         why["rate_detected_Hz"] = "no photon flux available from the solver / plan"
     leak = float(plan.inputs.get("laser_leak", 0.0) or 0.0) or float(su.laser_leak)
@@ -396,6 +486,17 @@ def _derive(c: Context) -> dict:
     else:
         d["g2_raw"] = NAN
         why["g2_raw"] = "background rate needs the detected signal rate S, which is unavailable"
+    # FX3b background-corrected g2 = the paper formula (g2_raw - (1 - rho^2))/rho^2 with the BACKGROUND rho = (1 - bg_frac)
+    # /(1 + laser_leak): the drive's embedded bg_frac (already inside g2_0) and the laser leak; dark counts are NOT
+    # corrected (the "dark-count corrected" value is a separate convention). It is the exact inverse of the mixing law.
+    bg_emb = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
+    rho_bg = (1.0 - bg_emb) / (1.0 + leak)
+    d["rho_background"] = rho_bg
+    if math.isfinite(d["g2_raw"]) and rho_bg > 0.0:
+        d["g2_bgc"] = (d["g2_raw"] - (1.0 - rho_bg * rho_bg)) / (rho_bg * rho_bg)
+    else:
+        d["g2_bgc"] = NAN
+        why["g2_bgc"] = "background-corrected g2 needs a defined raw g2 and a background rho > 0"
     # binned (GHz) histogram and IRF-convolved dip
     if pulsed and f_rep:
         d["g2_binned"] = binned_g2(g2, Gamma + k + k_off, 1e9 / f_rep, irf_ps)
@@ -413,9 +514,11 @@ def _derive(c: Context) -> dict:
     if hg:
         sg = float(hg.get("jitter_ns", 0.0))
         gs = float(rt.gamma_star_ns)
-        Ig = gated_hom_jitter(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), sg, k + k_off)
+        shape = str(hg.get("shape", "rect"))
+        Ig = gated_hom_jitter(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), sg, k + k_off, gate_shape=shape)
         d["hom_I_gated"] = Ig * q * q if math.isfinite(Ig) else NAN
-        d["hom_gate_fraction"] = gated_hom(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), k + k_off)["n_T"]
+        d["hom_gate_fraction"] = gated_hom(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), k + k_off,
+                                           gate_shape=shape)["n_T"]
     else:
         d["hom_I_gated"] = NAN
         why["hom_I_gated"] = "no HOM detection gate set (drive.hom_gate_ps = 0)"
@@ -534,8 +637,8 @@ _o("g2_irf", "g2(0) of the cw dip seen through the detector IRF", "1", _ALL + ("
 _o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), q^2 included", "1", _ALL + ("setup",))
 _o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)
 _o("detuning_ueV", "Emitter minus cavity detuning", "ueV", _MS)
-_o("g2_0", "g2(0)", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw"),
-   by_conv={"intrinsic": "g2_0", "raw": "g2_raw"})
+_o("g2_0", "g2(0)", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),
+   by_conv={"intrinsic": "g2_0", "raw": "g2_raw", "bg_corrected": "g2_bgc"})
 _o("g2_raw", "g2(0) with laser leak and dark counts", "1", _CH, key="g2_raw")
 _o("hom_I", "HOM overlap I", "1", _ALL + ("setup",), ("intrinsic", "raw", "corrected"),
    by_conv={"intrinsic": "hom_I", "raw": "hom_V_raw", "corrected": "hom_V_corr"})
@@ -547,6 +650,8 @@ _o("B_first_lens", "First-lens brightness", "1", _CH, key="B_lens")
 _o("B_lens", "First-lens brightness (alias of B_first_lens)", "1", _CH, key="B_lens")
 _o("B_fibre", "Brightness into the fibre", "1", _CH)
 _o("rate_detected_Hz", "Detected count rate", "Hz", _CH)
+_o("B_first_lens_Hz", "Photon rate into the first lens (cw: flux x chain; pulsed: f_rep B_first_lens)", "Hz", _CH)
+_o("B_fibre_Hz", "Photon rate into the fibre (before eta_optics, eta_det)", "Hz", _CH)
 
 
 def get_observable(oid):

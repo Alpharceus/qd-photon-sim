@@ -42,6 +42,18 @@ Limitations (reported in SolverResult.reasons):
   * The polaron (Franck-Condon) energy shift is absorbed into the line position; detunings are measured
     from the ZPL.
 
+Drive-induced dephasing (devlib-fx3b, Koong-type excitation-induced dephasing) [E]. Optional, default OFF
+(plan.inputs["eid_ps"] = 0 is bit-identical): the pure-dephasing rate rises with the instantaneous drive intensity,
+    gamma_EID(t) = c_EID |Omega(t)|^2     (c_EID = eid_ps x 1e-3 ns; Omega in rad/ns, so gamma_EID in 1/ns),
+added to gamma* as a D[sqrt(gamma_EID) |X><X|] term of L(t) (repo convention: coherence decay gamma_EID/2). It uses the
+BARE Rabi frequency (the photon-field intensity), not the phonon-renormalised B Omega. No coefficient comes from a
+paper here: the class value is [E] (Ramsay et al., PRL 104, 017402 (2010) report damping that grows with the pulse
+intensity, not a universal c), so any card that enables it must say where c comes from.
+
+Optional trion branch (devlib-fx3b, Vajner-type excess-charge Rabi damping) [E]: `apply_trion` scales a result by a
+per-pulse probability p_trion(area) = p_trion sin^2(area/2) that the excitation ends in a dark charged state
+(default 0 = bit-identical); see its docstring.
+
 Needs the temperature: plan.inputs["T_K"] (the engine adds it).
 """
 from __future__ import annotations
@@ -73,6 +85,42 @@ _LSX = lb.hamiltonian_super(0.5 * _SX)
 _LSY = lb.hamiltonian_super(0.5 * _SY)
 _LDET = lb.hamiltonian_super(np.array([[0, 0], [0, 1]], dtype=complex))    # d L / d(det_X): H = det |X><X|
 _IDX_PX = 3                    # vec index of rho[X, X] (column stacking, dim 2)
+
+
+_PX = np.array([[0, 0], [0, 1]], dtype=complex)
+_DEPH_X = lb.dissipator(_PX)          # D[|X><X|]: coherence decay 1/2 per unit rate (repo gamma* convention)
+
+
+def trion_probability(p_trion, area_rad):
+    """p_trion(area) = p_trion sin^2(area/2) [E]: the chance that a pulse of area `area_rad` leaves the dot in a dark
+    trion (excess charge) state, proportional to the ideal two-level inversion sin^2(area/2) it creates; p_trion is the
+    value at a pi pulse. No paper gives this function (Vajner 2024 only gives the reduced Rabi-oscillation fidelity
+    0.82 vs 0.98 simulated); it is the minimal, parameter-light stand-in."""
+    return float(p_trion) * math.sin(0.5 * float(area_rad)) ** 2
+
+
+def apply_trion(res, p):
+    """Dark-trion branch applied to a SolverResult: with probability p per pulse the excitation is lost to a dark charged
+    state, so every emission/preparation measure scales with (1 - p) and the normalised g2 = m2/m1^2 with 1/(1 - p)
+    (independent pulses, a dark pulse contributes no photon). The HOM overlap I = int int |G1|^2 / N^2 is unchanged
+    (|G1|^2 ~ (1 - p)^2, N^2 ~ (1 - p)^2). p = 0 returns `res` itself (bit-identical)."""
+    p = float(p)
+    if not p > 0.0:
+        return res
+    if not p < 1.0:
+        raise ValueError(f"p_trion must be < 1, got {p!r}")
+    q = 1.0 - p
+    ex = dict(res.extra)
+    for k in ("eta_prep", "n_exc", "P_X_end", "photons_in_window", "n_XX", "P_X_max"):
+        if k in ex and isinstance(ex[k], (int, float)):
+            ex[k] = float(ex[k]) * q
+    ex["p_trion_pulse"] = p
+    ex["notes"] = list(ex.get("notes", [])) + [f"dark trion branch: p = {p:.4g} per pulse removes the excitation "
+                                               "(n_ph, inversion x (1 - p); g2 / (1 - p); HOM unchanged) [E]"]
+    g2 = res.g2_0 / q if math.isfinite(res.g2_0) else res.g2_0
+    inv = None if res.inversion is None else float(res.inversion) * q
+    return SolverResult(g2_0=g2, n_ph=res.n_ph * q, I_single=res.I_single, inversion=inv, extra=ex,
+                        valid=res.valid, reasons=res.reasons)
 
 
 # ---------------------------------------------------------------- phonon model
@@ -222,9 +270,10 @@ class PulseTrain:
 class Generator:
     """L(t) of the phonon-dressed driven two-level emitter on a grid of step midpoints."""
 
-    def __init__(self, train: PulseTrain, tl: rs.TwoLevel, pm: PhononModel):
+    def __init__(self, train: PulseTrain, tl: rs.TwoLevel, pm: PhononModel, eid_ns: float = 0.0):
         self.train = train
         self.pm = pm
+        self.eid_ns = float(eid_ns)          # c_EID in ns: gamma_EID(t) = eid_ns |Omega(t)|^2 (0 = off, bit-identical)
         s0 = tl.system(0.0)
         self.L0 = np.asarray(s0.L, dtype=complex)
         self.J = lb.counting_jump(s0)
@@ -261,6 +310,9 @@ class Generator:
         L += om.real[:, None, None] * _LSX + om.imag[:, None, None] * _LSY
         if self.train.det_profile is not None:
             L += (dcell - self.delta)[:, None, None] * _LDET
+        if self.eid_ns > 0.0:
+            g_eid = self.eid_ns * (np.abs(om) / self.pm.B) ** 2            # bare |Omega|^2 (om = B Omega)
+            L += g_eid[:, None, None] * _DEPH_X
         if self.pm.active:
             ok = lam > 1e-9 * max(1.0, abs(self.delta))
             gd = np.zeros(om.size)
@@ -469,7 +521,8 @@ class PolaronSolver(Solver):
         train = PulseTrain(plan.pulses, plan.det_profile)
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
                          delta_ns=train.det0_ns)
-        return pm, train, Generator(train, tl, pm)
+        eid = float(plan.inputs.get("eid_ps", 0.0) or 0.0) * 1e-3
+        return pm, train, Generator(train, tl, pm, eid_ns=eid)
 
     def run(self, plan, em, rt, with_hom=True):
         pm, train, gen = self._setup(plan, em, rt)
@@ -506,9 +559,14 @@ class PolaronSolver(Solver):
                  "notes": reasons}
         if plan.det_profile is not None:
             extra["lz"] = self._lz(train, pm.B)
-        return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
-                            inversion=float(st["rho_post"][1, 1].real), extra=extra, valid=True,
-                            reasons=tuple(reasons))
+        if gen.eid_ns > 0.0:
+            extra["eid_ps"] = gen.eid_ns * 1e3
+            reasons.append(f"excitation-induced dephasing gamma_EID = {gen.eid_ns * 1e3:.4g} ps x |Omega|^2 [E]")
+        res = SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
+                           inversion=float(st["rho_post"][1, 1].real), extra=extra, valid=True,
+                           reasons=tuple(reasons))
+        pt = float(plan.inputs.get("p_trion", 0.0) or 0.0)
+        return apply_trion(res, trion_probability(pt, math.sqrt(sum(float(p.area_rad) ** 2 for p in plan.pulses)))) if pt > 0.0 else res
 
     @staticmethod
     def _lz(train: PulseTrain, B: float) -> dict:

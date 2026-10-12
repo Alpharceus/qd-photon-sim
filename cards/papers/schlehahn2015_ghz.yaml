@@ -28,8 +28,8 @@ device:
     params:
       mechanism: {value: "M-3 pulsed", unit: "", tag: A, source: "stand-in for a cw optical pump gated by bias-dependent escape: pump window = high-bias half period (see meta.notes)"}
       tau_on_ns: {value: 0.5, unit: ns, tag: DR, where: "text p.3-6 (1 GHz square wave): half of the 1 ns period, assumed 50 % duty cycle"}
-      I_uA: {range: [0.000016, 0.00064], unit: uA, tag: E, source: "effective current into the dot for mu = 0.05-2 over 0.5 ns (mu = I tau / e); the optical pump power and loading per period are not given. M-3 multiplies eta_capture twice, so eta_capture is held at 1"}
-      eta_capture: {value: 1.0, unit: "1", tag: A, source: "held at 1; loading efficiency folded into I_uA"}
+      I_uA: {range: [0.000016, 0.00064], unit: uA, tag: E, source: "effective current into the dot for mu = eta_capture I tau / e = 0.05-2 over 0.5 ns; the optical pump power and loading per period are not given"}
+      eta_capture: {value: 1.0, unit: "1", tag: A, source: "no loading efficiency is given (the pump is optical, not a current), so the E range of mu is carried by I_uA alone with eta_capture = 1 (the engine now applies eta_capture once: mu = eta_capture I tau / e)"}
       f_rep_MHz: {value: 1000.0, unit: MHz, tag: V, where: "text p.6 (1 GHz modulation, g2 histogram with 1 ns bins)"}
       k_esc_off_ns: {value: 3.133, unit: 1/ns, tag: DR, where: "calibrated (fits): 1/0.270 - 1/1.75 per ns from the gated decay 270 ps and the radiative lifetime 1.75 ns (text p.5), conversion ours; tunnelling out in the low-bias half period"}
   setup:
@@ -62,3 +62,4 @@ fits:
   - {param: drive.k_esc_off_ns, fitted_to: [tau_EL_gated]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b eta_capture fix", note: "the M-3 pulsed pump no longer multiplies eta_capture twice, so the false 'held at 1' justification is removed; eta_capture stays 1 (the paper gives no loading efficiency, the optical pump is not a current), mu is still the E range of I_uA; no number moves"}

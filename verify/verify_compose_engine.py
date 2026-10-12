@@ -742,6 +742,95 @@ def main():
           and near(dh["hom_V_corr"], dh["hom_I"] / (1.0 - dh["g2_0"]), ab=1e-9),
           f"hom_I {dh['hom_I']:.5f}, g2_0 {dh['g2_0']:.5f}, V_raw {dh['hom_V_raw']:.5f}, V_corr {dh['hom_V_corr']:.5f}")
 
+    # 16. devlib-fx3b (real registry entries): M-3 eta_capture double count, bg_corrected g2, cw brightness
+    E_Q = 1.602176634e-19
+
+    def rspec(kind, drp, mat=None, su=None):
+        return {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "inas_gaas_sk", "params": {"tau_bare_ns": 0.599, "gamma_star_4K_ns": 0.0,
+                                                               "a_ac_ns_per_K": 0.0, **(mat or {})}},
+                "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": kind, "params": drp},
+                "setup": {"kind": "lens_fibre_det", "params": su or {}}, "solver": "rate"}
+
+    ok16, det16 = True, ""
+    mu3 = 3.0
+    I3 = mu3 * E_Q / 0.2e-9 * 1e6                 # uA for mu = I tau / e = 3 over 200 ps
+    for prof in ("rect", "gauss", "rc"):
+        runs = {}
+        for eta in (1.0, 0.4, 0.05):
+            drp = {"eta_capture": eta, "tau_on_ns": 0.2, "I_uA": I3 / eta, "f_rep_MHz": 200.0, "pump_profile": prof,
+                   "t_rise_ps": 100.0}
+            runs[eta] = engine.evaluate_spec(rspec("electrical_pulsed", drp))["scalars"]
+        # mu = eta N_c = I tau/e = 3 for every eta: loaded probability 1 - exp(-3) (independent closed form, Poisson loading)
+        ok16 &= all(near(r_["eta_prep"], 1.0 - math.exp(-mu3), ab=1e-12) for r_ in runs.values())
+        ok16 &= all(near(runs[e_]["n_ph"], runs[1.0]["n_ph"], rel=1e-12) and near(runs[e_]["g2_0"], runs[1.0]["g2_0"], rel=1e-12)
+                    for e_ in (0.4, 0.05))
+        det16 += f" {prof}: p_loaded {runs[0.4]['eta_prep']:.6f};"
+    check("16a. M-3 pulsed: eta_capture is applied ONCE (mu = eta N_c = I tau/e): with I scaled by 1/eta the loaded probability is "
+          "1 - e^{-mu} = 0.9502 and n_ph, g2 are identical for eta = 1, 0.4, 0.05 (rect, Gaussian, RC profiles; the old double "
+          "factor gave 1 - e^{-eta mu})", ok16, det16)
+    mu_a = engine.evaluate_spec(rspec("electrical_pulsed", {"eta_capture": 0.4, "tau_on_ns": 0.2, "I_uA": I3, "f_rep_MHz": 200.0}))["scalars"]
+    check("16a'. and eta_capture does scale mu: the same current at eta = 0.4 loads 1 - e^{-0.4 mu}",
+          near(mu_a["eta_prep"], 1.0 - math.exp(-0.4 * mu3), ab=1e-12), f"{mu_a['eta_prep']:.6f}")
+    # non-M-3 mechanisms keep mu as the operating point BEFORE capture (cw r = mu eta Gamma)
+    cw_r = engine.evaluate_spec(rspec("electrical_cw", {"mechanism": "M-1 poisson-rail", "mu": 0.5, "eta_capture": 0.2}))["scalars"]
+    G16 = float(cw_r["Gamma_ns"])
+    n_x = 0.1 / (0.1 + 1.0)                      # r = mu eta Gamma = 0.1 Gamma: n_X = r/(r + Gamma)
+    check("16a''. M-1 cw keeps r = mu eta_capture Gamma (unchanged; the fix is M-3 only): flux_ns/Gamma = r/(r + Gamma) "
+          "(independent two-level steady state)", near(float(cw_r["flux_ns"]) / G16, n_x, rel=1e-9),
+          f"{float(cw_r['flux_ns']) / G16:.6f} vs {n_x:.6f}")
+
+    # bg_corrected convention
+    e_b = engine.envelope(rspec("electrical_cw", {"bg_frac": 0.08}, su={"laser_leak": 0.10}),
+                          ["g2_0", "g2_0:raw", "g2_0:bg_corrected"])
+    g_sig16 = 0.0                                 # an ideal cw two-level emitter: g2(0) = 0
+    g_emb = 1.0 - 0.92 ** 2 * (1.0 - g_sig16)     # drive-embedded background
+    g_raw16 = 1.0 - (1.0 / 1.10) ** 2 * (1.0 - g_emb)       # + laser leak 0.10 of the signal
+    check("16b. g2_0:bg_corrected = (g2_raw - (1 - rho^2))/rho^2 with rho = (1 - bg_frac)/(1 + laser_leak) is the exact inverse of "
+          "the background law: ideal emitter, bg_frac 0.08 + laser leak 0.10 -> intrinsic 0.1536, raw "
+          f"{g_raw16:.4f}, bg_corrected 0 (1e-12)",
+          near(e_b["g2_0"]["central"], g_emb, ab=1e-12) and near(e_b["g2_0:raw"]["central"], g_raw16, ab=1e-12)
+          and abs(e_b["g2_0:bg_corrected"]["central"] - g_sig16) < 1e-12)
+    e_d = engine.envelope(rspec("electrical_cw", {"bg_frac": 0.08}, su={"dark_cps": 5000.0}), ["g2_0:raw", "g2_0:bg_corrected"])
+    check("16b'. dark counts are NOT removed by the background correction (the dark-count-corrected value is a separate "
+          "convention): with darks the corrected value stays above the signal g2 = 0 and below the raw value",
+          0.0 < e_d["g2_0:bg_corrected"]["central"] < e_d["g2_0:raw"]["central"],
+          f"raw {e_d['g2_0:raw']['central']:.4f}, bgc {e_d['g2_0:bg_corrected']['central']:.4f}")
+    e_r = engine.envelope(rspec("electrical_cw", {}), ["g2_0:bg_corrected", "g2_0"])
+    check("16b''. no background at all: bg_corrected == intrinsic", near(e_r["g2_0:bg_corrected"]["central"], e_r["g2_0"]["central"], ab=1e-12))
+
+    # cw brightness
+    def chain(sc_):
+        return float(sc_["eta_extract"]) * float(sc_["eta_pol"]) * float(sc_["Z_filt"])
+    flux_hz = G16 * n_x * 1e9
+    e_c = engine.envelope(rspec("electrical_cw", {"mechanism": "M-1 poisson-rail", "mu": 0.5, "eta_capture": 0.2}),
+                          ["B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz"])
+    want_lens = flux_hz * chain(cw_r)
+    check("16c. cw brightness (electrical, rate solver): photon rate into the first lens = Gamma n_X,ss beta eta_out eta_pol (ns -> Hz), "
+          "into the fibre x eta_fibre, detected x eta_optics eta_det = 0.25 (setup defaults); n_X,ss = r/(r + Gamma) is the "
+          "independent two-level steady state",
+          near(e_c["B_first_lens_Hz"]["central"], want_lens, rel=1e-9) and near(e_c["B_fibre_Hz"]["central"], want_lens, rel=1e-9)
+          and near(e_c["rate_detected_Hz"]["central"], want_lens * 0.25, rel=1e-9),
+          f"{e_c['B_first_lens_Hz']['central']:.4g} Hz vs {want_lens:.4g}")
+    # cw resonance fluorescence on resonance: pump rate R = Omega^2/(2 gamma_2) (gamma_2 = coherence decay), rho_ee = R/(Gamma_t + 2R)
+    # = (s/2)/(1 + s) with s = Omega^2 T1 T2 = Omega^2/(gamma_2 Gamma_t) (Loudon: pure radiative s = 2 Omega^2/Gamma^2)
+    for s_ in (0.5, 2.0, 10.0):
+        sp_f = {**rspec("cw_resonant", {"saturation_s": s_}, mat={"gamma_star_4K_ns": 0.7}), "solver": "auto"}
+        e_f = engine.envelope(sp_f, ["B_first_lens_Hz", "rate_detected_Hz"])
+        sc_f = engine.evaluate_spec(sp_f)["scalars"]
+        rho_ee = (s_ / 2.0) / (1.0 + s_)
+        want = float(sc_f["Gamma_ns"]) * rho_ee * 1e9 * chain(sc_f)
+        check(f"16d. cw resonant, s = {s_}: first-lens photon rate = Gamma rho_ee chain with rho_ee = (s/2)/(1 + s) (Loudon)",
+              near(e_f["B_first_lens_Hz"]["central"], want, rel=2e-4) and near(e_f["rate_detected_Hz"]["central"], want * 0.25, rel=2e-4),
+              f"{e_f['B_first_lens_Hz']['central']:.5g} vs {want:.5g}")
+    e_p = engine.envelope(rspec("electrical_pulsed", {"I_uA": I3, "tau_on_ns": 0.2, "eta_capture": 1.0, "f_rep_MHz": 200.0}),
+                          ["B_first_lens", "B_first_lens_Hz", "B_fibre", "B_fibre_Hz"])
+    check("16e. pulsed: B_first_lens_Hz = f_rep B_first_lens and B_fibre_Hz = f_rep B_fibre",
+          near(e_p["B_first_lens_Hz"]["central"], 200e6 * e_p["B_first_lens"]["central"], rel=1e-12)
+          and near(e_p["B_fibre_Hz"]["central"], 200e6 * e_p["B_fibre"]["central"], rel=1e-12))
+    check("16f. the cw drives offer B_first_lens_Hz / B_fibre_Hz / rate_detected_Hz",
+          all(o in R.get("drive", k).observables for k in ("electrical_cw", "cw_resonant", "above_band") for o in ("B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz")))
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

@@ -42,7 +42,7 @@ reported:
   - {id: eta_theory, observable: eta_extract, value: 0.89, tag: V, where: "text p.3 Eq. 1 and p.4 (theory limit for the fabricated geometry: 0.5 beta (1 + |r|)^2 / (1 + beta |r|) T_Gauss with beta 0.96, |r| 0.95, T_Gauss 0.93)", note: "the paper's own theory, NA 0.8, not a measurement; the 0.89 uses T_Gauss of a 15 um trumpet (0.93)"}
   - {id: beta_design, observable: beta, value: 0.96, tag: V, where: "text p.1 (beta of the HE11 mode reaches 0.96 at d1 = 240 nm, lambda = 950 nm; beta > 0.9 over more than 100 nm)", note: "design value at lambda 950 nm; the card lambda is 907.1 nm and d is the fabricated 200-240 nm range"}
   - {id: eta_line1, observable: eta_extract, value: 0.61, tag: V, where: "text p.4 (line 1, exciton at 902.5 nm)", note: "different dot and wavelength; reported only, occupation of an above-band exciton line is < 1"}
-  - {id: g2_star_line1, observable: g2_0, value: 0.02, tag: V, where: "text p.4 (line 1 background-removed g2*(0) = 0.02, Poissonian background assumed independent of the signal; raw g2(0) of all lines is < 0.5, values only inside Fig 4c)", note: "background-removed, raw/IRF-limited by the 300 ps APDs; no error printed"}
+  - {id: g2_star_line1, observable: g2_0, convention: bg_corrected, value: 0.02, tag: V, where: "text p.4 (line 1 background-removed g2*(0) = 0.02, Poissonian background assumed independent of the signal; raw g2(0) of all lines is < 0.5, values only inside Fig 4c)", note: "background-removed, raw/IRF-limited by the 300 ps APDs; no error printed"}
 series: []
 reproduce:
   - item: eta_line2
@@ -65,9 +65,10 @@ reproduce:
   - item: g2_star_line1
     class: M
     tol: {abs: 0.02}
-    tol_reason: "no error printed; 0.02 absolute = the value itself: the model has no background and no APD response, so this only tests that a 3-10 ps above-band window gives a clean single-photon emitter (a weak test: the model intrinsic g2 is ~1e-4)"
+    tol_reason: "no error printed; 0.02 absolute = the value itself: the model has no background and no APD response, so the model background-corrected g2 (g2_0:bg_corrected, which equals the intrinsic g2 here) only tests that a 3-10 ps above-band window gives a clean single-photon emitter (a weak test: ~1e-3)"
     expect: pass
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription; taper_mfr_nm now exists in the registry and is entered as an E range (not stated in the paper)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: new HE11 beta + coherent bottom mirror (mirror_phase_ok): eta_theory fail -> pass (model 0.75 -> 0.91), beta_design fail -> pass (model 0.817 -> 0.9425)"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b background-corrected g2 convention", note: "g2_star_line1 (background-removed g2*) now compares g2_0:bg_corrected like for like; the card has no background channel, so the value equals the intrinsic g2 and does not move (0.000858, pass)"}

@@ -11,7 +11,7 @@ meta:
   notes:
     - "EL DECAY vs RADIATIVE RATE (brief 3, trap 4): the EL decay 1.59/ns of the pulsed diode includes tunnelling out in the dark-window bias state; the TRPL at dc bias just below turn-on (1.4/ns) is the radiative rate. The radiative rate enters material.tau_bare_ns (class C, fitted to 714 ps); the escape rate k_off = 1.59 - 1.4 = 0.19/ns is DERIVED from the same two paper numbers, so the EL-decay item is class C on drive.k_esc_off_ns (it can only agree), and tau_EL is never fed into Gamma0 or F_P."
     - "F_P: the paper estimate (3/4pi^2)(lambda/n)^3 Q/V with V = 1.42 um3 and Q 1500-2800 gives 2.8 +/- 0.7; the registry phc_cavity entry implements the same formula in (lambda/n)^3 units. V = 1.42 um3 is converted with n = 3.5 (GaAs, our assumption: (0.935/3.5)^3 = 0.01906 um3 -> 74.5) and Q is the mid-point of the stated range, 2150 (a point, not an envelope, so the comparison with the MEASURED 2.49 (radiative-rate ratio, an independent measurement) is a real test). The structure is a micropillar-like oxide aperture; the phc_cavity adapter is used only because it takes (Q, V) directly."
-    - "PUMP: the 12 nA saturation current at 80 MHz is 937 electrons per pulse (0.75 uA during a 200 ps pulse); two dots share the carriers under the 2.4 um aperture (brief 11), so the injection efficiency is an E input ~1.5e-3 folded into I_uA (mu ~ 1.4, saturation; the M-3 pulsed pump multiplies eta_capture twice, so eta_capture is held at 1). g2(0) 0.17 is a different operating point (1 nA, 48 K, includes background from the neighbouring dot and the cavity mode), so it is a prediction item only."
+    - "PUMP: the 12 nA saturation current at 80 MHz is 937 electrons per pulse (0.75 uA during a 200 ps pulse); two dots share the carriers under the 2.4 um aperture (brief 11), so the injection efficiency is an E input ~1.5e-3 (eta_capture) on the 0.75 uA pulse current (mu = eta_capture I tau / e ~ 1.4, saturation). g2(0) 0.17 is a different operating point (1 nA, 48 K, includes background from the neighbouring dot and the cavity mode), so it is a prediction item only."
     - "NOT CARDED: g2 vs f_rep (the paper reports no increase from 80 to 500 MHz, no second number); 20x EL enhancement on resonance (needs the pump chain across detuning); the EL decay at other detunings."
 device:
   T_K: {value: 48.0, unit: K, tag: V, where: "extraction (temperature-tuned 40-56 K onto the cavity mode; 48 K for the g2 measurements, Fig 4 caption)"}
@@ -31,8 +31,8 @@ device:
     params:
       mechanism: {value: "M-3 pulsed", unit: "", tag: A, source: "pulsed diode: 200 ps voltage pulses on a dc bias below turn-on"}
       tau_on_ns: {value: 0.2, unit: ns, tag: V, where: "Fig 3 caption p.10 (200 ps-wide voltage pulses)"}
-      I_uA: {value: 0.001125, unit: uA, tag: E, source: "EFFECTIVE current into the dot: 0.75 uA during 200 ps (12 nA time-averaged at 80 MHz = 937 electrons per pulse, text p.5 / Fig 3a, conversion ours) times an injection efficiency 1.5e-3 (brief 11, eta_cap ~1e-3 class for two dots sharing the carriers) -> mu = 1.4 (saturation). The eta is folded in because the M-3 pulsed pump currently multiplies eta_capture twice (mu already contains it), so eta_capture is held at 1"}
-      eta_capture: {value: 1.0, unit: "1", tag: A, source: "held at 1: the injection efficiency is inside I_uA (see I_uA); avoids the double eta_capture factor of the M-3 pulsed pump"}
+      I_uA: {value: 0.75, unit: uA, tag: DR, where: "text p.5 / Fig 3a (saturation at 12 nA time-averaged current at 80 MHz = 937 electrons per pulse; 937 e over the 200 ps pulse = 0.75 uA, conversion ours)"}
+      eta_capture: {value: 0.0015, unit: "1", tag: E, source: "injection efficiency into the dot: two dots share the carriers under the 2.4 um aperture and most carriers do not reach a dot (brief 11, eta_cap ~1e-3 class); chosen so mu = eta_capture I tau / e = 1.4 (saturation); the paper does not give it"}
       f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.5 / Fig 3 caption (80 MHz)"}
       k_esc_off_ns: {value: 0.19, unit: 1/ns, tag: DR, where: "calibrated (fits): 1.59/ns EL decay minus 1.4/ns radiative rate (text p.5): tunnelling out in the dark-window bias state"}
   setup:
@@ -79,3 +79,4 @@ fits:
   - {param: structure.eta_out, fitted_to: [collection_first_lens]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b eta_capture fix", note: "the M-3 pulsed pump no longer multiplies eta_capture twice; workaround undone: I_uA 0.001125 uA (eta folded in) -> the paper-derived 0.75 uA (12 nA at 80 MHz = 937 electrons over 200 ps) and eta_capture 1.0 -> 0.0015 [E]; mu = 1.4 unchanged, so every ledger number is identical"}

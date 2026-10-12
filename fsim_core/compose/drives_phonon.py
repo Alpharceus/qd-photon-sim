@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import math
 
-from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _GAUSS, _PAPER_CONV, _REF_BRIEF, _SRC_A, PlannedDrive, _P,
-                     _getter, _nonneg, _positive, _pulse_inputs)
+from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _EID, _GAUSS, _PAPER_CONV, _REF_BRIEF, _SRC_A, _TRION, PlannedDrive,
+                     _P, _dark_inputs, _getter, _nonneg, _positive, _pulse_inputs)
 from .. import qd_gf
 from ..resonant_source import gaussian_sigma
 from .types import DrivePlan, Pulse
@@ -56,6 +56,7 @@ def _plan_phonon_assisted(self, vals, em, rt):
     inputs = {**_pulse_inputs(shape, fwhm), "area_pi": area_pi, "Delta_paper_meV": delta,
               "det_X_meV": -delta, "detuning_convention": "repo det_X = omega_X - omega_L = -Delta_paper",
               "mechanism": "LA-phonon-assisted (blue detuned: emission into the lower dressed state)"}
+    _dark_inputs(g, inputs)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(pulse,),
                      needs=frozenset({"phonons"}), inputs=inputs)
 
@@ -73,6 +74,7 @@ PHONON_ASSISTED = PlannedDrive(
         _P("fwhm_ps", "ps", 15.0, lo=10.0, hi=20.0, tag="E", source=_E_BRIEF, help="Intensity FWHM."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
+        _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": LA-phonon-assisted row (Quilter et al., PRL 114, 137401 (2015); Thomas et al., "
                        "PRL 126, 233601 (2021); Cosacchi et al. 2019 as cited there)",
@@ -101,6 +103,7 @@ def _plan_super(self, vals, em, rt):
     if shape == "gauss":
         inputs["sigma1_ps"] = _pulse_inputs(shape, w1)["sigma_ps"]
         inputs["sigma2_ps"] = _pulse_inputs(shape, w2)["sigma_ps"]
+    _dark_inputs(g, inputs)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(p1, p2),
                      needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
 
@@ -123,6 +126,7 @@ SUPER = PlannedDrive(
         _P("area2_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Area of pulse 2 in units of pi."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
+        _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": SUPER row (Bracht et al., PRX Quantum 2, 040354 (2021) as cited there)",
           "Piccinini et al., arXiv:2510.21428 (2025)"),
@@ -151,6 +155,7 @@ def _plan_dichromatic(self, vals, em, rt):
               "detuning_convention": "components at paper Delta = +-delta_meV around the dot; frame = blue "
                                      "component (repo det_X = -delta)",
               "component_area_pi": (area_pi * s_blue, area_pi * s_red)}
+    _dark_inputs(g, inputs)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(blue, red),
                      needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
 
@@ -172,6 +177,7 @@ DICHROMATIC = PlannedDrive(
                 "pair carries the intensity of one envelope)."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
+        _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": dichromatic row (Koong et al. 2021 as cited there)",),
     status="ready", provides=frozenset({"coherent_pulse"}),
@@ -209,6 +215,7 @@ def _plan_arp(self, vals, em, rt):
               "chirp_sign": "chirp_ps2 > 0: laser frequency rises in time (Wei 2014 positive chirp)",
               "mechanism": "adiabatic rapid passage along the lower (positive chirp) / upper (negative chirp) "
                            "dressed state"}
+    _dark_inputs(g, inputs)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(pulse,),
                      needs=frozenset({"phonons", "td_detuning"}), inputs=inputs)
 
@@ -237,6 +244,7 @@ ARP = PlannedDrive(
            help="Intensity FWHM of the transform-limited pulse before the chirp."),
         _P("f_rep_MHz", "MHz", 76.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate (mode-locked Ti:sapphire class)."),
+        _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": chirped-pulse notes",
           "Wei et al., Phys. Rev. Lett. 113, 097401 (2014): positively chirped pulses robust, negatively "

@@ -35,12 +35,13 @@ _COMMON = frozenset({"g2_0", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps"
                      "gamma_star_ns", "Z_phonon", "linewidth_ueV", "lambda_nm", "detuning_ueV"})
 _PULSED = frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre"})
 OBS_COHERENT_PULSED = _COMMON | _PULSED | {"inversion", "hom_vs_dt"}
-OBS_INCOHERENT_PULSED = _COMMON | _PULSED | {"hom_vs_dt"}
-OBS_CW_RESONANT = _COMMON | {"g2_tau", "inversion"}
-OBS_INCOHERENT_CW = _COMMON | {"hom_I", "hom_V"}
+_CW_RATES = frozenset({"B_first_lens_Hz", "B_fibre_Hz"})     # devlib-fx3b: photon flux into the lens / fibre (cw)
+OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt"}      # above_band / p_shell also run cw
+OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion"}
+OBS_INCOHERENT_CW = _COMMON | _CW_RATES | {"hom_I", "hom_V"}
 # devlib-p10e: EL decay time, binned (GHz) histogram g2 and gated HOM for pulsed electrical drives; IRF-convolved g2 for cw
 OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated", "spectral_overlap"}
-OBS_ELECTRICAL_CW = _COMMON | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf", "spectral_overlap"}
+OBS_ELECTRICAL_CW = _COMMON | _CW_RATES | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf", "spectral_overlap"}
 
 
 @dataclass(frozen=True)
@@ -89,6 +90,31 @@ _PAPER_CONV = ("Paper convention Delta = omega_L - omega_X, positive = laser BLU
 _SRC_A = "assumed default; set to the experiment [A]"
 _REF_BRIEF = "physics brief 2.3 (.workers/devlib/p1-physics-brief.md)"
 
+# devlib-fx3b, both default OFF (= bit-identical): excitation-induced dephasing and a dark-trion branch of coherent pulses
+_SRC_FX3B = "devlib-fx3b engine extension [E]: class model, the coefficient is NOT taken from a paper"
+_EID = _P("eid_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="E", source=_SRC_FX3B, group="advanced",
+          help="Excitation-induced dephasing: pure dephasing rate gamma_EID = eid_ps x |Omega(t)|^2 (Omega in rad/ps) "
+               "added to gamma* during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
+               "step propagators (pulsed two-level drives, no TPE).")
+_TRION = _P("p_trion", "1", 0.0, lo=0.0, hi=0.99, tag="E", source=_SRC_FX3B, group="advanced",
+            help="Probability, at a pi pulse, that the excitation ends in a dark trion / excess-charge state "
+                 "(Vajner-type damping of the Rabi oscillation); the per-pulse probability is p_trion sin^2(area/2). "
+                 "Scales n_ph and the preparation by (1 - p) and g2 by 1/(1 - p). 0 = off.")
+
+
+def _dark_inputs(g, inputs, eid=True):
+    """Add the optional eid_ps / p_trion entries to a coherent plan's inputs (absent when 0)."""
+    if eid:
+        c = _nonneg("eid_ps", g("eid_ps"))
+        if c > 0.0:
+            inputs["eid_ps"] = c
+    p = _nonneg("p_trion", g("p_trion"))
+    if p >= 1.0:
+        raise ValueError(f"p_trion must be < 1, got {p!r}")
+    if p > 0.0:
+        inputs["p_trion"] = p
+    return inputs
+
 
 # ======================================================================
 # resonant_pulse
@@ -109,6 +135,7 @@ def _plan_resonant_pulse(self, vals, em, rt):
     inputs = {**_pulse_inputs(shape, fwhm), "area_pi": area_pi, "Delta_paper_meV": delta,
               "det_X_meV": -delta, "detuning_convention": "repo det_X = omega_X - omega_L = -Delta_paper",
               "cross_pol": bool(g("cross_pol")), "laser_leak": leak}
+    _dark_inputs(g, inputs)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target=target,
                      pulses=(pulse,), needs=frozenset(), inputs=inputs)
 
@@ -138,6 +165,7 @@ RESONANT_PULSE = PlannedDrive(
            visible_if={"cross_pol": [True]},
            help="Residual laser as a fraction of the signal (used only when cross_pol is on; "
                 "do not also enter it in the setup)."),
+        _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": strict resonant pi row; Rabi area theorem",),
     provides=frozenset({"coherent_pulse"}),
@@ -165,6 +193,7 @@ def _plan_tpe(self, vals, em, rt):
               "Delta_paper_meV": delta, "det_X_meV": -delta,
               "detuning_convention": "offset from the two-photon resonance; repo sign det = -Delta_paper",
               "delta_xx_meV": float(em.delta_xx_meV)}
+    _dark_inputs(g, inputs, eid=False)
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="XX_tpe",
                      pulses=(pulse,), needs=frozenset({"cascade"}), inputs=inputs)
 
@@ -185,6 +214,7 @@ TPE = PlannedDrive(
                 "0 sits at E_XX_total/2."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
+        _TRION,
     ),
     refs=(_REF_BRIEF + ": TPE row", "Mueller et al., Phys. Rev. Lett. 2014 (cited in the brief)"),
     requires=frozenset({"XX"}), provides=frozenset({"coherent_pulse"}),
@@ -433,22 +463,32 @@ def _plan_electrical(self, vals, em, rt, mech_choices, pulsed):
             if card == "m3" and tau_nom > 0.0:
                 t_rise = float(iface.notes.get("t_rise_ns", 0.0)) or t_rise
                 full = drive_mech.mech_pulsed(float(g("I_uA")), tau_nom, float(iface.eta_capture), float(iface.F_p))
-                extra["pump_rate_ns"] = float(full.mu) * float(iface.eta_capture) / tau_nom
+                extra["pump_rate_ns"] = float(full.mu) / tau_nom           # mu = eta N_c already holds eta_capture (FX3b fix)
                 tau_on = tau_nom
             extra["t_rise_ns"] = t_rise if profile == "rc" else 0.0
         hom_gate = _nonneg("hom_gate_ps", g("hom_gate_ps"))
         if hom_gate > 0.0:
             inputs["hom_gate"] = {"start_ns": _nonneg("hom_gate_start_ps", g("hom_gate_start_ps")) * 1e-3,
                                   "width_ns": hom_gate * 1e-3,
-                                  "jitter_ns": _nonneg("hom_jitter_ps", g("hom_jitter_ps")) * 1e-3}
+                                  "jitter_ns": _nonneg("hom_jitter_ps", g("hom_jitter_ps")) * 1e-3,
+                                  "shape": g("hom_gate_shape")}
     else:
         f_rep, tau_on, timing = None, 0.0, "cw"
         extra["k_esc_on_ns"] = _nonneg("k_esc_on_ns", g("k_esc_on_ns"))
     irf = _nonneg("irf_ps", g("irf_ps"))
     if irf > 0.0:
         inputs["irf_ps"] = irf
+    bg = _nonneg("bg_frac", g("bg_frac"))
+    if bg >= 1.0:
+        raise ValueError(f"bg_frac must be < 1, got {bg!r}")
+    if bg > 0.0:
+        inputs["bg_frac"] = bg
+    needs = frozenset()
+    if bool(g("cascade")):
+        needs = frozenset({"cascade"})
+        inputs["pump_ratio_xx"] = _nonneg("pump_ratio_xx", g("pump_ratio_xx"))
     return DrivePlan(family="electrical", timing=timing, f_rep_MHz=f_rep, target="X",
-                     tau_on_ns=tau_on, interface=iface, needs=frozenset(), inputs=inputs, **extra)
+                     tau_on_ns=tau_on, interface=iface, needs=needs, inputs=inputs, **extra)
 
 
 def _plan_electrical_pulsed(self, vals, em, rt):
@@ -466,6 +506,7 @@ _SRC_DM = "drive_mech.mech_from_card default"
 
 
 _SRC_P10E = "devlib-p10e electrical brief (.workers/devlib/p3-electrical-brief.md) [A]"
+_SRC_FX3B_EL = "devlib-fx3b: p3-electrical-brief.md 1.3 (cascade saturation) / 1.5 (background law) [A]"
 
 
 def _electrical_shape_params():
@@ -491,13 +532,37 @@ def _electrical_shape_params():
            help="Photon-counting gate from the pump onset (g2 and brightness); 0 = count the whole period."),
         _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
            help="Detection-gate width T of a Stark-gated HOM (Bennett-like); 0 = off. Observable hom_I_gated."),
+        _P("hom_gate_shape", "", "rect", choices=("rect", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
+           group="advanced",
+           help="Shape of the HOM detection gate: rect (top-hat of width hom_gate_ps, opening at hom_gate_start_ps) or "
+                "gauss (Gaussian window of INTENSITY FWHM hom_gate_ps CENTRED at hom_gate_start_ps; Bennett's 31 ps "
+                "window is a Gaussian)."),
         _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
-           help="Time after the excitation at which the HOM gate opens."),
+           help="Time after the excitation at which the HOM gate opens (rect) / its centre (gauss)."),
         _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
-           help="Std dev of the relative emission-time delay of the two photons inside the gate (Gaussian)."),
+           help="Std dev of the relative timing jitter between the two photons' detection gates (Gaussian). The overlap "
+                "falls monotonically with it; the displaced windows share only part of the photon."),
         _P("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_P10E, group="advanced",
            help="Detector timing response (Gaussian FWHM); 0 = off. Adds the IRF-convolved g2 (cw dip) and the IRF "
                 "leak of the binned histogram (g2_binned)."),
+    ]
+
+
+def _electrical_cascade_params():
+    """Cap-2 cascade (XX) loading and the background-only fraction (devlib-fx3b); default = off."""
+    return [
+        _P("cascade", "", False, tag="A", source=_SRC_FX3B_EL, sweepable=False, group="advanced",
+           help="Allow loading of the biexciton (capacity 2, rate solver cascade G-X-XX). Strong pumping then PARKS the dot "
+                "in XX and the pulsed g2 saturates and falls (Sartison brief anchor: rect cascade 0.135 at mu 4, 0.049 at "
+                "mu 20) instead of rising like the two-level pump."),
+        _P("pump_ratio_xx", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_FX3B_EL, group="advanced",
+           visible_if={"cascade": [True]},
+           help="Rate of loading X -> XX relative to G -> X (1 = equal; 0 = two-level pump)."),
+        _P("bg_frac", "1", 0.0, lo=0.0, hi=0.99, tag="A", source=_SRC_FX3B_EL, group="advanced",
+           help="Uncorrelated BACKGROUND as a fraction of the detected light (neighbouring dots, spectral leakage): "
+                "g2 = 1 - rho^2 (1 - g2_signal) with rho = 1 - bg_frac, the same law as above_band. Use this instead of "
+                "setup.laser_leak (which is a laser, not a background). HOM and brightness stay signal-only. "
+                "The background-corrected convention g2_0:bg_corrected recovers g2_signal."),
     ]
 
 
@@ -529,6 +594,7 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
         ps += _electrical_shape_params()
     else:
         ps += _electrical_cw_params()
+    ps += _electrical_cascade_params()
     spec = {
         "I_uA": _P("I_uA", "uA", 10.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM, help="Drive current."),
         "tau_on_ns": _P("tau_on_ns", "ns", 1.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM,
@@ -616,7 +682,7 @@ def _plan_stark_gated(self, vals, em, rt):
     hg = _nonneg("hom_gate_ps", g("hom_gate_ps"))
     if hg > 0.0:
         inputs["hom_gate"] = {"start_ns": _nonneg("hom_gate_start_ps", g("hom_gate_start_ps")) * 1e-3,
-                              "width_ns": hg * 1e-3, "jitter_ns": jit}
+                              "width_ns": hg * 1e-3, "jitter_ns": jit, "shape": g("hom_gate_shape")}
     return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(pulse,),
                      needs=frozenset({"td_detuning"}), inputs=inputs,
                      det_profile=(-d_off, -d_on, t_gate, t_r))
@@ -647,10 +713,15 @@ STARK_GATED_RESONANT = PlannedDrive(
            help="Gate repetition rate."),
         _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
            help="Detection-gate width T of a gated HOM; 0 = off. Observable hom_I_gated."),
+        _P("hom_gate_shape", "", "rect", choices=("rect", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
+           group="advanced",
+           help="Shape of the HOM detection gate: rect (top-hat, opens at hom_gate_start_ps) or gauss (INTENSITY FWHM "
+                "hom_gate_ps centred at hom_gate_start_ps)."),
         _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
-           help="Time after the excitation at which the HOM gate opens."),
+           help="Time after the excitation at which the HOM gate opens (rect) / its centre (gauss)."),
         _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
-           help="Std dev of the relative emission-time delay of the two photons inside the HOM gate (Gaussian)."),
+           help="Std dev of the relative timing jitter between the two photons' detection gates inside the HOM gate "
+                "(Gaussian); the overlap falls monotonically with it."),
     ),
     refs=("p3-electrical-brief.md 2.1 (Cao 2015 gated resonance), 2.2 (Bennett gate); polaron.PulseTrain det_profile",),
     provides=frozenset({"coherent_pulse"}),

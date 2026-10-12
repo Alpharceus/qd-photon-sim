@@ -40,7 +40,7 @@ device:
       NA: {value: 0.73, unit: "1", tag: V, where: "text p.2 (100x microscope objective, NA = 0.73, spot ~1.5 um)"}
 reported:
   - {id: g2_raw_lying, observable: g2_0, convention: raw, value: 0.20, err: 0.04, tag: V, where: "text p.6 (antibunching value g2(0) = 0.20 +/- 0.04 for dispersed individual nanowires, from the Eq. 3 fit convolved with the 350 ps IRF)", note: "fit of the raw histogram (IRF-convolved), includes the background; not background-subtracted"}
-  - {id: g2_corr_lying, observable: g2_0, convention: intrinsic, value: 0.06, err: 0.04, tag: V, where: "text p.7 (background-corrected g2cor(0) = 0.06 +/- 0.04, rho = 0.92, Eq. 5)", note: "corrected with the paper's own rho; compared with the model intrinsic g2 (no background channel)"}
+  - {id: g2_corr_lying, observable: g2_0, convention: bg_corrected, value: 0.06, err: 0.04, tag: V, where: "text p.7 (background-corrected g2cor(0) = 0.06 +/- 0.04, rho = 0.92, Eq. 5)", note: "corrected with the paper's own rho; compared with the model background-corrected g2 (Eq. 5 applied to the model raw g2 with the card rho = 1 - bg_frac)"}
   - {id: tau_antibunching, observable: tau_ps, value: 1190.0, err: 140.0, tag: V, where: "text p.7 (1/tau_X = 0.84 +/- 0.10 /ns extrapolated to zero pump, tau_X = 1.19 +/- 0.14 ns)", note: "same dot as the TRPL 1.34 ns input; reported only"}
 series: []
 reproduce:
@@ -52,10 +52,10 @@ reproduce:
   - item: g2_corr_lying
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.04 (0.08); the model intrinsic g2 of a two-level cw above-band emitter is ~0, so this checks that the corrected paper value is consistent with an ideal emitter (weak test)"
-    expect: fail
-    reason: "convention gap (the tol_reason expectation of ~0 was wrong): model 0.154 vs 0.06. The engine's intrinsic g2 already includes the bg_frac mixing (1 - rho^2 = 0.1536 at bg_frac 0.08), and there is no background-removed g2 observable, so the background-corrected paper number cannot be compared like with like; the correct model counterpart (core g2 ~0) is not exposed. Not a physics disagreement."
+    tol_reason: "2 sigma of the printed 0.04 (0.08); the model value is g2_0:bg_corrected, the paper's Eq. 5 applied to the model raw g2 with rho = 0.92, which returns the clean single-photon core of a two-level cw above-band emitter (~0), so this checks that the corrected paper value is consistent with an ideal emitter (weak test)"
+    expect: pass
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b background-corrected g2 convention", note: "g2_corr_lying now compares g2_0:bg_corrected = (g2_raw - (1 - rho^2))/rho^2 (rho = 1 - bg_frac = 0.92) instead of the intrinsic g2, which already contained the bg_frac mixing (0.1536): model 0.154 -> 0 (the clean core), paper 0.06 +/- 0.04, expect fail -> pass; g2_raw_lying unchanged"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review (tol_reason correction, no tol change): g2_corr_lying tol_reason says the intrinsic g2 of a two-level cw emitter is ~0; the engine intrinsic g2 includes the bg_frac mixing (1 - rho^2 = 0.1536 at bg_frac 0.08), so the model-vs-paper comparison is a convention gap; the existing reason text already states this"}

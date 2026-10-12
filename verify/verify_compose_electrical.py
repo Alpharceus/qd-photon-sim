@@ -353,11 +353,15 @@ for tg_, T_, d_ in ((0.0, 0.031, 0.0), (0.010, 0.031, 0.0), (0.010, 0.031, 0.020
 check("5d. closed-form gated overlap == scipy dblquad (4 gate/delay settings, 1e-6)", ok_num)
 check("5e. unwindowed delay dependence I(d) = I(0) e^{-Gamma |d|} (HOM dip of independent packets)",
       abs(OB.gated_hom(G_B, GS_B, 0.0, 5000.0, delay_ns=0.3)["I_T"] - dc["I_T"] * math.exp(-G_B * 0.3)) < 1e-9)
-jit = {s_: OB.gated_hom_jitter(G_B, GS_B, 0.0, 0.031, s_) for s_ in (0.0, 0.031 / 2.3548, 0.031, 0.031 * math.sqrt(2))}
-jv = [v for k_, v in jit.items() if k_ > 0]
-check("5f. Bennett V_raw: gate-only 0.74, with the 31 ps jitter (3 definitions) in 0.55-0.75 (brief) and the paper's 0.60-0.64 inside "
-      "model +/- 0.1 (UC)", all(0.55 <= v <= 0.75 for v in jit.values()) and all(abs(v - 0.62) <= 0.10 for v in jv),
-      " ".join(f"{v:.3f}" for v in jit.values()))
+# FX3b: the old 5f entered the 31 ps jitter ON TOP of a top-hat gate of the same width (double counting, and the old jitter
+# model was blind to gates opening after the excitation). Bennett's 31 ps window IS a Gaussian: use the Gaussian gate.
+from scipy.special import erfcx                                                # noqa: E402
+SIG_G = 0.031 / (2.0 * math.sqrt(2.0 * math.log(2.0)))                         # Gaussian gate: 31 ps INTENSITY FWHM
+gB = OB.gated_hom(G_B, GS_B, 0.05, 0.031, gate_shape="gauss")["I_T"]
+check("5f. Bennett V: Gaussian 31 ps gate (no extra jitter) gives I_T = 0.656 = the closed form erfcx(gamma* sigma_g) "
+      "(1e-4), inside the brief 0.55-0.75 band and within 0.10 of the paper's 0.60-0.64 (UC); the top-hat gate gives 0.736",
+      abs(gB - erfcx(GS_B * SIG_G)) < 1e-4 and 0.55 <= gB <= 0.75 and abs(gB - 0.62) <= 0.10 and abs(g31["I_T"] - 0.736) < 0.002,
+      f"Gaussian {gB:.4f} vs closed form {erfcx(GS_B * SIG_G):.4f}, top-hat {g31['I_T']:.4f}")
 # gated g2 background: 1.5% -> 0.03 (CAL identity)
 check("5g. Bennett gated g2 0.03 = background 1 - rho^2 with rho = sqrt(1 - 0.03) = 0.985 (law and its inverse round-trip)",
       abs(OB.g2_with_background(0.0, 1.0, (1 / math.sqrt(0.97) - 1)) - 0.03) < 1e-12
@@ -581,6 +585,179 @@ except Exception as exc:                                                   # noq
 no_f = engine.envelope(dict(tam_spec(0.0), setup={"kind": "lens_fibre_det", "params": {}}), ["spectral_overlap", "spectral_overlap:g2"])
 check("10h. no window and no XX light: eps = 1 (both lines fully collected) and g2 = 0 (rho = 1)",
       abs(no_f["spectral_overlap"]["central"] - 1.0) < 1e-12 and abs(no_f["spectral_overlap:g2"]["central"]) < 1e-12)
+
+# ---- 11. devlib-fx3b: gated HOM with Gaussian gate + monotone gate jitter, cascade drive, bg_frac (independent anchors)
+from scipy.integrate import quad                                              # noqa: E402
+
+
+def _w_gauss(t, c, sg):
+    return math.exp(-0.5 * ((t - c) / sg) ** 2)
+
+
+def num_gauss(Gamma, gs, c, T, shift, k=0.0):
+    """Independent gated overlap of two Gaussian-gated photons (gates at c -+ shift/2), emitted together at t = 0: the
+    interfering amplitude is sqrt(W_A W_B) built POINTWISE; 2-D integral by dblquad over [0, c + 14 sigma]^2."""
+    sg = T / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+    cA, cB = c - shift / 2, c + shift / 2
+    Gd = Gamma + k
+    U = max(cA, cB) + 14.0 * sg
+
+    def M(t):
+        return math.sqrt(_w_gauss(t, cA, sg) * _w_gauss(t, cB, sg))
+
+    def f(t2, t1):
+        return Gamma ** 2 * M(t1) * M(t2) * math.exp(-Gd * (t1 + t2)) * math.exp(-gs * abs(t1 - t2))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        num = dblquad(f, 0.0, U, 0.0, U, epsabs=1e-12, epsrel=1e-8)[0]
+    nA = Gamma * quad(lambda t: _w_gauss(t, cA, sg) * math.exp(-Gd * t), 0.0, U, epsabs=1e-14, epsrel=1e-11, limit=200)[0]
+    nB = Gamma * quad(lambda t: _w_gauss(t, cB, sg) * math.exp(-Gd * t), 0.0, U, epsabs=1e-14, epsrel=1e-11, limit=200)[0]
+    return num / (nA * nB)
+
+
+def num_rect(Gamma, gs, tg, T, shift, k=0.0):
+    """Independent rect-gate overlap: gates A = [tg - s/2, tg - s/2 + T], B = [tg + s/2, tg + s/2 + T]; both photons emitted at
+    t = 0 (gates clipped to t >= 0); only the intersection interferes; dblquad on the intersection."""
+    Gd = Gamma + k
+    a0, b0 = tg - shift / 2, tg + shift / 2
+    lo, hi = max(a0, b0, 0.0), min(a0, b0) + T
+    nA = Gamma * (math.exp(-Gd * max(a0, 0.0)) - math.exp(-Gd * (a0 + T))) / Gd
+    nB = Gamma * (math.exp(-Gd * max(b0, 0.0)) - math.exp(-Gd * (b0 + T))) / Gd
+    if not hi > lo:
+        return 0.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        num = dblquad(lambda t2, t1: Gamma ** 2 * math.exp(-Gd * (t1 + t2)) * math.exp(-gs * abs(t1 - t2)), lo, hi, lo, hi,
+                      epsabs=1e-12, epsrel=1e-9)[0]
+    return num / (nA * nB)
+
+
+# 11a. Gaussian gate closed form (full-line limit): I_T = erfcx(gamma* sigma_g), independent of Gamma, k and the gate position
+ok11 = True
+det11 = ""
+for (Gm_, kk_, cc_, TT_) in ((G_B, 0.0, 0.40, 0.031), (3.0, 0.5, 0.35, 0.020), (0.6, 0.0, 0.50, 0.060)):
+    sg_ = TT_ / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+    a_ = OB.gated_hom(Gm_, GS_B, cc_, TT_, k_loss=kk_, gate_shape="gauss")["I_T"]
+    b_ = float(erfcx(GS_B * sg_))
+    ok11 &= abs(a_ - b_) < 1e-7
+    det11 += f" ({Gm_:.2f},{kk_},{cc_}): {a_:.6f} vs {b_:.6f};"
+check("11a. Gaussian-gate overlap in the full-line limit = erfcx(gamma* sigma_g) exactly (derived: int int W W' e^{-Gd(t+t')} "
+      "e^{-gamma|t-t'|} / n^2), independent of Gamma, k and the gate position (3 settings, 1e-7)", ok11, det11)
+
+# 11b. Gaussian gate vs an independent 2-D integral (gate on the onset: truncation at t = 0 matters), shifted gates included
+ok11 = True
+det11 = ""
+for (cc_, sh_) in ((0.0, 0.0), (0.0155, 0.0), (0.03, 0.020), (0.05, 0.040)):
+    a_ = OB.gated_hom(G_B, GS_B, cc_, 0.031, gate_shape="gauss", shift_ns=sh_)["I_T"]
+    b_ = num_gauss(G_B, GS_B, cc_, 0.031, sh_)
+    ok11 &= rel(a_, b_) < 1e-6
+    det11 += f" (c {cc_}, shift {sh_}): {a_:.6f} vs {b_:.6f};"
+check("11b. Gaussian-gate gated_hom == independent pointwise sqrt(W_A W_B) dblquad (4 gate positions / shifts, truncation at "
+      "t = 0 and displaced gates included, 1e-6)", ok11, det11)
+
+# 11c. rect gate with displaced gates vs an independent intersection integral
+ok11 = True
+det11 = ""
+for (tg_, sh_, kk_) in ((0.0, 0.010, 0.0), (0.020, 0.020, 0.0), (0.020, 0.040, 0.0), (0.010, 0.015, 0.4), (0.0, 0.05, 0.0)):
+    a_ = OB.gated_hom(G_B, GS_B, tg_, 0.031, k_loss=kk_, shift_ns=sh_)["I_T"]
+    b_ = num_rect(G_B, GS_B, tg_, 0.031, sh_, kk_)
+    ok11 &= (abs(a_ - b_) < 1e-9 if b_ == 0.0 else rel(a_, b_) < 1e-6)
+    det11 += f" ({tg_},{sh_}): {a_:.6f} vs {b_:.6f};"
+check("11c. top-hat gate with the two gates displaced == independent dblquad on the gate intersection (5 settings, 1e-6); "
+      "gates that no longer overlap give 0", ok11, det11)
+
+# 11d. jitter: sigma -> 0 limit, monotone non-increasing (both shapes, gates opening at 0 and after the excitation), acts for
+#      a late gate, independent Gaussian average
+ok_lim = ok_mono = True
+det_lim = ""
+sigs = [0.0] + list(np.geomspace(1e-3, 0.3, 40))
+for shape in ("rect", "gauss"):
+    for tg_ in ((0.0, 0.02, 0.05) if shape == "rect" else (0.0155, 0.04, 0.08)):
+        I0 = OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, 0.0, gate_shape=shape)
+        ok_lim &= abs(I0 - OB.gated_hom(G_B, GS_B, tg_, 0.031, gate_shape=shape)["I_T"]) < 1e-14
+        small = OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, 1e-7, gate_shape=shape)
+        ok_lim &= abs(small - I0) < 2e-5
+        det_lim += f" {shape}@{tg_}: {small:.5f}->{I0:.5f};"
+        vals = [OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, sg_, gate_shape=shape) for sg_ in sigs]
+        ok_mono &= all(vals[i + 1] <= vals[i] + 1e-12 for i in range(len(vals) - 1))
+check("11d1. sigma -> 0 limit: gated_hom_jitter(sigma = 0) == gated_hom exactly and sigma = 0.1 fs differs by < 2e-5 "
+      "(both shapes, three gate positions)", ok_lim, det_lim)
+check("11d2. I_T(sigma) is monotone non-increasing over sigma = 0 ... 300 ps (41 values, both shapes, gate opening at the "
+      "excitation and well after it)", ok_mono)
+for shape, tg_ in (("rect", 0.05), ("gauss", 0.08)):
+    I0 = OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, 0.0, gate_shape=shape)
+    Ih = OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, 0.0155, gate_shape=shape)
+    check(f"11d3. jitter acts for a {shape} gate opening 50-80 ps AFTER the excitation (the old model returned the jitter-free "
+          "value there): sigma = T/2 lowers I_T by > 0.02", Ih < I0 - 0.02, f"{I0:.4f} -> {Ih:.4f}")
+r_ = OB.gated_hom_jitter(G_B, GS_B, 0.05, 0.031, 2.0)
+r2_ = OB.gated_hom_jitter(G_B, GS_B, 0.05, 0.031, 20.0)
+check("11d4. very large jitter (sigma >> T): the gates no longer overlap, I_T -> 0 (only the fraction T/(sigma sqrt(2 pi)) of "
+      "the pairs overlap: 2 ns < 0.05, 20 ns < 0.005)", r_ < 0.05 and r2_ < 0.005 and r2_ < r_, f"{r_:.5f} {r2_:.5f}")
+for shape, tg_ in (("rect", 0.02), ("gauss", 0.04)):
+    sgm_ = 0.020
+    xs = np.linspace(-6.0, 6.0, 4001)
+    ww = np.exp(-0.5 * xs ** 2)
+    iv = np.array([(lambda v: v if math.isfinite(v) else 0.0)(OB.gated_hom(G_B, GS_B, tg_, 0.031, gate_shape=shape,
+                                                                         shift_ns=sgm_ * x)["I_T"]) for x in xs])
+    ref_ = float(np.sum(ww * iv) / np.sum(ww))
+    got_ = OB.gated_hom_jitter(G_B, GS_B, tg_, 0.031, sgm_, gate_shape=shape)
+    check(f"11d5. jitter average ({shape}, sigma 20 ps) == an independent 4001-node average of the displaced-gate overlap "
+          "(2e-3: kinks of the top-hat gate)", abs(got_ - ref_) < 2e-3, f"{got_:.5f} vs {ref_:.5f}")
+
+# 11e. engine end to end: Bennett Gaussian gate
+BENG = {**M3, "hom_gate_ps": 31.0, "hom_gate_shape": "gauss", "hom_gate_start_ps": 50.0, "f_rep_MHz": 505.0}
+envg = engine.envelope(espec(BENG, BEN, solver="lindblad_incoherent"), ["hom_I_gated"])["hom_I_gated"]["central"]
+ref_g = OB.gated_hom(G_B, GS_B, 0.05, 0.031, gate_shape="gauss")["I_T"]
+check("11e. engine hom_I_gated with drive.hom_gate_shape = gauss (31 ps FWHM at 50 ps): == gated_hom (Gaussian) and inside the "
+      "paper's 0.64 +/- 0.08 (Bennett 2008; UC, gate FWHM is the one assumption)",
+      abs(envg - ref_g) < 1e-5 and abs(envg - 0.64) <= 0.08 and R.get("drive", "electrical_pulsed").param("hom_gate_shape").default == "rect",
+      f"{envg:.4f}")
+
+# 11f. cascade drive (Sartison brief 1.3 anchors) and its off-state
+ELS = {"tau_on_ns": 0.2, "eta_capture": 1.0, "f_rep_MHz": 200.0}
+E_C = 1.602176634e-19
+
+
+def sart(mu, **kw):
+    drp = {**ELS, "I_uA": mu * E_C / 0.2e-9 * 1e6, **kw}
+    return engine.evaluate_spec(espec(drp, MAT, solver="rate"))["scalars"]["g2_0"]
+
+
+casc = {m_: sart(m_, cascade=True) for m_ in (0.5, 2.0, 4.0, 8.0, 20.0)}
+ref_c = {0.5: 0.113, 2.0: 0.134, 4.0: 0.135, 8.0: 0.101, 20.0: 0.049}
+check("11f1. electrical cascade (cap-2, rate solver): the Sartison rect numbers of the brief (0.113, 0.134, 0.135, 0.101, 0.049 "
+      "at mu 0.5, 2, 4, 8, 20) to 3% [NV], saturating then FALLING at strong pump",
+      all(rel(casc[m_], ref_c[m_]) < 0.03 for m_ in ref_c) and casc[20.0] < casc[8.0] < casc[4.0] and casc[4.0] > casc[0.5],
+      " ".join(f"{m_}:{casc[m_]:.3f}" for m_ in casc))
+two = {m_: sart(m_) for m_ in (1.0, 4.0, 20.0)}
+check("11f2. cascade off (default): the two-level pump keeps rising, 0.148, 0.268, 0.400 at mu 1, 4, 20 (brief [NV], 3%)",
+      all(rel(two[m_], r_) < 0.03 for m_, r_ in ((1.0, 0.148), (4.0, 0.268), (20.0, 0.400))),
+      " ".join(f"{m_}:{two[m_]:.3f}" for m_ in two))
+pl_off = R.get("drive", "electrical_pulsed").plan({}, em_s, rt_s)
+pl_on = R.get("drive", "electrical_pulsed").plan({"cascade": True, "pump_ratio_xx": 0.5}, em_s, rt_s)
+check("11f3. default plan: no cascade need, no bg_frac / pump_ratio_xx entries; cascade=True adds the need and pump_ratio_xx",
+      "cascade" not in pl_off.needs and "bg_frac" not in pl_off.inputs and "pump_ratio_xx" not in pl_off.inputs
+      and "cascade" in pl_on.needs and pl_on.inputs["pump_ratio_xx"] == 0.5
+      and not R.get("drive", "electrical_pulsed").param("cascade").default and R.get("drive", "electrical_pulsed").param("bg_frac").default == 0.0
+      and R.get("drive", "electrical_cw").param("bg_frac").default == 0.0)
+
+# 11g. background-only parameter bg_frac (no laser_leak stand-in)
+g_sig = engine.evaluate_spec(espec({**ELS, "I_uA": 3.0 * E_C / 0.2e-9 * 1e6}, MAT, solver="rate"))["scalars"]
+bgd = {**ELS, "I_uA": 3.0 * E_C / 0.2e-9 * 1e6, "bg_frac": 0.10}
+g_bg = engine.evaluate_spec(espec(bgd, MAT, solver="rate"))["scalars"]
+envb2 = engine.envelope(espec(bgd, MAT, solver="rate"), ["g2_0", "g2_0:raw", "g2_0:bg_corrected"])
+check("11g1. drive.bg_frac: g2 = 1 - rho^2 (1 - g2_signal) with rho = 1 - bg_frac (exact), n_ph unchanged (signal only); "
+      "g2_0:raw == g2_0; g2_0:bg_corrected recovers the signal g2 (1e-12); laser_leak untouched (0)",
+      abs(g_bg["g2_0"] - (1 - 0.9 ** 2 * (1 - g_sig["g2_0"]))) < 1e-12 and abs(g_bg["n_ph"] - g_sig["n_ph"]) < 1e-12
+      and abs(envb2["g2_0:raw"]["central"] - g_bg["g2_0"]) < 1e-12
+      and abs(envb2["g2_0:bg_corrected"]["central"] - g_sig["g2_0"]) < 1e-12 and g_bg["laser_leak_used"] == 0.0,
+      f"{g_bg['g2_0']:.5f} from {g_sig['g2_0']:.5f}")
+bgc_c = engine.envelope({**espec({}, MAT, solver="rate"), "drive": {"kind": "electrical_cw", "params": {"bg_frac": 0.08}}},
+                        ["g2_0", "g2_0:bg_corrected"])
+check("11g2. electrical_cw bg_frac 0.08 (Lazic rho 0.92): the ideal cw emitter's g2 = 1 - 0.92^2 = 0.1536 and the background-"
+      "corrected value is its g2 = 0 (the paper's Eq. 5 inverse)",
+      abs(bgc_c["g2_0"]["central"] - (1 - 0.92 ** 2)) < 1e-12 and abs(bgc_c["g2_0:bg_corrected"]["central"]) < 1e-12)
+
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_electrical checks passed")

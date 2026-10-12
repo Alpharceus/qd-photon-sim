@@ -562,6 +562,174 @@ except Exception as ex:                                                  # noqa:
     ok_arp, det_arp = False, f"{type(ex).__name__}: {ex}"
 check("engine end to end for arp defaults (drive.plan -> select -> polaron -> observables)", ok_arp, det_arp)
 
+
+# ------------------------------------------------------------------ devlib-fx3b: excitation-induced dephasing and the dark-trion branch
+from fsim_core.compose import observables as OBS                           # noqa: E402,F401
+from fsim_core.compose.types import EmitterModel                           # noqa: E402,F401
+
+RT_E = Rates(Gamma_ns=1e-6, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)    # Gamma T ~ 3e-7: negligible
+EM_NP = em_with(0.0)                                                        # phonons off
+
+
+def eid_plan(area_rad, dur_ps, c_ps, shape="rect"):
+    return DrivePlan("coherent", "pulsed", 76.2, pulses=(Pulse(shape, dur_ps, area_rad),), needs=frozenset({"phonons"}),
+                     inputs={"T_K": 0.0, **({"eid_ps": c_ps} if c_ps is not None else {})})
+
+
+def damped_rabi(Omega, c_ns, T_ns):
+    """Closed form for a resonant rect pulse with EID: z = rho_ee - rho_gg obeys z' = -Omega y, y' = Omega z - g y,
+    g = coherence decay = gamma_EID/2 = c Omega^2/2 (Gamma = gamma* = 0): z(T) = -e^{-gT/2}[cos(Om' T) + (g/2Om') sin(Om' T)]."""
+    g = 0.5 * c_ns * Omega ** 2
+    Op = math.sqrt(Omega ** 2 - 0.25 * g * g)
+    z = -math.exp(-0.5 * g * T_ns) * (math.cos(Op * T_ns) + g / (2.0 * Op) * math.sin(Op * T_ns))
+    return 0.5 * (1.0 + z)
+
+
+from scipy.linalg import expm as _expm                                      # noqa: E402
+
+ok_e, det_e = True, ""
+for (Om, dur, c_ps) in ((2 * math.pi / 0.2, 300.0, 15.0), (math.pi / 0.2, 300.0, 15.0), (2 * math.pi / 0.2, 300.0, 40.0)):
+    # the Generator propagates |g><g| through ONE rect pulse (no periodic steady state, so Gamma = gamma* = 0 is fine)
+    tl_e = rs.TwoLevel(0.0)
+    train_e = PL.PulseTrain((Pulse("rect", dur, Om * dur * 1e-3),))
+    gen_e = PL.Generator(train_e, tl_e, PL.PhononModel(None, 0.0), eid_ns=c_ps * 1e-3)
+    L_e = gen_e.step_L(np.array([0.5 * train_e.W]))[0]
+    v_e = _expm(L_e * dur * 1e-3) @ lb.vec(rs._ground(2))
+    got = float(lb.unvec(v_e, 2)[1, 1].real)
+    want = damped_rabi(Om, c_ps * 1e-3, dur * 1e-3)
+    ok_e &= abs(got - want) < 1e-9
+    det_e += f" Om {Om:.1f}, c {c_ps}: {got:.6f} vs {want:.6f};"
+check("EID-a. excitation-induced dephasing gamma_EID = c |Omega|^2 on a resonant rect pulse (Generator propagator) == the "
+      "closed-form damped Rabi oscillation z(T) = -e^{-gT/2}[cos Om'T + (g/2Om') sin Om'T], g = c Om^2/2 (3 settings incl. an "
+      "Om^2 rescaling, 1e-9)", ok_e, det_e)
+RT_B = Rates(Gamma_ns=1.0, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+base_e = SOLVER.run(eid_plan(3 * math.pi, 300.0, 15.0), EM_NP, RT_B, with_hom=False)
+off_e = SOLVER.run(eid_plan(3 * math.pi, 300.0, None), EM_NP, RT_B, with_hom=False)
+off0 = SOLVER.run(eid_plan(3 * math.pi, 300.0, 0.0), EM_NP, RT_B, with_hom=False)
+check("EID-b. default OFF is bit-identical: eid_ps absent == eid_ps = 0 (g2, n_ph, inversion exactly equal), and the damping is "
+      "a visible effect when on (inversion differs by > 0.05)",
+      off_e.inversion == off0.inversion and off_e.n_ph == off0.n_ph and off_e.g2_0 == off0.g2_0
+      and abs(base_e.inversion - off_e.inversion) > 0.05, f"{off_e.inversion:.5f} -> {base_e.inversion:.5f}")
+
+
+def ivp_eid(area, fwhm_ps, c_ps, Gam, gs):
+    """Independent 2x2 Lindblad solve_ivp for a Gaussian pulse with gamma_EID(t) = c Omega(t)^2 (no repo code)."""
+    dur = fwhm_ps * 1e-3
+    sig = rs.gaussian_sigma(dur)
+    W = rs.pulse_window("gauss", dur)
+    amp = area / (sig * math.sqrt(2 * math.pi))
+    sx = np.array([[0, 1], [1, 0]], dtype=complex)
+    sm = np.array([[0, 1], [0, 0]], dtype=complex)          # |g><e| in the basis (g, e)
+    P = np.array([[0, 0], [0, 1]], dtype=complex)
+
+    def D(c_, r):
+        return c_ @ r @ c_.conj().T - 0.5 * (c_.conj().T @ c_ @ r + r @ c_.conj().T @ c_)
+
+    def rhs(t, y):
+        r = y.reshape(2, 2)
+        x = t - 0.5 * W
+        Om = amp * math.exp(-0.5 * (x / sig) ** 2) if abs(x) <= rs.GAUSS_WINDOW_SIGMA * sig else 0.0
+        H = 0.5 * Om * sx
+        return (-1j * (H @ r - r @ H) + Gam * D(sm, r) + (gs + c_ps * 1e-3 * Om ** 2) * D(P, r)).reshape(-1)
+    y0 = np.array([[1, 0], [0, 0]], dtype=complex).reshape(-1)
+    sol = solve_ivp(rhs, (0.0, W), y0, method="DOP853", rtol=1e-11, atol=1e-13, max_step=W / 400)
+    return float(sol.y[:, -1].reshape(2, 2)[1, 1].real)
+
+
+RT_G = Rates(Gamma_ns=1.0, gamma_star_ns=0.5, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+ok_g, det_g = True, ""
+for (ar, fw, c_ps) in ((3 * math.pi, 20.0, 5.0), (5 * math.pi, 10.0, 20.0)):
+    r_g = SOLVER.run(eid_plan(ar, fw, c_ps, "gauss"), EM_NP, RT_G, with_hom=False)
+    r_i = ivp_eid(ar, fw, c_ps, 1.0, 0.5)
+    ok_g &= abs(r_g.inversion - r_i) < 2e-6
+    det_g += f" {ar / math.pi:.0f}pi {fw} ps c {c_ps}: {r_g.inversion:.6f} vs {r_i:.6f};"
+check("EID-c. Gaussian pulses with EID (Gamma 1/ns, gamma* 0.5/ns, area 3 pi / 5 pi): inversion == an independent 2x2 Lindblad "
+      "solve_ivp with the time-dependent gamma_EID(t) (2e-6)", ok_g, det_g)
+
+# plans, routing and refusals
+d_res = R.get("drive", "resonant_pulse")
+pl_e = d_res.plan({"eid_ps": 12.0, "p_trion": 0.1}, EM0, RT)
+pl_0 = d_res.plan({}, EM0, RT)
+check("EID-d. resonant_pulse / phonon drives expose eid_ps and p_trion (default 0 = absent from plan.inputs); the planner stores them",
+      "eid_ps" not in pl_0.inputs and "p_trion" not in pl_0.inputs and pl_e.inputs["eid_ps"] == 12.0 and pl_e.inputs["p_trion"] == 0.1
+      and all(R.get("drive", k).param("eid_ps").default == 0.0 and R.get("drive", k).param("p_trion").default == 0.0
+              for k in ("resonant_pulse", "phonon_assisted", "super", "dichromatic", "arp"))
+      and R.get("drive", "tpe").param("p_trion").default == 0.0 and not any(p.name == "eid_ps" for p in R.get("drive", "tpe").params))
+LS_ = solvers.LindbladSolver()
+em_l = replace(EM0, phonon=None)
+RT_L = Rates(Gamma_ns=1.0, gamma_star_ns=0.5, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+pl_cw = DrivePlan("coherent", "cw", None, omega_cw_ns=1.0, inputs={"eid_ps": 10.0, "T_K": 4.2})
+pl_cas = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),), needs=frozenset({"cascade"}),
+                   inputs={"eid_ps": 10.0, "T_K": 4.2})
+pl_ok = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),), inputs={"eid_ps": 10.0, "T_K": 4.2})
+check("EID-e. lindblad accepts EID on pulsed two-level plans (runs on the polaron step propagators, phonons off) and refuses it for cw / TPE; "
+      "jc refuses EID and p_trion",
+      LS_.supports(pl_ok, em_l, RT_L)[0] and not LS_.supports(pl_cw, em_l, RT_L)[0] and not LS_.supports(pl_cas, em_l, RT_L)[0]
+      and not R.get("solver", "jc").supports(DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),),
+                                                       inputs={"p_trion": 0.1}), em_l, RT_L)[0])
+r_lin = LS_.run(pl_ok, em_l, RT_L)
+r_pol = SOLVER.run(replace(eid_plan(math.pi, 10.0, 10.0, "gauss"), f_rep_MHz=80.0), EM_NP, RT_L)
+check("EID-f. LindbladSolver with eid_ps == the polaron solver without phonons (inversion, g2, n_ph, HOM identical)",
+      all(abs(a - b) < 1e-12 for a, b in ((r_lin.inversion, r_pol.inversion), (r_lin.g2_0, r_pol.g2_0), (r_lin.n_ph, r_pol.n_ph),
+                                          (r_lin.I_single, r_pol.I_single))))
+
+# dark-trion branch
+pl_t0 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, math.pi),), inputs={"T_K": 4.2})
+pl_t1 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, math.pi),), inputs={"T_K": 4.2, "p_trion": 0.2})
+t0, t1 = LS_.run(pl_t0, em_l, RT_L), LS_.run(pl_t1, em_l, RT_L)
+q_ = 0.8
+check("TR-a. dark trion branch at a pi pulse (p_trion 0.2): n_ph, inversion, eta_prep x (1 - p), g2 / (1 - p), HOM unchanged "
+      "(independent pulses: m1 -> (1-p) m1, m2 -> (1-p) m2, |G1|^2 and N^2 both ~ (1-p)^2)",
+      abs(t1.n_ph - q_ * t0.n_ph) < 1e-12 and abs(t1.inversion - q_ * t0.inversion) < 1e-12
+      and abs(t1.g2_0 - t0.g2_0 / q_) < 1e-12 and abs(t1.I_single - t0.I_single) < 1e-12
+      and abs(t1.extra["eta_prep"] - q_ * t0.extra["eta_prep"]) < 1e-12,
+      f"n_ph {t0.n_ph:.5f} -> {t1.n_ph:.5f}")
+pl_t2 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, 2 * math.pi),), inputs={"T_K": 4.2, "p_trion": 0.2})
+pl_t2b = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, 2 * math.pi),), inputs={"T_K": 4.2})
+pl_t3 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, 1.5 * math.pi),), inputs={"T_K": 4.2, "p_trion": 0.2})
+pl_t3b = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("rect", 10.0, 1.5 * math.pi),), inputs={"T_K": 4.2})
+a2, a2b = LS_.run(pl_t2, em_l, RT_L), LS_.run(pl_t2b, em_l, RT_L)
+a3, a3b = LS_.run(pl_t3, em_l, RT_L), LS_.run(pl_t3b, em_l, RT_L)
+p3 = 0.2 * math.sin(0.75 * math.pi) ** 2
+check("TR-b. p_trion(area) = p sin^2(area/2): a 2 pi pulse leaves the trion branch empty (unchanged to 1e-12), a 1.5 pi pulse has "
+      "p = 0.2 sin^2(3 pi/4) = 0.1",
+      abs(a2.n_ph - a2b.n_ph) < 1e-12 and abs(a3.n_ph - (1 - p3) * a3b.n_ph) < 1e-12 and abs(p3 - 0.1) < 1e-12)
+# TPE (Vajner-like): the branch uses the nominal TPE area in units of the TPE pi pulse
+em_t = replace(EM0, phonon=None, delta_xx_meV=-2.0, transitions=frozenset({"X", "XX"}))
+pl_x0 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),), needs=frozenset({"cascade"}), inputs={"T_K": 4.2})
+pl_x1 = DrivePlan("coherent", "pulsed", 80.0, pulses=(Pulse("gauss", 10.0, math.pi),), needs=frozenset({"cascade"}),
+                  inputs={"T_K": 4.2, "p_trion": 0.16})
+from types import SimpleNamespace as _NS                                    # noqa: E402
+RT_X = _NS(Gamma_ns=1.0 / 1.21, Gamma0_ns=1.0 / 1.21, k_nr_ns=0.0, gamma_star_ns=0.0)
+x0, x1 = LS_.run(pl_x0, em_t, RT_X), LS_.run(pl_x1, em_t, RT_X)
+check("TR-c. TPE pi pulse with p_trion 0.16: XX inversion x 0.84 (the Vajner fidelity 0.82 vs 0.98 is a 16-17% loss), "
+      "n_ph, n_XX x 0.84, g2 / 0.84, hom_XX unchanged",
+      abs(x1.inversion - 0.84 * x0.inversion) < 1e-12 and abs(x1.n_ph - 0.84 * x0.n_ph) < 1e-12
+      and abs(x1.extra["n_XX"] - 0.84 * x0.extra["n_XX"]) < 1e-12 and abs(x1.g2_0 - x0.g2_0 / 0.84) < 1e-12
+      and abs(x1.extra["hom_XX"] - x0.extra["hom_XX"]) < 1e-12, f"inv {x0.inversion:.4f} -> {x1.inversion:.4f}")
+# the trion branch through the polaron machinery (phonon drive) scales the same way
+r_p0 = SOLVER.run(eid_plan(math.pi, 10.0, None, "gauss"), EM_NP, RT_L, with_hom=False)
+pp1 = DrivePlan("coherent", "pulsed", 76.2, pulses=(Pulse("gauss", 10.0, math.pi),), needs=frozenset({"phonons"}),
+                inputs={"T_K": 0.0, "p_trion": 0.3})
+r_p1 = SOLVER.run(pp1, EM_NP, RT_L, with_hom=False)
+check("TR-d. the polaron solver applies the same branch (p_trion 0.3 at a pi pulse): n_ph, inversion x 0.7, g2 / 0.7",
+      abs(r_p1.n_ph - 0.7 * r_p0.n_ph) < 1e-12 and abs(r_p1.inversion - 0.7 * r_p0.inversion) < 1e-12
+      and abs(r_p1.g2_0 - r_p0.g2_0 / 0.7) < 1e-12)
+# engine end to end (real registry): EID through resonant_pulse
+eng_sp = {"schema": "fsim-composed/1", "T_K": 4.2,
+          "material": {"kind": "ingaas_gaas", "params": {"tau_bare_ns": 1.0, "gamma_star_4K_ns": 0.5, "a_ac_ns_per_K": 0.0}},
+          "structure": {"kind": "bulk_planar", "params": {}},
+          "drive": {"kind": "resonant_pulse", "params": {"shape": "gauss", "fwhm_ps": 20.0, "area_pi": 3.0, "eid_ps": 5.0}},
+          "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+o_eid = engine.evaluate_spec(eng_sp)["scalars"]
+want_eid = ivp_eid(3 * math.pi, 20.0, 5.0, float(o_eid["Gamma_ns"]), float(o_eid["gamma_star_ns"]))
+check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, material gamma* 0.5/ns): the inversion equals the independent "
+      "2x2 Lindblad solve_ivp with the engine's Gamma and gamma* (1e-5), and differs from the EID-off run by > 0.01",
+      abs(o_eid["inversion"] - want_eid) < 1e-5
+      and abs(engine.evaluate_spec({**eng_sp, "drive": {"kind": "resonant_pulse", "params": {**eng_sp["drive"]["params"], "eid_ps": 0.0}}})
+              ["scalars"]["inversion"] - o_eid["inversion"]) > 0.01,
+      f"{o_eid['inversion']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

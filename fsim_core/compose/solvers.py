@@ -55,6 +55,16 @@ devlib-p10e (electrical drives; all off by default = bit-identical to the rectan
   * td_detuning is supported by the lindblad solver (and polaron): plans with a Stark gate (plan.det_profile) or a
     chirped pulse run on the polaron step-propagator machinery with the phonons switched off.
 
+devlib-fx3b (all off by default = bit-identical):
+  * M-3 pulsed pump: mu = eta_capture N_c already contains the capture efficiency, so _interp_pump no longer multiplies
+    eta_capture a second time for it (the other mechanisms keep mu as the operating point before capture).
+  * electrical cascade (plan.needs {"cascade"}, plan.inputs["pump_ratio_xx"]) runs on the rate solver (G-X-XX with
+    pulse_counting.pulse_g2 and the shaped pump): strong pumping parks the dot in XX and g2 saturates then falls.
+  * plan.inputs["bg_frac"] (electrical drives too): g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac (as above_band).
+  * plan.inputs["eid_ps"] (excitation-induced dephasing gamma_EID = c |Omega|^2) routes a pulsed two-level plan through
+    the polaron step propagators with the phonons off; plan.inputs["p_trion"] scales the result by the per-pulse dark-
+    trion probability p sin^2(area/2) (polaron.apply_trion; HOM unchanged, g2 / (1 - p)).
+
 Conventions (physics brief 2): rates 1/ns; Pulse.detuning_meV holds the REPO det_X =
 omega_X - omega_L (P4 drives.py stores -Delta_paper); pulse fwhm is the INTENSITY FWHM;
 gamma* is the repo value (2 x textbook). Phonons: only Z-factor bookkeeping in
@@ -143,19 +153,32 @@ def _pulsed_coherent_check(plan) -> Optional[str]:
 
 def _interp_pump(plan, rt):
     """(pump rate 1/ns, window ns) of an incoherent / electrical plan.
-    Electrical plans carry only a DriveInterface: pulsed r = mu eta_capture / tau_on (mean loadings per
-    window, tau_on = interface tau_eff_ns, default 1 ns); cw r = mu eta_capture Gamma (mean loadings per
-    radiative lifetime) [A]."""
+    Electrical plans carry only a DriveInterface: pulsed r = mu_dot / tau_on (mean loadings per window, tau_on =
+    interface tau_eff_ns, default 1 ns); cw r = mu_dot Gamma (mean loadings per radiative lifetime) [A].
+    mu_dot = mu eta_capture, EXCEPT for the M-3 pulsed mechanism whose mu = eta_capture N_c already contains the
+    capture efficiency (drive_mech.mech_pulsed; devlib-fx3b: the second factor was a double count, found by the Ellis
+    card whose eta had to be folded into I_uA). M-1/M-2/M-4/M-5 keep mu as the operating point BEFORE capture [A]."""
     if plan.pump_rate_ns > 0.0:
         return float(plan.pump_rate_ns), float(plan.tau_on_ns)
     itf = plan.interface
     if itf is not None:
-        eff = float(itf.mu) * float(itf.eta_capture)
+        m3 = "carriers_per_window" in itf.notes            # M-3 pulsed: mu = eta N_c already holds eta_capture
+        eff = float(itf.mu) if m3 else float(itf.mu) * float(itf.eta_capture)
         if plan.timing == "pulsed":
             tau = float(plan.tau_on_ns) if plan.tau_on_ns > 0 else 1.0
             return eff / tau, tau
         return eff * float(rt.Gamma_ns), 0.0
     return 0.0, float(plan.tau_on_ns)
+
+
+def _eid(plan) -> float:
+    """Excitation-induced dephasing coefficient c_EID in ps (gamma_EID = c |Omega|^2); 0 = off (devlib-fx3b)."""
+    return float(plan.inputs.get("eid_ps", 0.0) or 0.0)
+
+
+def _p_trion(plan) -> float:
+    """Dark-trion probability at a pi pulse (p_trion(area) = p sin^2(area/2)); 0 = off (devlib-fx3b)."""
+    return float(plan.inputs.get("p_trion", 0.0) or 0.0)
 
 
 def _series_xy(x, y, unit_x="ns"):
@@ -382,12 +405,15 @@ class LindbladSolver(Solver):
         why = _pulsed_coherent_check(plan)
         if why:
             return False, why
-        if "td_detuning" in plan.needs:
+        if "td_detuning" in plan.needs or _eid(plan) > 0.0:
+            what = "td_detuning" if "td_detuning" in plan.needs else "excitation-induced dephasing (eid_ps)"
             if "cascade" in plan.needs or plan.timing != "pulsed":
-                return False, "td_detuning: pulsed two-level plans only (no TPE cascade, no cw)"
+                return False, f"{what}: pulsed two-level plans only (no TPE cascade, no cw)"
             ok, why = self._td_solver().supports(self._td_plan(plan), em, rt)
             if not ok:
-                return False, "td_detuning (polaron machinery, phonons off): " + why
+                return False, f"{what} (polaron machinery, phonons off): " + why
+        if _p_trion(plan) > 0.0 and plan.timing != "pulsed":
+            return False, "p_trion: pulsed plans only (the dark-trion branch is a per-pulse probability)"
         if "cascade" in plan.needs:
             if plan.timing != "pulsed":
                 return False, "TPE needs a pulsed plan"
@@ -414,8 +440,8 @@ class LindbladSolver(Solver):
         counting hierarchy, eta_prep and Grange HOM apply [DR]."""
         res = self._td_solver().run(self._td_plan(plan), _dc_replace(em, phonon=None), rt)
         extra = dict(res.extra)
-        extra["notes"] = list(extra.get("notes", [])) + ["td_detuning: lindblad path = polaron step propagators, "
-                                                         "phonons off"]
+        extra["notes"] = list(extra.get("notes", [])) + ["td_detuning / eid_ps: lindblad path = polaron step "
+                                                         "propagators, phonons off"]
         return SolverResult(g2_0=res.g2_0, n_ph=res.n_ph, I_single=res.I_single, inversion=res.inversion,
                             extra=extra, valid=res.valid, reasons=res.reasons)
 
@@ -429,6 +455,15 @@ class LindbladSolver(Solver):
                             reasons=("zero pulse area: no excitation, g2 and HOM undefined",))
 
     def run(self, plan, em, rt):
+        res = self._run(plan, em, rt)
+        pt = _p_trion(plan)
+        if pt > 0.0 and not ("td_detuning" in plan.needs or _eid(plan) > 0.0) and plan.pulses:
+            # dark-trion branch (devlib-fx3b); the polaron path applies it itself
+            area = math.sqrt(sum(float(q.area_rad) ** 2 for q in plan.pulses))     # TPE: area_pi pi, 1 = the TPE pi pulse
+            res = _polaron.apply_trion(res, _polaron.trion_probability(pt, area))
+        return res
+
+    def _run(self, plan, em, rt):
         if "cascade" in plan.needs:
             if plan.pulses and float(plan.pulses[0].area_rad) == 0.0:
                 return self._zero_area(plan, "tpe")
@@ -437,8 +472,8 @@ class LindbladSolver(Solver):
             return self._cw(plan, em, rt)
         if plan.pulses and float(plan.pulses[0].area_rad) == 0.0:
             return self._zero_area(plan)
-        if "td_detuning" in plan.needs:
-            return self._td(plan, em, rt)
+        if "td_detuning" in plan.needs or _eid(plan) > 0.0:
+            return self._td(plan, em, rt)               # polaron step propagators (also apply the trion branch)
         p = plan.pulses[0]
         dur = p.fwhm_ps * 1e-3
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
@@ -685,6 +720,8 @@ class JCSolver(Solver):
             return False, "; ".join(bad)
         if "cascade" in plan.needs:
             return False, "jc: no biexciton"
+        if _eid(plan) > 0.0 or _p_trion(plan) > 0.0:
+            return False, "jc: excitation-induced dephasing / dark-trion branch are not modelled"
         why = _pulsed_coherent_check(plan)
         if why:
             return False, why
