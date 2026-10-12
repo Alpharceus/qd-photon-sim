@@ -25,6 +25,10 @@ background-channel photons are filtered the same way (conservative) [A].
 n_ph is the solver's photons per pulse into the radiative channel. It replaces the product
 eta_prep x eta_rad of the brief because it equals that product without re-excitation and also contains
 re-excitation (both factors are reported separately: `eta_prep`, `eta_rad`, `eta_prep_x_eta_rad`).
+eta_prep (FX2b) is the excitation probability BEFORE decay: P_X(end of the pulse window) + photons emitted
+inside the window (+ <a+a>(end) for jc; P_XX + XX photons for TPE), from the lindblad / jc / polaron solvers;
+the old end-of-window population is `P_X_end` (informational). Incoherent drives report p_loaded.
+XX channel (TPE cascade only): tau_XX_ps, g2_XX, n_XX, hom_XX (hom_XX carries the same q^2 as hom_I).
 T_NA = 1: the structure's response() already received the setup NA, so eta_out contains the NA
 collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL,
 Z_eff (below) for a finite-kappa structure, else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor
@@ -204,10 +208,16 @@ def _derive(c: Context) -> dict:
         d["beta_entered"] = NAN
         why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
-    if res.inversion is None and "p_loaded" in res.extra:
+    if "eta_prep" in res.extra:
+        # FX2b: excitation probability before decay = P_X(end) + photons emitted inside the window (+ <a+a> for jc)
+        d["eta_prep"] = float(res.extra["eta_prep"])
+    elif res.inversion is None and "p_loaded" in res.extra:
         d["eta_prep"] = float(res.extra["p_loaded"])
     else:
         d["eta_prep"] = d["inversion"]
+    d["P_X_end"] = float(res.extra["P_X_end"]) if "P_X_end" in res.extra else d["inversion"]
+    if not math.isfinite(d["P_X_end"]):
+        why["P_X_end"] = "the solver has no end-of-window population (incoherent / cw drive)"
     d["eta_prep_x_eta_rad"] = d["eta_prep"] * d["eta_rad"]
     if pulsed and math.isfinite(n_ph):
         B = n_ph * eta_blink * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
@@ -245,6 +255,13 @@ def _derive(c: Context) -> dict:
         why["g2_raw"] = "background rate needs the detected signal rate S, which is unavailable"
     I1 = float(res.I_single)
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
+    # FX2b: XX-line stream of a TPE cascade (cascade solver only)
+    for key in ("tau_XX_ps", "g2_XX", "hom_XX", "n_XX"):
+        d[key] = float(res.extra[key]) if key in res.extra else NAN
+        if key not in res.extra:
+            why[key] = "no XX channel: only the TPE (cascade) solver reports the biexciton photon stream"
+    if math.isfinite(d["hom_XX"]):
+        d["hom_XX"] *= q * q                                   # same ZPL-fraction bookkeeping as hom_I [A]
     if not math.isfinite(d["hom_I"]):
         why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
     eps = float(_read(c, "setup", "eps_int", 0.0))
@@ -309,6 +326,11 @@ _o("eta_rad_eff", "Effective radiative efficiency eta_blink x Gamma/(Gamma+k)", 
 _o("eta_blink", "Blinking on-fraction (brightness factor, not lifetime)", "1", ("material.eta_blink",),
    passthrough_of="material.eta_blink")
 _o("eta_prep_x_eta_rad", "eta_prep x eta_rad", "1", _ALL)
+_o("P_X_end", "Population at the end of the pulse window (informational; includes decay during the window)", "1", _ALL)
+_o("tau_XX_ps", "XX lifetime 1e3/(gamma_XX + k_XX) read off the cascade Liouvillian (TPE)", "ps", _ALL)
+_o("g2_XX", "g2(0) of the XX-line photon stream (TPE)", "1", _ALL)
+_o("hom_XX", "HOM overlap of the XX-line photons, instantaneous preparation (TPE)", "1", _ALL + ("setup",))
+_o("n_XX", "XX-line photons per pulse (TPE)", "1", _ALL)
 _o("inversion", "Inversion after the pulse", "1", _ALL)
 _o("Z_phonon", "ZPL weight Z(T)", "1", ("material",))
 _o("Z_filt", "ZPL / cavity sideband filter factor", "1", ("material", "structure", "setup.zpl_filter"))

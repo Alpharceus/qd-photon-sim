@@ -331,6 +331,60 @@ except Exception as ex:                                                  # noqa:
     ok_est, est = False, repr(ex)
 check("engine.estimate works for a phonon spec", ok_est, f"{est}")
 
+# ------------------------------------------------------------------ 12. FX2b: eta_prep, Thomas phonon-assisted HOM diagnosis
+def bloch_prep(shape, fwhm_ps, area_pi, G, k, gs):
+    """INDEPENDENT Bloch-equation integral of (P_X + emitted photons) over the resonant pulse window:
+    dP = -(G+k) P + Om y, dy = -(G+k+gs)/2 y - (Om/2)(2P - 1), dE = G P (own code, no Lindblad module)."""
+    dur = fwhm_ps * 1e-3
+    if shape == "rect":
+        win, Om = dur, (lambda t: area_pi * math.pi / dur)
+    else:
+        sg = dur / (2.0 * math.sqrt(math.log(2.0)))
+        win = 2.0 * rs.GAUSS_WINDOW_SIGMA * sg
+        Om = lambda t: area_pi * math.pi / (sg * math.sqrt(2 * math.pi)) * math.exp(-0.5 * ((t - win / 2) / sg) ** 2)
+    gc = 0.5 * (G + k + gs)
+    f = lambda t, y: [-(G + k) * y[0] + Om(t) * y[1], -gc * y[1] - 0.5 * Om(t) * (2 * y[0] - 1.0), G * y[0]]
+    s = solve_ivp(f, [0.0, win], [0.0, 0.0, 0.0], method="DOP853", rtol=1e-12, atol=1e-14, max_step=win / 200)
+    return float(s.y[0, -1]), float(s.y[2, -1])
+
+
+rt_e = Rates(Gamma_ns=6.0, gamma_star_ns=0.5, k_nr_ns=0.3, L=1.0, F_P_eff=0.0, beta=0.5)
+ok, det = True, ""
+for shape, fw in (("rect", 60.0), ("gauss", 20.0)):
+    pul_e = Pulse(shape, fw, math.pi, detuning_meV=0.0)
+    r_e = SOLVER.run(pplan([pul_e], f=76.2), em_with(1e-12), rt_e, with_hom=False)
+    P_end, E = bloch_prep(shape, fw, 1.0, 6.0, 0.3, 0.5)
+    tol = 2e-5 if shape == "rect" else 5e-5
+    ok &= abs(r_e.extra["eta_prep"] - (P_end + E)) <= tol and abs(r_e.extra["P_X_end"] - P_end) <= tol
+    ok &= r_e.extra["eta_prep"] > r_e.extra["P_X_end"] + 1e-3
+    det += f" {shape}{fw:g}ps: {r_e.extra['eta_prep']:.6f}/{P_end + E:.6f}"
+check("FX2b polaron (phonons ~ 0) eta_prep = P_X(end) + emitted equals an independent Bloch ODE (decay, dephasing, k_nr)",
+      ok, det)
+rl_e = solvers.LindbladSolver().run(DrivePlan("coherent", "pulsed", 76.2, pulses=(pul,)), em_w, rt_w)
+rp_e = SOLVER.run(pplan([pul]), em_w, rt_w, with_hom=False)
+check("FX2b alpha -> 0: polaron eta_prep == lindblad eta_prep (existing solver) to 1e-6",
+      abs(rp_e.extra["eta_prep"] - rl_e.extra["eta_prep"]) <= 1e-6,
+      f"{rp_e.extra['eta_prep']:.8f} vs {rl_e.extra['eta_prep']:.8f}")
+rq = SOLVER.run(one(8.46, 11.88, 0.83), em_with(), RT, with_hom=False)
+check("FX2b phonon-assisted: eta_prep >= P_X_end, and n_ph = eta_prep when k_nr = 0 (every prepared excitation is "
+      "emitted; the window sum, not the end population, is the prepared probability)",
+      rq.extra["eta_prep"] >= rq.extra["P_X_end"] and abs(rq.n_ph - rq.extra["eta_prep"]) <= 1e-4,
+      f"eta_prep {rq.extra['eta_prep']:.5f}, P_X_end {rq.extra['P_X_end']:.5f}, n_ph {rq.n_ph:.5f}")
+
+# Thomas 2021 diagnosis: Z is applied ONCE (q^2, q = Z/Z_eff) on top of the ZPL overlap of the polaron solver
+th = PP.load_paper(ROOT / "cards" / "papers" / "thomas2021.yaml")
+sp_th = engine._as_spec(th.device)
+ent_th = engine._entries(sp_th)
+c_th = engine._run_point(ent_th, engine._central_values(engine._leaves(sp_th, ent_th)), 8.0, "auto")
+Zt, Zft = c_th.d["Z_phonon"], c_th.d["Z_filt"]
+I1 = float(c_th.res.I_single)
+check("Thomas 2021 diagnosis: engine hom_I = I_single(polaron ZPL overlap) x (Z/Z_eff)^2 exactly (Z once, no double "
+      "counting) and exceeds I_single x Z^2",
+      c_th.solver.name == "polaron" and abs(c_th.d["hom_I"] - I1 * (Zt / Zft) ** 2) <= 1e-12 and c_th.d["hom_I"] > I1 * Zt ** 2,
+      f"hom_I {c_th.d['hom_I']:.4f}, I_single {I1:.4f}, Z {Zt:.4f}, Z_eff {Zft:.4f}, "
+      f"Gamma/(Gamma+gamma*) = {c_th.d['Gamma_ns'] / (c_th.d['Gamma_ns'] + c_th.d['gamma_star_ns']):.3f} (gamma* {c_th.d['gamma_star_ns']:.2f}/ns "
+      f"from the InAs/GaAs-class T slope at 8 K), g2 {c_th.d['g2_0']:.3f}")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

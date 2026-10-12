@@ -252,6 +252,17 @@ def _incoherent_plan(self, vals, em, rt, relax_name, shell):
         inputs["b_dark"] = float(g("b_dark"))
         if not 0.0 <= inputs["b_dark"] <= 1.0:
             raise ValueError(f"b_dark must be in [0, 1], got {inputs['b_dark']!r}")
+    # FX2b: trap refilling, uncorrelated background, thermal escape/recapture (all [A]/[E]; 0 = the original scheme)
+    names = {p.name for p in self.params}
+    for nm, lo, hi in (("p_refill", 0.0, 0.9), ("bg_frac", 0.0, 0.99), ("E_act_meV", 0.0, math.inf),
+                       ("k0_ns", 0.0, math.inf)):
+        if nm in names:
+            v = float(g(nm))
+            if not (math.isfinite(v) and lo <= v <= hi):
+                raise ValueError(f"{nm} must be in [{lo}, {hi}], got {v!r}")
+            inputs[nm] = v
+    if "tau_refill_ps" in names:
+        inputs["tau_refill_ps"] = _positive("tau_refill_ps", g("tau_refill_ps"))
     needs = frozenset({"cascade"}) if cap2 else frozenset()
     if cw:
         # P/P_sat = 1 means the pump rate equals the total X decay rate [A]
@@ -283,6 +294,17 @@ _PUMP = _P("pump", "1", 1.0, lo=0.0, hi=100.0, tag="A", source=_SRC_A,
 _CW = _P("cw", "", False, tag="A", source=_SRC_A, sweepable=False, help="Continuous pump instead of pulses.")
 _WIN = _P("window_ps", "ps", 10.0, lo=0.1, hi=1000.0, scale="log", tag="A", source=_SRC_A,
           visible_if={"cw": [False]}, help="Length of the rectangular pump window.")
+_REFILL = (
+    _P("p_refill", "1", 0.0, lo=0.0, hi=0.9, tag="A", source=_SRC_A, group="advanced",
+       help="Probability per emission of a second, uncorrelated capture after the first emission (trap "
+            "refilling). Small-p limit: g2 = 2 p_refill / p_loaded (exactly, for a geometric refill chain) [DR]."),
+    _P("tau_refill_ps", "ps", 100.0, lo=1.0, hi=10000.0, scale="log", tag="A", source=_SRC_A, group="advanced",
+       visible_if={"cw": [False]}, help="Delay of the refilling capture after the emission."),
+    _P("bg_frac", "1", 0.0, lo=0.0, hi=0.99, tag="A", source=_SRC_A, group="advanced",
+       help="Uncorrelated background as a fraction of the detected light; g2 = 1 - rho^2 (1 - g2_signal) "
+            "with rho = 1 - bg_frac. HOM and brightness are the signal-only values."),
+)
+
 _FREP = _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            visible_if={"cw": [False]}, help="Pulse repetition rate.")
 
@@ -298,7 +320,7 @@ ABOVE_BAND = PlannedDrive(
         _FREP,
         _P("cap2", "", False, tag="A", source=_SRC_A, sweepable=False, group="advanced",
            help="Allow loading of the biexciton (capacity 2)."),
-    ),
+    ) + _REFILL,
     refs=(_REF_BRIEF + ": above-band incoherent row",),
     provides=frozenset({"incoherent_pump"}),
     observables=OBS_INCOHERENT_PULSED, planner=_plan_above_band)
@@ -315,6 +337,14 @@ P_SHELL = PlannedDrive(
         _FREP,
         _P("b_dark", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC_A, group="advanced",
            help="Branching fraction of relaxation into a dark state."),
+    ) + _REFILL + (
+        _P("E_act_meV", "meV", 0.0, lo=0.0, hi=200.0, tag="E", source="Arrhenius activation of the thermal "
+           "escape of s-shell carriers to the p shell / wetting layer; [E] class model, no paper activation", group="advanced",
+           help="Activation energy of the thermal escape; k_esc(T) = k0 exp(-E_act / kT)."),
+        _P("k0_ns", "1/ns", 0.0, lo=0.0, hi=1e6, tag="E", source="Arrhenius prefactor of the thermal escape; "
+           "[E] class model; 0 = off (reproduces the T-independent result bit-for-bit)", group="advanced",
+           help="Arrhenius prefactor. Escape X -> R (delays/jitters the emission) and recapture G -> R of "
+                "thermally released carriers between pulses (uncorrelated extra photons: g2(T) grows)."),
     ),
     refs=(_REF_BRIEF + ": p-shell / quasi-resonant row",),
     provides=frozenset({"incoherent_pump"}),

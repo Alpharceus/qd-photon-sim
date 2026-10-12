@@ -408,6 +408,178 @@ def main():
           near(envp["beta_entered"]["central"], 0.98, ab=1e-12) and envp["beta_entered"]["tag"] == "V"
           and not math.isfinite(engine.envelope(real(1.0), ["beta_entered"])["beta_entered"]["central"]))
 
+    # ------------------------------------------------------------------ 14. FX2b: eta_prep, XX channel, refill / background / thermal
+    from scipy.integrate import solve_ivp
+    from fsim_core.compose.rates import RatesEx as _RatesEx
+    from fsim_core.spectral import KB as _KB
+
+    def bloch_prep(shape, fwhm_ps, area_pi, G, k, gs):
+        """INDEPENDENT Bloch-equation integral of (P_X + emitted photons) over the pulse window, resonant drive:
+        dP = -(G+k) P + Om y, dy = -(G+k+gs)/2 y - (Om/2)(2P - 1), dE = G P (own code, no Lindblad module)."""
+        dur = fwhm_ps * 1e-3
+        if shape == "rect":
+            win, Om = dur, (lambda t: area_pi * math.pi / dur)
+        else:
+            sg = dur / (2.0 * math.sqrt(math.log(2.0)))
+            win = 2.0 * rs.GAUSS_WINDOW_SIGMA * sg
+            Om = lambda t: area_pi * math.pi / (sg * math.sqrt(2 * math.pi)) * math.exp(-0.5 * ((t - win / 2) / sg) ** 2)
+        gc = 0.5 * (G + k + gs)
+        f = lambda t, y: [-(G + k) * y[0] + Om(t) * y[1], -gc * y[1] - 0.5 * Om(t) * (2 * y[0] - 1.0), G * y[0]]
+        s = solve_ivp(f, [0.0, win], [0.0, 0.0, 0.0], method="DOP853", rtol=1e-12, atol=1e-14, max_step=win / 200)
+        return float(s.y[0, -1]), float(s.y[2, -1])
+
+    def lind_plan(shape, fwhm_ps, area_pi, f=80.0, needs=()):
+        return DrivePlan("coherent", "pulsed", f, pulses=(Pulse(shape, fwhm_ps, area_pi * math.pi),),
+                         needs=frozenset(needs), inputs={})
+
+    em0 = R.get("material", "test_mat").build({"lambda_nm": 900.0, "gamma0_ns": 1.0, "k_nr_ns": 0.0,
+                                               "gamma_star_ns": 0.0, "alpha_ps2": 0.0}, 4.0)
+
+    def rtx(G, gs=0.0, k=0.0, G0=None):
+        return _RatesEx(Gamma_ns=G, gamma_star_ns=gs, k_nr_ns=k, L=1.0, F_P_eff=0.0, beta=0.5,
+                        Gamma0_ns=G if G0 is None else G0)
+    LS = solvers.LindbladSolver()
+    ok, det = True, ""
+    for shape, fw, G, k, gs in (("rect", 100.0, 10.0, 0.5, 3.0), ("rect", 60.0, 4.0, 0.0, 0.3), ("gauss", 20.0, 8.0, 0.2, 1.0)):
+        r = LS.run(lind_plan(shape, fw, 1.0), em0, rtx(G, gs, k))
+        P_end, E = bloch_prep(shape, fw, 1.0, G, k, gs)
+        tol = 2e-6 if shape == "rect" else 3e-5       # gauss: midpoint rule at 8 steps/sigma (the pre-existing P_X error is 1.1e-5)
+        ok &= near(r.extra["eta_prep"], P_end + E, ab=tol) and near(r.extra["P_X_end"], P_end, ab=tol)
+        ok &= r.extra["eta_prep"] > r.extra["P_X_end"] + 1e-3
+        det += f" {shape}{fw:g}ps: {r.extra['eta_prep']:.6f}/{P_end + E:.6f}"
+    check("14a. FX2b lindblad eta_prep = P_X(end) + emitted equals an independent Bloch ODE (rect + gauss, decay, "
+          "dephasing, k_nr) to 2e-6 (rect) / 3e-5 (gauss, grid error); P_X_end keeps the old end-of-window population", ok, det)
+    ok, det = True, ""
+    for fw in (0.2, 0.5, 1.0):
+        G = 2.0
+        r = LS.run(lind_plan("rect", fw, 1.0), em0, rtx(G))
+        gt = G * fw * 1e-3
+        e_new, e_old = abs(1.0 - r.extra["eta_prep"]), abs(1.0 - r.extra["P_X_end"])
+        ok &= e_new <= 0.5 * gt and e_new < 0.5 * e_old
+        det += f" Gtau={gt:.0e}: |1-eta_prep|={e_new:.1e} vs |1-P_X_end|={e_old:.1e};"
+    check("14b. FX2b short pi pulse: |1 - eta_prep| <= Gamma tau_p/2 and below half the old |1 - P_X_end|", ok, det)
+    r = LS.run(lind_plan("rect", 60.0, 1.0), em0, rtx(4.0))
+    check("14c. probability conservation: k_nr = 0 -> n_ph = eta_prep (every prepared excitation is emitted)",
+          near(r.n_ph, r.extra["eta_prep"], ab=1e-9), f"{r.n_ph:.10f} vs {r.extra['eta_prep']:.10f}")
+
+    # 14d. jc: bad-cavity limit eta_prep == lindblad with the Purcell rate (validated path); the old P_X_end differs
+    gj, kj = 5.0, 200.0
+    stj = {"g_ns": exact(gj, "1/ns"), "kappa_ns": exact(kj, "1/ns")}
+    aj = engine.evaluate_spec(spec(st=stj, drp={"fwhm_ps": 100.0}, solver="jc"))["scalars"]
+    bj = engine.evaluate_spec(spec(st=stj, drp={"fwhm_ps": 100.0}, solver="lindblad"))["scalars"]
+    check("14d. FX2b jc eta_prep (P_X + <a+a> + emitted) = Purcell-lindblad eta_prep to 1e-3 in the bad-cavity limit, "
+          "while the old jc P_X_end is > 0.05 away",
+          abs(aj["eta_prep"] - bj["eta_prep"]) < 1e-3 and abs(aj["P_X_end"] - bj["eta_prep"]) > 0.05,
+          f"jc {aj['eta_prep']:.5f}, lindblad {bj['eta_prep']:.5f}, jc P_X_end {aj['P_X_end']:.5f}")
+    cj = engine.evaluate_spec(spec(st={"g_ns": exact(2 * math.pi * 4.16, "1/ns"), "kappa_ns": exact(2 * math.pi * 23.3, "1/ns")},
+                                   mat={"gamma0_ns": exact(2 * math.pi * 0.30, "1/ns")},
+                                   drp={"fwhm_ps": 3.0, "shape": "gauss"}, solver="jc"))["scalars"]
+    check("14e. FX2b jc (Tomm-class coupling): eta_prep >= P_X_end and n_ph = eta_prep (k_nr = 0)",
+          cj["eta_prep"] >= cj["P_X_end"] and near(cj["n_ph"], cj["eta_prep"], ab=1e-6),
+          f"eta_prep {cj['eta_prep']:.5f}, P_X_end {cj['P_X_end']:.5f}, n_ph {cj['n_ph']:.5f}")
+
+    # 14f-j. XX channel of the TPE cascade
+    GX, ratio, gsx = 4.0, 2.0, 0.5
+    emx = R.get("material", "test_mat").build({"lambda_nm": 900.0, "gamma0_ns": GX, "k_nr_ns": 0.0,
+                                               "gamma_star_ns": gsx, "alpha_ps2": 0.0}, 4.0)
+    emx = EmitterModel(**{**emx.__dict__, "delta_xx_meV": -4.0, "gamma_xx_ratio": ratio})
+    GXX = ratio * GX
+    gx = {fw: LS.run(lind_plan("gauss", fw, 1.0, needs=("cascade",)), emx, rtx(GX, gsx, G0=GX)) for fw in (3.0, 12.0)}
+    r3 = gx[3.0]
+    check("14f. TPE tau_XX_ps = 1e3/Gamma_XX (read off the cascade Liouvillian, 1e-9)",
+          near(r3.extra["tau_XX_ps"], 1e3 / GXX, rel=1e-9), f"{r3.extra['tau_XX_ps']:.6f} vs {1e3 / GXX:.6f} ps")
+    check("14g. TPE g2_XX -> 0 for short pulses: < 5e-3 at Gamma tau_p = 0.012 and below the 12 ps value",
+          r3.extra["g2_XX"] < 5e-3 and r3.extra["g2_XX"] < gx[12.0].extra["g2_XX"],
+          f"3 ps {r3.extra['g2_XX']:.2e}, 12 ps {gx[12.0].extra['g2_XX']:.2e}")
+    want_xx = GXX / (GXX + GX + gsx)
+    check("14h. TPE hom_XX (instantaneous prep) = Gamma_XX/(Gamma_XX + Gamma_X + gamma*) to 1e-6 (derived: the "
+          "|X><XX| coherence decays at (Gamma_XX + Gamma_X + gamma*)/2, intensity rate Gamma_XX)",
+          near(r3.extra["hom_XX"], want_xx, ab=1e-6), f"{r3.extra['hom_XX']:.8f} vs {want_xx:.8f}")
+    emy = EmitterModel(**{**emx.__dict__, "gamma0_ns": 0.01, "gamma_xx_ratio": 800.0})
+    ry = LS.run(lind_plan("gauss", 3.0, 1.0, needs=("cascade",)), emy, rtx(0.01, 0.5, G0=0.01))
+    check("14i. TPE hom_XX -> Gamma_XX/(Gamma_XX + gamma*) when the intermediate X is long lived (Gamma_X << Gamma_XX): "
+          "the spec's form is the Gamma_X -> 0 limit", near(ry.extra["hom_XX"], 8.0 / 8.5, rel=2e-3),
+          f"{ry.extra['hom_XX']:.5f} vs {8.0 / 8.5:.5f}")
+    tpe_spec = {"schema": "fsim-composed/1", "T_K": {"value": 4.0, "unit": "K", "tag": "V", "source": "t"},
+                "material": {"kind": "gaas_algaas_droplet", "params": {}},
+                "structure": {"kind": "bulk_planar", "params": {}},
+                "drive": {"kind": "tpe", "params": {"shape": {"value": "gauss", "unit": "", "tag": "A", "source": "t"},
+                                                    "fwhm_ps": exact(5.0, "ps", "A")}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    ts = engine.evaluate_spec(tpe_spec)["scalars"]
+    em_t = R.get("material", "gaas_algaas_droplet").build({}, 4.0)
+    check("14j. engine surfaces the XX channel (tau_XX_ps, g2_XX, hom_XX, n_XX) for TPE only",
+          all(math.isfinite(ts[k]) for k in ("tau_XX_ps", "g2_XX", "hom_XX", "n_XX", "P_X_end", "eta_prep"))
+          and near(ts["tau_XX_ps"], 1e3 / (em_t.gamma_xx_ratio * em_t.gamma0_ns), rel=1e-9)
+          and "g2_XX" not in engine.evaluate_spec(spec())["scalars"],
+          f"tau_XX {ts['tau_XX_ps']:.2f} ps, g2_XX {ts['g2_XX']:.2e}, hom_XX {ts['hom_XX']:.4f}, "
+          f"eta_prep {ts['eta_prep']:.4f}, P_XX_end {ts['P_X_end']:.4f}")
+
+    # 14k-r. incoherent drives: refill, background, thermal escape (S3d solver)
+    IS = solvers.IncoherentLindbladSolver()
+
+    def inc_plan(P, win_ps, relax_ps, f=10.0, **inp):
+        tau = win_ps * 1e-3
+        return DrivePlan("incoherent", "pulsed", f, pump_rate_ns=P / tau, tau_on_ns=tau, pump_ratio=P,
+                         relax_ns=relax_ps * 1e-3, inputs=dict(inp))
+    rt1 = rtx(1.0)
+    base = IS.run(inc_plan(30, 1.0, 10.0), None, rt1)
+    same = IS.run(inc_plan(30, 1.0, 10.0, p_refill=0.0, bg_frac=0.0, k0_ns=0.0, E_act_meV=25.0, T_K=300.0), None, rt1)
+    check("14k. p_refill = bg_frac = k0 = 0 reproduces the original S3d result bit-for-bit (g2, n_ph, I)",
+          (base.g2_0, base.n_ph, base.I_single) == (same.g2_0, same.n_ph, same.I_single))
+    ok, det = True, ""
+    p1 = 1.0 - math.exp(-30.0)
+    for p in (0.02, 0.1, 0.3):
+        r = IS.run(inc_plan(30, 1.0, 10.0, p_refill=p, tau_refill_ps=100.0), None, rt1)
+        ok &= near(r.g2_0, 2 * p / p1, rel=0.01, ab=2e-4) and near(r.n_ph, p1 / (1 - p), rel=2e-3)
+        det += f" p={p}: g2 {r.g2_0:.4f}/{2 * p / p1:.4f}, n {r.n_ph:.4f}/{p1 / (1 - p):.4f};"
+    check("14l. trap refilling: g2 = 2 p_refill / p_loaded and n_ph = p_loaded/(1 - p_refill) (geometric refill chain, "
+          "closed form) within 1% / 0.2%", ok, det)
+    ok = True
+    for bg in (0.1, 0.3):
+        r = IS.run(inc_plan(30, 1.0, 10.0, bg_frac=bg), None, rt1)
+        ok &= near(r.g2_0, 1.0 - (1.0 - bg) ** 2 * (1.0 - base.g2_0), ab=1e-12) and near(r.g2_0, 1.0 - (1.0 - bg) ** 2, ab=1e-3)
+    check("14m. background fraction: g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac (Brouri form), -> 1 - rho^2 for "
+          "a perfect source", ok)
+    Eth, Tth = 12.0, 77.0
+    k_arr = 5.0 * math.exp(-Eth / (_KB * Tth))
+    r = IS.run(inc_plan(30, 1.0, 10.0, k0_ns=5.0, E_act_meV=Eth, T_K=Tth), None, rt1)
+    check("14n. Arrhenius escape: reported k_esc = k0 exp(-E_act/kT) (independent exp)",
+          near(r.extra["k_esc_ns"], k_arr, rel=1e-12), f"{r.extra['k_esc_ns']:.6g} vs {k_arr:.6g} /ns")
+    kk, period = 1e-3, 1e3 / 10.0
+    r = IS.run(inc_plan(30, 1.0, 10.0, k0_ns=kk, E_act_meV=0.0, T_K=50.0), None, rt1)
+    lam = kk * period
+    want = (2 * p1 * lam + lam ** 2) / (p1 + lam) ** 2
+    check("14o. thermal recapture: pulsed g2 = (2 p1 lam + lam^2)/(p1 + lam)^2 with lam = k_esc T_rep (Poisson background "
+          "on a single-photon pulse) within 3% (dead time ~ 1/(Gamma T_rep) + k/Gamma)", near(r.g2_0, want, rel=0.03),
+          f"{r.g2_0:.5f} vs {want:.5f}")
+    g2T = [IS.run(inc_plan(30, 1.0, 10.0, f=76.0, k0_ns=0.05, E_act_meV=15.0, T_K=T), None, rt1).g2_0 for T in (4.0, 40.0, 77.0)]
+    base76 = IS.run(inc_plan(30, 1.0, 10.0, f=76.0), None, rt1)
+    check("14p. thermal escape: g2 grows with T (Arrhenius) and the 4 K limit (k_esc ~ 1e-20/ns) reproduces the "
+          "T-independent g2 to 1e-9", g2T[0] < g2T[1] < g2T[2] and abs(g2T[0] - base76.g2_0) < 1e-9,
+          f"g2(4,40,77 K) = {g2T[0]:.3e}, {g2T[1]:.3e}, {g2T[2]:.3e}; no-thermal {base76.g2_0:.3e}")
+    d_ps = R.get("drive", "p_shell")
+    d_ab = R.get("drive", "above_band")
+    check("14q. drive params: p_shell has p_refill/tau_refill_ps/bg_frac/E_act_meV/k0_ns (default 0 = off), above_band "
+          "has refill + background but no thermal params; the plan carries them",
+          all(d_ps.param(n).default == 0.0 for n in ("p_refill", "bg_frac", "E_act_meV", "k0_ns"))
+          and d_ps.param("tau_refill_ps").default > 0 and all(d_ab.param(n).default == 0.0 for n in ("p_refill", "bg_frac"))
+          and not any(p.name in ("E_act_meV", "k0_ns") for p in d_ab.params)
+          and d_ps.plan({"p_refill": 0.05, "k0_ns": 3.0, "E_act_meV": 10.0}, em0, rtx(1.0)).inputs["k0_ns"] == 3.0)
+
+    def shell_spec(T, **dp):
+        pars = {"pump": 5.0, "window_ps": 3.0, "f_rep_MHz": 76.0, **dp}
+        return {"schema": "fsim-composed/1", "T_K": {"value": T, "unit": "K", "tag": "V", "source": "t"},
+                "material": {"kind": "inas_gaas_sk", "params": {}},
+                "structure": {"kind": "bulk_planar", "params": {}},
+                "drive": {"kind": "p_shell", "params": {k: exact(v, d_ps.param(k).unit, "A") for k, v in pars.items()}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    g_a = [engine.evaluate_spec(shell_spec(T, k0_ns=0.05, E_act_meV=15.0))["scalars"]["g2_0"] for T in (4.0, 40.0, 77.0)]
+    g_0 = [engine.evaluate_spec(shell_spec(T))["scalars"]["g2_0"] for T in (4.0, 77.0)]
+    check("14r. engine p_shell: g2(T) rises with the Arrhenius escape and is flat without it (T from the engine)",
+          g_a[0] < g_a[1] < g_a[2] and abs(g_0[0] - g_0[1]) < 1e-12 and abs(g_a[0] - g_0[0]) < 1e-9,
+          f"with escape {g_a[0]:.3e}/{g_a[1]:.3e}/{g_a[2]:.3e}, without {g_0[0]:.3e}")
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

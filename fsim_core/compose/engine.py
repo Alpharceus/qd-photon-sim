@@ -187,6 +187,9 @@ def evaluate_spec(spec, T_grid=None) -> dict:
     for k in ("coherent_fraction", "flux_ns", "tpe_pi_area_rad"):
         if k in ctx.res.extra:
             scalars[k] = float(ctx.res.extra[k])
+    for k in ("P_X_end", "tau_XX_ps", "g2_XX", "hom_XX", "n_XX"):      # FX2b: only when the solver reports them
+        if k in ctx.res.extra:
+            scalars[k] = float(ctx.d[k])
     if any(l.is_free for l in leaves.values()):
         scalars["range_note"] = RANGE_NOTE
     return {"curves": curves, "scalars": scalars, "series": _series(ctx)}

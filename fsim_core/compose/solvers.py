@@ -15,10 +15,29 @@ RatesEx) onto it:
                        HOM from lindblad.indistinguishability started in |R> (instantaneous
                        loading, window re-excitation ignored [A]). Anchor (brief 2.3):
                        I = [g_r/(g_r + Gamma_t)] Gamma_t/(Gamma_t + gamma*) with g_r = 1/tau_cap.
+                       FX2b extensions (all off by default = the scheme above, bit-for-bit):
+                       * p_refill, tau_refill (trap refilling [A]): each radiative emission is followed with
+                         probability p by a dark state W that recaptures a second, uncorrelated pair at
+                         1/tau_refill (X -> W branch, W -> X); photons count both branches. Geometric chain:
+                         n_ph = p_loaded/(1 - p), g2 = 2 p / p_loaded (exact for a negligible pump re-excitation).
+                       * bg_frac (uncorrelated background [A]): g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac
+                         (Brouri form); HOM and n_ph stay signal-only.
+                       * k0_ns, E_act_meV, T_K (thermal escape / recapture, Arrhenius [E] class model, p_shell):
+                         k_esc = k0 exp(-E_act/kT); X -> R escape (delays the emission; in the HOM generator) and
+                         G -> R recapture of thermally released carriers between pulses (uncorrelated extra photons,
+                         NOT in the HOM generator: a steady background stream would make N diverge). Small
+                         lam = k_esc T_rep: g2 = (2 p1 lam + lam^2)/(p1 + lam)^2. Note: a conserved single pair
+                         escaping and returning cannot by itself raise g2; the growth comes from the recaptured
+                         extra carriers, which is why the recapture channel is part of the model.
   jc                   dot + cavity mode (Fock cutoff 3) via lindblad.build_system(cavity=...).
                        Lifetime (slowest radiative-sector Liouvillian eigenvalue), photons per excitation (exact, projected
                        Laplace solve), pulsed g2 / mean photons through resonant_source._stats and
                        cavity-output HOM through pulsed_indistinguishability.
+
+eta_prep (FX2b): the excitation probability BEFORE decay = P_X(end of the pulse window) + photons emitted
+inside the window (+ <a+a>(end) for jc; P_XX(end) + XX photons for TPE), started from the ground state
+(single-pulse preparation; nonradiative loss inside the window is not added back). The old end-of-window
+population is kept as extra["P_X_end"] (informational; it includes the decay during the window).
 
 Conventions (physics brief 2): rates 1/ns; Pulse.detuning_meV holds the REPO det_X =
 omega_X - omega_L (P4 drives.py stores -Delta_paper); pulse fwhm is the INTENSITY FWHM;
@@ -33,12 +52,13 @@ import math
 from typing import Optional
 
 import numpy as np
-from scipy.linalg import solve
+from scipy.linalg import expm, solve
 
 from .. import cw_g2
 from .. import lindblad as lb
 from .. import pulse_counting as pcnt
 from .. import resonant_source as rs
+from ..spectral import KB
 from .registry import Solver, get as _get, kinds as _kinds, register
 from .types import SolverResult
 
@@ -124,6 +144,27 @@ def _series_xy(x, y, unit_x="ns"):
     return {"x": [float(v) for v in x], "y": [float(v) for v in y], "x_unit": unit_x}
 
 
+def _window_counts(pc, shape, area, duration, rho0=None, n_steps=None):
+    """(rho at the end of the pulse window, photons counted inside the window) for the pieces `pc`,
+    started in `rho0` (default |0><0|, the ground state). Same grid and midpoint propagation as
+    resonant_source._stats; the photon count is the first factorial moment m1 of the counting hierarchy
+    at the window end. Used for eta_prep = P_X(end) + emitted (FX2b)."""
+    edges, om = rs._grid(shape, area, duration, n_steps, pc.max_dt)
+    dt = np.diff(edges)
+    N = pc.dim ** 2
+    V = np.zeros(3 * N, dtype=complex)
+    V[:N] = lb.vec(rs._ground(pc.dim) if rho0 is None else rho0)
+    cache = {}
+    for o, d in zip(om, dt):
+        key = (round(float(o), 14), round(float(d), 14))
+        if key not in cache:
+            cache[key] = expm(rs._aug(pc.L0 + o * pc.L1, pc.J) * d)
+        V = cache[key] @ V
+    rho = lb.unvec(V[:N].copy(), pc.dim)
+    m1 = float((lb.trace_row(pc.dim) @ V[N:2 * N]).real)
+    return rho, m1
+
+
 # ---------------------------------------------------------------- rate
 class RateSolver(Solver):
     name = "rate"
@@ -161,10 +202,16 @@ class RateSolver(Solver):
         gX, gXX, kX, kXX, pr = self._rates(plan, em, rt)
         r, tau_on = _interp_pump(plan, rt)
         reasons = ["rate solver: capture/relaxation jitter and coherence are not modelled"]
+        bg = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
+        bgf = (lambda g: 1.0 - (1.0 - bg) ** 2 * (1.0 - g)) if bg > 0.0 else (lambda g: g)
+        if float(plan.inputs.get("p_refill", 0.0) or 0.0) > 0.0 or float(plan.inputs.get("k0_ns", 0.0) or 0.0) > 0.0:
+            reasons.append("p_refill / thermal recapture are not modelled by the rate solver (use lindblad_incoherent)")
+        if bg > 0.0:
+            reasons.append("bg_frac applied to g2 as 1 - rho^2 (1 - g2), rho = 1 - bg_frac [A]")
         if plan.timing == "pulsed":
             period = 1e3 / float(plan.f_rep_MHz)
             out = pcnt.pulse_g2(r, gX, gXX, kX, kXX, 1.0, 0.0, tau_on, period - tau_on, pump_ratio=pr)
-            return SolverResult(g2_0=float(out["g2"]), n_ph=float(out["mean_counts"]), I_single=NAN,
+            return SolverResult(g2_0=float(bgf(out["g2"])), n_ph=float(out["mean_counts"]), I_single=NAN,
                                 inversion=None,
                                 extra={"p_loaded": 1.0 - math.exp(-r * tau_on),
                                        "converged": bool(out["converged"]), "notes": reasons},
@@ -174,7 +221,7 @@ class RateSolver(Solver):
         taus = np.linspace(0.0, 12.0 / scale, 401)
         g2 = cw_g2.g2_cw(taus, r, gX, gXX, 1.0, 0.0, kX, kXX, pr)
         P = cw_g2.steady_state(r, gX, gXX, kX, kXX, pr)
-        return SolverResult(g2_0=float(g2[0]), n_ph=NAN, I_single=NAN, inversion=None,
+        return SolverResult(g2_0=float(bgf(g2[0])), n_ph=NAN, I_single=NAN, inversion=None,
                             extra={"flux_ns": float(gX * P[1]),
                                    "series": {"g2_tau": _series_xy(taus, g2)}, "notes": reasons})
 
@@ -221,9 +268,12 @@ class LindbladSolver(Solver):
         st = rs.pulsed_photon_statistics(tl, p.shape, p.area_rad, dur, _f_rep(plan))
         I = rs.pulsed_indistinguishability(tl, p.shape, p.area_rad, dur, tol=_HOM_TOL,
                                            max_doublings=_HOM_DOUBLINGS)
+        rho_w, emitted = _window_counts(rs._pieces(tl), p.shape, p.area_rad, dur)
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
                             inversion=float(st["P_e_post"]),
-                            extra={"det_X_meV": _det_X_meV(plan)})
+                            extra={"det_X_meV": _det_X_meV(plan),
+                                   "eta_prep": float(rho_w[1, 1].real) + emitted,
+                                   "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
 
     def _tpe(self, plan, em, rt):
         p = plan.pulses[0]
@@ -240,11 +290,27 @@ class LindbladSolver(Solver):
         area = (p.area_rad / math.pi) * pi_area
         st = rs.tpe_photon_statistics(casc, p.shape, area, dur, _f_rep(plan))
         hom = rs.tpe_cascade_hom(casc, p.shape, area, dur)
+        # FX2b: XX-line photon stream (the line a TPE experiment filters for the biexciton photon) and eta_prep
+        st_xx = rs.tpe_photon_statistics(casc, p.shape, area, dur, _f_rep(plan), channel="XX")
+        rho_w, emitted_xx = _window_counts(rs._pieces_cascade(casc, ("XX",)), p.shape, area, dur)
+        s = casc.system()
+        i_xx = 2 * s.dim + 2                                   # vec index of rho[XX, XX]
+        tau_xx_ps = 1e3 / float(-s.L[i_xx, i_xx].real)         # XX population decay rate read off the Liouvillian
+        prep = rs.tpe_prepare(casc, p.shape, area, dur)
+        A_xx = math.sqrt(float(casc.gamma_XX_ns)) * s.ops["c_XX"]
+        I_xx, N_xx = lb.indistinguishability(s.L, s.dim, prep["rho"], A_xx, return_counts=True)
+        P_xx_end = float(st["P_XX_post"])
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(hom["I"]),
-                            inversion=float(st["P_XX_post"]),
+                            inversion=P_xx_end,
                             extra={"tpe_pi_area_rad": pi_area, "tpe_area_rad": area,
-                                   "P_prepared": list(hom["P"])},
-                            reasons=("TPE HOM prepares with dissipation off (optimistic by O(Gamma tau_p))",))
+                                   "P_prepared": list(hom["P"]),
+                                   "eta_prep": float(rho_w[2, 2].real) + emitted_xx,
+                                   "photons_in_window": emitted_xx, "P_X_end": P_xx_end,
+                                   "tau_XX_ps": float(tau_xx_ps), "g2_XX": float(st_xx["g2"]),
+                                   "n_XX": float(st_xx["mean_photons"]), "hom_XX": float(I_xx),
+                                   "N_XX_prepared": float(N_xx)},
+                            reasons=("TPE HOM prepares with dissipation off (optimistic by O(Gamma tau_p)); "
+                                     "hom_XX likewise",))
 
     def _cw(self, plan, em, rt):
         gs = float(rt.gamma_star_ns)
@@ -269,8 +335,8 @@ class LindbladSolver(Solver):
 
 
 # ---------------------------------------------------------------- lindblad_incoherent
-def _s3d_ops(with_res: bool):
-    dim = 3 if with_res else 2
+def _s3d_ops(with_res: bool, extra: int = 0):
+    dim = (3 if with_res else 2) + int(extra)
     def e(i, j):
         m = np.zeros((dim, dim), dtype=complex)
         m[i, j] = 1.0
@@ -302,16 +368,44 @@ class IncoherentLindbladSolver(Solver):
             return False, "repetition period must exceed the pump window"
         return True, ""
 
+    @staticmethod
+    def _extras(plan):
+        """(p_refill, tau_refill_ns, bg_frac, k_esc_ns) of the plan (FX2b); all zero = the original S3d scheme.
+        k_esc = k0 exp(-E_act/kT) at plan.inputs["T_K"] (Arrhenius, [E] class model, p_shell)."""
+        inp = plan.inputs
+        p_ref = float(inp.get("p_refill", 0.0) or 0.0)
+        tau_ref = float(inp.get("tau_refill_ps", 100.0)) * 1e-3
+        bg = float(inp.get("bg_frac", 0.0) or 0.0)
+        k0 = float(inp.get("k0_ns", 0.0) or 0.0)
+        k_esc = 0.0
+        if k0 > 0.0:
+            T = float(inp.get("T_K", 0.0) or 0.0)
+            E = float(inp.get("E_act_meV", 0.0) or 0.0)
+            k_esc = k0 * math.exp(-min(E / (KB * T), 700.0)) if T > 0.0 else (k0 if E <= 0.0 else 0.0)
+        return p_ref, tau_ref, bg, k_esc
+
     def run(self, plan, em, rt):
         r, tau_on = _interp_pump(plan, rt)
         period = 1e3 / float(plan.f_rep_MHz)
         Gam, k, gs = float(rt.Gamma_ns), float(rt.k_nr_ns), float(rt.gamma_star_ns)
         relax = float(plan.relax_ns)
         with_res = relax > 0.0
-        dim, e = _s3d_ops(with_res)
-        # basis: 0 = G, 1 = X, 2 = R (reservoir)
-        c_pump = np.sqrt(r) * (e(2, 0) if with_res else e(1, 0))
-        c_ops_off = [np.sqrt(Gam) * e(0, 1)]
+        p_ref, tau_ref, bg, k_esc = self._extras(plan)
+        n0 = 3 if with_res else 2
+        iW = n0 if p_ref > 0.0 else None
+        dim, e = _s3d_ops(with_res, 1 if iW is not None else 0)
+        # basis: 0 = G, 1 = X, 2 = R (reservoir), iW = W (dot emptied after an emission, refill pending)
+        iP = 2 if with_res else 1                                   # level the pump / thermal capture feeds
+        c_pump = np.sqrt(r) * e(iP, 0)
+        if iW is None:
+            c_ops_off = [np.sqrt(Gam) * e(0, 1)]
+            J = Gam * lb.jump_super(e(0, 1))
+        else:
+            # refilling: with probability p_refill an emission is followed by a second, uncorrelated capture
+            # after ~tau_refill (X -> W branch, W -> X at 1/tau_refill); photons count either branch [A]
+            c_ops_off = [np.sqrt(Gam * (1.0 - p_ref)) * e(0, 1), np.sqrt(Gam * p_ref) * e(iW, 1)]
+            J = Gam * (1.0 - p_ref) * lb.jump_super(e(0, 1)) + Gam * p_ref * lb.jump_super(e(iW, 1))
+            c_ops_off.append(np.sqrt(1.0 / tau_ref) * e(1, iW))
         if with_res:
             c_ops_off.append(np.sqrt(1.0 / relax) * e(1, 2))
         if k > 0:
@@ -319,22 +413,40 @@ class IncoherentLindbladSolver(Solver):
         if gs > 0:
             c_ops_off.append(np.sqrt(gs) * e(1, 1))
         H0 = np.zeros((dim, dim), dtype=complex)
-        L_off = lb.liouvillian(H0, c_ops_off)
-        L_on = lb.liouvillian(H0, c_ops_off + [c_pump])
-        J = Gam * lb.jump_super(e(0, 1))
+        # HOM generator: one prepared exciton. Thermal escape X -> R delays/jitters the emission (kept); the
+        # thermal recapture G -> R below is an uncorrelated background stream and is NOT part of it.
+        c_ops_hom = list(c_ops_off)
+        if k_esc > 0.0 and with_res:
+            c_ops_hom.append(np.sqrt(k_esc) * e(2, 1))
+        L_hom = lb.liouvillian(H0, c_ops_hom)
+        c_ops_cnt = list(c_ops_hom)
+        if k_esc > 0.0:
+            c_ops_cnt.append(np.sqrt(k_esc) * e(iP, 0))            # recapture of thermally released carriers
+        L_off = lb.liouvillian(H0, c_ops_cnt)
+        L_on = lb.liouvillian(H0, c_ops_cnt + [c_pump])
         out = lb.pulsed_counting(L_on, L_off, J, dim, tau_on, period - tau_on)
         A = np.sqrt(Gam) * e(0, 1)
         rho0 = e(2, 2) if with_res else e(1, 1)
-        I = lb.indistinguishability(L_off, dim, rho0, A)
+        I = lb.indistinguishability(L_hom, dim, rho0, A)
+        g2_sig = float(out["g2"])
+        rho_sig = 1.0 - bg
+        g2 = 1.0 - rho_sig ** 2 * (1.0 - g2_sig) if bg > 0.0 else g2_sig   # uncorrelated background (Brouri form)
         reasons = ["HOM assumes instantaneous loading at t = 0 (window re-excitation ignored) [A]"]
+        if iW is not None:
+            reasons.append("p_refill: refill is a delayed second capture (trap refilling) [A]")
+        if bg > 0.0:
+            reasons.append("bg_frac: g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac; HOM and n_ph are the "
+                           "signal-only values (background does not degrade the HOM here) [A]")
+        if k_esc > 0.0:
+            reasons.append(f"thermal escape/recapture (Arrhenius [E] class model): k_esc = {k_esc:.4g}/ns")
         if not out["converged"]:
             reasons.append("periodic steady state did not converge")
-        return SolverResult(g2_0=float(out["g2"]), n_ph=float(out["mean_counts"]), I_single=float(I),
-                            inversion=None,
-                            extra={"p_loaded": 1.0 - math.exp(-r * tau_on), "g_relax_ns": (1.0 / relax if with_res else None),
-                                   "notes": reasons},
+        extra = {"p_loaded": 1.0 - math.exp(-r * tau_on), "g_relax_ns": (1.0 / relax if with_res else None),
+                 "g2_signal": g2_sig, "p_refill": p_ref, "bg_frac": bg, "k_esc_ns": k_esc, "notes": reasons}
+        return SolverResult(g2_0=float(g2), n_ph=float(out["mean_counts"]), I_single=float(I),
+                            inversion=None, extra=extra,
                             valid=bool(out["converged"]),
-                            reasons=tuple(reasons[1:]))
+                            reasons=(("periodic steady state did not converge",) if not out["converged"] else ()))
 
     def eta_seconds(self, plan, n_points):
         return 0.05 * max(1, int(n_points))
@@ -451,6 +563,10 @@ class JCSolver(Solver):
                         A=np.sqrt(kap) * s0.ops["a"], ops=s0.ops, dim=s0.dim)
         st = rs._stats(pc, p.shape, p.area_rad, dur, _f_rep(plan), None, True)
         pop_X = float(lb.expect(s0.ops["P_X"], st["rho_post_pulse"]).real)
+        # FX2b: excitation probability before decay = P_X + <a+a> at the window end + photons already emitted
+        rho_w, emitted = _window_counts(pc, p.shape, p.area_rad, dur)
+        n_cav_end = float(lb.expect(s0.ops["a"].conj().T @ s0.ops["a"], rho_w).real)
+        eta_prep = float(lb.expect(s0.ops["P_X"], rho_w).real) + n_cav_end + emitted
         reasons = []
         try:
             I = float(rs.pulsed_indistinguishability(_CavOut(build, kap), p.shape, p.area_rad, dur,
@@ -464,6 +580,8 @@ class JCSolver(Solver):
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=I,
                             inversion=pop_X,
                             extra={"tau_jc_ps": float(tau_ps), "tau_1e_ps": float(tau_1e_ps), "n_cav_inst": n_cav, "n_leak_inst": n_leak,
+                                   "eta_prep": eta_prep, "photons_in_window": emitted, "n_cav_end": n_cav_end,
+                                   "P_X_end": pop_X,
                                    "beta": ((n_cav + b0 * n_leak) / tot) if tot > 0 else NAN, "notes": reasons},
                             reasons=())
 
