@@ -1,0 +1,67 @@
+# Micropillar, resonant pulse: InAs/GaAs dot in a 2.5 um DBR micropillar (Q 6000), strictly resonant 3 ps pi pulse, NA 0.7. A class example near the Ding 2016 device, not a reproduction.
+# Every leaf below carries a provenance tag and a source; unspecified parameters take the registry defaults.
+meta:
+  id: example-pillar-resonant
+  role: composed-example
+  label: Micropillar, resonant pulse
+  summary: InAs/GaAs dot in a 2.5 um DBR micropillar (Q 6000), strictly resonant 3 ps pi pulse, NA 0.7. A class example near the Ding 2016 device,
+    not a reproduction.
+  note: class example built from registry kinds; not a paper reproduction
+design:
+  name: example-pillar-resonant
+  platform: composed
+  composed:
+    schema: fsim-composed/1
+    solver: auto
+    T_K:
+      value: 4.2
+      unit: K
+      tag: A
+      source: operating temperature of the class example
+    material:
+      kind: inas_gaas_sk
+      params: {}
+    structure:
+      kind: micropillar
+      params:
+        d_um:
+          value: 2.5
+          unit: um
+          tag: E
+          source: 'Ding et al., Phys. Rev. Lett. 116, 020401 (2016): 2.5 um pillar, Q ~ 6000 (class value here, not a reproduction)'
+        Q_measured:
+          value: 6000
+          unit: '1'
+          tag: E
+          source: 'Ding et al., Phys. Rev. Lett. 116, 020401 (2016): 2.5 um pillar, Q ~ 6000 (class value here, not a reproduction)'
+        mode_area:
+          value: gaussian
+          unit: enum
+          tag: E
+          source: Gaussian HE11 area, class default (Gerard et al., Phys. Rev. Lett. 81, 1110 (1998))
+    drive:
+      kind: resonant_pulse
+      params:
+        shape:
+          value: gauss
+          unit: ''
+          tag: A
+          source: class example, not a paper reproduction
+        fwhm_ps:
+          value: 3.0
+          unit: ps
+          tag: A
+          source: 3 ps intensity FWHM, typical mode-locked Ti:sapphire class value
+        area_pi:
+          value: 1.0
+          unit: pi
+          tag: A
+          source: 'pi pulse: peak inversion for a two-level dot'
+    setup:
+      kind: lens_fibre_det
+      params:
+        NA:
+          value: 0.7
+          unit: '1'
+          tag: A
+          source: first-lens NA of a class confocal set-up

@@ -32,18 +32,7 @@ const WORKSPACES = [
   { id: "library", label: "Library", icon: "library", load: () => import("./workspaces/library.js") },
 ];
 
-// Rail glyphs for the two workspaces icons.js does not draw (same 24-unit grid, 1.5px stroke).
-const EXTRA_ICONS = {
-  compose: '<rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><path d="M17 13.5v7M13.5 17h7"/>',
-  papers: '<path d="M6.5 3.5h8l4 4v13h-12z"/><path d="M14.5 3.5v4h4"/><path d="M9.5 12h6M9.5 15.5h6"/>',
-};
-function railIcon(name) {
-  if (!EXTRA_ICONS[name]) return icon(name, { size: 22 });
-  const span = document.createElement("span");
-  span.className = "ico";
-  span.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${EXTRA_ICONS[name]}</svg>`;
-  return span;
-}
+const railIcon = (name) => icon(name, { size: 22 });
 
 // Papers is another coder's module (workspaces/papers.js + css/papers.css). Until it ships the
 // route shows the coming-soon plate; once it loads, its stylesheet is attached on demand.

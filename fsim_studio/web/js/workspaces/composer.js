@@ -37,6 +37,7 @@ const READOUTS = [
   { key: "tau_ps", label: "τ", unit: "ps" },
 ];
 const DEFAULT_OBS = ["g2_0", "hom_I", "B_first_lens"];
+const DEFAULT_EXAMPLE = "example-pillar-resonant";
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 let S = null;
@@ -90,7 +91,7 @@ export async function update(args) {
       for (const a of AXES) if (!S.entries[a.key].get(S.spec[a.key].kind)) throw new Error(`paper design: unknown ${a.label} kind "${S.spec[a.key].kind}"`);
     } else {
       S.seed = null;
-      S.spec = await defaultSpec();
+      S.spec = await startSpec();
     }
     if (!S || S.card !== card) return;
     S.run = null; S.series = null; S.edits = 0; S.lastError = null; S.openAxis = null;
@@ -142,6 +143,34 @@ function specWith(axis, kind) {
   const s = clone(S.spec);
   s[axis] = { kind, params: {} };
   return s;
+}
+
+/** Opening with no card or seed: the default example; the first-valid search when it is missing. */
+async function startSpec() {
+  try {
+    S.examples = await S.ctx.api.getJSON("/api/compose/examples");
+  } catch { S.examples = []; }
+  const ex = (S.examples || []).find((e) => e.name === DEFAULT_EXAMPLE);
+  if (ex) {
+    const spec = normaliseSpec(ex.design.composed);
+    if (AXES.every((a) => S.entries[a.key].get(spec[a.key].kind))) { S.exampleName = ex.name; return spec; }
+  }
+  S.exampleName = null;
+  return defaultSpec();
+}
+
+/** Replace the working spec by a design from the examples row or a tier chip, then redraw. */
+async function openDesign(design, name) {
+  const spec = normaliseSpec(design.composed);
+  for (const a of AXES) if (!S.entries[a.key].get(spec[a.key].kind)) { toast(`${name}: unknown ${a.label} kind "${spec[a.key].kind}"`, { kind: "error" }); return; }
+  S.job?.cancel?.();
+  S.spec = spec; S.exampleName = name; S.seed = null;
+  S.run = null; S.series = null; S.edits = 0; S.lastError = null; S.openAxis = null; S.val = null;
+  S.ctx.state.set({ run: null });
+  S.ser.path = null;
+  renderAll();
+  await revalidate();
+  loadScene();
 }
 
 /** First ready entry per axis, then the first combination the validator accepts (greedy per axis). */
@@ -204,6 +233,7 @@ function renderAll() {
   S.charts = {};
   try { S.scene?.dispose?.(); } catch { /* gone */ }
   S.scene = null;
+  S.sceneKey = null;
   S.ro?.disconnect();
   S.dom = {};
   clear(S.el);
@@ -237,14 +267,31 @@ function renderBoard() {
     h("span.engrave", "Tiers"),
     tiers.map((t) => {
       const design = t.handoff === "design" && (t.cards || []).length;
+      const here = t.handoff === "compose";
+      const on = design || here;
       const b = h("button.chip.tier-chip", {
-        type: "button", dataset: { tier: t.id, handoff: t.handoff || "" }, disabled: !design,
+        type: "button", dataset: { tier: t.id, handoff: t.handoff || "" }, disabled: !on,
         title: design ? `${t.summary} Opens ${t.cards[0]} in the Designer.`
-          : `${t.summary} The spec mapping for this tier is not exposed by the API yet, so it cannot open here.`,
-        on: { click: () => { if (design) S.ctx.navigate(`#/design/${t.cards[0]}`); } },
-      }, t.label, design ? icon("chevronRight", { size: 12 }) : null);
+          : here ? `${t.summary} Opens here as a composed spec.`
+          : `${t.summary} This tier has no spec mapping, so it cannot open here.`,
+        on: { click: async () => {
+          if (design) { S.ctx.navigate(`#/design/${t.cards[0]}`); return; }
+          if (!here) return;
+          try {
+            const d = await S.ctx.api.getJSON(`/api/compose/tier/${encodeURIComponent(t.id)}`);
+            await openDesign(d.design, d.design.name);
+          } catch (e) { toast(`Could not open ${t.label}: ${e.message}`, { kind: "error" }); }
+        } },
+      }, t.label, on ? icon("chevronRight", { size: 12 }) : null);
       return b;
     })) : null;
+
+  const exampleStrip = (S.examples || []).length ? h("div.tier-strip.example-strip", { role: "group", "aria-label": "Example devices" },
+    h("span.engrave", "Examples"),
+    S.examples.map((ex) => h("button.chip.tier-chip.example-chip", {
+      type: "button", dataset: { example: ex.name }, "aria-pressed": String(S.exampleName === ex.name),
+      title: ex.summary, on: { click: () => openDesign(ex.design, ex.name) },
+    }, ex.label))) : null;
 
   S.dom.viewport = h("div.viewport-slot", { "aria-label": "Device model", role: "region" });
   const viewportMount = h("div.viewport-mount",
@@ -264,7 +311,7 @@ function renderBoard() {
   const table = h("div.board-table", viewportMount,
     h("div.chain-wrap", h("div.chain-scroll", S.dom.chain), S.dom.beamCap),
     S.dom.temp, S.dom.sheet);
-  return h("section.board", { "aria-label": "Breadboard" }, head, tierStrip, table, S.dom.runbar);
+  return h("section.board", { "aria-label": "Breadboard" }, head, tierStrip, exampleStrip, table, S.dom.runbar);
 }
 
 // ---------------------------------------------------------------- mounts
@@ -757,10 +804,11 @@ function renderStatus() {
   const r = S.run;
   const word = { idle: "Ready", running: "Running", done: "Result on shelf", error: "Run failed", cancelled: "Cancelled" }[S.runState] || S.runState;
   const ico = { idle: "minus", running: "retry", done: "check", error: "warn", cancelled: "stop" }[S.runState] || "minus";
-  clear(S.dom.status).append(
+  // Node.append() stringifies null ("nullnull"): pass only real nodes.
+  clear(S.dom.status).append(...[
     h("span.status-word", { dataset: { state: S.runState } }, icon(ico, { size: 16 }), word),
     r ? h("span.status-mode", r.mode === "tsweep" || (r.T_grid || []).length > 1 ? `T sweep, ${r.T_grid.length} points` : "point run") : null,
-    r?.run_id ? h("span.id-chip.is-static", h("span.id-k", "RUN"), h("span.id-v", r.run_id)) : null);
+    r?.run_id ? h("span.id-chip.is-static", h("span.id-k", "RUN"), h("span.id-v", r.run_id)) : null].filter(Boolean));
 }
 
 // ---------------------------------------------------------------- results -> shelf
@@ -952,6 +1000,10 @@ async function loadScene() {
     flatPlate(slot, scene);
     return;
   }
+  // An identical descriptor (the open-time scene fetch and the post-validate one) must not rebuild the stage.
+  const key = JSON.stringify(scene);
+  if (S.scene && S.sceneKey === key) return;
+  S.sceneKey = key;
   if (S.scene) { try { S.scene.update(scene); return; } catch (e) { console.warn("scene update failed", e); try { S.scene.dispose(); } catch { /* gone */ } S.scene = null; } }
   let mod = null;
   try { mod = await import("../viz3d/index.js"); } catch { mod = null; }

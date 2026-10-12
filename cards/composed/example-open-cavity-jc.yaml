@@ -1,0 +1,67 @@
+# Open cavity, Jaynes-Cummings: InAs/GaAs dot in a tunable open micro-cavity entered by (g, kappa) in the Tomm 2021 class, resonant pulse, Jaynes-Cummings solver. Class example, not a reproduction.
+# Every leaf below carries a provenance tag and a source; unspecified parameters take the registry defaults.
+meta:
+  id: example-open-cavity-jc
+  role: composed-example
+  label: Open cavity, Jaynes-Cummings
+  summary: InAs/GaAs dot in a tunable open micro-cavity entered by (g, kappa) in the Tomm 2021 class, resonant pulse, Jaynes-Cummings solver.
+    Class example, not a reproduction.
+  note: class example built from registry kinds; not a paper reproduction
+design:
+  name: example-open-cavity-jc
+  platform: composed
+  composed:
+    schema: fsim-composed/1
+    solver: jc
+    T_K:
+      value: 4.2
+      unit: K
+      tag: A
+      source: operating temperature of the class example
+    material:
+      kind: inas_gaas_sk
+      params: {}
+    structure:
+      kind: open_cavity
+      params:
+        mode:
+          value: direct
+          unit: enum
+          tag: A
+          source: enter g and kappa directly
+        g_ueV:
+          value: 17.2
+          unit: ueV
+          tag: V
+          source: 'Tomm et al., Nat. Nanotechnol. 16, 399 (2021): g/2pi = 4.16 GHz, kappa/2pi = 23.3 GHz'
+        kappa_ueV:
+          value: 96.4
+          unit: ueV
+          tag: V
+          source: 'Tomm et al., Nat. Nanotechnol. 16, 399 (2021): g/2pi = 4.16 GHz, kappa/2pi = 23.3 GHz'
+    drive:
+      kind: resonant_pulse
+      params:
+        shape:
+          value: gauss
+          unit: ''
+          tag: A
+          source: class example, not a paper reproduction
+        fwhm_ps:
+          value: 10.0
+          unit: ps
+          tag: A
+          source: 10 ps intensity FWHM, class value
+        area_pi:
+          value: 1.0
+          unit: pi
+          tag: A
+          source: pi pulse
+    setup:
+      kind: lens_fibre_det
+      params:
+        NA:
+          value: 0.65
+          unit: '1'
+          tag: A
+          source: class collection NA

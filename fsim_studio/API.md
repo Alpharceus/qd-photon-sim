@@ -608,6 +608,14 @@ run_id}` or 200 `{cached: true, eta_s: 0, result}` on a cache hit (key = spec, p
 hash). Result `{series: {path, unit, x, y: {request: [..]}, tag: {request: tag}, failed: [idx]}, spec_path, n}`.
 Progress over `GET /api/jobs/<id>/events`.
 
+### GET /api/compose/examples
+`[{name, label, summary, kinds: {material, structure, drive, setup}, design: {name, platform: "composed", composed}}]`
+from `cards/composed/*.yaml` (class examples built from registry kinds, not paper reproductions), sorted by file name.
+
+### GET /api/compose/tier/fock
+`{design: {name: "fock-source-4K", platform: "composed", composed}, tier: "fock", note}`: the 4 K Fock source card
+through `fsim_core.compose.tiers.fock_card_to_spec()`. 501 if that function is absent.
+
 ### GET /api/compose/scene?spec=<json>[&display=<json>]  and  POST /api/compose/scene `{spec, display?}`
 `fsim_studio.scene_compose.describe(spec, display)`; 501 while that module is absent.
 

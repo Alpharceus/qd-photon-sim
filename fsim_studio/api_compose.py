@@ -9,6 +9,8 @@ Routes (registered by register(app) from server.create_app):
   POST /api/compose/validate          {spec} -> {ok, solver, regime, issues, resolved, eta_s}
   POST /api/compose/run               {spec, mode: point|tsweep, T_grid?, name?} -> same body as POST /api/run
   POST /api/compose/series            {spec, path, values[], observables[]} -> job (series_job), cached
+  GET  /api/compose/examples          class-example composed designs from cards/composed/*.yaml
+  GET  /api/compose/tier/fock         fsim_core.compose.tiers.fock_card_to_spec() as a composed design
   GET|POST /api/compose/scene         fsim_studio.scene_compose.describe(spec) (501 while the module is absent)
   GET  /api/papers                    catalogue (fsim_core.compose.papers.list_papers)
   GET  /api/papers/<id>               card JSON + resolved device
@@ -35,6 +37,7 @@ MAX_TSWEEP_POINTS = 31
 MAX_OBSERVABLES = 16
 PAPER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,80}$")
 PAPERS_DIR = CARDS / "papers"
+EXAMPLES_DIR = CARDS / "composed"
 SERIES_FN = "fsim_studio.api_compose:series_job"
 REPRODUCE_FN = "fsim_studio.api_compose:reproduce_job"
 CENTRAL_NOTE = "ranged leaves replaced by their declared central value (lin midpoint, log geometric mean); not a prediction"
@@ -242,6 +245,31 @@ def central_design(paper_id: str, device: dict) -> dict:
             "paper": paper_id, "collapsed": collapsed, "note": CENTRAL_NOTE}
 
 
+def list_examples() -> list:
+    """[{name, label, summary, kinds, design}] for every cards/composed/*.yaml (sorted by file name)."""
+    import yaml
+    out = []
+    for path in sorted(EXAMPLES_DIR.glob("*.yaml")):
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        design = doc["design"]
+        meta = doc.get("meta") or {}
+        spec = design["composed"]
+        out.append({"name": design.get("name", path.stem), "label": meta.get("label", path.stem),
+                    "summary": meta.get("summary", ""),
+                    "kinds": {a: spec[a]["kind"] for a in ("material", "structure", "drive", "setup")},
+                    "design": {"name": design.get("name", path.stem), "platform": "composed", "composed": spec}})
+    return out
+
+
+def fock_design() -> dict:
+    """The 4 K Fock source card mapped onto a composed spec (tiers.fock_card_to_spec)."""
+    tiers = _optional("tiers")
+    if tiers is None or not hasattr(tiers, "fock_card_to_spec"):
+        raise ComposeError("fsim_core.compose.tiers.fock_card_to_spec is not available", 501)
+    return {"design": {"name": "fock-source-4K", "platform": "composed", "composed": tiers.fock_card_to_spec()},
+            "tier": "fock", "note": "Fock 4 K resonant source card mapped onto the generic engine"}
+
+
 # ------------------------------------------------------------------ job bodies (run in the pool)
 def series_job(spec, path, values, observables):
     from fsim_core.compose import engine
@@ -409,6 +437,14 @@ def register(app):
         body = _body()
         return _scene(body.get("spec"), body.get("display"))
 
+    @app.get("/api/compose/examples")
+    def compose_examples():
+        return _out(list_examples())
+
+    @app.get("/api/compose/tier/fock")
+    def compose_tier_fock():
+        return _out(fock_design())
+
     # ---------------------------------------------------------------- papers
     @app.get("/api/papers")
     def papers_list():
@@ -449,4 +485,4 @@ def register(app):
 
 
 __all__ = ["register", "ComposeError", "series_job", "reproduce_job", "validate_payload",
-           "registry_payload_cached", "central_design"]
+           "registry_payload_cached", "central_design", "list_examples", "fock_design"]

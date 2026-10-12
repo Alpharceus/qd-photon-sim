@@ -63,7 +63,7 @@ async function waitRun(page, timeout = 120000) {
   if (!BASE) { OWN = await startStudioServer(ROOT, 8793); BASE = OWN.base; }
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -99,7 +99,7 @@ async function waitRun(page, timeout = 120000) {
     check("registry has entries on every axis", AX.every(([, k]) => (reg[k] || []).length > 0), AX.map(([, k]) => `${k}:${(reg[k] || []).length}`).join(" "));
     const plaque0 = await page.$eval(".ws-compose .plaque", (e) => e.dataset.status);
     check("default spec validates (plaque VALID)", plaque0 === "pass", plaque0);
-    check("tier presets row lists the registry tiers", (await page.$$(".tier-chip")).length === (reg.tiers || []).length && (reg.tiers || []).length > 0, `${(reg.tiers || []).length}`);
+    check("tier presets row lists the registry tiers", (await page.$$(".tier-strip:not(.example-strip) .tier-chip")).length === (reg.tiers || []).length && (reg.tiers || []).length > 0, `${(reg.tiers || []).length}`);
 
     // ---------------------------------------------------------------- pickers on every axis
     for (const [axis, regKey] of AX) {
@@ -274,6 +274,55 @@ async function waitRun(page, timeout = 120000) {
     await page.goto(`${BASE}/#/papers`, { waitUntil: "load" });
     await page.waitForTimeout(1500);
     check("#/papers routes to a workspace", !(await page.$(".error-state")) && (await page.$eval("#workspace", (e) => e.textContent.length)) > 50);
+
+    // ---------------------------------------------------------------- examples row, default load, Fock tier (devlib-p11b)
+    const exList = await (await fetch(`${BASE}/api/compose/examples`)).json();
+    const viewportKind = () => page.evaluate(() => {
+      const v = document.querySelector(".ws-compose .viewport-slot");
+      return { canvas: !!v?.querySelector("canvas") && v?.dataset.mode === "webgl", fallback: !!v?.querySelector("[data-mode='fallback2d']") || v?.dataset.mode === "fallback", note: document.querySelector(".ws-compose .vm-note")?.textContent || "" };
+    });
+    const waitScene = () => page.waitForFunction(() => { const v = document.querySelector(".ws-compose .viewport-slot"); return v && (v.querySelector("canvas") || v.querySelector("[data-mode='fallback2d']")); }, null, { timeout: 30000 }).catch(() => {});
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE}/#/design/x`, { waitUntil: "load" });
+    await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+    await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 }).catch(() => {});
+    await waitScene();
+    await settle(page, 1200);
+    const defKinds = await page.$$eval(".ws-compose .kind-chip", (els) => Object.fromEntries(els.map((e) => [e.dataset.axis, e.dataset.kind])));
+    const defEx = exList.find((e) => e.name === "example-pillar-resonant");
+    check("default load is example-pillar-resonant (kinds match the example)", !!defEx && Object.keys(defKinds).every((a) => defKinds[a] === defEx.kinds[a]), JSON.stringify(defKinds));
+    check("default example's chip is pressed in the Examples row", (await page.$eval('.example-chip[data-example="example-pillar-resonant"]', (e) => e.getAttribute("aria-pressed"))) === "true");
+    let vk = await viewportKind();
+    check("default load shows a real 3D builder (canvas, not the fallback plate)", vk.canvas && !vk.fallback, JSON.stringify(vk));
+    check("default example validates (plaque VALID)", (await page.$eval(".ws-compose .plaque", (e) => e.dataset.status)) === "pass");
+    await page.screenshot({ path: path.join(SHOTS, "composer-micropillar.png") });
+    check("Examples row has one chip per example", (await page.$$(".example-chip")).length === exList.length && exList.length >= 6, `${exList.length}`);
+    for (const ex of exList) {
+      await page.click(`.example-chip[data-example="${ex.name}"]`);
+      await page.waitForFunction((n) => document.querySelector(`.example-chip[data-example="${n}"]`)?.getAttribute("aria-pressed") === "true", ex.name, { timeout: 10000 });
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 }).catch(() => {});
+      await waitScene();
+      const kinds = await page.$$eval(".ws-compose .kind-chip", (els) => Object.fromEntries(els.map((e) => [e.dataset.axis, e.dataset.kind])));
+      const st = await page.$eval(".ws-compose .plaque", (e) => e.dataset.status);
+      check(`example chip ${ex.name}: loads its kinds and validates`, Object.keys(ex.kinds).every((a) => kinds[a] === ex.kinds[a]) && st === "pass", `${st}`);
+      if (ex.name === "example-open-cavity-jc") {
+        await settle(page, 1200);
+        vk = await viewportKind();
+        check("open-cavity example shows a 3D builder", vk.canvas && !vk.fallback, JSON.stringify(vk));
+        await page.screenshot({ path: path.join(SHOTS, "composer-open-cavity.png") });
+      }
+    }
+    const fockChip = await page.$('.tier-chip[data-tier="fock"]');
+    check("Fock tier chip is enabled", !!fockChip && !(await fockChip.isDisabled()));
+    if (fockChip) {
+      await fockChip.click();
+      await page.waitForFunction(() => document.querySelectorAll('.example-chip[aria-pressed="true"]').length === 0, null, { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status, null, { timeout: 60000 });
+      const fk = await (await fetch(`${BASE}/api/compose/tier/fock`)).json();
+      const kinds = await page.$$eval(".ws-compose .kind-chip", (els) => Object.fromEntries(els.map((e) => [e.dataset.axis, e.dataset.kind])));
+      check("Fock chip opens the Fock source spec in the Composer", ["drive", "material", "structure", "setup"].every((a) => kinds[a] === fk.design.composed[a].kind), JSON.stringify(kinds));
+    }
 
     // ---------------------------------------------------------------- screenshots (dark + light, desktop + phone)
     for (const theme of ["dark", "light"]) {

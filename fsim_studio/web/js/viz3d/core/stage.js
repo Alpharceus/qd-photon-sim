@@ -43,7 +43,7 @@ export class Stage {
     r.domElement.className = 'v3-canvas';
     wrap.appendChild(r.domElement);
     this.renderer = r;
-    r.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.contextLost?.(); });
+    r.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (!this.disposed) this.contextLost?.(); });
 
     this.css = new CSS2DRenderer();
     this.css.domElement.className = 'v3-css2d';

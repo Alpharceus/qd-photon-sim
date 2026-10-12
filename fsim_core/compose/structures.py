@@ -337,7 +337,7 @@ MICROPILLAR = _Struct(
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="A", source="leaky rate = Gamma0 [A], Somaschi 2016 (beta 0.88 at F_P 7.6) [V]",
            help="Background decay rate in units of Gamma0."),
     ),
-    refs=(_REF_PURCELL, _REF_GERARD, _REF_SOMASCHI), eta_hint=(0.1, 0.8), fn=_micropillar)
+    refs=(_REF_PURCELL, _REF_GERARD, _REF_SOMASCHI), eta_hint=(0.1, 0.8), viz="micropillar", fn=_micropillar)
 
 
 # --------------------------------------------------------------------------
@@ -404,7 +404,7 @@ OPEN_CAVITY = _Struct(
         _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Polarisation factor (mode splitting / dipole alignment)."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background decay rate in units of Gamma0."),
     ),
-    refs=(_REF_TOMM, _REF_PURCELL), eta_hint=(0.2, 0.7), fn=_open_cavity)
+    refs=(_REF_TOMM, _REF_PURCELL), eta_hint=(0.2, 0.7), viz="open_cavity", fn=_open_cavity)
 
 
 # --------------------------------------------------------------------------
@@ -457,7 +457,7 @@ CBG = _Struct(
         _p("leak", "1", 0.0, 0.0, 10.0, help="Extra leaky decay in units of Gamma0 (beta = F_P/(1 + F_P + leak))."),
         _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help="Dot minus mode energy; positive = dot above the mode."),
     ),
-    refs=(_REF_PURCELL,), eta_hint=(0.2, 0.7), fn=_cbg)
+    refs=(_REF_PURCELL,), eta_hint=(0.2, 0.7), viz="bullseye", fn=_cbg)
 
 
 # --------------------------------------------------------------------------
@@ -501,7 +501,7 @@ PHC_CAVITY = _Struct(
         _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background decay rate in units of Gamma0."),
     ),
-    refs=(_REF_PURCELL,), eta_hint=(0.01, 0.2), fn=_phc_cavity)
+    refs=(_REF_PURCELL,), eta_hint=(0.01, 0.2), viz="phc_cavity", fn=_phc_cavity)
 
 
 # --------------------------------------------------------------------------
@@ -548,7 +548,7 @@ PHC_WAVEGUIDE = _Struct(
         _p("F_bg", "1", 1.0, 0.0, 10.0, help="Leaky / background decay rate in units of Gamma0 (< 1 inhibited)."),
         _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Dipole-to-mode polarisation factor cos^2 (folded into F_wg; ignored when beta_direct is used)."),
     ),
-    refs=(_REF_LECAMP,), eta_hint=(0.1, 0.8), fn=_phc_waveguide)
+    refs=(_REF_LECAMP,), eta_hint=(0.1, 0.8), viz="phc_waveguide", fn=_phc_waveguide)
 
 
 # --------------------------------------------------------------------------
@@ -719,7 +719,7 @@ BULK_PLANAR = _Struct(
         _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="planar interference factor 0.5-1.5 [E]", help="Total emission-rate factor (F_bg)."),
     ),
     refs=("[DR] small-cone escape fraction (3/8)(NA/n)^2 T_F (Schweickert et al. planar low-Q class, [V-abs])",),
-    eta_hint=(0.005, 0.1), fn=_bulk_planar)
+    eta_hint=(0.005, 0.1), viz="mesa", fn=_bulk_planar)
 
 
 # --------------------------------------------------------------------------
@@ -747,7 +747,7 @@ SIL_MESA = _Struct(
         _p("eta_table", "", "0.7:0.3", tag="E", source=_VAJNER, help="Collected fraction versus NA, 'NA:eta[, NA:eta ...]'."),
         _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help="Total emission-rate factor (F_bg)."),
     ),
-    refs=(_VAJNER,), eta_hint=(0.1, 0.4), fn=_table_struct)
+    refs=(_VAJNER,), eta_hint=(0.1, 0.4), viz="mesa", fn=_table_struct)
 
 MESA_REFLECTOR = _Struct(
     kind="mesa_reflector", label="Mesa with metal reflector",
@@ -756,7 +756,7 @@ MESA_REFLECTOR = _Struct(
         _p("eta_table", "", "0.7:0.2", tag="E", source=_VAJNER, help="Collected fraction versus NA, 'NA:eta[, NA:eta ...]'."),
         _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help="Total emission-rate factor (F_bg)."),
     ),
-    refs=(_VAJNER,), eta_hint=(0.05, 0.3), fn=_table_struct)
+    refs=(_VAJNER,), eta_hint=(0.05, 0.3), viz="mesa", fn=_table_struct)
 
 
 # --------------------------------------------------------------------------

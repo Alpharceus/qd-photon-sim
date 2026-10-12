@@ -17,6 +17,7 @@
 .tier-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: -4px; }
 .tier-chip { gap: 4px; cursor: pointer; }
 .tier-chip:hover:not(:disabled) { border-color: var(--rim-hi); color: var(--ink-1); }
+.tier-chip[aria-pressed="true"] { border-color: var(--ink-1); color: var(--ink-1); box-shadow: inset 0 -2px 0 var(--ink-1); background: var(--plate-hi); }
 .tier-chip:disabled { border-style: dashed; opacity: 0.6; cursor: not-allowed; }
 
 /* mounts: a div with a kind chip and an open-sheet body */

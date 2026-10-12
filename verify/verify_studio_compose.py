@@ -325,6 +325,43 @@ def run_checks(tmp):
     check("9i reproduce cache key changes when the card file changes",
           api_compose._reproduce_key(pid, pdir / f"{pid}.yaml") != k1)
 
+    # ---------------------------------------------------------------- 10. examples + Fock tier (devlib-p11b)
+    from fsim_core.device import DeviceDesign
+    from fsim_core.compose import tiers as tiers_core
+    edir = api_compose.EXAMPLES_DIR
+    files = sorted(p.stem for p in edir.glob("*.yaml"))
+    ex = j(c.get("/api/compose/examples"))
+    check("10a /api/compose/examples == cards/composed/*.yaml (>= 6 files)",
+          [e["name"] for e in ex] == files and len(files) >= 6, ",".join(files))
+    check("10b every example has label, summary, four kinds and a composed design with schema",
+          all(e["label"] and e["summary"] and set(e["kinds"]) == {"material", "structure", "drive", "setup"}
+              and e["design"]["platform"] == "composed" and e["design"]["composed"]["schema"] == "fsim-composed/1"
+              for e in ex))
+    check("10c every example loads via DeviceDesign.load and validates",
+          all(J(DeviceDesign.load(edir / f"{e['name']}.yaml").composed) == e["design"]["composed"]
+              and validate_spec(e["design"]["composed"])["ok"] is True for e in ex))
+
+    def leaves(node):
+        if isinstance(node, dict):
+            if "tag" in node and "value" in node:
+                yield node
+            else:
+                for v in node.values():
+                    yield from leaves(v)
+    check("10d every example leaf carries a tag and a source; summaries say class example",
+          all(lf.get("source") and lf["tag"] in ("V", "DR", "E", "A")
+              for e in ex for lf in leaves(e["design"]["composed"])) and all("class example" in e["summary"].lower() for e in ex))
+    for e in ex:
+        r = post("/api/compose/run", {"spec": e["design"]["composed"], "mode": "point", "name": e["name"]})
+        snap = wait_job(j(r)["job_id"], timeout=600) if r.status_code in (200, 202) else {"state": f"http {r.status_code}"}
+        check(f"10e example {e['name']} runs (point) to done", snap["state"] == "done", snap["state"])
+    fk = c.get("/api/compose/tier/fock")
+    fj = j(fk)
+    check("10f /api/compose/tier/fock returns a spec validate_spec accepts",
+          fk.status_code == 200 and fj["design"]["platform"] == "composed"
+          and validate_spec(fj["design"]["composed"])["ok"] is True, str(fk.status_code))
+    check("10g that spec == tiers.fock_card_to_spec()", fj["design"]["composed"] == J(tiers_core.fock_card_to_spec()))
+
 
 if __name__ == "__main__":
     sys.exit(main())
