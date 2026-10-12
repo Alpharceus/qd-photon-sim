@@ -488,56 +488,6 @@ def _placeholder(kind, label, summary, reason, params, refs, observables):
 _GAUSS = _P("shape", "", "gauss", choices=("gauss", "rect"), tag="A", source=_SRC_A, sweepable=False,
             help="Pulse envelope.")
 
-PHONON_ASSISTED = _placeholder(
-    "phonon_assisted", "Phonon-assisted excitation",
-    "Blue-detuned strong pulse driving the dot through LA-phonon relaxation.",
-    "needs the polaron / phonon solver (P9) and the time-dependent detuning machinery",
-    (_GAUSS,
-     _P("detuning_meV", "meV", 1.0, lo=0.8, hi=1.3, tag="E", source=_E_BRIEF + " (blue, paper convention)",
-        help=_PAPER_CONV),
-     _P("area_pi", "pi", 10.0, lo=5.0, hi=20.0, tag="E", source=_E_BRIEF, help="Pulse area in units of pi."),
-     _P("fwhm_ps", "ps", 15.0, lo=10.0, hi=20.0, tag="E", source=_E_BRIEF, help="Intensity FWHM."),
-     _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
-        help="Pulse repetition rate.")),
-    (_REF_BRIEF + ": LA-phonon-assisted row (Quilter et al. 2015, Cosacchi et al. 2019 as cited there)",),
-    OBS_COHERENT_PULSED)
-
-SUPER = _placeholder(
-    "super", "SUPER (two-colour red-detuned swing-up)",
-    "Two red-detuned pulses whose frequency difference swings the population up.",
-    "needs the two-colour complex-envelope solver (evolve_td with two quadratures)",
-    (_GAUSS,
-     _P("delta1_meV", "meV", -3.5, lo=-6.0, hi=-1.0, tag="E",
-        source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-        help="Detuning of pulse 1, paper convention Delta = omega_L - omega_X (red = negative)."),
-     _P("delta2_meV", "meV", -7.5, lo=-12.0, hi=-2.0, tag="E",
-        source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-        help="Detuning of pulse 2, paper convention."),
-     _P("fwhm1_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help="Intensity FWHM of pulse 1."),
-     _P("fwhm2_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help="Intensity FWHM of pulse 2."),
-     _P("area1_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Area of pulse 1 in units of pi."),
-     _P("area2_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Area of pulse 2 in units of pi."),
-     _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
-        help="Pulse repetition rate.")),
-    (_REF_BRIEF + ": SUPER row (Bracht et al., PRX Quantum 2, 040354 (2021) as cited there)",),
-    OBS_COHERENT_PULSED)
-
-DICHROMATIC = _placeholder(
-    "dichromatic", "Dichromatic excitation",
-    "Two symmetric spectral components at +/-Delta around the line; phonons give the population.",
-    "needs the polaron / phonon solver (P9) and the two-colour solver",
-    (_GAUSS,
-     _P("delta_meV", "meV", 1.0, lo=0.2, hi=5.0, tag="A", source=_SRC_A,
-        help="Half spacing of the two spectral components."),
-     _P("asymmetry", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_A,
-        help="Intensity asymmetry ratio a of the two components (1 = symmetric)."),
-     _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="A", source=_SRC_A, help="Intensity FWHM."),
-     _P("area_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Pulse area in units of pi."),
-     _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
-        help="Pulse repetition rate.")),
-    (_REF_BRIEF + ": dichromatic row (Koong et al. 2021 as cited there)",),
-    OBS_COHERENT_PULSED)
-
 ARP = _placeholder(
     "arp", "Adiabatic rapid passage (chirped pulse)",
     "Chirped pulse sweeping through the resonance for robust inversion.",
@@ -552,6 +502,13 @@ ARP = _placeholder(
     (_REF_BRIEF + ": chirped-pulse notes",),
     OBS_COHERENT_PULSED)
 
+
+# P9: the phonon-dependent coherent drives live in drives_phonon.py (real entries, status "ready"); they
+# import the helpers above, so this import must stay below them. ARP stays a placeholder (the chirp is
+# supported by polaron.PulseTrain, but the drive is not flipped until its anchors exist).
+from . import drives_phonon as _dp  # noqa: E402
+
+PHONON_ASSISTED, SUPER, DICHROMATIC = _dp.PHONON_ASSISTED, _dp.SUPER, _dp.DICHROMATIC
 
 DRIVES = (RESONANT_PULSE, TPE, CW_RESONANT, ABOVE_BAND, P_SHELL, ELECTRICAL_PULSED, ELECTRICAL_CW,
           PHONON_ASSISTED, SUPER, DICHROMATIC, ARP)

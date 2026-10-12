@@ -83,6 +83,8 @@ def _prepare(entries, values, T_K):
     sr = entries["structure"].response(tr("structure"), em, T_K, setup.NA)
     rt = rates_mod.combine(em, sr, T_K)
     plan = entries["drive"].plan(tr("drive"), em, rt)
+    if "T_K" not in plan.inputs:                  # P9: phonon-aware solvers need the bath temperature
+        plan = replace(plan, inputs={**plan.inputs, "T_K": float(T_K)})
     return em, setup, sr, rt, plan, vals, reads
 
 

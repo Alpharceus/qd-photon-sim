@@ -24,7 +24,8 @@ Conventions (physics brief 2): rates 1/ns; Pulse.detuning_meV holds the REPO det
 omega_X - omega_L (P4 drives.py stores -Delta_paper); pulse fwhm is the INTENSITY FWHM;
 gamma* is the repo value (2 x textbook). Phonons: only Z-factor bookkeeping in
 observables.py (Z^2 on unfiltered HOM, Z on filtered brightness, never both). A plan that needs
-"phonons" is unsupported until a polaron solver registers.
+"phonons" goes to the "polaron" solver (polaron.py, P9, tier P1 dressed-basis rates), registered at the
+bottom of this module.
 """
 from __future__ import annotations
 
@@ -473,12 +474,13 @@ class JCSolver(Solver):
 # ---------------------------------------------------------------- registry + select
 for _s in (RateSolver(), LindbladSolver(), IncoherentLindbladSolver(), JCSolver()):
     register(_s)
+from . import polaron as _polaron  # noqa: E402,F401  (registers the "polaron" solver, P9)
 
 
 def select(plan, em, rt, requested="auto", want_hom=True):
     """-> (solver | None, issues). Explicit solver wins if it supports the plan, else an issue (None).
-    auto: phonon-needing plans go to a registered solver with handles_phonons (none until P9: issue
-    "needs P9 polaron solver"); coherent pulsed resonant plans go to jc when rt.jc_recommended (strong
+    auto: phonon-needing plans go to a registered solver with handles_phonons (polaron; if it cannot run
+    the plan the issues start with "needs P9 polaron solver" and list its reason); coherent pulsed resonant plans go to jc when rt.jc_recommended (strong
     coupling or 4g/kappa > 0.5), else lindblad; incoherent / electrical pulsed plans go to
     lindblad_incoherent (rate when want_hom is False or lindblad_incoherent cannot run, e.g. cap-2);
     cw incoherent to rate."""
@@ -494,9 +496,12 @@ def select(plan, em, rt, requested="auto", want_hom=True):
     if "phonons" in plan.needs:
         for n in names:
             s = _get("solver", n)
-            if getattr(s, "handles_phonons", False) and s.supports(plan, em, rt)[0]:
-                return s, issues
-        return None, ["needs P9 polaron solver (phonon-assisted drives are not implemented)"]
+            if getattr(s, "handles_phonons", False):
+                ok, why = s.supports(plan, em, rt)
+                if ok:
+                    return s, issues
+                issues.append(f"{n}: {why}")
+        return None, ["needs P9 polaron solver (phonon-assisted drive)"] + issues
     if plan.family == "coherent":
         order = ["jc", "lindblad"] if (rt.jc_recommended or rt.regime == "strong") else ["lindblad"]
         if "cascade" in plan.needs or plan.timing != "pulsed":
