@@ -26,13 +26,21 @@ _HASH_MEMO = {"sig": None, "hash": None}
 _SEP = bytes(1)  # a single NUL separator between name and contents
 
 
+def _core_files() -> list:
+    """fsim_core/**/*.py plus fsim_core/compose/data/*.yaml, sorted by relative path."""
+    core = ROOT / "fsim_core"
+    files = list(core.rglob("*.py")) + list((core / "compose" / "data").glob("*.yaml"))
+    return sorted(((p.relative_to(core).as_posix(), p) for p in files), key=lambda t: t[0])
+
+
 def _core_signature() -> tuple:
-    return tuple((p.name, st.st_mtime_ns, st.st_size)
-                 for p in sorted((ROOT / "fsim_core").glob("*.py")) for st in (p.stat(),))
+    return tuple((rel, st.st_mtime_ns, st.st_size)
+                 for rel, p in _core_files() for st in (p.stat(),))
 
 
 def fsim_core_hash() -> str:
-    """sha256 over every fsim_core/*.py source (sorted by name). Part of every
+    """sha256 over every fsim_core/**/*.py source and fsim_core/compose/data/*.yaml
+    (sorted by relative path). Part of every
     cache key, so a physics change invalidates cached results automatically.
     Memoized on the (name, mtime, size) signature of the sources, so an edit
     while the server runs produces the new hash (H14)."""
@@ -41,8 +49,8 @@ def fsim_core_hash() -> str:
         if _HASH_MEMO["sig"] == sig:
             return _HASH_MEMO["hash"]
     h = hashlib.sha256()
-    for p in sorted((ROOT / "fsim_core").glob("*.py")):
-        h.update(p.name.encode("utf-8"))
+    for rel, p in _core_files():
+        h.update(rel.encode("utf-8"))
         h.update(_SEP)
         h.update(p.read_bytes())
         h.update(_SEP)
