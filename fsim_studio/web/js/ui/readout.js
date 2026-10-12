@@ -5,6 +5,7 @@ import { h, clear } from "./dom.js";
 import { tagChip } from "./tagChip.js";
 import { fmt, fmtInterval, isNum } from "./format.js";
 import { popover } from "./controls.js";
+import { displayUnit } from "./units.js";
 
 // ---------------------------------------------------------------- symbols
 // Physics symbols are never engraved: they sit in .sym (text-transform: none) with real notation,
@@ -22,7 +23,10 @@ export function sym(markup) {
   const re = /([_^])(\{[^}]*\}|[A-Za-z0-9]+)|([^_^]+)/g;
   let m;
   while ((m = re.exec(String(markup)))) {
-    if (m[3] !== undefined) out.append(greekize(m[3]));
+    if (m[3] !== undefined) {
+      // a visible middle dot (thin-spaced) so F_P·L never reads as FPL
+      m[3].split("·").forEach((part, i) => { if (i) out.append(h("span.sym-dot", "·")); if (part) out.append(greekize(part)); });
+    }
     else out.append(h(m[1] === "_" ? "sub" : "sup", greekize(m[2].replace(/^\{|\}$/g, ""))));
   }
   return out;
@@ -135,7 +139,7 @@ export function createReadout({ key, label, labelText, onInspect }) {
     } else {
       root.classList.remove("is-nan");
       valueEl.textContent = text;
-      unitEl.textContent = spec.unit || "";
+      unitEl.textContent = displayUnit(spec.unit);
       root.dataset.state = "value";
     }
     if (chip) tagSlot.appendChild(chip);

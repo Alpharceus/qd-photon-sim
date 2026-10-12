@@ -157,7 +157,7 @@ function buildShell() {
       h("div", h("h1.ws-title", "Papers"),
         h("p.ws-sub", "Each card builds a device from only what one paper reports, runs the composed engine, and records per reported number whether the model agrees. A mismatch is a recorded result, never tuned away.")),
       h("div.pp-head-links",
-        h("a.btn.btn-quiet", { href: "#/library", title: "The older literature parameter cards (V-a tiers)" }, icon("library", { size: 16 }), "Literature cards (legacy tiers)"))),
+        h("a.pp-legacy", { href: "#/library", title: "The older literature parameter cards (V-a tiers)" }, "Literature cards (legacy tiers)"))),
     d.grid));
 }
 
@@ -573,8 +573,8 @@ function row(r) {
   const conv = it?.convention || rep?.convention || ser?.y?.convention || r.ledger?.convention || "intrinsic";
   return h("tr", { dataset: { item: r.id, cls: r.cls, outcome: it?.outcome || "", state: it ? "run" : "ledger" } },
     h("th.pp-item", { scope: "row" },
-      h("span.pp-item-id", r.id),
       h("span.pp-item-obs", obsNode(obs, conv)),
+      h("span.pp-item-id", r.id),
       h("span.pp-item-meta", classBadge(r.cls), h("span.pp-item-kind", r.cls === "P" ? "prediction" : ser ? "series" : "scalar"))),
     paperCell(r), modelCell(r), tolCell(r),
     outcomeCell(r), inputsCell(r));

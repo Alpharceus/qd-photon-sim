@@ -88,7 +88,7 @@ async function getJSON(url) {
     const listWords = await page.$$eval(".pp-plaque .pp-last", (els) => els.map((e) => e.textContent));
     check("no list badge says 'LEDGER MATCH' (ledger agreement is not model-equals-paper)", !listWords.some((t) => /LEDGER MATCH/i.test(t)), listWords.slice(0, 4).join(" | "));
     check("the Designer's card selector is hidden on #/papers", await page.$eval(".ctx-card", (e) => e.hidden && getComputedStyle(e).display === "none"));
-    check("'Literature cards (legacy tiers)' is a quiet link in the Papers header", (await page.locator("#workspace .pp-head a.btn-quiet").count()) === 1);
+    check("'Literature cards (legacy tiers)' is a quiet link in the Papers header", (await page.locator("#workspace .pp-head a.pp-legacy").count()) === 1 && (await page.locator("#workspace .pp-head a.btn").count()) === 0);
 
     // filter chips narrow the catalogue
     const chip = page.locator("#workspace .pp-filter").first();
@@ -199,6 +199,22 @@ async function getJSON(url) {
       const corners = await page.evaluate(() => [...document.querySelectorAll("#workspace .pp-plaque, #workspace .panel, #workspace .run-key, #workspace .btn")].every((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 2.01));
       check("2 px corners", corners);
 
+      // finish round 2: item cell, header link, axis labels, units
+      const cell = await page.$eval(".pp-table tbody tr th.pp-item", (th) => {
+        const o = th.querySelector(".pp-item-obs"), i = th.querySelector(".pp-item-id");
+        const co = getComputedStyle(o), ci = getComputedStyle(i);
+        return { oFirst: th.firstElementChild === o, oW: parseInt(co.fontWeight, 10), iMono: /mono|consolas/i.test(ci.fontFamily), iSize: parseFloat(ci.fontSize), oSize: parseFloat(co.fontSize), id: i.textContent, label: o.textContent };
+      });
+      check("item cell: human label is the bold heading, the id is a small muted monospace line", cell.oFirst && cell.oW >= 600 && cell.iMono && cell.iSize < cell.oSize && cell.label.trim() && cell.label.trim() !== cell.id, JSON.stringify(cell));
+      const leg = await page.$eval(".pp-head-links a", (a) => ({ cls: a.className, text: a.textContent }));
+      check("header: 'Literature cards (legacy tiers)' is a quiet link, not a button", leg.text === "Literature cards (legacy tiers)" && !/btn/.test(leg.cls), JSON.stringify(leg));
+      if (hasSeries) {
+        const ax = await page.evaluate(() => [...document.querySelectorAll(".pp-ov .js-plotly-plot")].map((g) => ({ x: g._fullLayout?.xaxis?.title?.text || "", y: g._fullLayout?.yaxis?.title?.text || "" })));
+        check("series charts: axis labels are human words with units, never raw ids", ax.length > 0 && ax.every((a) => a.x && a.y && !/[a-z0-9]_[A-Za-z0-9]/.test(a.x + a.y) && /\(.+\)/.test(a.x)), JSON.stringify(ax));
+      }
+      const txt = await page.evaluate(() => document.querySelector("#workspace").innerText);
+      check("units: no 'ueV' or ' um' in the Papers text", !/ueV|\d\s?um/.test(txt));
+
       // screenshots: dark/light x desktop/phone
       const setTheme = async (mode) => {
         const cur = await page.evaluate(() => document.documentElement.dataset.theme);
@@ -224,7 +240,7 @@ async function getJSON(url) {
             const cs = getComputedStyle(document.querySelector(".pp-cat"));
             return { open: fold.open, mainTop: main.top, catTop: cat.top, sumShown: sum.offsetParent !== null, sumText: sum.textContent, maxH: cs.maxHeight, ov: cs.overflowY };
           });
-          check("phone: the chosen paper comes first and the catalogue is folded behind 'Papers (n)'", !ph.open && ph.mainTop < ph.catTop && ph.sumShown && /Papers \(\d+\)/.test(ph.sumText.replace(/\s+/g, " ")), JSON.stringify(ph));
+          check("phone: 'Papers (n)' summary sits above the chosen paper, closed; the detail is first content below it", !ph.open && ph.catTop < ph.mainTop && ph.sumShown && /Papers \(\d+\)/.test(ph.sumText.replace(/\s+/g, " ")), JSON.stringify(ph));
           check("phone: the catalogue has no nested scroll area", ph.maxH === "none" && ph.ov !== "auto" && ph.ov !== "scroll", `${ph.maxH}/${ph.ov}`);
           const stacked = await page.$eval(".pp-table tbody tr", (tr) => getComputedStyle(tr).display);
           check("phone: the model-vs-paper table is one card per item", stacked === "block", stacked);

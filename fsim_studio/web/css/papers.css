@@ -3,7 +3,9 @@
 
 .ws-papers { overflow: auto; }
 .papers { padding: 18px 22px 26px; display: flex; flex-direction: column; gap: 14px; min-height: 100%; }
-.pp-head-links { display: flex; gap: 8px; flex-wrap: wrap; }
+.pp-head-links { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+.pp-legacy { font-size: var(--fs-cap); color: var(--muted); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--rim-hi); padding: 4px 0; }
+.pp-legacy:hover { color: var(--ink-1); }
 .pp-grid { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; }
 
 /* ---------------------------------------------------------------- catalogue */
@@ -102,8 +104,8 @@
 .pp-table th, .pp-table td { vertical-align: top; }
 .pp-table thead th { text-transform: none; letter-spacing: 0.01em; }
 .pp-item { font-weight: 600; min-width: 150px; max-width: 220px; }
-.pp-item-id { display: block; overflow-wrap: anywhere; font-family: var(--font-label); letter-spacing: 0.03em; }
-.pp-item-obs { display: block; font-weight: 400; font-size: 12.5px; color: var(--ink-2); margin-top: 1px; }
+.pp-item-obs { display: block; font-weight: 600; font-size: calc(14px * var(--k)); color: var(--ink-1); line-height: 1.3; }
+.pp-item-id { display: block; overflow-wrap: anywhere; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-weight: 400; font-size: 11px; letter-spacing: 0; color: var(--muted); margin-top: 2px; }
 .pp-obsl .sym { white-space: normal; font-size: 1.05em; }
 .pp-item-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
 .pp-item-kind { font-weight: 400; font-size: 11.5px; color: var(--muted); }
@@ -166,8 +168,7 @@
 /* ---------------------------------------------------------------- narrow */
 @media (max-width: 1100px) {
   .pp-grid { grid-template-columns: minmax(0, 1fr); }
-  /* the chosen paper first; the catalogue folds behind "Papers (n)" and never scrolls inside the page */
-  .pp-grid[data-sel="1"] .pp-main { order: -1; }
+  /* the "Papers (n)" summary leads, closed once a paper is chosen; the chosen paper is the first content below it */
   .pp-cat { position: static; max-height: none; overflow: visible; padding: 0; }
   .pp-cat-fold { border: 1px solid var(--rim); border-radius: var(--radius); background: var(--surface); }
   .pp-cat-sum { display: flex; align-items: center; gap: 8px; padding: 10px 12px; cursor: pointer; list-style: none; min-height: 44px; }

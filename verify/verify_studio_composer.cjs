@@ -421,6 +421,8 @@ async function waitRun(page, timeout = 120000) {
     await page.click(`.ws-compose .kind-chip[data-axis="structure"]`);
     await page.waitForSelector(".cp-entry");
     await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 60000 });
+    const greyed = await page.$$eval(".cp-entry[data-compat='no']", (els) => els.map((e) => { const b = e.querySelector(".cp-badge"); const w = e.querySelector(".cp-why"); return { badge: b ? getComputedStyle(b).display !== "none" && !b.hidden : false, why: !!w && !w.hidden && w.textContent.trim().length > 0 }; }));
+    check("chip picker: greyed 'doesn't fit' entries show only the reason (no READY badge)", greyed.length > 0 && greyed.every((g) => !g.badge && g.why), JSON.stringify(greyed));
     await page.screenshot({ path: path.join(SHOTS, "finish-composer-chip-picker.png") });
     await page.keyboard.press("Escape");
     await page.waitForSelector(".cp-entry", { state: "detached", timeout: 5000 });
@@ -450,6 +452,15 @@ async function waitRun(page, timeout = 120000) {
     await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "fail", null, { timeout: 8000 });
     const badPl = await page.$eval(".ws-compose .plaque", (e) => ({ line: e.classList.contains("plaque-line"), t: e.textContent, run: document.querySelector(".ws-compose .run-key").disabled }));
     check("an invalid chain: INVALID status line lists the reasons and RUN is disabled", badPl.line && /INVALID/.test(badPl.t) && /cutoff/.test(badPl.t) && badPl.run, badPl.t.slice(0, 60));
+    const plaqueGrid = () => page.$eval(".ws-compose .plaque", (pl) => {
+      const r = (sel) => pl.querySelector(sel)?.getBoundingClientRect();
+      const box = pl.getBoundingClientRect(), word = r(".plaque-word span"), den = r(".plaque-denom .v"), reg = r(".plaque-reasons .plaque-kv");
+      const ta = (sel) => getComputedStyle(pl.querySelector(sel)).textAlign;
+      return { wordL: Math.round(word.left - box.left), solverR: Math.round(box.right - den.right), regL: Math.round(reg.left - box.left), wordTA: ta(".plaque-word"), regTA: ta(".plaque-reasons"), denomTA: ta(".plaque-denom"), w: Math.round(box.width) };
+    });
+    const gridOk = (g) => g.wordL < 48 && g.solverR <= 16 && g.regL <= 16 && g.wordTA !== "center" && g.regTA !== "center";
+    const gInv = await plaqueGrid();
+    check("INVALID status line: word left, solver right on the plaque grid, regime left-aligned", gridOk(gInv), JSON.stringify(gInv));
     await settle(page, 400);
     await page.screenshot({ path: path.join(SHOTS, "finish-composer-invalid-chain.png") });
     await page.unroute("**/api/compose/validate");
@@ -466,6 +477,27 @@ async function waitRun(page, timeout = 120000) {
         await page.click(".ws-compose .run-key").catch(() => {});
         await waitRun(page).catch(() => {});
         await settle(page, 1200);
+        if (theme === "dark" && w === 1440) {
+          const gRes = await plaqueGrid();
+          check("result plaque: word left, solver right, regime/estimate left-aligned (same grid as the status line)", gridOk(gRes) && Math.abs(gRes.solverR - gInv.solverR) <= 4 && Math.abs(gRes.regL - gInv.regL) <= 4, JSON.stringify(gRes));
+          const un = await page.evaluate(() => ({
+            sheet: [...document.querySelectorAll(".ws-compose .mv-u, .ws-compose .ro-unit")].map((e) => e.textContent),
+            dot: !!document.querySelector('.ws-compose .ro-label .sym-dot, .ws-compose [data-readout="F_P_eff"] .sym-dot'),
+            fp: document.querySelector('.ws-compose [data-readout="F_P_eff"] .ro-label')?.textContent || "",
+            notes: [...document.querySelectorAll(".ws-compose .plaque .pi-t")].map((e) => e.textContent).join(" "),
+          }));
+          check("units: ueV -> µeV, no 'ueV'/'um' and no bare '1' unit in mounts or readouts", un.sheet.every((t) => !/^(ueV|um|um2|1)$/.test(t)) && un.sheet.some((t) => /µ/.test(t)), JSON.stringify(un.sheet));
+          const v3u = await page.$$eval(".ws-compose .v3-readout-unit", (els) => els.map((e) => e.textContent));
+          check("3D readouts: units are µm / µeV, no bare '1' unit", v3u.every((t) => !/^(ueV|um|um2|1)$/.test(t)), JSON.stringify(v3u));
+          check("notation: F_P·L shows a visible middle dot", un.dot && /F.P.·.L|F.?P.?·.?L/.test(un.fp.replace(/\s/g, "")), un.fp);
+          check("notation: phonon note reads Z² and ×Z (no 'Z^2', no ' x Z')", !/Z\^2| x Z/.test(un.notes) && (!un.notes || /Z²/.test(un.notes)), un.notes.slice(0, 120));
+          await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true, timeout: 5000 }).catch((e) => console.log("click err", e.message.slice(0, 200)));
+          await page.waitForSelector(".ws-compose .sheet .field-row", { timeout: 5000 }).catch(() => {});
+          const su = await page.$$eval(".ws-compose .sheet .fr-unit, .ws-compose .sheet .pf-item .fr-body span:last-child", (els) => els.map((e) => e.textContent));
+          check("units: the open sheet shows µeV / µm, never ueV or um", su.some((t) => t === "µeV") && su.every((t) => !/^(ueV|um|um2|1)$/.test(t)), JSON.stringify(su));
+          await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true }).catch(() => {});
+          await settle(page, 300);
+        }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         if (w === 390) {
           check(`phone width ${theme}: no horizontal page overflow`, overflow <= 1, `${overflow}px`);
@@ -475,6 +507,14 @@ async function waitRun(page, timeout = 120000) {
             check("phone: the chain is a 2 x 2 grid of mounts (no clipped scroller)", new Set(grid.map((g) => g[0])).size === 2 && new Set(grid.map((g) => g[1])).size === 2, JSON.stringify(grid));
             const beamD = await page.$eval(".ws-compose .beam", (e) => e.getAttribute("d"));
             check("phone: the beam is routed through both rows", (beamD.match(/L/g) || []).length >= 5, beamD);
+            const hd = await page.evaluate(() => {
+              const li = document.querySelectorAll(".board-steps li")[1];
+              const bef = li ? getComputedStyle(li, "::before") : null;
+              const a = document.querySelector(".start-row .start-btn:not([data-menu='tiers'])")?.getBoundingClientRect();
+              const t = document.querySelector(".start-row #start-tiers, .start-row [data-menu='tiers'], .start-row .start-btn:last-child")?.getBoundingClientRect();
+              return { dash: bef ? bef.display : "n/a", sameRow: !!(a && t) && Math.abs(a.top - t.top) < 6 };
+            });
+            check("phone header: step dashes hidden, Tiers menu on the 'Start from:' row", hd.dash === "none" && hd.sameRow, JSON.stringify(hd));
             const navLabels = await page.$$eval(".rail-label", (els) => els.filter((e) => e.offsetParent !== null && getComputedStyle(e).display !== "none").map((e) => e.textContent));
             check("phone: the bottom nav shows icons and only the active label", navLabels.length === 1 && /composer/i.test(navLabels[0]), navLabels.join(","));
             const navBoxes = await page.$$eval(".rail-item", (els) => els.map((e) => e.getBoundingClientRect()).map((r) => [r.left, r.right]));

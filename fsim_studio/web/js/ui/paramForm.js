@@ -12,6 +12,7 @@ import { fieldRow } from "./fieldRow.js";
 import { tagChip, normTag } from "./tagChip.js";
 import { isNum } from "./format.js";
 import { paramLabelNode } from "./readout.js";
+import { displayUnit } from "./units.js";
 
 const TAGS = ["V", "DR", "E", "A"];
 const EDIT_SOURCE = "set in the Composer (user value)";
@@ -59,7 +60,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     const leaf = readLeaf(p, params[p.name]);
     const path = `${axis}.${p.name}`;
     const band = isNum(p.lo) && isNum(p.hi) ? [p.lo, p.hi] : null;
-    const meta = { label: p.name, unit: p.unit, tag: leaf.tag, source: leaf.source || p.source, band, choices: p.choices || undefined };
+    const meta = { label: p.name, unit: displayUnit(p.unit), tag: leaf.tag, source: leaf.source || p.source, band, choices: p.choices || undefined };
     const shown = leaf.kind === "range" ? (isNum(p.default) ? p.default : leaf.range[0]) : leaf.value;
     const item = h("div.pf-item", { class: leaf.explicit ? "is-edited" : "", dataset: { param: p.name, tag: leaf.tag } });
 

@@ -89,6 +89,8 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
       btn.dataset.compat = res.ok ? "yes" : "no";
       if (!res.ok && e.kind !== current) {
         btn.setAttribute("aria-disabled", "true");
+        const badge = btn.querySelector(".cp-badge");
+        if (badge) badge.hidden = true;   // a greyed entry shows only its reason, never a READY badge
         const why = btn.querySelector(".cp-why");
         why.hidden = false;
         why.replaceChildren(icon("warn", { size: 13 }), document.createTextNode(` ${tidyReason(res.reason)}`));

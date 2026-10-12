@@ -6,8 +6,29 @@ import { h } from "../ui/dom.js";
 import { chartCard } from "./chartCard.js";
 import { baseLayout, colors as themeColors } from "./theme.js";
 import { normTag, tagDash, tagWidth, widest } from "../ui/tagChip.js";
-import { isNum, unitText } from "../ui/format.js";
+import { isNum } from "../ui/format.js";
+import { displayUnit, displayNotation } from "../ui/units.js";
 
+// Human axis labels (with units) for the ids the ledgers use; anything else falls back to words, never the raw id.
+const OBS_AXIS = {
+  g2_0: "g²(0)", g2_XX: "g²(0) of the XX line", hom_I: "HOM overlap I", hom_V: "HOM visibility V",
+  rate_detected_Hz: "Detected rate (counts/s)", tau_ps: "Lifetime τ (ps)", tau_XX_ps: "XX lifetime τ (ps)",
+  linewidth_ueV: "Emitter linewidth (µeV)", Gamma_ns: "Radiative rate Γ (ns⁻¹)", F_P_eff: "Effective Purcell factor F_P·L",
+  B_fibre: "Brightness into the fibre", B_first_lens: "First-lens brightness",
+};
+const X_AXIS = { T_K: "Temperature (K)", "drive.f_rep_MHz": "Repetition rate (MHz)", "drive.fwhm_ps": "Pulse duration (ps)" };
+export function yAxisLabel(y) {
+  const base = OBS_AXIS[y?.observable] || String(y?.observable || "y").replace(/_/g, " ");
+  const c = y?.convention && y.convention !== "intrinsic" ? `${y.convention} ` : "";
+  return displayNotation(c + base);
+}
+export function xAxisLabel(x) {
+  const path = x?.path || "x";
+  if (X_AXIS[path]) return X_AXIS[path];
+  const leaf = path.split(".").pop().replace(/_/g, " ");
+  const u = x?.unit ? displayUnit(x.unit) : "";
+  return u ? `${leaf} (${u})` : leaf;
+}
 const reqName = (y) => (y?.convention ? `${y.observable}:${y.convention}` : y?.observable || "y");
 
 /**
@@ -92,11 +113,10 @@ function build(series, model) {
   }
   const ys = data.flatMap((d) => d.y).filter((v) => isNum(v));
   const logY = ys.length > 1 && ys.every((v) => v > 0) && Math.max(...ys) / Math.min(...ys) > 100;
-  const xu = series.x?.unit ? ` (${unitText(series.x.unit)})` : "";
   const layout = baseLayout({
     hovermode: "closest", margin: { l: 62, r: 18, t: 30, b: 48 },
-    xaxis: { ...baseLayout().xaxis, showspikes: false, title: { text: `${series.x?.path || "x"}${xu}`, standoff: 6 } },
-    yaxis: { ...baseLayout().yaxis, type: logY ? "log" : "linear", title: { text: reqName(series.y), standoff: 6 } },
+    xaxis: { ...baseLayout().xaxis, showspikes: false, title: { text: xAxisLabel(series.x), standoff: 6 } },
+    yaxis: { ...baseLayout().yaxis, type: logY ? "log" : "linear", title: { text: yAxisLabel(series.y), standoff: 6 } },
   });
   return { data, layout };
 }
@@ -110,8 +130,8 @@ function table(series, model) {
   return {
     caption: `${series.id}: ${rows.length} paper points${model ? " and the model at the same x" : ""}`,
     columns: [
-      { key: "x", label: series.x?.path || "x" },
-      { key: "paper", label: `paper ${reqName(series.y)}` },
+      { key: "x", label: xAxisLabel(series.x) },
+      { key: "paper", label: `paper ${yAxisLabel(series.y)}` },
       { key: "err", label: "± err" },
       ...(model ? [{ key: "model", label: "model" }] : []),
     ],

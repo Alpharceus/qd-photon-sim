@@ -134,6 +134,7 @@
 
 /* shelf extras */
 .sym { text-transform: none; letter-spacing: 0; font-family: var(--font-num); font-style: normal; font-weight: inherit; white-space: nowrap; }
+.sym-dot { margin: 0 0.18em; }
 .sym sub, .sym sup { font-size: 0.75em; line-height: 0; letter-spacing: 0; }
 .ro-cap-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .ro-cap-row .ro-caption { flex: 1; min-width: 0; }
@@ -143,12 +144,22 @@
 .shelf-hint[hidden] { display: none; }
 /* validity before a run is a status line; the filled plaque is for results */
 .plaque.plaque-line { background: transparent; }
-.plaque-line .plaque-top { align-items: center; padding: 8px 12px 0; }
+/* One grid for the status line and the result plaque: word left, solver right; regime / estimate and issues left. */
+/* .plaque-line is also the Designer's flex row (app.css); in the Composer it is only the outlined status line */
+.ws-compose .plaque.plaque-line { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 8px; font-size: inherit; color: inherit; padding-bottom: 10px; }
+.ws-compose .plaque { text-align: left; }
+.ws-compose .plaque-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
+.ws-compose .plaque-top .plaque-word { justify-self: start; text-align: left; }
+.ws-compose .plaque-top .plaque-denom { justify-self: end; align-items: flex-end; text-align: right; }
+.ws-compose .plaque-reasons, .ws-compose .plaque-source { justify-content: flex-start; text-align: left; }
+.ws-compose .plaque-issues li { justify-content: flex-start; text-align: left; }
+.plaque-line .plaque-top { align-items: center; padding: 8px 0 0; }
+.plaque-line .plaque-word { padding-left: 12px !important; }
+.plaque-line .plaque-denom { padding-right: 12px; }
 .plaque-line.plaque-pass .plaque-word:not(.split), .plaque-line.plaque-fail .plaque-word:not(.split), .plaque-line.plaque-none .plaque-word { background: none; color: var(--ink-1); padding: 0; font-size: calc(14px * var(--k)); letter-spacing: 0.12em; }
 .plaque-line.plaque-pass .plaque-word .ico { color: var(--status-pass); }
 .plaque-line.plaque-fail .plaque-word .ico { color: var(--status-fail); }
 .plaque-line.plaque-fail { border: 2px solid var(--status-fail); }
-.plaque-line .plaque-denom { padding: 0; }
 .plaque-line .plaque-denom .v { font-size: calc(16px * var(--k)); }
 .plaque-issues { list-style: none; margin: 0; padding: 0 12px; display: grid; gap: 4px; }
 .plaque-issues li { display: flex; gap: 6px; align-items: baseline; font-size: var(--fs-cap); color: var(--ink-1); }
@@ -182,10 +193,18 @@
   .ws-compose .chain-wrap { margin: 0; padding: 0; min-width: 0; }
   .ws-compose .mount { min-height: 150px; }
   .start-row { gap: 6px; }
-  .board-steps li + li::before { width: 8px; margin: 0 5px; }
+  /* phone header: no step dashes, the steps wrap as a plain list; the Tiers menu stays on the "Start from:" row */
+  .board-steps li + li::before { display: none; }
+  .board-steps { gap: 2px 14px; }
+  .start-row { flex-wrap: nowrap; }
+  .start-btn { min-width: 0; flex: 1 1 auto; }
+  .start-row .start-k, .start-row .start-tiers { flex: none; }
   .temp-plate { grid-template-columns: 1fr auto; }
   .temp-plate .hs-control { grid-column: 1 / -1; grid-row: 2; }
   .temp-plate .hs-keys { grid-column: 1 / -1; }
   .pf-grid { grid-template-columns: minmax(0, 1fr); }
   .rb-in { width: 76px; }
 }
+
+.cp-entry[data-compat="no"] .cp-badge { display: none; }
+.cp-entry[data-compat="no"] .cp-top { justify-content: flex-start; }

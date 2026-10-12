@@ -8,7 +8,8 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest, tagDash, tagWidth } from "../ui/tagChip.js";
 import { createReadout, sym, paramName, paramLabelNode } from "../ui/readout.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
-import { fmt, fmtSeconds, isNum, unitText } from "../ui/format.js";
+import { fmt, fmtSeconds, isNum } from "../ui/format.js";
+import { displayUnit, displayNotation } from "../ui/units.js";
 import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors } from "../charts/theme.js";
 import { renderParamForm, readLeaf } from "../ui/paramForm.js";
@@ -350,7 +351,7 @@ function openStartMenu(anchor, kind) {
 // ---------------------------------------------------------------- mounts
 function leafText(p, raw) {
   const l = readLeaf(p, raw);
-  const u = unitText(p.unit === "enum" ? "" : p.unit);
+  const u = displayUnit(p.unit === "enum" ? "" : p.unit);
   if (l.kind === "range") return { text: `[${fmt(l.range[0])}, ${fmt(l.range[1])}]`, unit: u, tag: l.tag, ranged: true };
   const v = l.value;
   return { text: typeof v === "number" ? fmt(v) : typeof v === "boolean" ? (v ? "on" : "off") : String(v), unit: u, tag: l.tag, ranged: false };
@@ -609,7 +610,7 @@ function sweepPaths() {
     for (const p of entry(a.key).params) {
       const path = `${a.key}.${p.name}`;
       const r = resolved[path];
-      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${paramName(p.name, p.unit).text}${p.unit && p.unit !== "enum" && unitText(p.unit) ? ` (${unitText(p.unit)})` : ""}` });
+      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${paramName(p.name, p.unit).text}${p.unit && p.unit !== "enum" && displayUnit(p.unit) ? ` (${displayUnit(p.unit)})` : ""}` });
     }
   }
   return out;
@@ -852,8 +853,8 @@ function renderPlaque() {
     h("div.plaque-reasons",
       h("span.plaque-kv", h("span.k", "regime"), h("span.v", regime || "known after a run")),
       isNum(v.eta_s) ? h("span.plaque-kv", h("span.k", "estimate"), h("span.v", fmtSeconds(v.eta_s))) : null),
-    reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", r.t)))) : null,
-    notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", n)))) : null,
+    reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", displayNotation(r.t))))) : null,
+    notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", displayNotation(n))))) : null,
     h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
 }
 
@@ -982,7 +983,7 @@ function labelOf(req) {
   const o = (S.reg.observables || []).find((x) => x.id === id);
   return `${o?.label || id}${conv ? ` (${conv})` : ""}`;
 }
-function unitOfReq(req) { return unitText((S.reg.observables || []).find((x) => x.id === String(req).split(":")[0])?.unit); }
+function unitOfReq(req) { return displayUnit((S.reg.observables || []).find((x) => x.id === String(req).split(":")[0])?.unit); }
 
 function buildSeries() {
   const sr = S?.series?.series;
@@ -993,7 +994,7 @@ function buildSeries() {
   if (!rows.length) return withheld.length ? { data: [], layout: {}, withheld: withheld.map(labelOf) } : null;
   const log = S.ser.log && S.series.spec_path === S.ser.path;
   const p = sr.path || S.series.spec_path;
-  const out = stacked(rows, { xTitle: `${p}${sr.unit ? ` (${unitText(sr.unit)})` : ""}`, xLog: log });
+  const out = stacked(rows, { xTitle: `${p}${sr.unit ? ` (${displayUnit(sr.unit)})` : ""}`, xLog: log });
   out.withheld = withheld.map(labelOf);
   S.charts.series.el.style.setProperty("--chart-h", `${Math.max(240, 118 * rows.length + 60)}px`);
   S.charts.series.setTitle("Series", `${p} · ${sr.x.length} points${sr.failed?.length ? ` · ${sr.failed.length} failed (gaps)` : ""} · other inputs at their central values`);

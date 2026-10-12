@@ -18,7 +18,7 @@ import { Labels } from './core/labels.js';
 
 // ---- readout labels: the scene sends code names ("F P", "lambda nm", "V lambda3"); the plate shows notation.
 const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', rho: 'ρ', sigma: 'σ', tau: 'τ', chi: 'χ', phi: 'φ', omega: 'ω', pi: 'π' };
-const UNIT_TEXT = { um: 'µm', um2: 'µm²', ueV: 'µeV', 'um^2': 'µm²' };
+import { displayUnit } from '../ui/units.js';
 const unitKey = (u) => String(u || '').toLowerCase().replace(/µ/g, 'u').replace(/[^a-z0-9]/g, '');
 function symNode(parts) {
   const out = document.createElement('span');
@@ -56,7 +56,7 @@ function symbolizeReadouts(root) {
       const words = lab.textContent.split(' ');
       if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) lab.textContent = words.slice(0, -1).join(' ');
     }
-    if (unitEl && UNIT_TEXT[unit]) unitEl.textContent = UNIT_TEXT[unit];
+    if (unitEl) unitEl.textContent = displayUnit(unit);
   }
 }
 import { axesBadges } from './core/scale.js';
