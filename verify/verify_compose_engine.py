@@ -342,6 +342,72 @@ def main():
     except Exception as e:                                                  # noqa: BLE001
         check("12. real registry integration", False, f"{type(e).__name__}: {e}")
 
+    # 13. devlib-fx2a observables
+    drp76 = {"shape": "rect", "fwhm_ps": 0.1, "f_rep_MHz": 76.0}
+    S_full = engine.evaluate_spec(spec(drp=drp76))["scalars"]["rate_detected_Hz"]
+    su_lo = {"eta_optics": 0.5 * 2750.0 / S_full}                    # Muller-like detected rate S = 2750/s (S is linear in eta_optics)
+    base_d = engine.evaluate_spec(spec(drp=drp76, su=su_lo))["scalars"]
+    S_det = base_d["rate_detected_Hz"]
+    for win, tag_ in ((2.0, "a"), (0.5, "b")):
+        dk = engine.evaluate_spec(spec(drp=drp76, su={**su_lo, "dark_cps": 250.0, "coinc_window_ns": win}))["scalars"]
+        B_h = 250.0 * win * 1e-9 * 76e6                                   # hand: dark per second inside the window
+        rho_h = S_det / (S_det + B_h)
+        g_h = 1.0 - rho_h ** 2 * (1.0 - base_d["g2_0"])
+        check(f"13{tag_}. pulsed g2_raw: darks only inside the {win} ns window (hand formula)",
+              near(dk["g2_raw"], g_h, rel=1e-9) and dk["g2_raw"] - base_d["g2_0"] > 1e-3,
+              f"S={S_det:.0f}/s raw {dk['g2_raw']:.6f} vs hand {g_h:.6f}")
+    z0 = engine.evaluate_spec(spec(drp=drp76, su={**su_lo, "coinc_window_ns": 5.0}))["scalars"]
+    check("13c. zero dark counts: pulsed g2_raw equals the intrinsic g2 whatever the window",
+          z0["g2_raw"] == z0["g2_0"])
+    hi = engine.evaluate_spec(spec(drp=drp76, su={**su_lo, "dark_cps": 250.0, "coinc_window_ns": 1.0e6}))["scalars"]     # window > period -> capped at the period
+    rho_c = S_det / (S_det + 250.0)
+    check("13d. window longer than the pulse period is capped at the period (full dark rate)",
+          near(hi["g2_raw"], 1.0 - rho_c ** 2 * (1.0 - base_d["g2_0"]), rel=1e-9))
+    # Muller-like numbers through the helper: S 2750/s, dark 250/s, 2 ns, 76 MHz
+    Sm, Bm = 2750.0, OB.pulsed_dark_rate(250.0, 2.0, 76e6)
+    inc_win = OB.g2_with_background(0.0, Sm, Bm)
+    inc_old = OB.g2_with_background(0.0, Sm, 250.0)
+    check("13e. Muller-like (S 2750/s, dark 250/s, 76 MHz, 2 ns): windowed increase 0.027 << unwindowed 0.16",
+          near(inc_win, 0.0272, ab=5e-4) and near(inc_old, 0.1597, ab=5e-4), f"{inc_win:.4f} vs {inc_old:.4f}")
+    cw_ = engine.evaluate_spec(spec(dr="test_cw", su={"dark_cps": 250.0, "coinc_window_ns": 0.01}))["scalars"]
+    Sc = cw_["rate_detected_Hz"]
+    check("13f. cw drive keeps the full dark rate (window ignored; or both undefined without a flux)",
+          near(cw_["g2_raw"], OB.g2_with_background(cw_["g2_0"], Sc, 250.0), rel=1e-9) if math.isfinite(Sc)
+          else not math.isfinite(cw_["g2_raw"]), f"S={Sc}")
+    eps_r = engine.evaluate_spec(spec(drp={"shape": "rect", "fwhm_ps": 0.1}, su={"eps_int": 0.1}))["scalars"]
+    e0_r = engine.evaluate_spec(spec(drp={"shape": "rect", "fwhm_ps": 0.1}))["scalars"]
+    check("13g. eps_int ParamSpec exists on lens_fibre_det and scales hom_V_raw by (1 - eps_int)",
+          R.get("setup", "lens_fibre_det").param("eps_int").default == 0.0
+          and near(eps_r["hom_V_raw"], e0_r["hom_V_raw"] * 0.9, rel=1e-9))
+    # blinking: real material (has eta_blink); brightness scales, lifetime does not
+    def real(blink):
+        return {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "inas_gaas_sk", "params": {"eta_blink": {"value": blink, "unit": "1", "tag": "A", "source": "t"}}},
+                "structure": {"kind": "micropillar", "params": {"Q_measured": 6124}},
+                "drive": {"kind": "resonant_pulse", "params": {}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    b1, b6 = engine.evaluate_spec(real(1.0))["scalars"], engine.evaluate_spec(real(0.65))["scalars"]
+    check("13h. eta_blink scales B_lens / B_fibre / detected rate, not tau, g2 or n_ph",
+          near(b6["B_lens"], 0.65 * b1["B_lens"], rel=1e-9) and near(b6["rate_detected_Hz"], 0.65 * b1["rate_detected_Hz"], rel=1e-9)
+          and b6["tau_ps"] == b1["tau_ps"] and b6["g2_0"] == b1["g2_0"])
+    sp6 = engine._as_spec(real(0.65))
+    ent6 = engine._entries(sp6)
+    c6 = engine._run_point(ent6, engine._central_values(engine._leaves(sp6, ent6)), 4.2, "auto")
+    check("13i. eta_rad_eff = eta_blink x eta_rad is reported in the chain (eta_rad unchanged)",
+          near(c6.d["eta_rad_eff"], 0.65 * c6.d["eta_rad"], rel=1e-12) and 0.0 < c6.d["eta_rad"] <= 1.0)
+    check("13j. eta_blink is a registered material param (default 1, 0.5-1) on every material kind",
+          all(R.get("material", k).param("eta_blink").default == 1.0 and R.get("material", k).param("eta_blink").lo == 0.5
+              for k in R.kinds("material") if not k.startswith("test_")))
+    # beta_entered: passthrough, declared, NaN when the structure has no entered beta
+    bo = OB.get_observable("beta_entered")
+    check("13k. beta_entered declares passthrough_of structure.beta_direct", bo.passthrough_of == "structure.beta_direct")
+    phc = dict(real(1.0), structure={"kind": "phc_waveguide", "params": {"beta_direct": {"value": 0.98, "unit": "1", "tag": "V", "source": "t"}}})
+    pe = engine.evaluate_spec(phc)
+    envp = engine.envelope(phc, ["beta_entered"])
+    check("13l. beta_entered returns the entered beta (0.98) with tag V; NaN for a structure without one",
+          near(envp["beta_entered"]["central"], 0.98, ab=1e-12) and envp["beta_entered"]["tag"] == "V"
+          and not math.isfinite(engine.envelope(real(1.0), ["beta_entered"])["beta_entered"]["central"]))
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

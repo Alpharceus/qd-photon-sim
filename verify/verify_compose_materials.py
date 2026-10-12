@@ -213,6 +213,15 @@ check("build() at 4, 40, 300 K returns a finite EmitterModel for every kind", fi
 check("EmitterModel.inputs maps fields to material.<param> paths",
       all(v.startswith("material.") for v in mu.build({}, 4.0).inputs.values()) and "E_X_meV" in mu.build({}, 4.0).inputs)
 
+# 5. devlib-fx2a: eta_blink (blinking on-fraction)
+_pb = [R.get("material", k).param("eta_blink") for k in KINDS]
+check("eta_blink: default 1.0 [A], range 0.5-1.0, unit 1, with help citing Uppu 2020 and Wang 2019, on every kind",
+      all(p.default == 1.0 and p.lo == 0.5 and p.hi == 1.0 and p.unit == "1" and p.tag == "A" and "Uppu" in p.help and "Wang" in p.help
+          for p in _pb))
+_a, _b = mu.build({}, 4.0), mu.build({"eta_blink": 0.65}, 4.0)
+check("eta_blink never changes the lifetime-controlling EmitterModel (gamma0, k_nr, gamma*) - it is a brightness factor only",
+      (_a.gamma0_ns, _a.k_nr_ns, _a.gamma_star_ns) == (_b.gamma0_ns, _b.k_nr_ns, _b.gamma_star_ns))
+
 n, total = sum(RESULTS), len(RESULTS)
 print(f"{n}/{total} compose materials checks passed")
 sys.exit(0 if n == total else 1)

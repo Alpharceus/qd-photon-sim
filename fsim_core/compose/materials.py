@@ -77,6 +77,15 @@ _ENUMS = (
               help="Transition dipole orientation: in_plane (planar dot, bright in-plane) or axial (along growth axis, e.g. nanowire)."),
 )
 
+# eta_blink is a uniform setup-like factor (not a per-material literature number): it lives here, not in the yaml.
+_BLINK = ParamSpec(
+    "eta_blink", "1", 1.0, lo=0.5, hi=1.0, tag="A", group="main",
+    source="assumed: no blinking / full on-fraction [A]",
+    help="Blinking duty factor (on-fraction of the time the dot is bright). Multiplies eta_rad and the collected "
+         "brightness (reported as eta_rad_eff); it does NOT change the lifetime. Examples: Uppu et al., Sci. Adv. "
+         "6, eabc8268 (2020) eta_rad 0.98 [V-from cards]; Wang et al., Phys. Rev. Lett. 122, 113602 (2019) 35 % "
+         "blinking loss [V-from cards] (on-fraction 0.65).")
+
 # EmitterModel field -> contributing parameter names (for EmitterModel.inputs)
 _INPUT_FIELDS = {
     "E_X_meV": "lambda_nm", "lambda_nm": "lambda_nm", "n_host": "n_host", "gamma0_ns": "tau_bare_ns",
@@ -205,7 +214,7 @@ def build_entries(path: str = DATA_PATH) -> list:
         if missing:
             raise ValueError(f"{kind}: unknown yaml params {sorted(missing)}")
         out.append(DataMaterial(kind=kind, label=m["label"], summary=m["summary"],
-                                params=tuple(specs) + _ENUMS, refs=tuple(m.get("refs", ())),
+                                params=tuple(specs) + (_BLINK,) + _ENUMS, refs=tuple(m.get("refs", ())),
                                 status="ready", varshni=m["varshni"],
                                 provides=frozenset({"X", "XX", "X+", "X-"})))
     return out

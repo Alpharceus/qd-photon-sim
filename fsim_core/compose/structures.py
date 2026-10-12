@@ -415,6 +415,8 @@ def _cbg(self, vals, em, T_K, NA):
     F_P = v.f("F_P")
     if F_P < 0:
         raise ValueError("cbg.F_P must be >= 0")
+    r_factor = v.frac("r_factor")
+    F_P = F_P * r_factor                        # position factor folded into F_P like the micropillar [DR]
     det = v.f("detuning_ueV") * 1e-3
     Q = v.pos("Q")
     kappa = (em.E_X_meV - det) / Q
@@ -430,10 +432,13 @@ def _cbg(self, vals, em, T_K, NA):
              f"eta_table = TOTAL first-lens efficiency (beta x eta_out); eta_out = table/beta_res with beta_res = "
              f"F_P/(1 + F_P + leak) = {beta_res:.3f} (capped at 1) [DR]",
              "no mode solver: F_P, Q and the far-field table are entered numbers [A] (FDTD / COMSOL values)",
+             f"position factor r_factor = {r_factor:.3g} (|E(r)|^2/|E_max|^2 of the dot) is folded into F_P like the micropillar: "
+             f"F_P used = {F_P:.4g} [DR]",
              f"beta = F_P/(1 + F_P + leak) via F_bg = 1 + leak = {1.0 + leak:.3g} [DR]",
              "eta_out(NA) from the table: piecewise linear, flat above the last point, eta0 (NA/NA0)^2 below the first [A]"]
     inputs = {"F_P": _path("F_P"), "kappa_meV": _path("Q"), "E_mode_meV": _path("detuning_ueV"),
               "F_bg": _path("leak"), "eta_out": _path("eta_table")}
+    inputs["F_P"] = _path("F_P") + "+r_factor"
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=1.0 + leak,
                         beta0=0.0, eta_out=fn(NA), eta_out_fn=fn, notes=notes, inputs=inputs)
 
@@ -448,6 +453,7 @@ CBG = _Struct(
         _p("Q", "1", 150.0, 20.0, 1000.0, tag="E", source="CBG Q ~ 100-300 class [E]", help="Quality factor (broad: kappa ~ 5-10 meV)."),
         _p("eta_table", "", "0.7:0.6", tag="A", source="single FDTD-class point (NA 0.7 -> 0.6) [A]; Wang 2019 PRL 0.62 at F 11.3 [V-abs]",
            help="TOTAL first-lens efficiency table 'NA:eta[, NA:eta ...]' (= beta x eta_out at resonance, as quoted in the papers)."),
+        _p("r_factor", "1", 1.0, 0.0, 1.0, help="Position factor |E(r)|^2/|E_max|^2 of the dot (folded into F_P like micropillar)."),
         _p("leak", "1", 0.0, 0.0, 10.0, help="Extra leaky decay in units of Gamma0 (beta = F_P/(1 + F_P + leak))."),
         _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help="Dot minus mode energy; positive = dot above the mode."),
     ),
@@ -554,6 +560,7 @@ def _nanowire_resp(v, em, NA):
         family="vertical_photonic", NA=min(float(NA), 1.0), n_wire=v.pos("n_wire"),
         taper_transmission=v.frac("taper_T"), bottom_reflectivity=v.frac("mirror_R"),
         radiative_rate_factor=v.pos("F_bg"),
+        taper_output_mfr_nm=v.pos("taper_mfr_nm") if v.f("taper_mfr_nm") > 0 else None,
         n_group_override=v.pos("n_group") if v.f("n_group") > 0 else v.pos("n_wire"))
     return _nwp.response(prm, lambda_nm=lam, outer_radius_nm=0.5 * v.pos("d_nm"),
                          gamma_X0_ns=em.gamma0_ns, gamma_XX0_ns=em.gamma0_ns)
@@ -574,13 +581,20 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
              "adapter around nitride_nanowire_photonics.response(family='vertical_photonic') with a general n_wire: "
              "beta0 = beta_HE11, eta_out = eta_collection_X/beta_HE11 (taper, mirror, guided propagation and the "
              "HE11 far-field acceptance at NA), F_P = 0 (no Purcell gain; inhibition via F_bg) [DR/E]",
+             "taper: taper_T is a pure POWER transmission; the far-field effect of an adiabatic taper (the guided mode "
+             "expands to a larger mode-field radius at the top facet and the emission narrows) enters only through "
+             "taper_mfr_nm. With taper_mfr_nm = 0 the acceptance is that of the BARE wire facet (mode radius = Marcuse w, "
+             "~0.5 at NA 0.75 for d/lambda 0.23), which under-collects a tapered / trumpet device [DR]",
+             "bottom mirror: the downward half of beta returns upward with weight mirror_R and the same propagation "
+             "transmission, so upward extraction scales as (1 + mirror_R)/2 of beta at R = 0..1 (incoherent power return, "
+             "no phase) [A]",
              f"V = {r['V_number']:.3f}, d/lambda = {2 * r['radius_over_lambda']:.3f}, beta_HE11 = {beta:.3f}; the Marcuse / "
              "multimode envelopes are calibrated on GaAs/InAs-class wires [A] (Bleuse 2011 class)"]
     if not r["valid"]:
         notes.append("module reports invalid: " + "; ".join(r["invalid_reasons"]))
     if float(NA) > 1.0:
         notes.append("NA > 1 clipped to 1 (the HE11 acceptance integral saturates at the forward hemisphere)")
-    inputs = {"beta0": _path("d_nm"), "eta_out": _path("taper_T"), "F_bg": _path("F_bg")}
+    inputs = {"beta0": _path("d_nm"), "eta_out": _path("taper_T") + "+mirror_R+taper_mfr_nm", "F_bg": _path("F_bg")}
     return StructureResponse(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=v.pos("F_bg"),
                              beta0=float(beta), eta_out=float(min(max(eta_out, 0.0), 1.0)), eta_out_fn=fn,
                              pol_factor=1.0, notes=tuple(notes), inputs=inputs,
@@ -600,6 +614,10 @@ PHOTONIC_NANOWIRE = _Struct(
         _p("mirror_R", "1", 0.9, 0.0, 1.0, tag="E", source="bottom-mirror class [E]", help="Bottom-mirror reflectivity (redirects the downward guided half)."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="E", source="Gamma_HE11/Gamma_0 ~ 1; < 1 for leaky-mode inhibition [E]",
            help="Decay-rate factor in units of Gamma0 (< 1 = inhibition of leaky modes)."),
+        _p("taper_mfr_nm", "nm", 0.0, 0.0, 3000.0, tag="A", source="0 = no mode expansion (bare-wire facet) [A]",
+           help="Mode-field radius at the top facet after an adiabatic taper / trumpet (0 = none: the emission leaves with the "
+                "bare-wire Marcuse mode radius). A larger radius narrows the far field and raises the NA acceptance; taper_T "
+                "stays the separate power loss.", group="advanced"),
     ),
     refs=(_REF_BLEUSE,), eta_hint=(0.2, 0.8), fn=_photonic_nanowire)
 

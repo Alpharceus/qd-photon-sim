@@ -299,7 +299,15 @@ LENS_FIBRE_DET = _LensFibreDet(
         ParamSpec("laser_leak", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
                   help="Residual laser light as a fraction of the signal rate; adds to raw g2(0)."),
         ParamSpec("dark_cps", "1/s", 0.0, lo=0.0, hi=1e5, tag="A", source=_SRC,
-                  help="Detector dark counts per second; adds to raw g2(0)."),
+                  help="Detector dark counts per second; adds to raw g2(0). Pulsed drives count only the darks inside "
+                       "coinc_window_ns around each peak."),
+        ParamSpec("coinc_window_ns", "ns", 2.0, lo=0.01, hi=1000.0, tag="A", source=_SRC,
+                  help="Pulsed drives: histogram integration window around each coincidence peak; the dark background per "
+                       "pulse and detector is dark_cps x coinc_window_ns x 1e-9 (window capped at the pulse period). "
+                       "Ignored by continuous drives."),
+        ParamSpec("eps_int", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help="Interferometer imperfection (1 - fringe contrast of a perfect source) in the raw HOM visibility: "
+                       "V_raw = ((1 - g2) I - g2)(1 - eps_int)."),
         ParamSpec("zpl_filter", "", False, tag="A", source=_SRC,
                   help="Spectrally filter to the zero-phonon line (brightness x Z, HOM unity)."),
     ),

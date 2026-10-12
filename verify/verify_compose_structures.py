@@ -269,6 +269,48 @@ for k in sorted(want):
         bad.append(f"{k}: {ex!r}")
 check("response() finite at defaults for every entry", not bad, "; ".join(bad))
 
+# 10. devlib-fx2a: cbg r_factor, nanowire mirror / taper expansion, phc beta_direct
+c1 = resp("cbg", {"F_P": 12.0})
+c5 = resp("cbg", {"F_P": 12.0, "r_factor": 0.5})
+check("cbg r_factor is folded into F_P (F_P x r_factor; default 1 is bit-identical to the old model)",
+      c5.F_P == 6.0 and c1.F_P == 12.0 and resp("cbg", {"F_P": 12.0, "r_factor": 1.0}).F_P == c1.F_P)
+b0, b5 = c1.F_P / (c1.F_bg + c1.F_P), c5.F_P / (c5.F_bg + c5.F_P)      # F_bg = 1 + leak
+check("cbg r_factor lowers beta consistently: beta = F_P r/(1 + leak + F_P r) at leak 0",
+      abs(b5 - 6.0 / 7.0) < 1e-12 and abs(b0 - 12.0 / 13.0) < 1e-12)
+emn = make_em(E_X_meV=1409.0, lambda_nm=879.9, n_host=3.37, gamma0_ns=0.6)
+nw = {"d_nm": 200.0, "n_wire": 3.37}
+
+
+def up_extraction(**kw):
+    rr = resp("photonic_nanowire", {**nw, **kw}, em=emn, NA=1.0)         # NA 1: HE11 acceptance is exactly 1
+    return rr.beta0 * rr.eta_out
+
+
+x0, x1, x3 = up_extraction(mirror_R=0.0), up_extraction(mirror_R=1.0), up_extraction(mirror_R=0.3)
+check("nanowire mirror: upward extraction at NA 1 is x2 for R 1 vs R 0 (beta/2 up + beta/2 x R returned)",
+      abs(x1 / x0 - 2.0) < 1e-9, f"{x1 / x0:.9f}")
+check("nanowire mirror: extraction(R) = extraction(0) x (1 + R)  (R 0.3 -> x1.3)", abs(x3 / x0 - 1.3) < 1e-9, f"{x3 / x0:.9f}")
+rn = resp("photonic_nanowire", {**nw, "mirror_R": 0.3}, em=emn, NA=0.75)
+rt_ = resp("photonic_nanowire", {**nw, "mirror_R": 0.3, "taper_mfr_nm": 1000.0}, em=emn, NA=0.75)
+bare = nwp.response(nwp.NitrideNanowirePhotonicsParams(
+    family="vertical_photonic", NA=0.75, n_wire=3.37, taper_transmission=0.95, bottom_reflectivity=0.3,
+    radiative_rate_factor=1.0, n_group_override=3.6), lambda_nm=879.9, outer_radius_nm=100.0,
+    gamma_X0_ns=0.6, gamma_XX0_ns=0.6)
+check("nanowire taper_mfr_nm = 0 (default) reproduces the bare-facet nitride_nanowire_photonics result bit-for-bit",
+      abs(rn.beta0 * rn.eta_out - bare["eta_collection_X"]) < 1e-12)
+x_exp = rt_.beta0 * rt_.eta_out
+x_ceil = up_extraction(mirror_R=0.3)                                     # the NA-1 ceiling (acceptance 1)
+check("nanowire taper_mfr_nm: a large top-facet mode radius narrows the far field -> NA-0.75 extraction approaches the "
+      "NA-1 ceiling from below and exceeds the bare-facet value",
+      rn.beta0 * rn.eta_out < x_exp <= x_ceil + 1e-12 and x_exp > 0.99 * x_ceil,
+      f"bare {rn.beta0 * rn.eta_out:.4f} < {x_exp:.4f} <= ceiling {x_ceil:.4f}")
+from fsim_core.compose.structures import PHC_WAVEGUIDE                       # noqa: E402
+from fsim_core.compose import observables as OBS                             # noqa: E402
+rb = resp("phc_waveguide", {"beta_direct": 0.9})
+check("phc_waveguide beta_direct 0.9: F_wg = beta/(1 - beta) F_bg and observable beta_entered is a passthrough of that leaf",
+      abs(rb.F_P - 9.0) < 1e-12 and OBS.get_observable("beta_entered").passthrough_of == "structure.beta_direct"
+      and PHC_WAVEGUIDE.param("beta_direct").tag in ("V", "DR", "E", "A"))
+
 # 9. registry payload
 pl = R.registry_payload()
 try:

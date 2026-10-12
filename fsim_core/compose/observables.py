@@ -34,6 +34,21 @@ g2: `g2_0` is intrinsic. `g2_raw` adds uncorrelated Poissonian background of rat
 (S = detected signal rate): g2_raw = 1 - rho^2 (1 - g2), rho = S/(S + B) -> g2 + 2 f_leak for small leak.
 Laser leak is counted once: the drive's (plan.inputs["laser_leak"]) when nonzero, else the setup's.
 
+Dark counts for a PULSED drive (devlib-fx2a (a)): the coincidence histogram integrates only a window
+`setup.coinc_window_ns` around each peak, so a detector's dark counts reach the central peak only inside that
+window. Per pulse and detector, with S_pp = S/f_rep the detected signal probability:
+
+    B_pp = f_leak S_pp + dark_cps x coinc_window_ns x 1e-9          (window capped at the pulse period)
+    rho  = S_pp/(S_pp + B_pp),   g2_raw = 1 - rho^2 (1 - g2)         (unchanged functional form)
+
+equivalently a background RATE of f_leak S + dark_cps x min(window x f_rep x 1e-9, 1). Continuous drives keep
+B = f_leak S + dark_cps. Check (Muller-like: S 2750/s at 76 MHz, dark 250/s, window 2 ns): the dark share is
+0.152 x 250 = 38/s, rho = 0.9863 and g2_raw - g2 = 0.027 (the unwindowed treatment gave 0.16) [DR].
+
+Blinking (devlib-fx2a (c)): `material.eta_blink` (on-fraction, default 1 [A]) multiplies the collected
+brightness (B_lens, B_fibre, rate_detected_Hz) and is reported in `eta_rad_eff = eta_blink x eta_rad`; it
+never changes the lifetime (blinking removes emission events, not the radiative rate).
+
 HOM: `hom_I` = single-photon wavepacket overlap (intrinsic, g2-free) x phonon factor.
 hom_V_raw = ((1 - g2_raw) I - g2_raw) (1 - eps_int) [E: Ollivier et al., PRL 126, 063602 (2021);
 Santori 2002 form], eps_int from a setup param "eps_int" if present else 0 [A]; it uses g2_raw, the g2 a
@@ -63,6 +78,22 @@ BRIGHTNESS_CONVENTION = ("B_lens = n_ph * eta_pol * beta * eta_out * T_NA * Z_fi
                          "inside eta_out); B_fibre = B_lens * eta_fibre; detected = f_rep * B_fibre * "
                          "eta_optics * eta_det. n_ph = photons per pulse from the solver "
                          "(= eta_prep * eta_rad without re-excitation).")
+
+
+def _read(c, stage, name, default):
+    """Untracked-dict value of an optional leaf that is not part of a stage's ParamSpec-driven chain/build
+    object; the read is recorded for provenance (observables also list it as a pattern dep)."""
+    vals = c.vals.get(stage, {})
+    if name in vals:
+        c.reads.setdefault(stage, set()).add(name)
+        return vals[name]
+    return default
+
+
+def pulsed_dark_rate(dark_cps, coinc_window_ns, f_rep_Hz):
+    """Dark-count background RATE that reaches the central coincidence peak for a pulsed drive:
+    dark_cps x min(window x f_rep, 1) (the window cannot exceed the pulse period)."""
+    return float(dark_cps) * min(float(coinc_window_ns) * 1e-9 * float(f_rep_Hz), 1.0)
 
 
 def hom_v_raw(I, g2, eps_int=0.0):
@@ -155,6 +186,8 @@ def _derive(c: Context) -> dict:
     n_ph = float(res.n_ph)
     pulsed = plan.timing == "pulsed"
     f_rep = float(plan.f_rep_MHz) * 1e6 if plan.f_rep_MHz else None
+    eta_blink = float(_read(c, "material", "eta_blink", 1.0))
+    d.update(eta_blink=eta_blink, eta_rad_eff=eta_blink * (Gamma / (Gamma + k)))
     d.update(Z_phonon=Z, Z_filt=Zf, beta=beta, eta_out=float(sr.eta_out), T_NA=1.0, eta_pol=eta_pol,
              eta_rad=Gamma / (Gamma + k), n_ph=n_ph, Gamma_ns=Gamma, gamma_star_ns=float(rt.gamma_star_ns),
              F_P_eff=float(rt.F_P_eff), F_P_peak=float(sr.F_P), lambda_nm=float(em.lambda_nm),
@@ -164,6 +197,12 @@ def _derive(c: Context) -> dict:
     d["tau_ps"] = float(res.extra["tau_jc_ps"]) if "tau_jc_ps" in res.extra else d["tau_purcell_ps"]
     d["tau_1e_ps"] = float(res.extra["tau_1e_ps"]) if "tau_1e_ps" in res.extra else d["tau_ps"]
     d["eta_extract"] = beta * d["eta_out"]
+    bd = _read(c, "structure", "beta_direct", 0.0)
+    if bd is not None and float(bd) > 0.0:
+        d["beta_entered"] = float(bd)
+    else:
+        d["beta_entered"] = NAN
+        why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
     if res.inversion is None and "p_loaded" in res.extra:
         d["eta_prep"] = float(res.extra["p_loaded"])
@@ -171,7 +210,7 @@ def _derive(c: Context) -> dict:
         d["eta_prep"] = d["inversion"]
     d["eta_prep_x_eta_rad"] = d["eta_prep"] * d["eta_rad"]
     if pulsed and math.isfinite(n_ph):
-        B = n_ph * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
+        B = n_ph * eta_blink * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
         d["B_lens"] = B
         d["B_fibre"] = B * float(su.eta_fibre)
         S = f_rep * d["B_fibre"] * float(su.eta_optics) * float(su.eta_det) if f_rep else NAN
@@ -179,14 +218,20 @@ def _derive(c: Context) -> dict:
         d["B_lens"] = d["B_fibre"] = NAN
         why["B_lens"] = why["B_fibre"] = "continuous drive: brightness per pulse undefined (see rate_detected_Hz)"
         flux = res.extra.get("flux_ns")
-        S = (float(flux) * 1e9 * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
+        S = (float(flux) * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
              * float(su.eta_optics) * float(su.eta_det)) if flux is not None else NAN
     d["rate_detected_Hz"] = S
     if not math.isfinite(S):
         why["rate_detected_Hz"] = "no photon flux available from the solver / plan"
     leak = float(plan.inputs.get("laser_leak", 0.0) or 0.0) or float(su.laser_leak)
     g2 = float(res.g2_0)
-    bg = leak * S + float(su.dark_cps) if math.isfinite(S) else NAN
+    dark = float(su.dark_cps)
+    if pulsed and f_rep:
+        win = float(_read(c, "setup", "coinc_window_ns", 2.0))
+        dark = pulsed_dark_rate(dark, win, f_rep)          # darks only inside the coincidence window
+        d["coinc_window_ns"] = win
+    d["dark_bg_Hz"] = dark
+    bg = leak * S + dark if math.isfinite(S) else NAN
     d["laser_leak_used"] = leak
     d["g2_0"] = g2
     if leak == 0 and su.dark_cps == 0:
@@ -202,7 +247,7 @@ def _derive(c: Context) -> dict:
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
     if not math.isfinite(d["hom_I"]):
         why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
-    eps = float(c.vals.get("setup", {}).get("eps_int", 0.0))
+    eps = float(_read(c, "setup", "eps_int", 0.0))
     if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
         d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps)
         d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
@@ -246,18 +291,23 @@ def _o(id_, label, unit, deps, conventions=("intrinsic",), passthrough_of=None, 
 
 _MS = ("material", "structure")
 _ALL = ("material", "structure", "drive")
-_CH = ("material", "structure", "drive", "setup")
+_CH = ("material", "structure", "drive", "setup", "material.eta_blink", "setup.coinc_window_ns", "setup.eps_int")
 _o("lambda_nm", "Emission wavelength", "nm", ("material.lambda_nm", "material.E_X_meV"),
    passthrough_of="material.lambda_nm")
 _o("F_P_eff", "Effective Purcell factor F_P L", "1", _MS)
 _o("F_P_peak", "Cavity-mode Purcell factor at zero detuning (structure.F_P)", "1", _MS, passthrough_of="structure.F_P")
 _o("beta", "Beta factor", "1", _MS, passthrough_of="structure.beta")
+_o("beta_entered", "Beta entered directly (structure.beta_direct, e.g. phc_waveguide)", "1",
+   ("structure.beta_direct",), passthrough_of="structure.beta_direct")
 _o("eta_out", "Extraction into the collected mode", "1", ("structure",))
 _o("eta_extract", "Extraction beta x eta_out", "1", _MS)
 _o("T_NA", "NA transmission (inside eta_out)", "1", ("setup.NA",))
 _o("eta_pol", "Polarisation factor", "1", ("setup.eta_pol", "structure"))
 _o("eta_prep", "State-preparation probability", "1", _ALL)
 _o("eta_rad", "Radiative efficiency Gamma/(Gamma+k)", "1", _MS)
+_o("eta_rad_eff", "Effective radiative efficiency eta_blink x Gamma/(Gamma+k)", "1", _MS + ("material.eta_blink",))
+_o("eta_blink", "Blinking on-fraction (brightness factor, not lifetime)", "1", ("material.eta_blink",),
+   passthrough_of="material.eta_blink")
 _o("eta_prep_x_eta_rad", "eta_prep x eta_rad", "1", _ALL)
 _o("inversion", "Inversion after the pulse", "1", _ALL)
 _o("Z_phonon", "ZPL weight Z(T)", "1", ("material",))
