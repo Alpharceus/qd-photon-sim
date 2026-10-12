@@ -176,6 +176,8 @@ materials:
       k_nr_ns: *knr0
       sigma_sd_ueV: *sd0
       tau_sd_ns: *tausd0
+    lo_phonon:
+      b_LO_meV: {value_from: LinewidthParams.b_lo, unit: meV, tag: DR, source: "fsim_core.linewidth.LinewidthParams.b_lo (anchored from gamma300, Bommer 2011 class), the LO coupling of the anchored InP-class non-resonant width [DR]"}
 
   ingan_gan:
     label: "InGaN/GaN dot (400-520 nm)"
@@ -202,6 +204,8 @@ materials:
       k_nr_ns: *knr0
       sigma_sd_ueV: {range: [500.0, 2000.0], unit: ueV, tag: E, source: "0.5-2 meV spectral diffusion at 4 K, brief section 4 (GaN/AlN row, applied to InGaN as the same class) [E]"}
       tau_sd_ns: *tausd0
+    lo_phonon:
+      b_LO_meV: {value: 3570.0, unit: meV, tag: A, source: "borrowed from the gan_aln entry (Tamariz 2020 GaN/AlN class) for the InGaN/GaN nitride row; no InGaN LO fit in the brief [A]", band: [0.0, 1.0e4]}
 
   gan_aln:
     label: "GaN/AlN dot (250-320 nm)"
@@ -228,6 +232,8 @@ materials:
       k_nr_ns: *knr0
       sigma_sd_ueV: {range: [500.0, 2000.0], unit: ueV, tag: E, source: "0.5-2 meV spectral diffusion at 4 K, brief section 4 [E]"}
       tau_sd_ns: *tausd0
+    lo_phonon:
+      b_LO_meV: {value: 3570.0, unit: meV, tag: E, source: "Tamariz et al. 2020 Eq. 1 GaN/AlN single-dot LO coupling as recorded in .workers/devlib/p3-electrical-brief.md 4.1 (that record also gives E_LO 102 meV, a_ac 18 ueV/K, Gamma0 1.0 meV; this entry keeps E_LO 92 [E]); not re-read from the paper here, so tagged [E]", band: [0.0, 1.0e4]}
 
   cdse_znse:
     label: "CdSe/ZnSe dot (500-560 nm)"

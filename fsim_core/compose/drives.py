@@ -38,8 +38,9 @@ OBS_COHERENT_PULSED = _COMMON | _PULSED | {"inversion", "hom_vs_dt"}
 OBS_INCOHERENT_PULSED = _COMMON | _PULSED | {"hom_vs_dt"}
 OBS_CW_RESONANT = _COMMON | {"g2_tau", "inversion"}
 OBS_INCOHERENT_CW = _COMMON | {"hom_I", "hom_V"}
-OBS_ELECTRICAL_PULSED = _COMMON | _PULSED
-OBS_ELECTRICAL_CW = _COMMON | {"hom_I", "hom_V"}
+# devlib-p10e: EL decay time, binned (GHz) histogram g2 and gated HOM for pulsed electrical drives; IRF-convolved g2 for cw
+OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated"}
+OBS_ELECTRICAL_CW = _COMMON | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf"}
 
 
 @dataclass(frozen=True)
@@ -404,18 +405,50 @@ def _build_interface(self, vals, mech_choices):
     return iface, g
 
 
+def _has(drive, name):
+    return any(p.name == name for p in drive.params)
+
+
 def _plan_electrical(self, vals, em, rt, mech_choices, pulsed):
     iface, g = _build_interface(self, vals, mech_choices)
     inputs = {"mechanism": iface.mechanism, "feasible": bool(iface.feasible),
               "note": "generic electrical; use the RT-edge tier passthrough for the full transport chain"}
+    extra = {}
     if pulsed:
         f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
         tau_on = float(iface.notes["tau_eff_ns"]) if "tau_eff_ns" in iface.notes else 0.0
         timing = "pulsed"
+        profile = g("pump_profile")
+        t_rise = _nonneg("t_rise_ps", g("t_rise_ps")) * 1e-3
+        k_on = _nonneg("k_esc_on_ns", g("k_esc_on_ns"))
+        k_off = _nonneg("k_esc_off_ns", g("k_esc_off_ns"))
+        gate = _nonneg("gate_ps", g("gate_ps")) * 1e-3
+        extra.update(pump_profile=profile, k_esc_on_ns=k_on, k_esc_off_ns=k_off, gate_ns=gate if gate > 0.0 else None)
+        if profile != "rect":
+            # devlib-p10e: an RC tail LENGTHENS the window (brief 1.1, trap 3): never subtract t_r. The nominal window
+            # is the entered tau_on_ns (M-3) and mu = eta N_c is the UNSHORTENED operating point; t_r = R C when the
+            # mechanism has it, else the t_rise_ps input.
+            card = _CARD_NAME[iface.mechanism] if iface.mechanism in _CARD_NAME else ""
+            tau_nom = float(g("tau_on_ns")) if (card == "m3" and _has(self, "tau_on_ns")) else tau_on
+            if card == "m3" and tau_nom > 0.0:
+                t_rise = float(iface.notes.get("t_rise_ns", 0.0)) or t_rise
+                full = drive_mech.mech_pulsed(float(g("I_uA")), tau_nom, float(iface.eta_capture), float(iface.F_p))
+                extra["pump_rate_ns"] = float(full.mu) * float(iface.eta_capture) / tau_nom
+                tau_on = tau_nom
+            extra["t_rise_ns"] = t_rise if profile == "rc" else 0.0
+        hom_gate = _nonneg("hom_gate_ps", g("hom_gate_ps"))
+        if hom_gate > 0.0:
+            inputs["hom_gate"] = {"start_ns": _nonneg("hom_gate_start_ps", g("hom_gate_start_ps")) * 1e-3,
+                                  "width_ns": hom_gate * 1e-3,
+                                  "jitter_ns": _nonneg("hom_jitter_ps", g("hom_jitter_ps")) * 1e-3}
     else:
         f_rep, tau_on, timing = None, 0.0, "cw"
+        extra["k_esc_on_ns"] = _nonneg("k_esc_on_ns", g("k_esc_on_ns"))
+    irf = _nonneg("irf_ps", g("irf_ps"))
+    if irf > 0.0:
+        inputs["irf_ps"] = irf
     return DrivePlan(family="electrical", timing=timing, f_rep_MHz=f_rep, target="X",
-                     tau_on_ns=tau_on, interface=iface, needs=frozenset(), inputs=inputs)
+                     tau_on_ns=tau_on, interface=iface, needs=frozenset(), inputs=inputs, **extra)
 
 
 def _plan_electrical_pulsed(self, vals, em, rt):
@@ -430,6 +463,51 @@ _ELEC_SUMMARY = ("generic electrical; use the RT-edge tier passthrough for the f
                  "Builds the drive_mech interface (pump Fano factor, loading, capture) for the chosen "
                  "mechanism.")
 _SRC_DM = "drive_mech.mech_from_card default"
+
+
+_SRC_P10E = "devlib-p10e electrical brief (.workers/devlib/p3-electrical-brief.md) [A]"
+
+
+def _electrical_shape_params():
+    """Shaped pump, bias-dependent escape, counting gate, gated HOM and IRF inputs (all default = off)."""
+    return [
+        _P("pump_profile", "", "rect", choices=("rect", "rc", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
+           group="advanced",
+           help="Time profile of the incoherent electrical pump r(t) at fixed operating point mu = int r dt: rect, "
+                "rect + RC rise/tail (diode current through R_s C_j) or Gaussian (generator pulse). An RC tail "
+                "LENGTHENS the effective window (tau_eff ~ tau_on + 1.7 t_r) and raises the re-excitation g2."),
+        _P("t_rise_ps", "ps", 100.0, lo=0.0, hi=2000.0, tag="A", source="50 ohm x 2 pF class RC, brief 1.3 [E]; "
+           "used only when the mechanism has no R and C of its own", group="advanced",
+           visible_if={"pump_profile": ["rc"]},
+           help="RC time constant R_s C_j of the pump profile (the pulse tail e^{-t/t_r})."),
+        _P("k_esc_on_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source=_SRC_P10E, group="advanced",
+           help="Photonless tunnelling escape rate X -> G while the pump is on (flat band, small)."),
+        _P("k_esc_off_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source="Ellis et al., Appl. Phys. Lett. 92, 2008: "
+           "EL decay 1.59/ns vs TRPL 1.40/ns gives k_off = 0.19/ns [DR from V]; Schlehahn et al. 2015: 3.1/ns [DR from V]",
+           group="advanced",
+           help="Escape rate X -> G in the dark window (bias below turn-on, higher field). The EL decay time is "
+                "1/(Gamma + k_off); it is reported (tau_EL_ps) and never used as the radiative lifetime."),
+        _P("gate_ps", "ps", 0.0, lo=0.0, hi=1e5, tag="A", source=_SRC_P10E, group="advanced",
+           help="Photon-counting gate from the pump onset (g2 and brightness); 0 = count the whole period."),
+        _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
+           help="Detection-gate width T of a Stark-gated HOM (Bennett-like); 0 = off. Observable hom_I_gated."),
+        _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
+           help="Time after the excitation at which the HOM gate opens."),
+        _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
+           help="Std dev of the relative emission-time delay of the two photons inside the gate (Gaussian)."),
+        _P("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_P10E, group="advanced",
+           help="Detector timing response (Gaussian FWHM); 0 = off. Adds the IRF-convolved g2 (cw dip) and the IRF "
+                "leak of the binned histogram (g2_binned)."),
+    ]
+
+
+def _electrical_cw_params():
+    return [
+        _P("k_esc_on_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source=_SRC_P10E, group="advanced",
+           help="Photonless tunnelling escape rate X -> G at the cw bias."),
+        _P("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_P10E, group="advanced",
+           help="Detector timing response (Gaussian FWHM); 0 = off. Adds the IRF-convolved dip g2 (g2_irf)."),
+    ]
 
 
 def _electrical_params(choices, default_mech, eta_default, pulsed):
@@ -448,6 +526,9 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
     if pulsed:
         ps.append(_P("f_rep_MHz", "MHz", 80.0, lo=0.01, hi=2000.0, scale="log", tag="A", source=_SRC_A,
                      help="Electrical pulse repetition rate."))
+        ps += _electrical_shape_params()
+    else:
+        ps += _electrical_cw_params()
     spec = {
         "I_uA": _P("I_uA", "uA", 10.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM, help="Drive current."),
         "tau_on_ns": _P("tau_on_ns", "ns", 1.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM,

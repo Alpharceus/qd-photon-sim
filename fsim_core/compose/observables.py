@@ -73,6 +73,18 @@ eps_int = 0 (the corrected value is the estimate of the single-photon M_s an exp
 g2 0.021 -> 0.966). eps_int from a setup param "eps_int" if present else 0 [A]. Compare raw to raw and corrected
 to corrected, never across.
 
+Gated / binned / IRF observables (devlib-p10e, electrical drives). All [DR]; the closed forms are in the functions below.
+  * `tau_EL_ps` = 1e3/(Gamma + k_nr + k_off): the electroluminescence decay of a gated diode. It is REPORTED next to
+    tau_ps (= the radiative-lifetime proxy 1e3/(Gamma + k_nr)) and never fed back into Gamma0 / F_P (brief 3, trap 4).
+  * `g2_binned` = g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} (pulsed, histogram bin = the pulse period T,
+    gamma = the EL decay rate), with the Gaussian detector IRF (drive input irf_ps, or setup.irf_ps if present) leaking
+    more of every peak into the neighbours (`binned_g2`); the peak-area g2 is `g2_0`. (Brief 2.3, trap 6.)
+  * `hom_I_gated` = the time-filtered HOM overlap of the exciton photon inside a detection gate [t_g, t_g + T]
+    (`gated_hom`), optionally averaged over a Gaussian relative emission-time delay (`gated_hom_jitter`); times the
+    same ZPL-fraction q^2 as hom_I. Limits: T -> 0 gives 1, T -> inf gives (Gamma + k)/(Gamma + k + gamma*).
+  * `g2_irf` (cw): the intrinsic dip g2_0 seen through a Gaussian IRF of FWHM irf_ps, 1 - (1 - g2_0) F with F the
+    cw_g2 single-exponential dip factor at the dip recovery time 1/(Gamma + k + r); equals g2_0 when irf_ps = 0.
+
 Tags. Each observable lists `deps`: tokens that are either a stage name (material | structure | drive |
 setup = the leaves that stage actually READ during the run, tracked by the engine) or an fnmatch pattern
 on leaf paths. Tag = widest(DR, tags of the matched leaves); DR is the floor because the model itself is
@@ -112,6 +124,106 @@ def pulsed_dark_rate(dark_cps, coinc_window_ns, f_rep_Hz):
     """Dark-count background RATE that reaches the central coincidence peak for a pulsed drive:
     dark_cps x min(window x f_rep, 1) (the window cannot exceed the pulse period)."""
     return float(dark_cps) * min(float(coinc_window_ns) * 1e-9 * float(f_rep_Hz), 1.0)
+
+
+def _int_exp(c, lo, hi, shift=0.0):
+    """int_lo^hi e^{c t + shift} dt, overflow-safe (anchored at the larger endpoint exponent) and stable for c -> 0."""
+    w = hi - lo
+    if abs(c * w) < 1e-12:
+        return w * math.exp(c * lo + shift)
+    if c > 0.0:
+        return math.exp(c * hi + shift) * (-math.expm1(-c * w)) / c
+    return math.exp(c * lo + shift) * math.expm1(c * w) / c
+
+
+def _gate_F(Gamma_d, gamma_star, lo, hi):
+    """F(lo, hi) = int_lo^hi int_lo^hi e^{-Gamma_d (t + t')} e^{-gamma_star |t - t'|} dt dt' (closed form)."""
+    if not hi > lo:
+        return 0.0
+    a = Gamma_d + gamma_star
+    return (2.0 / a) * (_int_exp(-2.0 * Gamma_d, lo, hi) - _int_exp(gamma_star - Gamma_d, lo, hi, shift=-a * hi))
+
+
+def gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss=0.0, delay_ns=0.0):
+    """Time-filtered HOM overlap of the photon of one excitation inside the detection gate [t_g, t_g + T] [DR].
+    Repo convention: population decay Gamma_d = Gamma + k_loss, coherence decay (Gamma_d + gamma*)/2, first-order
+    coherence G1(t, t') = Gamma e^{-Gamma_d (t + t')/2} e^{-gamma* |t' - t|/2} (t, t' >= 0). Two photons from
+    independent identical emitters, the second emitted `delay_ns` later, detected in the same gate:
+        I_T = int int_gate^2 G_A(t, t') G_B(t', t) / (n_A n_B),   n = int_gate Gamma e^{-Gamma_d (t - t_emit)} dt,
+    which is the Grange overlap I = 2 S / N^2 restricted to the gate (delay 0). Limits: T -> 0 gives 1;
+    T -> inf, t_g = 0 gives Gamma_d/(Gamma_d + gamma*) (= T2/(2 T1) for k = 0); the delay enters as
+    e^{Gamma_d delay} before the common start max(t_g, 0, delay) (Gamma_d |delay| for the unwindowed packet:
+    I(delay) = Gamma_d/(Gamma_d + gamma*) e^{-Gamma_d |delay|}). Returns dict(n_T, I_T): n_T = the fraction of the
+    photons that falls in the gate (per excitation, relative to the radiative yield Gamma/Gamma_d)."""
+    Gamma, gamma_star, t_g, T = float(Gamma), float(gamma_star), float(t_gate_ns), float(T_ns)
+    Gd = Gamma + float(k_loss)
+    d = float(delay_ns)
+    E = t_g + T
+    if not (T > 0.0 and Gd > 0.0):
+        return {"n_T": 0.0, "I_T": NAN}
+    lo = max(t_g, 0.0, d)
+    n_A = Gamma * _int_exp(-Gd, max(t_g, 0.0), E)
+    n_B = Gamma * math.exp(Gd * d) * _int_exp(-Gd, max(t_g, d), E) if E > d else 0.0
+    if not (n_A > 0.0 and n_B > 0.0):
+        return {"n_T": n_A / (Gamma / Gd) if n_A > 0.0 else 0.0, "I_T": NAN, "num": 0.0, "nn": 0.0}
+    num = Gamma ** 2 * math.exp(Gd * d) * _gate_F(Gd, gamma_star, lo, E)
+    return {"n_T": float(n_A / (Gamma / Gd)), "I_T": float(num / (n_A * n_B)), "num": float(num),
+            "nn": float(n_A * n_B)}
+
+
+def gated_hom_jitter(Gamma, gamma_star, t_gate_ns, T_ns, sigma_ns, k_loss=0.0, n_nodes=161):
+    """Gate-filtered HOM overlap averaged over a Gaussian RELATIVE emission-time delay of std `sigma_ns`
+    (Bennett 2008: the Stark sweep jitters the emission time) [DR/A]. The average is over COINCIDENCES,
+        I = int P(d) N(d) dd / int P(d) n_A n_B(d) dd,   N = the gate-restricted overlap numerator of gated_hom,
+    i.e. each delay is weighted by its detected-pair probability (the brief's unweighted int P I_T lets the vanishing
+    detection probability of a late partner inflate I_T -> 1 near d -> T). Trapezoid on +/- 6 sigma; sigma = 0
+    returns gated_hom. The jitter is the one [A] input of the Bennett comparison; for two independent sources with
+    per-photon jitter s use sigma = sqrt(2) s."""
+    import numpy as np
+    if not sigma_ns > 0.0:
+        return gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss)["I_T"]
+    x = np.linspace(-6.0, 6.0, int(n_nodes))
+    w = np.exp(-0.5 * x * x)
+    g = [gated_hom(Gamma, gamma_star, t_gate_ns, T_ns, k_loss, delay_ns=float(sigma_ns * xi)) for xi in x]
+    num = np.array([v["num"] for v in g])
+    nn = np.array([v["nn"] for v in g])
+    den = float(np.sum(w * nn))
+    return float(np.sum(w * num) / den) if den > 0.0 else NAN
+
+
+def binned_g2(g2_0, gamma_ns, T_bin_ns, irf_ps=0.0):
+    """Central-bin g2 of a pulsed histogram whose bin equals the pulse period T (GHz drives) [DR, brief 2.3]:
+        g2_bin = 1 - (1 - g2_0) c0,   c0 = fraction of one coincidence peak inside its own bin,
+    two-sided exponential peaks exp(-gamma|tau|) of rate gamma (the EL decay) give c0 = 1 - e^{-gamma T/2}, i.e.
+    g2_bin = g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} (IRF-free closed form). A Gaussian detector IRF of FWHM irf_ps
+    (the cross-correlation of two detectors has std sqrt(2) sigma_IRF) broadens each peak and lowers c0 further
+    (peak density = Laplace convolved with a normal, integrated numerically). The peak-area g2 is g2_0 itself."""
+    gamma, T = float(gamma_ns), float(T_bin_ns)
+    if not (gamma > 0.0 and T > 0.0):
+        return NAN
+    if not irf_ps > 0.0:
+        c0 = -math.expm1(-gamma * T / 2.0)
+    else:
+        from scipy.integrate import quad
+        from scipy.special import ndtr
+        sig = math.sqrt(2.0) * float(irf_ps) * 1e-3 / (2.0 * math.sqrt(2.0 * math.log(2.0)))   # ns, cross-correlation std
+
+        def f(x):                       # Laplace(gamma) * N(0, sig^2) density
+            a = gamma * sig * sig
+            e1 = math.exp(min(0.5 * gamma * gamma * sig * sig - gamma * x, 700.0)) * ndtr((x - a) / sig)
+            e2 = math.exp(min(0.5 * gamma * gamma * sig * sig + gamma * x, 700.0)) * ndtr(-(x + a) / sig)
+            return 0.5 * gamma * (e1 + e2)
+        c0 = 2.0 * quad(f, 0.0, T / 2.0, epsabs=1e-13, epsrel=1e-12, limit=200)[0]      # f is even
+    return float(1.0 - (1.0 - float(g2_0)) * c0)
+
+
+def irf_dip_g2(g2_0, tau_dip_ns, irf_fwhm_ps):
+    """g2(0) of a single-exponential dip 1 - (1 - g2_0) exp(-|tau|/tau_dip) seen through a Gaussian IRF of FWHM
+    irf_fwhm_ps: 1 - (1 - g2_0) F (cw_g2._dip_factor, the Reischle 2008 procedure). irf = 0 returns g2_0."""
+    if not irf_fwhm_ps > 0.0:
+        return float(g2_0)
+    from .. import cw_g2
+    return float(1.0 - (1.0 - float(g2_0)) * cw_g2._dip_factor(float(tau_dip_ns), float(irf_fwhm_ps), "gaussian"))
 
 
 def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None):
@@ -215,6 +327,9 @@ def _derive(c: Context) -> dict:
              linewidth_ueV=lb_hbar_ueV() * (Gamma + k + float(rt.gamma_star_ns)),
              detuning_ueV=float(rt.detuning_ueV), hom_zpl_fraction=q)
     d["tau_purcell_ps"] = 1e3 / (Gamma + k)
+    # devlib-p10e: the EL decay of a gated diode (tau_ps / Gamma0 stay the radiative values, never refit from EL)
+    k_off = float(res.extra.get("k_esc_off_ns", 0.0) or 0.0)
+    d["tau_EL_ps"] = float(res.extra["tau_EL_ps"]) if "tau_EL_ps" in res.extra else 1e3 / (Gamma + k + k_off)
     d["tau_ps"] = float(res.extra["tau_jc_ps"]) if "tau_jc_ps" in res.extra else d["tau_purcell_ps"]
     d["tau_1e_ps"] = float(res.extra["tau_1e_ps"]) if "tau_1e_ps" in res.extra else d["tau_ps"]
     d["eta_extract"] = beta * d["eta_out"]
@@ -225,6 +340,8 @@ def _derive(c: Context) -> dict:
         d["beta_entered"] = NAN
         why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
+    irf_ps = float(plan.inputs.get("irf_ps", 0.0) or 0.0) or float(_read(c, "setup", "irf_ps", 0.0) or 0.0)
+    d["irf_ps"] = irf_ps
     if "eta_prep" in res.extra:
         # FX2c: preparation probability P(n >= 1) = 1 - p0 (the expected count is n_exc)
         d["eta_prep"] = float(res.extra["eta_prep"])
@@ -273,8 +390,29 @@ def _derive(c: Context) -> dict:
     else:
         d["g2_raw"] = NAN
         why["g2_raw"] = "background rate needs the detected signal rate S, which is unavailable"
+    # binned (GHz) histogram and IRF-convolved dip
+    if pulsed and f_rep:
+        d["g2_binned"] = binned_g2(g2, Gamma + k + k_off, 1e9 / f_rep, irf_ps)
+    else:
+        d["g2_binned"] = NAN
+        why["g2_binned"] = "binned histogram g2 needs a pulsed drive (bin = pulse period)"
+    if not pulsed and math.isfinite(float(res.extra.get("tau_dip_ns", NAN))):
+        d["g2_irf"] = irf_dip_g2(g2, float(res.extra["tau_dip_ns"]), irf_ps)
+    else:
+        d["g2_irf"] = NAN
+        why["g2_irf"] = "IRF-convolved dip needs a cw rate-solver drive (dip recovery time)"
     I1 = float(res.I_single)
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
+    hg = plan.inputs.get("hom_gate")
+    if hg:
+        sg = float(hg.get("jitter_ns", 0.0))
+        gs = float(rt.gamma_star_ns)
+        Ig = gated_hom_jitter(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), sg, k + k_off)
+        d["hom_I_gated"] = Ig * q * q if math.isfinite(Ig) else NAN
+        d["hom_gate_fraction"] = gated_hom(Gamma, gs, float(hg["start_ns"]), float(hg["width_ns"]), k + k_off)["n_T"]
+    else:
+        d["hom_I_gated"] = NAN
+        why["hom_I_gated"] = "no HOM detection gate set (drive.hom_gate_ps = 0)"
     # FX2b: XX-line stream of a TPE cascade (cascade solver only)
     for key in ("tau_XX_ps", "g2_XX", "hom_XX", "n_XX"):
         d[key] = float(res.extra[key]) if key in res.extra else NAN
@@ -362,6 +500,12 @@ _o("n_ph", "Photons per pulse", "1", _ALL)
 _o("tau_ps", "Lifetime (slowest Liouvillian decay eigenvalue when solver jc, else Purcell)", "ps", _ALL)
 _o("tau_1e_ps", "JC flux 1/e time after the peak (informational; = tau_ps for non-jc)", "ps", _ALL)
 _o("tau_purcell_ps", "Purcell lifetime 1e3/(Gamma+k)", "ps", _MS)
+_o("tau_EL_ps", "Electroluminescence decay time 1e3/(Gamma+k+k_off) of a gated diode (reported, never fed into Gamma0)", "ps",
+   _ALL)
+_o("g2_binned", "Central-bin g2 of the pulsed histogram (bin = pulse period; EL decay leaks neighbouring peaks, IRF adds more)",
+   "1", _ALL + ("setup",))
+_o("g2_irf", "g2(0) of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
+_o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), q^2 included", "1", _ALL + ("setup",))
 _o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)
 _o("detuning_ueV", "Emitter minus cavity detuning", "ueV", _MS)
 _o("g2_0", "g2(0)", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw"),

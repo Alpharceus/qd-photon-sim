@@ -75,6 +75,13 @@ class DrivePlan:
     interface: Any = None            # drive_mech.DriveInterface | None
     needs: frozenset = frozenset()   # {"phonons","cascade","td_detuning","two_colour"}
     inputs: dict = field(default_factory=dict)
+    # devlib-p10e electrical fields (all default = the pre-existing behaviour)
+    pump_profile: str = "rect"       # incoherent pump time profile: "rect" | "rc" (rect + RC rise/tail) | "gauss"
+    t_rise_ns: float = 0.0           # RC time constant R_s C_j of the "rc" profile
+    k_esc_on_ns: float = 0.0         # photonless escape X -> G during the pump window (bias on) [1/ns]
+    k_esc_off_ns: float = 0.0        # ... and in the dark window (bias below turn-on; EL decay = Gamma + k_off) [1/ns]
+    gate_ns: Optional[float] = None  # counting gate from the pump onset (None = whole period)
+    det_profile: Optional[tuple] = None  # Stark gate (det_off_meV, det_on_meV, t_gate_ps, t_r_ps), REPO det_X = omega_X - omega_L
 
 
 @dataclass(frozen=True)

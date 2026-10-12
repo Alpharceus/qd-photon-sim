@@ -71,6 +71,7 @@ _SX = np.array([[0, 1], [1, 0]], dtype=complex)
 _SY = np.array([[0, -1j], [1j, 0]], dtype=complex)      # basis (G, X)
 _LSX = lb.hamiltonian_super(0.5 * _SX)
 _LSY = lb.hamiltonian_super(0.5 * _SY)
+_LDET = lb.hamiltonian_super(np.array([[0, 0], [0, 1]], dtype=complex))    # d L / d(det_X): H = det |X><X|
 _IDX_PX = 3                    # vec index of rho[X, X] (column stacking, dim 2)
 
 
@@ -138,10 +139,22 @@ class PulseTrain:
     """Complex Rabi frequency Omega(t) in the frame of pulse 0: sum_k Omega_k(t) exp(-i[dw_k (t - tc_k)
     + kappa_k (t - tc_k)^2/2 + phi_k]); window W = 2 max_k(|t0_k| + half window), centred at W/2."""
 
-    def __init__(self, pulses):
+    def __init__(self, pulses, det_profile=None):
         if not pulses:
             raise ValueError("PulseTrain needs at least one pulse")
         det0 = float(lb.mev_to_rate(pulses[0].detuning_meV))
+        # devlib-p10e Stark gate: det_X(t) = det_off + (det_on - det_off) g(t), g = RC-smoothed boxcar centred in the
+        # window (width t_gate, time constant t_r; t_r = 0 sharp). det_off (REPO det_X, meV) is the value outside
+        # the gate AND after the window (the dark-window Liouvillian L0 uses it); None = constant det0 (bit-identical).
+        self.det_profile = None if det_profile is None else tuple(float(x) for x in det_profile)
+        self._det_off = self._det_on = self._t_gate = self._t_r = 0.0
+        if self.det_profile is not None:
+            off, on, tg, tr = self.det_profile
+            if not (math.isfinite(sum(self.det_profile)) and tg >= 0.0 and tr >= 0.0):
+                raise ValueError("det_profile = (det_off_meV, det_on_meV, t_gate_ps >= 0, t_r_ps >= 0)")
+            det0 = float(lb.mev_to_rate(off))
+            self._det_off, self._det_on = det0, float(lb.mev_to_rate(on))
+            self._t_gate, self._t_r = tg * 1e-3, tr * 1e-3
         half = []
         for p in pulses:
             dur = p.fwhm_ps * 1e-3
@@ -161,6 +174,26 @@ class PulseTrain:
         self.comps = tuple(comps)
         self.det0_ns = det0
 
+    def delta_t(self, t):
+        """det_X(t) (1/ns) at the times t: constant det0 without a det_profile."""
+        t = np.asarray(t, dtype=float)
+        if self.det_profile is None:
+            return np.full(t.shape, self.det0_ns)
+        ts, te = 0.5 * self.W - 0.5 * self._t_gate, 0.5 * self.W + 0.5 * self._t_gate
+        if self._t_r <= 0.0:
+            g = np.where((t >= ts) & (t < te), 1.0, 0.0)
+        else:
+            ge = 1.0 - math.exp(-self._t_gate / self._t_r)
+            g = np.where(t < ts, 0.0, np.where(t < te, 1.0 - np.exp(-(t - ts) / self._t_r),
+                                               ge * np.exp(-(t - te) / self._t_r)))
+        return self._det_off + (self._det_on - self._det_off) * g
+
+    def delta_cell(self, t_mid, dt, n_sub=8):
+        """Cell average of det_X(t) over [t_mid - dt/2, t_mid + dt/2] (edge-weighted for a sharp gate)."""
+        t_mid = np.asarray(t_mid, dtype=float)
+        off = (np.arange(n_sub) + 0.5) / n_sub - 0.5
+        return self.delta_t(t_mid[:, None] + off[None, :] * dt).mean(axis=1)
+
     def omega(self, t):
         t = np.asarray(t, dtype=float)
         out = np.zeros(t.shape, dtype=complex)
@@ -177,7 +210,8 @@ class PulseTrain:
     def rate_max(self, B: float) -> float:
         """Upper bound on |H| (1/ns): |Delta| + sum |Omega_r| + max (beat + chirp sweep)."""
         sweep = max(abs(c.dw) + abs(c.kappa) * 0.5 * self.W for c in self.comps)
-        return abs(self.det0_ns) + B * sum(abs(c.amp) for c in self.comps) + sweep
+        dmax = abs(self.det0_ns) if self.det_profile is None else max(abs(self._det_off), abs(self._det_on))
+        return dmax + B * sum(abs(c.amp) for c in self.comps) + sweep
 
     def sigma_min(self) -> Optional[float]:
         s = [c.sigma_ns for c in self.comps if c.shape == "gauss" and c.area != 0.0]
@@ -199,12 +233,15 @@ class Generator:
         self.delta = train.det0_ns
         self._cache = {}
 
-    def dressed(self, t_mid):
-        """(Omega_r, Lambda, mix, vecs) at the given times. vecs[:, :, 0] = |lo>, [:, :, 1] = |hi>."""
+    def dressed(self, t_mid, delta=None):
+        """(Omega_r, Lambda, mix, vecs) at the given times. vecs[:, :, 0] = |lo>, [:, :, 1] = |hi>.
+        delta = det_X at those times (default: the constant det0, or the det_profile value at t_mid)."""
         om = self.pm.B * self.train.omega(t_mid)
         n = om.size
         H = np.zeros((n, 2, 2), dtype=complex)
-        H[:, 1, 1] = self.delta
+        if delta is None:
+            delta = self.delta if self.train.det_profile is None else self.train.delta_t(t_mid)
+        H[:, 1, 1] = delta
         H[:, 1, 0] = 0.5 * om
         H[:, 0, 1] = 0.5 * np.conj(om)
         ev, vec = np.linalg.eigh(H)
@@ -212,12 +249,18 @@ class Generator:
         mix = np.abs(vec[:, 1, 0] * np.conj(vec[:, 1, 1])) ** 2         # |<hi|P_X|lo>|^2
         return om, lam, mix, vec
 
-    def step_L(self, t_mid):
-        """Liouvillians (n, 4, 4) at the midpoints t_mid."""
+    def step_L(self, t_mid, dt=None):
+        """Liouvillians (n, 4, 4) at the midpoints t_mid (dt = step width, used to cell-average a det_profile)."""
         t_mid = np.asarray(t_mid, dtype=float)
-        om, lam, mix, vec = self.dressed(t_mid)
+        if self.train.det_profile is None:
+            om, lam, mix, vec = self.dressed(t_mid)
+        else:
+            dcell = self.train.delta_cell(t_mid, dt) if dt is not None else self.train.delta_t(t_mid)
+            om, lam, mix, vec = self.dressed(t_mid, delta=dcell)
         L = np.broadcast_to(self.L0, (om.size, 4, 4)).copy()
         L += om.real[:, None, None] * _LSX + om.imag[:, None, None] * _LSY
+        if self.train.det_profile is not None:
+            L += (dcell - self.delta)[:, None, None] * _LDET
         if self.pm.active:
             ok = lam > 1e-9 * max(1.0, abs(self.delta))
             gd = np.zeros(om.size)
@@ -235,8 +278,8 @@ class Generator:
         if n not in self._cache:
             edges = np.linspace(0.0, self.W, n + 1)
             mid = 0.5 * (edges[:-1] + edges[1:])
-            L = self.step_L(mid)
             dt = np.diff(edges)
+            L = self.step_L(mid, dt[0] if self.train.det_profile is not None else None)
             U = np.array([expm(L[i] * dt[i]) for i in range(n)])
             self._cache[n] = (edges, L, U)
         return self._cache[n]
@@ -396,7 +439,9 @@ class PolaronSolver(Solver):
             return False, "polaron: pulsed plan needs f_rep_MHz"
         if "T_K" not in plan.inputs:
             return False, "polaron: plan.inputs['T_K'] missing (the engine supplies the temperature)"
-        W = PulseTrain(plan.pulses).W
+        if plan.det_profile is not None and len(plan.det_profile) != 4:
+            return False, "polaron: det_profile must be (det_off_meV, det_on_meV, t_gate_ps, t_r_ps)"
+        W = PulseTrain(plan.pulses, plan.det_profile).W
         if 1e3 / float(plan.f_rep_MHz) <= W:
             return False, "polaron: repetition period must exceed the pulse window"
         return True, ""
@@ -421,7 +466,7 @@ class PolaronSolver(Solver):
     def _setup(self, plan, em, rt):
         T = float(plan.inputs["T_K"])
         pm = PhononModel(em.phonon, T)
-        train = PulseTrain(plan.pulses)
+        train = PulseTrain(plan.pulses, plan.det_profile)
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
                          delta_ns=train.det0_ns)
         return pm, train, Generator(train, tl, pm)
@@ -459,13 +504,33 @@ class PolaronSolver(Solver):
                  "window_ps": float(train.W * 1e3), "hom": info, "det_X_meV": float(plan.pulses[0].detuning_meV),
                  "gamma_down_centre_ns": float(gd[0]), "gamma_up_centre_ns": float(gu[0]),
                  "notes": reasons}
+        if plan.det_profile is not None:
+            extra["lz"] = self._lz(train, pm.B)
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
                             inversion=float(st["rho_post"][1, 1].real), extra=extra, valid=True,
                             reasons=tuple(reasons))
 
+    @staticmethod
+    def _lz(train: PulseTrain, B: float) -> dict:
+        """Landau-Zener check of a Stark gate: the rising-edge chirp through resonance is adiabatic when
+        Omega^2 >> |d det/dt| (brief 2.1). Reported: Omega (rad/ns), the sweep rate of the RC edge
+        |det_on - det_off|/t_r (rad/ns^2; inf for a sharp edge), the ratio Omega^2/sweep (adiabatic if >> 1) and
+        the Landau-Zener diabatic probability exp(-pi Omega^2/(2 sweep)) for a linear sweep [DR]."""
+        om = B * max(abs(c.amp) for c in train.comps)
+        jump = abs(train._det_on - train._det_off)
+        sweep = float("inf") if train._t_r <= 0.0 else jump / train._t_r
+        if sweep == float("inf"):
+            ratio, p_dia = 0.0, 1.0
+        elif sweep == 0.0:
+            ratio, p_dia = float("inf"), 0.0
+        else:
+            ratio, p_dia = om * om / sweep, math.exp(-math.pi * om * om / (2.0 * sweep))
+        return {"omega_ns": float(om), "sweep_ns2": float(sweep), "adiabaticity": float(ratio),
+                "adiabatic": bool(ratio > 10.0), "p_lz_diabatic": float(p_dia)}
+
     def eta_seconds(self, plan, n_points):
         try:
-            train = PulseTrain(plan.pulses)
+            train = PulseTrain(plan.pulses, plan.det_profile)
             n_f, _, _ = self._grids(train, 0.95)
         except Exception:                                          # noqa: BLE001
             n_f = 3000

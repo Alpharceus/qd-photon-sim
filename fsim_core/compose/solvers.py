@@ -44,6 +44,17 @@ extra["n_exc"]; for n <= 2 the counting hierarchy gives the same probability as 
 is not added back. The old end-of-window population is kept as extra["P_X_end"] (informational; it includes the
 decay during the window).
 
+devlib-p10e (electrical drives; all off by default = bit-identical to the rectangular paths):
+  * SHAPED incoherent pump r(t) (plan.pump_profile rect | rc | gauss, plan.t_rise_ns): piecewise-constant
+    cell-averaged steps of `pump_cells` (mu = int r dt is the operating point, preserved exactly), handed to
+    pulse_counting.pulse_g2(r_profile=...) (rate) and lindblad.pulsed_counting(profile=...) (lindblad_incoherent).
+    An RC tail LENGTHENS the effective window (tau_eff ~ tau_on + 1.7 t_r); it is never subtracted.
+  * bias-dependent photonless escape: plan.k_esc_on_ns (pump window) and plan.k_esc_off_ns (dark window) act as
+    X -> G losses (XX scales with gamma_xx_ratio like k_nr); the EL decay time tau_EL = 1/(Gamma + k_nr + k_off) is
+    REPORTED (extra["tau_EL_ps"]) and never fed back into Gamma0.
+  * td_detuning is supported by the lindblad solver (and polaron): plans with a Stark gate (plan.det_profile) or a
+    chirped pulse run on the polaron step-propagator machinery with the phonons switched off.
+
 Conventions (physics brief 2): rates 1/ns; Pulse.detuning_meV holds the REPO det_X =
 omega_X - omega_L (P4 drives.py stores -Delta_paper); pulse fwhm is the INTENSITY FWHM;
 gamma* is the repo value (2 x textbook). Phonons: only Z-factor bookkeeping in
@@ -57,6 +68,8 @@ import math
 from typing import Optional
 
 import numpy as np
+from dataclasses import replace as _dc_replace
+
 from scipy.linalg import expm, solve
 
 from .. import cw_g2
@@ -70,7 +83,7 @@ from .types import SolverResult
 NAN = float("nan")
 _UNSUPPORTED_NEEDS = {
     "phonons": "needs P9 polaron solver",
-    "td_detuning": "time-dependent detuning (chirp) is not implemented",
+    "td_detuning": "time-dependent detuning (Stark gate / chirp) is supported only by the lindblad and polaron solvers",
     "two_colour": "two-colour drives are not implemented",
 }
 _HOM_TOL = 1e-6                    # [A] numerical choice for the Richardson-converged HOM integral
@@ -118,8 +131,8 @@ def _pulsed_coherent_check(plan) -> Optional[str]:
     p = plan.pulses[0]
     if p.shape not in ("rect", "gauss"):
         return f"pulse shape {p.shape!r} not supported (rect|gauss)"
-    if abs(p.chirp_meV_ps) > 0.0:
-        return "chirped pulses need time-dependent detuning (not implemented)"
+    if abs(p.chirp_meV_ps) > 0.0 and "td_detuning" not in plan.needs:
+        return "chirped pulses need time-dependent detuning (needs td_detuning)"
     f = _f_rep(plan)
     if f is None or f <= 0:
         return "pulsed plan needs f_rep_MHz"
@@ -147,6 +160,88 @@ def _interp_pump(plan, rt):
 
 def _series_xy(x, y, unit_x="ns"):
     return {"x": [float(v) for v in x], "y": [float(v) for v in y], "x_unit": unit_x}
+
+
+# ---------------------------------------------------------------- shaped pump profile (devlib-p10e)
+_RC_TAIL_TR = 12.0                 # [A] RC tail truncated at tau_on + 12 t_r (the lost weight is < e^-12 of the tail)
+_GAUSS_HALF_SIGMAS = 4.0           # [A] Gaussian window = +/- 4 sigma, renormalised to mu
+_CELLS_PER_TR = 16                 # [A] steps per t_r (rc) / per sigma-pair (gauss); anchors converge < 1e-3
+
+
+def pump_cells(shape, mu, tau_on_ns, t_rise_ns=0.0, n_per=_CELLS_PER_TR):
+    """Piecewise-constant, CELL-AVERAGED incoherent pump r(t) [DR, brief 1.1]: -> (dts_ns, r_k_per_ns) with
+    sum r_k dt_k = mu exactly (each cell carries the exact integral of r over it).
+      rect : r0 = mu/tau_on on [0, tau_on)
+      rc   : r0 (1 - e^{-t/t_r}) on [0, tau_on), r0 (1 - e^{-tau_on/t_r}) e^{-(t - tau_on)/t_r} after, r0 = mu/tau_on
+             (the rise deficit equals the tail excess, so mu = r0 tau_on); window tau_on + 12 t_r
+      gauss: r = mu N(t; t0, sigma), FWHM = tau_on (the pump pulse's own FWHM), window +/- 4 sigma, renormalised
+    t_rise_ns <= 0 turns rc into rect. The step count grows with n_per; the shape anchors (Sartison, brief 1.3) are
+    converged to < 1e-3 at the default."""
+    mu, tau = float(mu), float(tau_on_ns)
+    if shape == "rc" and not t_rise_ns > 0.0:
+        shape = "rect"
+    if shape == "rect":
+        return [tau], [mu / tau]
+    if shape == "rc":
+        tr = float(t_rise_ns)
+        r0 = mu / tau
+        n1 = min(400, max(8, int(math.ceil(n_per * tau / tr))))
+        W = tau + _RC_TAIL_TR * tr
+        n2 = min(600, max(8, int(math.ceil(n_per * (W - tau) / tr))))
+        nodes = np.concatenate([np.linspace(0.0, tau, n1 + 1), np.linspace(tau, W, n2 + 1)[1:]])
+        Ft = r0 * (tau - tr * (1.0 - math.exp(-tau / tr)))
+        amp = r0 * (1.0 - math.exp(-tau / tr)) * tr
+
+        def F(t):
+            return np.where(t <= tau, r0 * (t - tr * (1.0 - np.exp(-t / tr))),
+                            Ft + amp * (1.0 - np.exp(-(t - tau) / tr)))
+    elif shape == "gauss":
+        sig = tau / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+        W = 2.0 * _GAUSS_HALF_SIGMAS * sig
+        nodes = np.linspace(0.0, W, int(math.ceil(W / (2.0 * sig / n_per))) + 1)
+        from scipy.special import erf
+
+        def F(t):
+            return 0.5 * (1.0 + erf((t - 0.5 * W) / (sig * math.sqrt(2.0))))
+    else:
+        raise ValueError(f"pump_profile {shape!r} not supported (rect|rc|gauss)")
+    Fn = F(nodes)
+    dts = np.diff(nodes)
+    dF = np.diff(Fn)
+    if shape == "gauss":
+        dF = dF / (Fn[-1] - Fn[0]) * mu
+    else:
+        dF = dF * (mu / (Fn[-1] - Fn[0]))        # renormalise the (tiny) truncated tail to mu
+    return [float(d) for d in dts], [float(x) for x in dF / dts]
+
+
+def _shaped(plan) -> bool:
+    """True when the plan asks for anything beyond the rectangular pump with no bias-dependent escape."""
+    shaped_pump = plan.pump_profile == "gauss" or (plan.pump_profile == "rc" and plan.t_rise_ns > 0.0)
+    return bool(shaped_pump or plan.k_esc_on_ns > 0.0 or plan.k_esc_off_ns > 0.0)
+
+
+def _plan_cells(plan, r, tau_on):
+    """(dts, r_k) of a shaped plan: mu = r tau_on (the rectangular operating point) is preserved."""
+    return pump_cells(plan.pump_profile, float(r) * float(tau_on), float(tau_on), float(plan.t_rise_ns))
+
+
+def _pump_window_ns(plan, r, tau_on) -> float:
+    """Length of the pump window including an RC tail (the rectangular tau_on when unshaped)."""
+    if not _shaped(plan):
+        return float(tau_on)
+    return float(sum(_plan_cells(plan, r, tau_on)[0]))
+
+
+def _el_extras(plan, rt) -> dict:
+    """Escape / EL-decay report of a shaped plan (empty for the default rectangular, escape-free plan)."""
+    if not _shaped(plan):
+        return {}
+    G, k, koff = float(rt.Gamma_ns), float(rt.k_nr_ns), float(plan.k_esc_off_ns)
+    return {"pump_profile": plan.pump_profile, "t_rise_ns": float(plan.t_rise_ns),
+            "k_esc_on_ns": float(plan.k_esc_on_ns), "k_esc_off_ns": koff,
+            "tau_EL_ps": 1e3 / (G + k + koff), "tau_rad_ps": 1e3 / G,
+            "eta_rad_esc": G / (G + k + koff)}
 
 
 def _window_counts(pc, shape, area, duration, rho0=None, n_steps=None):
@@ -210,7 +305,7 @@ class RateSolver(Solver):
             f = _f_rep(plan)
             if f is None or tau <= 0.0:
                 return False, "pulsed plan needs f_rep_MHz and a pump window"
-            if 1e3 / f <= tau:
+            if 1e3 / f <= _pump_window_ns(plan, r, tau):
                 return False, "repetition period must exceed the pump window"
         return True, ""
 
@@ -218,6 +313,8 @@ class RateSolver(Solver):
         gX = float(rt.Gamma_ns)
         gXX = float(em.gamma_xx_ratio) * float(rt.Gamma0_ns)    # XX is not Purcell-enhanced [A]
         kX = float(rt.k_nr_ns)
+        if plan.timing == "cw":
+            kX = kX + float(plan.k_esc_on_ns)          # cw: the bias-on escape acts all the time (0 by default)
         kXX = kX * float(em.gamma_xx_ratio)
         p = float(plan.inputs.get("pump_ratio_xx", 1.0)) if "cascade" in plan.needs else 0.0
         return gX, gXX, kX, kXX, p
@@ -234,11 +331,26 @@ class RateSolver(Solver):
             reasons.append("bg_frac applied to g2 as 1 - rho^2 (1 - g2), rho = 1 - bg_frac [A]")
         if plan.timing == "pulsed":
             period = 1e3 / float(plan.f_rep_MHz)
-            out = pcnt.pulse_g2(r, gX, gXX, kX, kXX, 1.0, 0.0, tau_on, period - tau_on, pump_ratio=pr)
+            extra_el = _el_extras(plan, rt)
+            if extra_el:
+                ratio = float(em.gamma_xx_ratio)
+                dts, rks = _plan_cells(plan, r, tau_on)
+                kon, koff = float(plan.k_esc_on_ns), float(plan.k_esc_off_ns)
+                steps = [(dt, rk, kX + kon, (kX + kon) * ratio) for dt, rk in zip(dts, rks)]
+                W = float(sum(dts))
+                out = pcnt.pulse_g2(0.0, gX, gXX, kX, kXX, 1.0, 0.0, 0.0, period - W, pump_ratio=pr,
+                                    gate_ns=plan.gate_ns, r_profile=steps,
+                                    k_dark=(kX + koff, (kX + koff) * ratio))
+                extra_el.update(window_ns=W, mu=float(r * tau_on))
+                reasons.append(f"shaped pump ({plan.pump_profile}, window {W * 1e3:.0f} ps) with bias-dependent escape "
+                               "(k_on / k_off); EL decay is reported, never fed into Gamma0")
+            else:
+                out = pcnt.pulse_g2(r, gX, gXX, kX, kXX, 1.0, 0.0, tau_on, period - tau_on, pump_ratio=pr,
+                                    gate_ns=plan.gate_ns)
             return SolverResult(g2_0=float(bgf(out["g2"])), n_ph=float(out["mean_counts"]), I_single=NAN,
                                 inversion=None,
                                 extra={"p_loaded": 1.0 - math.exp(-r * tau_on),
-                                       "converged": bool(out["converged"]), "notes": reasons},
+                                       "converged": bool(out["converged"]), "notes": reasons, **extra_el},
                                 valid=bool(out["converged"]),
                                 reasons=() if out["converged"] else ("periodic steady state did not converge",))
         scale = max(gX + kX, 1e-12)
@@ -246,8 +358,9 @@ class RateSolver(Solver):
         g2 = cw_g2.g2_cw(taus, r, gX, gXX, 1.0, 0.0, kX, kXX, pr)
         P = cw_g2.steady_state(r, gX, gXX, kX, kXX, pr)
         return SolverResult(g2_0=float(bgf(g2[0])), n_ph=NAN, I_single=NAN, inversion=None,
-                            extra={"flux_ns": float(gX * P[1]),
-                                   "series": {"g2_tau": _series_xy(taus, g2)}, "notes": reasons})
+                            extra={"flux_ns": float(gX * P[1]), "tau_dip_ns": 1.0 / (gX + kX + r),
+                                   "series": {"g2_tau": _series_xy(taus, g2)}, "notes": reasons,
+                                   **_el_extras(plan, rt)})
 
     def eta_seconds(self, plan, n_points):
         return 0.005 * max(1, int(n_points))
@@ -263,12 +376,18 @@ class LindbladSolver(Solver):
     def supports(self, plan, em, rt):
         if plan.family != "coherent":
             return False, "coherent drives only; use lindblad_incoherent or rate"
-        bad = _bad_needs(plan, allowed=("cascade",))
+        bad = _bad_needs(plan, allowed=("cascade", "td_detuning"))
         if bad:
             return False, "; ".join(bad)
         why = _pulsed_coherent_check(plan)
         if why:
             return False, why
+        if "td_detuning" in plan.needs:
+            if "cascade" in plan.needs or plan.timing != "pulsed":
+                return False, "td_detuning: pulsed two-level plans only (no TPE cascade, no cw)"
+            ok, why = self._td_solver().supports(self._td_plan(plan), em, rt)
+            if not ok:
+                return False, "td_detuning (polaron machinery, phonons off): " + why
         if "cascade" in plan.needs:
             if plan.timing != "pulsed":
                 return False, "TPE needs a pulsed plan"
@@ -280,11 +399,46 @@ class LindbladSolver(Solver):
             return False, "cw drive with zero Rabi frequency has no emission"
         return True, ""
 
+    @staticmethod
+    def _td_solver():
+        return _get("solver", "polaron")
+
+    @staticmethod
+    def _td_plan(plan):
+        """The plan for the polaron step-propagator machinery (it needs plan.inputs["T_K"]; phonons are off)."""
+        return plan if "T_K" in plan.inputs else _dc_replace(plan, inputs={**plan.inputs, "T_K": 0.0})
+
+    def _td(self, plan, em, rt):
+        """Time-dependent detuning (Stark gate det_profile / chirp): the polaron solver's piecewise-constant
+        L(t) = L0 + Omega(t) L1 + (det(t) - det0) L_det propagators with the phonon coupling removed, so the same
+        counting hierarchy, eta_prep and Grange HOM apply [DR]."""
+        res = self._td_solver().run(self._td_plan(plan), _dc_replace(em, phonon=None), rt)
+        extra = dict(res.extra)
+        extra["notes"] = list(extra.get("notes", [])) + ["td_detuning: lindblad path = polaron step propagators, "
+                                                         "phonons off"]
+        return SolverResult(g2_0=res.g2_0, n_ph=res.n_ph, I_single=res.I_single, inversion=res.inversion,
+                            extra=extra, valid=res.valid, reasons=res.reasons)
+
+    def _zero_area(self, plan, kind="X"):
+        """Trivial zero-excitation result (pulse area 0): no excitation, no photons; g2 and HOM are undefined."""
+        extra = {"det_X_meV": _det_X_meV(plan), "eta_prep": 0.0, "n_exc": 0.0, "photons_in_window": 0.0,
+                 "P_X_end": 0.0, "notes": ["zero pulse area: the emitter is never excited (n_ph = 0; g2 and HOM undefined)"]}
+        if kind == "tpe":
+            extra.update(n_XX=0.0)
+        return SolverResult(g2_0=NAN, n_ph=0.0, I_single=NAN, inversion=0.0, extra=extra, valid=True,
+                            reasons=("zero pulse area: no excitation, g2 and HOM undefined",))
+
     def run(self, plan, em, rt):
         if "cascade" in plan.needs:
+            if plan.pulses and float(plan.pulses[0].area_rad) == 0.0:
+                return self._zero_area(plan, "tpe")
             return self._tpe(plan, em, rt)
         if plan.timing == "cw":
             return self._cw(plan, em, rt)
+        if plan.pulses and float(plan.pulses[0].area_rad) == 0.0:
+            return self._zero_area(plan)
+        if "td_detuning" in plan.needs:
+            return self._td(plan, em, rt)
         p = plan.pulses[0]
         dur = p.fwhm_ps * 1e-3
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
@@ -392,7 +546,7 @@ class IncoherentLindbladSolver(Solver):
         f = _f_rep(plan)
         if r <= 0 or tau <= 0 or f is None:
             return False, "needs pump rate, pump window and f_rep_MHz"
-        if 1e3 / f <= tau:
+        if 1e3 / f <= _pump_window_ns(plan, r, tau):
             return False, "repetition period must exceed the pump window"
         return True, ""
 
@@ -446,13 +600,31 @@ class IncoherentLindbladSolver(Solver):
         c_ops_hom = list(c_ops_off)
         if k_esc > 0.0 and with_res:
             c_ops_hom.append(np.sqrt(k_esc) * e(2, 1))
+        extra_el = _el_extras(plan, rt)
+        k_on, k_dark = float(plan.k_esc_on_ns), float(plan.k_esc_off_ns)
+        c_ops_hom_base = list(c_ops_hom)
+        if extra_el and k_dark > 0.0:
+            c_ops_hom.append(np.sqrt(k_dark) * e(0, 1))            # dark-window bias-state escape (devlib-p10e)
         L_hom = lb.liouvillian(H0, c_ops_hom)
         c_ops_cnt = list(c_ops_hom)
         if k_esc > 0.0:
             c_ops_cnt.append(np.sqrt(k_esc) * e(iP, 0))            # recapture of thermally released carriers
         L_off = lb.liouvillian(H0, c_ops_cnt)
-        L_on = lb.liouvillian(H0, c_ops_cnt + [c_pump])
-        out = lb.pulsed_counting(L_on, L_off, J, dim, tau_on, period - tau_on)
+        if extra_el:
+            # shaped pump window: L_k = L_on_base + r_k D[|P><G|], escape k_on on, k_off in the dark window
+            c_on = list(c_ops_hom_base) + ([np.sqrt(k_esc) * e(iP, 0)] if k_esc > 0.0 else [])
+            if k_on > 0.0:
+                c_on.append(np.sqrt(k_on) * e(0, 1))
+            L_base = lb.liouvillian(H0, c_on)
+            D_pump = lb.dissipator(e(iP, 0))
+            dts, rks = _plan_cells(plan, r, tau_on)
+            W = float(sum(dts))
+            profile = [(dt, L_base + rk * D_pump) for dt, rk in zip(dts, rks)]
+            out = lb.pulsed_counting(None, L_off, J, dim, 0.0, period - W, gate_ns=plan.gate_ns, profile=profile)
+            extra_el.update(window_ns=W, mu=float(r * tau_on))
+        else:
+            L_on = lb.liouvillian(H0, c_ops_cnt + [c_pump])
+            out = lb.pulsed_counting(L_on, L_off, J, dim, tau_on, period - tau_on, gate_ns=plan.gate_ns)
         A = np.sqrt(Gam) * e(0, 1)
         rho0 = e(2, 2) if with_res else e(1, 1)
         I = lb.indistinguishability(L_hom, dim, rho0, A)
@@ -470,7 +642,8 @@ class IncoherentLindbladSolver(Solver):
         if not out["converged"]:
             reasons.append("periodic steady state did not converge")
         extra = {"p_loaded": 1.0 - math.exp(-r * tau_on), "g_relax_ns": (1.0 / relax if with_res else None),
-                 "g2_signal": g2_sig, "p_refill": p_ref, "bg_frac": bg, "k_esc_ns": k_esc, "notes": reasons}
+                 "g2_signal": g2_sig, "p_refill": p_ref, "bg_frac": bg, "k_esc_ns": k_esc, "notes": reasons,
+                 **extra_el}
         return SolverResult(g2_0=float(g2), n_ph=float(out["mean_counts"]), I_single=float(I),
                             inversion=None, extra=extra,
                             valid=bool(out["converged"]),
