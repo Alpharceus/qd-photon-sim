@@ -126,8 +126,8 @@ check("open_cavity geometry mode finite, eta_out = T_top/(T_top + T_bot + loss)"
 rs = resp("generic_cavity", {"F_P": 7.6})
 beta = (rs.beta0 * rs.F_bg + rs.F_P) / (rs.F_bg + rs.F_P)          # rates.combine formula at L = 1
 check("Somaschi F_P 7.6, leaky = Gamma0 -> beta 0.884 (paper 0.88)", abs(beta - 0.884) < 0.01, f"{beta:.4f}")
-rl = resp("cbg", {"F_P": 4.0, "leak": 1.0})
-check("cbg leak: beta = F/(1 + F + leak)",
+rl = resp("cbg", {"F_P": 4.0, "leak": 1.0, "table_mode": "cavity_only"})
+check("cbg leak (table_mode cavity_only): beta = F/(1 + F + leak)",
       abs((rl.beta0 * rl.F_bg + rl.F_P) / (rl.F_bg + rl.F_P) - 4.0 / (1 + 4.0 + 1.0)) < 1e-15)
 
 # 4. Lorentzian detuning
@@ -217,15 +217,28 @@ rw_ = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, 
 pm = nwp.NitrideNanowirePhotonicsParams(family="vertical_photonic", NA=0.75, n_wire=3.45, n_group_override=3.6,
                                          taper_transmission=0.95, bottom_reflectivity=0.9, radiative_rate_factor=1.0)
 nr = nwp.response(pm, lambda_nm=670.0, outer_radius_nm=110.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
-check("photonic_nanowire beta0 == beta_HE11 bit-for-bit", rw_.beta0 == nr["beta_HE11"] and rw_.F_P == 0.0)
-check("photonic_nanowire beta0 x eta_out reproduces eta_collection_X", abs(rw_.beta0 * rw_.eta_out / nr["eta_collection_X"] - 1) < 1e-13)
-check("photonic_nanowire eta_out_fn(NA) matches the module at another NA",
-      abs(rw_.eta_out_fn(0.4) - nwp.response(nwp.NitrideNanowirePhotonicsParams(
+pm0 = nwp.NitrideNanowirePhotonicsParams(family="vertical_photonic", NA=0.75, n_wire=3.45, n_group_override=3.6,
+                                          taper_transmission=0.95, bottom_reflectivity=0.0, radiative_rate_factor=1.0)
+nr0 = nwp.response(pm0, lambda_nm=670.0, outer_radius_nm=110.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
+check("photonic_nanowire eta_out == taper_T x module HE11 acceptance bit-for-bit (F_P 0)",
+      rw_.eta_out == 0.95 * nr["diagnostics"]["obj_accept"] and rw_.F_P == 0.0)
+check("photonic_nanowire eta_out_fn(NA) matches the module acceptance at another NA",
+      abs(rw_.eta_out_fn(0.4) - 0.95 * nwp.response(nwp.NitrideNanowirePhotonicsParams(
           family="vertical_photonic", NA=0.4, n_wire=3.45, n_group_override=3.6, taper_transmission=0.95,
-          bottom_reflectivity=0.9), lambda_nm=670.0, outer_radius_nm=110.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)["eta_collection_X"]
-          / nr["beta_HE11"]) < 1e-12)
-rwi = resp("photonic_nanowire", {"F_bg": 0.4}, em=em0)
-check("photonic_nanowire F_bg < 1 inhibition is passed through", rwi.F_bg == 0.4)
+          bottom_reflectivity=0.0), lambda_nm=670.0, outer_radius_nm=110.0, gamma_X0_ns=1.0,
+          gamma_XX0_ns=1.0)["diagnostics"]["obj_accept"]) < 1e-12)
+rw0 = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, "taper_T": 0.95, "mirror_R": 0.0}, em=em0, NA=0.75)
+beta_w = 2.0 * rw0.beta0                                            # R = 0: upward fraction = beta/2
+rr_ = math.sqrt(0.9)
+check("photonic_nanowire mirror (Munsch Eq. 1 closed form): beta0 = (beta/2)(1 + |r|)^2/(1 + beta|r|), rate x (1 + beta|r|)",
+      abs(rw_.beta0 - 0.5 * beta_w * (1 + rr_) ** 2 / (1 + beta_w * rr_)) < 1e-13
+      and abs(rw_.F_bg - (1 + beta_w * rr_)) < 1e-13 and rw0.F_bg == 1.0)
+rwi = resp("photonic_nanowire", {"F_bg": 0.4, "mirror_R": 0.0}, em=em0)
+check("photonic_nanowire F_bg < 1 inhibition is passed through (no mirror)", rwi.F_bg == 0.4)
+rwp = resp("photonic_nanowire", {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6, "taper_T": 0.95, "mirror_R": 0.9,
+                                 "mirror_phase_ok": False}, em=em0, NA=0.75)
+check("photonic_nanowire mirror_phase_ok false: incoherent (beta/2)(1 + R), rate unchanged",
+      abs(rwp.beta0 - 0.5 * beta_w * 1.9) < 1e-13 and rwp.F_bg == 1.0)
 
 # other physics identities
 fw = 3 / (4 * math.pi) * (0.67 / 3.4) ** 2 * (5.0 / 3.4) / 0.03
@@ -240,9 +253,9 @@ check("phc_cavity F_P = 3/(4 pi^2) Q/V", abs(rpq.F_P / (3 / (4 * math.pi ** 2) *
 fn = S.eta_table_fn("0.5:0.2, 0.9:0.6")
 check("eta table: interpolation, flat above, cone scaling below",
       abs(fn(0.7) - 0.4) < 1e-12 and fn(1.0) == 0.6 and abs(fn(0.25) - 0.05) < 1e-12)
-rcb = resp("cbg", {"eta_table": "0.5:0.2, 0.9:0.6"}, NA=0.7)
+rcb = resp("cbg", {"eta_table": "0.5:0.2, 0.9:0.6", "table_mode": "cavity_only"}, NA=0.7)
 bres = 10.0 / 11.0                                                   # beta at resonance, F_P 10, leak 0, beta0 0
-check("cbg eta_table is the TOTAL efficiency: eta_out = table/beta_res and beta x eta_out = table at L = 1",
+check("cbg cavity_only (legacy): eta_out = table/beta_res and beta x eta_out = table at L = 1",
       abs(rcb.eta_out - 0.4 / bres) < 1e-12 and abs(rcb.eta_out_fn(0.9) - 0.6 / bres) < 1e-12
       and abs(bres * rcb.eta_out - 0.4) < 1e-12)
 mp = resp("micropillar", {"eta_out": 0.5}, NA=0.7)
@@ -287,17 +300,19 @@ def up_extraction(**kw):
 
 
 x0, x1, x3 = up_extraction(mirror_R=0.0), up_extraction(mirror_R=1.0), up_extraction(mirror_R=0.3)
-check("nanowire mirror: upward extraction at NA 1 is x2 for R 1 vs R 0 (beta/2 up + beta/2 x R returned)",
-      abs(x1 / x0 - 2.0) < 1e-9, f"{x1 / x0:.9f}")
-check("nanowire mirror: extraction(R) = extraction(0) x (1 + R)  (R 0.3 -> x1.3)", abs(x3 / x0 - 1.3) < 1e-9, f"{x3 / x0:.9f}")
+bw = 2.0 * x0                                                            # NA 1, taper 0.95: x0 = (beta/2) T
+bw /= 0.95
+check("nanowire mirror (FX3a, coherent): extraction(R)/extraction(0) = (1 + |r|)^2/(1 + beta|r|)  (R 1 and R 0.3)",
+      abs(x1 / x0 - 4.0 / (1 + bw)) < 1e-9 and abs(x3 / x0 - (1 + math.sqrt(0.3)) ** 2 / (1 + bw * math.sqrt(0.3))) < 1e-9,
+      f"{x1 / x0:.6f} {x3 / x0:.6f}")
 rn = resp("photonic_nanowire", {**nw, "mirror_R": 0.3}, em=emn, NA=0.75)
 rt_ = resp("photonic_nanowire", {**nw, "mirror_R": 0.3, "taper_mfr_nm": 1000.0}, em=emn, NA=0.75)
 bare = nwp.response(nwp.NitrideNanowirePhotonicsParams(
     family="vertical_photonic", NA=0.75, n_wire=3.37, taper_transmission=0.95, bottom_reflectivity=0.3,
     radiative_rate_factor=1.0, n_group_override=3.6), lambda_nm=879.9, outer_radius_nm=100.0,
     gamma_X0_ns=0.6, gamma_XX0_ns=0.6)
-check("nanowire taper_mfr_nm = 0 (default) reproduces the bare-facet nitride_nanowire_photonics result bit-for-bit",
-      abs(rn.beta0 * rn.eta_out - bare["eta_collection_X"]) < 1e-12)
+check("nanowire taper_mfr_nm = 0 (default): eta_out = taper_T x the bare-facet nitride_nanowire_photonics acceptance bit-for-bit",
+      rn.eta_out == 0.95 * bare["diagnostics"]["obj_accept"])
 x_exp = rt_.beta0 * rt_.eta_out
 x_ceil = up_extraction(mirror_R=0.3)                                     # the NA-1 ceiling (acceptance 1)
 check("nanowire taper_mfr_nm: a large top-facet mode radius narrows the far field -> NA-0.75 extraction approaches the "
@@ -334,6 +349,58 @@ for k in want:
         except ValueError as ex:
             errs.append(f"{k}.{p.name}: {ex}")
 check("all ParamSpec defaults resolve as leaves", not errs, "; ".join(errs))
+
+# 11. devlib-fx3a: cbg total-efficiency table, nanowire coherent mirror + HE11 beta
+def first_lens(r, Lval=1.0):
+    return (r.beta0 * r.F_bg + r.F_P * Lval) / (r.F_bg + r.F_P * Lval) * r.eta_out
+
+
+tbl = {"eta_table": "0.7:0.26"}
+c_lo, c_lo_old = resp("cbg", {**tbl, "F_P": 0.1}, NA=0.7), resp("cbg", {**tbl, "F_P": 0.1, "table_mode": "cavity_only"}, NA=0.7)
+check("cbg total mode, low F_P 0.1 with table 0.26: first lens = 0.26 (legacy cavity_only gave F/(1 + F) = 0.091)",
+      abs(first_lens(c_lo) - 0.26) < 1e-12 and abs(first_lens(c_lo_old) - 0.1 / 1.1) < 1e-12,
+      f"{first_lens(c_lo):.4f} vs {first_lens(c_lo_old):.4f}")
+c_hi, c_hi_old = resp("cbg", {**tbl, "F_P": 20.0}, NA=0.7), resp("cbg", {**tbl, "F_P": 20.0, "table_mode": "cavity_only"}, NA=0.7)
+check("cbg high F_P 20: total and cavity_only agree at L = 1 (the table is the device number there)",
+      abs(first_lens(c_hi) - 0.26) < 1e-12 and abs(first_lens(c_hi_old) - 0.26) < 1e-12)
+Ld = float(S.lorentz_L(3.0, 0.01, 4.0))
+check("cbg total mode: detuning (L < 1) changes the rate F_P L only, not the collected fraction beta x eta_out = 0.26 x 1",
+      abs(first_lens(c_hi, Ld) - 0.26) < 1e-12 and first_lens(c_hi_old, Ld) < 0.26 - 1e-3 and Ld < 0.9)
+check("cbg total mode: F_P and r_factor set only the rate (F_P r_factor still folded, F_bg = 1 + leak)",
+      resp("cbg", {**tbl, "F_P": 8.0, "r_factor": 0.5, "leak": 0.5}).F_P == 4.0
+      and resp("cbg", {**tbl, "F_P": 8.0, "leak": 0.5}).F_bg == 1.5 and resp("cbg", {**tbl}).beta0 == 1.0)
+check("cbg table_mode default is total", S.CBG.param("table_mode").default == "total")
+
+# nanowire: Munsch 2013 Eq. 1 numbers, quasi-static limit, Bleuse peak
+check("nanowire_mirror reproduces Munsch Eq. 1: beta 0.96, |r| 0.95, T_Gauss 0.93 -> 0.89 [V]",
+      abs(S.nanowire_mirror(0.96, 0.95 ** 2, True)[0] * 0.93 - 0.89) < 0.005, f"{S.nanowire_mirror(0.96, 0.9025, True)[0] * 0.93:.4f}")
+check("nanowire_mirror limits: R 0 -> (beta/2, rate 1); |r| 1, beta 1 -> upward fraction 1 (all light up), rate 2",
+      S.nanowire_mirror(0.8, 0.0, True) == (0.4, 1.0) and abs(S.nanowire_mirror(1.0, 1.0, True)[0] - 1.0) < 1e-15
+      and abs(S.nanowire_mirror(1.0, 1.0, True)[1] - 2.0) < 1e-15)
+sq = (2 / (3.45 ** 2 + 1)) ** 2
+check("nanowire leaky screening: kappa -> (2/(n^2 + 1))^2 as d -> 0 and -> 1 for d >> lambda/n (closed forms)",
+      abs(S.nanowire_leak_inhibition(3.45, 1e-4) - sq) < 1e-6 and abs(S.nanowire_leak_inhibition(3.45, 5.0) - 1.0) < 1e-12)
+
+
+def beta_wire(dl, lam=930.0, **kw):
+    e = make_em(lambda_nm=lam, E_X_meV=1239.84198 / lam * 1e3, n_host=3.45)
+    rr = resp("photonic_nanowire", {"d_nm": dl * lam, "n_wire": 3.45, "n_group": 3.6, "taper_T": 1.0, "mirror_R": 0.0, **kw},
+              em=e, NA=1.0)
+    return 2.0 * rr.beta0
+
+
+dls = np.linspace(0.15, 0.40, 51)
+bcurve = np.array([beta_wire(x) for x in dls])
+ipk = int(np.argmax(bcurve))
+check("nanowire HE11 beta peak vs Bleuse PRL 106, 103601 (2011) [E]: ~0.95 within 0.02 at d/lambda 0.21-0.26 (GaAs n 3.45)",
+      abs(bcurve[ipk] - 0.95) < 0.02 and 0.21 <= dls[ipk] <= 0.26, f"{bcurve[ipk]:.4f} at d/lambda {dls[ipk]:.3f}")
+check("nanowire HE11 beta at d/lambda 0.40 ~0.7 within 0.05 (Bleuse 2011 / Claudon 2010 multimode decline) [E]",
+      abs(beta_wire(0.40) - 0.70) < 0.05, f"{beta_wire(0.40):.4f}")
+check("nanowire HE11 beta -> 0 for a vanishing wire and is below the peak for d/lambda 0.10",
+      beta_wire(0.02) < 0.05 and beta_wire(0.10) < bcurve[ipk])
+bm = beta_wire(240.0 / 950.0, lam=950.0)
+check("nanowire HE11 beta at the Munsch 2013 design point (d 240 nm, lambda 950 nm) vs the paper's 0.96 [V]: within 0.05 "
+      "(not tuned; the plateau beta > 0.9)", abs(bm - 0.96) < 0.05, f"{bm:.4f}")
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_structures checks passed")
