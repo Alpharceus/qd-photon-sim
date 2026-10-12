@@ -256,10 +256,14 @@ def _counting(gen: Generator, n_f, f_rep_MHz):
     v0 = rs._fixed_point(expm(gen.L0 * dark) @ P, 2)
     V = np.zeros(12, dtype=complex)
     V[:4] = v0
-    # FX2b: the same propagators started from |G><G| give the single-pulse preparation probability
-    # eta_prep = P_X(end of window) + photons emitted inside the window (linear in the start state)
+    # FX2b: the same propagators started from |G><G| give the single-pulse excitation COUNT
+    # n_exc = P_X(end of window) + photons emitted inside the window (linear in the start state).
+    # FX2c: eta_prep is the PROBABILITY P(n >= 1) = 1 - p0, p0 = weight of the no-jump (no photon emitted
+    # in the window) evolution that ends in |G> (the no-jump generator is L(t) - J), exact and in [0, 1].
     V0 = np.zeros(12, dtype=complex)
     V0[0] = 1.0
+    vnj = np.zeros(4, dtype=complex)
+    vnj[0] = 1.0
     px = np.empty(n_f + 1)
     px[0] = V[_IDX_PX].real
     J = gen.J
@@ -267,15 +271,18 @@ def _counting(gen: Generator, n_f, f_rep_MHz):
         M = expm(rs._aug(L[i], J) * dt[i])
         V = M @ V
         V0 = M @ V0
+        vnj = expm((L[i] - J) * dt[i]) @ vnj
         px[i + 1] = V[_IDX_PX].real
     rho_post = lb.unvec(V[:4].copy(), 2)
-    eta_prep = float(V0[_IDX_PX].real + (lb.trace_row(2) @ V0[4:8]).real)
+    n_exc = float(V0[_IDX_PX].real + (lb.trace_row(2) @ V0[4:8]).real)
+    eta_prep = 1.0 - float(vnj[0].real)                      # vec index 0 = rho[G, G]
     V = expm(rs._aug(gen.L0, J) * dark) @ V
     tr = lb.trace_row(2)
     m1 = float((tr @ V[4:8]).real)
     m2 = float((tr @ V[8:]).real)
     return {"g2": m2 / m1 ** 2 if m1 > 1e-300 else NAN, "mean_photons": m1, "rho_post": rho_post, "px": px,
-            "t": edges, "rho_start": lb.unvec(v0, 2), "eta_prep": eta_prep}
+            "t": edges, "rho_start": lb.unvec(v0, 2), "eta_prep": eta_prep,
+            "n_exc": n_exc}
 
 
 def _group(U, m):
@@ -445,7 +452,7 @@ class PolaronSolver(Solver):
         ipk = int(np.argmax(px))
         _, lam_c, mix_c, _ = gen.dressed(np.array([0.5 * gen.W]))
         gd, gu = pm.rates(lam_c, mix_c)
-        extra = {"eta_prep": float(st["eta_prep"]), "P_X_end": float(st["rho_post"][1, 1].real),
+        extra = {"eta_prep": float(st["eta_prep"]), "n_exc": float(st["n_exc"]), "P_X_end": float(st["rho_post"][1, 1].real),
                  "P_X_max": float(px[ipk]), "t_P_X_max_ps": float(st["t"][ipk] * 1e3),
                  "B_renorm": pm.B, "Z": pm.Z, "T_K": pm.T_K, "alpha_ps2": pm.alpha_ps2,
                  "n_fine_steps": int(n_f), "dt_fine_fs": float(train.W / n_f * 1e6),

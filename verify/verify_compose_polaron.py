@@ -64,9 +64,8 @@ def one(area_pi, fwhm, Delta_paper_meV=0.0, T=4.2, shape="gauss", f=76.2):
 check("polaron solver registered with handles_phonons", R.get("solver", "polaron").handles_phonons is True)
 reg = R.REGISTRY
 kinds = {k: reg.get("drive", k) for k in ("phonon_assisted", "super", "dichromatic", "arp")}
-check("phonon_assisted / super / dichromatic are ready; arp stays a placeholder",
-      all(kinds[k].status == "ready" for k in ("phonon_assisted", "super", "dichromatic"))
-      and kinds["arp"].status == "needs_physics")
+check("phonon_assisted / super / dichromatic / arp are all ready (FX2c flipped arp)",
+      all(kinds[k].status == "ready" for k in ("phonon_assisted", "super", "dichromatic", "arp")))
 pa = kinds["phonon_assisted"].plan({"detuning_meV": 0.83, "area_pi": 8.46, "fwhm_ps": 11.88}, EM0, RT)
 check("phonon_assisted plan: paper Delta +0.83 -> repo det_X -0.83, needs {phonons}, one pulse",
       len(pa.pulses) == 1 and pa.pulses[0].detuning_meV == -0.83 and pa.needs == frozenset({"phonons"})
@@ -274,7 +273,7 @@ in_range = max(super_run(a1, a2, 3.8).inversion for a1, a2 in ((18.7, 18.6), (20
 print(f"      note: inside the card area ranges (<= 20 pi, 3.8 ps) the best inversion found is {in_range:.2f}; "
       "the swing-up needs ~2x larger pulse areas than the registry range")
 
-# ------------------------------------------------------------------ 10. chirp support (ARP is not a drive yet)
+# ------------------------------------------------------------------ 10. chirp support (the ARP drive is block 13)
 def ode_chirp(a, fw, kappa_meV_ps, det_meV=0.0):
     s = fw / (2 * math.sqrt(math.log(2)))
     W = 16 * s
@@ -355,21 +354,25 @@ for shape, fw in (("rect", 60.0), ("gauss", 20.0)):
     r_e = SOLVER.run(pplan([pul_e], f=76.2), em_with(1e-12), rt_e, with_hom=False)
     P_end, E = bloch_prep(shape, fw, 1.0, 6.0, 0.3, 0.5)
     tol = 2e-5 if shape == "rect" else 5e-5
-    ok &= abs(r_e.extra["eta_prep"] - (P_end + E)) <= tol and abs(r_e.extra["P_X_end"] - P_end) <= tol
-    ok &= r_e.extra["eta_prep"] > r_e.extra["P_X_end"] + 1e-3
-    det += f" {shape}{fw:g}ps: {r_e.extra['eta_prep']:.6f}/{P_end + E:.6f}"
-check("FX2b polaron (phonons ~ 0) eta_prep = P_X(end) + emitted equals an independent Bloch ODE (decay, dephasing, k_nr)",
+    ok &= abs(r_e.extra["n_exc"] - (P_end + E)) <= tol and abs(r_e.extra["P_X_end"] - P_end) <= tol
+    ok &= r_e.extra["n_exc"] > r_e.extra["P_X_end"] + 1e-3 and 0.0 <= r_e.extra["eta_prep"] <= 1.0
+    det += f" {shape}{fw:g}ps: n_exc {r_e.extra['n_exc']:.6f}/{P_end + E:.6f}"
+check("FX2b/FX2c polaron (phonons ~ 0) n_exc = P_X(end) + emitted (the expected count) equals an independent Bloch ODE "
+      "(decay, dephasing, k_nr); eta_prep = P(n >= 1) lies in [0, 1]",
       ok, det)
 rl_e = solvers.LindbladSolver().run(DrivePlan("coherent", "pulsed", 76.2, pulses=(pul,)), em_w, rt_w)
 rp_e = SOLVER.run(pplan([pul]), em_w, rt_w, with_hom=False)
-check("FX2b alpha -> 0: polaron eta_prep == lindblad eta_prep (existing solver) to 1e-6",
-      abs(rp_e.extra["eta_prep"] - rl_e.extra["eta_prep"]) <= 1e-6,
-      f"{rp_e.extra['eta_prep']:.8f} vs {rl_e.extra['eta_prep']:.8f}")
+check("FX2b/FX2c alpha -> 0: polaron eta_prep and n_exc == lindblad (existing solver) to 1e-6",
+      abs(rp_e.extra["eta_prep"] - rl_e.extra["eta_prep"]) <= 1e-6 and abs(rp_e.extra["n_exc"] - rl_e.extra["n_exc"]) <= 1e-6,
+      f"eta_prep {rp_e.extra['eta_prep']:.8f} vs {rl_e.extra['eta_prep']:.8f}, n_exc {rp_e.extra['n_exc']:.8f} vs "
+      f"{rl_e.extra['n_exc']:.8f}")
 rq = SOLVER.run(one(8.46, 11.88, 0.83), em_with(), RT, with_hom=False)
-check("FX2b phonon-assisted: eta_prep >= P_X_end, and n_ph = eta_prep when k_nr = 0 (every prepared excitation is "
-      "emitted; the window sum, not the end population, is the prepared probability)",
-      rq.extra["eta_prep"] >= rq.extra["P_X_end"] and abs(rq.n_ph - rq.extra["eta_prep"]) <= 1e-4,
-      f"eta_prep {rq.extra['eta_prep']:.5f}, P_X_end {rq.extra['P_X_end']:.5f}, n_ph {rq.n_ph:.5f}")
+check("FX2b/FX2c phonon-assisted: n_exc >= eta_prep >= P_X_end - 1e-9 and n_ph = n_exc when k_nr = 0 (every prepared "
+      "excitation is emitted); eta_prep is the probability, n_exc the count",
+      rq.extra["n_exc"] >= rq.extra["eta_prep"] - 1e-12 and rq.extra["eta_prep"] >= rq.extra["P_X_end"] - 1e-9
+      and abs(rq.n_ph - rq.extra["n_exc"]) <= 1e-4,
+      f"eta_prep {rq.extra['eta_prep']:.5f}, n_exc {rq.extra['n_exc']:.5f}, P_X_end {rq.extra['P_X_end']:.5f}, "
+      f"n_ph {rq.n_ph:.5f}")
 
 # Thomas 2021 diagnosis: Z is applied ONCE (q^2, q = Z/Z_eff) on top of the ZPL overlap of the polaron solver
 th = PP.load_paper(ROOT / "cards" / "papers" / "thomas2021.yaml")
@@ -384,6 +387,180 @@ check("Thomas 2021 diagnosis: engine hom_I = I_single(polaron ZPL overlap) x (Z/
       f"hom_I {c_th.d['hom_I']:.4f}, I_single {I1:.4f}, Z {Zt:.4f}, Z_eff {Zft:.4f}, "
       f"Gamma/(Gamma+gamma*) = {c_th.d['Gamma_ns'] / (c_th.d['Gamma_ns'] + c_th.d['gamma_star_ns']):.3f} (gamma* {c_th.d['gamma_star_ns']:.2f}/ns "
       f"from the InAs/GaAs-class T slope at 8 K), g2 {c_th.d['g2_0']:.3f}")
+
+def _try(fn):
+    try:
+        fn()
+    except Exception as ex:                                                 # noqa: BLE001
+        return ex
+    return None
+
+
+def drives_phonon_numbers(fw, phi2):
+    from fsim_core.compose.drives_phonon import arp_pulse_numbers
+    return arp_pulse_numbers(fw, phi2)
+
+
+# ------------------------------------------------------------------ 13. FX2c: HOM double counting (solver side)
+# Two instantaneous pi pulses a time T apart, Gamma only (no k_nr, no dephasing): n = 0 (no emission before the second
+# pulse, which then returns the dot to |G>) or 2 (emission, re-excitation, second emission) with
+# q = 1 - exp(-Gamma T), g2 = 1/(2q) and photons u (before the 2nd pulse) / v (after) in orthogonal modes, each a pure
+# exponential wavepacket. G1 = |u><u| + q |v><v| => Int Int |G1|^2 / N^2 = 2 q^2/(2q)^2 = 1/2 although every photon is a
+# perfect wavepacket (M_s = 1). The solver's I_single must be this whole-stream overlap (1/2), NOT M_s.
+G_h, T_h, fw_h = 0.5, 3000.0, 6.0
+q_h = 1.0 - math.exp(-G_h * T_h * 1e-3)
+rt_h = Rates(Gamma_ns=G_h, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+pul_h = [Pulse("gauss", fw_h, math.pi, detuning_meV=0.0, t0_ps=-0.5 * T_h),
+         Pulse("gauss", fw_h, math.pi, detuning_meV=0.0, t0_ps=+0.5 * T_h)]
+rh = SOLVER.run(pplan(pul_h, f=40.0), em_with(0.0), rt_h)
+g2_h, I_h = rh.g2_0, rh.I_single
+check("FX2c double pi pulse (phonons off): g2 = 1/(2q) and n_ph = 2q (n = 0 or 2) within Gamma tau_p",
+      abs(g2_h - 1.0 / (2.0 * q_h)) <= 0.01 * g2_h and abs(rh.n_ph - 2.0 * q_h) <= 0.01 * 2.0 * q_h,
+      f"g2 {g2_h:.4f} vs {1.0 / (2.0 * q_h):.4f}, n_ph {rh.n_ph:.4f} vs {2.0 * q_h:.4f}")
+check("FX2c solver I_single of that stream = 1/2 = Int Int |G1|^2/N^2 (whole-stream overlap: the multi-photon terms "
+      "are already inside, M_s = 1) -> the old ((1 - g2) I - g2) double counts g2",
+      abs(I_h - 0.5) <= 0.01, f"I_single {I_h:.4f}, conv {rh.extra['hom'].get('converged')}, "
+      f"V = I - g2 = {I_h - g2_h:.4f} vs old ((1-g2) I - g2) = {(1 - g2_h) * I_h - g2_h:.4f}; exact = (q-1)/(2q) = "
+      f"{(q_h - 1.0) / (2.0 * q_h):.4f}")
+
+# ------------------------------------------------------------------ 14. FX2c: ARP drive
+from scipy.integrate import quad                                            # noqa: E402
+
+arp_d = reg.get("drive", "arp")
+check("arp: ready, params chirp_ps2 / fwhm_ps / area_pi / detuning_meV / f_rep_MHz, observables incl. inversion",
+      arp_d.status == "ready" and {"chirp_ps2", "fwhm_ps", "area_pi", "detuning_meV", "f_rep_MHz"} <= {x.name for x in arp_d.params}
+      and "inversion" in arp_d.observables and arp_d.provides == frozenset({"coherent_pulse"}))
+
+
+def arp_plan(**v):
+    return arp_d.plan(v, EM0, RT)
+
+
+# 14a. chirp mapping vs an independent FFT: spectral phase exp(+i phi2 w^2/2) on a transform-limited Gaussian
+def fft_chirp(fwhm0, phi2):
+    s0 = fwhm0 / (2.0 * math.sqrt(math.log(2.0)))
+    n, dtp = 2 ** 16, 0.05
+    w = 2.0 * math.pi * np.fft.fftfreq(n, dtp)
+    spec = np.exp(-0.5 * (s0 * w) ** 2) * np.exp(0.5j * phi2 * w ** 2)
+    E = np.fft.fft(spec)                          # sum_w spec exp(-i w t): the exp(-i w t) field convention
+    E = np.fft.fftshift(E)
+    t = (np.arange(n) - n // 2) * dtp
+    I = np.abs(E) ** 2
+    I /= I.max()
+    tc = float(np.sum(t * I) / np.sum(I))
+    var_I = float(np.sum((t - tc) ** 2 * I) / np.sum(I))            # intensity ~ exp(-t^2/sigma_c^2): var = sigma_c^2/2
+    sig_c = math.sqrt(2.0 * var_I)
+    sel = I > 0.05
+    ph = np.unwrap(np.angle(E[sel]))
+    cq = np.polyfit(t[sel] - tc, ph, 2)               # arg E = c2 t^2 + ... ; E ~ exp(-i phi(t)), phi'' = kappa
+    kappa = -2.0 * cq[0]
+    return sig_c, kappa, float(np.sum(I) * dtp), s0
+
+
+ok, det = True, ""
+for fw0, phi2 in ((3.0, 30.0), (3.0, -30.0), (5.0, 60.0), (2.0, 5.0)):
+    sc_f, k_f, _, s0f = fft_chirp(fw0, phi2)
+    sc_m, fw_c, k_m, s0m = drives_phonon_numbers(fw0, phi2)
+    ok &= abs(sc_f - sc_m) <= 2e-3 * sc_m and abs(k_f - k_m) <= 2e-3 * abs(k_m) and k_f * phi2 > 0
+    ok &= abs(fw_c - sc_m * 2.0 * math.sqrt(math.log(2.0))) < 1e-12
+    det += f" ({fw0:g} ps, {phi2:+g} ps^2): sigma_c {sc_m:.3f}/{sc_f:.3f}, kappa {k_m:.5f}/{k_f:.5f};"
+check("arp chirp mapping: sigma_c = sqrt(s0^4 + phi2^2)/s0 and kappa = phi2/(s0^4 + phi2^2) (rad/ps^2) match an "
+      "independent FFT of the spectrally phased Gaussian, and chirp_ps2 > 0 gives a RISING laser frequency "
+      "(Wei 2014 positive chirp)", ok, det)
+
+pl_a = arp_plan(chirp_ps2=30.0, fwhm_ps=3.0, area_pi=2.0, detuning_meV=0.4)
+pa_ = pl_a.pulses[0]
+tr_a = PL.PulseTrain(pl_a.pulses)
+E_chirped = quad(lambda t: abs(tr_a.omega(np.array([t]))[0]) ** 2, 0.0, tr_a.W, points=[0.5 * tr_a.W], limit=400)[0]
+s0a = float(rs.gaussian_sigma(3.0)) * 1e-3
+A0 = 2.0 * math.pi / (s0a * math.sqrt(2.0 * math.pi))
+E_tl = A0 ** 2 * s0a * math.sqrt(math.pi)
+check("arp plan: det_X = -Delta_paper, needs {phonons, td_detuning}, Int |Omega|^2 dt of the chirped pulse = that of the "
+      "transform-limited pulse (energy-conserving stretch, area_pi = TL area) to 1e-4, chirp rate = hbar kappa",
+      pa_.detuning_meV == -0.4 and pl_a.needs == frozenset({"phonons", "td_detuning"})
+      and abs(E_chirped - E_tl) <= 1e-4 * E_tl and abs(pa_.chirp_meV_ps - qd_gf.HBAR * pl_a.inputs["chirp_rad_ps2"]) < 1e-15
+      and pa_.chirp_meV_ps > 0,
+      f"energy {E_chirped:.6f}/{E_tl:.6f} ns^-1.., fwhm_c {pa_.fwhm_ps:.2f} ps, area_c {pa_.area_rad / math.pi:.3f} pi, "
+      f"chirp {pa_.chirp_meV_ps:.4f} meV/ps")
+p0 = arp_plan(chirp_ps2=0.0, fwhm_ps=4.0, area_pi=1.3)
+check("arp with zero chirp is the plain Gaussian pulse (fwhm, area, no chirp)",
+      abs(p0.pulses[0].fwhm_ps - 4.0) < 1e-12 and abs(p0.pulses[0].area_rad - 1.3 * math.pi) < 1e-12
+      and p0.pulses[0].chirp_meV_ps == 0.0)
+rej = [_try(lambda: arp_plan(chirp_ps2=float("nan"))), _try(lambda: arp_plan(fwhm_ps=0.0))]
+check("arp.plan rejects a non-finite chirp and a non-positive fwhm", all(isinstance(e, ValueError) for e in rej),
+      repr(rej))
+
+# 14b. phonons off: adiabatic plateau, against the independent ODE (ode_chirp) and the plateau criterion
+RT_a = Rates(Gamma_ns=0.02, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+
+
+def arp_run(area, chirp, T=4.2, alpha0=False, rt=RT_a, **kw):
+    # f_rep 1 MHz: the period (1 us) is >> 1/Gamma, so every pulse starts from |G> (the 76 MHz default would carry the
+    # excitation of the previous ARP pulse over at Gamma = 0.02/ns and invert it back)
+    pl = arp_d.plan({"area_pi": area, "chirp_ps2": chirp, "f_rep_MHz": 1.0, **kw}, EM0, rt)
+    pl.inputs["T_K"] = T
+    em = em_with(0.0) if alpha0 else EM0
+    return SOLVER.run(pl, em, rt, with_hom=False), pl
+
+
+ok, det, plateau = True, "", {}
+for chirp in (30.0, -30.0):
+    for area in (0.5, 1.5, 2.0, 3.0):
+        r_a, pl_ = arp_run(area, chirp, alpha0=True)
+        pc_ = pl_.pulses[0]
+        ref = ode_chirp(pc_.area_rad / math.pi, pc_.fwhm_ps, pc_.chirp_meV_ps)
+        gw = r_a.extra["window_ps"] * 1e-3 * RT_a.Gamma_ns
+        ok &= ref * (1.0 - gw) - 2e-3 <= r_a.inversion <= ref + 2e-3
+        plateau[(chirp, area)] = r_a.inversion
+    det += f" chirp {chirp:+g}: " + ", ".join(f"{a}pi {plateau[(chirp, a)]:.4f}" for a in (0.5, 1.5, 2.0, 3.0)) + ";"
+check("arp, phonons off, |chirp| large: inversion matches the independent ODE of the chirped pulse (areas 0.5-3 pi, both "
+      "signs; radiative decay during the window allowed)", ok, det)
+plat = [plateau[(c, a)] for c in (30.0, -30.0) for a in (1.5, 2.0, 3.0)]
+check("arp, phonons off: robust plateau, inversion -> 1 above the adiabatic threshold (> 0.97 and varies < 2% from 1.5 pi "
+      "to 3 pi, both chirp signs; 0.5 pi is below threshold)",
+      min(plat) > 0.97 and max(plat) - min(plat) < 0.02 and plateau[(30.0, 0.5)] < 0.8 * min(plat),
+      f"plateau {min(plat):.4f}..{max(plat):.4f}, 0.5 pi {plateau[(30.0, 0.5)]:.3f}")
+
+# 14b2. Wei-card-like case (Gamma 2.45/ns, chirp 32.3 ps^2, 1.6 pi, 82 MHz): the end-of-window inversion is LOW only because
+# the excitation made in the second half of the 288 ps window decays (Gamma W/2 = 0.35); eta_prep = P(n >= 1) is ~1
+RT_w = Rates(Gamma_ns=2.45, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+r_w, pl_w = arp_run(1.6, 32.3, alpha0=True, rt=RT_w, f_rep_MHz=82.0)
+pc_w = pl_w.pulses[0]
+ref_w = ode_chirp(pc_w.area_rad / math.pi, pc_w.fwhm_ps, pc_w.chirp_meV_ps)
+check("arp card-like case (phonons off, Gamma 2.45/ns): eta_prep > 0.99 while the end-of-window inversion is < 0.8 "
+      "(radiative decay inside the window, not an incomplete transfer); the lossless ODE of the same chirped pulse gives ~1",
+      r_w.extra["eta_prep"] > 0.99 and r_w.inversion < 0.8 and ref_w > 0.99,
+      f"eta_prep {r_w.extra['eta_prep']:.4f}, inversion {r_w.inversion:.3f}, ODE (no decay) {ref_w:.4f}, "
+      f"window {r_w.extra['window_ps']:.0f} ps")
+
+# 14c. phonons at 4.2 K: positive chirp robust, negative chirp degraded (Wei 2014: |+> -> |-> relaxation emits phonons)
+RT_b = Rates(Gamma_ns=0.02, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+eta = {(c, a): arp_run(a, c, rt=RT_b)[0].extra["eta_prep"] for c in (30.0, -30.0) for a in (1.5, 2.0, 3.0)}
+drop_pos, drop_neg = eta[(30.0, 1.5)] - eta[(30.0, 3.0)], eta[(-30.0, 1.5)] - eta[(-30.0, 3.0)]
+check("arp with LA phonons at 4.2 K (Wei 2014 sign): the positive-chirp branch is robust, the negative one is degraded: "
+      "eta_prep(+) - eta_prep(-) > 0.15 at 3 pi, and the area drop 1.5 -> 3 pi of the positive branch is < half of the "
+      "negative one",
+      eta[(30.0, 3.0)] - eta[(-30.0, 3.0)] > 0.15 and drop_pos < 0.5 * drop_neg and eta[(30.0, 3.0)] > 0.8,
+      f"eta_prep(+): " + ", ".join(f"{a}pi {eta[(30.0, a)]:.3f}" for a in (1.5, 2.0, 3.0))
+      + "; eta_prep(-): " + ", ".join(f"{a}pi {eta[(-30.0, a)]:.3f}" for a in (1.5, 2.0, 3.0)))
+print("      note: the P1 (weak-coupling) model lets the positive branch lose "
+      f"{drop_pos:.3f} between 1.5 and 3 pi at 4.2 K (thermal absorption |-> -> |+> and Z renormalisation); "
+      "the paper's simulation (alpha 0.022 ps^2, w_c 2 ps^-1) shows a flat plateau")
+
+# 14d. engine end to end
+try:
+    arp_spec = {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "ingaas_gaas", "params": {}},
+                "structure": {"kind": "bulk_planar", "params": {}},
+                "drive": {"kind": "arp", "params": {}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    out_arp = engine.evaluate_spec(arp_spec)["scalars"]
+    ok_arp = (out_arp["solver"] == "polaron" and 0.0 < out_arp["eta_prep"] <= 1.0 and math.isfinite(out_arp["g2_0"])
+              and out_arp["inversion"] > 0.5)
+    det_arp = f"solver {out_arp['solver']}, eta_prep {out_arp['eta_prep']:.3f}, inversion {out_arp['inversion']:.3f}, g2 {out_arp['g2_0']:.4f}"
+except Exception as ex:                                                  # noqa: BLE001
+    ok_arp, det_arp = False, f"{type(ex).__name__}: {ex}"
+check("engine end to end for arp defaults (drive.plan -> select -> polaron -> observables)", ok_arp, det_arp)
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")

@@ -52,8 +52,9 @@ EM = em_with({"X", "XX"})
 EM_NO_XX = em_with({"X"})
 RT = Rates(Gamma_ns=1.5, gamma_star_ns=0.1, k_nr_ns=0.1, L=1.0, F_P_eff=0.0, beta=0.5)
 
-NEEDS_PHYSICS = ("arp",)                                   # P9 made the three phonon drives ready
-PHONON_READY = ("phonon_assisted", "super", "dichromatic")   # drives_phonon.py
+NEEDS_PHYSICS = ()                                         # P9 made the three phonon drives ready, FX2c arp
+THROWAWAY = D._placeholder("test_needs_physics", "t", "s", "reason x", (D._GAUSS,), ("r",), D.OBS_COHERENT_PULSED)
+PHONON_READY = ("phonon_assisted", "super", "dichromatic", "arp")   # drives_phonon.py
 READY = ("resonant_pulse", "tpe", "cw_resonant", "above_band", "p_shell", "electrical_pulsed", "electrical_cw")
 
 # ---------------------------------------------------------------- 1. registration / payload
@@ -77,13 +78,12 @@ except TypeError as e:
     ok_json, txt = False, str(e)
 check("registry payload (drives) is JSON-serialisable", ok_json, txt[:200])
 pd = {d["kind"]: d for d in payload["drives"]}
-check("payload carries observables per drive and needs_physics status",
-      all(pd[k]["observables"] for k in pd) and all(pd[k]["status"] == "needs_physics" for k in NEEDS_PHYSICS)
-      and all(pd[k]["status"] == "ready" for k in READY + PHONON_READY))
-check("needs_physics entries carry a reason and plan() raises NotImplementedError with it",
-      all(entries[k].reason and raises(NotImplementedError, entries[k].plan, {}, EM, RT,
-                                       contains=("awaiting physics", entries[k].reason))[0]
-          for k in NEEDS_PHYSICS))
+check("payload carries observables per drive; every shipped drive is ready (FX2c: no needs_physics left)",
+      all(pd[k]["observables"] for k in pd) and all(pd[k]["status"] == "ready" for k in READY + PHONON_READY))
+check("a needs_physics entry (test-registered throwaway, not shipped) carries a reason and plan() raises "
+      "NotImplementedError with it",
+      THROWAWAY.status == "needs_physics" and THROWAWAY.reason and raises(
+          NotImplementedError, THROWAWAY.plan, {}, EM, RT, contains=("awaiting physics", THROWAWAY.reason))[0])
 check("phonon drive ParamSpecs cover the brief ranges (phonon_assisted blue 0.8-1.3 meV incl. Thomas 0.58, 5-20 pi; "
       "SUPER -3.5/-7.5 meV defaults)",
       (lambda pa, sp: pa.param("detuning_meV").lo <= 0.58 and pa.param("detuning_meV").hi >= 1.3
@@ -219,11 +219,11 @@ spec_xx = _spec("tpe")
 spec_xx["material"] = {"kind": "m_xx"}
 check("validate_spec: tpe with an XX-providing material passes the requires check",
       not any("requires" in i["message"] for i in validate_spec(spec_xx, vreg)["issues"]))
-vreg.register(entries["arp"])
+vreg.register(THROWAWAY)
 rp_ok = validate_spec(_spec("resonant_pulse"), vreg)
 check("validate_spec: resonant_pulse resolves defaults cleanly; needs_physics drive is an error issue",
       not any(i["level"] == "error" and i["path"].startswith("drive") for i in rp_ok["issues"])
-      and any("awaiting physics" in i["message"] for i in validate_spec(_spec("arp"), vreg)["issues"]))
+      and any("awaiting physics" in i["message"] for i in validate_spec(_spec("test_needs_physics"), vreg)["issues"]))
 
 # ---------------------------------------------------------------- 6. electrical == direct drive_mech (bit-for-bit)
 ep = entries["electrical_pulsed"]

@@ -1,4 +1,4 @@
-"""Phonon-dependent coherent drives of the composable engine (P9): phonon_assisted, super, dichromatic.
+"""Phonon-dependent coherent drives of the composable engine (P9, FX2c): phonon_assisted, super, dichromatic, arp.
 
 Imported at the END of drives.py (which supplies the helpers used here); import `drives`, never this module
 first. Each drive only PLANS; the "polaron" solver (polaron.py) executes. Conventions as in drives.py:
@@ -14,6 +14,19 @@ Omega(t) = Omega_env(t) [sqrt(a/(1+a)) e^{-i delta t} + sqrt(1/(1+a)) e^{+i delt
 intensity asymmetry ratio; a = 1 is sqrt(2) Omega_env cos(delta t). The envelope area is split as
 area_pi sqrt(a/(1+a)) and area_pi sqrt(1/(1+a)) so the time-averaged intensity of the pair is that of the
 single envelope. Closed check (verify_compose_polaron): a = 1 with phonons off gives P_X ~ 0.
+
+ARP (FX2c, adiabatic rapid passage). A transform-limited Gaussian (intensity FWHM fwhm_ps, amplitude sigma
+s0 = fwhm/(2 sqrt ln 2), field exp(-t^2 / 2 s0^2)) is given the spectral phase exp(+i phi2 w^2 / 2) (group-delay
+dispersion phi2 = `chirp_ps2`, ps^2, field convention exp(-i w t)). The Gaussian transform gives [DR]
+    E(t) ~ exp(-t^2 / (2 (s0^2 - i phi2)))  ->  sigma_c^2 = (s0^4 + phi2^2) / s0^2,
+    carrier phase  -phi2 t^2 / (2 (s0^4 + phi2^2)),   instantaneous frequency  w_L + kappa t,
+    kappa = phi2 / (s0^4 + phi2^2)  (rad/ps^2; the Pulse chirp is hbar kappa in meV/ps).
+So chirp_ps2 > 0 is the POSITIVE chirp of Wei et al., Phys. Rev. Lett. 113, 097401 (2014) ("the laser sweeps from
+low to high frequency", d(omega_L)/dt > 0, the QD follows the lower dressed state |->); negative = the reverse.
+Stretching conserves the pulse energy, so `area_pi` is the area of the TRANSFORM-LIMITED pulse and the chirped
+envelope has area area_pi sqrt(sigma_c/s0) (peak amplitude A0 sqrt(s0/sigma_c), Int |Omega|^2 dt unchanged) [DR].
+detuning_meV is the paper convention Delta = omega_L(t=0) - omega_X (centre of the sweep). Needs {phonons,
+td_detuning}: the polaron solver runs it (alpha = 0 reduces to the chirped Lindblad pulse).
 """
 from __future__ import annotations
 
@@ -21,6 +34,8 @@ import math
 
 from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _GAUSS, _PAPER_CONV, _REF_BRIEF, _SRC_A, PlannedDrive, _P,
                      _getter, _nonneg, _positive, _pulse_inputs)
+from .. import qd_gf
+from ..resonant_source import gaussian_sigma
 from .types import DrivePlan, Pulse
 
 _PHONON_NOTE = ("Needs the polaron solver (tier P1 dressed-basis phonon rates, Omega_r = sqrt(Z) Omega); "
@@ -162,4 +177,71 @@ DICHROMATIC = PlannedDrive(
     status="ready", provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_dichromatic)
 
-DRIVES_PHONON = (PHONON_ASSISTED, SUPER, DICHROMATIC)
+# ======================================================================
+# arp
+# ======================================================================
+def arp_pulse_numbers(fwhm_ps, chirp_ps2):
+    """(sigma_c_ps, fwhm_c_ps, kappa_rad_ps2, sigma0_ps) of the chirped Gaussian (module doc) [DR]."""
+    s0 = float(gaussian_sigma(fwhm_ps))
+    phi2 = float(chirp_ps2)
+    den = s0 ** 4 + phi2 ** 2
+    sc = math.sqrt(den) / s0
+    return sc, sc * 2.0 * math.sqrt(math.log(2.0)), phi2 / den, s0
+
+
+def _plan_arp(self, vals, em, rt):
+    g = _getter(self, vals)
+    fwhm0 = _positive("fwhm_ps", g("fwhm_ps"))
+    area_pi = _nonneg("area_pi", g("area_pi"))
+    f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
+    phi2 = float(g("chirp_ps2"))
+    if not math.isfinite(phi2):
+        raise ValueError(f"chirp_ps2 must be finite, got {phi2!r}")
+    delta = float(g("detuning_meV"))
+    sc, fwhm_c, kappa, s0 = arp_pulse_numbers(fwhm0, phi2)
+    chirp_meV_ps = qd_gf.HBAR * kappa                   # meV ps x rad/ps^2 = meV/ps
+    area_c = area_pi * math.pi * math.sqrt(sc / s0)     # energy-conserving stretch of the TL area
+    pulse = Pulse(shape="gauss", fwhm_ps=fwhm_c, area_rad=area_c, detuning_meV=-delta, chirp_meV_ps=chirp_meV_ps)
+    inputs = {**_pulse_inputs("gauss", fwhm_c), "area_pi": area_pi, "area_chirped_pi": area_c / math.pi,
+              "fwhm_tl_ps": fwhm0, "fwhm_chirped_ps": fwhm_c, "chirp_ps2": phi2, "chirp_rad_ps2": kappa,
+              "chirp_meV_ps": chirp_meV_ps, "Delta_paper_meV": delta, "det_X_meV": -delta,
+              "detuning_convention": "repo det_X = omega_X - omega_L = -Delta_paper (centre of the sweep)",
+              "chirp_sign": "chirp_ps2 > 0: laser frequency rises in time (Wei 2014 positive chirp)",
+              "mechanism": "adiabatic rapid passage along the lower (positive chirp) / upper (negative chirp) "
+                           "dressed state"}
+    return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(pulse,),
+                     needs=frozenset({"phonons", "td_detuning"}), inputs=inputs)
+
+
+ARP = PlannedDrive(
+    kind="arp", label="Adiabatic rapid passage (chirped pulse)",
+    summary="Linearly chirped Gaussian sweeping through the resonance: robust inversion above the adiabatic "
+            "threshold area. Positive chirp (frequency rising in time) follows the lower dressed state and stays "
+            "robust at low T (the phonon relaxation |+> -> |-> emits); negative chirp is degraded by it "
+            "(Wei et al. 2014). " + _PHONON_NOTE,
+    params=(
+        _P("shape", "", "gauss", choices=("gauss",), tag="A", source=_SRC_A, sweepable=False,
+           help="Transform-limited envelope before the chirp (Gaussian only)."),
+        _P("chirp_ps2", "ps^2", 30.0, lo=-200.0, hi=200.0, tag="DR",
+           source="Wei et al., PRL 113, 097401 (2014): 3 ps transform-limited stretched to 30 ps gives "
+                  "phi2 ~ s0 sigma_c ~ 30 ps^2 (derived from those two durations, not read from the paper) [DR]",
+           help="Spectral chirp (group-delay dispersion phi2) of the transform-limited pulse. Positive = laser "
+                "frequency rises in time (Wei positive chirp); the swept rate is phi2/(s0^4 + phi2^2)."),
+        _P("detuning_meV", "meV", 0.0, lo=-3.0, hi=3.0, tag="A", source=_SRC_A,
+           help=_PAPER_CONV + " Detuning of the carrier at the pulse centre (centre of the sweep)."),
+        _P("area_pi", "pi", 2.0, lo=0.0, hi=10.0, tag="A", source="Wei 2014 plateau 1.5 pi - 3 pi [A]",
+           help="Pulse area of the transform-limited pulse in units of pi (chirping conserves the pulse "
+                "energy, so the chirped envelope area is area_pi sqrt(sigma_c/sigma_0))."),
+        _P("fwhm_ps", "ps", 3.0, lo=0.5, hi=20.0, scale="log", tag="E",
+           source="Wei et al., PRL 113, 097401 (2014): 3 ps transform-limited pulses (before stretching) [E]",
+           help="Intensity FWHM of the transform-limited pulse before the chirp."),
+        _P("f_rep_MHz", "MHz", 76.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
+           help="Pulse repetition rate (mode-locked Ti:sapphire class)."),
+    ),
+    refs=(_REF_BRIEF + ": chirped-pulse notes",
+          "Wei et al., Phys. Rev. Lett. 113, 097401 (2014): positively chirped pulses robust, negatively "
+          "chirped degraded by acoustic-phonon emission (.workers/devlib/papers/raw/wei2014_arp)"),
+    status="ready", provides=frozenset({"coherent_pulse"}),
+    observables=OBS_COHERENT_PULSED, planner=_plan_arp)
+
+DRIVES_PHONON = (PHONON_ASSISTED, SUPER, DICHROMATIC, ARP)

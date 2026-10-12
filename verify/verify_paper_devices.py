@@ -219,10 +219,19 @@ def self_test() -> int:
     check("schema failure forces exit 1", exit_code([rep], schema_ok=False) == 1)
 
     unavail = copy.deepcopy(raw)
-    unavail["device"]["drive"] = {"kind": "arp", "params": {}}
+    # FX2c: arp is ready now; register a throwaway needs_physics drive (restored afterwards, never shipped)
+    from fsim_core.compose import drives as _D
+    from fsim_core.compose import registry as _R
+    thr = _D._placeholder("test_needs_physics", "throwaway", "self-test only", "self-test placeholder",
+                          (_D._GAUSS,), ("none",), _D.OBS_COHERENT_PULSED)
+    _R.register(thr)
+    unavail["device"]["drive"] = {"kind": "test_needs_physics", "params": {}}
     for e in unavail["reproduce"]:
-        e["expect"], e["reason"] = "unavailable", "drive arp is awaiting physics (P9)"
-    rep_u = PP.reproduce(PP.paper_from_dict(unavail, stem="_fixture"))
+        e["expect"], e["reason"] = "unavailable", "drive test_needs_physics is awaiting physics"
+    try:
+        rep_u = PP.reproduce(PP.paper_from_dict(unavail, stem="_fixture"))
+    finally:
+        _R.unregister("drive", "test_needs_physics")
     check("needs_physics drive -> every item unavailable, ledger matched",
           all(r.outcome == "unavailable" for r in rep_u.items) and rep_u.matched,
           rep_u.items[0].note)

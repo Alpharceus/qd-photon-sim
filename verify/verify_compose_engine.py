@@ -190,7 +190,16 @@ def main():
     # 7. HOM correction
     v = OB.hom_v_corrected(0.925, 0.021)
     check("7a. V_corr(0.925, 0.021) = 0.966 +- 0.001", abs(v - 0.966) < 1e-3, f"{v:.5f}")
-    check("7b. raw/corrected round trip", abs(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.03), 0.03) - 0.9) < 1e-12)
+    # FX2c: the solver's I is the whole-stream overlap (multi-photon terms inside), so V_raw = I - g2 and the
+    # g2-corrected value is I/(1 - g2) (7b'/7b'' keep the old (1 - g2) I - g2 form as the Ollivier M_s relation only)
+    check("7b. FX2c V_raw = I - g2 (no background), V_corr = I/(1 - g2)",
+          near(OB.hom_v_raw(0.9, 0.03), 0.9 - 0.03, ab=1e-15)
+          and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.03), 0.03), 0.9 / 0.97, ab=1e-12))
+    vb = OB.hom_v_raw(0.9, 0.05, 0.1, g2_int=0.03)
+    check("7b2. FX2c background: V_raw = (rho^2 I - g2_raw)(1 - eps), rho^2 = (1 - g2_raw)/(1 - g2_int); the corrected "
+          "value removes the background: V_corr = I/(1 - g2_int) for eps = 0",
+          near(vb, (0.9 * 0.95 / 0.97 - 0.05) * 0.9, ab=1e-12)
+          and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.05, 0.0, g2_int=0.03), 0.05), 0.9 / 0.97, ab=1e-12))
 
     # 7c. cavity sideband filter limits (review finding 4) and g2_raw without background (finding 11)
     from fsim_core import qd_gf as _qg
@@ -444,23 +453,26 @@ def main():
         r = LS.run(lind_plan(shape, fw, 1.0), em0, rtx(G, gs, k))
         P_end, E = bloch_prep(shape, fw, 1.0, G, k, gs)
         tol = 2e-6 if shape == "rect" else 3e-5       # gauss: midpoint rule at 8 steps/sigma (the pre-existing P_X error is 1.1e-5)
-        ok &= near(r.extra["eta_prep"], P_end + E, ab=tol) and near(r.extra["P_X_end"], P_end, ab=tol)
-        ok &= r.extra["eta_prep"] > r.extra["P_X_end"] + 1e-3
-        det += f" {shape}{fw:g}ps: {r.extra['eta_prep']:.6f}/{P_end + E:.6f}"
-    check("14a. FX2b lindblad eta_prep = P_X(end) + emitted equals an independent Bloch ODE (rect + gauss, decay, "
-          "dephasing, k_nr) to 2e-6 (rect) / 3e-5 (gauss, grid error); P_X_end keeps the old end-of-window population", ok, det)
+        ok &= near(r.extra["n_exc"], P_end + E, ab=tol) and near(r.extra["P_X_end"], P_end, ab=tol)
+        ok &= r.extra["n_exc"] > r.extra["P_X_end"] + 1e-3
+        det += f" {shape}{fw:g}ps: {r.extra['n_exc']:.6f}/{P_end + E:.6f}"
+    check("14a. FX2b/FX2c lindblad n_exc (the expected count P_X(end) + emitted) equals an independent Bloch ODE (rect + "
+          "gauss, decay, dephasing, k_nr) to 2e-6 (rect) / 3e-5 (gauss, grid error); P_X_end keeps the old end-of-window "
+          "population", ok, det)
     ok, det = True, ""
     for fw in (0.2, 0.5, 1.0):
         G = 2.0
         r = LS.run(lind_plan("rect", fw, 1.0), em0, rtx(G))
         gt = G * fw * 1e-3
-        e_new, e_old = abs(1.0 - r.extra["eta_prep"]), abs(1.0 - r.extra["P_X_end"])
+        e_new, e_old = abs(1.0 - r.extra["eta_prep"]), abs(1.0 - r.extra["P_X_end"])      # eta_prep = P(n >= 1) now
         ok &= e_new <= 0.5 * gt and e_new < 0.5 * e_old
         det += f" Gtau={gt:.0e}: |1-eta_prep|={e_new:.1e} vs |1-P_X_end|={e_old:.1e};"
     check("14b. FX2b short pi pulse: |1 - eta_prep| <= Gamma tau_p/2 and below half the old |1 - P_X_end|", ok, det)
     r = LS.run(lind_plan("rect", 60.0, 1.0), em0, rtx(4.0))
-    check("14c. probability conservation: k_nr = 0 -> n_ph = eta_prep (every prepared excitation is emitted)",
-          near(r.n_ph, r.extra["eta_prep"], ab=1e-9), f"{r.n_ph:.10f} vs {r.extra['eta_prep']:.10f}")
+    check("14c. count conservation: k_nr = 0 -> n_ph = n_exc (every prepared excitation is emitted), and eta_prep = "
+          "P(n >= 1) <= min(1, n_exc)",
+          near(r.n_ph, r.extra["n_exc"], ab=1e-9) and r.extra["eta_prep"] <= min(1.0, r.extra["n_exc"]) + 1e-12,
+          f"n_ph {r.n_ph:.10f} vs n_exc {r.extra['n_exc']:.10f}, eta_prep {r.extra['eta_prep']:.10f}")
 
     # 14d. jc: bad-cavity limit eta_prep == lindblad with the Purcell rate (validated path); the old P_X_end differs
     gj, kj = 5.0, 200.0
@@ -474,9 +486,17 @@ def main():
     cj = engine.evaluate_spec(spec(st={"g_ns": exact(2 * math.pi * 4.16, "1/ns"), "kappa_ns": exact(2 * math.pi * 23.3, "1/ns")},
                                    mat={"gamma0_ns": exact(2 * math.pi * 0.30, "1/ns")},
                                    drp={"fwhm_ps": 3.0, "shape": "gauss"}, solver="jc"))["scalars"]
-    check("14e. FX2b jc (Tomm-class coupling): eta_prep >= P_X_end and n_ph = eta_prep (k_nr = 0)",
-          cj["eta_prep"] >= cj["P_X_end"] and near(cj["n_ph"], cj["eta_prep"], ab=1e-6),
-          f"eta_prep {cj['eta_prep']:.5f}, P_X_end {cj['P_X_end']:.5f}, n_ph {cj['n_ph']:.5f}")
+    sp_cj = engine._as_spec(spec(st={"g_ns": exact(2 * math.pi * 4.16, "1/ns"), "kappa_ns": exact(2 * math.pi * 23.3, "1/ns")},
+                                 mat={"gamma0_ns": exact(2 * math.pi * 0.30, "1/ns")},
+                                 drp={"fwhm_ps": 3.0, "shape": "gauss"}, solver="jc"))
+    ent_cj = engine._entries(sp_cj)
+    c_cj = engine._run_point(ent_cj, engine._central_values(engine._leaves(sp_cj, ent_cj)), 4.2, "jc")
+    check("14e. FX2b/FX2c jc (Tomm-class coupling): P_X_end <= eta_prep <= 1 and n_ph = n_exc (k_nr = 0); the observable "
+          "n_exc is exposed",
+          cj["P_X_end"] <= cj["eta_prep"] <= 1.0 and near(cj["n_ph"], c_cj.res.extra["n_exc"], ab=1e-6)
+          and near(c_cj.d["n_exc"], c_cj.res.extra["n_exc"], ab=1e-15),
+          f"eta_prep {cj['eta_prep']:.5f}, P_X_end {cj['P_X_end']:.5f}, n_ph {cj['n_ph']:.5f}, "
+          f"n_exc {c_cj.res.extra['n_exc']:.5f}")
 
     # 14f-j. XX channel of the TPE cascade
     GX, ratio, gsx = 4.0, 2.0, 0.5
@@ -579,6 +599,148 @@ def main():
     check("14r. engine p_shell: g2(T) rises with the Arrhenius escape and is flat without it (T from the engine)",
           g_a[0] < g_a[1] < g_a[2] and abs(g_0[0] - g_0[1]) < 1e-12 and abs(g_a[0] - g_0[0]) < 1e-9,
           f"with escape {g_a[0]:.3e}/{g_a[1]:.3e}/{g_a[2]:.3e}, without {g_0[0]:.3e}")
+
+    # ------------------------------------------------------------------ 15. FX2c: eta_prep is a probability; HOM relation
+    def bloch_p0(shape, fwhm_ps, area_pi, G, k, gs):
+        """INDEPENDENT no-jump Bloch ODE (own code): the radiative return G P -> rho_GG is dropped, the nonradiative
+        k P -> rho_GG stays. Q = rho_GG(end) is p0, so eta_prep = 1 - Q.
+        dP = -(G+k) P + Om y, dQ = k P - Om y, dy = -(G+k+gs)/2 y + (Om/2)(Q - P)."""
+        dur = fwhm_ps * 1e-3
+        if shape == "rect":
+            win, Om = dur, (lambda t: area_pi * math.pi / dur)
+        else:
+            sg = dur / (2.0 * math.sqrt(math.log(2.0)))
+            win = 2.0 * rs.GAUSS_WINDOW_SIGMA * sg
+            Om = lambda t: area_pi * math.pi / (sg * math.sqrt(2 * math.pi)) * math.exp(-0.5 * ((t - win / 2) / sg) ** 2)
+        gc = 0.5 * (G + k + gs)
+        # state order (P, Q, y): dQ = k P - Om y
+        f = lambda t, y: [-(G + k) * y[0] + Om(t) * y[2], k * y[0] - Om(t) * y[2],
+                          -gc * y[2] + 0.5 * Om(t) * (y[1] - y[0])]
+        sol = solve_ivp(f, [0.0, win], [0.0, 1.0, 0.0], method="DOP853", rtol=1e-12, atol=1e-14, max_step=win / 200)
+        return 1.0 - float(sol.y[1, -1])
+
+    ok, det = True, ""
+    for shape, fw, G, k, gs in (("rect", 100.0, 10.0, 0.5, 3.0), ("rect", 60.0, 4.0, 0.0, 0.3), ("gauss", 20.0, 8.0, 0.2, 1.0)):
+        for A in (0.6, 1.0, 2.2):
+            r = LS.run(lind_plan(shape, fw, A), em0, rtx(G, gs, k))
+            ref = bloch_p0(shape, fw, A, G, k, gs)
+            tol = 2e-6 if shape == "rect" else 1e-4       # gauss: 8 steps/sigma midpoint grid error (6.4e-5 at 2.2 pi)
+            ok &= near(r.extra["eta_prep"], ref, ab=tol)
+            if shape == "gauss":                          # the same code on a 1600-step grid converges onto the ODE
+                tl_f = rs.TwoLevel(G, k_ns=k, gamma_star_ns=gs, delta_ns=0.0)
+                fine = 1.0 - solvers._window_p0(rs._pieces(tl_f), shape, A * math.pi, fw * 1e-3, (0,), n_steps=1600)
+                ok &= near(fine, ref, ab=3e-6)
+        det += f" {shape}{fw:g}ps A=2.2pi: {r.extra['eta_prep']:.6f}/{ref:.6f};"
+    check("15a. FX2c lindblad eta_prep = P(n >= 1) = 1 - p0 equals an independent no-jump Bloch ODE (rect + gauss, three "
+          "areas, decay, dephasing, k_nr) to 2e-6 (rect) / 1e-4 (gauss default grid; 3e-6 on a 1600-step grid)", ok, det)
+
+    ok, det, worst = True, "", 0.0
+    for shape in ("rect", "gauss"):
+        for gt in (0.02, 0.1, 0.3):                       # Gamma tau_p
+            for A in np.linspace(0.25, 3.0, 12):          # (area 0: pulsed HOM is undefined, see 15b0)
+                fw = gt / 4.0 * 1e3
+                r = LS.run(lind_plan(shape, fw, float(A)), em0, rtx(4.0))
+                e = r.extra["eta_prep"]
+                ok &= -1e-12 <= e <= 1.0 + 1e-12
+                worst = max(worst, e)
+    p0_zero = solvers._window_p0(rs._pieces(rs.TwoLevel(4.0)), "rect", 0.0, 0.05, (0,))
+    check("15b. FX2c property: 0 <= eta_prep <= 1 for rect and gauss, areas 0.25..3 pi, Gamma tau_p 0.02..0.3, and "
+          "eta_prep = 0 at area 0", ok and abs(p0_zero - 1.0) < 1e-12, f"max eta_prep {worst:.6f}")
+
+    ok, det = True, ""
+    for A in (0.3, 0.7, 1.0, 1.5):
+        gt = 2.0 * 0.5e-3
+        r = LS.run(lind_plan("rect", 0.5, A), em0, rtx(2.0))
+        want = math.sin(0.5 * A * math.pi) ** 2
+        ok &= abs(r.extra["eta_prep"] - want) <= gt
+        det += f" {A}pi: {r.extra['eta_prep']:.5f}/{want:.5f};"
+    check("15c. FX2c anchor: short pulse eta_prep = sin^2(area/2) within Gamma tau_p (area theorem)", ok, det)
+
+    # 15d. the counting hierarchy gives the same probability as m1 - m2/2 when n <= 2 (state the truncation)
+    from scipy.linalg import expm
+    def hier_prep(shape, fw, A, G, gs):
+        tl = rs.TwoLevel(G, k_ns=0.0, gamma_star_ns=gs, delta_ns=0.0)
+        pc = rs._pieces(tl)
+        dur = fw * 1e-3
+        edges, om = rs._grid(shape, A * math.pi, dur, None, pc.max_dt)
+        dt = np.diff(edges)
+        V = np.zeros(12, dtype=complex)
+        V[0] = 1.0
+        for o, d in zip(om, dt):
+            V = rs.expm(rs._aug(pc.L0 + o * pc.L1, pc.J) * d) @ V if hasattr(rs, "expm") else \
+                __import__("scipy.linalg", fromlist=["expm"]).expm(rs._aug(pc.L0 + o * pc.L1, pc.J) * d) @ V
+        tr = lb.trace_row(2)
+        PX = np.zeros((2, 2), dtype=complex)
+        PX[1, 1] = 1.0
+        V1, V2 = V[4:8], V[8:]
+        rho = lb.unvec(V[:4].copy(), 2)
+        m1 = (tr @ V1).real + rho[1, 1].real                        # n = N_window + 1_X(end)
+        EN_X = (lb.vec(PX.T) @ V1).real                              # E[N_window 1_X(end)]
+        m2 = (tr @ V2).real + 2.0 * EN_X
+        return float(m1 - 0.5 * m2)
+    ok, det = True, ""
+    for shape, fw, G, gs, A in (("rect", 60.0, 4.0, 0.3, 1.0), ("gauss", 20.0, 8.0, 1.0, 2.2), ("rect", 75.0, 4.0, 0.0, 3.0)):
+        r = LS.run(lind_plan(shape, fw, A), em0, rtx(G, gs, 0.0))
+        h = hier_prep(shape, fw, A, G, gs)
+        gap = r.extra["eta_prep"] - h                    # = P(n=3) + 3 P(n=4) + ... >= 0
+        ok &= -1e-9 <= gap <= 1e-2 and 0.0 <= h <= 1.0 + 1e-9
+        det += f" {shape}{fw:g}ps A={A}pi G tau_p={G * fw * 1e-3:.2f}: 1-p0 - (m1-m2/2) = {gap:.1e};"
+    check("15d. FX2c m1 - m2/2 (window moments + end population) equals P(n >= 1) - P(n=3) - 3 P(n=4) - ...: it never "
+          "exceeds 1 - p0 and is within 1e-2 of it up to Gamma tau_p 0.3, 3 pi (the truncation at n <= 2); both in [0, 1]",
+          ok, det)
+
+    # 15e. HOM relation: exact two-source coincidence algebra on an independent Fock-space model.
+    # Source state sqrt(1-q)|0,0> + sqrt(q)|1_u,1_v> with a random optical phase between independent sources (the
+    # two-instantaneous-pi-pulse emitter: photon u before the
+    # second pulse, photon v after it; n = 0 or 2, g2 = 1/(2q), whole-stream overlap I = 1/2 while every photon
+    # is a perfect wavepacket, M_s = 1).
+    def fock_hom(q, cut=5):
+        a1 = np.diag(np.sqrt(np.arange(1, cut)), 1)
+        eye = np.eye(cut)
+        def op(k, A):
+            mats = [eye] * 4
+            mats[k] = A
+            out = mats[0]
+            for m in mats[1:]:
+                out = np.kron(out, m)
+            return out
+        uA, vA, uB, vB = (op(k, a1) for k in range(4))
+        nC = 0.5 * ((uA + uB).conj().T @ (uA + uB) + (vA + vB).conj().T @ (vA + vB))
+        nD = 0.5 * ((uA - uB).conj().T @ (uA - uB) + (vA - vB).conj().T @ (vA - vB))
+        vac = np.zeros(cut ** 4)
+        vac[0] = 1.0
+        # independent sources with random optical phase: the photon-number-dephased product state, i.e. a mixture
+        # of |0>, |uA vA>, |uB vB>, |uA vA uB vB> with weights (1-q)^2, q(1-q), q(1-q), q^2
+        creA, creB = uA.conj().T @ vA.conj().T, uB.conj().T @ vB.conj().T
+        comps = [((1 - q) ** 2, vac), (q * (1 - q), creA @ vac), (q * (1 - q), creB @ vac), (q * q, creA @ (creB @ vac))]
+        C_par = sum(w * float(c @ (nC @ (nD @ c))) for w, c in comps)
+        Nc = sum(w * float(c @ (nC @ c)) for w, c in comps)
+        Nd = sum(w * float(c @ (nD @ c)) for w, c in comps)
+        return C_par, Nc, Nd
+    ok, det = True, ""
+    for q in (0.4, 0.78, 0.95):
+        C_par, Nc, Nd = fock_hom(q)
+        N = 2.0 * q                                     # mean photons per source
+        C_far = Nc * Nd                                 # uncorrelated pulses: product of the singles
+        V_exact = 1.0 - 2.0 * C_par / C_far
+        g2q, Iq = 1.0 / (2.0 * q), 0.5
+        ok &= near(Nc, N, ab=1e-12) and near(Nd, N, ab=1e-12)
+        ok &= near(V_exact, OB.hom_v_raw(Iq, g2q), ab=1e-12) and near(V_exact, (q - 1.0) / (2.0 * q), ab=1e-12)
+        ok &= abs(((1 - g2q) * Iq - g2q) - V_exact) > 0.02          # the pre-FX2c relation is off
+        det += f" q={q}: V {V_exact:.6f} = I - g2 {Iq - g2q:.6f} (old {(1 - g2q) * Iq - g2q:.6f});"
+    check("15e. FX2c HOM: exact beam-splitter coincidences of two identical sources (Fock space, n = 0 or 2 photons) give "
+          "V = 1 - 2 C_par/C_far = I - g2 for I = Int Int |G1|^2/N^2 = 1/2, g2 = 1/(2q); the old ((1 - g2) I - g2) is "
+          "off by > 0.02 (it would be right for the single-photon overlap M_s = 1: 1 - 2 g2)", ok, det)
+
+    sp_h = engine._as_spec(spec())
+    ent_h = engine._entries(sp_h)
+    c_h = engine._run_point(ent_h, engine._central_values(engine._leaves(sp_h, ent_h)), 4.2, "auto")
+    dh = c_h.d
+    want_h = (dh["hom_I"] * (1.0 - dh["g2_raw"]) / (1.0 - dh["g2_0"]) - dh["g2_raw"])
+    check("15f. engine hom_V_raw = (rho^2 hom_I - g2_raw) with rho^2 = (1 - g2_raw)/(1 - g2_0); hom_V_corr = hom_I/(1 - g2_0)",
+          math.isfinite(dh["hom_V_raw"]) and near(dh["hom_V_raw"], want_h, ab=1e-12)
+          and near(dh["hom_V_corr"], dh["hom_I"] / (1.0 - dh["g2_0"]), ab=1e-9),
+          f"hom_I {dh['hom_I']:.5f}, g2_0 {dh['g2_0']:.5f}, V_raw {dh['hom_V_raw']:.5f}, V_corr {dh['hom_V_corr']:.5f}")
 
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")

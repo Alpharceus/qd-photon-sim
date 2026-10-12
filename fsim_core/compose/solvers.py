@@ -34,10 +34,15 @@ RatesEx) onto it:
                        Laplace solve), pulsed g2 / mean photons through resonant_source._stats and
                        cavity-output HOM through pulsed_indistinguishability.
 
-eta_prep (FX2b): the excitation probability BEFORE decay = P_X(end of the pulse window) + photons emitted
-inside the window (+ <a+a>(end) for jc; P_XX(end) + XX photons for TPE), started from the ground state
-(single-pulse preparation; nonradiative loss inside the window is not added back). The old end-of-window
-population is kept as extra["P_X_end"] (informational; it includes the decay during the window).
+eta_prep (FX2c): the preparation PROBABILITY (papers define it so) = P(n >= 1) with n = the number of excitations
+produced by one pulse from the ground state = photons emitted inside the window + the excitation (X; XX for TPE;
+X or cavity photon for jc) still present at the window end. It is computed DIRECTLY as 1 - p0, p0 = the weight of the
+no-jump (no counted photon) evolution that ends unexcited, so 0 <= eta_prep <= 1 exactly (_window_p0). The
+expected excitation COUNT (FX2b's eta_prep = P_X(end) + emitted, which exceeds 1 under re-excitation) is kept as
+extra["n_exc"]; for n <= 2 the counting hierarchy gives the same probability as m1 - m2/2 with the window moments
+(truncation: that identity drops P(n >= 3), checked in verify_compose_engine). Nonradiative loss inside the window
+is not added back. The old end-of-window population is kept as extra["P_X_end"] (informational; it includes the
+decay during the window).
 
 Conventions (physics brief 2): rates 1/ns; Pulse.detuning_meV holds the REPO det_X =
 omega_X - omega_L (P4 drives.py stores -Delta_paper); pulse fwhm is the INTENSITY FWHM;
@@ -165,6 +170,25 @@ def _window_counts(pc, shape, area, duration, rho0=None, n_steps=None):
     return rho, m1
 
 
+def _window_p0(pc, shape, area, duration, keep, n_steps=None):
+    """FX2c: probability that NO counted photon is emitted inside the pulse window and the system is in the
+    unexcited subspace `keep` (basis indices, populations only) at the window end, started from the ground
+    state. The no-jump generator is L0 + Omega L1 - J (J = the jump superoperator the counting hierarchy
+    uses), so the weight is exactly p0 of the photon-number distribution; eta_prep = 1 - p0. Same grid and
+    midpoint propagation as _window_counts."""
+    edges, om = rs._grid(shape, area, duration, n_steps, pc.max_dt)
+    dt = np.diff(edges)
+    v = lb.vec(rs._ground(pc.dim))
+    cache = {}
+    for o, d in zip(om, dt):
+        key = (round(float(o), 14), round(float(d), 14))
+        if key not in cache:
+            cache[key] = expm((pc.L0 + o * pc.L1 - pc.J) * d)
+        v = cache[key] @ v
+    rho = lb.unvec(v, pc.dim)
+    return float(sum(rho[i, i].real for i in keep))
+
+
 # ---------------------------------------------------------------- rate
 class RateSolver(Solver):
     name = "rate"
@@ -268,11 +292,13 @@ class LindbladSolver(Solver):
         st = rs.pulsed_photon_statistics(tl, p.shape, p.area_rad, dur, _f_rep(plan))
         I = rs.pulsed_indistinguishability(tl, p.shape, p.area_rad, dur, tol=_HOM_TOL,
                                            max_doublings=_HOM_DOUBLINGS)
-        rho_w, emitted = _window_counts(rs._pieces(tl), p.shape, p.area_rad, dur)
+        pcs = rs._pieces(tl)
+        rho_w, emitted = _window_counts(pcs, p.shape, p.area_rad, dur)
+        p0 = _window_p0(pcs, p.shape, p.area_rad, dur, (0,))
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
                             inversion=float(st["P_e_post"]),
                             extra={"det_X_meV": _det_X_meV(plan),
-                                   "eta_prep": float(rho_w[1, 1].real) + emitted,
+                                   "eta_prep": 1.0 - p0, "n_exc": float(rho_w[1, 1].real) + emitted,
                                    "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
 
     def _tpe(self, plan, em, rt):
@@ -292,7 +318,9 @@ class LindbladSolver(Solver):
         hom = rs.tpe_cascade_hom(casc, p.shape, area, dur)
         # FX2b: XX-line photon stream (the line a TPE experiment filters for the biexciton photon) and eta_prep
         st_xx = rs.tpe_photon_statistics(casc, p.shape, area, dur, _f_rep(plan), channel="XX")
-        rho_w, emitted_xx = _window_counts(rs._pieces_cascade(casc, ("XX",)), p.shape, area, dur)
+        pcx = rs._pieces_cascade(casc, ("XX",))
+        rho_w, emitted_xx = _window_counts(pcx, p.shape, area, dur)
+        p0_xx = _window_p0(pcx, p.shape, area, dur, (0, 1))       # no XX photon and not in XX (G or X)
         s = casc.system()
         i_xx = 2 * s.dim + 2                                   # vec index of rho[XX, XX]
         tau_xx_ps = 1e3 / float(-s.L[i_xx, i_xx].real)         # XX population decay rate read off the Liouvillian
@@ -304,7 +332,7 @@ class LindbladSolver(Solver):
                             inversion=P_xx_end,
                             extra={"tpe_pi_area_rad": pi_area, "tpe_area_rad": area,
                                    "P_prepared": list(hom["P"]),
-                                   "eta_prep": float(rho_w[2, 2].real) + emitted_xx,
+                                   "eta_prep": 1.0 - p0_xx, "n_exc": float(rho_w[2, 2].real) + emitted_xx,
                                    "photons_in_window": emitted_xx, "P_X_end": P_xx_end,
                                    "tau_XX_ps": float(tau_xx_ps), "g2_XX": float(st_xx["g2"]),
                                    "n_XX": float(st_xx["mean_photons"]), "hom_XX": float(I_xx),
@@ -566,7 +594,11 @@ class JCSolver(Solver):
         # FX2b: excitation probability before decay = P_X + <a+a> at the window end + photons already emitted
         rho_w, emitted = _window_counts(pc, p.shape, p.area_rad, dur)
         n_cav_end = float(lb.expect(s0.ops["a"].conj().T @ s0.ops["a"], rho_w).real)
-        eta_prep = float(lb.expect(s0.ops["P_X"], rho_w).real) + n_cav_end + emitted
+        n_exc = float(lb.expect(s0.ops["P_X"], rho_w).real) + n_cav_end + emitted
+        dX = np.real(np.diag(s0.ops["P_X"]))
+        dn = np.real(np.diag(s0.ops["a"].conj().T @ s0.ops["a"]))
+        keep = tuple(int(i) for i in range(len(dX)) if dX[i] < 1e-12 and dn[i] < 1e-12)     # |G, 0 photons>
+        eta_prep = 1.0 - _window_p0(pc, p.shape, p.area_rad, dur, keep)
         reasons = []
         try:
             I = float(rs.pulsed_indistinguishability(_CavOut(build, kap), p.shape, p.area_rad, dur,
@@ -580,7 +612,7 @@ class JCSolver(Solver):
         return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=I,
                             inversion=pop_X,
                             extra={"tau_jc_ps": float(tau_ps), "tau_1e_ps": float(tau_1e_ps), "n_cav_inst": n_cav, "n_leak_inst": n_leak,
-                                   "eta_prep": eta_prep, "photons_in_window": emitted, "n_cav_end": n_cav_end,
+                                   "eta_prep": eta_prep, "n_exc": n_exc, "photons_in_window": emitted, "n_cav_end": n_cav_end,
                                    "P_X_end": pop_X,
                                    "beta": ((n_cav + b0 * n_leak) / tot) if tot > 0 else NAN, "notes": reasons},
                             reasons=())

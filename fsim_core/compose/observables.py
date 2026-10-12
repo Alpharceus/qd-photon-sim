@@ -25,9 +25,12 @@ background-channel photons are filtered the same way (conservative) [A].
 n_ph is the solver's photons per pulse into the radiative channel. It replaces the product
 eta_prep x eta_rad of the brief because it equals that product without re-excitation and also contains
 re-excitation (both factors are reported separately: `eta_prep`, `eta_rad`, `eta_prep_x_eta_rad`).
-eta_prep (FX2b) is the excitation probability BEFORE decay: P_X(end of the pulse window) + photons emitted
-inside the window (+ <a+a>(end) for jc; P_XX + XX photons for TPE), from the lindblad / jc / polaron solvers;
-the old end-of-window population is `P_X_end` (informational). Incoherent drives report p_loaded.
+eta_prep (FX2c) is the preparation PROBABILITY, as papers define it: P(n >= 1) with n the excitations a pulse
+produces from the ground state (photons emitted inside the window + X, XX (TPE) or cavity photon (jc) still
+present at its end), computed exactly as 1 - p0 from the no-jump evolution (solvers._window_p0), so 0 <= eta_prep
+<= 1. The expected COUNT (FX2b's definition, P_X(end) + emitted, which exceeds 1 under re-excitation) is the
+observable `n_exc`; the old end-of-window population is `P_X_end` (informational). Incoherent drives report
+p_loaded as eta_prep and no n_exc.
 XX channel (TPE cascade only): tau_XX_ps, g2_XX, n_XX, hom_XX (hom_XX carries the same q^2 as hom_I).
 T_NA = 1: the structure's response() already received the setup NA, so eta_out contains the NA
 collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL,
@@ -53,11 +56,22 @@ Blinking (devlib-fx2a (c)): `material.eta_blink` (on-fraction, default 1 [A]) mu
 brightness (B_lens, B_fibre, rate_detected_Hz) and is reported in `eta_rad_eff = eta_blink x eta_rad`; it
 never changes the lifetime (blinking removes emission events, not the radiative rate).
 
-HOM: `hom_I` = single-photon wavepacket overlap (intrinsic, g2-free) x phonon factor.
-hom_V_raw = ((1 - g2_raw) I - g2_raw) (1 - eps_int) [E: Ollivier et al., PRL 126, 063602 (2021);
-Santori 2002 form], eps_int from a setup param "eps_int" if present else 0 [A]; it uses g2_raw, the g2 a
-measurement of the same stream would see. hom_V_corr = (V_raw + g2)/(1 - g2) (Tomm: 0.925, 0.021 ->
-0.966). Compare raw to raw and corrected to corrected, never across.
+HOM (FX2c, replaces the FX1 relation V_raw = ((1 - g2) I - g2)(1 - eps) that double counted g2): `hom_I` = the
+solver's Grange overlap I = Int Int |G1(t,t')|^2 dt dt' / N^2, N = the TOTAL mean photons per pulse, x the phonon
+factor. G1 is the first-order coherence of the whole photon stream, so I ALREADY contains the multi-photon
+(re-excitation) terms: for an ideal emitter that re-emits twice it is far below the single-photon wavepacket
+overlap M_s (closed case, verify_compose_engine: two instantaneous pi pulses, n = 0 or 2 photons, I = 1/2 while
+every photon is a perfect wavepacket, M_s = 1). The exact zero-delay result for two independent identical sources
+on a 50/50 splitter, normalised to the uncorrelated (far) peak as in the experiments, is [DR]
+    C_par(0) = (N^2/4)(2 g2 + 2 - 2 I),   C_far = N^2,   V_raw = 1 - 2 C_par/C_far = I - g2
+(second-order operator identity <c+ d+ d c> with c,d = (a +- b)/sqrt 2; Ollivier et al., PRL 126, 063602 (2021)
+treat the same combination with M_s, V = (1 - g2) M_s - g2, which is the same physics only when I is the
+single-photon M_s, so using that form with the solver's I subtracted g2 twice). An uncorrelated background
+scales I by rho^2 = (1 - g2_raw)/(1 - g2) (N -> N/rho, Int Int |G1|^2 unchanged) and g2 -> g2_raw:
+    hom_V_raw = (rho^2 I - g2_raw)(1 - eps_int),   hom_V_corr = (V_raw + g2_raw)/(1 - g2_raw) = I/(1 - g2) at
+eps_int = 0 (the corrected value is the estimate of the single-photon M_s an experiment would quote: Tomm 0.925,
+g2 0.021 -> 0.966). eps_int from a setup param "eps_int" if present else 0 [A]. Compare raw to raw and corrected
+to corrected, never across.
 
 Tags. Each observable lists `deps`: tokens that are either a stage name (material | structure | drive |
 setup = the leaves that stage actually READ during the run, tracked by the engine) or an fnmatch pattern
@@ -100,9 +114,12 @@ def pulsed_dark_rate(dark_cps, coinc_window_ns, f_rep_Hz):
     return float(dark_cps) * min(float(coinc_window_ns) * 1e-9 * float(f_rep_Hz), 1.0)
 
 
-def hom_v_raw(I, g2, eps_int=0.0):
-    """Predicted raw visibility V_raw = ((1 - g2) I - g2)(1 - eps_int)."""
-    return ((1.0 - g2) * I - g2) * (1.0 - eps_int)
+def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None):
+    """Predicted raw visibility V_raw = (rho^2 I - g2_raw)(1 - eps_int) with I the solver's whole-stream overlap
+    and rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1, V = I - g2). The pre-FX2c
+    form ((1 - g2) I - g2) is the Ollivier relation for the single-photon M_s, not for this I (module doc)."""
+    rho2 = 1.0 if (g2_int is None or not g2_int < 1.0) else (1.0 - g2_raw) / (1.0 - g2_int)
+    return (rho2 * I - g2_raw) * (1.0 - eps_int)
 
 
 def hom_v_corrected(V_raw, g2):
@@ -209,12 +226,15 @@ def _derive(c: Context) -> dict:
         why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
     if "eta_prep" in res.extra:
-        # FX2b: excitation probability before decay = P_X(end) + photons emitted inside the window (+ <a+a> for jc)
+        # FX2c: preparation probability P(n >= 1) = 1 - p0 (the expected count is n_exc)
         d["eta_prep"] = float(res.extra["eta_prep"])
     elif res.inversion is None and "p_loaded" in res.extra:
         d["eta_prep"] = float(res.extra["p_loaded"])
     else:
         d["eta_prep"] = d["inversion"]
+    d["n_exc"] = float(res.extra["n_exc"]) if "n_exc" in res.extra else NAN
+    if "n_exc" not in res.extra:
+        why["n_exc"] = "only the lindblad / jc / polaron coherent solvers report the expected excitation count"
     d["P_X_end"] = float(res.extra["P_X_end"]) if "P_X_end" in res.extra else d["inversion"]
     if not math.isfinite(d["P_X_end"]):
         why["P_X_end"] = "the solver has no end-of-window population (incoherent / cw drive)"
@@ -266,7 +286,7 @@ def _derive(c: Context) -> dict:
         why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
     eps = float(_read(c, "setup", "eps_int", 0.0))
     if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
-        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps)
+        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2)
         d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
     else:
         d["hom_V_raw"] = d["hom_V_corr"] = NAN
@@ -320,7 +340,8 @@ _o("eta_out", "Extraction into the collected mode", "1", ("structure",))
 _o("eta_extract", "Extraction beta x eta_out", "1", _MS)
 _o("T_NA", "NA transmission (inside eta_out)", "1", ("setup.NA",))
 _o("eta_pol", "Polarisation factor", "1", ("setup.eta_pol", "structure"))
-_o("eta_prep", "State-preparation probability", "1", _ALL)
+_o("eta_prep", "State-preparation probability P(n >= 1)", "1", _ALL)
+_o("n_exc", "Expected excitation count per pulse (P_X(end) + photons emitted in the window; may exceed 1)", "1", _ALL)
 _o("eta_rad", "Radiative efficiency Gamma/(Gamma+k)", "1", _MS)
 _o("eta_rad_eff", "Effective radiative efficiency eta_blink x Gamma/(Gamma+k)", "1", _MS + ("material.eta_blink",))
 _o("eta_blink", "Blinking on-fraction (brightness factor, not lifetime)", "1", ("material.eta_blink",),

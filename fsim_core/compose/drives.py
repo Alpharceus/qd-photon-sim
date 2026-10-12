@@ -518,27 +518,12 @@ def _placeholder(kind, label, summary, reason, params, refs, observables):
 _GAUSS = _P("shape", "", "gauss", choices=("gauss", "rect"), tag="A", source=_SRC_A, sweepable=False,
             help="Pulse envelope.")
 
-ARP = _placeholder(
-    "arp", "Adiabatic rapid passage (chirped pulse)",
-    "Chirped pulse sweeping through the resonance for robust inversion.",
-    "needs the time-dependent detuning (chirp) solver",
-    (_GAUSS,
-     _P("chirp_meV_ps", "meV/ps", 0.1, lo=-5.0, hi=5.0, tag="A", source=_SRC_A,
-        help="Linear chirp rate of the detuning."),
-     _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="A", source=_SRC_A, help="Intensity FWHM."),
-     _P("area_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Pulse area in units of pi."),
-     _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
-        help="Pulse repetition rate.")),
-    (_REF_BRIEF + ": chirped-pulse notes",),
-    OBS_COHERENT_PULSED)
-
-
 # P9: the phonon-dependent coherent drives live in drives_phonon.py (real entries, status "ready"); they
-# import the helpers above, so this import must stay below them. ARP stays a placeholder (the chirp is
-# supported by polaron.PulseTrain, but the drive is not flipped until its anchors exist).
+# import the helpers above, so this import must stay below them. FX2c: ARP (chirped pulse; polaron solver with
+# the PulseTrain chirp) is ready too; `_placeholder` stays for future needs_physics entries.
 from . import drives_phonon as _dp  # noqa: E402
 
-PHONON_ASSISTED, SUPER, DICHROMATIC = _dp.PHONON_ASSISTED, _dp.SUPER, _dp.DICHROMATIC
+PHONON_ASSISTED, SUPER, DICHROMATIC, ARP = _dp.PHONON_ASSISTED, _dp.SUPER, _dp.DICHROMATIC, _dp.ARP
 
 DRIVES = (RESONANT_PULSE, TPE, CW_RESONANT, ABOVE_BAND, P_SHELL, ELECTRICAL_PULSED, ELECTRICAL_CW,
           PHONON_ASSISTED, SUPER, DICHROMATIC, ARP)
