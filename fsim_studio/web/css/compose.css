@@ -110,9 +110,10 @@
   display: flex; flex-direction: column; align-items: stretch; gap: 5px; text-align: left; padding: 9px 10px;
   background: var(--surface); border: 1px solid var(--rim); border-radius: var(--radius); color: var(--ink-1);
 }
-.cp-entry:hover:not([aria-disabled="true"]) { border-color: var(--ink-1); }
+.cp-entry:hover:not([aria-disabled="true"]):not([data-incompatible="true"]) { border-color: var(--ink-1); }
 .cp-entry[aria-selected="true"] { border-color: var(--ink-1); box-shadow: inset 0 -2px 0 var(--ink-1); }
 .cp-entry[aria-disabled="true"] { opacity: 0.55; border-style: dashed; cursor: not-allowed; }
+.cp-entry[data-incompatible="true"] { opacity: 0.55; border-style: dashed; }
 .cp-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .cp-label { font-family: var(--font-label); font-weight: 600; font-size: calc(13.5px * var(--k)); line-height: 1.2; }
 .cp-badge { flex: none; font-family: var(--font-label); font-weight: 600; font-size: 10.5px; letter-spacing: var(--label-tracking); text-transform: uppercase; color: var(--ink-2); border: 1px solid var(--ink-2); border-radius: 2px; padding: 1px 5px; }
@@ -253,6 +254,10 @@
 .bp-kv { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; min-width: 0; }
 .bp-k { color: var(--muted); font-size: var(--fs-cap); }
 .bp-v { font-family: var(--font-num); font-weight: 500; margin-left: auto; }
+.bp-svg .bp-off { font-size: 10.5px; }
+.bp-svg .bp-edge.bp-break { stroke-dasharray: 2 5; }
+.bp-svg .bp-flagnote { font-style: normal; font-weight: 600; fill: var(--ink-1); }
+.bp-flag { margin: 0; padding: 4px 8px; border-left: 2px solid var(--ink-2); font-size: var(--fs-cap); color: var(--ink-1); }
 .bp-cap, .bp-none { margin: 0; font-size: var(--fs-cap); color: var(--ink-2); }
 
 /* the Saved toast wraps; the path lives in its tooltip */

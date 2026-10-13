@@ -230,6 +230,62 @@ check("gamma*(4 K) is presented as the pure-dephasing linewidth Gamma_ph = 2 gam
       _gs.tex == r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)" and r"\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}" in _gs.help
       and "repo gamma" not in _all_help.lower() and "repo convention" not in _all_help.lower())
 
+# devlib-r2-band: literature band offsets (display-only), payload block per material -----------------------------------
+_payload = {m_["kind"]: m_ for m_ in R.registry_payload()["materials"]}
+_bands = {k: _payload[k].get("band") for k in KINDS}
+
+
+def _leaves(b):
+    """Every tagged leaf of a band block: (path, leaf)."""
+    out = [("Eg_barrier", b["Eg_barrier"])]
+    for vn, v in b["variants"].items():
+        out += [(f"{vn}.{q}", leaf) for q, leaf in v.items()]
+    out += [(f"masses.{q}", leaf) for q, leaf in b["masses"].items()]
+    return out
+
+
+check("band block: all 10 materials expose a band block in the registry payload (display-only)",
+      all(isinstance(b, dict) for b in _bands.values()) and set(_bands) == set(KINDS))
+_complete = True
+_why = ""
+for k_, b_ in _bands.items():
+    try:
+        v0 = b_["variants"]["unstr"]
+        ok_ = (all(q in v0 for q in ("Eg_dot", "dE_c", "dE_v")) and b_["dot"] and b_["barrier"] and b_["type"]
+               and set(b_["flags"]) == {"polar", "type2_risk", "hard_wall"} and b_["sources"]
+               and set(b_["masses"]) == {"m_e", "m_h"} and b_["note"])
+    except (KeyError, TypeError):
+        ok_ = False
+    if not ok_:
+        _complete, _why = False, k_
+check("band block: every material has dot / barrier / type / flags / masses / sources and a complete unstrained triple",
+      _complete, _why)
+_lf = [(k_, p_, l_) for k_, b_ in _bands.items() for p_, l_ in _leaves(b_)]
+check("band block: every number carries a tag in V/DR/E/A, a unit and a non-empty `where`",
+      all(l_.get("tag") in ("V", "DR", "E", "A") and l_.get("unit") and str(l_.get("where", "")).strip() and isinstance(l_.get("value"), (int, float))
+          for _, _, l_ in _lf), str([(k_, p_) for k_, p_, l_ in _lf if l_.get("tag") not in ("V", "DR", "E", "A")]))
+check("band block: every [V] value is stored checked: false (recalled from the reviews, not re-checked) and no other tag has checked: true",
+      all((l_.get("checked") is False) == (l_["tag"] == "V") and l_.get("checked") is not True for _, _, l_ in _lf))
+_closed, _bad = 0, []
+for k_, b_ in _bands.items():
+    for vn_, v_ in b_["variants"].items():
+        if all(q in v_ for q in ("Eg_dot", "dE_c", "dE_v")):
+            _closed += 1
+            gap = v_["Eg_dot"]["value"] * 1000.0 + v_["dE_c"]["value"] + v_["dE_v"]["value"]      # meV
+            diff = round(abs(gap - b_["Eg_barrier"]["value"] * 1000.0), 3)                         # rounded: float hygiene only
+            if diff > 5.0:
+                _bad.append((k_, vn_, diff))
+check(f"band block: dE_c + dE_v + E_g,dot = E_g,barrier within 5 meV for each of the {_closed} closed variants", _closed == 16 and not _bad, str(_bad))
+check("band block: flags follow the answer (polar: gan_aln, ingan_gan; type2_risk: inp_gainp_red; hard_wall: cspbbr3_colloidal)",
+      {k_ for k_, b_ in _bands.items() if b_["flags"]["polar"]} == {"gan_aln", "ingan_gan"}
+      and {k_ for k_, b_ in _bands.items() if b_["flags"]["type2_risk"]} == {"inp_gainp_red"}
+      and {k_ for k_, b_ in _bands.items() if b_["flags"]["hard_wall"]} == {"cspbbr3_colloidal"})
+check("band block: transcription anchors of the answer (GaAs/AlGaAs 1.519 + 0.279 + 0.175 = 1.973; InAs/GaAs in-dot 0.85 / 450 / 220; GaN/AlN dE_v 800 [V])",
+      _bands["gaas_algaas_droplet"]["variants"]["unstr"]["dE_c"]["value"] == 279
+      and _bands["inas_gaas_sk"]["variants"]["indot"]["Eg_dot"]["value"] == 0.85
+      and (_bands["inas_gaas_sk"]["variants"]["indot"]["dE_c"]["value"], _bands["inas_gaas_sk"]["variants"]["indot"]["dE_v"]["value"]) == (450, 220)
+      and _bands["gan_aln"]["variants"]["unstr"]["dE_v"]["tag"] == "V")
+
 n, total = sum(RESULTS), len(RESULTS)
 print(f"{n}/{total} compose materials checks passed")
 sys.exit(0 if n == total else 1)

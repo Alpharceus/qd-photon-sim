@@ -243,7 +243,7 @@ function buildDep(dep, pt, TG) {
   return { data, layout: baseLayout({ margin: { l: 58, r: 62, t: 30, b: 50 }, legend: LEG,
     xaxis: { ...baseLayout().xaxis, title: { text: "junction voltage V_j (V); flat band beyond V_bi", standoff: 6 } },
     yaxis: { ...baseLayout().yaxis, title: { text: "F (kV/cm)", standoff: 6 }, rangemode: "tozero" },
-    yaxis2: { overlaying: "y", side: "right", title: { text: "C_dep (pF)", standoff: 6 }, showgrid: false, zeroline: false, rangemode: "tozero" },
+    yaxis2: { overlaying: "y", side: "right", title: { text: "C_dep (pF)", standoff: 6 }, showgrid: false, zeroline: false, rangemode: "tozero", exponentformat: "power" },
     shapes: [{ type: "line", xref: "x", yref: "paper", x0: dep.V_bi, x1: dep.V_bi, y0: 0, y1: 1, line: { color: c.ink2, width: 1, dash: "dash" } }, ...(pt ? [vline(pt.V_j, c)] : [])],
     annotations: [{ x: dep.V_bi, y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: `V_bi = ${fmt(dep.V_bi)} V [${TG.V_bi}]`, font: { size: 11, color: c.ink2 } }] }) };
 }

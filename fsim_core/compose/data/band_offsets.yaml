@@ -1,0 +1,577 @@
+# Literature band offsets for the Composer band panel (R2 BAND). DISPLAY-ONLY: no solver reads this file.
+# Source: .workers/devlib/r2-band-offsets-answer.md (Fable), low temperature (0-10 K). One entry per material kind.
+# Every number is a leaf {value, unit, tag in V/DR/E/A, where[, checked]}. NOTE: the V values are recalled from the Vurgaftman
+# reviews (V01 = J. Appl. Phys. 89, 5815 (2001); VM03 = J. Appl. Phys. 94, 3675 (2003)) and the table numbers have NOT been
+# re-checked against the papers, so every [V] leaf carries `checked: false`. Tags are never upgraded here.
+# Variants: unstr = bulk dot, strained = fully pseudomorphic 2D limit, indot = in-dot interior estimate. A variant that lists
+# Eg_dot, dE_c and dE_v is closed: dE_c + dE_v + Eg_dot = Eg_barrier within 5 meV (verify_compose_materials.py). Offsets in meV.
+schema: fsim-band-offsets/1
+note: 'Display-only literature band offsets at 0-10 K. [V] values are recalled from the Vurgaftman reviews and not re-checked (checked: false); tags are never upgraded.'
+materials:
+  cdse_znse:
+    dot: CdSe (zb)
+    barrier: ZnSe
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 2.82
+      unit: eV
+      tag: V
+      checked: false
+      where: Madelung 2004, ZnSe 2.82 eV at 0 K; table row 1
+    variants:
+      unstr:
+        Eg_dot:
+          value: 1.76
+          unit: eV
+          tag: E
+          where: zb CdSe scatter 1.74-1.77 eV; table row 1
+        dE_c:
+          value: 850
+          unit: meV
+          tag: E
+          where: natural-offset class, Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998); table row 1
+        dE_v:
+          value: 210
+          unit: meV
+          tag: E
+          where: natural offset, range 100-300 meV; table row 1 (0.21 eV is the Fable recollection)
+      strained:
+        Eg_dot:
+          value: 2.0
+          unit: eV
+          tag: E
+          where: 'table row 1: ~2.0 eV strained, HH shift +0.2-0.3 eV; offsets not given for this variant'
+    masses:
+      m_e:
+        value: 0.12
+        unit: m0
+        tag: E
+        where: class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+      m_h:
+        value: 0.45
+        unit: m0
+        tag: E
+        where: class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+    sources:
+    - 'Madelung, Semiconductors: Data Handbook, 3rd ed. (Springer, 2004)'
+    - Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998)
+  cspbbr3_colloidal:
+    dot: CsPbBr3 NC
+    barrier: ligand shell / glass
+    type: I (hard wall)
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: true
+    Eg_barrier:
+      value: 5.83
+      unit: eV
+      tag: E
+      where: ligand HOMO-LUMO >= 5 eV, glass ~9 eV (table row 2); 5.83 = E_g,dot + dE_c + dE_v so the offsets close, consistent with the >= 5 eV bound
+    variants:
+      unstr:
+        Eg_dot:
+          value: 2.33
+          unit: eV
+          tag: E
+          where: orthorhombic bulk at 4 K; NC PL 2.35-2.45 eV; table row 2
+        dE_c:
+          value: 2000
+          unit: meV
+          tag: E
+          where: 'vacuum-level alignment EA ~3.5-3.9 eV, Protesescu 2015 class; table row 2; caveat 5: effectively infinite'
+        dE_v:
+          value: 1500
+          unit: meV
+          tag: E
+          where: 'vacuum-level alignment IP ~5.9-6.2 eV; table row 2; caveat 5: effectively infinite'
+    masses:
+      m_e:
+        value: 0.15
+        unit: m0
+        tag: V
+        checked: false
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14 (a_B = 3.5 nm, E_b = 40 meV)'
+      m_h:
+        value: 0.14
+        unit: m0
+        tag: V
+        checked: false
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14 (a_B = 3.5 nm, E_b = 40 meV)'
+    sources:
+    - Protesescu et al., Nano Lett. 15, 3692 (2015)
+  gaas_algaas_droplet:
+    dot: GaAs
+    barrier: Al0.33Ga0.67As
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 1.973
+      unit: eV
+      tag: DR
+      where: V01 Sec. IV AlGaAs bowing (-0.127 + 1.310 x) at x = 0.33; table row 3
+    variants:
+      unstr:
+        Eg_dot:
+          value: 1.519
+          unit: eV
+          tag: V
+          checked: false
+          where: V01 Table I (GaAs), lattice matched so no strain variant
+        dE_c:
+          value: 279
+          unit: meV
+          tag: DR
+          where: (E_g,bar - E_g,dot) - dE_v; V01 Table II (AlAs) and Sec. IV
+        dE_v:
+          value: 175
+          unit: meV
+          tag: DR
+          where: 0.53 x eV, V01 AlGaAs VBO linear in x; table row 3
+    masses:
+      m_e:
+        value: 0.067
+        unit: m0
+        tag: E
+        where: GaAs 0.067 / 0.35 (Fable placement rule, 84:16)
+      m_h:
+        value: 0.35
+        unit: m0
+        tag: E
+        where: GaAs 0.067 / 0.35 (Fable placement rule, 84:16)
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables I, II, Sec. IV
+  gan_aln:
+    dot: GaN (wz)
+    barrier: AlN (wz)
+    type: I
+    flags:
+      polar: true
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 6.25
+      unit: eV
+      tag: V
+      checked: false
+      where: VM03 wz AlN table; table row 4
+    variants:
+      unstr:
+        Eg_dot:
+          value: 3.51
+          unit: eV
+          tag: V
+          checked: false
+          where: VM03 wz GaN table; table row 4
+        dE_c:
+          value: 1940
+          unit: meV
+          tag: DR
+          where: (E_g,AlN - E_g,GaN) - dE_v; VM03
+        dE_v:
+          value: 800
+          unit: meV
+          tag: V
+          checked: false
+          where: VM03 band-offset section, AlN/GaN dE_v 0.8 eV
+      strained:
+        Eg_dot:
+          value: 3.66
+          unit: eV
+          tag: E
+          where: 3.510 eV + 0.15 eV (midpoint of the +0.1-0.2 eV c-plane strain shift, -2.4 %); table row 4
+    masses:
+      m_e:
+        value: 0.2
+        unit: m0
+        tag: E
+        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15)
+      m_h:
+        value: 1.1
+        unit: m0
+        tag: E
+        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15)
+    sources:
+    - Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003), wz GaN and AlN tables, band-offset section
+    - 'caveat 2: spontaneous + piezoelectric fields 5-9 MV/cm'
+  inas_gaas_sk:
+    dot: InAs
+    barrier: GaAs
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 1.519
+      unit: eV
+      tag: V
+      checked: false
+      where: V01 Table I (GaAs)
+    variants:
+      unstr:
+        Eg_dot:
+          value: 0.417
+          unit: eV
+          tag: V
+          checked: false
+          where: V01 Table III (InAs)
+        dE_c:
+          value: 892
+          unit: meV
+          tag: DR
+          where: (E_g,bar - E_g,dot) - dE_v
+        dE_v:
+          value: 210
+          unit: meV
+          tag: DR
+          where: VBO_InAs - VBO_GaAs, V01 Tables I and III (InAs VBO -0.59 eV, uncertain ~0.1 eV)
+      strained:
+        Eg_dot:
+          value: 0.54
+          unit: eV
+          tag: DR
+          where: biaxial strain, eps_par = -6.7 %, CB +0.31, VB_av -0.06, HH +0.25 eV; V01 deformation potentials
+        dE_c:
+          value: 582
+          unit: meV
+          tag: DR
+          where: unstrained dE_c less the CB shift
+        dE_v:
+          value: 400
+          unit: meV
+          tag: DR
+          where: heavy-hole offset after strain
+      indot:
+        Eg_dot:
+          value: 0.85
+          unit: eV
+          tag: E
+          where: in-dot interior, Grundmann, Stier, Bimberg, Phys. Rev. B 52, 11969 (1995); Stier 1999
+        dE_c:
+          value: 450
+          unit: meV
+          tag: E
+          where: in-dot class value, Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999)
+        dE_v:
+          value: 220
+          unit: meV
+          tag: E
+          where: in-dot class value, Stier 1999
+    masses:
+      m_e:
+        value: 0.04
+        unit: m0
+        tag: E
+        where: InAs strained 0.04 / 0.33 (Fable placement rule, 89:11)
+      m_h:
+        value: 0.33
+        unit: m0
+        tag: E
+        where: InAs strained 0.04 / 0.33 (Fable placement rule, 89:11)
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables I, III
+    - Grundmann, Stier, Bimberg, Phys. Rev. B 52, 11969 (1995)
+    - Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999)
+  inas_ingaas_metamorphic_cband:
+    dot: InAs
+    barrier: In0.15Ga0.85As
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 1.293
+      unit: eV
+      tag: DR
+      where: V01 Sec. IV GaInAs bowing (E_g 0.477, VBO -0.38) at x = 0.15; x = 0.25 gives 1.154 eV; Paul et al., Appl. Phys. Lett. 111, 033102 (2017) for the alloy choice
+    variants:
+      unstr:
+        Eg_dot:
+          value: 0.417
+          unit: eV
+          tag: V
+          checked: false
+          where: V01 Table III (InAs)
+        dE_c:
+          value: 746
+          unit: meV
+          tag: DR
+          where: '(E_g,bar - E_g,dot) - dE_v; x = 0.25: 651'
+        dE_v:
+          value: 130
+          unit: meV
+          tag: DR
+          where: 'VBO difference; x = 0.25: 86'
+      strained:
+        Eg_dot:
+          value: 0.52
+          unit: eV
+          tag: DR
+          where: 'biaxial strain, V01 deformation potentials; x = 0.25: 0.51'
+        dE_c:
+          value: 482
+          unit: meV
+          tag: DR
+          where: 'x = 0.25: 418'
+        dE_v:
+          value: 291
+          unit: meV
+          tag: DR
+          where: 'heavy-hole offset; x = 0.25: 228'
+    masses:
+      m_e:
+        value: 0.04
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+      m_h:
+        value: 0.33
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables I, III, Sec. IV
+    - Paul et al., Appl. Phys. Lett. 111, 033102 (2017)
+  inas_inp_cband:
+    dot: InAs
+    barrier: InP
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 1.424
+      unit: eV
+      tag: V
+      checked: false
+      where: V01 Table VI (InP)
+    variants:
+      unstr:
+        Eg_dot:
+          value: 0.417
+          unit: eV
+          tag: V
+          checked: false
+          where: V01 Table III (InAs)
+        dE_c:
+          value: 657
+          unit: meV
+          tag: DR
+          where: (E_g,bar - E_g,dot) - dE_v
+        dE_v:
+          value: 350
+          unit: meV
+          tag: DR
+          where: VBO difference, InP VBO -0.94 eV (V01 Table VI)
+      strained:
+        Eg_dot:
+          value: 0.47
+          unit: eV
+          tag: DR
+          where: biaxial strain, V01 deformation potentials
+        dE_c:
+          value: 513
+          unit: meV
+          tag: DR
+          where: unstrained dE_c less the CB shift
+        dE_v:
+          value: 439
+          unit: meV
+          tag: DR
+          where: heavy-hole offset after strain
+    masses:
+      m_e:
+        value: 0.04
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+      m_h:
+        value: 0.33
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables III, VI
+  ingaas_gaas:
+    dot: In0.5Ga0.5As
+    barrier: GaAs
+    type: I
+    flags:
+      polar: false
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 1.519
+      unit: eV
+      tag: V
+      checked: false
+      where: V01 Table I (GaAs)
+    variants:
+      unstr:
+        Eg_dot:
+          value: 0.849
+          unit: eV
+          tag: DR
+          where: V01 Sec. IV GaInAs bowing, x = 0.5
+        dE_c:
+          value: 470
+          unit: meV
+          tag: DR
+          where: (E_g,bar - E_g,dot) - dE_v
+        dE_v:
+          value: 200
+          unit: meV
+          tag: DR
+          where: VBO interpolation, V01 Sec. IV
+      strained:
+        Eg_dot:
+          value: 0.97
+          unit: eV
+          tag: DR
+          where: biaxial strain, V01 deformation potentials
+        dE_c:
+          value: 256
+          unit: meV
+          tag: DR
+          where: unstrained dE_c less the CB shift
+        dE_v:
+          value: 293
+          unit: meV
+          tag: DR
+          where: heavy-hole offset after strain
+    masses:
+      m_e:
+        value: 0.04
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+      m_h:
+        value: 0.33
+        unit: m0
+        tag: E
+        where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables I, III, Sec. IV
+  ingan_gan:
+    dot: In0.2Ga0.8N (wz)
+    barrier: GaN
+    type: I
+    flags:
+      polar: true
+      type2_risk: false
+      hard_wall: false
+    Eg_barrier:
+      value: 3.51
+      unit: eV
+      tag: V
+      checked: false
+      where: VM03 wz GaN table
+    variants:
+      unstr:
+        Eg_dot:
+          value: 2.74
+          unit: eV
+          tag: DR
+          where: VM03 wz GaN, InN 0.78 eV, InGaN bowing 1.4 eV, x = 0.2
+        dE_c:
+          value: 670
+          unit: meV
+          tag: DR
+          where: (E_g,GaN - E_g,dot) - dE_v
+        dE_v:
+          value: 100
+          unit: meV
+          tag: DR
+          where: InN/GaN VBO 0.5 eV (was 0.26 in V01), VM03
+      strained:
+        Eg_dot:
+          value: 2.84
+          unit: eV
+          tag: E
+          where: 2.74 eV + ~0.1 eV strain shift (-2.2 %); table row 9
+    masses:
+      m_e:
+        value: 0.2
+        unit: m0
+        tag: E
+        where: GaN-class 0.20 / 1.1; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+      m_h:
+        value: 1.1
+        unit: m0
+        tag: E
+        where: GaN-class 0.20 / 1.1; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
+    sources:
+    - Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003), wz GaN, InN tables, InGaN bowing, InN/GaN VBO
+    - 'caveat 2: spontaneous + piezoelectric fields 1-2 MV/cm'
+  inp_gainp_red:
+    dot: InP
+    barrier: Ga0.51In0.49P (disordered)
+    type: I for HH; LH and ordered-barrier case marginal / type II
+    flags:
+      polar: false
+      type2_risk: true
+      hard_wall: false
+    Eg_barrier:
+      value: 2.007
+      unit: eV
+      tag: DR
+      where: V01 Sec. IV GaInP bowing (0.65)
+    variants:
+      unstr:
+        Eg_dot:
+          value: 1.424
+          unit: eV
+          tag: V
+          checked: false
+          where: V01 Table VI (InP)
+        dE_c:
+          value: 415
+          unit: meV
+          tag: DR
+          where: (E_g,bar - E_g,dot) - dE_v
+        dE_v:
+          value: 168
+          unit: meV
+          tag: DR
+          where: VBO difference, GaP VBO -1.27 eV (V01 Table IV)
+      strained:
+        Eg_dot:
+          value: 1.49
+          unit: eV
+          tag: DR
+          where: heavy-hole gap under biaxial strain
+        dE_c:
+          value: 218
+          unit: meV
+          tag: DR
+          where: unstrained dE_c less the CB shift
+        dE_v:
+          value: 304
+          unit: meV
+          tag: DR
+          where: heavy-hole offset; the light-hole offset is ~0
+    masses:
+      m_e:
+        value: 0.08
+        unit: m0
+        tag: E
+        where: InP 0.08 / 0.53 (Fable placement rule, 87:13)
+      m_h:
+        value: 0.53
+        unit: m0
+        tag: E
+        where: InP 0.08 / 0.53 (Fable placement rule, 87:13)
+    sources:
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables IV, VI, Sec. IV
+    - Pryor, Pistol, Samuelson, Phys. Rev. B 56, 10404 (1997)
+    - 'caveat 4: the GaP/InP VBO has a 0.33 eV literature spread; CuPt ordering lowers the barrier gap by up to ~0.1 eV'

@@ -238,6 +238,15 @@ def _param_dict(p: ParamSpec) -> dict:
     return d
 
 
+def _band_block(kind):
+    """Display-only band-offset block of a material kind; lazy import (materials.py imports this module)."""
+    try:
+        from . import materials as _m
+    except ImportError:
+        return None
+    return _m.band_block(kind)
+
+
 def _entry_dict(e) -> dict:
     axis = e.axis
     if axis == "solver":
@@ -257,6 +266,8 @@ def _entry_dict(e) -> dict:
         d["observables"] = sorted(e.observables)
         if getattr(e, "observables_cw", None) is not None:       # R2 F6: the advertised set of the cw variant (drive param cw = true)
             d["observables_cw"] = sorted(e.observables_cw)
+    if axis == "material":
+        d["band"] = _band_block(e.kind)      # R2 BAND: display-only literature band offsets (None for a kind without an entry)
     return d
 
 

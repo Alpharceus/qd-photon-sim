@@ -329,7 +329,7 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
           await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
           await page.waitForSelector(".cp-entry", { timeout: 15000 });
           await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 180000 });
-          const info = await page.$eval(`.cp-entry[data-kind="${kind}"]`, (b) => ({ dis: b.getAttribute("aria-disabled") === "true", compat: b.dataset.compat, why: (b.querySelector(".cp-why")?.textContent || "").trim() }));
+          const info = await page.$eval(`.cp-entry[data-kind="${kind}"]`, (b) => ({ dis: b.getAttribute("aria-disabled") === "true" || b.dataset.incompatible === "true", compat: b.dataset.compat, why: (b.querySelector(".cp-why")?.textContent || "").trim() }));
           // independent expectation: validate the swap through the API; "fresh" errors = errors the current chain does not already have
           const baseV = await postJSON("/api/compose/validate", { spec: baseSpec });
           const baseErr = new Set((baseV.body.issues || []).filter((i) => i.level === "error").map((i) => `${i.path}|${i.message}`));

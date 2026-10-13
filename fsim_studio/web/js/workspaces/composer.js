@@ -416,6 +416,11 @@ function leafText(p, raw) {
   const u = displayUnit(p.unit === "enum" ? "" : p.unit);
   if (l.kind === "range") return { text: `[${fmt(l.range[0])}, ${fmt(l.range[1])}]`, unit: u, tag: l.tag, ranged: true };
   const v = l.value;
+  // eta tables ("NA:eta, NA:eta") read as "NA 0.7 → η 0.6"
+  if (p.name === "eta_table" && typeof v === "string") {
+    const pairs = v.split(",").map((s) => s.trim().split(":")).filter((q) => q.length === 2);
+    if (pairs.length) return { text: pairs.map(([na, eta]) => `NA ${na} → η ${eta}`).join("; "), unit: "", tag: l.tag, ranged: false };
+  }
   return { text: typeof v === "number" ? fmt(v) : typeof v === "boolean" ? (v ? "on" : "off") : String(v), unit: u, tag: l.tag, ranged: false };
 }
 

@@ -41,6 +41,7 @@ HBAR_MEV_NS = 6.582119569e-4          # meV ns (repo value, lindblad.HBAR_MEV_NS
 HC_MEV_NM = 1239841.98                # meV nm
 T_REF_K = 4.0
 DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "materials.yaml")
+BAND_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "band_offsets.yaml")
 
 _TAGS = ("V", "DR", "E", "A")
 _CONVERT = {
@@ -142,6 +143,25 @@ def _import_number(ref: str) -> float:
 def load_data(path: str = DATA_PATH) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+_BAND_CACHE: dict = {}
+
+
+def band_block(kind: str, path: str = BAND_PATH):
+    """Display-only literature band offsets of a material kind (data/band_offsets.yaml), or None. No solver reads this;
+    the Composer band panel draws from it. Returns a fresh copy of the yaml entry plus the file-level `note`."""
+    import copy
+    if path not in _BAND_CACHE:
+        with open(path, "r", encoding="utf-8") as f:
+            _BAND_CACHE[path] = yaml.safe_load(f)
+    doc = _BAND_CACHE[path]
+    ent = doc["materials"].get(kind)
+    if ent is None:
+        return None
+    out = copy.deepcopy(ent)
+    out["note"] = doc["note"]
+    return out
 
 
 def leaf_numbers(leaf: dict) -> tuple:

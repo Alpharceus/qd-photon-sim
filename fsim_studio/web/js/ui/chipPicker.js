@@ -2,7 +2,9 @@
 // Each entry shows label, summary, refs and a status badge. An entry that does not fit the rest of
 // the chain is greyed with a dashed rim and the reason (from validate) but stays selectable (choosing it makes
 // the run bar say INCOMPATIBLE with that reason); an entry whose status is needs_physics reads
-// "awaiting physics" and cannot be chosen. Nothing here knows a kind by name:
+// "awaiting physics" and cannot be chosen. Only that blocked kind carries aria-disabled="true"; a greyed-but-selectable
+// entry carries data-incompatible="true" and aria-describedby pointing at its reason, so assistive tech does not
+// announce it as unavailable. Nothing here knows a kind by name:
 // the entries and their status come from GET /api/compose/registry.
 import { h, clear } from "./dom.js";
 import { icon } from "./icons.js";
@@ -51,7 +53,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
       h("span.cp-badge", { class: `cp-${e.status}` }, STATUS_WORD[e.status] || e.status)),
     h("span.cp-sum", registryText(e.summary || "")),
     refLine(e.refs) ? h("span.cp-ref", registryText(refLine(e.refs))) : null,
-    h("span.cp-why", { hidden: !awaiting }, awaiting ? "Registered, but the solver for it has not landed; it cannot run yet." : ""));
+    h("span.cp-why", { id: `cp-why-${e.kind}`, hidden: !awaiting }, awaiting ? "Registered, but the solver for it has not landed; it cannot run yet." : ""));
     if (awaiting) btn.title = "awaiting physics";
     cards.set(e.kind, btn);
     grid.append(btn);
@@ -90,7 +92,8 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
       const btn = cards.get(e.kind);
       btn.dataset.compat = res.ok ? "yes" : "no";
       if (!res.ok && e.kind !== current) {
-        btn.setAttribute("aria-disabled", "true");   // greyed, not blocked: the click handler lets it through
+        btn.dataset.incompatible = "true";            // greyed, not blocked: the click handler lets it through, so no aria-disabled
+        btn.setAttribute("aria-describedby", `cp-why-${e.kind}`);
         const badge = btn.querySelector(".cp-badge");
         if (badge) badge.hidden = true;   // a greyed entry shows only its reason, never a READY badge
         const why = btn.querySelector(".cp-why");

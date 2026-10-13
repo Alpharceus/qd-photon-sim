@@ -334,7 +334,7 @@ async function waitRun(page, timeout = 120000) {
         await page.click(`.ws-compose .kind-chip[data-axis="${ax}"]`);
         await page.waitForSelector(".cp-entry", { timeout: 10000 });
         add(await scan(".cp"));
-        const kinds = await page.$$eval(".cp-entry", (els) => els.filter((e) => e.getAttribute("aria-disabled") !== "true").map((e) => e.dataset.kind));
+        const kinds = await page.$$eval(".cp-entry", (els) => els.filter((e) => e.getAttribute("aria-disabled") !== "true" && e.dataset.incompatible !== "true").map((e) => e.dataset.kind));
         tot.typeset += await page.$$eval(".cp-sum .katex, .cp-label .katex", (e) => e.length);
         await page.keyboard.press("Escape");
         await page.waitForTimeout(250);

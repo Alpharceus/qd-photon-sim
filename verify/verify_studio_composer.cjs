@@ -175,8 +175,12 @@ async function waitRun(page, timeout = 120000) {
         const after = await page.$eval(`.ws-compose .kind-chip[data-axis="drive"]`, (e) => e.dataset.kind);
         check("clicking an awaiting-physics entry changes nothing", before === after && (await page.$(".cp-entry")) !== null);
       }
-      const dashed = await page.$$eval(".cp-entry[aria-disabled='true']", (els) => els.every((e) => getComputedStyle(e).borderTopStyle === "dashed"));
+      const dashed = await page.$$eval(".cp-entry[aria-disabled='true'], .cp-entry[data-incompatible='true']", (els) => els.every((e) => getComputedStyle(e).borderTopStyle === "dashed"));
       check(`picker ${axis}: greyed entries carry a dashed rim`, dashed);
+      // BAND: aria-disabled is for truly blocked entries only; a greyed-but-selectable one says why through aria-describedby
+      const sem = await page.$$eval(".cp-entry", (els) => els.map((e) => ({ status: e.dataset.status, incompat: e.dataset.incompatible === "true", dis: e.getAttribute("aria-disabled"), desc: e.getAttribute("aria-describedby"), descText: e.getAttribute("aria-describedby") ? (document.getElementById(e.getAttribute("aria-describedby"))?.textContent || "").trim() : "" })));
+      check(`BAND picker ${axis}: greyed-but-selectable entries carry no aria-disabled, and name their reason with aria-describedby`, sem.filter((x) => x.incompat).every((x) => x.dis === null && x.status !== "needs_physics" && x.descText.length > 10), JSON.stringify(sem.filter((x) => x.incompat).slice(0, 3)));
+      check(`BAND picker ${axis}: aria-disabled marks exactly the blocked (awaiting physics) entries`, sem.every((x) => (x.dis === "true") === (x.status === "needs_physics")), JSON.stringify(sem.filter((x) => (x.dis === "true") !== (x.status === "needs_physics")).slice(0, 3)));
       await page.keyboard.press("Escape");
       await page.waitForSelector(".cp-entry", { state: "detached", timeout: 5000 });
     }
@@ -186,7 +190,7 @@ async function waitRun(page, timeout = 120000) {
     await page.waitForSelector(".cp-entry");
     await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 60000 });
     const cur = await page.$eval(`.ws-compose .kind-chip[data-axis="structure"]`, (e) => e.dataset.kind);
-    const alt = await page.$$eval(".cp-entry", (els, c) => els.filter((e) => e.dataset.kind !== c && e.getAttribute("aria-disabled") !== "true").map((e) => e.dataset.kind), cur);
+    const alt = await page.$$eval(".cp-entry", (els, c) => els.filter((e) => e.dataset.kind !== c && e.getAttribute("aria-disabled") !== "true" && e.dataset.incompatible !== "true").map((e) => e.dataset.kind), cur);
     check("at least one other structure is selectable from the default chain", alt.length > 0, alt.slice(0, 4).join(","));
     const sceneBefore = await page.evaluate(() => document.querySelector(".ws-compose .vm-note")?.textContent || "");
     const nV0 = validates.length;
@@ -510,7 +514,7 @@ async function waitRun(page, timeout = 120000) {
       await page.click('.ws-compose .kind-chip[data-axis="drive"]');
       await page.waitForSelector(".cp-entry", { timeout: 15000 });
       await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
-      const cwOk = await page.$('.cp-entry[data-kind="cw_resonant"]:not([aria-disabled="true"])');
+      const cwOk = await page.$('.cp-entry[data-kind="cw_resonant"]:not([aria-disabled="true"]):not([data-incompatible="true"])');
       if (cwOk) {
         await cwOk.click();
         await page.waitForFunction(() => document.querySelector('.ws-compose .kind-chip[data-axis="drive"]')?.dataset.kind === "cw_resonant", null, { timeout: 10000 });
@@ -558,7 +562,7 @@ async function waitRun(page, timeout = 120000) {
     const greyed = await page.$$eval(".cp-entry[data-compat='no']", (els) => els.map((e) => { const b = e.querySelector(".cp-badge"); const w = e.querySelector(".cp-why"); return { badge: b ? getComputedStyle(b).display !== "none" && !b.hidden : false, why: !!w && !w.hidden && w.textContent.trim().length > 0 }; }));
     check("chip picker: greyed 'doesn't fit' entries show only the reason (no READY badge)", greyed.length > 0 && greyed.every((g) => !g.badge && g.why), JSON.stringify(greyed));
     const ridgeTip = await page.$eval('.cp-entry[data-kind="edge_ridge"]', (e) => ({ dis: e.getAttribute("aria-disabled"), title: e.title, why: e.querySelector(".cp-why")?.textContent || "" })).catch(() => null);
-    check("registry compat pair greys edge_ridge with the declared reason as its tooltip and text", ridgeTip && ridgeTip.dis === "true" && ridgeTip.title.includes(COMPAT_REASON) && ridgeTip.why.includes("no epitaxial stack"), JSON.stringify(ridgeTip));
+    check("registry compat pair greys edge_ridge with the declared reason as its tooltip and text", ridgeTip && ridgeTip.dis === null && ridgeTip.title.includes(COMPAT_REASON) && ridgeTip.why.includes("no epitaxial stack"), JSON.stringify(ridgeTip));
     await page.screenshot({ path: path.join(SHOTS, "finish-composer-chip-picker.png") });
     await page.keyboard.press("Escape");
     await page.waitForSelector(".cp-entry", { state: "detached", timeout: 5000 });
@@ -706,7 +710,7 @@ async function waitRun(page, timeout = 120000) {
         await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
         await page.waitForSelector(".cp-entry", { timeout: 15000 });
         await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
-        const target = kind || (await page.$$eval(".cp-entry", (els, cur) => (els.find((e) => e.dataset.kind !== cur && e.getAttribute("aria-disabled") !== "true" && e.dataset.status !== "needs_physics") || {}).dataset?.kind,
+        const target = kind || (await page.$$eval(".cp-entry", (els, cur) => (els.find((e) => e.dataset.kind !== cur && e.getAttribute("aria-disabled") !== "true" && e.dataset.incompatible !== "true" && e.dataset.status !== "needs_physics") || {}).dataset?.kind,
           await page.$eval(`.ws-compose .kind-chip[data-axis="${axis}"]`, (e) => e.dataset.kind)));
         await page.click(`.cp-entry[data-kind="${target}"]`);
         await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, target], { timeout: 10000 });
@@ -803,7 +807,7 @@ async function waitRun(page, timeout = 120000) {
         await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
         await page.waitForSelector(`.cp-entry[data-kind="${kind}"]`, { timeout: 15000 });
         await sleep(300);
-        await page.click(`.cp-entry[data-kind="${kind}"]`, { force: true });
+        await page.click(`.cp-entry[data-kind="${kind}"]`);
         await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, kind], { timeout: 10000 });
         await sleep(400);
       };
@@ -825,7 +829,7 @@ async function waitRun(page, timeout = 120000) {
       for (const m of reg.materials) {
         if (m.kind !== await page.$eval('.ws-compose .kind-chip[data-axis="material"]', (e) => e.dataset.kind)) await pickAny("material", m.kind);
         await page.waitForFunction((k) => document.querySelector(".ws-compose .band-panel")?.dataset.material === k, m.kind, { timeout: 10000 });
-        const info = await page.$eval(".ws-compose .band-panel", (e) => ({ sig: e.dataset.sig, ex: Number(e.dataset.ex), lz: Number(e.dataset.lz), paths: e.querySelectorAll("svg path").length, texts: [...e.querySelectorAll("svg text")].map((t) => t.textContent).join(" "), tags: e.querySelectorAll(".bp-facts .tag").length }));
+        const info = await page.$eval(".ws-compose .band-panel", (e) => ({ sig: e.dataset.sig, ex: Number(e.dataset.ex), lz: Number(e.dataset.lz), eg: Number(e.dataset.eg), dec: Number(e.dataset.dec), dev: Number(e.dataset.dev), flags: e.dataset.flags, paths: e.querySelectorAll("svg path").length, texts: [...e.querySelectorAll("svg text")].map((t) => t.textContent).join(" "), tags: e.querySelectorAll(".bp-facts .tag").length, math: e.querySelectorAll(".bp-facts .math").length, cap: e.querySelector(".bp-cap")?.textContent || "" }));
         const lam = m.params.find((q) => q.name === "lambda_nm").default;
         bands.push({ kind: m.kind, lam, ...info });
       }
@@ -833,7 +837,13 @@ async function waitRun(page, timeout = 120000) {
       check("FIN1 band view: picking each material changes the panel (all signatures differ)", new Set(bands.map((b) => b.sig)).size === bands.length, bands.map((b) => b.sig).join(" ; "));
       check("FIN1 band view: the transition energy is hc/lambda of the registry value for every material", bands.every((b) => Math.abs(b.ex - 1239.84198 / b.lam) < 1e-3), JSON.stringify(bands.map((b) => [b.kind, b.ex])));
       check("FIN1 band view: the drawn well width is the registry l_z", bands.every((b) => { const m = reg.materials.find((q) => q.kind === b.kind); return Math.abs(b.lz - m.params.find((q) => q.name === "l_z_nm").default) < 1e-9; }));
-      check("FIN1 band view: the assumed barrier / shift is tagged [A] on the picture", bands.every((b) => /\[A\]/.test(b.texts)));
+      // BAND: the barrier heights are literature numbers from the registry's band block, each tagged on the picture; no CONF_FRAC / BARRIER_FRAC [A] guess is left
+      check("BAND band view: no assumed-fraction note is left; every offset label on the picture carries its literature tag", bands.every((b) => !/of E_X: the registry has no band offsets/.test(b.texts) && /ΔEc [=≈] [\d.,]+ meV \[(V|DR|E)\]/.test(b.texts) && /ΔEv [=≈] [\d.,]+ meV \[(V|DR|E)\]/.test(b.texts) && /Eg,barrier = [\d.]+ eV \[(V|DR|E)\]/.test(b.texts) && /Eg,dot = [\d.]+ eV \[(V|DR|E)\]/.test(b.texts)), JSON.stringify(bands.map((b) => [b.kind, b.texts.slice(-160)])));
+      const bandOf = (k) => (reg.materials.find((q) => q.kind === k) || {}).band;
+      check("BAND band view: the drawn E_g,dot, dE_c and dE_v are the registry band numbers (in-dot for InAs/GaAs: 0.85 eV, 220 meV; GaAs/AlGaAs: 1.519 eV, 175 meV)", (() => { const a = bands.find((b) => b.kind === "inas_gaas_sk"), g = bands.find((b) => b.kind === "gaas_algaas_droplet"); return a && g && Math.abs(a.eg - 0.85) < 1e-3 && Math.abs(a.dev - 220) < 0.1 && Math.abs(a.dec - 450) < 1.5 && Math.abs(g.eg - 1.519) < 1e-3 && Math.abs(g.dev - 175) < 0.1 && Math.abs(g.dec - 279) < 0.5; })(), JSON.stringify(bands.filter((b) => ["inas_gaas_sk", "gaas_algaas_droplet"].includes(b.kind)).map((b) => [b.kind, b.eg, b.dec, b.dev])));
+      check("BAND band view: every material's drawn offsets close the barrier gap (E_g,dot + dE_c + dE_v = E_g,barrier within 0.5 meV)", bands.every((b) => { const bb = bandOf(b.kind); return bb && Math.abs(b.eg * 1000 + b.dec + b.dev - bb.Eg_barrier.value * 1000) < 0.5; }));
+      check("BAND band view: flags drawn (polar tilt note on gan_aln and ingan_gan, type-II note on inp_gainp_red, broken hard wall on cspbbr3_colloidal, none elsewhere)", bands.every((b) => { const bb = bandOf(b.kind); const f = new Set((b.flags || "").split(",").filter(Boolean)); const want = Object.keys(bb.flags).filter((k) => bb.flags[k]); return want.length === f.size && want.every((k) => f.has(k)) && (!bb.flags.polar || /tilted dot/.test(b.texts)) && (!bb.flags.type2_risk || /weak hole confinement \(type-II risk\)/.test(b.texts)) && (!bb.flags.hard_wall || /effectively infinite/.test(b.texts)); }), JSON.stringify(bands.map((b) => [b.kind, b.flags])));
+      check("BAND band view: caption names the sources, says the [V] values are not re-checked, and symbols are typeset (KaTeX in the facts)", bands.every((b) => /Sources:/.test(b.cap) && /not been re-checked/.test(b.cap) === (JSON.stringify(bandOf(b.kind)).includes('"tag":"V"')) && b.math >= 5), JSON.stringify(bands.map((b) => [b.kind, b.math])));
       for (const theme of ["dark", "light"]) {
         await openComposer(1440, 900, theme);
         await page.click('.ws-compose .vm-view[data-view="band"]');
@@ -856,9 +866,9 @@ async function waitRun(page, timeout = 120000) {
       await page.click('.ws-compose .kind-chip[data-axis="structure"]');
       await page.waitForSelector('.cp-entry[data-kind="edge_ridge"]', { timeout: 15000 });
       await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
-      const grey = await page.$eval('.cp-entry[data-kind="edge_ridge"]', (e) => ({ compat: e.dataset.compat, dis: e.getAttribute("aria-disabled"), title: e.title, op: Number(getComputedStyle(e).opacity) }));
-      check("FIN1 the chip picker greys edge_ridge next to cdse_znse with the reason in its tooltip", grey.compat === "no" && grey.dis === "true" && grey.op < 0.9 && !!real && grey.title.includes(real.reason.slice(0, 30)), JSON.stringify(grey));
-      await page.click('.cp-entry[data-kind="edge_ridge"]', { force: true });   // Playwright treats aria-disabled as not clickable; a user can click it
+      const grey = await page.$eval('.cp-entry[data-kind="edge_ridge"]', (e) => ({ compat: e.dataset.compat, dis: e.getAttribute("aria-disabled"), incompat: e.dataset.incompatible, desc: document.getElementById(e.getAttribute("aria-describedby") || "")?.textContent || "", title: e.title, op: Number(getComputedStyle(e).opacity) }));
+      check("FIN1 the chip picker greys edge_ridge next to cdse_znse with the reason in its tooltip", grey.compat === "no" && grey.dis === null && grey.incompat === "true" && grey.desc.length > 10 && grey.op < 0.9 && !!real && grey.title.includes(real.reason.slice(0, 30)), JSON.stringify(grey));
+      await page.click('.cp-entry[data-kind="edge_ridge"]');   // no force: a greyed-but-selectable entry is not aria-disabled, so a plain click works
       const picked = await page.waitForFunction(() => document.querySelector('.ws-compose .kind-chip[data-axis="structure"]')?.dataset.kind === "edge_ridge", null, { timeout: 10000 }).then(() => true).catch(() => false);
       check("FIN1 a greyed incompatible entry stays selectable", picked);
       await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.incompatible === "true", null, { timeout: 15000 }).catch(() => {});
