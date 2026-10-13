@@ -12,7 +12,9 @@
 /* labels engraved in capitals must not capitalise or letter-space a symbol */
 .engrave .math, .ro-label .math, .sro-label .math, .fr-label .math, .mv-k .math, .cmp-table th .math { text-transform: none; letter-spacing: 0; }
 /* KPI tiles and the 3D plate use the display size */
-.ro-label .math .katex { font-size: 1.14em; }
+.ro-label .math .katex { font-size: 1.4em; line-height: 1; }
+.ro-label { line-height: 1.5; }
+.sro-label .math .katex { font-size: 1.3em; }
 .ro-caption .math .katex, .pf-help .math .katex, .why-lede .math .katex { font-size: 1.04em; }
 .fr-label .math .katex { font-size: 1.2em; }
 .mv-k .math .katex { font-size: 1.12em; }

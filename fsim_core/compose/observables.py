@@ -419,6 +419,25 @@ def _derive(c: Context) -> dict:
     d["tau_EL_ps"] = float(res.extra["tau_EL_ps"]) if "tau_EL_ps" in res.extra else 1e3 / (Gamma + k + k_off)
     d["tau_ps"] = float(res.extra["tau_jc_ps"]) if "tau_jc_ps" in res.extra else d["tau_purcell_ps"]
     d["tau_1e_ps"] = float(res.extra["tau_1e_ps"]) if "tau_1e_ps" in res.extra else d["tau_ps"]
+    # R2 FIX-1a (Fable-A Q1): lifetime ratio tau_0/tau. "radiative" = Gamma/Gamma0 = F_bg + F_P L (the additional-rate
+    # convention, total = F_bg + F_P L); "intrinsic" = tau_0/tau with tau_0 = 1/(Gamma0 + k) the bulk lifetime and tau the
+    # tau_ps observable (JC-aware), i.e. what a TRPL experiment quotes as "F_P = tau_bulk/tau". They coincide for k_nr = 0.
+    G0 = float(em.gamma0_ns)
+    d["tau_ratio_rad"] = Gamma / G0 if G0 > 0.0 else NAN
+    d["tau_ratio"] = (1e3 / (G0 + k)) / d["tau_ps"] if (G0 + k) > 0.0 and d["tau_ps"] > 0.0 else NAN
+    # cw resonant drive: MvdS on-resonance saturation parameter s_0 = I/I_sat = 2 Omega^2/Gamma_pop^2 (Gamma_pop = Gamma + k) and
+    # the code's s = Omega^2 T1 T2 (T1 = 1/(Gamma + k), T2 = 2/(Gamma + k + Gamma_ph)); they are equal at Gamma_ph = 0 [DR, ch02]
+    om_cw = float(plan.omega_cw_ns)
+    if plan.family == "coherent" and plan.timing == "cw" and om_cw > 0.0:
+        gp = Gamma + k
+        d["s_0"] = 2.0 * om_cw ** 2 / gp ** 2
+        d["s_sat"] = om_cw ** 2 / (gp * 0.5 * (gp + float(rt.gamma_star_ns)))
+    else:
+        d["s_0"] = d["s_sat"] = NAN
+        why["s_0"] = why["s_sat"] = "saturation parameters exist only for the cw resonant drive"
+    d["coherent_fraction"] = float(res.extra["coherent_fraction"]) if "coherent_fraction" in res.extra else NAN
+    if "coherent_fraction" not in res.extra:
+        why["coherent_fraction"] = "only the cw resonant drive reports the coherently scattered fraction"
     d["eta_extract"] = beta * d["eta_out"]
     bd = _read(c, "structure", "beta_direct", 0.0)
     if bd is not None and float(bd) > 0.0:
@@ -532,7 +551,8 @@ def _derive(c: Context) -> dict:
     if math.isfinite(d["hom_XX"]):
         d["hom_XX"] *= q * q                                   # same ZPL-fraction bookkeeping as hom_I [A]
     if not math.isfinite(d["hom_I"]):
-        why["hom_I"] = why["hom_V"] = "solver has no coherence information (rate solver / cw drive)"
+        why["hom_I"] = why["hom_V"] = ("a cw stream has no per-pulse HOM overlap" if not pulsed
+                                       else "solver has no coherence information (rate solver)")
     eps = float(_read(c, "setup", "eps_int", 0.0))
     if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
         # FX4: the overlap I is the SIGNAL stream's, so rho^2 = (1 - g2_raw)/(1 - g2_signal) must use the signal g2 (before
@@ -619,7 +639,11 @@ _OBS_TEX = {
     "Z_phonon": r"Z(T)",
     "Z_filt": r"Z_{\mathrm{filt}}",
     "hom_zpl_fraction": r"q_{\mathrm{ZPL}}",
-    "gamma_star_ns": r"\gamma^{*}",
+    "gamma_star_ns": r"\Gamma_{\mathrm{ph}}",
+    "tau_ratio": r"\tau_0/\tau",
+    "s_0": r"s_0",
+    "s_sat": r"s",
+    "coherent_fraction": r"f_{\mathrm{coh}}",
     "Gamma_ns": r"\Gamma",
     "n_ph": r"n_{\mathrm{ph}}",
     "tau_ps": r"\tau",
@@ -682,10 +706,15 @@ _o("inversion", "Inversion $w$ after the pulse", "1", _ALL)
 _o("Z_phonon", "ZPL weight $Z(T)$", "1", ("material",))
 _o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter"))
 _o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter"))
-_o("gamma_star_ns", "Pure dephasing $\\gamma^{*}$ (repo convention)", "1/ns", ("material",))
+_o("gamma_star_ns", "Pure-dephasing linewidth $\\Gamma_{\\mathrm{ph}} = 2\\gamma_{\\mathrm{ph}} = 2/T_2^{*}$ (code gamma*; coherence decays at $\\gamma_{\\mathrm{ph}}$)", "1/ns", ("material",))
 _o("Gamma_ns", "Radiative rate $\\Gamma$", "1/ns", _MS)
 _o("n_ph", "Photons per pulse $n_{\\mathrm{ph}}$", "1", _ALL)
 _o("tau_ps", "Lifetime $\\tau$ (slowest Liouvillian decay eigenvalue when solver jc, else Purcell)", "ps", _ALL)
+_o("tau_ratio", "Lifetime ratio $\\tau_0/\\tau$ (bulk / device; convention radiative: $F_{\\mathrm{bg}} + F_{\\mathrm P}L = \\Gamma/\\Gamma_0$)", "1", _ALL,
+   ("intrinsic", "radiative"), key="tau_ratio", by_conv={"intrinsic": "tau_ratio", "radiative": "tau_ratio_rad"})
+_o("s_0", "On-resonance saturation parameter $s_0 = 2\\Omega^2/\\Gamma^2 = I/I_{\\mathrm{sat}}$ (cw resonant)", "1", ("material", "structure", "drive"))
+_o("s_sat", "Saturation parameter $s = \\Omega^2 T_1 T_2$ (cw resonant; equals $s_0$ at $\\Gamma_{\\mathrm{ph}} = 0$)", "1", _ALL)
+_o("coherent_fraction", "Coherently scattered fraction $|\\rho_{GX}|^2/\\rho_{XX}$ (cw resonant)", "1", _ALL)
 _o("tau_1e_ps", "JC flux $1/e$ time $\\tau_{1/e}$ after the peak (informational; $= \\tau$ for non-jc)", "ps", _ALL)
 _o("tau_purcell_ps", "Purcell lifetime $\\tau_{\\mathrm P} = 1/(\\Gamma + k)$", "ps", _MS)
 _o("tau_EL_ps", "Electroluminescence decay time $\\tau_{\\mathrm{EL}} = 1/(\\Gamma + k + k_{\\mathrm{off}})$ of a gated diode (reported, never fed into $\\Gamma_0$)", "ps",
@@ -697,7 +726,7 @@ _o("spectral_overlap", "X-XX spectral leakage $\\varepsilon = t_{XX}/t_X$ throug
    key="spectral_overlap", by_conv={"intrinsic": "spectral_overlap", "rho": "rho_spectral", "g2": "g2_spectral"})
 _o("g2_irf", "$g^{(2)}(0)$ of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
 _o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), $q^2$ included", "1", _ALL + ("setup",))
-_o("linewidth_ueV", "Emitter linewidth $\\hbar(\\Gamma + k + \\gamma^{*})$", "ueV", _MS)
+_o("linewidth_ueV", "Emitter linewidth $\\hbar(\\Gamma + k + \\Gamma_{\\mathrm{ph}})$", "ueV", _MS)
 _o("detuning_ueV", "Emitter minus cavity detuning $\\delta_{\\mathrm{EC}}$", "ueV", _MS)
 _o("g2_0", "$g^{(2)}(0)$", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),
    by_conv={"intrinsic": "g2_0", "raw": "g2_raw", "bg_corrected": "g2_bgc"})

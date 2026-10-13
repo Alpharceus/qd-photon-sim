@@ -60,17 +60,19 @@ def _P(name, *args, **kw):
     return ParamSpec(name, *args, **kw)
 
 # observable id sets (design 2.6); cw drives exclude the per-pulse brightness (B_*) ids
-_COMMON = frozenset({"g2_0", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps", "beta", "eta_extract",
+_COMMON = frozenset({"g2_0", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps", "tau_ratio", "beta", "eta_extract",
                      "gamma_star_ns", "Z_phonon", "linewidth_ueV", "lambda_nm", "detuning_ueV"})
 _PULSED = frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre"})
 OBS_COHERENT_PULSED = _COMMON | _PULSED | {"inversion", "hom_vs_dt"}
 _CW_RATES = frozenset({"B_first_lens_Hz", "B_fibre_Hz"})     # devlib-fx3b: photon flux into the lens / fibre (cw)
 OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt"}      # above_band / p_shell also run cw
-OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion"}
-OBS_INCOHERENT_CW = _COMMON | _CW_RATES | {"hom_I", "hom_V"}
+# R2 FIX-1a (audit 6): a cw stream has no per-pulse HOM overlap (it needs a timing-window definition), so the cw drives no
+# longer advertise hom_I / hom_V; the engine returns NaN with a reason if one is requested anyway.
+OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion", "s_0", "s_sat", "coherent_fraction"}
+OBS_INCOHERENT_CW = _COMMON | _CW_RATES
 # devlib-p10e: EL decay time, binned (GHz) histogram g2 and gated HOM for pulsed electrical drives; IRF-convolved g2 for cw
 OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated", "spectral_overlap"}
-OBS_ELECTRICAL_CW = _COMMON | _CW_RATES | {"hom_I", "hom_V", "tau_EL_ps", "g2_irf", "spectral_overlap"}
+OBS_ELECTRICAL_CW = _COMMON | _CW_RATES | {"tau_EL_ps", "g2_irf", "spectral_overlap"}
 
 
 @dataclass(frozen=True)
@@ -123,7 +125,7 @@ _REF_BRIEF = "physics brief 2.3 (.workers/devlib/p1-physics-brief.md)"
 _SRC_FX3B = "devlib-fx3b engine extension [E]: class model, the coefficient is NOT taken from a paper"
 _EID = _P("eid_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="E", source=_SRC_FX3B, group="advanced",
           help=r"Excitation-induced dephasing: pure dephasing rate $\gamma_{\mathrm{EID}} = \xi_{\mathrm{EID}}\,|\Omega(t)|^2$ ($\Omega$ in rad/ps) "
-               r"added to $\gamma^{*}$ during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
+               r"added to the pure-dephasing linewidth $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}$ during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
                r"step propagators (pulsed two-level drives, no TPE).")
 _TRION = _P("p_trion", "1", 0.0, lo=0.0, hi=0.99, tag="E", source=_SRC_FX3B, group="advanced",
             help=r"Probability, at a $\pi$ pulse, that the excitation ends in a dark trion / excess-charge state "
@@ -261,7 +263,7 @@ def _plan_cw_resonant(self, vals, em, rt):
               "detuning_convention": "repo det_X = omega_X - omega_L = -Delta_paper"}
     if s > 0.0:
         # s = Omega^2 T1 T2 (brief 2.3 cw row), T1 = 1/(Gamma + k_nr), coherence decays at
-        # (Gamma + k_nr + gamma*_repo)/2 -> T2 = 2/(Gamma + k_nr + gamma*) [DR]
+        # (Gamma + k_nr + Gamma_ph)/2, Gamma_ph = 2 gamma_ph = code gamma* (pure-dephasing linewidth) -> T2 = 2/(Gamma + k_nr + Gamma_ph) [DR]
         g1 = float(rt.Gamma_ns) + float(rt.k_nr_ns)
         g2c = 0.5 * (g1 + float(rt.gamma_star_ns))
         omega_ns = math.sqrt(s * g1 * g2c)

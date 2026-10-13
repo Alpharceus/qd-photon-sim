@@ -115,8 +115,14 @@ def _check_observables(observables) -> list:
         if not isinstance(r, str):
             raise ComposeError(f"observable request {r!r} must be a string")
         try:
-            oid, _conv = obs_mod.parse_request(r)
-            obs_mod.get_observable(oid)
+            oid, conv = obs_mod.parse_request(r)
+            ob = obs_mod.get_observable(oid)
+            convs = list(getattr(ob, "conventions", ()) or ())
+            if ":" not in r and conv not in convs and len(convs) == 1:
+                conv = convs[0]
+            if convs and conv not in convs:
+                raise ValueError(f"observable {oid!r} has no convention {conv!r}; known: {convs}; "
+                                 f"ask for '{oid}:{convs[0]}'")
         except Exception as exc:  # noqa: BLE001
             raise ComposeError(f"bad observable request {r!r}: {exc}") from exc
         out.append(r)
@@ -212,13 +218,37 @@ def paper_summary(paper, path) -> dict:
             "last_outcome": _last_outcome(meta.get("id") or path.stem, path)}
 
 
-def _collapse_leaf(leaf):
-    """A ranged / choice leaf mapping -> a value leaf at its declared central value; others unchanged."""
+def _param_spec(axis, kind, name):
+    """The ParamSpec of `name` on a registered axis entry (T_K for axis None), or None when unknown."""
+    try:
+        if axis is None:
+            from fsim_core.compose.spec import T_K_SPEC
+            return T_K_SPEC
+        from fsim_core.compose import registry
+        registry.ensure_loaded()
+        return registry.REGISTRY.get(axis, kind).param(name)
+    except Exception:  # noqa: BLE001 -- unknown kind/param: validation reports it, the collapse stays best-effort
+        return None
+
+
+def _collapse_leaf(leaf, axis=None, kind=None, name=None):
+    """A ranged / choice leaf mapping -> a value leaf at its declared central value; others unchanged.
+    Ranged leaves go through params.resolve_leaf + params.central, so a log-scale ParamSpec gives the geometric mean
+    exactly as the engine does (R2 finding 8)."""
     if not isinstance(leaf, dict):
         return leaf, False
     if "range" in leaf:
-        lo, hi = (float(x) for x in leaf["range"])
-        c = math.sqrt(lo * hi) if leaf.get("scale") == "log" and lo > 0 and hi > 0 else 0.5 * (lo + hi)
+        pspec = _param_spec(axis, kind, name)
+        c = None
+        if pspec is not None:
+            try:
+                from fsim_core.compose import params as _params
+                c = _params.central(_params.resolve_leaf(leaf, pspec, name or "T_K"))
+            except ValueError:
+                c = None
+        if c is None:
+            lo, hi = (float(x) for x in leaf["range"])
+            c = math.sqrt(lo * hi) if leaf.get("scale") == "log" and lo > 0 and hi > 0 else 0.5 * (lo + hi)
         out = {k: v for k, v in leaf.items() if k not in ("range", "scale")}
         out["value"] = c
         return out, True
@@ -232,9 +262,9 @@ def _collapse_leaf(leaf):
 _HINT_CACHE: dict = {}
 
 
-def _leaf_value(leaf):
-    """The central value of a card/spec leaf (value, or the midpoint of a range, or the first choice)."""
-    leaf, _hit = _collapse_leaf(leaf)
+def _leaf_value(leaf, axis=None, kind=None, name=None):
+    """The central value of a card/spec leaf (value, or the central value of a range, or the first choice)."""
+    leaf, _hit = _collapse_leaf(leaf, axis, kind, name)
     return leaf.get("value") if isinstance(leaf, dict) else leaf
 
 
@@ -264,7 +294,8 @@ def _display_hint_cards() -> list:
                 continue
             st = dev.get("structure") or {}
             out.append(((dev.get("material") or {}).get("kind"), st.get("kind"),
-                        {k: _leaf_value(v) for k, v in (st.get("params") or {}).items()}, da, f.stem))
+                        {k: _leaf_value(v, "structure", st.get("kind"), k) for k, v in (st.get("params") or {}).items()},
+                        da, f.stem))
         except Exception:  # noqa: BLE001 -- a broken card must not break the scene route
             continue
     _HINT_CACHE.update(sig=sig, cards=out)
@@ -279,7 +310,7 @@ def display_hint(spec):
     try:
         st = spec.get("structure") or {}
         mat = (spec.get("material") or {}).get("kind")
-        post = {k: _leaf_value(v) for k, v in (st.get("params") or {}).items()}
+        post = {k: _leaf_value(v, "structure", st.get("kind"), k) for k, v in (st.get("params") or {}).items()}
         hits = set()
         for m, k, params, da, _cid in _display_hint_cards():
             if m == mat and k == st.get("kind") and params and all(n in post and _same_value(post[n], v) for n, v in params.items()):
@@ -292,13 +323,13 @@ def display_hint(spec):
 def central_design(paper_id: str, device: dict) -> dict:
     spec = copy.deepcopy(device)
     collapsed = []
-    spec["T_K"], hit = _collapse_leaf(spec["T_K"])
+    spec["T_K"], hit = _collapse_leaf(spec["T_K"], None, None, "T_K")
     if hit:
         collapsed.append("T_K")
     for axis in ("material", "structure", "drive", "setup"):
         params = (spec.get(axis) or {}).get("params") or {}
         for name in list(params):
-            params[name], hit = _collapse_leaf(params[name])
+            params[name], hit = _collapse_leaf(params[name], axis, spec[axis].get("kind"), name)
             if hit:
                 collapsed.append(f"{axis}.{name}")
     return {"design": {"name": f"paper-{paper_id}", "platform": "composed", "composed": spec},

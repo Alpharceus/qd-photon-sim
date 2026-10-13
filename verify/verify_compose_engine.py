@@ -83,6 +83,8 @@ class TDrive(R.Drive):
         if self.flavor == "cw":
             return DrivePlan("coherent", "cw", None, omega_cw_ns=vals["omega_ns"],
                              inputs={"det_X_meV": 0.0})
+        if self.flavor == "incoh_cw":
+            return DrivePlan("incoherent", "cw", None, pump_rate_ns=vals["r_ns"], tau_on_ns=0.0, relax_ns=0.0)
         return DrivePlan("incoherent", "pulsed", vals["f_rep_MHz"], pump_rate_ns=vals["r_ns"],
                          tau_on_ns=vals["tau_on_ns"], relax_ns=vals["relax_ns"])
 
@@ -893,6 +895,194 @@ def main():
           "(independent closed form, 1e-6)", abs(float(sc1["flux_ns"]) - want_flux) < 1e-6 * want_flux,
           f"{float(sc1['flux_ns']):.6f} vs {want_flux:.6f}")
     check("17b. the pump broadening lowers Gamma seen by the solver: Gamma_P < Gamma_unbroadened (3 P_sat)", Gam1_ < Gam0_ - 1e-6, f"{Gam1_:.4f} < {Gam0_:.4f}")
+
+    # ------------------------------------------------------------------ 18. R2 FIX-1a
+    from scipy.signal import find_peaks
+    # 18a. combine(..., pump_ns) hook: pump_ns = 0 is rates.combine bit for bit; the observables see the PUMPED Gamma / beta
+    em18 = R.get("material", "inas_gaas_sk").build({}, 4.2)
+    sr18 = R.get("structure", "generic_cavity").response({"F_P": 5.0, "kappa_ueV": 20.0, "detuning_ueV": 0.0}, em18, 4.2, 0.65)
+    check("18a. engine.combine(pump_ns=0) == rates.combine bit for bit",
+          engine.combine(em18, sr18, 4.2) == rates.combine(em18, sr18, 4.2))
+    sc_p = engine.evaluate_spec(cav_cw(3.0))["scalars"]
+    check("18b. cw pump hook: scalars Gamma_ns / tau_ps / F_P_eff are the PUMPED values (closed form of 17, 1e-9), not the unpumped Gamma0 (1 + F_P L0)",
+          near(sc_p["Gamma_ns"], Gam1_, rel=1e-9) and near(sc_p["tau_ps"], 1e3 / Gam1_, rel=1e-9)
+          and near(sc_p["F_P_eff"], 5.0 * L1_, rel=1e-9) and sc_p["Gamma_ns"] < Gam0_ - 1e-6,
+          f"Gamma {sc_p['Gamma_ns']:.5f} vs {Gam1_:.5f} (unpumped {Gam0_:.5f}); L {sc_p['F_P_eff'] / 5.0:.5f} vs {L1_:.5f}")
+
+    # 18c. tau_ratio = tau_0/tau: radiative convention = F_bg + F_P L (= Gamma/Gamma0), intrinsic = tau_0/tau (bulk 1/(Gamma0 + k))
+    mk = {"gamma0_ns": exact(1.0, "1/ns"), "k_nr_ns": exact(0.5, "1/ns")}
+    def ctx_of(sp_):
+        sp_ = engine._as_spec(sp_)
+        ent_ = engine._entries(sp_)
+        return engine._run_point(ent_, engine._central_values(engine._leaves(sp_, ent_)), 4.2, sp_.solver)
+    ctx18 = ctx_of(spec(mat=mk, st={"F_P": exact(5.0, "1", "E")}, drp={"fwhm_ps": 1.0}))
+    t_rad = OB.get_observable("tau_ratio").compute(ctx18, "radiative")
+    t_int = OB.get_observable("tau_ratio").compute(ctx18, "intrinsic")
+    check("18c. tau_ratio:radiative = F_bg + F_P L = 1 + 5 = 6 and tau_ratio = tau_0/tau = (1/(1 + 0.5))/(1/(6 + 0.5)) = 13/3 "
+          "(closed forms; equal for k = 0)", near(t_rad, 6.0, rel=1e-12) and near(t_int, 13.0 / 3.0, rel=1e-9),
+          f"{t_rad!r} {t_int!r}")
+    rj = engine.evaluate_spec(spec(mat={"gamma0_ns": exact(G0j, "1/ns")}, st={"g_ns": exact(g, "1/ns"), "kappa_ns": exact(kp, "1/ns")},
+                                   drp={"fwhm_ps": 1.0}, solver="jc"))["scalars"]
+    check("18d. tau_ratio with the jc solver is tau_0/tau_jc = 1 + 4 g^2/(kappa Gamma0) = 1.5 (bad cavity, 2%)",
+          near(rj["tau_ratio"], 1.0 + 4 * g * g / (kp * G0j), rel=0.02), f"{rj['tau_ratio']:.4f}")
+
+    # 18e. s_0 / s for cw_resonant: s = Omega^2 T1 T2, s_0 = 2 Omega^2/Gamma^2 (MvdS); equal at gamma* = 0, s_0/s = (Gamma + k + gamma*)/(Gamma + k)
+    def cwres(gs_, s_):
+        return {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "inas_gaas_sk", "params": {"tau_bare_ns": 0.8, "gamma_star_4K_ns": exact(gs_, "1/ns"),
+                                                               "a_ac_ns_per_K": 0.0}},
+                "structure": {"kind": "bulk_planar", "params": {}},
+                "drive": {"kind": "cw_resonant", "params": {"saturation_s": exact(s_, "1")}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    a0 = engine.evaluate_spec(cwres(0.0, 3.0))["scalars"]
+    a1 = engine.evaluate_spec(cwres(1.2, 3.0))["scalars"]
+    check("18e. cw_resonant: s_0 = 2 Omega^2/Gamma^2 equals the entered s = Omega^2 T1 T2 at gamma* = 0 (1e-9), and s_sat = s always",
+          near(a0["s_0"], 3.0, rel=1e-9) and near(a0["s_sat"], 3.0, rel=1e-9) and near(a1["s_sat"], 3.0, rel=1e-9),
+          f"{a0['s_0']!r} {a0['s_sat']!r} {a1['s_sat']!r}")
+    Gq = a1["Gamma_ns"] + 0.0
+    check("18f. cw_resonant with dephasing: s_0/s = (Gamma + k + Gamma_ph)/(Gamma + k) (closed form, 1e-9); the elastic fraction is reported",
+          near(a1["s_0"] / a1["s_sat"], (Gq + 1.2) / Gq, rel=1e-9) and 0.0 <= a1["coherent_fraction"] <= 1.0,
+          f"{a1['s_0'] / a1['s_sat']!r} vs {(Gq + 1.2) / Gq!r}")
+
+    # 18g. strong-coupling jc paths -------------------------------------------------------------------------------------
+    R.register(TDrive(kind="test_incoh_cw", label="t", summary="t", flavor="incoh_cw", params=(P("r_ns", "1/ns", 1.2),)))
+    jc_lim = {"g_ns": exact(0.05, "1/ns"), "kappa_ns": exact(100.0, "1/ns"), "beta0": exact(0.0, "1")}      # weak-coupling limit
+    # (i) cw resonant: jc -> the bare-emitter Lindblad result as g -> 0 (Mollow flux, inversion, g2(0), elastic fraction)
+    mat18 = {"gamma0_ns": exact(2.0, "1/ns")}
+    sj = engine.evaluate_spec(spec(mat=mat18, st=jc_lim, dr="test_cw", drp={"omega_ns": exact(6.0, "1/ns")}, solver="jc"))
+    sl = engine.evaluate_spec(spec(mat=mat18, st=jc_lim, dr="test_cw", drp={"omega_ns": exact(6.0, "1/ns")}, solver="lindblad"))
+    cj, cl = sj["scalars"], sl["scalars"]
+    check("18g. jc cw resonant, g -> 0: flux, inversion, elastic fraction equal the bare-emitter Lindblad (1e-3) and g2(0) = 0 (1e-3)",
+          cj["solver"] == "jc" and near(cj["flux_ns"], cl["flux_ns"], rel=1e-3) and near(cj["inversion"], cl["inversion"], rel=1e-3)
+          and near(cj["coherent_fraction"], cl["coherent_fraction"], rel=1e-3) and abs(cj["g2_0"]) < 1e-3,
+          f"flux {cj['flux_ns']:.5f}/{cl['flux_ns']:.5f} inv {cj['inversion']:.5f}/{cl['inversion']:.5f} g2 {cj['g2_0']:.2e}")
+    # (ii) pulsed incoherent: jc -> lindblad_incoherent (instantaneous loading) as g -> 0: g2, photons per pulse, HOM
+    mat_d = {"gamma0_ns": exact(1.0, "1/ns"), "gamma_star_ns": exact(0.4, "1/ns")}
+    ip = {"relax_ns": exact(0.0, "ns")}
+    ij = engine.evaluate_spec(spec(mat=mat_d, st=jc_lim, dr="test_incoh", drp=ip, solver="jc"))["scalars"]
+    il = engine.evaluate_spec(spec(mat=mat_d, st=jc_lim, dr="test_incoh", drp=ip, solver="lindblad_incoherent"))["scalars"]
+    check("18h. jc pulsed incoherent, g -> 0: g2 and photons per pulse equal lindblad_incoherent (1e-3), cavity-output HOM = Gamma/(Gamma + gamma*) (2%)",
+          ij["solver"] == "jc" and near(ij["g2_0"], il["g2_0"], rel=1e-3, ab=1e-6) and near(ij["B_lens"], il["B_lens"], rel=2e-3)
+          and near(ij["hom_I"], il["hom_I"], rel=0.02),
+          f"g2 {ij['g2_0']:.5f}/{il['g2_0']:.5f} B {ij['B_lens']:.5f}/{il['B_lens']:.5f} hom {ij['hom_I']:.4f}/{il['hom_I']:.4f}")
+    # (iii) cw incoherent: jc -> the rate solver (flux = Gamma r/(r + Gamma), g2(0) = 0)
+    ccj = engine.evaluate_spec(spec(mat=mat18, st=jc_lim, dr="test_incoh_cw", drp={"r_ns": exact(2.0, "1/ns")}, solver="jc"))["scalars"]
+    ccr = engine.evaluate_spec(spec(mat=mat18, st=jc_lim, dr="test_incoh_cw", drp={"r_ns": exact(2.0, "1/ns")}, solver="rate"))["scalars"]
+    check("18i. jc cw incoherent, g -> 0: flux equals the rate solver and Gamma r/(r + Gamma) (1e-3), g2(0) = 0",
+          near(ccj["flux_ns"], ccr["flux_ns"], rel=1e-3) and near(ccj["flux_ns"], 2.0 * 2.0 / 4.0, rel=2e-3) and abs(ccj["g2_0"]) < 1e-3,
+          f"{ccj['flux_ns']:.5f} {ccr['flux_ns']:.5f} (closed 1.0)")
+    # (iv) Purcell rate 4 g^2/kappa in the bad-cavity limit: cw incoherent flux at r = Gamma_P is Gamma_P/2, the cavity share is F/(1 + F)
+    bg_, bk_ = 5.0, 500.0
+    FPb = 4 * bg_ ** 2 / (bk_ * 1.0)
+    GP = 1.0 + 4 * bg_ ** 2 / bk_
+    pu = engine.evaluate_spec(spec(st={"g_ns": exact(bg_, "1/ns"), "kappa_ns": exact(bk_, "1/ns"), "beta0": exact(0.0, "1")},
+                                   dr="test_incoh_cw", drp={"r_ns": exact(GP, "1/ns")}, solver="jc"))["scalars"]
+    check("18j. jc cw incoherent, bad cavity (kappa 500, g 5): flux at r = Gamma_P is Gamma_P/2 (1%) and beta = F_P/(1 + F_P) = 0.1667 (1%) "
+          "[Purcell rate 4 g^2/kappa]", near(pu["flux_ns"], GP / 2, rel=0.01) and near(pu["beta"], FPb / (1 + FPb), rel=0.01),
+          f"flux {pu['flux_ns']:.5f} vs {GP / 2:.5f}; beta {pu['beta']:.5f} vs {FPb / (1 + FPb):.5f}")
+    # (v) vacuum Rabi splitting 2g in the cw emission spectrum (weak incoherent pump, g >> kappa)
+    vr = engine.evaluate_spec(spec(mat={"gamma0_ns": exact(0.02, "1/ns")}, st={"g_ns": exact(5.0, "1/ns"), "kappa_ns": exact(0.5, "1/ns")},
+                                   dr="test_incoh_cw", drp={"r_ns": exact(0.01, "1/ns")}, solver="jc"))
+    sp_ = vr["series"]["spectrum_cav"]
+    x_, y_ = np.array(sp_["x"]), np.array(sp_["y"])
+    pk, _ = find_peaks(y_)
+    top = sorted(pk, key=lambda i: -y_[i])[:2]
+    split = abs(x_[top[0]] - x_[top[1]]) if len(top) == 2 else float("nan")
+    check("18k. vacuum Rabi splitting: the two spectral peaks are 2 g = 10/ns apart (1%)", near(split, 10.0, rel=0.01),
+          f"split {split:.4f}/ns, peaks at {x_[top[0]]:.3f}, {x_[top[1]]:.3f}")
+
+    # 18l. audit 4: EVERY drive on a strong-coupling phc_cavity is either valid on jc or invalid with a reason that says why, and the
+    # reason never recommends the jc solver when jc refuses the run; when it does recommend it, the explicit jc run succeeds
+    def sc_spec(drv, solver="auto"):
+        return {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "inas_gaas_sk", "params": {}},
+                "structure": {"kind": "phc_cavity", "params": {}},
+                "drive": {"kind": drv, "params": {}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": solver}
+    bad_all, n_jc, n_inv, det18 = [], 0, 0, []
+    for dk in R.kinds("drive"):
+        sc_ = engine.evaluate_spec(sc_spec(dk))["scalars"]
+        assert sc_["regime"] == "strong", (dk, sc_["regime"])
+        if sc_["valid"]:
+            n_jc += 1
+            if sc_["solver"] != "jc":
+                bad_all.append(f"{dk}: valid but solver {sc_['solver']}")
+            continue
+        n_inv += 1
+        why_ = " ".join(sc_["invalid_reasons"])
+        recommends = "use solver 'jc'" in why_
+        try:
+            engine.evaluate_spec(sc_spec(dk, "jc"))
+            jc_runs = True
+        except Exception:                                   # noqa: BLE001  (SolverUnavailable: jc refuses this plan)
+            jc_runs = False
+        if recommends and not jc_runs:
+            bad_all.append(f"{dk}: recommends jc but jc refuses")
+        if (not recommends) and ("not supported" not in why_ or "Jaynes-Cummings" not in why_):
+            bad_all.append(f"{dk}: invalid without a clear unsupported reason: {why_[:80]}")
+        det18.append(dk)
+    check("18l. phc_cavity (strong coupling, inas_gaas_sk): every drive is valid on jc or invalid with an explicit 'not supported' reason; "
+          "no reason recommends jc where jc refuses (audit 4)", not bad_all and n_jc >= 6,
+          f"jc-valid {n_jc}, invalid-with-reason {n_inv} {det18}; problems {bad_all}")
+    sc_tpe = engine.evaluate_spec(sc_spec("tpe"))["scalars"]
+    check("18m. TPE in the strong-coupling regime: invalid, the reason names the missing biexciton ladder and gives the remedy (reduce Q / raise V)",
+          (not sc_tpe["valid"]) and "biexciton" in " ".join(sc_tpe["invalid_reasons"]) and "weaken the coupling" in " ".join(sc_tpe["invalid_reasons"]),
+          " ".join(sc_tpe["invalid_reasons"])[:160])
+
+    # 18n. captions follow the solver / timing (audit 17)
+    cap_j = engine.evaluate_spec(sc_spec("resonant_pulse"))["scalars"]["captions"]
+    cap_c = engine.evaluate_spec(sc_spec("cw_resonant"))["scalars"]["captions"]
+    cap_w = engine.evaluate_spec(spec(drp={"fwhm_ps": 1.0}))["scalars"]["captions"]
+    check("18n. captions: jc tau = slowest Liouvillian decay (not 1/(Gamma + k)); weak-coupling tau = 1/(Gamma + k_nr); cw rate has no f_rep; pulsed has",
+          "Liouvillian" in cap_j["tau_ps"] and "NOT 1/(Gamma + k_nr)" in cap_j["tau_ps"] and cap_w["tau_ps"].startswith("tau = 1/(Gamma + k_nr)")
+          and "f_rep" not in cap_c["rate_detected_Hz"].replace("no f_rep", "") and "f_rep . B_fibre" in cap_w["rate_detected_Hz"],
+          f"{cap_j['tau_ps'][:50]} | {cap_c['rate_detected_Hz'][:50]}")
+
+    # 18o. audit 6: cw drives do not advertise hom_I / hom_V, and a requested hom on a cw run is NaN with the reason
+    cwk = [k for k in ("cw_resonant", "electrical_cw") if k in R.kinds("drive")]
+    adv_ok = all("hom_I" not in R.get("drive", k).observables and "hom_V" not in R.get("drive", k).observables for k in cwk)
+    sc_ec = engine.evaluate_spec({"schema": "fsim-composed/1", "T_K": 4.2,
+                                  "material": {"kind": "inas_gaas_sk", "params": {}}, "structure": {"kind": "bulk_planar", "params": {}},
+                                  "drive": {"kind": "electrical_cw", "params": {}}, "setup": {"kind": "lens_fibre_det", "params": {}},
+                                  "solver": "auto"})["scalars"]
+    check("18o. cw drives (cw_resonant, electrical_cw) advertise no hom_I / hom_V; a hom request on a cw run is NaN with a cw reason",
+          adv_ok and not math.isfinite(sc_ec["hom_I"]) and "cw stream" in sc_ec.get("hom_I_invalid_reason", ""),
+          sc_ec.get("hom_I_invalid_reason", ""))
+
+    # 18p. the nitride RT example: g2 sits in the Tamariz 2020 class range (0.23 +- 0.05, GaN/AlN, 300 K [V]); HOM ~ 0 at 300 K
+    import yaml
+    ex = yaml.safe_load((ROOT / "cards" / "composed" / "example-nitride-rt.yaml").read_text(encoding="utf-8"))
+    sc_ex = engine.evaluate_spec(ex["design"]["composed"])["scalars"]
+    check("18p. example-nitride-rt: g2(0) within 0.23 +- 0.05 (Tamariz 2020 average at 300 K) and HOM < 0.01 (no longer 2.6e-4)",
+          abs(sc_ex["g2_0"] - 0.23) <= 0.05 and sc_ex["hom_I"] < 0.01 and sc_ex["valid"], f"g2 {sc_ex['g2_0']:.4f}, hom {sc_ex['hom_I']:.2e}")
+
+    # 18q. invariant: a valid pulsed run that prepares < 5 % carries a note (the SUPER default no longer does, a wrong area does)
+    def super_spec(a1_, a2_):
+        p = {"area1_pi": exact(a1_, "pi"), "area2_pi": exact(a2_, "pi")}
+        return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": {}},
+                "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": "super", "params": p},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    s_bad = engine.evaluate_spec(super_spec(2.0, 2.0))["scalars"]
+    s_def = engine.evaluate_spec({**super_spec(42.0, 40.5), "drive": {"kind": "super", "params": {}}})["scalars"]
+    check("18q. SUPER at registry defaults prepares > 0.8 (Bracht 2021 theory ~0.97, Piccinini 2025 ~0.95 [V]); 2 pi / 2 pi areas prepare < 5 % and the run carries the note",
+          s_def["eta_prep"] > 0.8 and s_def["inversion"] > 0.8 and s_bad["eta_prep"] < 0.05
+          and any("preparation probability" in n for n in s_bad["notes"]) and not any("preparation probability" in n for n in s_def["notes"]),
+          f"default eta_prep {s_def['eta_prep']:.3f}, 2/2 pi eta_prep {s_bad['eta_prep']:.4f}")
+
+    # 18r. FIX-1b incompatibility wiring: validate_spec warning, engine invalid reason, registry compat list
+    from fsim_core.compose import spec as SPEC
+    sp_inc = {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "gan_aln", "params": {}},
+              "structure": {"kind": "edge_ridge", "params": {}}, "drive": {"kind": "above_band", "params": {}},
+              "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    vi = SPEC.validate_spec(sp_inc)
+    sc_inc = engine.evaluate_spec(sp_inc)["scalars"]
+    cp = R.registry_payload()["compat"]
+    check("18r. edge_ridge + gan_aln: validate_spec warns, the engine run is invalid with the named reason, the registry compat list names the pair "
+          "(and not inp_gainp_red)",
+          any(i["level"] == "warning" and "incompatible" in i["message"] for i in vi["issues"]) and vi["ok"]
+          and (not sc_inc["valid"]) and any("incompatible material / structure pair" in r for r in sc_inc["invalid_reasons"])
+          and {"material": "gan_aln", "structure": "edge_ridge"}.items() <= next(c for c in cp if c["material"] == "gan_aln").items()
+          and not any(c["material"] == "inp_gainp_red" for c in cp), f"{len(cp)} pairs")
 
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")

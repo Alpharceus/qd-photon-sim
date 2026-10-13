@@ -35,7 +35,7 @@ SCALAR_OBS = (  # every registered chain value reported at the operating point (
     "lambda_nm", "F_P_eff", "F_P_peak", "beta", "eta_out", "eta_extract", "T_NA", "eta_pol", "eta_prep", "eta_rad",
     "eta_prep_x_eta_rad", "inversion", "Z_phonon", "Z_filt", "gamma_star_ns", "Gamma_ns", "n_ph", "tau_ps",
     "tau_1e_ps", "tau_purcell_ps", "linewidth_ueV", "detuning_ueV", "g2_0", "g2_raw", "hom_I", "hom_V_raw", "hom_V_corr",
-    "B_first_lens", "B_lens", "B_fibre", "rate_detected_Hz")
+    "B_first_lens", "B_lens", "B_fibre", "rate_detected_Hz", "tau_ratio", "s_0", "s_sat", "coherent_fraction")
 
 
 # ------------------------------------------------------------------ spec handling
@@ -71,6 +71,24 @@ def _central_values(leaves: dict) -> dict:
 
 
 # ------------------------------------------------------------------ one point
+def combine(em, sr, T_K, pump_ns: float = 0.0):
+    """rates.combine plus the cw incoherent-pump hook (R2 FIX-1a, Fable-A PHA-1 deferred note): with pump_ns = P = r (1 + p) > 0 the
+    pump broadens the dot line the cavity filter sees, so L, Gamma and beta are the PUMPED values (rates.apply_pump, ch08 eq.
+    dp-lor); pump_ns = 0 is rates.combine bit for bit. The planner needs the unpumped Gamma to set r, so the engine calls
+    combine(pump_ns=0) for the plan and again with the plan's P for the solver and the observables."""
+    rt = rates_mod.combine(em, sr, T_K)
+    return rates_mod.apply_pump(rt, float(pump_ns)) if float(pump_ns) > 0.0 else rt
+
+
+def _cw_pump_ns(plan, rt) -> float:
+    """P = r (1 + p_xx) of a cw incoherent / electrical plan (0 otherwise); same definition the rate solver uses."""
+    if plan.timing != "cw" or plan.family not in ("incoherent", "electrical"):
+        return 0.0
+    r, _ = solvers_mod._interp_pump(plan, rt)
+    p_xx = float(plan.inputs.get("pump_ratio_xx", 1.0)) if "cascade" in plan.needs else 0.0
+    return float(r) * (1.0 + p_xx)
+
+
 def _prepare(entries, values, T_K):
     reads = {a: set() for a in AXIS_KEYS}
     vals = {a: {p.name: values[f"{a}.{p.name}"] for p in entries[a].params} for a in AXIS_KEYS}
@@ -81,7 +99,7 @@ def _prepare(entries, values, T_K):
     em = entries["material"].build(tr("material"), T_K)
     setup = entries["setup"].chain(tr("setup"))
     sr = entries["structure"].response(tr("structure"), em, T_K, setup.NA)
-    rt = rates_mod.combine(em, sr, T_K)
+    rt = combine(em, sr, T_K)
     plan = entries["drive"].plan(tr("drive"), em, rt)
     if "T_K" not in plan.inputs:                  # P9: phonon-aware solvers need the bath temperature
         plan = replace(plan, inputs={**plan.inputs, "T_K": float(T_K)})
@@ -93,20 +111,49 @@ def _run_point(entries, values, T_K, solver_req):
     solver, issues = solvers_mod.select(plan, em, rt, solver_req, want_hom=True)
     if solver is None:
         raise SolverUnavailable("; ".join(issues))
+    P = 0.0 if solver.name == "jc" else _cw_pump_ns(plan, rt)      # the jc solver puts the pump in its Lindbladian
+    if P > 0.0:
+        rt = combine(em, sr, T_K, pump_ns=P)                       # observables and solver see the pumped Gamma / beta
     res = solver.run(plan, em, rt)
     ctx = obs_mod.Context(em, sr, rt, plan, res, setup, T_K, vals, reads)
     ctx.solver = solver
+    ctx.structure_kind = entries["structure"].kind
     ctx.select_issues = issues
     return ctx
+
+
+JC_REMEDY_UNSUPPORTED = ("not supported in the strong-coupling regime: weaken the coupling (lower Q or larger mode volume V "
+                         "until g < (kappa + Gamma_bg + k_nr + gamma*)/4) or choose a drive the Jaynes-Cummings solver supports "
+                         "(resonant_pulse, cw_resonant, above_band, p_shell, electrical_pulsed, electrical_cw)")
+
+
+def _strong_coupling_reason(ctx) -> str:
+    """Why a strong-coupling run on a non-jc solver is invalid. Never recommends the jc solver when jc refuses the plan
+    (R2 FIX-1a, audit 4): it asks the jc solver itself and states its refusal plus a UI-facing suggestion."""
+    jc = _get("solver", "jc")
+    ok, why = jc.supports(ctx.plan, ctx.em, ctx.rt)
+    if ok:
+        return ("strong coupling: the weak-coupling Purcell model is not valid for this solver; use solver 'jc' "
+                "(auto selects it)")
+    return ("strong coupling: the weak-coupling Purcell model is not valid and the Jaynes-Cummings solver cannot run this "
+            f"drive ({why}); " + JC_REMEDY_UNSUPPORTED)
 
 
 def _validity(ctx) -> tuple:
     rt, res = ctx.rt, ctx.res
     reasons = list(res.reasons) if not res.valid else []
     valid = bool(res.valid)
+    try:
+        from . import structures as _st
+        why = _st.incompatibility(getattr(ctx, "structure_kind", ""), ctx.em, ctx.vals.get("structure", {}))
+    except Exception:                                   # noqa: BLE001
+        why = None
+    if why:
+        valid = False
+        reasons.append(f"incompatible material / structure pair: {why}")
     if rt.regime == "strong" and ctx.solver.name != "jc":
         valid = False
-        reasons.append("strong coupling: weak-coupling Purcell model is not valid; use solver 'jc'")
+        reasons.append(_strong_coupling_reason(ctx))
     return valid, reasons
 
 
@@ -116,6 +163,10 @@ def _notes(ctx) -> list:
     n += [r for r in ctx.res.reasons]
     n += list(ctx.d.get("_warnings", []))
     n.append("phonons (tier P0): HOM factor Z^2 unfiltered, efficiency x Z ZPL-filtered, never both")
+    ep = ctx.d.get("eta_prep", float("nan"))
+    if ctx.plan.timing == "pulsed" and math.isfinite(ep) and ep < 0.05:
+        n.append(f"preparation probability {ep:.3g} < 5 %: the drive barely excites the emitter at these inputs (off resonance "
+                 "or wrong pulse area); g2 and HOM of such a run are a symptom of the residual re-excitation, not a result")
     return n
 
 
@@ -190,9 +241,24 @@ def evaluate_spec(spec, T_grid=None) -> dict:
     for k in ("P_X_end", "tau_XX_ps", "g2_XX", "hom_XX", "n_XX"):      # FX2b: only when the solver reports them
         if k in ctx.res.extra:
             scalars[k] = float(ctx.d[k])
+    scalars["captions"] = captions(ctx)
     if any(l.is_free for l in leaves.values()):
         scalars["range_note"] = RANGE_NOTE
     return {"curves": curves, "scalars": scalars, "series": _series(ctx)}
+
+
+def captions(ctx) -> dict:
+    """Formula captions that match what was computed (audit 17): the lifetime formula depends on the solver and the
+    detected-rate formula on pulsed vs cw timing. The front end shows these instead of hard-coded text."""
+    tau = ("tau = slowest decay time of the one-excitation Liouvillian sector of the dot + cavity system (JC solver); "
+           "it is NOT 1/(Gamma + k_nr) in the strong-coupling regime" if ctx.solver.name == "jc"
+           else "tau = 1/(Gamma + k_nr), Gamma = Gamma0 (F_bg + F_P L) (Purcell lifetime)")
+    if ctx.plan.timing == "pulsed":
+        rate = "Detected rate = f_rep . B_fibre . eta_optics . eta_det"
+    else:
+        rate = ("Detected rate (cw, no f_rep) = photon flux (solver steady state) . beta . eta_out . eta_pol . Z_filt . eta_fibre "
+                ". eta_optics . eta_det")
+    return {"tau_ps": tau, "rate_detected_Hz": rate}
 
 
 def evaluate_composed(design, T_grid=None) -> dict:

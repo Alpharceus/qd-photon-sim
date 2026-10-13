@@ -303,6 +303,48 @@ def run_checks(tmp):
           d.status_code == 200 and dj["design"]["platform"] == "composed"
           and validate_spec(dj["design"]["composed"])["ok"] is True
           and '"range":' not in json.dumps(dj["design"]["composed"]))
+    # 9d2 (R2 finding 8): Open in Composer opens the SAME device Papers reproduced. For every card the collapsed design
+    # evaluates to the central device (exact); a log-scale ParamSpec gives the geometric mean (params.central), not the mean.
+    import yaml as _yaml
+    from fsim_studio import api_compose as _ac
+    bad_cards, n_ranged = [], 0
+    for cf in real:
+        dev = _yaml.safe_load(cf.read_text(encoding="utf-8")).get("device") or {}
+        cd = _ac.central_design(cf.stem, dev)
+        if not cd["collapsed"]:
+            continue
+        n_ranged += 1
+        try:
+            a = engine.evaluate_spec(dict(cd["design"]["composed"], schema="fsim-composed/1"))["scalars"]
+            b = engine.evaluate_spec(dict(dev, schema="fsim-composed/1"))["scalars"]
+        except Exception as exc:  # noqa: BLE001
+            bad_cards.append(f"{cf.stem}: {type(exc).__name__}")
+            continue
+        for k in ("g2_0", "hom_I", "B_first_lens", "tau_ps"):
+            if k in a or k in b:
+                if a.get(k) != b.get(k) and not (a.get(k) != a.get(k) and b.get(k) != b.get(k)):
+                    bad_cards.append(f"{cf.stem}:{k}")
+    check(f"9d2 central_design == evaluate_spec(device) for every card with a ranged leaf ({n_ranged} cards)", not bad_cards and n_ranged > 0, str(bad_cards[:4]))
+    if (ROOT / "cards" / "papers" / "somaschi2016_qd1.yaml").is_file():
+        dev = _yaml.safe_load((ROOT / "cards" / "papers" / "somaschi2016_qd1.yaml").read_text(encoding="utf-8"))["device"]
+        cd = _ac.central_design("somaschi2016_qd1", dev)["design"]["composed"]
+        check("9d3 somaschi2016_qd1 hom_I is equal in Papers and Composer (log-scale tau_cap_ps centre)",
+              engine.evaluate_spec(dict(cd, schema="fsim-composed/1"))["scalars"]["hom_I"]
+              == engine.evaluate_spec(dict(dev, schema="fsim-composed/1"))["scalars"]["hom_I"])
+    # 5e (R2 finding 5): observable requests are validated with their convention up front
+    bad = [("hom_V", True), ("g2_0:nonsense", True), ("hom_V:raw", False), ("hom_V:corrected", False), ("g2_0", False)]
+    got = []
+    for req, must_fail in bad:
+        try:
+            _ac._check_observables([req])
+            failed = False
+        except _ac.ComposeError:
+            failed = True
+        got.append(failed == must_fail)
+    check("5e _check_observables rejects a convention outside the observable's list ('hom_V', 'g2_0:nonsense') and accepts valid ones", all(got), str(got))
+    rr = post("/api/compose/series", {"spec": SPEC, "path": "structure.F_P", "values": [1.0, 2.0], "observables": ["hom_V"]})
+    check("5f series with a bare hom_V is a 400 at submit time with a clear message, not a failed job",
+          rr.status_code == 400 and "convention" in json.dumps(j(rr)), str(rr.status_code))
     r = post(f"/api/papers/{pid}/reproduce", {})
     resp = j(r)
     check("9e reproduce: 202 job", r.status_code == 202 and "job_id" in resp and resp["cached"] is False)

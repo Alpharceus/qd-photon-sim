@@ -61,7 +61,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     const leaf = readLeaf(p, params[p.name]);
     const path = `${axis}.${p.name}`;
     const band = isNum(p.lo) && isNum(p.hi) ? [p.lo, p.hi] : null;
-    const meta = { label: symbolText(p), tex: p.tex, unit: displayUnit(p.unit), tag: leaf.tag, source: leaf.source || p.source, band, choices: p.choices || undefined };
+    const meta = { label: symbolText(p), tex: p.tex, unit: displayUnit(p.unit), tag: leaf.tag, source: leaf.source || p.source, band, scale: p.scale, choices: p.choices || undefined };
     const shown = leaf.kind === "range" ? (isNum(p.default) ? p.default : leaf.range[0]) : leaf.value;
     const item = h("div.pf-item", { class: leaf.explicit ? "is-edited" : "", dataset: { param: p.name, tag: leaf.tag } });
 
@@ -107,6 +107,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
         syncEdited();
       },
       onInspect: inspect,
+      envelope: false,
     });
 
     // per-leaf tag selector (line form, never hue)

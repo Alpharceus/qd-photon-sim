@@ -302,6 +302,64 @@ async function waitRun(page, timeout = 120000) {
     const aChip = await page.evaluate(() => { const t = document.querySelector(".ws-compose .tag-a"); if (!t) return null; const s = getComputedStyle(t); return { style: s.borderTopStyle, w: parseFloat(s.borderTopWidth) }; });
     check("an [A] tag chip is a dashed outline", aChip && aChip.style === "dashed" && aChip.w >= 1, JSON.stringify(aChip));
 
+    // ---------------------------------------------------------------- fix2: exports, log sliders, observable requests, wording
+    async function dl(sel) {
+      const [d] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.click(sel)]);
+      const p = await d.path();
+      return { name: d.suggestedFilename(), text: p ? fs.readFileSync(p, "utf8") : "", bytes: p ? fs.statSync(p).size : 0 };
+    }
+    const exJ = await dl('.ws-compose .export-bar [data-export="json"]').catch((e) => ({ name: "", text: "", err: e.message }));
+    let exDoc = {}; try { exDoc = JSON.parse(exJ.text); } catch { /* reported below */ }
+    check("Export JSON downloads the series with schema, versions (core hash), spec and the tag legend",
+      /\.json$/.test(exJ.name) && exDoc.schema === "fsim-export/1" && exDoc.kind === "composer-series" && /^[0-9a-f]{16,}$/.test(exDoc.versions?.fsim_core_hash || "")
+      && exDoc.spec?.schema === "fsim-composed/1" && exDoc.tag_legend?.DR && Object.keys(exDoc.series?.series?.y || {}).length >= 1, `${exJ.name} ${exJ.err || ""}`);
+    const exC = await dl('.ws-compose .export-bar [data-export="csv"]').catch((e) => ({ name: "", text: "", err: e.message }));
+    const csvLines = exC.text.split("\n");
+    const csvHead = csvLines.filter((l) => l.startsWith("# "));
+    const csvCols = (csvLines.find((l) => !l.startsWith("#")) || "").split(",");
+    check("Export CSV carries # header lines (schema, versions, tags) and a tag column per value column",
+      /\.csv$/.test(exC.name) && csvHead.some((l) => l.includes("fsim-export/1")) && csvHead.some((l) => l.includes("fsim_core_hash")) && csvCols.length >= 3 && csvCols.some((c) => / tag$/.test(c))
+      && csvLines.filter((l) => l && !l.startsWith("#")).length >= 3, `${exC.name} ${csvCols.join("|").slice(0, 80)}`);
+    for (const fmt of ["PNG", "SVG"]) {
+      const ex = await dl(`.ws-compose [data-chart="series"] .chart-tool:has-text("${fmt}")`).catch((e) => ({ name: "", bytes: 0, err: e.message }));
+      check(`chart ${fmt} export downloads a non-empty file (the audit's timeouts came from clicking an empty chart's button)`, ex.name.endsWith(`.${fmt.toLowerCase()}`) && ex.bytes > 500, `${ex.name} ${ex.bytes} ${ex.err || ""}`);
+    }
+    await page.click(".ws-compose .rb-obs summary").catch(() => {});
+    const obsReq = await page.$$eval(".ws-compose .rb-obs input[data-obs]", (els) => els.map((e) => e.dataset.obs));
+    const multi = (reg.observables || []).filter((o) => (o.conventions || ["intrinsic"]).length > 1 || (o.conventions || ["intrinsic"])[0] !== "intrinsic");
+    check("every Series observable request names a convention the registry lists (no bare 'hom_V')",
+      multi.length > 0 && multi.every((o) => o.conventions.every((c) => obsReq.includes(c === "intrinsic" ? o.id : `${o.id}:${c}`)) && !(o.conventions[0] !== "intrinsic" && obsReq.includes(o.id))), `${obsReq.length} requests`);
+    const sm = await page.evaluate(async () => { const m = await import("/js/ui/fieldRow.js"); const lin = m.sliderMap([2, 10], "lin"), lg = m.sliderMap([100, 1e7], "log"); return { lin: lin.fromPos(0.5), lg: lg.fromPos(0.5), back: lg.toPos(1e5), sig: m.sigFig(0.7596331234) }; });
+    check("a log-scale slider maps the midpoint to sqrt(lo x hi); a linear one to the mean; sigFig trims to 5 digits",
+      Math.abs(sm.lg / Math.sqrt(100 * 1e7) - 1) < 1e-9 && sm.lin === 6 && Math.abs(sm.back - 0.6) < 1e-9 && sm.sig === "0.75963", JSON.stringify(sm));
+    // the same in the DOM: the first log-scale parameter of the current chain
+    const chainKinds = Object.fromEntries(await page.$$eval(".ws-compose .kind-chip", (els) => els.map((e) => [e.dataset.axis, e.dataset.kind])));
+    let logHit = null;
+    for (const [ax, plural] of AX) {
+      const ent = (reg[plural] || []).find((e) => e.kind === chainKinds[ax]);
+      const p = (ent?.params || []).find((q) => q.scale === "log" && q.lo > 0 && q.hi > q.lo && typeof q.default === "number");
+      if (p) { logHit = { ax, p }; break; }
+    }
+    if (logHit) {
+      await page.click(`.ws-compose .mount-body[data-axis="${logHit.ax}"]`);
+      await page.waitForSelector(`.ws-compose .sheet .field-row[data-path="${logHit.ax}.${logHit.p.name}"]`, { timeout: 8000 });
+      const got = await page.$eval(`.ws-compose .sheet .field-row[data-path="${logHit.ax}.${logHit.p.name}"]`, (row) => {
+        const sl = row.querySelector(".fr-slider"); if (!sl) return null;
+        sl.value = "0.5"; sl.dispatchEvent(new Event("input", { bubbles: true }));
+        return { scale: sl.dataset.scale, v: Number(row.querySelector(".fr-point .fr-num").value) };
+      });
+      const want = Math.sqrt(logHit.p.lo * logHit.p.hi);
+      check(`the slider of log-scale ${logHit.ax}.${logHit.p.name} moves logarithmically (midpoint = sqrt(lo x hi))`, got && got.scale === "log" && Math.abs(got.v / want - 1) < 1e-3, JSON.stringify({ got, want }));
+      const clipped = await page.$$eval(".ws-compose .sheet .fr-num", (els) => els.filter((e) => e.offsetParent && e.scrollWidth > e.clientWidth + 1).map((e) => e.value));
+      check("no numeric field in the open sheet clips its value", clipped.length === 0, JSON.stringify(clipped.slice(0, 4)));
+      const rangeTitles = await page.$$eval(".ws-compose .sheet .fr-rangebtn", (els) => els.map((e) => e.title));
+      check("the Composer's range toggle no longer promises an envelope run (it says a point run uses the central value)",
+        rangeTitles.length > 0 && rangeTitles.every((t) => !/envelope/i.test(t) && /central value/.test(t)), rangeTitles[0] || "none");
+      await page.click(`.ws-compose .mount-body[data-axis="${logHit.ax}"]`);
+    } else check("a log-scale parameter exists in the current chain", false, "none found");
+    const kpiSym = await page.evaluate(() => { const k = document.querySelector(".ws-compose .ro-label .katex"); const l = document.querySelector(".ws-compose .ro-label"); return k && l ? parseFloat(getComputedStyle(k).fontSize) / parseFloat(getComputedStyle(l).fontSize) : 0; });
+    check("KPI tile symbols are set one step larger than the label text", kpiSym >= 1.3, String(kpiSym));
+
     // ---------------------------------------------------------------- visual contract
     check("no B612 numerals", (await b612Audit(page)).length === 0);
     const beamFill = await page.evaluate(() => {
@@ -414,8 +472,19 @@ async function waitRun(page, timeout = 120000) {
 
     // ---------------------------------------------------------------- states for the finish review (captured, and the failed run asserted)
     await page.setViewportSize({ width: 1440, height: 900 });
+    // The registry's declared (material, structure) incompatibilities (registry_payload()["compat"], FIX-1A) grey the picker
+    // entry with the reason as its text. The payload is injected here (every material x edge_ridge) so the UI side is tested
+    // on its own; whatever the server declares itself is greyed the same way.
+    const COMPAT_REASON = "verifier: no epitaxial stack for this emission wavelength";
+    await page.route("**/api/compose/registry", async (route) => {
+      const r = await route.fetch();
+      const body = await r.json();
+      body.compat = [...(body.compat || []), ...(body.materials || []).map((m) => ["material", m.kind, "structure", "edge_ridge", COMPAT_REASON])];
+      await route.fulfill({ response: r, body: JSON.stringify(body) });
+    });
     await page.goto(`${BASE}/#/overview`, { waitUntil: "load" });
     await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+    await page.reload({ waitUntil: "load" });
     await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
     await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 }).catch(() => {});
     await settle(page, 800);
@@ -424,6 +493,8 @@ async function waitRun(page, timeout = 120000) {
     await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 60000 });
     const greyed = await page.$$eval(".cp-entry[data-compat='no']", (els) => els.map((e) => { const b = e.querySelector(".cp-badge"); const w = e.querySelector(".cp-why"); return { badge: b ? getComputedStyle(b).display !== "none" && !b.hidden : false, why: !!w && !w.hidden && w.textContent.trim().length > 0 }; }));
     check("chip picker: greyed 'doesn't fit' entries show only the reason (no READY badge)", greyed.length > 0 && greyed.every((g) => !g.badge && g.why), JSON.stringify(greyed));
+    const ridgeTip = await page.$eval('.cp-entry[data-kind="edge_ridge"]', (e) => ({ dis: e.getAttribute("aria-disabled"), title: e.title, why: e.querySelector(".cp-why")?.textContent || "" })).catch(() => null);
+    check("registry compat pair greys edge_ridge with the declared reason as its tooltip and text", ridgeTip && ridgeTip.dis === "true" && ridgeTip.title.includes(COMPAT_REASON) && ridgeTip.why.includes("no epitaxial stack"), JSON.stringify(ridgeTip));
     await page.screenshot({ path: path.join(SHOTS, "finish-composer-chip-picker.png") });
     await page.keyboard.press("Escape");
     await page.waitForSelector(".cp-entry", { state: "detached", timeout: 5000 });

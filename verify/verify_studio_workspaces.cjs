@@ -451,6 +451,28 @@ async function waitReady(page, sel, timeout = 45000) {
     await m.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await m.waitForTimeout(600);
     await m.screenshot({ path: path.join(SHOTS, "overview-mobile-end.png") });
+    // fix2 (R2 finding): the page must be exactly 390 wide on EVERY route (the Designer was 440: a long label chip),
+    // and the Designer's 3D viewport must not be blank on the phone.
+    const routeIds = await page.$$eval(".rail-item", (els) => els.map((e) => e.dataset.ws));
+    const wide = [];
+    for (const r of [...new Set(routeIds)].filter(Boolean)) {
+      await m.goto(`${BASE}/#/${r}`, { waitUntil: "domcontentloaded" });
+      await m.waitForTimeout(3500);
+      const sw = await m.evaluate(() => document.documentElement.scrollWidth);
+      if (sw !== 390) wide.push(`${r}:${sw}`);
+    }
+    check(`phone 390: scrollWidth == 390 on every route (${routeIds.length} routes)`, routeIds.length >= 8 && wide.length === 0, wide.join(","));
+    await m.goto(`${BASE}/#/design`, { waitUntil: "domcontentloaded" });
+    await m.waitForSelector(".viewport-slot[data-ready='1']", { timeout: 60000 });
+    await m.waitForTimeout(2500);
+    const vpFile = path.join(SHOTS, "designer-mobile-viewport.png");
+    await (await m.$(".viewport-slot")).screenshot({ path: vpFile });
+    const vpStat = require("./png_check.cjs").assertPng(vpFile);
+    const vpBox = await m.$eval(".viewport-slot", (e) => { const b = e.getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height), e.dataset.mode]; });
+    check("phone 390: the Designer's 3D viewport is drawn (non-blank, sized, WebGL)", vpStat.ok && vpBox[0] >= 300 && vpBox[1] >= 150, `${vpStat.reason || "ok"} ${JSON.stringify(vpBox)}`);
+    // the nanowire scene is staged like the others: its builder states the extent the enclosure floor is sized from
+    const nwSrc = fs.readFileSync(path.join(ROOT, "fsim_studio", "web", "js", "viz3d", "builders", "nanowire.js"), "utf8");
+    check("nanowire staging: the builder passes floorBounds so the breadboard floor is built (it was an empty box)", /floorBounds:/.test(nwSrc));
     await mctx.close();
   } catch (e) {
     check("script ran to completion", false, e.message.split("\n")[0]);

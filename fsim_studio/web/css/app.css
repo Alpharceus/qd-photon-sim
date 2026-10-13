@@ -368,7 +368,7 @@ input[type="range"]::-moz-range-thumb { width: 6px; height: 20px; background: va
 input[type="range"]:focus-visible { outline-offset: 4px; }
 
 .fr-num {
-  width: 92px; height: 30px; padding: 0 8px; text-align: right;
+  width: 108px; min-width: 0; max-width: 100%; height: 30px; padding: 0 6px 0 8px; text-align: right;
   background: var(--surface); border: 1px solid var(--rim); border-radius: var(--radius);
   font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--ink-1);
 }
@@ -539,7 +539,7 @@ html[data-present] .beam { stroke-width: 6; }
 .fr-rangebtn[aria-pressed="true"] { color: var(--ink-1); border-color: var(--ink-1); }
 .fr-rangewrap { display: flex; flex-direction: column; gap: 3px; }
 .fr-range { display: flex; align-items: center; gap: 3px; }
-.fr-range .fr-num { width: 74px; }
+.fr-range .fr-num { width: 92px; }
 .br { font-family: var(--font-num); font-size: 20px; font-weight: 400; color: var(--ink-2); line-height: 1; }
 .br-sep { color: var(--muted); }
 .bracket { position: relative; height: 10px; margin: 0 14px; background: linear-gradient(var(--axis), var(--axis)) center / 100% 2px no-repeat; }
@@ -1702,3 +1702,13 @@ body.presenter { overflow: auto; background: var(--ground); }
 .xb-panel { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 @media (max-width: 1100px) { .xb-grid2 { grid-template-columns: minmax(0, 1fr); } }
 /* ================================================================== end MODEL EXPLORERS B */
+
+/* ---- fix2: long chips wrap instead of widening the page; result export bar */
+.label-chip { max-width: 100%; min-width: 0; }
+@media (max-width: 760px) {
+  .label-chip { height: auto; min-height: 22px; padding: 3px 8px; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+}
+.export-bar { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.export-bar .export-k { margin-right: 2px; }
+.export-btn { height: 28px; padding: 0 10px; font-size: var(--fs-cap); letter-spacing: 0.06em; }
+.export-btn:disabled { opacity: 0.45; }

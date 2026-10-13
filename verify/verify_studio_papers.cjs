@@ -174,6 +174,21 @@ async function getJSON(url) {
           envInfo.envRows.every((r) => /IN RANGE ONLY/.test(r.txt) && !/^PASS/.test(r.txt.trim()) && (r.filled === "rgba(0, 0, 0, 0)" || r.filled === "transparent")), JSON.stringify(envInfo.envRows));
         check("FX4: class R items are labelled 'paper reference'", envInfo.rRows.every((t) => /paper reference/.test(t || "")), JSON.stringify(envInfo.rRows));
         check("summary plaque shows n / N", /\d+ \/ \d+/.test(await page.locator("#workspace .pp-plaque-sum").innerText()));
+        // fix2: results export as JSON and CSV with the spec, tags and versions
+        const dlp = async (fmt) => {
+          const [d] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.locator(`#workspace .export-bar [data-export="${fmt}"]`).click()]);
+          const pth = await d.path();
+          return { name: d.suggestedFilename(), text: pth ? fs.readFileSync(pth, "utf8") : "" };
+        };
+        const pj = await dlp("json").catch((e) => ({ name: "", text: "", err: e.message }));
+        let pdoc = {}; try { pdoc = JSON.parse(pj.text); } catch { /* reported below */ }
+        check("Papers: Export JSON carries schema, versions, the device spec, per-item tags and the reproduce result",
+          pdoc.schema === "fsim-export/1" && pdoc.kind === "paper-reproduce" && /^[0-9a-f]{16,}$/.test(pdoc.versions?.fsim_core_hash || "") && pdoc.spec?.material?.kind
+          && Array.isArray(pdoc.items) && pdoc.items.length > 0 && pdoc.items.every((it) => "model_tag" in it && "outcome" in it) && pdoc.result?.items, `${pj.name} ${pj.err || ""}`);
+        const pc = await dlp("csv").catch((e) => ({ name: "", text: "", err: e.message }));
+        const pl = pc.text.split("\n");
+        check("Papers: Export CSV has the # header (versions) and one row per item with tag columns",
+          pl.some((l) => l.startsWith("# ") && l.includes("fsim_core_hash")) && /model_tag/.test(pl.find((l) => !l.startsWith("#")) || "") && pl.filter((l) => l && !l.startsWith("#")).length === 1 + (pdoc.items || []).length, pc.name);
         if (hasSeries) {
           await page.waitForSelector("#workspace .pp-ov .js-plotly-plot", { timeout: 30000 }).catch(() => {});
           check("at least one chart rendered (card has series)", (await page.locator("#workspace .pp-ov .js-plotly-plot").count()) >= 1);

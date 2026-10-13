@@ -730,6 +730,36 @@ check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, 
               ["scalars"]["inversion"] - o_eid["inversion"]) > 0.01,
       f"{o_eid['inversion']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
 
+# ------------------------------------------------------------------ 14. R2 FIX-1a: registry defaults do what the drive claims
+def ref_spec(drv):
+    return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": {}},
+            "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": drv, "params": {}},
+            "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+
+
+dflt = {k: engine.evaluate_spec(ref_spec(k))["scalars"] for k in ("super", "dichromatic", "phonon_assisted", "arp", "tpe")}
+sd = drives.SUPER
+a1_d, a2_d, w_d = sd.param("area1_pi").default, sd.param("area2_pi").default, sd.param("fwhm1_ps").default
+ode_d = ode_two_pulse(a1_d, a2_d, w_d, sd.param("delta1_meV").default, sd.param("delta2_meV").default)
+off_d = super_run(a1_d, a2_d, w_d).inversion
+check("DF-a. SUPER defaults are NOT a phonon-free swing-up (the independent unitary ODE of the same two-colour H gives P_X < 0.05 and the "
+      "phonon-free polaron run agrees to < 0.02): the default areas are tuned to the phonon-renormalised Rabi frequency sqrt(Z) Omega of the "
+      "polaron model, which is what DF-b exercises", ode_d < 0.05 and abs(off_d - ode_d) < 0.02,
+      f"ODE {ode_d:.4f}, polaron (phonons off, Gamma 5/ns) {off_d:.4f}")
+check("DF-b. SUPER at defaults with phonons (inas_gaas_sk, 4.2 K): inversion and eta_prep > 0.8 (Bracht 2021 theory ~0.97, Piccinini 2025 ~0.95 [V]); was 0.01",
+      dflt["super"]["inversion"] > 0.8 and dflt["super"]["eta_prep"] > 0.8,
+      f"inv {dflt['super']['inversion']:.3f}, eta_prep {dflt['super']['eta_prep']:.3f}")
+check("DF-c. dichromatic defaults (Koong 2021: +-0.6 meV, C = -0.65, 3.65 ps, 5 pi): eta_prep within 0.1 of the paper simulation 0.60 [V]; was 0.32",
+      abs(dflt["dichromatic"]["eta_prep"] - 0.60) <= 0.10, f"{dflt['dichromatic']['eta_prep']:.3f}")
+check("DF-d. phonon_assisted default within the pre-registered Quilter band 0.67 +- 0.12; ARP default >= 0.9; TPE default XX preparation > 0.9",
+      abs(dflt["phonon_assisted"]["eta_prep"] - 0.67) <= 0.12 and dflt["arp"]["eta_prep"] >= 0.9 and dflt["tpe"]["eta_prep"] > 0.9,
+      f"pa {dflt['phonon_assisted']['eta_prep']:.3f}, arp {dflt['arp']['eta_prep']:.3f}, tpe {dflt['tpe']['eta_prep']:.3f}")
+from fsim_core.compose import observables as OBS                                          # noqa: E402
+obs_gs = OBS.get_observable("gamma_star_ns")
+check("DF-e. 'repo gamma*' wording is gone: the EID help and the gamma_star_ns label say pure-dephasing linewidth Gamma_ph = 2 gamma_ph",
+      "repo gamma" not in drives.RESONANT_PULSE.param("eid_ps").help and "Gamma_{\\mathrm{ph}}" in drives.RESONANT_PULSE.param("eid_ps").help
+      and "pure-dephasing linewidth" in obs_gs.label.lower() and "repo convention" not in obs_gs.label)
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

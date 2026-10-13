@@ -267,7 +267,31 @@ def registry_payload(registry: Optional[Registry] = None) -> dict:
     for axis in AXES:
         out[_PLURAL[axis]] = [_entry_dict(reg.get(axis, k)) for k in reg.kinds(axis)]
     out["tiers"] = []
-    out["compat"] = []
+    out["compat"] = _compat_list(reg)
+    return out
+
+
+def _compat_list(reg) -> list:
+    """Declared incompatible (material, structure) pairs: [{"material", "structure", "reason"}] at each material's default
+    inputs (structures.STRUCTURE_COMPAT); the Composer picker greys the pair and shows the reason."""
+    out = []
+    try:
+        from . import structures as st
+        for sk in reg.kinds("structure"):
+            if sk not in st.STRUCTURE_COMPAT:
+                continue
+            svals = {p.name: p.default for p in reg.get("structure", sk).params}
+            for mk in reg.kinds("material"):
+                m = reg.get("material", mk)
+                try:
+                    em = m.build({p.name: p.default for p in m.params}, 4.2)
+                    why = st.incompatibility(sk, em, svals)
+                except Exception:                       # noqa: BLE001
+                    continue
+                if why:
+                    out.append({"material": mk, "structure": sk, "reason": str(why)})
+    except ImportError:
+        pass
     return out
 
 

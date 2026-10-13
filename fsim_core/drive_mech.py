@@ -4,6 +4,11 @@ Every electrical driving mechanism is a GENERATOR of one interface (the
 separation-theorem wall: drive touches g2 only through these variables):
 
     DriveInterface = { F_p, mu, eta_capture, timing, notes }
+
+Naming (R2 FIX-1a, Fable-A Q1): the field `F_p` is the PUMP Fano factor F_pump (the rail's noise), distinct from the
+Purcell factor F_P of the structure (the symbols collided in the UI). The DELIVERED Fano factor after capture thinning
+is F_dot = 1 - eta_capture (1 - F_pump) (property `F_dot`; `F_pump` aliases `F_p`). The field name `F_p` is unchanged
+(cards, solvers and the legacy chain read it).
     + the F9 granularity/feasibility numbers where hardware pricing applies.
 
 The F8/F8b/F9 physics itself lives in fsim_core.loading and is IMPORTED here,
@@ -56,12 +61,22 @@ class DriveInterface:
     """What any mechanism hands the F-series chain (separation theorem)."""
 
     mechanism: str
-    F_p: float                    # pump Fano factor delivered to the junction
+    F_p: float                    # pump Fano factor F_pump delivered to the junction (NOT the Purcell factor F_P)
     mu: float                     # operating point (per-window mean loading)
     eta_capture: float = 1.0      # delivery efficiency (F8b thins F_p with this)
     timing: str = "cw"            # cw | pulsed | cycled
     feasible: bool = True         # hardware-priced mechanisms may say no
     notes: dict = field(default_factory=dict)
+
+    @property
+    def F_pump(self) -> float:
+        """Pump Fano factor F_pump (alias of `F_p`; not the Purcell factor F_P)."""
+        return float(self.F_p)
+
+    @property
+    def F_dot(self) -> float:
+        """Delivered Fano factor F_dot = 1 - eta_capture (1 - F_pump) (F8b thinning)."""
+        return float(1.0 - self.eta_capture * (1.0 - self.F_p))
 
     def g2_load(self) -> float:
         """Loading-statistics purity factor for this interface (F8 small-mu
@@ -72,8 +87,7 @@ class DriveInterface:
         mu >= 1 - F_dot (a pump quieter than that at this mu cannot be
         represented by cap-2 moment matching -- the caller must move mu or
         accept the domain edge, never silently clamp)."""
-        F_dot = 1.0 - self.eta_capture * (1.0 - self.F_p)
-        return float(f8_g2_load(self.mu, F_dot))
+        return float(f8_g2_load(self.mu, self.F_dot))
 
 
 # ------------------------------------------------------- M-2: regulation bandwidth [E]

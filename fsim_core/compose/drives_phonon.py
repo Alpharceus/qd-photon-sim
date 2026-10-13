@@ -38,6 +38,8 @@ from .. import qd_gf
 from ..resonant_source import gaussian_sigma
 from .types import DrivePlan, Pulse
 
+_SRC_KOONG = ("Koong et al., Phys. Rev. Lett. 126, 047403 (2021) (arXiv:2009.02121): sidebands +-0.6 meV, 0.5 meV wide (3.65 ps [DR]), "
+              "contrast C = -0.65, first maximum at 5 pi [V]; asymmetry a = (1 + C)/(1 - C) [DR]")
 _PHONON_NOTE = (r"Needs the polaron solver (tier P1 dressed-basis phonon rates, $\Omega_{\mathrm r} = \sqrt{Z}\,\Omega$); "
                 r"with a material whose $\alpha$ is 0 it reduces to the Lindblad pulse.")
 
@@ -114,16 +116,30 @@ SUPER = PlannedDrive(
             "(swing-up of the quantum emitter population). " + _PHONON_NOTE,
     params=(
         _GAUSS,
-        _P("delta1_meV", "meV", -3.5, lo=-6.0, hi=-1.0, tag="E",
-           source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-           help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative)."),
-        _P("delta2_meV", "meV", -7.5, lo=-12.0, hi=-2.0, tag="E",
-           source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-           help=r"Detuning $\Delta_2$ of pulse 2, paper convention."),
-        _P("fwhm1_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help=r"Intensity FWHM $\tau_{\mathrm{FWHM},1}$ of pulse 1."),
-        _P("fwhm2_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
-        _P("area1_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$."),
-        _P("area2_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$."),
+        _P("delta1_meV", "meV", -3.5, lo=-6.0, hi=-1.0, tag="V",
+           source="Piccinini et al., arXiv:2510.21428 (2025), Fig 1 caption: SUPER pulses Delta1 = -3.5 meV [V]",
+           help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative). "
+                r"Default: Piccinini et al. 2025."),
+        _P("delta2_meV", "meV", -7.5, lo=-12.0, hi=-2.0, tag="V",
+           source="Piccinini et al., arXiv:2510.21428 (2025), Fig 1 caption: SUPER pulses Delta2 = -7.5 meV [V]",
+           help=r"Detuning $\Delta_2$ of pulse 2, paper convention. Default: Piccinini et al. 2025."),
+        _P("fwhm1_ps", "ps", 3.0, lo=2.0, hi=10.0, tag="E",
+           source="Piccinini et al. 2025 Methods: 2.53 ps pulses [DR from the quoted 0.48 meV bandwidth]; 3 ps default, the "
+                  "areas below were scanned at this width [E]",
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},1}$ of pulse 1. The swing-up areas below belong to 3 ps; they scale as "
+                r"$\propto 1/\tau_{\mathrm{FWHM}}$ at fixed peak Rabi energy."),
+        _P("fwhm2_ps", "ps", 3.0, lo=2.0, hi=10.0, tag="E",
+           source="Piccinini et al. 2025 Methods: 2.53 ps pulses [DR]; 3 ps default [E]",
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
+        _P("area1_pi", "pi", 42.0, lo=0.0, hi=60.0, tag="E",
+           source="swing-up scan of the engine at the Piccinini detunings, 3 ps Gaussian pulses, InAs/GaAs class phonons, 4 K: "
+                  "(42 pi, 40.5 pi) gives inversion 0.93 (R2 FIX-1a); the paper does not print absolute areas [E]",
+           help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$. SUPER needs large areas (the peak Rabi energy must reach the "
+                r"detuning scale, here about 42$\pi$ for 3 ps) and the inversion oscillates quickly with both areas: scan them "
+                r"(Bracht et al., PRX Quantum 2, 040354 (2021): the swing-up resonance is a narrow condition)."),
+        _P("area2_pi", "pi", 40.5, lo=0.0, hi=60.0, tag="E",
+           source="same scan as area1_pi [E]",
+           help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$ (see pulse 1)."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,
@@ -167,14 +183,17 @@ DICHROMATIC = PlannedDrive(
             "asymmetry create the population. " + _PHONON_NOTE,
     params=(
         _GAUSS,
-        _P("delta_meV", "meV", 1.0, lo=0.2, hi=5.0, tag="A", source=_SRC_A,
-           help=r"Half spacing $\delta$ of the two spectral components."),
-        _P("asymmetry", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_A,
-           help=r"Intensity asymmetry ratio $a = I_{\mathrm{blue}}/I_{\mathrm{red}}$ of the two components (1 = symmetric)."),
-        _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="A", source=_SRC_A, help=r"Intensity FWHM $\tau_{\mathrm{FWHM}}$."),
-        _P("area_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A,
+        _P("delta_meV", "meV", 0.6, lo=0.2, hi=5.0, tag="V", source=_SRC_KOONG,
+           help=r"Half spacing $\delta$ of the two spectral components. Default: Koong et al. 2021 (sidebands $\pm 0.6$ meV)."),
+        _P("asymmetry", "1", 0.212, lo=0.0, hi=10.0, tag="DR", source=_SRC_KOONG,
+           help=r"Intensity asymmetry ratio $a = I_{\mathrm{blue}}/I_{\mathrm{red}}$ of the two components. Default: Koong's optimum "
+                r"contrast $C = -0.65$, $a = (1 + C)/(1 - C) = 0.212$ (a symmetric pair, $a = 1$, returns an ideal two-level system to "
+                r"the ground state; only phonons and the asymmetry create the population)."),
+        _P("fwhm_ps", "ps", 3.65, lo=1.0, hi=100.0, scale="log", tag="DR", source=_SRC_KOONG,
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM}}$. Default: transform limit of the 0.5 meV sidebands of Koong et al. 2021 (3.65 ps)."),
+        _P("area_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="V", source=_SRC_KOONG,
            help=r"Pulse area $\Theta$ of the common envelope in units of $\pi$ (split between the components so the "
-                r"pair carries the intensity of one envelope)."),
+                r"pair carries the intensity of one envelope). Default: first oscillation maximum, Koong et al. 2021 Fig 3d."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,

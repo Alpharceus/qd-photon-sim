@@ -7,7 +7,8 @@ import { h, clear, svgEl, debounce, reducedMotion } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest, tagDash, tagWidth } from "../ui/tagChip.js";
 import { createReadout, paramLabelNode } from "../ui/readout.js";
-import { tex, symbolFor, symbolText, richPlain } from "../ui/math.js";
+import { exportButtons } from "../ui/exporter.js";
+import { tex, symbolFor, symbolText, richPlain, richText } from "../ui/math.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fmt, fmtSeconds, isNum } from "../ui/format.js";
 import { displayUnit, displayNotation } from "../ui/units.js";
@@ -313,7 +314,7 @@ function openStartMenu(anchor, kind) {
     items = (S.examples || []).map((ex) => h("button.start-item.example-chip", {
       type: "button", dataset: { example: ex.name }, "aria-pressed": String(S.exampleName === ex.name), title: ex.summary,
       on: { click: () => { close(); openDesign(ex.design, ex.name); } },
-    }, h("span.si-name", ex.label), ex.summary ? h("span.si-sum", ex.summary) : null));
+    }, h("span.si-name", ex.label), ex.summary ? h("span.si-sum", richText(ex.summary)) : null));
   } else {
     items = (S.reg.tiers || []).map((t) => {
       const design = t.handoff === "design" && (t.cards || []).length;
@@ -427,7 +428,7 @@ function renderSheet() {
       h("div", h("h2.engrave.sheet-title", `${a.label}: ${e.label}`),
         h("p.sheet-sub", `${e.params.length} fields from the registry. Edits apply to the next run; bands warn, they never clamp.`)),
       h("button.icon-btn", { type: "button", "aria-label": `Close ${a.label} sheet`, on: { click: () => toggleSheet(a.key) } }, icon("close", { size: 18 }))),
-    e.refs?.length ? h("details.sheet-refs", h("summary", `${e.refs.length} reference${e.refs.length === 1 ? "" : "s"}`), h("ul", e.refs.map((r) => h("li", r)))) : null,
+    e.refs?.length ? h("details.sheet-refs", h("summary", `${e.refs.length} reference${e.refs.length === 1 ? "" : "s"}`), h("ul", e.refs.map((r) => h("li", richText(r))))) : null,
     form.el));
   if (!reducedMotion()) host.querySelector(".sheet").classList.add("mount-in");
   requestAnimationFrame(() => host.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" }));
@@ -448,14 +449,30 @@ function editParam(axis, name, leaf) {
 }
 
 // ---------------------------------------------------------------- picker
+/**
+ * Reason a kind is declared incompatible with the chain as it stands, from registry_payload()["compat"], else null.
+ * Entries are [axis, kind, axis2, kind2, reason] or {axis, kind, axis2, kind2, reason} or {material, structure, reason}.
+ */
+export function compatReason(compat, axis, kind) {
+  for (const e of compat || []) {
+    let ax, k, ax2, k2, reason;
+    if (Array.isArray(e)) [ax, k, ax2, k2, reason] = e;
+    else if (e && e.material !== undefined && e.structure !== undefined) { ax = "material"; k = e.material; ax2 = "structure"; k2 = e.structure; reason = e.reason; }
+    else if (e) ({ axis: ax, kind: k, axis2: ax2, kind2: k2, reason } = e);
+    if (!reason) continue;
+    if ((ax === axis && k === kind && S.spec[ax2]?.kind === k2) || (ax2 === axis && k2 === kind && S.spec[ax]?.kind === k)) return reason;
+  }
+  return null;
+}
+
 function openPicker(a, anchor) {
   const entries = S.reg[a.reg] || [];
   const base = new Set((S.val?.issues || []).filter((i) => i.level === "error").map((i) => `${i.path}|${i.message}`));
   openChipPicker(anchor, {
     axisLabel: a.label, entries, current: S.spec[a.key].kind,
     check: async (kind) => {
-      const pair = (S.reg.compat || []).find(([ax, k, ax2, k2]) => (ax === a.key && k === kind && S.spec[ax2]?.kind === k2) || (ax2 === a.key && k2 === kind && S.spec[ax]?.kind === k));
-      if (pair) return { ok: false, reason: pair[4] };
+      const hit = compatReason(S.reg.compat, a.key, kind);
+      if (hit) return { ok: false, reason: hit };
       try {
         const r = await S.ctx.api.composeValidate(specWith(a.key, kind));
         const fresh = (r.issues || []).filter((i) => i.level === "error" && !base.has(`${i.path}|${i.message}`));
@@ -656,7 +673,7 @@ function renderSeriesBox() {
   const inp = (key, label, int) => h("label.rb-f", h("span.rb-fl", label),
     h("input.fr-num.rb-in", { type: "number", step: "any", value: String(Number(Number(S.ser[key]).toPrecision(6))), "aria-label": label,
       on: { change: (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) { S.ser[key] = int ? Math.round(v) : v; clampGrid(); syncRunbar(); } } } }));
-  const obs = (S.reg.observables || []).flatMap((o) => (o.conventions || ["intrinsic"]).map((c, i) => ({ req: i === 0 ? o.id : `${o.id}:${c}`, label: `${o.label}${i ? ` (${c})` : ""}` })));
+  const obs = (S.reg.observables || []).flatMap((o) => (o.conventions || ["intrinsic"]).map((c, _i, all) => ({ req: c === "intrinsic" ? o.id : `${o.id}:${c}`, label: `${o.label}${all.length > 1 ? ` (${c})` : ""}` })));
   const obsBox = h("details.rb-obs", h("summary.btn.btn-quiet", `Observables (${S.ser.obs.length})`),
     h("div.rb-obs-list", obs.map((o) => h("label.rb-check",
       h("input", { type: "checkbox", checked: S.ser.obs.includes(o.req), dataset: { obs: o.req },
@@ -817,9 +834,40 @@ function renderShelf() {
   S.dom.notes = h("details.drawer.notes-drawer", h("summary", h("span.engrave", "Model notes"), h("span.drawer-count")), h("div.drawer-body"));
   return h("section.shelf", { "aria-label": "Instrument shelf" },
     S.dom.plaqueHost,
-    h("div.shelf-bar", S.dom.status),
+    h("div.shelf-bar", S.dom.status, (S.exporter = exportButtons(exportArgs)).el),
     S.dom.alert, S.dom.hint, S.dom.labels, S.dom.readouts,
     S.charts.series.el, S.charts.tcurve.el, S.charts.hom.el, S.dom.notes);
+}
+
+/** What the Export buttons download: the series when the Series mode has one, else the run (point or T sweep). */
+function exportArgs() {
+  const r = S?.run, sr = S?.series;
+  const useSeries = !!sr && (S.mode === "series" || !r);
+  if (!useSeries && !r) return null;
+  const spec = clone(S.spec);
+  if (useSeries) {
+    const ser = sr.series || {};
+    const reqs = Object.keys(ser.y || {});
+    const columns = [{ key: "x", label: ser.path || sr.spec_path }];
+    reqs.forEach((q, i) => { columns.push({ key: `y${i}`, label: q }, { key: `t${i}`, label: `${q} tag` }); });
+    const rows = (ser.x || []).map((x, j) => Object.fromEntries([["x", x], ...reqs.flatMap((q, i) => [[`y${i}`, ser.y[q][j]], [`t${i}`, ser.tag?.[q] ?? ""]])]));
+    return { kind: "composer-series", name: `${S.card || "composed"}-series`, spec, payload: { series: sr, request: { path: sr.spec_path, observables: sr.obs } }, table: { columns, rows } };
+  }
+  const prov = r.provenance || {};
+  const tagOf = (k) => prov[k]?.tag ?? r.tag_chain ?? "";
+  const T = r.curves?.T_hs;
+  let table;
+  if (Array.isArray(T) && T.length > 1) {
+    const keys = Object.keys(r.curves).filter((k) => k !== "T_hs" && Array.isArray(r.curves[k]) && r.curves[k].length === T.length);
+    const columns = [{ key: "T_K", label: "T_K" }, ...keys.flatMap((k) => [{ key: k, label: k }, { key: `${k}__tag`, label: `${k} tag` }])];
+    const rows = T.map((t, j) => Object.fromEntries([["T_K", t], ...keys.flatMap((k) => [[k, r.curves[k][j]], [`${k}__tag`, tagOf(k === "g2" ? "g2_0" : k)]])]));
+    table = { columns, rows };
+  } else {
+    const sc = r.scalars || {};
+    const keys = Object.keys(sc).filter((k) => typeof sc[k] === "number" || typeof sc[k] === "string");
+    table = { columns: [{ key: "key", label: "scalar" }, { key: "value", label: "value" }, { key: "tag", label: "tag" }], rows: keys.map((k) => ({ key: k, value: sc[k], tag: prov[k]?.tag ?? "" })) };
+  }
+  return { kind: Array.isArray(T) && T.length > 1 ? "composer-tsweep" : "composer-point", name: r.run_id || `${S.card || "composed"}-run`, spec, payload: { run_id: r.run_id, mode: r.mode, tag_chain: r.tag_chain, scalars: r.scalars, provenance: prov, curves: r.curves, T_grid: r.T_grid, labels: r.labels }, table };
 }
 
 function inspectKpi(key, last) {
@@ -863,8 +911,8 @@ function renderPlaque() {
     h("div.plaque-reasons",
       h("span.plaque-kv", h("span.k", "regime"), h("span.v", regime || "known after a run")),
       isNum(v.eta_s) ? h("span.plaque-kv", h("span.k", "estimate"), h("span.v", fmtSeconds(v.eta_s))) : null),
-    reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", displayNotation(r.t))))) : null,
-    notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", displayNotation(n))))) : null,
+    reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", richText(displayNotation(r.t)))))) : null,
+    notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", richText(displayNotation(n)))))) : null,
     h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
 }
 
@@ -944,7 +992,7 @@ function renderResults() {
   const notes = s.notes || [];
   S.dom.notes.hidden = !notes.length;
   S.dom.notes.querySelector(".drawer-count").textContent = notes.length ? `${notes.length}` : "";
-  clear(S.dom.notes.querySelector(".drawer-body")).append(...notes.map((n) => h("p.pf-note", n)));
+  clear(S.dom.notes.querySelector(".drawer-body")).append(...notes.map((n) => h("p.pf-note", richText(n))));
 }
 
 function widestOf(tagMap) { return tagMap ? widest(Object.values(tagMap)) : null; }
@@ -956,7 +1004,7 @@ function captionFor(key, s) {
   const conv = obs?.conventions?.[0] || "intrinsic";
   const Conv = conv.charAt(0).toUpperCase() + conv.slice(1);
   if (key === "B_first_lens") return { line: `${Conv} brightness, first lens`, why: String(s.brightness_convention || `${conv} brightness at the first collection lens`).replace(/;\s*/g, ". ") };
-  if (key === "hom_I") return { line: `${Conv} photon overlap`, why: String.raw`${conv} overlap of two photons. The dephasing rate $\gamma^{*}$ is the repo convention, twice the textbook $\gamma^{*}$.` };
+  if (key === "hom_I") return { line: `${Conv} photon overlap`, why: String.raw`${conv} overlap of two photons. The pure-dephasing linewidth is $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}$.` };
   if (key === "g2_0") return { line: `${Conv}: source only`, why: String.raw`${conv} $g^{(2)}(0)$: no laser leakage and no dark counts are added.` };
   if (key === "rate_detected_Hz") return { line: "Photons counted per second", why: String.raw`Detected rate $= f_{\mathrm{rep}}\,B_{\mathrm{fibre}}\,\eta_{\mathrm{optics}}\,\eta_{\mathrm{det}}$.` };
   if (key === "F_P_eff") return { line: "Extra decay rate from the cavity", why: String.raw`$F_{\mathrm P}$ is the additional rate ratio, so the total decay rate is $(1 + F_{\mathrm P}L)$ times the bare rate.` };

@@ -366,7 +366,8 @@ class RateSolver(Solver):
             # R2: the cw pump broadens the dot line the cavity filter sees, P = r (1 + p) (ch08 eq. dp-lor); r keeps
             # the planner's definition (unbroadened Gamma), the rates use the broadened L
             p_xx = float(plan.inputs.get("pump_ratio_xx", 1.0)) if "cascade" in plan.needs else 0.0
-            rt = _rates_mod.apply_pump(rt, r * (1.0 + p_xx))
+            if not any(str(n).startswith("cw pump P =") for n in rt.notes):      # the engine may have applied it (combine hook)
+                rt = _rates_mod.apply_pump(rt, r * (1.0 + p_xx))
         gX, gXX, kX, kXX, pr = self._rates(plan, em, rt)
         reasons = ["rate solver: capture/relaxation jitter and coherence are not modelled"]
         F_dot, fano_notes = _pump_fano(plan)
@@ -761,22 +762,50 @@ class JCSolver(Solver):
                "or strong coupling: lifetime, cavity-output photons per pulse, g2, HOM.")
     FOCK = 3
 
+    _JC_NEEDS = {
+        "cascade": "the biexciton ladder (two-photon excitation, cap-2 loading) is not included in the jc solver (two-level dot + cavity); "
+                   "a TPE + cavity run needs a three-level ladder with the cavity, which is not implemented",
+        "phonons": "phonon-dressed dynamics (polaron) with a cavity mode are not implemented in the jc solver",
+        "two_colour": "two-colour drives with a cavity mode are not implemented in the jc solver",
+        "td_detuning": "time-dependent detuning (chirp / Stark gate) with a cavity mode is not implemented in the jc solver",
+    }
+
     def supports(self, plan, em, rt):
-        if plan.family != "coherent" or plan.timing != "pulsed":
-            return False, "jc: coherent pulsed drives only"
-        bad = _bad_needs(plan)
-        if bad:
-            return False, "; ".join(bad)
-        if "cascade" in plan.needs:
-            return False, "jc: no biexciton"
-        if _eid(plan) > 0.0:
-            return False, JC_EID_REASON
-        why = _pulsed_coherent_check(plan)
-        if why:
-            return False, why
         if getattr(rt, "kappa_ns", None) is None or getattr(rt, "g_ns", 0.0) <= 0.0:
             return False, "jc needs a cavity mode (kappa and g)"
-        return True, ""
+        for n in sorted(plan.needs):
+            return False, self._JC_NEEDS.get(n, f"need {n!r} is not supported by the jc solver")
+        if _eid(plan) > 0.0:
+            return False, JC_EID_REASON
+        if plan.family == "coherent":
+            if plan.timing == "pulsed":
+                why = _pulsed_coherent_check(plan)
+                if why:
+                    return False, why
+            elif plan.timing == "cw":
+                if plan.omega_cw_ns <= 0.0:
+                    return False, "cw drive with zero Rabi frequency has no emission"
+            else:
+                return False, f"unknown timing {plan.timing!r}"
+            return True, ""
+        if plan.family in ("incoherent", "electrical"):
+            if _shaped(plan):
+                return False, ("shaped pump profile / bias-dependent escape (pump_profile, k_esc_on/off) is not implemented in the "
+                               "jc solver; use the default rectangular pump with no escape")
+            inp = plan.inputs
+            if float(inp.get("p_refill", 0.0) or 0.0) > 0.0 or float(inp.get("k0_ns", 0.0) or 0.0) > 0.0:
+                return False, "p_refill / thermal escape-recapture are not implemented in the jc solver"
+            r, tau = _interp_pump(plan, rt)
+            if r <= 0.0:
+                return False, "no incoherent pump rate in the plan"
+            if plan.timing == "pulsed":
+                f = _f_rep(plan)
+                if f is None or tau <= 0.0:
+                    return False, "pulsed plan needs f_rep_MHz and a pump window"
+                if 1e3 / f <= tau:
+                    return False, "repetition period must exceed the pump window"
+            return True, ""
+        return False, f"drive family {plan.family!r} is not supported by the jc solver"
 
     def _builder(self, plan, em, rt):
         gs = float(rt.gamma_star_ns)
@@ -784,10 +813,10 @@ class JCSolver(Solver):
         cav = dict(g_ns=float(rt.g_ns), kappa_ns=float(rt.kappa_ns),
                    det_ns=det + float(rt.cav_minus_dot_ns), n_max=self.FOCK)
 
-        def build(omega_ns=0.0):
-            return lb.build_system(levels=2, gamma_X_ns=float(rt.Gamma_bg_ns), k_X=float(rt.k_nr_ns),
+        def build(omega_ns=0.0, r_ns=0.0, k_extra=0.0):
+            return lb.build_system(levels=2, gamma_X_ns=float(rt.Gamma_bg_ns), k_X=float(rt.k_nr_ns) + float(k_extra),
                                    deph=[(gs, (0.0, 1.0))] if gs > 0 else [], det_X_ns=det,
-                                   omega_ns=omega_ns, cavity=cav)
+                                   omega_ns=omega_ns, r_ns=float(r_ns), cavity=cav)
         return build
 
     def lifetime(self, plan, em, rt):
@@ -852,6 +881,166 @@ class JCSolver(Solver):
         return res
 
     def _run(self, plan, em, rt):
+        if plan.family == "coherent" and plan.timing == "pulsed":
+            return self._run_coherent_pulsed(plan, em, rt)
+        if plan.family == "coherent":
+            return self._run_cw(plan, em, rt, coherent=True)
+        if plan.timing == "cw":
+            return self._run_cw(plan, em, rt, coherent=False)
+        return self._run_incoherent_pulsed(plan, em, rt)
+
+    # ---- R2 FIX-1a (audit 4): every supported drive has a strong-coupling path -----------------------------------------
+    def _cw_grid(self, s, rt):
+        """Delay grid of a cw g2(tau): out to ~12 slowest decay times, fine enough to resolve the vacuum-Rabi oscillation."""
+        lam = np.linalg.eigvals(s.L)
+        nz = np.abs(lam.real)[np.abs(lam.real) > 1e-9 * np.abs(lam.real).max()]
+        tmax = 12.0 / max(float(nz.min()), 1e-9)
+        fast = max(float(rt.g_ns), float(rt.kappa_ns) / 2.0, float(np.abs(lam.imag).max()))
+        n = int(min(max(401, math.ceil(tmax * fast / 0.25)), 6001))
+        return np.linspace(0.0, tmax, n)
+
+    @staticmethod
+    def spectrum(s, rho, op, omegas):
+        """Incoherent emission spectrum of the field `op` of the stationary state `rho`:
+        S(w) = 2 Re int_0^inf e^{-i w tau} <da^+(tau) da(0)> dtau, da = op - <op>, via the Liouvillian resolvent
+        -(L - i w)^-1 (Lax / QRT) [DR]. The elastically scattered (coherent) part is excluded by the subtraction."""
+        L, dim = s.L, s.dim
+        mean = lb.expect(op, rho)
+        da = op - mean * np.eye(dim)
+        v = lb.vec(da @ rho)
+        row = lb.vec(da.conj().T.T)                    # Tr[da^+ X] = vec((da^+)^T) . vec(X)
+        eye = np.eye(L.shape[0])
+        out = np.empty(len(omegas))
+        for i, w in enumerate(omegas):
+            x = -np.linalg.solve(L - 1j * float(w) * eye, v)
+            out[i] = 2.0 * float((row @ x).real)
+        return out
+
+    def _spectrum_series(self, s, rho, rt):
+        span = 2.5 * max(float(rt.g_ns), float(rt.kappa_ns) / 2.0, 1e-3)
+        w = np.linspace(-span, span, 801) + 1e-7
+        return {"x": [float(v) for v in w], "y": [float(v) for v in self.spectrum(s, rho, s.ops["a"], w)],
+                "x_unit": "rad/ns (cavity-output spectrum relative to the dot frame)"}
+
+    def _check_fock(self, s, rho, reasons):
+        nc = self.FOCK
+        n_op = s.ops["a"].conj().T @ s.ops["a"]
+        top = np.real(np.diag(n_op)) > (nc - 1.5)
+        pop_top = float(np.real(np.diag(rho))[top].sum())
+        if pop_top > 1e-2:
+            reasons.append(f"Fock cutoff {nc}: population of the top Fock level {pop_top:.3g} (> 1e-2): the cavity occupation "
+                           "is truncated and the numbers are unreliable")
+        return pop_top
+
+    def _run_cw(self, plan, em, rt, coherent):
+        """cw steady state of dot + cavity: coherent drive (Mollow triplet in a cavity) or an incoherent pump G -> X at
+        r on the emitter (above_band, p_shell, electrical cw; S-Z form, pump term r D[sigma^+]). Both photon channels
+        (leaky Gamma_bg and cavity output kappa) are counted; g2(tau) by the QRT; flux = total photon flux [DR]."""
+        kap, Gbg = float(rt.kappa_ns), float(rt.Gamma_bg_ns)
+        build = self._builder(plan, em, rt)
+        tau_ps, _nc, _nl, tau_1e = self.lifetime(plan, em, rt)
+        g_pop = 1e3 / float(tau_ps) if float(tau_ps) > 0 else float(rt.Gamma_ns) + float(rt.k_nr_ns)    # JC total decay rate 1/ns
+        g_weak = float(rt.Gamma_ns) + float(rt.k_nr_ns)
+        scale_notes = []
+        if coherent:
+            omega = float(plan.omega_cw_ns)
+            if plan.inputs.get("omega_source") == "saturation_s" and g_weak > 0.0:
+                # the planner set Omega = sqrt(s T1^-1 T2^-1) with the WEAK-coupling Gamma (Purcell); in the JC regime that rate is
+                # meaningless, so the saturation parameter s = Omega^2 T1 T2 is re-applied with T1 = tau_jc and T2 = 2/(1/T1 + gamma*) [A]
+                s_par = float(plan.inputs["saturation_s"])
+                omega = math.sqrt(s_par * g_pop * 0.5 * (g_pop + float(rt.gamma_star_ns)))
+                scale_notes.append(f"saturation parameter s = {s_par:.4g} applied with the JC decay rate 1/tau = {g_pop:.4g}/ns")
+            s = build(omega)
+            r = 0.0
+        else:
+            r, _ = _interp_pump(plan, rt)
+            if g_weak > 0.0:
+                # cw pump strength is "P/P_sat or mu in units of the total X decay rate" [A]: re-expressed with the JC decay rate
+                # (the planner used the weak-coupling Gamma, which overstates the decay rate by F_P in the strong regime)
+                r = r / g_weak * g_pop
+                scale_notes.append(f"cw pump strength r = {r:.4g}/ns = (pump in units of the total decay rate) x the JC rate {g_pop:.4g}/ns")
+            s = build(0.0, r_ns=r, k_extra=float(plan.k_esc_on_ns))
+        rho = lb.steady_state(s.L, s.dim)
+        a, cX = s.ops["a"], s.ops["c_X"]
+        channels = [(cX, Gbg), (a, kap)]
+        taus = self._cw_grid(s, rt)
+        g2, _, flux = lb.g2_tau(s, taus, channels=channels, rho_ss=rho)
+        n_c = float(lb.expect(a.conj().T @ a, rho).real)
+        p_x = float(lb.expect(s.ops["P_X"], rho).real)
+        n_cav_rate, n_leak_rate = kap * n_c, Gbg * p_x
+        tot = n_cav_rate + n_leak_rate
+        b0 = float(rt.beta0)
+        reasons = ["cw: no per-pulse photon number or HOM overlap"] + scale_notes
+        pop_top = self._check_fock(s, rho, reasons)
+        extra = {"flux_ns": float(flux), "n_cav_ss": n_c,
+                 "beta": ((n_cav_rate + b0 * n_leak_rate) / tot) if tot > 0 else NAN,
+                 "tau_jc_ps": float(tau_ps), "tau_1e_ps": float(tau_1e), "fock_top_pop": pop_top,
+                 "series": {"g2_tau": _series_xy(taus, g2), "spectrum_cav": self._spectrum_series(s, rho, rt)},
+                 "notes": reasons}
+        bg = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
+        g2_0 = float(g2[0])
+        if coherent:
+            cx = complex(lb.expect(cX, rho))
+            extra["coherent_fraction"] = float(abs(cx) ** 2 / p_x) if p_x > 0 else NAN
+            reasons.append("coherent cw drive with a cavity mode: Lindblad steady state (Fock cutoff 3), both photon channels counted")
+        else:
+            extra["tau_dip_ns"] = 1.0 / (1.0 / (float(tau_ps) * 1e-3) + r)       # dip recovery 1/(1/tau_jc + r) [A]
+            extra["g2_signal"] = g2_0
+            if bg > 0.0:
+                g2_0 = 1.0 - (1.0 - bg) ** 2 * (1.0 - g2_0)
+                reasons.append("bg_frac: g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac [A]")
+            F_dot, fano_notes = _pump_fano(plan)
+            reasons += fano_notes
+            if F_dot is not None:
+                extra["F_dot"] = F_dot
+            reasons.append("incoherent cw pump on the emitter (S-Z pump term r D[sigma^+]); the pump broadening is in the Lindbladian")
+        ok = pop_top < 0.05
+        return SolverResult(g2_0=g2_0, n_ph=NAN, I_single=NAN, inversion=p_x, extra=extra, valid=ok,
+                            reasons=() if ok else ("jc: Fock cutoff exceeded (top-level population > 5%)",))
+
+    def _run_incoherent_pulsed(self, plan, em, rt):
+        """Rectangular incoherent pump window on the emitter in the cavity: periodic steady state of the counting hierarchy
+        (cavity-output and leaky photons both counted), HOM = cavity-output overlap of one exciton loaded at t = 0 [A]."""
+        r, tau_on = _interp_pump(plan, rt)
+        period = 1e3 / float(plan.f_rep_MHz)
+        kap, Gbg = float(rt.kappa_ns), float(rt.Gamma_bg_ns)
+        build = self._builder(plan, em, rt)
+        s_off, s_on = build(0.0), build(0.0, r_ns=r)
+        J = Gbg * lb.jump_super(s_off.ops["c_X"]) + kap * lb.jump_super(s_off.ops["a"])
+        out = lb.pulsed_counting(s_on.L, s_off.L, J, s_off.dim, tau_on, period - tau_on, gate_ns=plan.gate_ns)
+        tau_ps, n_cav, n_leak, tau_1e = self.lifetime(plan, em, rt)
+        dim, nc = s_off.dim, self.FOCK
+        rho0 = np.zeros((dim, dim), dtype=complex)
+        rho0[1 * nc + 0, 1 * nc + 0] = 1.0                               # |X, 0 photons>
+        reasons = ["HOM assumes instantaneous loading at t = 0 (window re-excitation ignored) [A]",
+                   "HOM is the cavity-output photon overlap (leaky-mode photons excluded)"]
+        if float(plan.relax_ns) > 0.0:
+            reasons.append("capture / relaxation jitter (tau_cap, tau_relax) is not modelled by the jc solver")
+        try:
+            I = float(lb.indistinguishability(s_off.L, dim, rho0, np.sqrt(kap) * s_off.ops["a"]))
+        except Exception as ex:                                          # noqa: BLE001
+            I = NAN
+            reasons.append(f"jc HOM failed: {type(ex).__name__}: {ex}")
+        g2_sig = float(out["g2"])
+        bg = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
+        g2 = 1.0 - (1.0 - bg) ** 2 * (1.0 - g2_sig) if bg > 0.0 else g2_sig
+        if bg > 0.0:
+            reasons.append("bg_frac: g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac; HOM and n_ph are the signal-only values [A]")
+        F_dot, fano_notes = _pump_fano(plan)
+        reasons += fano_notes
+        if not out["converged"]:
+            reasons.append("periodic steady state did not converge")
+        tot = n_cav + n_leak
+        b0 = float(rt.beta0)
+        extra = {"p_loaded": 1.0 - math.exp(-r * tau_on), "g2_signal": g2_sig, "tau_jc_ps": float(tau_ps),
+                 "tau_1e_ps": float(tau_1e), "n_cav_inst": n_cav, "n_leak_inst": n_leak,
+                 "beta": ((n_cav + b0 * n_leak) / tot) if tot > 0 else NAN, "notes": reasons,
+                 **({} if F_dot is None else {"F_dot": F_dot})}
+        return SolverResult(g2_0=float(g2), n_ph=float(out["mean_counts"]), I_single=I, inversion=None, extra=extra,
+                            valid=bool(out["converged"]),
+                            reasons=() if out["converged"] else ("periodic steady state did not converge",))
+
+    def _run_coherent_pulsed(self, plan, em, rt):
         p = plan.pulses[0]
         dur = p.fwhm_ps * 1e-3
         build = self._builder(plan, em, rt)
@@ -890,7 +1079,7 @@ class JCSolver(Solver):
                             reasons=())
 
     def eta_seconds(self, plan, n_points):
-        return 6.0 * max(1, int(n_points))
+        return (6.0 if plan.family == "coherent" and plan.timing == "pulsed" else 1.0) * max(1, int(n_points))
 
 
 # ---------------------------------------------------------------- registry + select
@@ -924,14 +1113,20 @@ def select(plan, em, rt, requested="auto", want_hom=True):
                     return s, issues
                 issues.append(f"{n}: {why}")
         return None, ["needs P9 polaron solver (phonon-assisted drive)"] + issues
+    strong = rt.regime == "strong"
     if plan.family == "coherent":
-        order = ["jc", "lindblad"] if (rt.jc_recommended or rt.regime == "strong") else ["lindblad"]
-        if "cascade" in plan.needs or plan.timing != "pulsed":
-            order = ["lindblad"]
+        if "cascade" in plan.needs:
+            order = ["lindblad"]                 # TPE: the jc solver has no biexciton (the engine states that when strong)
+        elif plan.timing == "pulsed":
+            order = ["jc", "lindblad"] if (rt.jc_recommended or strong) else ["lindblad"]
+        else:                                    # cw resonant: the jc path only where the weak-coupling model fails
+            order = ["jc", "lindblad"] if strong else ["lindblad"]
     elif plan.timing == "pulsed":
         order = ["lindblad_incoherent", "rate"] if want_hom else ["rate", "lindblad_incoherent"]
+        if strong:
+            order = ["jc"] + order
     else:
-        order = ["rate"]
+        order = ["jc", "rate"] if strong else ["rate"]
     for n in order:
         if n not in names:
             continue

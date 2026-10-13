@@ -285,6 +285,22 @@ async function waitRun(page, timeout = 120000) {
     await shot(page, "explorer", "desk", "light");
     await page.context().close();
 
+    // ---------------------------------------------------------------- fix2: 3D readouts, notes and numeric fields
+    page = await newPage();
+    await page.goto(`${BASE}/#/design`, { waitUntil: "load" });
+    await page.waitForSelector(".viewport-slot[data-ready='1']", { timeout: 60000 });
+    await page.waitForTimeout(1500);
+    const v3 = await page.$$eval(".v3-readout-label", (els) => ({ n: els.length, typeset: els.filter((e) => e.querySelector(".katex")).length, raw: els.filter((e) => /[_\$]/.test(e.textContent)).map((e) => e.textContent) }));
+    check("3D readout labels with a symbol are KaTeX, none shows an underscore or a backslash", v3.n > 0 && v3.typeset >= 1 && v3.raw.length === 0, JSON.stringify(v3));
+    await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+    await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+    await page.click('.ws-compose .kind-chip[data-axis="structure"]');
+    await page.waitForSelector(".cp-entry");
+    const cp = await page.$$eval(".cp-sum", (els) => els.filter((e) => /(^|[\s(])[A-Za-z]_[A-Za-z0-9]{1,6}(?![\w.])/.test(e.textContent) && !e.querySelector(".katex")).map((e) => e.textContent.slice(0, 60)));
+    check("picker summaries go through richText (no raw ASCII subscripts)", cp.length === 0, cp.slice(0, 3).join(" | "));
+    await page.keyboard.press("Escape");
+    await page.context().close();
+
     // ---------------------------------------------------------------- offline + errors
     check("no request left the Studio host (KaTeX, fonts and Plotly are all local)", external.length === 0, [...new Set(external)].slice(0, 3).join(" "));
     const kerr = errors.filter((e) => !/favicon|ERR_ABORTED|net::ERR_FAILED/.test(e));

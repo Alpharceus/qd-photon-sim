@@ -12,7 +12,7 @@ boson model. Tier P1 = weak-coupling phonon relaxation in the INSTANTANEOUS DRES
 
 with |hi>, |lo> the eigenvectors of H(t) RE-ROTATED AT EVERY STEP (brief trap 12; a fixed-basis Lindblad with
 constant phonon rates gets the detuning dependence wrong) and L_0 the undriven Liouvillian (radiative Gamma,
-photonless k, pure dephasing gamma*, detuning Delta) of resonant_source.TwoLevel [DR].
+photonless k, pure-dephasing linewidth Gamma_ph = 2 gamma_ph (code gamma*), detuning Delta) of resonant_source.TwoLevel [DR].
 
 Derivation of the rate [DR]: golden rule for H_int = |X><X| sum_q g_q (b_q + b_q^+), J(w) = sum_q g_q^2
 delta(w - w_q); the matrix element of |X><X| between the dressed states is |<hi|P_X|lo>|^2 = sin^2(2 theta)/4,
@@ -45,7 +45,7 @@ Limitations (reported in SolverResult.reasons):
 Drive-induced dephasing (devlib-fx3b, Koong-type excitation-induced dephasing) [E]. Optional, default OFF
 (plan.inputs["eid_ps"] = 0 is bit-identical): the pure-dephasing rate rises with the instantaneous drive intensity,
     gamma_EID(t) = c_EID |Omega(t)|^2     (c_EID = eid_ps x 1e-3 ns; Omega in rad/ns, so gamma_EID in 1/ns),
-added to gamma* as a D[sqrt(gamma_EID) |X><X|] term of L(t) (repo convention: coherence decay gamma_EID/2). It uses the
+added to the pure-dephasing linewidth Gamma_ph (code gamma*) as a D[sqrt(gamma_EID) |X><X|] term of L(t) (repo convention: coherence decay gamma_EID/2). It uses the
 BARE Rabi frequency (the photon-field intensity), not the phonon-renormalised B Omega. No coefficient comes from a
 paper here: the class value is [E] (Ramsay et al., PRL 104, 017402 (2010) report damping that grows with the pulse
 intensity, not a universal c), so any card that enables it must say where c comes from.
@@ -88,7 +88,7 @@ _IDX_PX = 3                    # vec index of rho[X, X] (column stacking, dim 2)
 
 
 _PX = np.array([[0, 0], [0, 1]], dtype=complex)
-_DEPH_X = lb.dissipator(_PX)          # D[|X><X|]: coherence decay 1/2 per unit rate (repo gamma* convention)
+_DEPH_X = lb.dissipator(_PX)          # D[|X><X|]: coherence decay 1/2 per unit rate (code gamma* = Gamma_ph = 2 gamma_ph)
 
 
 def trion_probability(p_trion, area_rad):

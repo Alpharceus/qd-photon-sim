@@ -59,7 +59,7 @@ for kind, params, mat, disp in cases:
     out.append(describe(spec, display=disp))
 print(json.dumps(out))
 `;
-  const input = JSON.stringify([...CASES.map((c) => c[2]), ['edge_ridge', {}, 'ingaas_gaas', {}]]);
+  const input = JSON.stringify([...CASES.map((c) => c[2]), ['edge_ridge', {}, 'cdse_znse', {}]]);
   const txt = execFileSync('python', ['-I', '-c', py], { input, cwd: ROOT, stdio: ['pipe', 'pipe', 'ignore'], maxBuffer: 1 << 26 }).toString();
   return JSON.parse(txt.trim().split('\n').pop());
 }
@@ -207,7 +207,7 @@ print(json.dumps(out))
     await page.close();
   }
 
-  // unsupported structure kind: fallback descriptor -> message panel, no error
+  // unsupported structure kind (edge_ridge on a 530 nm dot: no covered stack, a declared incompatibility): fallback descriptor -> message panel, no error
   {
     const desc = descs[CASES.length];
     const page = await ctx.newPage();

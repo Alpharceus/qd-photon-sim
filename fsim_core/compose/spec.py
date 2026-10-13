@@ -96,6 +96,28 @@ def _resolved_entry(leaf) -> dict:
     return r
 
 
+def _central_vals(entry, blk, path_prefix):
+    from .params import central
+    out = {}
+    for p in entry.params:
+        leaf = resolve_leaf(blk["params"][p.name] if p.name in blk["params"] else p.default, p, f"{path_prefix}.{p.name}")
+        out[p.name] = central(leaf)
+    return out
+
+
+def _pair_incompatibility(spec, entries):
+    """Reason string if structures.incompatibility() declares the (material, structure) pair unbuildable, else None.
+    Never raises (a failing build is reported by the other validation paths)."""
+    try:
+        from . import structures as _st
+        from .params import central
+        T = float(central(resolve_leaf(spec.T_K, T_K_SPEC, "T_K")))
+        em = entries["material"].build(_central_vals(entries["material"], spec.material, "material"), T)
+        return _st.incompatibility(entries["structure"].kind, em, _central_vals(entries["structure"], spec.structure, "structure"))
+    except Exception:                                   # noqa: BLE001
+        return None
+
+
 def validate_spec(spec, registry: Optional[_registry.Registry] = None) -> dict:
     """-> {ok, solver, regime, issues:[{level, path, message}], resolved:{path:{value|range, unit, tag}}}.
     ok is False iff any issue has level 'error'. `regime` is only known after
@@ -165,6 +187,13 @@ def validate_spec(spec, registry: Optional[_registry.Registry] = None) -> dict:
                                  f"{axis} kind {entry.kind!r} requires {lacking}, not provided by "
                                  f"the other chosen entries "
                                  f"({ {a: sorted(e.provides) for a, e in entries.items() if a != axis} })"))
+
+    # FIX-1b/1a: declared (material, structure) incompatibility (structures.STRUCTURE_COMPAT); a WARNING so the engine still
+    # reports valid=False with the reason (engine._validity) and the Composer picker greys the pair
+    if "material" in entries and "structure" in entries:
+        why = _pair_incompatibility(spec, entries)
+        if why:
+            issues.append(_issue("warning", "structure.kind", f"incompatible with the chosen material: {why}"))
 
     solvers = reg.kinds("solver")
     if spec.solver == "auto":

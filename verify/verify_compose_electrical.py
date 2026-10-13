@@ -794,6 +794,45 @@ check("12d. M-1 (F_pump = 1): F_dot = 1 and no Fano note",
       abs(c12m1.res.extra["F_dot"] - 1.0) < 1e-12 and not any("Fano" in str(n) for n in c12m1.res.extra["notes"]))
 
 
+# ------------------------------------------------------------------ 13. R2 FIX-1a (append only)
+from fsim_core import drive_mech as DM                                                    # noqa: E402
+
+
+def cav_el(F_P, kappa_ueV, solver, mat=None):
+    sp = cw_spec({"mechanism": "M-1 poisson-rail", "mu": 0.4, "eta_capture": 0.05}, mat or MAT)
+    sp["structure"] = {"kind": "generic_cavity", "params": {"F_P": F_P, "kappa_ueV": kappa_ueV, "detuning_ueV": 0.0}}
+    sp["solver"] = solver
+    return sp
+
+
+# 13a. F_pump / F_dot naming: the delivered Fano factor is F_dot = 1 - eta (1 - F_pump) (independent arithmetic), F_pump aliases F_p
+itf13 = DM.DriveInterface("M-2 quiet-rail", F_p=0.3, mu=0.8, eta_capture=0.4)
+check("13a. drive_mech: F_pump aliases F_p (0.3) and F_dot = 1 - eta (1 - F_pump) = 0.72; g2_load uses F_dot (bit-for-bit)",
+      itf13.F_pump == 0.3 and abs(itf13.F_dot - (1.0 - 0.4 * 0.7)) < 1e-15 and itf13.g2_load() == DM.f8_g2_load(0.8, itf13.F_dot),
+      f"F_dot {itf13.F_dot!r}")
+# 13b. electrical_cw on the jc solver in the bad-cavity limit: flux = Gamma_P mu/(1 + mu) with Gamma_P = Gamma0 + 4 g^2/kappa
+kap13 = 500.0
+F13 = 0.2                                                      # 4 g^2/(kappa Gamma0), Gamma0 = 1/0.599 per ns
+G0_13 = 1.0 / 0.599
+kap_ueV13 = kap13 * HB * 1e3
+e13 = engine.evaluate_spec(cav_el(F13, kap_ueV13, "jc"))["scalars"]
+GP13 = G0_13 * (1.0 + F13)                                       # L ~ 1 at zero detuning for a bad cavity (w_dot << kappa)
+want13 = GP13 * 0.4 / 1.4
+check("13b. electrical_cw M-1 (mu 0.4) on the jc solver, bad cavity (kappa 500/ns, F_P 0.2): flux = Gamma_P mu/(1 + mu) (2%; the pump is mu x the "
+      "JC decay rate), valid, beta = F_P/(1 + F_P) region (> 0.1)",
+      e13["solver"] == "jc" and e13["valid"] and abs(float(e13["flux_ns"]) - want13) < 0.02 * want13 and 0.0 < e13["beta"] <= 1.0,
+      f"flux {float(e13['flux_ns']):.5f} vs {want13:.5f}, beta {e13['beta']:.4f}")
+# 13c. cw pump hook through the electrical drive on the rate solver: Gamma / L seen by the observables are the pumped ones (closed form)
+F13c, kap13c = 5.0, 20.0
+sc13 = engine.evaluate_spec(cav_el(F13c, kap13c, "rate"))["scalars"]
+hb13 = HB * 1e3
+Gam_un = G0_13 * (1.0 + F13c * kap13c / (kap13c + hb13 * G0_13))                # unpumped (L0 at w = hbar Gamma0)
+r13 = 0.4 * Gam_un                                                              # planner: r = mu (Gamma + k) with the UNPUMPED Gamma
+Gam_p = G0_13 * (1.0 + F13c * kap13c / (kap13c + hb13 * (G0_13 + r13)))
+check("13c. electrical_cw in a cavity (rate solver): Gamma_ns / tau_ps of the result are the pumped values Gamma0 (1 + F_P kappa/(kappa + hbar(Gamma0 + r))) "
+      "(closed form, 1e-9)", abs(sc13["Gamma_ns"] - Gam_p) < 1e-9 * Gam_p and abs(sc13["tau_ps"] - 1e3 / Gam_p) < 1e-6 and Gam_p < Gam_un - 1e-6,
+      f"{sc13['Gamma_ns']:.6f} vs {Gam_p:.6f} (unpumped {Gam_un:.6f})")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_electrical checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

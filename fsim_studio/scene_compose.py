@@ -243,6 +243,10 @@ def _base(variant, title, spec, lam):
             "scalars": {}, "labels": [], "notes": [], "provenance": {"calls": []}, "fallback": False}
 
 
+class _Incompatible(Exception):
+    """A declared material x structure incompatibility (response extra["incompatible"]): shown as its own reason."""
+
+
 def _fallback(spec, reason, structure_kind=None, lam=None):
     d = _base(FALLBACK, f"composed device ({structure_kind or 'unknown structure'})", spec, lam)
     d["fallback"] = True
@@ -642,6 +646,8 @@ def _nitride_cavity(vals, lam, S, resp):
 
 def _ridge_waveguide(vals, lam, S, resp):
     ex = resp.extra
+    if ex.get("incompatible") or "stack" not in ex:
+        raise _Incompatible(str(ex.get("incompatible") or "the ridge stack is unavailable for this material and wavelength"))
     for k in ("ridge_width_nm", "etch_depth_nm", "L_um", "alpha_cm", "R_back", "dot_position"):
         S.reg(k, vals[k][0], vals[k][1], f"structure.{k}")
     S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
@@ -651,7 +657,7 @@ def _ridge_waveguide(vals, lam, S, resp):
     total = sum(x["t_nm"] for x in stack)
     S.geometry["stack"] = stack
     S.src["stack"] = {"tag": "E", "display_default": False, "kind": "derived", "from": ["material.lambda_nm"], "unit": "nm",
-                      "note": "waveguide.hkust_ridge_stack(lambda): the stack the mode solve uses [E] (structure response)"}
+                      "note": f"waveguide.ridge_stack_for(lambda), family {ex.get('stack_label') or ex.get('stack_family') or 'unknown'}: the stack the mode solve uses [E] (structure response)"}
     S.derived("total_nm", total, ["stack"], "nm", "stack height")
     S.derived("etch_floor_nm", max(total - float(vals["etch_depth_nm"][0]), 0.0), ["stack", "structure.etch_depth_nm"], "nm",
               "height of the etched floor above the stack bottom: total - etch depth")
@@ -676,7 +682,7 @@ def _ridge_waveguide(vals, lam, S, resp):
     layers = [_layer("substrate", sub * 1000.0, "substrate", "A", "thickness not modelled")]
     for x in stack:
         role = "active" if x["is_dot"] else ("cladding" if "cladding" in x["name"] else "core")
-        layers.append(_layer(x["name"].replace("_", " "), x["t_nm"], role, "E", "waveguide.hkust_ridge_stack", x["n"], x["material"]))
+        layers.append(_layer(x["name"].replace("_", " "), x["t_nm"], role, "E", f"waveguide.ridge_stack_for ({ex.get('stack_label') or ex.get('stack_family') or 'stack'})", x["n"], x["material"]))
     labels = [f"ridge {float(vals['ridge_width_nm'][0]):g} nm wide, etched {float(vals['etch_depth_nm'][0]):g} nm, true scale in all three axes",
               f"only the front {fl:g} um of the {float(vals['L_um'][0]):g} um ridge and a short back stub are drawn (break)",
               "guided mode: Gaussian-equivalent 1/e^2 intensity radii wx, wy from the effective-index solve",
@@ -794,6 +800,8 @@ def describe(spec, display=None) -> dict:
             layers, labels, keys = _lumped_cavity(vals, lam, S, _structure_resp(spec, sent, sblk, mblk))
         else:
             layers, labels, keys = _mesa(skind, vals, lam, S)
+    except _Incompatible as e:      # a named incompatibility is a reason, not an error
+        return _fallback(spec, str(e), (spec.get("structure") or {}).get("kind"), lam)
     except Exception as e:          # an unresolved spec must not break the viewport
         return _fallback(spec if isinstance(spec, dict) else {}, f"{type(e).__name__}: {e}",
                          (spec.get("structure") or {}).get("kind") if isinstance(spec, dict) else None)

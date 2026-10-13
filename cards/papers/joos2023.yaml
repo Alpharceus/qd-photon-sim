@@ -41,6 +41,8 @@ device:
       delta2_meV: {value: -5.5405, unit: meV, tag: DR, where: "text p.3: Delta2 = 2.7 Delta1 = 10.75 nm red: 1239842 / 1551^2 x 10.75 nm; paper convention"}
       area1_pi: {value: 9.4, unit: pi, tag: A, source: "calibrated: model inversion maximum (0.587) of the first SUPER maximum at area2 = sqrt(2) area1, 5 ps pulses; the powers P2/P1 = 2 (text p.3) fix only the ratio"}
       area2_pi: {value: 13.29, unit: pi, tag: A, source: "sqrt(2) x area1 (P2 = 2 P1 at equal pulse width, text p.3)"}
+      fwhm1_ps: {value: 5.0, unit: ps, tag: A, source: "pulse widths are not stated; the areas below were calibrated at the 5 ps class width. R2 FIX1A pinned it explicitly because the registry SUPER default width moved to 3 ps"}
+      fwhm2_ps: {value: 5.0, unit: ps, tag: A, source: "same as fwhm1_ps"}
       f_rep_MHz: {value: 152.0, unit: MHz, tag: V, where: "text p.3: all measurements at f_rep = 152 MHz (MZI doubles the 76 MHz of the lasers)"}
   setup:
     kind: lens_fibre_det
@@ -98,5 +100,6 @@ fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_dev]}
   - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_peak]}
 history:
+  - {date: 2026-10-13, by: "R2 FIX1A", reason: "R2 FIX1A: SUPER registry default width moved 5 -> 3 ps (Piccinini 2025 class); this card's areas were calibrated at 5 ps, so fwhm1_ps / fwhm2_ps are now pinned explicitly at 5 ps. Ledger unchanged (rate_raw_super stays expect fail: 1.41e7 vs 6.5e6); the transient 8.8e6 'pass' was the 3 ps default, not physics"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.69 (eta_out 0.90 x beta(F_P 3.3) 0.767 product, cavity-only semantics) -> 0.85 (Nawrath same-platform FDTD total, A), table_mode total"}

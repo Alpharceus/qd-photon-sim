@@ -12,6 +12,7 @@ import { tagChip, normTag, widest } from "../ui/tagChip.js";
 import { skeleton, errorState, toast } from "../ui/controls.js";
 import { fmt, isNum } from "../ui/format.js";
 import { richText, tex, symbolFor, texIndex, pathSymbol } from "../ui/math.js";
+import { exportButtons } from "../ui/exporter.js";
 import { paperOverlay } from "../charts/paperOverlay.js";
 
 const AXES = [
@@ -469,7 +470,7 @@ function renderPaper() {
           h("p.pp-dev-links", doi, doi && arxiv ? " · " : null, arxiv)),
         h("div.pp-actions",
           h("div.pp-status-col", d.progress, d.status),
-          d.composerBtn, d.runBtn)),
+          (d.exporter = exportButtons(exportArgs, { label: "Export" })).el, d.composerBtn, d.runBtn)),
       meta.summary ? h("p.pp-summary-text", meta.summary) : null,
       h("div.pp-kinds.pp-dev-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${p.kinds[a.key]}` }, h("span.pp-kind-k", a.label), p.kinds[a.key].replace(/_/g, " ")) : null),
         classCounts(p.classes))),
@@ -481,6 +482,21 @@ function renderPaper() {
     h("section.pp-charts-sec", { "aria-label": "Series overlays" }, d.charts));
   renderTable();
   renderCharts();
+}
+
+/** Export of the reproduce result: the device spec, per-item paper and model numbers with their tags, versions in the header. */
+function exportArgs() {
+  const res = P?.result;
+  if (!P?.paper || !Array.isArray(res?.items)) return null;
+  const rs = rows().filter((r) => r.item);
+  const tab = rs.map((r) => {
+    const it = r.item, rep = reportedOf(r.id);
+    const ser = it.kind === "series" ? res.model_series?.find((x) => x.id === it.id) : null;
+    return { item: r.id, class: r.cls, kind: it.kind, observable: it.observable ?? rep?.observable ?? "", paper: it.paper ?? rep?.value ?? null, paper_tag: rep?.tag ?? "",
+      model: it.model, model_lo: it.lo ?? null, model_hi: it.hi ?? null, model_tag: normTag(ser?.tag) || modelTag(it.inputs) || "", tolerance: it.tol_str ?? "", outcome: it.outcome, expected: it.expect };
+  });
+  const columns = ["item", "class", "kind", "observable", "paper", "paper_tag", "model", "model_lo", "model_hi", "model_tag", "tolerance", "outcome", "expected"].map((k) => ({ key: k }));
+  return { kind: "paper-reproduce", name: `paper-${P.id}`, spec: P.paper.device, payload: { paper: P.id, cite: P.paper.meta?.cite, card_sha256: P.paper.card_sha256, resolved_tags: Object.fromEntries(Object.entries(P.paper.resolved || {}).map(([k, v]) => [k, v?.tag])), items: tab, result: res }, table: { columns, rows: tab } };
 }
 
 function reportedOf(id) {

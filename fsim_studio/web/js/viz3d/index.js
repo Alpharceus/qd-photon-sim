@@ -19,30 +19,21 @@ import { Labels } from './core/labels.js';
 // ---- readout labels: the scene sends code names ("F P", "lambda nm", "V lambda3"); the plate shows notation.
 const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', rho: 'ρ', sigma: 'σ', tau: 'τ', chi: 'χ', phi: 'φ', omega: 'ω', pi: 'π' };
 import { displayUnit } from '../ui/units.js';
+import { tex } from '../ui/math.js';
 const unitKey = (u) => String(u || '').toLowerCase().replace(/µ/g, 'u').replace(/[^a-z0-9]/g, '');
-function symNode(parts) {
-  const out = document.createElement('span');
-  out.className = 'sym';
-  for (const [kind, text] of parts) {
-    if (kind === 't') { out.appendChild(document.createTextNode(text)); continue; }
-    const e = document.createElement(kind);
-    e.textContent = text;
-    out.appendChild(e);
-  }
-  return out;
-}
+function texNode(src) { return tex(src, { cls: 'sym' }); }
 function readoutLabel(key, unit) {
-  if (key === 'V_lambda3') return symNode([['t', 'V/(λ/n)'], ['sup', '3']]);
+  if (key === 'V_lambda3') return texNode('V/(\\lambda/n)^{3}');
   const words = String(key).split('_').filter(Boolean);
   if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) words.pop();
   const base = words[0] || String(key);
-  const g = (w) => GREEK[w] || w;
+  const g = (w) => (GREEK[w] ? `\\${w}` : w);
   if (words.length === 1) {
-    if (GREEK[base] || base.length <= 2) return symNode([['t', g(base)]]);
+    if (GREEK[base] || base.length <= 2) return texNode(g(base));
     return null;                                      // a plain word: keep the engraved caps
   }
   if (base.length > 2 && !GREEK[base]) return null;   // "waist um" -> plain "WAIST"
-  return symNode([['t', g(base)], ['sub', words.slice(1).map(g).join(' ')]]);
+  return texNode(`${g(base)}_{${words.slice(1).map((w) => (GREEK[w] ? g(w) : `\\mathrm{${w}}`)).join('\\,')}}`);
 }
 function symbolizeReadouts(root) {
   for (const row of root.querySelectorAll('.v3-readout')) {
@@ -232,7 +223,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     // tiny viewports fit the default view to it.
     const devBox = kind === 'device' ? solidBox(built.root) : null;
     if (kind === 'device' && !built.noFloor) {
-      const fl = addFloor(stage, built.root);
+      const fl = addFloor(stage, built.root, { spanFromHeight: built.floorSpanFromHeight || 0, bounds: built.floorBounds || null });
       if (fl) built.extraNotes = [...(built.extraNotes || []), fl.note];
     }
     stage.contextLost = () => useFallback(current, 'WebGL context lost');

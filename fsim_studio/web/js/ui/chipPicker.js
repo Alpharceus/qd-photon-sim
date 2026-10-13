@@ -6,6 +6,7 @@
 import { h, clear } from "./dom.js";
 import { icon } from "./icons.js";
 import { popover, closePopover } from "./controls.js";
+import { richText } from "./math.js";
 
 const STATUS_WORD = { ready: "ready", needs_physics: "awaiting physics", tier: "tier" };
 
@@ -47,7 +48,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
     h("span.cp-top",
       h("span.cp-label", e.label),
       h("span.cp-badge", { class: `cp-${e.status}` }, STATUS_WORD[e.status] || e.status)),
-    h("span.cp-sum", e.summary),
+    h("span.cp-sum", richText(e.summary || "")),
     refLine(e.refs) ? h("span.cp-ref", refLine(e.refs)) : null,
     h("span.cp-why", { hidden: !awaiting }, awaiting ? "Registered, but the solver for it has not landed; it cannot run yet." : ""));
     if (awaiting) btn.title = "awaiting physics";
