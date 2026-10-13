@@ -94,8 +94,14 @@ o = M.offsets(ig, InP, InP)
 check("In0.53Ga0.47As/InP dE_c (eV)", o.dE_c, 0.25, 0.05, "literature 0.22-0.27 eV (Q_c ~ 0.40)")
 check("In0.53Ga0.47As/InP dE_v (eV)", o.dE_v_hh, 0.36, 0.05, "literature 0.34-0.37 eV")
 o = M.offsets(InP, g, GaAs)
-check("InP/Ga0.51In0.49P strained dE_c (eV)", o.dE_c, 0.25, 0.08,
-      "Pryor PRB 56, 10404 (1997): ~250 meV CB offset (240 meV DLTS)")
+# Relabelled (r2-physics-b, 2026-10-12): this is MODEL-SOLID ARITHMETIC (V01
+# VBO +0.17 eV), not a Pryor anchor. It lands near Pryor's 250 meV only because
+# the model-solid VBO sign (InP VB ABOVE GaInP) is the one Pryor rejects (his
+# VBO is -45 meV, [V]); the wrong sign cancels the V01 a_c tr(eps) term. The
+# dot_levels override (-45 meV) gives V_e = 436 meV and is NOT tested against 250.
+check("InP/Ga0.51In0.49P model-solid strained dE_c (eV) [arithmetic regression, coincidental vs Pryor 0.25]",
+      o.dE_c, 0.25, 0.08,
+      "coincidental: wrong-sign model-solid VBO cancels a_c tr(eps); Pryor PRB 56, 10404 (1997) rejects it")
 bool_check("InP in GaInP: compressive, hh top", o.well.eps_par < -0.03 and o.well.E_hh > o.well.E_lh,
            f"eps_par = {o.well.eps_par:.4f}")
 o2 = M.offsets(InP, M.GaAsP(0.4), GaAs)

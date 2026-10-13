@@ -402,7 +402,10 @@ class Job:
 
 class JobManager:
     def __init__(self, max_workers: int | None = None):
-        self.max_workers = max_workers or max(1, (os.cpu_count() or 1) - 2)
+        # Half the logical cores by default (a full-core pool drives the CPU to its thermal limit on long sweeps);
+        # FSIM_STUDIO_WORKERS overrides (the verifiers' private servers use 2).
+        env = os.environ.get("FSIM_STUDIO_WORKERS", "").strip()
+        self.max_workers = max_workers or (int(env) if env.isdigit() and int(env) > 0 else max(1, (os.cpu_count() or 2) // 2))
         self._pool = None
         self._pool_lock = threading.Lock()
         self.jobs: dict[str, Job] = {}

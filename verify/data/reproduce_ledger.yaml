@@ -28,13 +28,18 @@
 #     reischle_dc_*, dl_*_faithful*, kd_dl_pryor_Ve_modelsolid, kd_nit_desh2013_lambda_25K use the PAPER'S OWN sample or
 #     drive inputs; their tolerances were written from the paper's own uncertainty BEFORE the first run (see the rc2
 #     comments in the items list). Root causes: .workers/devlib/p2-rootcause.md.
+#   * devlib-r2-physb (2026-10-12, Fable brief B .workers/devlib/r2-physics-b-answer.md): new `contained` bracket items
+#     dl_chatz_EX_bracket / dl_chatz_dEWL_bracket / dl_gu_EX_bracket / dl_reischle_EX_bracket use the [film, sphere]
+#     strain-state limits of fsim_core.dot_levels.levels_bracket (an island lies between); kd_nit_desh2013_lambda and
+#     kd_nit_desh2013_lambda_25K (planar model on a nanowire dot, wrong device class) are RETIRED to regression pins;
+#     Zhang 2013 is evaluated at its 10 K measurement temperature; nw_desh2014_* rows are [A] diagnostics.
 #   * Tags follow the repo convention: [V] read from the paper, [DR] derived,
 #     [E] estimate, [A] assumption.
 
 meta:
   ledger_version: 2
   written: "2026-10-12"
-  revised: "2026-10-12 (devlib-rc2: faithful inputs, corrected reasons; see flips and the rc2 items)"
+  revised: "2026-10-12 (devlib-rc2: faithful inputs, corrected reasons; devlib-r2-physb: island-strain brackets, Pryor relabel, Desh2013/Zhang2013 nanowire/pillar items, Desh2014 XX diagnostics)"
   model_head: "rt-edge-emitter @ deb733a (working tree)"
   runtime_budget_s: 180
 
@@ -160,21 +165,21 @@ items:
 
   # ------------------------------------------------------------------ 6. Known deviations (KD)
   # 6a dot_levels physical comparisons (production fsim_core.dot_levels, same calls as verify_dot_levels.py).
-  - {id: kd_dl_chatz_EX, class: KD, desc: "dot_levels In0.5Ga0.5As/GaAs E_X (eV) vs Chatzarakis single-dot spread", source: dot_levels.chatz_EX_eV, paper: {lo: 1.283, hi: 1.44, tag: V, where: "Chatzarakis 2023: single dots in the same paper range 1.283-1.44 eV (macro-PL band 1.30 eV)"}, tol: {kind: range}, tol_reason: "the paper's own dot-to-dot spread", expect: fail, reason: "ONE miss shared with kd_dl_chatz_dEWL (p2-rootcause 5a): the model dot level (E_X = 1.199 eV) is ~85 meV too deep; E_WL = 1.402 eV is fine. CORRECTION: the earlier reason (no piezoelectric field) has the WRONG SIGN: a built-in field red-shifts E_X (QCSE), so adding it would make the model lower still. At the paper's own h = 3 nm and In 0.5 only R is [A]; R = 8 nm still gives 1.225 eV, i.e. ~60-85 meV remain: a model-class limit (single band, biaxial strain applied to a 3D island)"}
+  - {id: kd_dl_chatz_EX, class: KD, desc: "dot_levels In0.5Ga0.5As/GaAs E_X (eV) vs Chatzarakis single-dot spread", source: dot_levels.chatz_EX_eV, paper: {lo: 1.283, hi: 1.44, tag: V, where: "Chatzarakis 2023: single dots in the same paper range 1.283-1.44 eV (macro-PL band 1.30 eV)"}, tol: {kind: range}, tol_reason: "the paper's own dot-to-dot spread", expect: fail, reason: "film shear in a 3D island (ONE cause shared with kd_dl_chatz_dEWL, r2-physics-b Q2): the dot carries the biaxial-FILM shear Q = b (eps_perp - eps_par) although a buried island keeps tr(eps) (shape-invariant) and loses 45-100 % of the shear, so the HH edge is pushed up too far and E_X comes out 85 meV too LOW (E_WL is fine). The [film, sphere] island bracket 1.199-1.317 eV contains the 1.30 eV macro-PL band (dl_chatz_EX_bracket) and one shear factor s ~ 0.15-0.30 closes E_X (1.283-1.30 eV) and Delta_E together. The earlier reason (no piezoelectric field) has the WRONG SIGN: a built-in field red-shifts E_X. The film default stays; this item stays as the documented film miss"}
   - {id: kd_dl_chatz_EX_pin, class: KD, desc: "regression pin: dot_levels Chatzarakis-geometry E_X (eV)", source: dot_levels.chatz_EX_eV, paper: {pin: 1.199, pin_note: "observed 2026-10-12 at HEAD deb733a (verify_dot_levels.py known-deviation table)"}, tol: {kind: regression, value: 0.002}, tol_reason: "drift guard only: deterministic solver, 2 meV", expect: pass}
-  - {id: kd_dl_chatz_dEWL, class: KD, desc: "dot_levels dE_pair_WL (meV), no-SSL, vs Chatzarakis Delta_E", source: dot_levels.chatz_dEWL_meV, paper: {value: 110.0, err: 10.0, tag: V, where: "Chatzarakis 2023: Delta_E = E_WL - E_QD = 110 +- 10 meV (no-SSL sample)"}, tol: {kind: abs, value: 10.0}, tol_reason: "published uncertainty +-10 meV", expect: fail, reason: "SAME ROOT CAUSE as kd_dl_chatz_EX, not an independent failure (p2-rootcause 5a): dE_pair_WL = E_WL - E_X, E_WL is fine, the dot level is ~85-90 meV too deep, giving +92 meV. The earlier piezo-field-omission reason had the wrong sign (a built-in field would lower E_X further). Lifting E_X to ~1.29-1.33 eV gives dE_WL 107-118 meV"}
+  - {id: kd_dl_chatz_dEWL, class: KD, desc: "dot_levels dE_pair_WL (meV), no-SSL, vs Chatzarakis Delta_E", source: dot_levels.chatz_dEWL_meV, paper: {value: 110.0, err: 10.0, tag: V, where: "Chatzarakis 2023: Delta_E = E_WL - E_QD = 110 +- 10 meV (no-SSL sample)"}, tol: {kind: abs, value: 10.0}, tol_reason: "published uncertainty +-10 meV", expect: fail, reason: "SAME ROOT CAUSE as kd_dl_chatz_EX (film shear in a 3D island, r2-physics-b Q2), not an independent failure: dE_pair_WL = E_WL(film) - E_X, E_WL is fine, the film dot level is ~85-90 meV too deep, giving +92 meV. The island bracket [sphere, film] = 84-202 meV contains 110 meV (dl_chatz_dEWL_bracket) and the SAME s that fixes E_X fixes this (verify_island_strain check 6)"}
   - {id: kd_dl_chatz_dEWL_pin, class: KD, desc: "regression pin: dot_levels dE_pair_WL no-SSL (meV)", source: dot_levels.chatz_dEWL_meV, paper: {pin: 202.0, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, 2 meV", expect: pass}
   - {id: kd_dl_ssl0_dEWL, class: KD, desc: "as-configured END-MEMBER (not the sample): dot_levels dE_pair_WL, zero-spacer SSL limit (meV), vs Chatzarakis SSL Delta_E", source: dot_levels.ssl0_dEWL_meV, paper: {value: 240.0, err: 20.0, tag: V, where: "Chatzarakis 2023: SSL sample (<Al> = 65%) Delta_E = 240 +- 20 meV"}, tol: {kind: abs, value: 20.0}, tol_reason: "published uncertainty +-20 meV", expect: fail, reason: "ILL-POSED comparison (p2-rootcause 5c): +307 meV; a zero-spacer uniform Al0.57Ga0.43As is an end-member, not the measured <Al> = 65 % GaAs 0.86 nm / AlAs 1.6 nm structure. Kept as a pin-backed end-member; the sample itself is compared in dl_ssl_shift_faithful"}
   - {id: kd_dl_ssl0_dEWL_pin, class: KD, desc: "regression pin: dot_levels zero-spacer dE_pair_WL (meV)", source: dot_levels.ssl0_dEWL_meV, paper: {pin: 547.0, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, 2 meV", expect: pass}
   - {id: kd_dl_ssl_shift, class: KD, desc: "as-configured (non-faithful inputs: 2 nm [A] GaAs spacer, Al 0.57): dot_levels SSL-induced dE_pair_WL increase (meV)", source: dot_levels.ssl_shift_meV, paper: {value: 130.0, err: 22.4, tag: DR, where: "Chatzarakis 2023: 240 +- 20 minus 110 +- 10 meV; err = hypot(20, 10)"}, tol: {kind: abs, value: 22.4}, tol_reason: "propagated published uncertainty hypot(20,10)", expect: fail, reason: "INPUT ERROR, not a model miss (p2-rootcause 5b): model +49 meV (-81 meV) because the evaluator used a 2 nm GaAs spacer [A] and Al 0.57, whereas the paper's 240 meV sample is <Al> = 65 % = GaAs 0.86 nm / AlAs 1.6 nm. The earlier mechanism (uniform-alloy barrier underestimates the confinement) was wrong. With the paper's own inputs see dl_ssl_shift_faithful"}
   - {id: kd_dl_ssl_shift_pin, class: KD, desc: "regression pin: dot_levels SSL shift at 2 nm spacer (meV)", source: dot_levels.ssl_shift_meV, paper: {pin: 49.0, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, 2 meV", expect: pass}
-  - {id: kd_dl_reischle_EX, class: KD, desc: "dot_levels InP/GaInP E_X (eV) vs Reischle single-dot lines", source: dot_levels.reischle_EX_eV, paper: {lo: 1.815, hi: 1.95, tag: V, where: "Reischle, Opt. Express 16, 12771 (2008): 1.815-1.836 eV; Reischle, APL 97, 143513 (2010): ~1.84-1.95 eV (single-dot lines, dot size not reported)"}, tol: {kind: range}, tol_reason: "union of the two papers' reported line ranges", expect: fail, reason: "dot size is UNPUBLISHED (p2-rootcause 5d): the preset's 3 nm x R10 [A] dot is too large; h 1.5 nm / R 6 nm gives 1.862 eV and h 2 nm / R 5 nm gives 1.817 eV, both inside 1.815-1.95. A b-class unknown, not a solver miss; the preset is not edited (it drives the RT edge chain; user decision)"}
+  - {id: kd_dl_reischle_EX, class: KD, desc: "dot_levels InP/GaInP E_X (eV) vs Reischle single-dot lines", source: dot_levels.reischle_EX_eV, paper: {lo: 1.815, hi: 1.95, tag: V, where: "Reischle, Opt. Express 16, 12771 (2008): 1.815-1.836 eV; Reischle, APL 97, 143513 (2010): ~1.84-1.95 eV (single-dot lines, dot size not reported)"}, tol: {kind: range}, tol_reason: "union of the two papers' reported line ranges", expect: fail, reason: "dot size is UNPUBLISHED (p2-rootcause 5d) AND film shear in a 3D island (r2-physics-b Q2): the preset's 3 nm x R10 [A] dot gives 1.686 eV film / 1.756 island / 1.751 sphere, still ~60 meV below 1.815; h 2 nm x R 8 nm gives an island bracket 1.784-1.830 eV (inside the range). A size unknown plus one strain cause, not a solver miss; the preset is not edited (it drives the RT-edge chain; user decision)"}
   - {id: kd_dl_reischle_EX_pin, class: KD, desc: "regression pin: dot_levels InP/GaInP E_X (eV)", source: dot_levels.reischle_EX_eV, paper: {pin: 1.686, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 0.002}, tol_reason: "drift guard only, 2 meV", expect: pass}
-  - {id: kd_dl_pryor_Ve, class: KD, desc: "dot_levels InP/GaInP conduction offset V_e (meV) vs Pryor", source: dot_levels.pryor_Ve_meV, paper: {value: 250.0, err: 10.0, tag: V, where: "Pryor, Pistol, Samuelson, PRB 56, 10404 (1997): ~250 meV (6-band k.p), 240 meV (DLTS); err = their 10 meV spread"}, tol: {kind: abs, value: 10.0}, tol_reason: "spread between the two Pryor numbers [E]", expect: fail, reason: "model 436 meV = 1.7x Pryor, driven by the dot_levels.py:803-806 override {dot-matrix: -0.045 eV} (InP VB BELOW GaInP), which adds ~+214 meV to V_e. FLAGGED TRANSCRIPTION TO RE-CHECK (p2-rootcause 5d): that sign makes the unstrained hole alignment unusual for InP/GaInP. The override is NOT changed here (user decision); the model-solid value is in kd_dl_pryor_Ve_modelsolid"}
+  - {id: kd_dl_pryor_Ve, class: KD, desc: "dot_levels InP/GaInP conduction offset V_e (meV) vs Pryor", source: dot_levels.pryor_Ve_meV, paper: {value: 250.0, err: 10.0, tag: V, where: "Pryor, Pistol, Samuelson, PRB 56, 10404 (1997): ~250 meV (6-band k.p), 240 meV (DLTS); err = their 10 meV spread"}, tol: {kind: abs, value: 10.0}, tol_reason: "spread between the two Pryor numbers [E]", expect: fail, reason: "V_e = 0.385 eV - VBO with the V01 inputs at 5 K (E_g(GaInP) - E_g(InP) - a_c tr(eps) - VBO); strain-state independent (tr(eps) is shape-invariant, [DR], verify_island_strain check 4), so no film/island/sphere choice reaches 250 meV; that needs Pryor's own bulk parameters / 6-band k.p. The -45 meV VBO sign is [V] (Pryor: InP VB BELOW GaInP; _goal/materials_factcheck.md:256) and is KEPT: it reproduces the strain-only hole barrier V_h ~ 91 meV (Pryor/Hayne/Bommer class) that model-solid (304 meV) does not. NOT a transcription error"}
   - {id: kd_dl_pryor_Ve_pin, class: KD, desc: "regression pin: dot_levels V_e InP/GaInP (meV)", source: dot_levels.pryor_Ve_meV, paper: {pin: 436.0, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, 2 meV", expect: pass}
   - {id: kd_dl_laf_EX, class: KD, desc: "dot_levels InAs/InP telecom dot E_X (eV, 300 K) vs Laferriere single-dot lines", source: dot_levels.laf_EX_eV, paper: {lo: 0.887, hi: 0.953, tag: V, where: "Laferriere et al., Nano Lett. 23, 962 (2023): 1301-1398 nm, 4-300 K (extra item beyond the spec's four dot_levels comparisons)"}, tol: {kind: range}, tol_reason: "the paper's reported line range", expect: fail, reason: "WRONG PRESET + WRONG COMPARISON (p2-rootcause 5e): pure-InAs preset (model 0.768 eV) vs the paper's InAs0.68P0.32 dot in an InAs0.5P0.5 rod, compared against a 4-300 K union although the preset is evaluated at 300 K (measured 0.887 eV there). Superseded by dl_laf_EX_faithful_bracket"}
   - {id: kd_dl_laf_EX_pin, class: KD, desc: "regression pin: dot_levels InAs/InP E_X (eV)", source: dot_levels.laf_EX_eV, paper: {pin: 0.768, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 0.002}, tol_reason: "drift guard only, 2 meV", expect: pass}
-  - {id: kd_dl_gu_EX, class: KD, desc: "dot_levels HKUST InP/GaAsP E_X (eV, 5.5 nm) vs Gu ensemble line", source: dot_levels.gu_EX_eV, paper: {lo: 1.643, hi: 1.653, tag: V, where: "Gu et al., Opt. Express 33, 23732 (2025): 750-755 nm ensemble PL/lasing"}, tol: {kind: range}, tol_reason: "the paper's reported wavelength range", expect: fail, reason: "model-class gap (p2-rootcause 5f): +159-169 meV low; still ~90 meV low at 3 nm x R8, outside the paper's 4-7 nm island range, and the measurement is an ENSEMBLE line. Common pattern across the InP/InGaAs presets: E_X 60-160 meV LOW (single band + biaxial-film strain for 3D islands); class accuracy for E_X is about +-150 meV"}
+  - {id: kd_dl_gu_EX, class: KD, desc: "dot_levels HKUST InP/GaAsP E_X (eV, 5.5 nm) vs Gu ensemble line", source: dot_levels.gu_EX_eV, paper: {lo: 1.643, hi: 1.653, tag: V, where: "Gu et al., Opt. Express 33, 23732 (2025): 750-755 nm ensemble PL/lasing"}, tol: {kind: range}, tol_reason: "the paper's reported wavelength range", expect: fail, reason: "film shear in a 3D island (r2-physics-b Q2) plus an ENSEMBLE observable: the [film, sphere] bracket is 1.484-1.559 eV, so the island model closes ~75 of ~160 meV; the residual ~85 meV (composition / alloy ordering unknown, type-I/II mixed, hole unbound once the shear relaxes) is not in the model (dl_gu_EX_bracket). Class accuracy for E_X is the [film, sphere] band, not +-150 meV"}
   - {id: kd_dl_gu_EX_pin, class: KD, desc: "regression pin: dot_levels HKUST InP/GaAsP E_X (eV)", source: dot_levels.gu_EX_eV, paper: {pin: 1.484, pin_note: "observed 2026-10-12, HEAD deb733a"}, tol: {kind: regression, value: 0.002}, tol_reason: "drift guard only, 2 meV", expect: pass}
 
   # ------------------------------------------------------------------ devlib-rc2: faithful-input dot_levels items (pre-registered before the first run)
@@ -183,7 +188,7 @@ items:
   - {id: dl_ssl_shift_faithful, class: U, desc: "FAITHFUL INPUTS (paper's <Al> 65 % sample: 0.86 nm GaAs layer, Al0.65 barrier): dot_levels SSL-induced dE_pair_WL increase (meV)", source: dot_levels.ssl_shift_faithful_meV, paper: {value: 130.0, err: 22.4, tag: DR, where: "Chatzarakis 2023: 240 +- 20 minus 110 +- 10 meV; err = hypot(20, 10); sample <Al> = 65 % = GaAs 8.6 A / AlAs 16 A (_goal/paper_digests.md Paper 3)"}, tol: {kind: abs, value: 22.4}, tol_reason: "propagated published uncertainty hypot(20,10); same tolerance as the as-configured item", expect: pass}
   - {id: dl_ssl_shift_faithful_pin, class: KD, desc: "regression pin: dot_levels SSL shift, faithful inputs (meV)", source: dot_levels.ssl_shift_faithful_meV, paper: {pin: 131.6, pin_note: "recorded in p2-rootcause 5b (faithful-input SSL run)"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, 2 meV", expect: pass}
   # 7b Pryor V_e with the model-solid VBO (dot-matrix = E_v0(InP) - E_v0(GaInP) from the module's own materials = +0.168 eV)
-  - {id: kd_dl_pryor_Ve_modelsolid, class: KD, desc: "dot_levels InP/GaInP V_e (meV) with the MODEL-SOLID unstrained VBO (+0.168 eV, instead of the -45 meV override) vs Pryor", source: dot_levels.pryor_Ve_modelsolid_meV, paper: {value: 250.0, err: 10.0, tag: V, where: "Pryor, Pistol, Samuelson, PRB 56, 10404 (1997): ~250 meV (6-band k.p), 240 meV (DLTS); err = their 10 meV spread"}, tol: {kind: abs, value: 10.0}, tol_reason: "spread between the two Pryor numbers [E]; same tolerance as kd_dl_pryor_Ve", expect: fail, reason: "p2-rootcause 5d: the self-consistent model-solid VBO gives 222 meV, 28 meV from Pryor (outside +-10): the strained offset of Pryor's own k.p calculation is not reproduced by this module's linear deformation-potential strain. Informational for the user decision on the -45 meV override (NOT changed here)"}
+  - {id: kd_dl_pryor_Ve_modelsolid, class: KD, desc: "dot_levels InP/GaInP V_e (meV) with the MODEL-SOLID unstrained VBO (+0.168 eV, instead of the -45 meV override) vs Pryor", source: dot_levels.pryor_Ve_modelsolid_meV, paper: {value: 250.0, err: 10.0, tag: V, where: "Pryor, Pistol, Samuelson, PRB 56, 10404 (1997): ~250 meV (6-band k.p), 240 meV (DLTS); err = their 10 meV spread"}, tol: {kind: abs, value: 10.0}, tol_reason: "spread between the two Pryor numbers [E]; same tolerance as kd_dl_pryor_Ve", expect: fail, reason: "coincidental: the wrong-sign model-solid VBO (+0.168 eV) cancels the V01 a_c tr(eps) term (V_e = 0.385 - 0.168 = 217-222 meV, 28 meV from Pryor, still outside +-10); its hole barrier of 304 meV contradicts Pryor (holes confined by strain only) and Bommer (E_a(X) = 96 +- 7 meV). Informational; NOT promoted to a pass and not an anchor"}
   # 7c Laferriere faithful preset (presets.LEVEL_PRESETS): bracket over the axial (InAs0.5P0.5 rod) / radial (InP) matrix at 300 K.
   - id: dl_laf_EX_faithful_bracket
     class: U
@@ -195,27 +200,70 @@ items:
     tol_reason: "the report framed the comparison as a bracket because the separable disk cannot hold the real axial-rod/radial-InP structure (p2-rootcause 5e); pass iff the measured value lies inside [E_X(rod matrix), E_X(InP matrix)] at 300 K. The dot radius (unpublished) is fixed at its upper limit D_c/2, not swept"
     expect: pass
 
-  # 6b nitride planar (production fsim_core.nitride_levels, same calls as verify_nitride_levels.py N6)
-  - id: kd_nit_desh2013_lambda
-    class: KD
-    desc: "WRONG DEVICE CLASS (planar model on a nanowire dot): planar nitride Deshpande-2013 geometry X wavelength (nm, 300 K, unscreened) vs measured 436.56 nm"
-    source: nitride.desh2013_lambda_nm
-    paper: {value: 436.56, tag: V, where: "Deshpande et al., Nat. Commun. 4, 1675 (2013), Fig. 3c (single-dot EL X line, measured at 25 K); fsim_core.nitride_levels.DESHPANDE2013_X_NM"}
-    tol: {kind: energy_meV, value: 60.0}
-    tol_reason: "spec's pre-registered +-60 meV energy gate for the 2013 anchor; same gate used for the nanowire model below"
+
+  # ------------------------------------------------------------------ devlib-r2-physb: island strain brackets (pre-registered from the answer)
+  # contained: paper value inside [model(source), model(source_hi)]; film/sphere are the s = 1 / s = 0 strain-state limits.
+  - id: dl_chatz_EX_bracket
+    class: U
+    desc: "island bracket: Chatzarakis macro-PL E_X inside [film, sphere] E_X of the In0.5Ga0.5As/GaAs preset (eV)"
+    source: dot_levels.chatz_EX_film_eV
+    source_hi: dot_levels.chatz_EX_sphere_eV
+    paper: {value: 1.30, tag: V, where: "Chatzarakis et al., PRApplied 20, 034011 (2023): macro-PL QD band 1.30 eV (single dots 1.283-1.44 eV)"}
+    tol: {kind: contained}
+    tol_reason: "the buried 3D island lies between the biaxial-film (s = 1) and full-shear-relaxation sphere (s = 0) strain states (r2-physics-b Q2); pass iff the measured band lies inside the bracket"
+    expect: pass
+  - id: dl_chatz_dEWL_bracket
+    class: U
+    desc: "island bracket: Chatzarakis Delta_E = E_WL - E_QD inside [sphere, film] dE_pair_WL (meV), SAME strain states as dl_chatz_EX_bracket"
+    source: dot_levels.chatz_dEWL_sphere_meV
+    source_hi: dot_levels.chatz_dEWL_film_meV
+    paper: {value: 110.0, err: 10.0, tag: V, where: "Chatzarakis 2023: Delta_E = 110 +- 10 meV (no-SSL sample)"}
+    tol: {kind: contained}
+    tol_reason: "same bracket logic; the WL stays a film so dE_pair_WL = E_WL(film) - E_X(model) falls as s falls"
+    expect: pass
+  - id: dl_gu_EX_bracket
+    class: U
+    desc: "island bracket: Gu HKUST ensemble line (centre of 750-755 nm) inside [film, sphere] E_X of the InP/GaAs0.65P0.35 preset at 5.5 nm (eV)"
+    source: dot_levels.gu_EX_film_eV
+    source_hi: dot_levels.gu_EX_sphere_eV
+    paper: {value: 1.648, tag: V, where: "Gu et al., Opt. Express 33, 23732 (2025): 750-755 nm ensemble PL/lasing (centre 752.5 nm = 1.648 eV)"}
+    tol: {kind: contained}
+    tol_reason: "same bracket logic as dl_chatz_EX_bracket"
     expect: fail
-    reason: "WRONG DEVICE CLASS (p2-rootcause 4a): the measured dot is a dot-in-NANOWIRE; the planar module puts the fully strained unscreened field (-4039 kV/cm, overlap^2 0.096) on it. 498 vs 436.6 nm (about 350 meV); the 300 K vs 25 K mismatch accounts for only 66 meV (see kd_nit_desh2013_lambda_25K), 287 meV remain from the field. The applicable comparison is nw_desh2013_lambda"
+    reason: "ensemble line with unknown composition / alloy ordering and a type-I/II-mixed alignment; the island model closes ~75 of ~160 meV and leaves ~85 meV (bracket 1.484-1.559 eV vs 1.648)"
+  - id: dl_reischle_EX_bracket
+    class: U
+    desc: "island bracket at the preset size (h 3 nm, R 10 nm [A]): Reischle lowest single-dot line inside [film, sphere] E_X (eV)"
+    source: dot_levels.reischle_EX_film_eV
+    source_hi: dot_levels.reischle_EX_sphere_eV
+    paper: {value: 1.815, tag: V, where: "Reischle, Opt. Express 16, 12771 (2008): 1.815-1.836 eV single-dot lines (dot size not reported)"}
+    tol: {kind: contained}
+    tol_reason: "same bracket logic; the lowest reported line is used (the most favourable anchor)"
+    expect: fail
+    reason: "dot size is unpublished: the preset's 3 nm x R10 [A] dot is too large (bracket 1.686-1.751 eV, ~60 meV below 1.815); a h 2 nm x R 8 nm dot gives a bracket 1.784-1.830 eV that holds 1.815-1.83, so this is a size unknown, not a strain failure. The preset is not edited"
+  - id: dl_bommer_Vh_hole_barrier
+    class: H
+    desc: "hole side of the Pryor -45 meV override: bommer-preset dot->matrix hole depth V_h (meV, film, 5 K) vs Bommer E_a(X)"
+    source: dot_levels.bommer_Vh_meV
+    paper: {value: 96.0, err: 7.0, tag: V, where: "Bommer et al. 2011 (digest, _goal/materials_factcheck.md:258): E_a(X) = 96 +- 7 meV in InP/(Al0.2Ga0.8)InP"}
+    tol: {kind: abs, value: 30.0}
+    tol_reason: "[E] +-30 meV: an activation energy is not a band offset (exciton binding ~25 meV, both carriers enter)"
+    expect: fail
+    reason: "the bommer preset (Pryor VBO transferred through the model-solid GaInP -> (Al0.2Ga0.8)InP step) gives V_h = 138 meV, +42 meV from 96 (outside the registered 66-126 window); the 91 meV quoted in the brief is the Reischle (GaInP matrix) preset. Registered fail and kept as the anchor, as prescribed; the Al step's model-solid VBO (~+47 meV) is the likely excess"
+
+  # 6b nitride planar (production fsim_core.nitride_levels, same calls as verify_nitride_levels.py N6)
   - {id: kd_nit_desh2013_lambda_pin, class: KD, desc: "regression pin: planar Deshpande-2013 geometry lambda (nm)", source: nitride.desh2013_lambda_nm, paper: {pin: 498.0, pin_note: "audit-recorded 498 nm (p0-verifiability.md)"}, tol: {kind: regression, value: 1.0}, tol_reason: "drift guard only, 1 nm", expect: pass}
   - id: kd_nit_zhang2013_tau
     class: KD
     desc: "WRONG DEVICE CLASS (planar model on a pillar dot): planar nitride Zhang-2013 geometry radiative lifetime (ns, 300 K) vs measured 3.40 ns"
     source: nitride.zhang2013_tau_ns
-    paper: {value: 3.40, tag: V, where: "Zhang et al., APL 103, 192114 (2013), Fig. 2 (mono-exponential, 10 K); fsim_core.nitride_levels.ZHANG2013_LIFETIME_NS; no uncertainty printed in the module"}
+    paper: {value: 3.40, tag: V, where: "Zhang et al., APL 103, 192114 (2013), Fig. 2 (mono-exponential, 10 K); fsim_core.nitride_levels.ZHANG2013_LIFETIME_NS; no uncertainty printed in the module. Evaluated at 10 K since devlib-r2-physb"}
     tol: {kind: rel, value: 0.5}
     tol_reason: "[E] the paper prints no lifetime error; a generous +-50% (mono-exponential TRPL fit class) is registered"
     expect: fail
-    reason: "WRONG DEVICE CLASS (p2-rootcause 4b): the measured dot is a D = 29 nm PILLAR dot, partially strain-relaxed; the planar module gives overlap^2 0.012-0.013 and 106 ns (102 ns at 10 K) vs 3.4 ns. Not a test of the planar model. A one-parameter partial-relaxation fit explains both tau and E_X, but that is a fit, not a test, and is not added here"
-  - {id: kd_nit_zhang2013_tau_pin, class: KD, desc: "regression pin: planar Zhang-2013 geometry lifetime (ns)", source: nitride.zhang2013_tau_ns, paper: {pin: 106.0, pin_note: "audit-recorded 106 ns (p0-verifiability.md)"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, about 2%", expect: pass}
+    reason: "planar unrelaxed field; see the pillar items nit_zhang2013_* (r2-physics-b Q3b): the planar module puts the 2.4 MV/cm unrelaxed film field on a D = 29 nm pillar dot: overlap^2 0.013 -> 102 ns at the 10 K measurement temperature (106 ns at 300 K, which is what this item compared before) vs 3.40 ns. Nonlinear polarization changes F by only ~5 % (tested), so it is not the fix. The pillar relaxes the shear and part of the piezo charge at the free sidewall; the one-parameter fit is in nit_zhang2013_tau_fit_sf / nit_zhang2013_EX_heldout"
+  - {id: kd_nit_zhang2013_tau_pin, class: KD, desc: "regression pin: planar Zhang-2013 geometry lifetime at 300 K (ns)", source: nitride.zhang2013_tau_ns_300K, paper: {pin: 106.0, pin_note: "audit-recorded 106 ns (p0-verifiability.md); 300 K evaluation kept as the pin after the item moved to 10 K"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, about 2%", expect: pass}
+  - {id: kd_nit_zhang2013_tau_10K_pin, class: KD, desc: "regression pin: planar Zhang-2013 geometry lifetime at the 10 K measurement temperature (ns)", source: nitride.zhang2013_tau_ns, paper: {pin: 101.8, pin_note: "observed 2026-10-12 (r2-physics-b probe: 102 ns at 10 K)"}, tol: {kind: regression, value: 2.0}, tol_reason: "drift guard only, about 2%", expect: pass}
   - id: kd_nit_desh2014_g2
     class: KD
     desc: "WRONG DEVICE CLASS (planar platform for a nanowire experiment): planar nitride comparison card (Deshpande 2014) g2_op vs measured 0.29"
@@ -224,20 +272,52 @@ items:
     tol: {kind: abs, value: 0.10}
     tol_reason: "[E] the abstract prints no error; +-0.1 registered, matching the Reischle item"
     expect: fail
-    reason: "WRONG DEVICE CLASS + CONDITIONS INCOMPLETE (p2-rootcause 4c): 0.988 vs 0.29 (scripts.run_nitride_cavity._row comparison row, production evaluate()). The card puts a nanowire experiment on the planar module (F = -6294 kV/cm, S_X 4e-4); relaxing it (strain_fraction 0.5/0.25/0) still gives 0.775/0.810/0.823 because with gamma300 = 35 meV and |delta_xx| = 10 meV the XX is fully inside the window (cap-2 Poisson floor, no XX-selective loss, I_uA = 0.02 [A]). The planar 0.988 says nothing about the model"
+    reason: "XX unresolved at 35 meV -> model floor ~1 at low mu on either counting law (pulsed Poisson cap-2 and CW), conditions incomplete (abstract only), plus WRONG DEVICE CLASS (planar platform, F = -6294 kV/cm, S_X 4e-4, so 0.988 means nothing). Relaxing the planar card still gives 0.775-0.823 because gamma300 = 35 meV >> |delta_xx| = 10 meV puts the XX inside the X line (eps ~ 1). 0.29 requires an XX-selective loss k_nr_XX ~ 2.4 gamma_XX = 3.8/ns [DR, an XX Auger-class or filter loss] or a filter < 10 meV; neither is stated in the abstract. See the nw_desh2014_* diagnostics (opt-in k_nr_XX_ns; never tuned)"
   - {id: kd_nit_desh2014_g2_pin, class: KD, desc: "regression pin: nitride comparison card g2_op", source: nitride.desh2014_g2, paper: {pin: 0.988, pin_note: "audit-recorded 0.988 (p0-verifiability.md)"}, tol: {kind: regression, value: 0.01}, tol_reason: "drift guard only, 0.01", expect: pass}
 
-  # 6b-bis Deshpande-2013 temperature-matched planar evaluation (devlib-rc2). Pre-registered from the root-cause report
-  # (p2-rootcause 4a): the planar field still misses by ~287 meV at 25 K (485.7 nm).
-  - id: kd_nit_desh2013_lambda_25K
-    class: KD
-    desc: "WRONG DEVICE CLASS, temperature-matched: planar nitride Deshpande-2013 geometry X wavelength at 25 K (nm) vs measured 436.56 nm"
-    source: nitride.desh2013_lambda_nm_25K
-    paper: {value: 436.56, tag: V, where: "Deshpande et al., Nat. Commun. 4, 1675 (2013), Fig. 3c (25 K EL X line); fsim_core.nitride_levels.DESHPANDE2013_X_NM"}
+  # 6b-bis Deshpande-2013: the planar items kd_nit_desh2013_lambda (498 nm, 300 K) and kd_nit_desh2013_lambda_25K (485.7 nm,
+  # 25 K) were RETIRED to the regression pins above/below by devlib-r2-physb: the planar model is the wrong device class for
+  # a dot-in-nanowire (dipole layer cannot be screened by <= 1 injected pair per dot, F shifts 0.03 MV/cm; the field must be
+  # small intrinsically = relaxation). The applicable comparison is the nanowire pair nw_desh2013_lambda and the field-free
+  # bracket nw_desh2013_EX_fieldfree_bracket below.
+  - {id: kd_nit_desh2013_lambda_25K_pin, class: KD, desc: "regression pin: planar Deshpande-2013 geometry lambda at 25 K (nm)", source: nitride.desh2013_lambda_nm_25K, paper: {pin: 485.7, pin_note: "observed 2026-10-12 (rc2 temperature-matched planar evaluation); item retired to a pin by devlib-r2-physb"}, tol: {kind: regression, value: 1.0}, tol_reason: "drift guard only, 1 nm", expect: pass}
+
+
+  # ------------------------------------------------------------------ devlib-r2-physb: Zhang 2013 pillar items (10 K)
+  - id: nit_zhang2013_tau_bracket
+    class: U
+    desc: "strain x screening bracket: Zhang 3.40 ns lifetime inside [field-free, planar unscreened strained] tau at 10 K (ns)"
+    source: nitride.zhang2013_tau_lo_ns
+    source_hi: nitride.zhang2013_tau_hi_ns
+    paper: {value: 3.40, tag: V, where: "Zhang et al., APL 103, 192114 (2013), Fig. 2 (mono-exponential, 10 K)"}
+    tol: {kind: contained}
+    tol_reason: "low-information honest bracket (r2-physics-b Q3b): the etched pillar lies between the field-free dot (relaxed, or strained + fully screened) and the unrelaxed unscreened planar film field"
+    expect: pass
+  - id: nit_zhang2013_EX_bracket
+    class: U
+    desc: "strain x screening bracket: Zhang 2.95 eV ZPL inside [strained unscreened, strained screened] E_X at 10 K (eV)"
+    source: nitride.zhang2013_EX_lo_eV
+    source_hi: nitride.zhang2013_EX_hi_eV
+    paper: {value: 2.95, tag: V, where: "Zhang 2013 Fig. 2: ZPL 2.95 eV at 10 K (fsim_core.nitride_levels.ZHANG2013_ZPL_EV)"}
+    tol: {kind: contained}
+    tol_reason: "same bracket logic as nit_zhang2013_tau_bracket"
+    expect: pass
+  - id: nit_zhang2013_tau_fit_sf
+    class: C
+    desc: "CALIBRATION: strain_fraction fitted on the 3.40 ns lifetime ONLY (a pillar-relaxation [A]); model tau at the fitted value (ns)"
+    source: nitride.zhang_fit_tau_ns
+    paper: {value: 3.40, tag: V, where: "Zhang 2013 Fig. 2 (10 K)"}
+    tol: {kind: rel, value: 0.01}
+    tol_reason: "exact by construction (brentq on tau); 1 % only guards the root-finder. The fitted sf (reported in the verifier, ~0.32) is a pillar relaxation / partial piezo-charge loss, never fitted on E_X"
+    expect: pass
+  - id: nit_zhang2013_EX_heldout
+    class: H
+    desc: "HELD-OUT: Zhang X wavelength at the tau-fitted strain_fraction vs the 2.95 eV ZPL (nm)"
+    source: nitride.zhang_fit_lambda_nm
+    paper: {value: 420.28, tag: DR, where: "Zhang 2013 Fig. 2: ZPL 2.95 eV -> 1239.842/2.95 = 420.28 nm"}
     tol: {kind: energy_meV, value: 60.0}
-    tol_reason: "same pre-registered +-60 meV gate as nw_desh2013_lambda; removes the 300 K vs 25 K mismatch from the planar comparison"
-    expect: fail
-    reason: "WRONG DEVICE CLASS (p2-rootcause 4a): at the measurement temperature the planar module gives 485.7 nm (~287 meV from the unscreened, fully strained field F = -4039 kV/cm, overlap^2 0.096), so the 66 meV temperature mismatch is NOT the cause; strain_fraction 0 -> 0.25 would land inside the gate, i.e. the nanowire partial relaxation is what the planar model lacks"
+    tol_reason: "pre-registered +-60 meV energy gate (same as the Deshpande 2013 gate); the paper's own dot-to-dot spread is 34.5 meV and 1 % In = 40 meV, so +46 meV is one dot-to-dot sigma"
+    expect: pass
 
   # 6c nanowire (production fsim_core.nitride_nanowire_levels / nitride_nanowire_photonics)
   - id: nw_desh2013_lambda
@@ -247,6 +327,35 @@ items:
     paper: {value: 436.56, tag: V, where: "Deshpande 2013 Fig. 3c (25 K EL X line); fsim_core.nitride_levels.DESHPANDE2013_X_NM"}
     tol: {kind: energy_meV, value: 60.0}
     tol_reason: "spec's pre-registered +-60 meV gate (U); about 9 nm at 437 nm"
+    expect: pass
+
+  # ------------------------------------------------------------------ devlib-r2-physb: Desh2013 field-free bracket, Desh2014 XX diagnostics
+  - id: nw_desh2013_EX_fieldfree_bracket
+    class: U
+    desc: "nanowire path, 25 K: measured X energy inside [relaxed F = 0, unrelaxed fully screened] E_X (eV) -- the field-free 2D bracket"
+    source: nanowire.desh2013_EX_relaxed_F0_eV
+    source_hi: nanowire.desh2013_EX_unrelaxed_scr1_eV
+    paper: {value: 2.8402, tag: DR, where: "Deshpande 2013 Fig. 3c: 436.56 nm -> 1239.842/436.56 = 2.8402 eV"}
+    tol: {kind: contained}
+    tol_reason: "the wire is field-free (the authors' < 2 meV blueshift [V]); the two field-free readings are partial strain retention ~0.5 vs full relaxation at x ~ 0.235 (r2-physics-b Q3a); the measured value must lie between full relaxation and full strain, both with F = 0"
+    expect: pass
+  - {id: nw_desh2014_g2_rect_pin, class: KD, desc: "regression pin: nanowire-path Deshpande-2014-like g2 baseline (horizontal_as_built, x 0.40, relaxed, 300 K, 200 MHz, rectangular pulse regime)", source: nanowire.desh2014_nw_g2_rect, paper: {pin: 0.667, pin_note: "observed 2026-10-12; the brief's >= 0.77 floor was quoted for a different (planar-derived) probe"}, tol: {kind: regression, value: 0.01}, tol_reason: "drift guard only", expect: pass}
+  - {id: nw_desh2014_g2_set_pin, class: KD, desc: "regression pin: same, deterministic_pair (idealised SET) regime", source: nanowire.desh2014_nw_g2_set, paper: {pin: 0.319, pin_note: "observed 2026-10-12"}, tol: {kind: regression, value: 0.01}, tol_reason: "drift guard only", expect: pass}
+  - id: nw_desh2014_g2_rect_knrXX_diag
+    class: KD
+    desc: "[A] DIAGNOSTIC, NOT A VALIDATION: nanowire-path g2 (rectangular) with the opt-in XX-only loss k_nr_XX_ns = 3.8/ns (= 2.4 gamma_XX) vs the measured 0.29"
+    source: nanowire.desh2014_nw_g2_rect_knrXX
+    paper: {value: 0.29, err: 0.1, tag: V, where: "Deshpande et al., APL 105, 141109 (2014), abstract-only; CONDITIONS INCOMPLETE; err is an [E] +-0.1 (same as kd_nit_desh2014_g2)"}
+    tol: {kind: abs, value: 0.10}
+    tol_reason: "[E] same +-0.1 as the registered Desh2014 item; k_nr_XX was SOLVED from g2 ~ S_XX = 0.29 in the eps = 1 limit (r2-physics-b Q3c), so agreement is circular and is informational only"
+    expect: pass
+  - id: nw_desh2014_g2_set_knrXX_diag
+    class: KD
+    desc: "[A] DIAGNOSTIC, NOT A VALIDATION: same with the idealised deterministic_pair (SET) counting"
+    source: nanowire.desh2014_nw_g2_set_knrXX
+    paper: {value: 0.29, err: 0.1, tag: V, where: "Deshpande 2014 abstract-only; err [E] +-0.1"}
+    tol: {kind: abs, value: 0.10}
+    tol_reason: "[E] same +-0.1; circular for the same reason; which counting regime the paper used is undecided (abstract only; '200 MHz' suggests pulsed)"
     expect: pass
   - id: kd_nw_claudon_eta
     class: KD
@@ -262,5 +371,8 @@ items:
 flips:
   - {id: dev_ibm_g2_210K, from: pass, to: fail, why: "first run: outside the pre-registered +-0.03; guess was wrong, tolerance unchanged"}
   - {id: zhao_normal, from: pass, to: fail, why: "first run: outside the script's own 1-sigma combined criterion; guess followed the script docstring, tolerance unchanged"}
+  # devlib-r2-physb (2026-10-12): NO expect flipped after a run. Removed (retired to pins, not flipped): kd_nit_desh2013_lambda,
+  # kd_nit_desh2013_lambda_25K. Retargeted: kd_nit_zhang2013_tau now evaluates at 10 K (its 300 K pin kd_nit_zhang2013_tau_pin
+  # keeps the 106 ns number through the new nitride.zhang2013_tau_ns_300K key).
   # devlib-rc2 (2026-10-12): NO flips. All 17 new/relabelled expectations matched on the first run (registered before it);
   # no tolerance was changed. Observed: reischle_dc r_set = floor 0.01/ns (r_dip = -9.6/ns: model k_X 9.6/ns vs measured ~1 ns dip).

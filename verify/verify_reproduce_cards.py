@@ -242,6 +242,11 @@ def ev_dot_levels():
     Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
     Lt = lv("InAs/InP/InP")
     Lg = lv("InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs", height_nm=5.5)
+    # r2-physics-b Q2: [film, sphere] strain-state brackets (an island lies between; V_e identical)
+    Lc_f, Lc_s = D.levels_bracket(P["InGaAs0.5/GaAs/GaAs on GaAs"]())
+    Lg_f, Lg_s = D.levels_bracket(P["InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs"](height_nm=5.5))
+    Lr_f, Lr_s = D.levels_bracket(P["InP/GaInP/AlGaInP0.55 on GaAs"]())
+    Lb = lv("InP/AlGaInP0.2/AlGaInP0.55 on GaAs")   # Bommer class: Pryor VBO transferred through the Al step
     # devlib-rc2 faithful SSL: the paper's <Al> = 65 % sample = GaAs 8.6 A / AlAs 16 A -> 0.86 nm GaAs layer, Al0.65 barrier [DR]
     Sf = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
     Sf = replace(Sf, barrier=M.AlGaAs(0.65))
@@ -255,11 +260,49 @@ def ev_dot_levels():
     from fsim_core import presets as PR
     e_rod = D.levels(PR.level_system("laferriere-inasp-0.68", T=300.0, matrix="rod")).E_X_eV
     e_inp = D.levels(PR.level_system("laferriere-inasp-0.68", T=300.0, matrix="inp")).E_X_eV
-    return {"ssl_shift_faithful_meV": float(shift_f), "pryor_Ve_modelsolid_meV": float(Lms.V_e),
+    return {"chatz_EX_film_eV": float(Lc_f.E_X_eV), "chatz_EX_sphere_eV": float(Lc_s.E_X_eV),
+            "chatz_dEWL_film_meV": float(Lc_f.dE_pair_WL), "chatz_dEWL_sphere_meV": float(Lc_s.dE_pair_WL),
+            "gu_EX_film_eV": float(Lg_f.E_X_eV), "gu_EX_sphere_eV": float(Lg_s.E_X_eV),
+            "reischle_EX_film_eV": float(Lr_f.E_X_eV), "reischle_EX_sphere_eV": float(Lr_s.E_X_eV),
+            "bommer_Vh_meV": float(Lb.V_h),
+            "ssl_shift_faithful_meV": float(shift_f), "pryor_Ve_modelsolid_meV": float(Lms.V_e),
             "laf_faithful_lo_eV": float(min(e_rod, e_inp)), "laf_faithful_hi_eV": float(max(e_rod, e_inp)),"chatz_EX_eV": float(L.E_X_eV), "chatz_dEWL_meV": float(L.dE_pair_WL),
             "ssl0_dEWL_meV": float(Lc.dE_pair_WL), "ssl_shift_meV": float(shift),
             "reischle_EX_eV": float(Lr.E_X_eV), "pryor_Ve_meV": float(Lr.V_e),
             "laf_EX_eV": float(Lt.E_X_eV), "gu_EX_eV": float(Lg.E_X_eV)}
+
+
+ZHANG_T_K = 10.0   # [V] Zhang et al., APL 103, 192114 (2013), Fig. 2: 10 K lifetime and ZPL
+
+
+def _zhang_extra(NL, zh):
+    """r2-physics-b Q3b: strain x screening brackets and the one-parameter partial-relaxation fit.
+    Brackets: lifetime between the field-free end (relaxed, or fully strained with screening 1; the smaller tau)
+    and the fully strained unscreened planar field; E_X between the strained-unscreened and the strained-screened
+    energies.  Fit: strain_fraction sf solved on the 3.40 ns lifetime ONLY (class C, exact by construction),
+    then E_X evaluated at that sf and compared with the 2.95 eV ZPL as a held-out number.  sf is a pillar-
+    relaxation [A], never fitted on E_X."""
+    from dataclasses import replace
+
+    from scipy.optimize import brentq
+
+    def lt(sf, scr=0.0):
+        lv = NL.levels(replace(zh, strain_fraction=sf, screening_fraction=scr), ZHANG_T_K)
+        if not lv.valid:
+            raise RuntimeError(f"zhang levels invalid at sf={sf}, scr={scr}: {lv.invalid_reasons}")
+        r = NL.rates(lv, ZHANG_T_K, tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)
+        return 1.0 / r["gamma_X0_ns"], lv.E_X_eV
+
+    tau_relaxed, _ = lt(0.0)
+    tau_screened, ex_screened = lt(1.0, 1.0)
+    tau_unscreened, ex_unscreened = lt(1.0, 0.0)
+    sf = brentq(lambda f: lt(f)[0] - NL.ZHANG2013_LIFETIME_NS, 0.0, 1.0, xtol=1e-9)
+    tau_fit, ex_fit = lt(sf)
+    return {"zhang2013_tau_lo_ns": float(min(tau_relaxed, tau_screened)), "zhang2013_tau_hi_ns": float(tau_unscreened),
+            "zhang2013_EX_lo_eV": float(min(ex_unscreened, ex_screened)),
+            "zhang2013_EX_hi_eV": float(max(ex_unscreened, ex_screened)),
+            "zhang_fit_tau_ns": float(tau_fit), "zhang_fit_lambda_nm": float(HC_EV_NM / ex_fit),
+            "zhang_fit_sf": float(sf)}
 
 
 def ev_nitride():
@@ -269,18 +312,51 @@ def ev_nitride():
                             radius_nm=NL.DESHPANDE2013_DIAMETER_NM / 2., x_in=NL.DESHPANDE2013_X_IN)
     zh = NitrideDotSystem(height_nm=NL.ZHANG2013_HEIGHT_NM,
                           radius_nm=NL.ZHANG2013_DIAMETER_NM / 2., x_in=NL.ZHANG2013_X_IN)
-    lv_d, lv_z = levels(desh, 300.), levels(zh, 300.)
+    lv_d, lv_z300 = levels(desh, 300.), levels(zh, 300.)
+    lv_z = levels(zh, ZHANG_T_K)   # r2-physics-b: Zhang's lifetime and ZPL are 10 K measurements
     lv_d25 = levels(desh, 25.)  # devlib-rc2: temperature-matched to the 25 K measurement
     if not (lv_d.valid and lv_z.valid):
         raise RuntimeError(f"planar nitride levels not bound: {lv_d.invalid_reasons} {lv_z.invalid_reasons}")
-    r_z = rates(lv_z, 300., tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)
+    r_z = rates(lv_z, ZHANG_T_K, tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)
+    r_z300 = rates(lv_z300, 300., tau_rad0_ns=NL.TAU_RAD0_DEFAULT_NS)
+    zh_ext = _zhang_extra(NL, zh)
     from scripts import run_nitride_cavity as sweep
     row = sweep._row("C000", "comparison", "rectangular", {"T_hs": 300.}, {}, True)
     if not lv_d25.valid:
         raise RuntimeError(f"planar nitride 25 K levels not bound: {lv_d25.invalid_reasons}")
     return {"desh2013_lambda_nm": float(lv_d.lambda_nm), "desh2013_lambda_nm_25K": float(lv_d25.lambda_nm),
             "zhang2013_tau_ns": float(1. / r_z["gamma_X0_ns"]),
+            "zhang2013_tau_ns_300K": float(1. / r_z300["gamma_X0_ns"]),
+            **zh_ext,
             "desh2014_g2": float(row["g2"])}
+
+
+DESH2014_K_NR_XX_NS = 3.8   # [A] = 2.4 gamma_XX with gamma_XX = 2/tau_X, tau_X ~ 1.3 ns (r2-physics-b Q3c, [DR]); never tuned
+
+
+def _desh2014_nanowire():
+    """r2-physics-b Q3c: Deshpande-2014-like conditions on the NANOWIRE device path (horizontal_as_built, x_in 0.40,
+    relaxed, 300 K, 200 MHz, the sweep script's reference geometry), production device.evaluate.  Baseline, and the
+    same row with the opt-in XX-only loss k_nr_XX_ns injected into nitride_nanowire_levels.rates by a wrapper (the
+    device module itself exposes no such leaf).  Both counting regimes are reported (the paper text, abstract only,
+    does not say which).  Diagnostic, NOT a validation: k_nr_XX was solved from g2 ~ S_XX = 0.29."""
+    from fsim_core import device, nitride_nanowire_device as ND
+    from scripts import run_nitride_nanowire as R
+    out = {}
+    orig = ND.rates
+    for regime, tag in (("rectangular", "rect"), ("deterministic_pair", "set")):
+        p = R.full_defaults("horizontal_as_built")
+        p["regime"] = regime
+        p["rep_rate_hz"] = 200.0e6
+        d, _ = R._design(p)
+        out[f"desh2014_nw_g2_{tag}"] = float(device.evaluate(d)["scalars"]["g2_op"])
+        ND.rates = lambda *a, **k: orig(*a, **{**k, "k_nr_XX_ns": DESH2014_K_NR_XX_NS})
+        try:
+            d, _ = R._design(p)
+            out[f"desh2014_nw_g2_{tag}_knrXX"] = float(device.evaluate(d)["scalars"]["g2_op"])
+        finally:
+            ND.rates = orig
+    return out
 
 
 def ev_nanowire():
@@ -294,7 +370,19 @@ def ev_nanowire():
     p = NitrideNanowirePhotonicsParams(family="vertical_photonic", n_wire=3.45, n_group_override=4.3,
                                        NA=0.75, bottom_reflectivity=1.0, taper_output_mfr_nm=750.0)
     r = response(p, lambda_nm=950.0, outer_radius_nm=0.22 * 950.0 / 2.0, gamma_X0_ns=1.0, gamma_XX0_ns=1.0)
-    return {"desh2013_lambda_nm": float(lt.lambda_nm), "claudon_eta": float(r["eta_collection_X"])}
+    # r2-physics-b Q3a: Deshpande 2013 field-free 2D bracket on the nanowire path (25 K)
+    def exr(sb, scr):
+        sysx = NitrideNanowireSystem(height_nm=2., core_radius_nm=12.5, x_in=.25, strain_bound=sb,
+                                     screening_fraction=scr)
+        lx = levels(sysx, 25., z_points=4807, exterior_nm=45.)
+        if not lx.valid:
+            raise RuntimeError(f"nanowire bracket levels not valid: {lx.invalid_reasons}")
+        return float(lx.E_X_eV)
+
+    out = {"desh2013_lambda_nm": float(lt.lambda_nm), "claudon_eta": float(r["eta_collection_X"]),
+           "desh2013_EX_relaxed_F0_eV": exr("relaxed", 1.0), "desh2013_EX_unrelaxed_scr1_eV": exr("unrelaxed", 1.0)}
+    out.update(_desh2014_nanowire())
+    return out
 
 
 EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_dev_ibm": ev_chatz_dev_ibm, "laf_mid": ev_laf_mid,

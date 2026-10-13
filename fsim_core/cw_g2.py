@@ -106,19 +106,23 @@ _GRID_MAX_N = 200_001
 # ------------------------------------------------------------------- escape rates
 
 def escape_rates_from_retention(gamma_X_ns, a_esc, E_a, b_p, E_b, T,
-                                gamma_XX_ns=None):
+                                gamma_XX_ns=None, k_nr_XX_ns=0.0):
     """Non-radiative escape rates (1/ns) consistent with integrator.retention:
 
         k = gamma * (a_esc e^{-E_a/kT} + b_p e^{-E_b/kT})   =>   S = gamma/(gamma + k)
 
     Returns (k_X, k_XX). The same Arrhenius factor is applied to the XX
     level; gamma_XX_ns defaults to 2 gamma_X_ns (the standard cascade ratio
-    tau_XX = tau_X/2 used by drive_mech.reexc_g2). Energies in meV, T in K."""
+    tau_XX = tau_X/2 used by drive_mech.reexc_g2). Energies in meV, T in K.
+
+    k_nr_XX_ns (default 0, opt-in): an XX-only extra loss rate (1/ns) added to
+    k_XX [A] (r2-physics-b Q3c; also wanted for Laferriere 220 K). Never tuned
+    on a measurement."""
     kT = KB * float(T)
     esc = a_esc * np.exp(-E_a / kT) + b_p * np.exp(-E_b / kT)
     if gamma_XX_ns is None:
         gamma_XX_ns = 2.0 * gamma_X_ns
-    return float(gamma_X_ns * esc), float(gamma_XX_ns * esc)
+    return float(gamma_X_ns * esc), float(gamma_XX_ns * esc + k_nr_XX_ns)
 
 
 # ------------------------------------------------------------------ rate generator

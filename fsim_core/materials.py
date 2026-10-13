@@ -398,11 +398,62 @@ def band_edges(m: Material, T: float = 300.0) -> tuple[float, float]:
     return E_v0, E_v0 + bandgap(m, T, "G")
 
 
+def eshelby_shear_factor(aspect: float) -> float:
+    """Shear-reduction factor s(a) of a buried oblate spheroid (semi-axes
+    a1 = a2 = R, a3 = h, aspect a = h/R) relative to the biaxial film,
+        s(a) = (e33 - e11)_spheroid / (e33 - e11)_film,
+    from Eshelby's uniform interior strain for a dilatational eigenstrain eps*
+    in an isotropic infinite matrix (Eshelby, Proc. R. Soc. A 241, 376 (1957);
+    Mura, Micromechanics of Defects in Solids (1987), sec. 11, I-integrals and
+    eq. 11.16) [DR]. s(0) = 1 (film), s(1) = 0 (sphere: HH = LH) and s is
+    INDEPENDENT of the Poisson ratio nu [DR, checked numerically at nu = 0.31
+    and 0.357]. The hydrostatic strain tr(eps) is shape-invariant and is not
+    scaled. Used by strain_shifts(shear_factor=s); `aspect` is clamped to
+    (1e-6, 1 - 1e-9), so h/R >= 1 (prolate, not modelled) returns the sphere
+    value s ~ 0. Closed form for a <= 0.9, numerical I-integrals above (the
+    closed form cancels near the sphere)."""
+    a = float(min(max(aspect, 1e-6), 1.0 - 1e-9))
+    nu = 0.3                                   # s is nu-independent; any value
+    a1, a3 = 1.0, a
+    if a <= 0.9:
+        I1 = 2.0 * np.pi * a1 * a1 * a3 / (a1 * a1 - a3 * a3) ** 1.5 * (
+            np.arccos(a3 / a1) - (a3 / a1) * np.sqrt(1.0 - a3 * a3 / (a1 * a1)))
+        I3 = 4.0 * np.pi - 2.0 * I1
+        I13 = (I1 - I3) / (a3 * a3 - a1 * a1)
+        I11 = np.pi / (a1 * a1) - I13 / 4.0
+        I33 = (4.0 * np.pi / (a3 * a3) - 2.0 * I13) / 3.0
+    else:
+        # Near the sphere the closed forms cancel catastrophically: use the
+        # defining integrals I_i = 2 pi a1^2 a3 int ds / ((a_i^2+s) Delta),
+        # I_ij likewise, Delta = (a1^2+s) sqrt(a3^2+s) [Mura 1987, eq. 11.7].
+        from scipy.integrate import quad
+        pre = 2.0 * np.pi * a1 * a1 * a3
+
+        def Iint(p, q=None):
+            f = (lambda s_: 1.0 / ((p * p + s_) * (a1 * a1 + s_) * np.sqrt(a3 * a3 + s_))) if q is None else (
+                lambda s_: 1.0 / ((p * p + s_) * (q * q + s_) * (a1 * a1 + s_) * np.sqrt(a3 * a3 + s_)))
+            return pre * quad(f, 0.0, np.inf, epsabs=1e-14, epsrel=1e-13, limit=200)[0]
+
+        I1, I3 = Iint(a1), Iint(a3)
+        I11, I13, I33 = Iint(a1, a1), Iint(a1, a3), Iint(a3, a3)
+    c = 1.0 / (8.0 * np.pi * (1.0 - nu))
+    d = (1.0 - 2.0 * nu) * c
+    # Mura eq. 11.16 for a1 = a2, dilatational eigenstrain eps*_kk = eps*:
+    # e_ii = sum_k S_iikk eps*; I12 from 3 I11 + I12 + I13 = 4 pi / a1^2.
+    I12 = 4.0 * np.pi / (a1 * a1) - 3.0 * I11 - I13
+    e11 = (3.0 * c * a1 * a1 * I11 + d * I1) + (c * a1 * a1 * I12 - d * I1) + (c * a3 * a3 * I13 - d * I1)
+    e33 = 2.0 * (c * a1 * a1 * I13 - d * I3) + (3.0 * c * a3 * a3 * I33 + d * I3)
+    return float((e33 - e11) / ((1.0 + nu) / (1.0 - nu)))
+
+
 def strain_shifts(layer: Material, substrate: Material, T: float = 300.0,
-                  eps_par: float | None = None) -> StrainedEdges:
+                  eps_par: float | None = None, shear_factor: float = 1.0) -> StrainedEdges:
     """Pseudomorphic biaxial strain of `layer` on `substrate` (or a given
     eps_par), and the resulting absolute CB / HH / LH edges. Conventions in
-    the module docstring."""
+    the module docstring. `shear_factor` (default 1.0 = biaxial film, legacy
+    bit-identical) multiplies the shear term Q only; eps_par, eps_perp and
+    tr(eps) are unchanged (tr is shape-invariant for a dilatational
+    inclusion). See eshelby_shear_factor for a buried 3D island."""
     if eps_par is None:
         eps_par = mismatch(layer, substrate, T)
     C11, C12 = layer.p["C11"], layer.p["C12"]
@@ -411,7 +462,7 @@ def strain_shifts(layer: Material, substrate: Material, T: float = 300.0,
     a_c = layer.p["a_c"]
     a_v_vdw = -layer.p["a_v"]            # V01 table sign -> Van de Walle sign
     b = layer.p["b"]
-    Q = b * (eps_perp - eps_par)         # < 0 under compression
+    Q = shear_factor * b * (eps_perp - eps_par)   # < 0 under compression
     E_v0, E_c0 = band_edges(layer, T)
     dE_c = a_c * tr
     dE_av = a_v_vdw * tr
@@ -487,11 +538,12 @@ class Offsets:
 
 
 def offsets(well: Material, barrier: Material, substrate: Material,
-            T: float = 300.0) -> Offsets:
+            T: float = 300.0, shear_factor: float = 1.0) -> Offsets:
     """Strained type-I/II band offsets of `well` inside `barrier`, both
     pseudomorphic on `substrate` (the barrier is usually lattice-matched, in
-    which case its strain terms vanish)."""
-    w = strain_shifts(well, substrate, T)
+    which case its strain terms vanish). `shear_factor` (default 1.0, legacy)
+    scales the shear term of the WELL only (see eshelby_shear_factor)."""
+    w = strain_shifts(well, substrate, T, shear_factor=shear_factor)
     b = strain_shifts(barrier, substrate, T)
     dEc = b.E_c - w.E_c
     dEv_hh = w.E_hh - b.E_hh

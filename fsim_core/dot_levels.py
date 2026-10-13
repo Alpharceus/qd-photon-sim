@@ -13,23 +13,30 @@ matrix from GaAs to GaAsP or AlGaInP changes the retention curve for a
 stated physical reason.
 
 MODEL (tag [E]). HONEST ACCURACY: tens of meV for a dot close to the
-  lattice-matched, non-piezoelectric, single-parameter-source regime this
-  separable-disk + linear-strain treatment was built for. Three classes of
-  input honestly miss by 100-300 meV, documented with the numbers and the
-  mechanism in verify/verify_dot_levels.py's "known deviations" table rather
-  than forced to pass: (i) large-mismatch 3D islands compared to an ensemble
-  PL/lasing line (Gu et al. HKUST InP/GaAsP, ~160 meV, see below); (ii)
-  Chatzarakis et al. InAs/GaAs E_X, ~85 meV too LOW (dot level too deep;
-  E_WL is fine): a single-band, biaxial-strain-for-a-3D-island limit. The
-  omitted piezoelectric field is NOT the reason (a built-in field red-shifts
-  E_X, so adding it would lower the model further); (iii) combining one
-  paper's isolated, measured band-offset number (e.g. Pryor's InP/GaInP
-  unstrained VBO) with this module's OWN bulk band gaps and linear
-  deformation-potential strain, which are not the ingredients that
-  paper's own (typically k.p) calculation used internally -- the isolated
-  number is not separable from the rest of that calculation, so re-injecting
-  it here does not reproduce that paper's own strained offset (Pryor/
-  Reischle InP/GaInP, ~130-260 meV).
+  lattice-matched, non-piezoelectric regime this separable-disk + linear-
+  strain treatment was built for. For a large-mismatch buried 3D island the
+  class accuracy is the [film, sphere] BAND returned by levels_bracket(), not
+  a +-150 meV guess: ONE cause explains the misses [DR, Fable r2-physics-b
+  2026-10-12]. The dot carries the biaxial-FILM shear Q = b (eps_perp -
+  eps_par); a buried island keeps the hydrostatic strain tr(eps) exactly
+  (shape-invariant for a dilatational inclusion in isotropic elasticity) but
+  loses 45-100 % of the shear, so the film model pushes the HH edge up too
+  far and E_X comes out 50-150 meV too LOW (Chatzarakis E_X and dE_pair_WL
+  are both closed by one s ~ 0.5; Gu 160 -> ~85 meV). The opt-in
+  DotGeometry.strain_model = "island" scales Q by the Eshelby oblate-spheroid
+  factor s(h/R) (materials.eshelby_shear_factor, nu-independent); "film"
+  (default) is the legacy model and every legacy number is bit-identical.
+  Two other limits stay documented in verify/verify_dot_levels.py's "known
+  deviations" table: (i) the Gu et al. HKUST InP/GaAsP line is an ENSEMBLE
+  observable of unknown composition / type-I-II alignment (residual ~85 meV
+  even at s -> island); (ii) the unstrained VBO. The Pryor InP/GaInP VBO of
+  -45 meV (InP VB BELOW GaInP; "hole confinement is entirely due to strain",
+  Pryor PRB 56, 10404 (1997) [V]) is KEPT as an override: V_e = E_g(GaInP) -
+  E_g(InP) - a_c tr(eps) - VBO = 0.385 eV - VBO is strain-state independent,
+  so Pryor's own 250 meV V_e needs his own bulk inputs and is NOT reachable
+  by any VBO or strain choice here; the override is retained because it gives
+  the strain-only hole barrier V_h ~ 91 meV (Pryor / Hayne / Bommer class,
+  Bommer E_a(X) = 96 +- 7 meV) where the model-solid +0.17 eV gives 304 meV.
   Lens / truncated-pyramid dots are replaced by a SEPARABLE DISK:
     * along z: a symmetric finite square well of width = dot height, with
       BenDaniel-Duke matching (mass discontinuity) -> E_z;
@@ -38,12 +45,13 @@ MODEL (tag [E]). HONEST ACCURACY: tens of meV for a dot close to the
       height << 2R; it keeps E_z + E_r < V so that an escape energy
       V - E_z - E_r is never negative) -> E_r (l = 0) and the p-shell
       (l = 1);
-    * the same biaxial (pseudomorphic-film) strain as materials.offsets is
-      used for the dot. A true 3D island partly relaxes, whereas the amount
-      and spatial distribution of that relaxation require continuum
-      elasticity plus multiband k.p (Grundmann and Stier, Phys. Rev. B 60,
-      1999) [E]. This is the leading systematic of the module; no
-      unmeasured relaxation fraction is fitted here;
+    * by default the same biaxial (pseudomorphic-film) strain as
+      materials.offsets is used for the dot. A true 3D island keeps tr(eps)
+      but relaxes the shear; strain_model="island" applies the Eshelby
+      spheroid shear factor s(h/R) [DR] (Eshelby 1957; Mura 1987), "sphere"
+      is the s = 0 limit. The WL always stays a film. Spatial distribution
+      (Grundmann, Stier, Bimberg PRB 52, 11969 (1995)) needs continuum
+      elasticity plus multiband k.p [E]. No relaxation fraction is fitted;
     * no k.p band mixing, no piezoelectric field, no Coulomb correlation
       beyond a Gaussian-orbital exciton binding (Section 7 below);
     * electrons escape to the Gamma edge of the matrix / barrier even when
@@ -131,6 +139,14 @@ class DotGeometry:
     # is what a thin GaAs spacer between an InGaAs WL and an AlGaAs / SSL
     # barrier does to E_WL (Chatzarakis class), [E].
     matrix_thickness_nm: float | None = None
+    # Strain model of the DOT (the wetting layer always stays a biaxial film):
+    #   "film"   -- pseudomorphic biaxial film shear (legacy default, bit-identical)
+    #   "island" -- buried oblate spheroid, shear scaled by the Eshelby factor
+    #               s(a = h/R) of materials.eshelby_shear_factor [DR]
+    #   "sphere" -- full shear relaxation (s = 0), the upper bracket
+    # The hydrostatic part tr(eps) is shape-invariant, so V_e is identical in all
+    # three; only the HH-LH shear Q (hence E_hh, E_lh, V_h, E_X) changes.
+    strain_model: str = "film"
 
 
 @dataclass
@@ -148,7 +164,11 @@ class DotSystem:
         unchanged (both E_c0 and E_v0 of the layer move together, so its
         gap is preserved). Example: {"dot-matrix": -0.045} = Pryor, PRB 56,
         10404 (1997) InP/GaInP VBO (InP VB 45 meV BELOW GaInP, from Fe
-        impurity-level spectra) in place of the model-solid +0.17 eV.
+        impurity-level spectra, [V]) in place of the model-solid +0.17 eV.
+        Retained because it gives the strain-only hole barrier (~91 meV,
+        Bommer/Pryor class) that the model-solid value (304 meV) does not;
+        it does NOT reproduce Pryor's V_e = 250 meV (see the module
+        docstring: V_e = 0.385 eV - VBO, strain-state independent).
     eps_r : static dielectric constant for the exciton binding; default =
         eps_r_static(dot).
     """
@@ -464,6 +484,20 @@ class DotLevels:
     masses: dict
     eps_r: float
     notes: list
+    strain_model: str = "film"
+    shear_factor: float = 1.0   # s applied to the dot shear Q (1 = film)
+
+
+def _shear_factor(g: "DotGeometry") -> float:
+    """Dot shear-reduction factor for g.strain_model (see DotGeometry)."""
+    m = g.strain_model
+    if m == "film":
+        return 1.0
+    if m == "island":
+        return M.eshelby_shear_factor(g.height_nm / g.radius_nm)
+    if m == "sphere":
+        return 0.0
+    raise ValueError(f"unknown strain_model {m!r} (film | island | sphere)")
 
 
 def _vtop(e: M.StrainedEdges) -> float:
@@ -517,10 +551,17 @@ def levels(system: DotSystem) -> DotLevels:
         notes.append(f"unstrained dot-matrix VBO overridden to {S.vbo_override_eV['dot-matrix']*1e3:+.0f} meV "
                      f"(model-solid would be {(S.dot.p['vbo'] - S.matrix.p['vbo'])*1e3:+.0f} meV)")
 
-    om = M.offsets(dot, S.matrix, sub, T)          # dot in matrix
+    om_film = M.offsets(dot, S.matrix, sub, T)     # dot in matrix, biaxial film (WL always this)
+    s_shear = _shear_factor(g)
+    om = om_film if s_shear == 1.0 else M.offsets(dot, S.matrix, sub, T, shear_factor=s_shear)
+    if s_shear != 1.0:
+        notes.append(f"strain_model={g.strain_model}: dot shear Q scaled by s = {s_shear:.3f} "
+                     f"(Eshelby spheroid, h/R = {g.height_nm / g.radius_nm:.3f}); WL stays a film [DR]")
     ob = M.offsets(S.matrix, barrier, sub, T)      # matrix in barrier
     V_e = 1e3 * om.dE_c
     V_h = 1e3 * (om.well.E_hh - _vtop(om.barrier))
+    V_e_wl = 1e3 * om_film.dE_c
+    V_h_wl = 1e3 * (om_film.well.E_hh - _vtop(om_film.barrier))
     V_e_mb = 1e3 * ob.dE_c
     V_h_mb = 1e3 * (_vtop(ob.well) - _vtop(ob.barrier))
     if om.barrier.E_lh > om.barrier.E_hh + 1e-6:
@@ -619,11 +660,14 @@ def levels(system: DotSystem) -> DotLevels:
     lam = HC_EV_NM / E_X
 
     # ---- wetting layer: 1D well of the dot material in the matrix, in-plane free
-    wz_e = zwell(V_e, V_e_mb, g.wl_thickness_nm, m_e_d, m_e_m, m_e_b)
-    wz_h = zwell(V_h, V_h_mb, g.wl_thickness_nm, m_hz_d, m_hz_m, m_hz_b)
-    E_WL_e = wz_e.energies_meV[0] if wz_e.bound else V_e
-    E_WL_h = wz_h.energies_meV[0] if wz_h.bound else V_h
-    E_WL = Eg_dot + (E_WL_e + E_WL_h - 10.0) * 1e-3   # 10 meV 2D-QW exciton binding [E]
+    wz_e = zwell(V_e_wl, V_e_mb, g.wl_thickness_nm, m_e_d, m_e_m, m_e_b)
+    wz_h = zwell(V_h_wl, V_h_mb, g.wl_thickness_nm, m_hz_d, m_hz_m, m_hz_b)
+    E_WL_e = wz_e.energies_meV[0] if wz_e.bound else V_e_wl
+    E_WL_h = wz_h.energies_meV[0] if wz_h.bound else V_h_wl
+    # WL gap is the film gap (the WL is a pseudomorphic film, even when the dot is an island)
+    # (the fixed 10 meV WL exciton binding is [E]; the dot uses the Gaussian estimate, so dE_pair_WL = E_WL - E_X is a
+    # WL-minus-dot difference as in Chatzarakis' Delta_E, not an absolute WL energy)
+    E_WL = om_film.well.Eg_hh + (E_WL_e + E_WL_h - 10.0) * 1e-3   # 10 meV 2D-QW exciton binding [E]
 
     dE_e_matrix = V_e - E_e
     dE_h_matrix = V_h - E_h if h_bound else 0.0
@@ -638,7 +682,20 @@ def levels(system: DotSystem) -> DotLevels:
                      e_bound, h_bound, p_e, p_h, typ,
                      Eb, Eb0, E_X, lam, E_WL, E_WL_e, E_WL_h,
                      dE_e_matrix, dE_h_matrix, dE_e_barrier, dE_h_barrier,
-                     dE_pair_WL, dE_pair_half, l_xy, l_z, rms, masses, eps_r, notes)
+                     dE_pair_WL, dE_pair_half, l_xy, l_z, rms, masses, eps_r, notes,
+                     g.strain_model, s_shear)
+
+
+def levels_bracket(system: DotSystem) -> tuple:
+    """(film, sphere) DotLevels of the same system: the two strain-state
+    limits between which a buried 3D island lies (s = 1 and s = 0). Their E_X
+    / dE_pair_WL values bracket the island result; V_e is identical [DR]."""
+    S = system() if callable(system) else system
+    out = []
+    for mdl in ("film", "sphere"):
+        g = replace(S.geometry, strain_model=mdl)
+        out.append(levels(replace(S, geometry=g)))
+    return tuple(out)
 
 
 # ------------------------------------------------------------- retention parameters
@@ -859,7 +916,8 @@ def report(lv: DotLevels) -> str:
         f"T = {S.T:.0f} K, h = {g.height_nm} nm, R = {g.radius_nm} nm, WL = {g.wl_thickness_nm} nm",
         f"  offsets [meV]: V_e = {lv.V_e:.0f}, V_h = {lv.V_h:.0f} (dot->matrix); "
         f"V_e_mb = {lv.V_e_mb:.0f}, V_h_mb = {lv.V_h_mb:.0f} (matrix->barrier); type {lv.type}",
-        f"  Eg_dot(strained) = {lv.Eg_dot_strained_eV:.3f} eV, Eg_matrix = {lv.Eg_matrix_eV:.3f} eV",
+        f"  Eg_dot(strained) = {lv.Eg_dot_strained_eV:.3f} eV, Eg_matrix = {lv.Eg_matrix_eV:.3f} eV; "
+        f"strain model {lv.strain_model} (dot shear factor s = {lv.shear_factor:.3f})",
         f"  E_e = {lv.E_e:.0f} (z {lv.E_e_z:.0f} + r {lv.E_e_r:.0f}), s-p {lv.sp_split_e:.0f} meV"
         f"{'' if lv.p_bound_e else ' (p unbound: continuum)'};  "
         f"E_h = {lv.E_h:.0f} (z {lv.E_h_z:.0f} + r {lv.E_h_r:.0f}), s-p {lv.sp_split_h:.0f} meV"

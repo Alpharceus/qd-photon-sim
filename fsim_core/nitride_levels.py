@@ -535,6 +535,8 @@ def _levels_cached(s,T_K,n,pad):
     # Envelopes are separable; normalized radial ground envelopes cancel in
     # overlap ratio under the common-disk approximation [E].
     ov=float(np.trapezoid(pe*ph,ze)**2); ov=max(0.,min(1.,ov))
+    # NOTE (r2-physics-b): this isolated-dot branch uses the dot/GaN AVERAGE eps while the qw branch and the nanowire module use eps_dot;
+    # ~10 % on E_b (~3 meV). Unifying it moves the legacy pins (verify_nitride_stark/geometry, tested and reverted), so it is left as is [E].
     eps=(d.eps_r+m.eps_r)/2
     z_sep=abs(float(np.trapezoid(ze*pe*pe,ze))-float(np.trapezoid(zh*ph*ph,zh)))
     l_e_xy = rms_e if rms_e else s.radius_nm; l_h_xy = rms_h if rms_h else s.radius_nm
@@ -665,8 +667,13 @@ def z_profile(system, T=None, *, z_points=1201, exterior_nm=45.0):
                    '(same inputs as levels()); see levels() provenance for tags')
 
 
-def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.,tau_cap_scales_with_density=False,channel='min',k_nr_ns=0.):
+def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.,tau_cap_scales_with_density=False,channel='min',k_nr_ns=0.,k_nr_XX_ns=0.):
     """Absolute detailed-balance escape rates in 1/ns; no cavity/Purcell input.
+
+    k_nr_XX_ns (default 0, opt-in, r2-physics-b Q3c): an XX-ONLY extra loss
+    (e.g. XX Auger, or a spectral-filter loss of the XX line) added to
+    k_XX_ns = 2 k_X_ns + k_nr_XX_ns [A]. It is never tuned on a measurement;
+    the Deshpande-2014 g2 needs ~2.4 gamma_XX = 3.8/ns [DR], see the ledger.
 
     tau_rad0_ns default is TAU_RAD0_DEFAULT_NS [E], see module docstring
     constants; callers (fsim_core.device) always pass an explicit value.
@@ -681,7 +688,7 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
     # the separable-envelope integral; flag it instead of reporting an
     # astronomical (numerically meaningless) radiative lifetime.
     elif lv.overlap_sq < 1e-12: bad.append('overlap_unresolved')
-    if T_K<=0 or tau_rad0_ns<=0 or n_dot_cm2<=0 or tau_cap_ps<=0 or k_nr_ns<0: bad.append('invalid rate input')
+    if T_K<=0 or tau_rad0_ns<=0 or n_dot_cm2<=0 or tau_cap_ps<=0 or k_nr_ns<0 or k_nr_XX_ns<0: bad.append('invalid rate input')
     if channel not in ('min','electron','hole','pair','pair_half'): bad.append('unknown channel')
     if channel in ('pair','pair_half'): bad.append('pair channel requires a bound wetting-layer continuum')
     if bad: return dict(gamma_X0_ns=float('nan'),gamma_XX0_ns=float('nan'),k_X_ns=float('nan'),k_XX_ns=float('nan'),escape_prefactor_ns=float('nan'),E_a_meV=float('nan'),S0=float('nan'),tau_cap_ps_used=float('nan'),valid=False,invalid_reasons=tuple(bad),provenance='[A] invalid rate request')
@@ -696,4 +703,4 @@ def rates(lv,T_K,*,tau_rad0_ns=TAU_RAD0_DEFAULT_NS,n_dot_cm2=1e10,tau_cap_ps=10.
     attempt=(1000/tc)*(n2d/n_dot_cm2)
     k=attempt*math.exp(-(ea/1000)/(KB_EV*T_K))+k_nr_ns
     gx=lv.overlap_sq/tau_rad0_ns; gxx=2*gx
-    return dict(gamma_X0_ns=gx,gamma_XX0_ns=gxx,k_X_ns=k,k_XX_ns=2*k,escape_prefactor_ns=attempt,E_a_meV=ea,S0=gx/(gx+k),tau_cap_ps_used=tc,valid=True,invalid_reasons=(),provenance='[A] 2D-reservoir detailed balance N2D=m kT/(pi hbar2); [A] XX=2X cascade transfer, Reischle et al., OE 16, 12771 (2008); selected '+name+' channel')
+    return dict(gamma_X0_ns=gx,gamma_XX0_ns=gxx,k_X_ns=k,k_XX_ns=2*k+k_nr_XX_ns,escape_prefactor_ns=attempt,E_a_meV=ea,S0=gx/(gx+k),tau_cap_ps_used=tc,valid=True,invalid_reasons=(),provenance='[A] 2D-reservoir detailed balance N2D=m kT/(pi hbar2); [A] XX=2X cascade transfer, Reischle et al., OE 16, 12771 (2008); selected '+name+' channel')
