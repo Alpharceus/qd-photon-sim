@@ -192,3 +192,20 @@ data:
       - {T: 210.0, tau_ns: 0.30}
       - {T: 220.0, tau_ns: 0.27}
       - {T: 230.0, tau_ns: 0.21}
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  T_K: {value: 78.0, unit: K, tag: DR, where: "card params.delta_xx source: Fig. 4, 78 K panel"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 931.3, unit: nm, tag: DR, where: "cards/chatzarakis.yaml params.delta_xx source: Fig. 4 78 K panel, X line 1.3313 eV; lambda = 1239.842 / 1.3313 eV = 931.3 nm"}
+  structure:
+    kind: planar_dbr
+    params:
+      N_top: {value: 12, unit: "1", tag: A, where: "display assumption: the DBR design of the microcavity is not in the card; pairs drawn only"}
+      N_bot: {value: 16, unit: "1", tag: A, where: "display assumption: the DBR design of the microcavity is not in the card; pairs drawn only"}
+  drive:
+    kind: above_band
+  note: >
+    Closest registry class: planar DBR microcavity (the paper's device is a (211)B InAs/GaAs dot in a lambda-microcavity, optically pumped). Spacer = 1 lambda as drawn; the DBR design and pair counts are not in the card and are display assumptions [A]. The GaAs/AlAs SSL barriers and the <Al>=57% piezoelectric stack are not drawn.

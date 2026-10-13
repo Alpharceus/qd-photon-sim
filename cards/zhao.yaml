@@ -34,3 +34,19 @@ data:
     points:
       - {pump: "normal", I_over_Ith: 4.0, g2: 1.0224, err: 0.003}
       - {pump: "quiet",  I_over_Ith: 4.0, g2: 0.9823, err: 0.006}
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 930.0, unit: nm, tag: A, where: "display assumption: the card gives no emission wavelength or material; the InAs/GaAs class wavelength is drawn"}
+  structure:
+    kind: edge_ridge
+    params:
+      ridge_width_nm: {value: 2000.0, unit: nm, tag: A, where: "display assumption: the card gives no cavity geometry"}
+      L_um: {value: 250.0, unit: um, tag: A, where: "display assumption: the card gives no cavity length"}
+  drive:
+    kind: electrical_cw
+  note: >
+    Closest registry class: edge-emitting ridge waveguide (the published title is an electrically driven quantum-dot laser; the card holds only pump-statistics numbers: C_dep_pF, squeezing_dB, g2). Material, wavelength, ridge width and cavity length are display assumptions [A]. The quiet-pump current source is not drawn.

@@ -31,7 +31,7 @@ import json
 import math
 
 from fsim_core.compose import registry as _registry
-from fsim_core.compose.params import central, resolve_leaf
+from fsim_core.compose.params import ParamSpec, central, resolve_leaf
 from fsim_core.compose.spec import T_K_SPEC
 
 SCHEMA = "fsim.scene/1"
@@ -155,8 +155,10 @@ DISPLAY = {
 class _Src:
     """Collects geometry numbers and their provenance."""
 
-    def __init__(self):
+    def __init__(self, over=None):
         self.geometry, self.src, self.display = {}, {}, []
+        self.over = dict(over or {})        # DISPLAY key -> Leaf from a parameter card's scene.geometry block
+        self.used = set()
 
     def reg(self, key, value, leaf, path, ranged=None):
         self.geometry[key] = value
@@ -176,6 +178,16 @@ class _Src:
         v, why = DISPLAY[group][key]
         v = v if value is None else value
         name = name or key
+        if key in self.over:                # a card-sourced number replaces the display default and keeps its own tag
+            leaf = self.over[key]
+            self.used.add(key)
+            self.geometry[name] = central(leaf)
+            self.src[name] = {"tag": leaf.tag, "display_default": False, "kind": "card", "path": f"scene.geometry.{key}",
+                              "unit": leaf.unit, "source": leaf.where or leaf.source, "defaulted": False,
+                              "replaces_display_default": why}
+            if leaf.kind == "range":
+                self.src[name]["range"] = list(leaf.range)
+            return self.geometry[name]
         self.geometry[name] = v
         self.src[name] = {"tag": "A", "display_default": True, "kind": "display", "why": why}
         self.display.append(name)
@@ -475,9 +487,16 @@ def _mesa(kind, vals, lam, S):
         d = S.disp("mesa", "slab_d_um")
         h = S.disp("mesa", "slab_h_um")
         S.geometry["d_um"], S.geometry["h_um"] = d, h
-        S.src["d_um"] = {"tag": "A", "display_default": True, "kind": "display", "why": "slab width drawn before the break"}
-        S.src["h_um"] = {"tag": "A", "display_default": True, "kind": "display", "why": "slab thickness"}
-        S.display += ["d_um", "h_um"]
+        if "slab_d_um" in S.over:
+            S.src["d_um"] = dict(S.src["slab_d_um"])
+        else:
+            S.src["d_um"] = {"tag": "A", "display_default": True, "kind": "display", "why": "slab width drawn before the break"}
+            S.display.append("d_um")
+        if "slab_h_um" in S.over:
+            S.src["h_um"] = dict(S.src["slab_h_um"])
+        else:
+            S.src["h_um"] = {"tag": "A", "display_default": True, "kind": "display", "why": "slab thickness"}
+            S.display.append("h_um")
     else:
         mode = "mesa"
         sil = "hemi" if kind == "sil_mesa" else "none"
@@ -889,6 +908,7 @@ def describe(spec, display=None) -> dict:
     (generic_cavity only: draw an illustrative micropillar for the lumped model).
     Never raises for an unknown structure kind or an unresolvable leaf: returns the fallback descriptor."""
     display = dict(display or {})
+    over_raw = display.pop("geometry", None)         # scene.geometry of a parameter card (describe_card)
     try:
         _registry.ensure_loaded()
         if not isinstance(spec, dict):
@@ -919,7 +939,7 @@ def describe(spec, display=None) -> dict:
         if lam is None or not math.isfinite(lam) or lam <= 0:
             return _fallback(spec, "material has no resolvable emission wavelength", skind, lam)
         vals = _resolve_block("structure", sblk, sent)
-        S = _Src()
+        S = _Src(_parse_overrides(over_raw))
         if display_as == "micropillar":
             layers, labels, keys = _illustrative_micropillar(spec, mblk, lam, S, vals, _structure_resp(spec, sent, sblk, mblk))
         elif builder == "micropillar":
@@ -945,6 +965,8 @@ def describe(spec, display=None) -> dict:
             layers, labels, keys = _lumped_cavity(vals, lam, S, _structure_resp(spec, sent, sblk, mblk))
         else:
             layers, labels, keys = _mesa(skind, vals, lam, S)
+        if set(S.over) - S.used:
+            raise ValueError(f"scene.geometry {sorted(set(S.over) - S.used)} is not a display number of the {builder} builder")
     except _Incompatible as e:      # a named incompatibility is a reason, not an error
         return _fallback(spec, str(e), (spec.get("structure") or {}).get("kind"), lam)
     except Exception as e:          # an unresolved spec must not break the viewport
@@ -974,4 +996,179 @@ def describe(spec, display=None) -> dict:
                       "notes": [f"drive not drawn: {type(e).__name__}: {e}"]}
     d["provenance"] = {"calls": ["fsim_core.compose.registry", "fsim_core.compose.params.resolve_leaf/central"],
                        "structure_kind": skind, "material_kind": mblk.get("kind")}
+    return d
+
+
+# ---------------------------------------------------------------- display-only scenes for the Library parameter cards
+# A parameter card (cards/<name>.yaml) may carry an optional `scene:` block naming the registry kinds that describe the
+# paper's device, with the geometry numbers each carrying a tag (V/DR/E/A) and a `where`:
+#
+#   scene:
+#     T_K:       {value, unit: K, tag, where}                  (optional)
+#     material:  {kind, params: {name: {value|range, unit, tag, where}}}
+#     structure: {kind, params: {...}}
+#     drive:     {kind, params: {...}}                         (params optional)
+#     geometry:  {<display key>: {value|range, unit, tag, where}}   (optional: replaces a display default, e.g. slab_d_um)
+#     note:      "what was chosen and why it is the closest registry class"
+#
+# The block is DISPLAY-ONLY: no solver reads it and the card's parameter blocks are untouched.  Where no registry
+# structure fits, the closest one is chosen and `note` says so; the note is shown in the 3D HUD.
+SCENE_KEYS = ("T_K", "material", "structure", "drive", "geometry", "note")
+SCENE_TAGS = ("V", "DR", "E", "A")
+_TAG_ORDER = {t: i for i, t in enumerate(SCENE_TAGS)}
+
+
+def _widest(tags):
+    tags = [t for t in tags if t in _TAG_ORDER]
+    return max(tags, key=_TAG_ORDER.get) if tags else "A"
+
+
+def _leaf_problems(path, leaf):
+    out = []
+    if not isinstance(leaf, dict):
+        return [f"{path}: a scene number must be a mapping {{value|range, unit, tag, where}}"]
+    if leaf.get("tag") not in SCENE_TAGS:
+        out.append(f"{path}: tag {leaf.get('tag')!r} not in {SCENE_TAGS}")
+    if not str(leaf.get("where") or "").strip():
+        out.append(f"{path}: missing `where` (where the number comes from)")
+    if not any(k in leaf for k in ("value", "range", "choice")):
+        out.append(f"{path}: needs value, range or choice")
+    return out
+
+
+def scene_leaves(block):
+    """[(path, leaf)] for every tagged number of a scene block (T_K, axis params, geometry)."""
+    out = []
+    if not isinstance(block, dict):
+        return out
+    if "T_K" in block:
+        out.append(("T_K", block["T_K"]))
+    for ax in ("material", "structure", "drive"):
+        for k, v in ((block.get(ax) or {}).get("params") or {}).items():
+            out.append((f"{ax}.{k}", v))
+    for k, v in (block.get("geometry") or {}).items():
+        out.append((f"geometry.{k}", v))
+    return out
+
+
+def scene_tag_counts(block):
+    """{V, DR, E, A: n} over the tagged numbers of a scene block."""
+    c = {t: 0 for t in SCENE_TAGS}
+    for _p, leaf in scene_leaves(block):
+        if isinstance(leaf, dict) and leaf.get("tag") in c:
+            c[leaf["tag"]] += 1
+    return c
+
+
+def scene_problems(block):
+    """[] when `block` is a well-formed scene block (keys, kinds known to the registry, every number tagged with a
+    valid tag and a `where`), else the list of problems."""
+    if not isinstance(block, dict):
+        return ["scene must be a mapping"]
+    out = []
+    extra = set(block) - set(SCENE_KEYS)
+    if extra:
+        out.append(f"unknown scene keys {sorted(extra)} (allowed: {list(SCENE_KEYS)})")
+    for ax in ("material", "structure", "drive"):
+        b = block.get(ax)
+        if not isinstance(b, dict) or not isinstance(b.get("kind"), str):
+            out.append(f"{ax}: needs a mapping with kind")
+            continue
+        if set(b) - {"kind", "params"}:
+            out.append(f"{ax}: unknown keys {sorted(set(b) - {'kind', 'params'})}")
+        try:
+            _registry.ensure_loaded()
+            ent = _registry.get(ax, b["kind"])
+        except Exception:
+            out.append(f"{ax}.kind {b['kind']!r} is not a registered {ax} kind")
+            continue
+        known = {p.name for p in ent.params}
+        for k in (b.get("params") or {}):
+            if k not in known:
+                out.append(f"{ax}.params.{k}: not a parameter of {b['kind']}")
+    if not str(block.get("note") or "").strip():
+        out.append("note: required (the closest-class statement shown in the 3D HUD)")
+    for p, leaf in scene_leaves(block):
+        out += _leaf_problems(p, leaf)
+    return out
+
+
+def _override_leaf(key, raw):
+    if not isinstance(raw, dict) or "unit" not in raw:
+        raise ValueError(f"scene.geometry.{key}: needs a mapping with unit")
+    spec = ParamSpec(key, raw["unit"], 0.0, tag="A", source="")
+    return resolve_leaf(raw, spec, f"scene.geometry.{key}")
+
+
+def _parse_overrides(raw):
+    return {k: _override_leaf(k, v) for k, v in (raw or {}).items()}
+
+
+def scene_spec(block):
+    """(composed spec of schema fsim-composed/1, geometry overrides) described by a scene block."""
+    probs = scene_problems(block)
+    if probs:
+        raise ValueError("; ".join(probs))
+    spec = {"schema": "fsim-composed/1", "T_K": copy.deepcopy(block.get("T_K", 4.2)),
+            "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    for ax in ("material", "structure", "drive"):
+        spec[ax] = {"kind": block[ax]["kind"], "params": copy.deepcopy(block[ax].get("params") or {})}
+    return spec, copy.deepcopy(block.get("geometry") or {})
+
+
+def describe_card(name, block, meta=None):
+    """Geometry descriptor for a parameter card's scene block (display only).
+
+    Same descriptor as `describe`, with the card's note and the tag summary of the scene's numbers in the HUD labels,
+    `param_card` / `card_scene` recording where it came from, and every DERIVED number (quarter-wave thicknesses,
+    kappa, ...) re-tagged with the widest tag of the registry/card inputs of the scene (card rule: a derived number is
+    only as good as its weakest input).  Never raises: a block that does not resolve gives the fallback descriptor."""
+    try:
+        spec, over = scene_spec(block)
+    except Exception as e:                        # noqa: BLE001
+        d = _fallback({}, f"scene block of {name}: {e}")
+        d["param_card"] = name
+        return d
+    d = describe(spec, {"geometry": over} if over else None)
+    d["param_card"] = name
+    if d.get("fallback"):
+        d["reason"] = f"scene block of {name}: {d.get('reason')}"
+        d["labels"] = [f"no 3D view: {d['reason']}"]
+        return d
+    gs = d.get("geometry_src") or {}
+    wide = _widest([v.get("tag") for v in gs.values() if v.get("kind") in ("registry", "card")])
+    lam_tag = ((block["material"].get("params") or {}).get("lambda_nm") or {}).get("tag", "E")
+
+    def _in_tag(ref):
+        ref = str(ref)
+        if ref.startswith("material."):
+            return lam_tag
+        key = ref.split(".", 1)[1] if ref.startswith("structure.") else ref
+        if key == "*":
+            return wide
+        return (gs.get(key) or {}).get("tag") or wide
+
+    for v in gs.values():          # a derived number is only as good as its weakest input
+        if v.get("kind") == "derived":
+            t = _widest(["DR"] + [_in_tag(r) for r in (v.get("from") or [])])
+            if t != v.get("tag"):
+                v["note"] = (v.get("note") or "") + f" [tag = widest of its inputs: {t}]"
+            v["tag"] = t
+    for k, sc in (d.get("scalars") or {}).items():
+        if gs.get(k, {}).get("kind") == "derived":
+            sc["tag"] = gs[k]["tag"]
+    for ly in d.get("layers") or []:
+        if ly.get("tag") == "DR" and _TAG_ORDER[wide] > _TAG_ORDER["DR"]:
+            ly["tag"] = wide
+    counts = scene_tag_counts(block)
+    n = sum(counts.values())
+    note = " ".join(str(block["note"]).split())
+    tagline = ("scene numbers taken from the card: " + ", ".join(f"{t} {counts[t]}" for t in SCENE_TAGS)
+               + f" ({n} in all); every other number is a registry default or an [A] display default")
+    d["card_scene"] = {"card": name, "note": note, "tag_counts": counts, "n_tagged": n,
+                       "kinds": {a: block[a]["kind"] for a in ("material", "structure", "drive")},
+                       "geometry_overrides": sorted(over), "display_only": True, "derived_tag": wide}
+    d["title"] = f"{name}: device scene ({str(d.get('title', '')).split(' - ')[0]})"
+    d["labels"] = ["display-only scene of the paper's device (no solver reads it): " + note, tagline] + list(d.get("labels") or [])
+    d["notes"] = list(d.get("notes") or []) + [note]
     return d

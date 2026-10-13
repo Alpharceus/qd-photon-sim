@@ -78,3 +78,21 @@ data:
       - {T: 77.0,  g2: 0.11,  err: 0.03}
       - {T: 220.0, g2: 0.34,  err: 0.05}
       - {T: 300.0, g2: 0.57,  err: 0.05}
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inas_inp_cband
+    params:
+      lambda_nm: {value: 1310.0, unit: nm, tag: DR, where: "card meta.device: O-band ~1.31 um (rounded in the card text)"}
+  structure:
+    kind: photonic_nanowire
+    params:
+      d_nm: {value: 200.0, unit: nm, tag: A, where: "display assumption: the wire diameter is not in the card; 200 nm keeps the wire single-mode (HE11 V = 1.5) at 1310 nm"}
+      n_wire: {value: 3.2, unit: "1", tag: E, where: "InP refractive index near 1.31 um, textbook class value ~3.2; not a number from the paper"}
+      mirror_R: {value: 0.0, unit: "1", tag: A, where: "display assumption: the card mentions no bottom mirror, so none is drawn"}
+      taper_mfr_nm: {value: 0.0, unit: nm, tag: A, where: "display assumption: the card describes no taper, so a straight needle is drawn"}
+  drive:
+    kind: above_band
+  note: >
+    Closest registry class: photonic nanowire (needle). The paper's device is an InAsP dot-in-a-rod in an InP nanowire waveguide, O-band, above-band pumped. The card gives no wire diameter, height, taper or mirror, so those are display assumptions [A] (index [E]); the InAsP/InP dot uses the InAs/InP material class.

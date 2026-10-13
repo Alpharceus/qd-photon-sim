@@ -330,6 +330,7 @@ def _summary(name: str, card, doc, loader: str) -> dict:
         "dataset_tag_counts": tag_counts(dsets),
         "loader": loader, "design": DERIVED_DESIGN.get(base_of(name)),
         "has_device_block": isinstance(doc.get("device"), dict),
+        "has_scene": isinstance(doc.get("scene"), dict),
         "device_tag_counts": tag_counts([r for r in _device_block(name, doc) if r.get("tag") in TAGS]),
         "n_device_fields": sum(1 for r in _device_block(name, doc) if r.get("tag") in TAGS),
     }
@@ -841,6 +842,32 @@ def save_params(name: str, body: dict) -> dict:
     return {"name": name, "base": base, "path": rel}
 
 
+# ------------------------------------------------------------------ 3D scene of a parameter card (display only)
+def scene_block(name: str):
+    """The card's `scene:` block when `name` is a parameter card that carries one, else None (no error)."""
+    if not NAME_RE.match(name or "") or name.endswith(".yaml"):
+        return None
+    path = _path(name)
+    if not path.is_file():
+        return None
+    try:
+        doc = _raw(path)
+    except (OSError, yaml.YAMLError):
+        return None
+    block = doc.get("scene") if _is_param_doc(doc) else None
+    return block if isinstance(block, dict) else None
+
+
+def device_scene(name: str) -> dict:
+    """GET /api/scene/device?card=<parameter card>: the composed 3D descriptor of the card's scene block
+    (fsim_studio.scene_compose.describe_card), with the card's note and the tag summary in its HUD labels."""
+    block = scene_block(name)
+    if block is None:
+        raise LibraryError(422, f"card {name!r} has no scene block: it holds a paper's published parameters, not a device design")
+    from . import scene_compose
+    return scene_compose.describe_card(name, block)
+
+
 # ------------------------------------------------------------------ routes
 def register(app):
     def _out(obj, status=200):
@@ -861,6 +888,17 @@ def register(app):
     @app.get("/api/params/<name>/overlay/<dataset>")
     def params_overlay(name, dataset):
         return _out(overlay(name, dataset))
+
+    # GET /api/scene/device is registered by server.py for design cards (fsim_studio.scene). A parameter card that
+    # carries a `scene:` block is answered here; every other request goes to that original view unchanged.
+    orig_scene_device = app.view_functions.get("scene_device")
+    if orig_scene_device is not None:
+        def scene_device_param():
+            name = request.args.get("card")
+            if scene_block(name) is not None:
+                return _out(device_scene(name))
+            return orig_scene_device()
+        app.view_functions["scene_device"] = scene_device_param
 
     @app.put("/api/params/<name>")
     def params_put(name):

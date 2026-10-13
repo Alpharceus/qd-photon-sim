@@ -7,7 +7,9 @@
 //   deviceThumbnail(source, { api, theme })         a static PNG data URL of the same scene, rendered one at a time
 //                                                   on a short-lived offscreen context (the Library grid)
 //
-// source: {paper: "<id>"} (GET /api/papers/<id>/design, the central values of every ranged leaf) or {spec: <composed spec>}.
+// source: {paper: "<id>"} (GET /api/papers/<id>/design, the central values of every ranged leaf), {spec: <composed spec>}
+// or {card: "<parameter card>"} (GET /api/scene/device?card=: the display-only scene block of a Library parameter card;
+// null when the card has no scene block).
 // A design whose structure has no 3D builder gives the descriptor's own reason, shown as text: never an empty box.
 import { h, clear } from '../ui/dom.js';
 
@@ -22,6 +24,12 @@ async function paperIds(api) {
 }
 
 async function sceneOf(api, source) {
+  if (source.card) {
+    try { return await api.getJSON(`/api/scene/device?card=${encodeURIComponent(source.card)}`); } catch (e) {
+      if ([400, 404, 422].includes(e?.status)) return null;       // no scene block: the caller states the reason
+      throw e;
+    }
+  }
   let spec = source.spec;
   if (!spec && source.paper) {
     const r = await api.getJSON(`/api/papers/${encodeURIComponent(source.paper)}/design`);
@@ -50,6 +58,7 @@ export function mountDeviceModel(host, source, { api, theme = 'dark' } = {}) {
     try {
       const scene = await sceneOf(api, source);
       if (dead || !host.isConnected) return;
+      if (!scene) { note(host, 'No 3D model: this card has no scene block.'); return; }
       if (!drawable(scene)) { note(host, scene.reason ? `No 3D view: ${scene.reason}` : 'No 3D view for this device'); return; }
       const mod = await import('./index.js');
       if (dead || !host.isConnected) return;
@@ -81,7 +90,7 @@ export function deviceThumbnail(source, { api, theme = 'dark', width = 480, heig
   const job = async () => {
     if (source.paper && !(await paperIds(api)).has(source.paper)) return null;     // a parameter card without a composed design: no picture
     const scene = await sceneOf(api, source);
-    if (!drawable(scene)) return null;
+    if (!scene || !drawable(scene)) return null;
     const mod = await import('./index.js');
     const box = h('div', { style: `position:fixed;left:-10000px;top:0;width:${width}px;height:${height}px;` });
     document.body.append(box);

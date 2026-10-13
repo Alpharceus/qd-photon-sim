@@ -102,3 +102,20 @@ params:
     unit: cm^-2
     tag: A
     source: "growth lever: native 7e9-2e10; low-density growth reaches ~7e8 (Chatzarakis Sec. II analogy)"
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inp_gainp_red
+    params:
+      lambda_nm: {value: 659.5, unit: nm, tag: A, where: "cards/qcap-cavity.yaml params.E_X0 1.88 eV (red-emitting staged dot, design assumption); lambda = 659.5 nm"}
+  structure:
+    kind: bulk_planar
+    params: {}
+  geometry:
+    slab_d_um: {range: [0.3, 3.0], unit: um, tag: A, where: "card params.mesa_diameter range [0.3, 3.0] um (tag A); midpoint drawn"}
+    slab_h_um: {value: 1.5, unit: um, tag: A, where: "card params.epi_thickness 1.5 um (tag A): cladding + current-spreading stack"}
+  drive:
+    kind: electrical_cw
+  note: >
+    Closest registry class: bulk planar emitter drawn as a mesa (the card is a thermal prediction: a mesa of swept diameter on an epi stack, on GaAs or GaAs/Si templates). Diameter and stack thickness are the card's [A] numbers; the buffer (2 um GaAs, [E]) and the Si template are not drawn.

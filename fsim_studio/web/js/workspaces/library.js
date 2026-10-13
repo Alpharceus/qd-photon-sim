@@ -14,7 +14,7 @@ import { skeleton, errorState, emptyState, toast } from "../ui/controls.js";
 import { fmt, unitText, isNum } from "../ui/format.js";
 import { richText, richPlain } from "../ui/math.js";
 import { fieldLabel, cardTitle } from "../ui/labels.js";
-import { deviceThumbnail } from "../viz3d/deviceModel.js";
+import { deviceThumbnail, mountDeviceModel } from "../viz3d/deviceModel.js";
 import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors, alpha } from "../charts/theme.js";
 
@@ -23,7 +23,16 @@ const SYMBOLS = ["circle", "square", "diamond", "triangle-up", "pentagon", "star
 
 let L = null;
 
+// css/library.css (plaque thumbnails, the card-page model) is loaded with the workspace, like papers.css
+function ensureCss() {
+  const href = new URL("../../css/library.css", import.meta.url).href;
+  if (![...document.querySelectorAll('link[rel="stylesheet"]')].some((l) => l.href === href)) {
+    document.head.append(h("link", { rel: "stylesheet", href }));
+  }
+}
+
 export function mount(el, ctx) {
+  ensureCss();
   L = { el, ctx, key: null, charts: [], seq: 0, editing: false };
   el.classList.add("ws-library");
   update(ctx.args);
@@ -37,6 +46,7 @@ export function unmount() {
 }
 
 function dispose() {
+  if (L.model) { try { L.model.dispose(); } catch { /* */ } L.model = null; }
   for (const c of L.charts) { try { c.dispose(); } catch { /* */ } }
   L.charts = [];
 }
@@ -123,17 +133,17 @@ function legend() {
   return h("div.ov-legend.lib-legend", TAGS.map((t) => h("span.lib-leg", tagChip(t, { size: "sm" }), h("span.ov-legend-txt", TAG_MEANING[t]))));
 }
 
-// The card's device model as a static picture of the composed 3D scene (one offscreen context at a time).  Only cards that
-// have a composed design (a paper card of the same name) get one.  Every other card states why there is none: a literature
-// parameter card carries a paper's published numbers, not a device geometry, and the legacy scene builder (scene.py) only
-// accepts design cards.
+// The card's device model as a static picture of the composed 3D scene (one offscreen context at a time).  Every parameter
+// card carries a display-only `scene:` block (GET /api/scene/device?card=, fsim_studio/scene_compose.py describe_card); a
+// card whose block is absent states why there is no model: a literature parameter card carries a paper's published
+// numbers, not a device geometry.
 const NO_MODEL = "No 3D model: this card holds a paper's published parameters, not a device design.";
 function fillThumb(a) {
   const slot = a.querySelector(".lib-thumb");
   if (!slot || !L) return;
   const name = a.dataset.card;
   const noModel = (why) => { slot.replaceChildren(h("p.lib-thumb-why", why)); slot.dataset.state = "reason"; };
-  deviceThumbnail({ paper: name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") }).then((url) => {
+  deviceThumbnail({ card: name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") }).then((url) => {
     if (!slot.isConnected) return;
     if (!url) { noModel(NO_MODEL); return; }
     slot.append(h("img.lib-thumb-img", { src: url, alt: `${cardTitle(name)}: device model`, width: 480, height: 300, loading: "lazy" }));
@@ -198,7 +208,8 @@ async function cardPage(name) {
       metaRow("Device", c.device), metaRow("Role", c.role), metaRow("Source", c.source),
       c.cls?.reason ? metaRow("Class", c.cls.reason) : null,
       c.loader && !c.loader.startsWith("fsim_core") ? metaRow("Loader", c.loader) : null),
-    c.meta?.note ? h("p.lib-note", c.meta.note) : null);
+    c.meta?.note ? h("p.lib-note", c.meta.note) : null,
+    modelPanel(c));
 
   const hasData = c.datasets.length > 0;
   const left = h("div.lib-col");
@@ -214,6 +225,16 @@ async function cardPage(name) {
   await Promise.allSettled(pending);
   if (!L || seq !== L.seq) return;
   L.el.dataset.ready = "1";
+}
+
+// The live 3D model of the card's scene block (one WebGL context; the index thumbnails use short-lived offscreen ones).
+function modelPanel(c) {
+  if (!c.has_scene) return h("p.lib-thumb-why.lib-model-none", { dataset: { role: "device-model-none" } }, NO_MODEL);
+  const view = h("div.lib-model", { dataset: { role: "device-model", state: "pending" }, "aria-label": `${cardTitle(c.name)}: device model, 3D` });
+  L.model = mountDeviceModel(view, { card: c.name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") });
+  return h("section.panel.lib-model-panel", { "aria-label": "Device model" },
+    h("header.panel-head", h("h2.engrave", "Device model"), h("span.panel-note", "display only: the closest registry class, every number tagged")),
+    view);
 }
 
 function metaRow(k, v) {

@@ -33,6 +33,21 @@ function loadPlaywright() {
   process.exit(2);
 }
 
+// LIBSCENE: count live WebGL contexts (a context whose canvas is attached and not lost); the page polls the maximum.
+function glTrack() {
+  window.__gl = { list: [], max: 0, created: 0 };
+  const orig = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...a) {
+    const c = orig.call(this, type, ...a);
+    if (c && /webgl/.test(String(type)) && !window.__gl.list.includes(c)) { window.__gl.list.push(c); window.__gl.created++; }
+    return c;
+  };
+  setInterval(() => {
+    const n = window.__gl.list.filter((c) => c.canvas && c.canvas.isConnected && !c.isContextLost()).length;
+    if (n > window.__gl.max) window.__gl.max = n;
+  }, 30);
+}
+
 const results = [];
 function check(name, ok, detail = "") {
   results.push({ name, ok: !!ok, detail });
@@ -68,6 +83,7 @@ async function numberTagAudit(page) {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
+  await context.addInitScript(glTrack);
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(`${page.url()} ${m.text()}`); });
@@ -185,6 +201,80 @@ async function numberTagAudit(page) {
     await ready(page);
     const chartTitles = await page.$$eval(".lib-ds-card h3.chart-title", (e) => e.map((x) => x.textContent));
     check("library card page: dataset chart titles are typeset labels, not ids", chartTitles.length > 0 && chartTitles.every((t) => !/_/.test(t)), chartTitles.join(" | ").slice(0, 160));
+
+    // ------------------------------------------------------------ LIBSCENE: every parameter card shows a 3D model
+    {
+      await page.goto(`${BASE}/#/library`, { waitUntil: "domcontentloaded" });
+      await ready(page);
+      await page.evaluate(() => { window.__gl.max = 0; });      // count from the index load of this section
+      await page.waitForFunction(() => [...document.querySelectorAll("a.lib-plaque .lib-thumb")].every((t) => t.dataset.state !== "pending"), null, { timeout: 60000 }).catch(() => {});
+      const ts = await page.$$eval("a.lib-plaque", (as) => as.map((a) => {
+        const t = a.querySelector(".lib-thumb"), img = t?.querySelector("img.lib-thumb-img");
+        return { id: a.dataset.card, state: t?.dataset.state, ok: !!img && img.naturalWidth > 0, bytes: img ? img.src.length : 0 };
+      }));
+      const mine = ts.filter((x) => CARDS.includes(x.id));
+      check("LIBSCENE: all 10 Library cards show a device model thumbnail (state ready, a decoded image, not blank), none a stated reason",
+        mine.length === 10 && mine.every((x) => x.state === "ready" && x.ok && x.bytes > 8000), mine.map((x) => `${x.id}:${x.state}:${x.bytes}`).join(" "));
+      const gl1 = await page.evaluate(() => ({ max: window.__gl.max, created: window.__gl.created, live: window.__gl.list.filter((c) => c.canvas && c.canvas.isConnected && !c.isContextLost()).length }));
+      check("LIBSCENE: the index (10 thumbnails) held at most one live WebGL context at any time, and none remain",
+        gl1.max <= 1 && gl1.live === 0 && gl1.created >= 10, JSON.stringify(gl1));
+
+      const SH = path.join(ROOT, ".workers", "devlib", "libscene");
+      fs.mkdirSync(SH, { recursive: true });
+      const VPS = [["dark", 1440, 900], ["light", 1440, 900], ["dark", 390, 844]];
+      for (const [theme, w, hgt] of VPS) {
+        const tag = `${theme}-${w}`;
+        const ctx2 = await browser.newContext({ viewport: { width: w, height: hgt }, deviceScaleFactor: 1 });
+        await ctx2.addInitScript(glTrack);
+        await ctx2.addInitScript((th) => { try { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: th })); } catch { /* blocked */ } }, theme);
+        const pg = await ctx2.newPage();
+        const errs = [];
+        pg.on("console", (m) => { if (m.type() === "error") errs.push(m.text()); });
+        pg.on("pageerror", (e) => errs.push(`pageerror: ${e.message}`));
+        try {
+          await pg.goto(`${BASE}/#/library`, { waitUntil: "domcontentloaded" });
+          await ready(pg);
+          await pg.waitForFunction(() => [...document.querySelectorAll("a.lib-plaque .lib-thumb")].every((t) => t.dataset.state !== "pending"), null, { timeout: 60000 }).catch(() => {});
+          const th = await pg.$$eval("a.lib-plaque", (as) => as.filter((a) => a.querySelector(".lib-thumb")?.dataset.state === "ready").length);
+          check(`LIBSCENE ${tag}: the index shows ${CARDS.length} model thumbnails`, th >= CARDS.length, String(th));
+          await pg.screenshot({ path: path.join(SH, `index-${tag}.png`), fullPage: true });
+          for (const card of CARDS) {
+            const want = await pg.evaluate(async (n) => (await fetch(`/api/scene/device?card=${n}`)).json(), card);
+            await pg.goto(`${BASE}/#/library/${card}`, { waitUntil: "domcontentloaded" });
+            await ready(pg);
+            const live = await pg.waitForFunction(() => document.querySelector('[data-role="device-model"]')?.dataset.state === "live", null, { timeout: 45000 }).then(() => true).catch(() => false);
+            await pg.waitForFunction(() => document.querySelector('[data-role="device-model"] .dm-view')?.dataset.ready === "1", null, { timeout: 20000 }).catch(() => {});
+            await settle(pg, 600);
+            const st = await pg.evaluate(() => {
+              const m = document.querySelector('[data-role="device-model"]'), v = m?.querySelector(".dm-view");
+              const hudTxt = (m?.textContent || "");
+              return { state: m?.dataset.state, variant: m?.dataset.variant, mode: v?.dataset.mode, ready: v?.dataset.ready,
+                canvases: m ? m.querySelectorAll("canvas").length : 0, hud: hudTxt.includes("display-only scene"), tagline: hudTxt.includes("scene numbers taken from the card"),
+                gl: window.__gl.list.filter((c) => c.canvas && c.canvas.isConnected && !c.isContextLost()).length,
+                hscroll: document.documentElement.scrollWidth - document.documentElement.clientWidth, box: m ? m.getBoundingClientRect().height : 0 };
+            });
+            check(`LIBSCENE ${tag} ${card}: detail view mounts the live 3D model (WebGL, ready, builder ${want.builder}, one canvas, HUD names the card note and the tag summary)`,
+              live && st.mode === "webgl" && st.ready === "1" && st.variant === want.variant && st.canvases === 1 && st.hud && st.tagline && st.box > 200,
+              JSON.stringify(st));
+            check(`LIBSCENE ${tag} ${card}: at most one live WebGL context on the card page, no horizontal scroll`, st.gl <= 1 && st.hscroll <= 1, `gl ${st.gl}, hscroll ${st.hscroll}`);
+            const el = await pg.$('[data-role="device-model"]');
+            const file = path.join(SH, `${card}-${tag}.png`);
+            if (el) await el.screenshot({ path: file });
+            const bytes = el ? fs.statSync(file).size : 0;
+            check(`LIBSCENE ${tag} ${card}: the model screenshot is not blank (PNG > 15 KB)`, bytes > 15000, String(bytes));
+            if (card === CARDS[0]) await pg.screenshot({ path: path.join(SH, `page-${card}-${tag}.png`) });
+          }
+          const mx = await pg.evaluate(() => window.__gl.max);
+          check(`LIBSCENE ${tag}: across the index and all 10 card pages at most one WebGL context was live at any time`, mx <= 1, String(mx));
+          check(`LIBSCENE ${tag}: no console errors`, errs.filter((t) => !/favicon/i.test(t)).length === 0, errs.slice(0, 3).join(" | "));
+        } catch (e) {
+          check(`LIBSCENE ${tag}: harness`, false, e.stack || String(e));
+        } finally {
+          await ctx2.close();
+        }
+      }
+      await page.goto(`${BASE}/#/library`, { waitUntil: "domcontentloaded" });
+    }
   } catch (e) {
     check("harness ran without throwing", false, e.stack || String(e));
   }

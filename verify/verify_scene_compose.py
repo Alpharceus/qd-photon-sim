@@ -372,6 +372,21 @@ check("colour band: InAs/InP C-band is telecom, false colour", lam_c >= 1260 and
 check("colour band: the beam of a UV dot is labelled UV too", describe(dspec("resonant_pulse", mat="gan_aln"))["drive"]["beams"][0]["colour_label"] == "UV, false colour")
 
 
+# --- LIBSCENE: a parameter card's scene.geometry replaces a display default and keeps its own tag
+_ov = {"slab_d_um": {"value": 1.25, "unit": "um", "tag": "A", "where": "test"}, "slab_h_um": {"range": [1.0, 3.0], "unit": "um", "tag": "E", "where": "test"}}
+d_base, d_ov = describe(spec("bulk_planar")), describe(spec("bulk_planar"), {"geometry": _ov})
+check("scene.geometry: no override leaves the descriptor unchanged (slab 16 x 3 um display defaults, flagged display_default)",
+      d_base["geometry"]["d_um"] == 16.0 and d_base["geometry"]["h_um"] == 3.0 and "d_um" in d_base["display_defaults"] and "h_um" in d_base["display_defaults"])
+check("scene.geometry: an override sets the drawn size (d 1.25 um; h = midpoint 2.0 of its range), with its own tag and no display_default flag",
+      d_ov["geometry"]["d_um"] == 1.25 and d_ov["geometry"]["h_um"] == 2.0 and d_ov["geometry_src"]["d_um"]["tag"] == "A"
+      and d_ov["geometry_src"]["h_um"]["tag"] == "E" and d_ov["geometry_src"]["h_um"]["range"] == [1.0, 3.0]
+      and d_ov["geometry_src"]["d_um"]["display_default"] is False and not {"d_um", "h_um"} & set(d_ov["display_defaults"]))
+check("scene.geometry: an override the builder does not use gives the fallback with a reason (never silently ignored)",
+      describe(spec("micropillar"), {"geometry": {"slab_d_um": _ov["slab_d_um"]}}).get("fallback") is True)
+check("scene.geometry: a leaf without a unit or with the wrong unit is refused (fallback)",
+      describe(spec("bulk_planar"), {"geometry": {"slab_d_um": {"value": 1.0, "tag": "A", "where": "t"}}}).get("fallback") is True
+      and describe(spec("bulk_planar"), {"geometry": {"slab_d_um": {"value": 1.0, "unit": "um", "tag": "Z", "where": "t"}}}).get("fallback") is True)
+
 n = sum(RES)
 print(f"{n}/{len(RES)} scene_compose checks passed")
 sys.exit(0 if n == len(RES) else 1)

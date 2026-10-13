@@ -49,3 +49,20 @@ params:
     unit: bool
     tag: A
     source: "design-choice flag: intracavity contact present"
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 930.0, unit: nm, tag: A, where: "display assumption: the card gives no emission wavelength or material; the InAs/GaAs class wavelength is drawn"}
+  structure:
+    kind: micropillar
+    params:
+      d_um: {value: 2.5, unit: um, tag: A, where: "display assumption: pillar diameter is not in the card"}
+      N_top: {value: 20, unit: "1", tag: A, where: "display assumption: DBR pairs are not in the card"}
+      N_bot: {value: 30, unit: "1", tag: A, where: "display assumption: DBR pairs are not in the card"}
+  drive:
+    kind: electrical_cw
+  note: >
+    Closest registry class: electrically contacted DBR micropillar (the card says only "intracavity contact" and "dual-aperture" carrier injection, so a microcavity pillar is the nearest class). Material, wavelength, diameter and DBR pairs are display assumptions [A]. The resonant-tunnelling injector (rti), the carrier apertures and the contact layers are design flags in the card and are not drawn.
