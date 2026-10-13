@@ -194,12 +194,13 @@ def validate_spec(spec, registry: Optional[_registry.Registry] = None) -> dict:
                                  f"the other chosen entries "
                                  f"({ {a: sorted(e.provides) for a, e in entries.items() if a != axis} })"))
 
-    # FIX-1b/1a: declared (material, structure) incompatibility (structures.STRUCTURE_COMPAT); a WARNING so the engine still
-    # reports valid=False with the reason (engine._validity) and the Composer picker greys the pair
+    # R2 finish (FIN1): a declared (material, structure) incompatibility (structures.STRUCTURE_COMPAT) is an ERROR: an
+    # incompatible pair is not a device, so the spec is not ok, RUN is refused, and the Composer shows INCOMPATIBLE with the
+    # reason. An old spec carrying such a pair still loads (from_dict is structural); it just validates ok:false.
     if "material" in entries and "structure" in entries:
         why = _pair_incompatibility(spec, entries)
         if why:
-            issues.append(_issue("warning", "structure.kind", f"incompatible with the chosen material: {why}"))
+            issues.append(_issue("error", "structure.kind", f"incompatible with the chosen material: {why}"))
 
     solvers = reg.kinds("solver")
     if spec.solver == "auto":

@@ -399,6 +399,35 @@ check("fsim_core_hash changes when a fsim_core/compose/*.py file appears and res
 check("fsim_core_hash changes when a fsim_core/compose/data/*.yaml file appears and restores after",
       h3 != h0 and h4 == h0)
 
+
+# ---------------------------------------------------------------- R2 finish (FIN1): an incompatible pair is an ERROR
+_inc = {"schema": S.SCHEMA, "solver": "auto", "T_K": 4.2,
+        "drive": {"kind": "resonant_cw", "params": {}}, "material": {"kind": "cdse_znse", "params": {}},
+        "structure": {"kind": "edge_ridge", "params": {}}, "setup": {"kind": "lens_fibre_det", "params": {}}}
+_reg_p = R.registry_payload()
+_k = lambda ax: [e["kind"] for e in _reg_p[ax]]                      # noqa: E731
+if "resonant_cw" not in _k("drives"):
+    _inc["drive"]["kind"] = _k("drives")[0]
+if "lens_fibre_det" not in _k("setups"):
+    _inc["setup"]["kind"] = _k("setups")[0]
+_spec_inc = S.ComposedSpec.from_dict(copy.deepcopy(_inc))             # an old spec still LOADS (structural check only)
+_v_inc = S.validate_spec(_spec_inc)
+_pair = [i for i in _v_inc["issues"] if i["path"] == "structure.kind" and "incompatible" in i["message"]]
+check("incompatible (material, structure) pair (edge_ridge + cdse_znse): validate_spec ok:false with the reason as an error",
+      _v_inc["ok"] is False and len(_pair) == 1 and _pair[0]["level"] == "error" and len(_pair[0]["message"]) > 40,
+      json.dumps(_v_inc["issues"])[:300])
+_ok_spec = copy.deepcopy(_inc)
+_ok_spec["material"]["kind"] = "inas_inp_cband"
+_v_ok = S.validate_spec(S.ComposedSpec.from_dict(_ok_spec))
+check("the same chain on a compatible material (inas_inp_cband) has no incompatibility issue",
+      not [i for i in _v_ok["issues"] if "incompatible" in i["message"]], json.dumps(_v_ok["issues"])[:300])
+_ok_of_dict = S.validate_spec(copy.deepcopy(_inc))                   # a plain dict goes through from_dict inside validate_spec
+check("validate_spec of an old dict spec with an incompatible pair returns ok:false (an error, not a crash)",
+      _ok_of_dict["ok"] is False and _ok_of_dict["issues"])
+_compat = _reg_p.get("compat") or []
+check("registry compat list still names edge_ridge + cdse_znse with a reason",
+      any(c.get("material") == "cdse_znse" and c.get("structure") == "edge_ridge" and c.get("reason") for c in _compat))
+
 n, total = sum(RESULTS), len(RESULTS)
 print(f"{n}/{total} compose spec checks passed")
 sys.exit(0 if n == total else 1)

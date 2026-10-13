@@ -12,6 +12,7 @@ Routes (registered by register(app) from server.create_app):
   GET  /api/compose/examples          class-example composed designs from cards/composed/*.yaml
   GET  /api/compose/tier/fock         fsim_core.compose.tiers.fock_card_to_spec() as a composed design
   GET|POST /api/compose/scene         fsim_studio.scene_compose.describe(spec) (501 while the module is absent)
+  PUT|GET /api/compose/saved-run/<card>  the last run stored beside a saved composed card (<card>.run.json), with its spec hash
   GET  /api/papers                    catalogue (fsim_core.compose.papers.list_papers)
   GET  /api/papers/<id>               card JSON + resolved device
   POST /api/papers/<id>/reproduce     job (reproduce_job), cache key = card sha256 + fsim_core hash
@@ -27,7 +28,9 @@ import hashlib
 import importlib
 import json
 import math
+import os
 import re
+import time
 
 from . import CARDS, fsim_core_hash
 from . import cache
@@ -42,6 +45,7 @@ SERIES_FN = "fsim_studio.api_compose:series_job"
 REPRODUCE_FN = "fsim_studio.api_compose:reproduce_job"
 CENTRAL_NOTE = "ranged leaves replaced by their declared central value (lin midpoint, log geometric mean); not a prediction"
 
+SAVED_RUN_MAX_BYTES = 4_000_000
 _REGISTRY_CACHE: dict = {}
 
 
@@ -69,6 +73,63 @@ def _need_papers():
     if papers is None:
         raise ComposeError("fsim_core.compose.papers is not available yet", 501)
     return papers
+
+
+# ------------------------------------------------------------------ saved run (R2 finish, FIN1)
+def spec_hash(spec) -> str:
+    """12 hex digits of the sha256 of the canonical JSON of a composed spec (the key that ties a saved run to its design)."""
+    blob = json.dumps(spec, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def _saved_run_path(name):
+    from .api_cards import SLUG_RE, USER_CARDS
+    if not isinstance(name, str) or not SLUG_RE.match(name) or len(name) > 80:
+        raise ComposeError(f"invalid card name {name!r}", 400)
+    if not (USER_CARDS / f"{name}.yaml").is_file():
+        raise ComposeError(f"{name!r} is not a saved card; save the design first", 404)
+    return USER_CARDS / f"{name}.run.json"
+
+
+def put_saved_run(name, body) -> dict:
+    """Store the run the Composer shows beside the saved card <name>. The spec the run was made from is hashed; the run is stored
+    verbatim (a result the engine returned), never recomputed."""
+    path = _saved_run_path(name)
+    spec, run = body.get("spec"), body.get("run")
+    if not isinstance(spec, dict) or not isinstance(run, dict):
+        raise ComposeError("body must carry {spec, run} objects")
+    from .api_cards import get_card
+    # the hash is of the design as the card file now holds it (DeviceDesign.save/load may normalise the sent spec), so a later GET compares like with like
+    doc = {"schema": "fsim-saved-run/1", "spec_hash": spec_hash(((get_card(name).get("design") or {}).get("composed")) or {}), "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "run": run}
+    text = json.dumps(doc, default=str)
+    if len(text) > SAVED_RUN_MAX_BYTES:
+        raise ComposeError("the run is too large to store with the design", 413)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return {"name": name, "spec_hash": doc["spec_hash"], "saved": True}
+
+
+def get_saved_run(name) -> dict:
+    """The stored run (or run: null), its spec hash, and whether the card's design still hashes to it."""
+    from .api_cards import SLUG_RE, USER_CARDS, get_card
+    if not isinstance(name, str) or not SLUG_RE.match(name) or len(name) > 80:
+        raise ComposeError(f"invalid card name {name!r}", 400)
+    path = USER_CARDS / f"{name}.run.json"
+    if not (USER_CARDS / f"{name}.yaml").is_file():       # a shipped card (or none): nothing stored, and not an error the browser logs
+        return {"name": name, "run": None, "spec_hash": None, "current_hash": None, "matches": False}
+    now = spec_hash(((get_card(name).get("design") or {}).get("composed")) or {})
+    if not path.is_file():
+        return {"name": name, "run": None, "spec_hash": None, "current_hash": now, "matches": False}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"name": name, "run": None, "spec_hash": None, "current_hash": now, "matches": False}
+    return {"name": name, "run": doc.get("run"), "spec_hash": doc.get("spec_hash"), "saved_at": doc.get("saved_at"),
+            "current_hash": now, "matches": doc.get("spec_hash") == now}
 
 
 # ------------------------------------------------------------------ pure helpers
@@ -539,6 +600,14 @@ def register(app):
     @app.get("/api/compose/tier/fock")
     def compose_tier_fock():
         return _out(fock_design())
+
+    @app.put("/api/compose/saved-run/<name>")
+    def compose_saved_run_put(name):
+        return _out(put_saved_run(name, _body()))
+
+    @app.get("/api/compose/saved-run/<name>")
+    def compose_saved_run_get(name):
+        return _out(get_saved_run(name))
 
     # ---------------------------------------------------------------- papers
     @app.get("/api/papers")

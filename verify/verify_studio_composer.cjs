@@ -89,6 +89,8 @@ async function waitRun(page, timeout = 120000) {
   page.on("console", (m) => { if (m.type() === "error" && !(mockedFailure && /status of 500/.test(m.text()))) errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
   page.on("requestfailed", (r) => { if (!r.url().includes("/events")) errors.push(`requestfailed: ${r.url()} ${r.failure()?.errorText}`); });
+  const notFound = [];
+  page.on("response", (r) => { if (r.status() === 404) notFound.push(r.url().replace(BASE, "")); });
   const validates = [];
   page.on("request", (r) => { if (r.url().endsWith("/api/compose/validate")) validates.push(r.postData()); });
   let putBody = null;
@@ -102,6 +104,15 @@ async function waitRun(page, timeout = 120000) {
     } else await route.continue();
   });
 
+  // the Composer stores the last run beside a saved card; the card PUT is mocked, so the saved-run endpoint is mocked for the whole run
+  let runPut = null, savedGet = null;
+  await page.route("**/api/compose/saved-run/*", async (route) => {
+    const req = route.request();
+    if (req.method() === "PUT") {
+      runPut = JSON.parse(req.postData() || "{}");
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ name: "composer-verify-card", spec_hash: "0123456789ab", saved: true }) });
+    } else await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(savedGet || { name: "composer-verify-card", run: null, spec_hash: null, matches: false }) });
+  });
   try {
     const reg = await (await fetch(`${BASE}/api/compose/registry`)).json();
     const AX = [["drive", "drives"], ["material", "materials"], ["structure", "structures"], ["setup", "setups"]];
@@ -125,8 +136,14 @@ async function waitRun(page, timeout = 120000) {
     await closeStart(page);
     const startCaps = await page.$$eval(".ws-compose .start-btn", (els) => els.map((e) => getComputedStyle(e).textTransform));
     check("Start-from menu names are sentence case, not engraved caps", startCaps.every((t) => t === "none"), startCaps.join(","));
-    const tp0 = await page.evaluate(() => { const t = document.querySelector(".ws-compose .temp-plate").getBoundingClientRect(); const rb = document.querySelector(".ws-compose .runbar").getBoundingClientRect(); return { top: t.top, bottom: t.bottom, vh: window.innerHeight, rb: rb.top }; });
-    check("the temperature plate is fully visible in the 1440x900 first viewport", tp0.top >= 48 && tp0.bottom <= Math.min(tp0.vh, tp0.rb + 1), JSON.stringify(tp0));
+    // R2 finish (FIN1): the 3D viewport keeps >= 380 px and the column scrolls (spec devlib-r2-fin1 item 1), so the temperature plate is no longer
+    // in the first screenful at 1440x900. The check keeps its geometry (fully visible, above the run bar) but after scrolling the column to its end;
+    // RUN itself (the run bar) must still be on screen without scrolling.
+    await page.evaluate(() => { const t = document.querySelector(".ws-compose .board-table"); t.scrollTop = t.scrollHeight; });
+    await page.waitForTimeout(150);
+    const tp0 = await page.evaluate(() => { const t = document.querySelector(".ws-compose .temp-plate").getBoundingClientRect(); const rb = document.querySelector(".ws-compose .runbar").getBoundingClientRect(); return { top: t.top, bottom: t.bottom, vh: window.innerHeight, rb: rb.top, rbBottom: rb.bottom }; });
+    check("the temperature plate is fully visible at 1440x900 once the column is scrolled to its end, and the run bar is on screen", tp0.top >= 48 && tp0.bottom <= Math.min(tp0.vh, tp0.rb + 1) && tp0.rbBottom <= tp0.vh + 1, JSON.stringify(tp0));
+    await page.evaluate(() => { document.querySelector(".ws-compose .board-table").scrollTop = 0; });
     const pq0 = await page.$eval(".ws-compose .plaque", (e) => ({ line: e.classList.contains("plaque-line"), bg: getComputedStyle(e).backgroundColor, word: e.querySelector(".plaque-word").textContent }));
     check("before a run the validity is an outline status line, not a filled plaque", pq0.line && /VALID/.test(pq0.word) && (pq0.bg === "rgba(0, 0, 0, 0)" || pq0.bg === "transparent"), JSON.stringify(pq0));
     const hint0 = await page.$eval(".ws-compose .shelf-hint", (e) => ({ hidden: e.hidden, t: e.textContent }));
@@ -635,6 +652,16 @@ async function waitRun(page, timeout = 120000) {
           check(`phone width ${theme}: a parameter sheet open does not widen the page (scrollWidth 390)`, sheetSw === 390, `${sheetSw}`);
           await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true }).catch(() => {});
           await settle(page, 300);
+          // R2 finish (FIN1): the mount footers ("Edit N fields", "k edited") never collide or leave their mount at 390
+          const foots = await page.$$eval(".ws-compose .mount", (els) => els.map((m) => {
+            const mr = m.getBoundingClientRect();
+            const kids = [...m.querySelectorAll(".mount-foot > *")].map((k) => k.getBoundingClientRect());
+            const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+            let overlap = false;
+            for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) if (hit(kids[i], kids[j])) overlap = true;
+            return { overlap, out: kids.some((k) => k.right > mr.right + 1 || k.left < mr.left - 1), n: kids.length };
+          }));
+          check(`phone width ${theme}: the Composer mount footers do not collide or spill out of their mounts`, foots.length === 4 && foots.every((f) => !f.overlap && !f.out), JSON.stringify(foots));
           if (theme === "dark") {
             const grid = await page.$$eval(".ws-compose .mount-cell", (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
             check("phone: the chain is a 2 x 2 grid of mounts (no clipped scroller)", new Set(grid.map((g) => g[0])).size === 2 && new Set(grid.map((g) => g[1])).size === 2, JSON.stringify(grid));
@@ -760,6 +787,161 @@ async function waitRun(page, timeout = 120000) {
         check("F56 the series card says why hom_I_gated is unavailable (no HOM gate set), not a blank plot", !!gate && /no HOM gate set/.test(sub), sub.slice(0, 200));
       } catch (e) { check("F56 composer unavailable-reason checks ran", false, e.message.split("\n")[0]); }
     }
+    // ---------------------------------------------------------------- R2 finish (FIN1): viewport height, material band view, incompatible chains, save truth
+    {
+      const sleep = (ms) => page.waitForTimeout(ms);
+      const openComposer = async (w, hh, theme) => {
+        await page.setViewportSize({ width: w, height: hh });
+        await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+        await page.evaluate((t) => { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: t })); }, theme || "dark");
+        await page.reload({ waitUntil: "load" });
+        await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 90000 });
+        await settle(page, 600);
+      };
+      const pickAny = async (axis, kind) => {
+        await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
+        await page.waitForSelector(`.cp-entry[data-kind="${kind}"]`, { timeout: 15000 });
+        await sleep(300);
+        await page.click(`.cp-entry[data-kind="${kind}"]`, { force: true });
+        await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, kind], { timeout: 10000 });
+        await sleep(400);
+      };
+      // 1. the 3D viewport is tall enough at 1440x900 and 1280x720 (the column scrolls instead)
+      for (const [w, hh] of [[1440, 900], [1280, 720]]) {
+        await openComposer(w, hh);
+        const vp = await page.$eval(".ws-compose .viewport-slot", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width) }; });
+        check(`FIN1 the Composer 3D viewport is >= 380 px tall at ${w}x${hh}`, vp.h >= 380, JSON.stringify(vp));
+        const scrolls = await page.$eval(".ws-compose .board-table", (e) => ({ sh: e.scrollHeight, ch: e.clientHeight, oy: getComputedStyle(e).overflowY }));
+        check(`FIN1 at ${w}x${hh} the column scrolls (overflow auto) rather than squeezing the viewport`, scrolls.oy === "auto" || scrolls.oy === "scroll", JSON.stringify(scrolls));
+      }
+      // 2. the material band view: one panel per registry material, driven by the registry's own parameters
+      await openComposer(1440, 900, "dark");
+      await page.click('.ws-compose .vm-view[data-view="band"]');
+      await page.waitForSelector(".ws-compose .band-panel", { timeout: 10000 });
+      const bandHidden3d = await page.$eval(".ws-compose .viewport-slot", (e) => e.hidden || getComputedStyle(e).display === "none");
+      check("FIN1 the Band toggle shows the band panel and hides the 3D slot", bandHidden3d);
+      const bands = [];
+      for (const m of reg.materials) {
+        if (m.kind !== await page.$eval('.ws-compose .kind-chip[data-axis="material"]', (e) => e.dataset.kind)) await pickAny("material", m.kind);
+        await page.waitForFunction((k) => document.querySelector(".ws-compose .band-panel")?.dataset.material === k, m.kind, { timeout: 10000 });
+        const info = await page.$eval(".ws-compose .band-panel", (e) => ({ sig: e.dataset.sig, ex: Number(e.dataset.ex), lz: Number(e.dataset.lz), paths: e.querySelectorAll("svg path").length, texts: [...e.querySelectorAll("svg text")].map((t) => t.textContent).join(" "), tags: e.querySelectorAll(".bp-facts .tag").length }));
+        const lam = m.params.find((q) => q.name === "lambda_nm").default;
+        bands.push({ kind: m.kind, lam, ...info });
+      }
+      check(`FIN1 band view: a panel is drawn for each of the ${reg.materials.length} materials (curves, level labels, tagged facts)`, bands.length === reg.materials.length && bands.every((b) => b.paths >= 8 && /conduction band edge/.test(b.texts) && /valence band edge/.test(b.texts) && b.tags >= 4), JSON.stringify(bands.map((b) => [b.kind, b.paths, b.tags])));
+      check("FIN1 band view: picking each material changes the panel (all signatures differ)", new Set(bands.map((b) => b.sig)).size === bands.length, bands.map((b) => b.sig).join(" ; "));
+      check("FIN1 band view: the transition energy is hc/lambda of the registry value for every material", bands.every((b) => Math.abs(b.ex - 1239.84198 / b.lam) < 1e-3), JSON.stringify(bands.map((b) => [b.kind, b.ex])));
+      check("FIN1 band view: the drawn well width is the registry l_z", bands.every((b) => { const m = reg.materials.find((q) => q.kind === b.kind); return Math.abs(b.lz - m.params.find((q) => q.name === "l_z_nm").default) < 1e-9; }));
+      check("FIN1 band view: the assumed barrier / shift is tagged [A] on the picture", bands.every((b) => /\[A\]/.test(b.texts)));
+      for (const theme of ["dark", "light"]) {
+        await openComposer(1440, 900, theme);
+        await page.click('.ws-compose .vm-view[data-view="band"]');
+        await page.waitForSelector(".ws-compose .band-panel", { timeout: 10000 });
+        await settle(page, 400);
+        await page.screenshot({ path: path.join(SHOTS, `composer-band-${theme}-1440.png`) });
+      }
+      await openComposer(390, 844, "dark");
+      await page.click('.ws-compose .vm-view[data-view="band"]');
+      await page.waitForSelector(".ws-compose .band-panel", { timeout: 10000 });
+      await settle(page, 400);
+      check("FIN1 band view at 390: no horizontal page overflow", (await page.evaluate(() => document.scrollingElement.scrollWidth)) === 390);
+      await page.screenshot({ path: path.join(SHOTS, "composer-band-dark-390.png"), fullPage: true });
+
+      // 3. an incompatible chain: INCOMPATIBLE plaque + run bar, RUN disabled, the picker greys but allows the pick, the fallback plate stays inside
+      await openComposer(1440, 900, "dark");
+      const real = (reg.compat || []).find((c) => c.material === "cdse_znse" && c.structure === "edge_ridge");
+      check("FIN1 the server declares edge_ridge + cdse_znse incompatible, with a reason", !!real && real.reason.length > 20, JSON.stringify(real));
+      await pickAny("material", "cdse_znse");
+      await page.click('.ws-compose .kind-chip[data-axis="structure"]');
+      await page.waitForSelector('.cp-entry[data-kind="edge_ridge"]', { timeout: 15000 });
+      await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
+      const grey = await page.$eval('.cp-entry[data-kind="edge_ridge"]', (e) => ({ compat: e.dataset.compat, dis: e.getAttribute("aria-disabled"), title: e.title, op: Number(getComputedStyle(e).opacity) }));
+      check("FIN1 the chip picker greys edge_ridge next to cdse_znse with the reason in its tooltip", grey.compat === "no" && grey.dis === "true" && grey.op < 0.9 && !!real && grey.title.includes(real.reason.slice(0, 30)), JSON.stringify(grey));
+      await page.click('.cp-entry[data-kind="edge_ridge"]', { force: true });   // Playwright treats aria-disabled as not clickable; a user can click it
+      const picked = await page.waitForFunction(() => document.querySelector('.ws-compose .kind-chip[data-axis="structure"]')?.dataset.kind === "edge_ridge", null, { timeout: 10000 }).then(() => true).catch(() => false);
+      check("FIN1 a greyed incompatible entry stays selectable", picked);
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.incompatible === "true", null, { timeout: 15000 }).catch(() => {});
+      await sleep(900);
+      const inc = await page.evaluate(() => ({
+        word: document.querySelector(".ws-compose .plaque .plaque-word")?.textContent.trim(),
+        status: document.querySelector(".ws-compose .plaque")?.dataset.status,
+        disabled: document.querySelector(".ws-compose .run-key")?.disabled,
+        eta: document.querySelector(".ws-compose .run-eta")?.textContent,
+        tip: document.querySelector(".ws-compose .run-key")?.title,
+        issue: [...document.querySelectorAll(".ws-compose .plaque-issues .pi-t")].map((e) => e.textContent).join(" | "),
+      }));
+      check("FIN1 incompatible chain: the plaque says INCOMPATIBLE and fails", inc.word === "INCOMPATIBLE" && inc.status === "fail", JSON.stringify(inc));
+      check("FIN1 incompatible chain: RUN is disabled and the run bar says INCOMPATIBLE with the reason", inc.disabled === true && /^INCOMPATIBLE: /.test(inc.eta || "") && !!real && (inc.eta || "").includes(real.reason.slice(15, 45)) && /INCOMPATIBLE/.test(inc.tip || ""), JSON.stringify(inc));
+      check("FIN1 incompatible chain: the plaque lists the reason", !!real && inc.issue.includes(real.reason.slice(15, 45)), inc.issue);
+      const vApi = await (await fetch(`${BASE}/api/compose/validate`, { method: "POST", headers: { "content-type": "application/json", "X-FSIM-Studio": "1" }, body: JSON.stringify({ spec: { schema: "fsim-composed/1", solver: "auto", T_K: 4.2, drive: { kind: reg.drives[0].kind, params: {} }, material: { kind: "cdse_znse", params: {} }, structure: { kind: "edge_ridge", params: {} }, setup: { kind: reg.setups[0].kind, params: {} } } }) })).json();
+      check("FIN1 the server API reports the incompatible pair as ok:false with an error issue", vApi.ok === false && vApi.issues.some((i) => i.level === "error" && /incompatible/.test(i.message)), JSON.stringify(vApi.issues).slice(0, 200));
+      const fb = await page.evaluate(() => {
+        const slot = document.querySelector(".ws-compose .viewport-slot");
+        const chain = document.querySelector(".ws-compose .chain");
+        const ph = slot.querySelector(".vp-placeholder");
+        const sr = slot.getBoundingClientRect(), cr = chain.getBoundingClientRect();
+        const links = ph ? [...ph.querySelectorAll(".vp-link")].map((l) => l.getBoundingClientRect()) : [];
+        return { ph: !!ph, slotBottom: Math.round(sr.bottom), chainTop: Math.round(cr.top), linksIn: links.every((l) => l.left >= sr.left - 1 && l.right <= sr.right + 1), phOverflowY: ph ? getComputedStyle(ph).overflowY : "" };
+      });
+      check("FIN1 the 2D fallback plate stays inside the viewport box and above the mount row", !fb.ph || (fb.linksIn && fb.slotBottom <= fb.chainTop), JSON.stringify(fb));
+      await page.screenshot({ path: path.join(SHOTS, "composer-incompatible-dark-1440.png") });
+      await openComposer(390, 844, "dark");
+      await pickAny("material", "cdse_znse");
+      await pickAny("structure", "edge_ridge");
+      await sleep(900);
+      const incPhone = await page.evaluate(() => ({ sw: document.scrollingElement.scrollWidth, word: document.querySelector(".ws-compose .plaque .plaque-word")?.textContent.trim() }));
+      check("FIN1 incompatible chain at 390: INCOMPATIBLE shows and the page does not overflow", incPhone.word === "INCOMPATIBLE" && incPhone.sw === 390, JSON.stringify(incPhone));
+      await page.screenshot({ path: path.join(SHOTS, "composer-incompatible-dark-390.png"), fullPage: true });
+
+      // 4. state truth after Save: no 'Result on shelf' over empty readouts, a short wrapped toast, the last run stored with the design
+      runPut = null; savedGet = null;
+      const saveCard = async () => {
+        putBody = null;
+        await page.click(".ws-compose .bh-save");
+        await page.waitForSelector(".save-form");
+        await page.fill(".save-name", "composer-verify-card");
+        await page.waitForTimeout(150);
+        await page.click(".save-go");
+        await page.waitForSelector(".toasts .toast", { timeout: 8000 });
+        return page.$eval(".toasts .toast:last-child", (e) => { const m = e.querySelector(".toast-msg"); const r = e.getBoundingClientRect(); return { text: m.textContent, title: e.title, wrap: getComputedStyle(m).overflowWrap, fits: m.scrollWidth <= m.clientWidth + 1, inView: r.left >= 0 && r.right <= window.innerWidth + 1 }; });
+      };
+      // 4a. saved with no run on the shelf
+      await openComposer(1440, 900, "dark");
+      const t1 = await saveCard();
+      check("FIN1 Saved toast without a run: a short name, no path, says the run was not saved", /saved/i.test(t1.text) && /run not saved/.test(t1.text) && !/[\\/]|\.yaml|\.tmp/.test(t1.text) && t1.text.length < 90, JSON.stringify(t1));
+      check("FIN1 Saved toast wraps (overflow-wrap) and fits its box; the path is only a tooltip", t1.wrap === "anywhere" && t1.fits && t1.inView && /mock\.yaml/.test(t1.title), JSON.stringify(t1));
+      await page.waitForFunction(() => location.hash.startsWith("#/compose/"), null, { timeout: 8000 }).catch(() => {});
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 30000 });
+      await sleep(900);
+      const empty = await page.evaluate(() => ({ word: document.querySelector(".ws-compose .status-word")?.textContent.trim(), state: document.querySelector(".ws-compose .status-word")?.dataset.state, ro: [...document.querySelectorAll(".ws-compose .readout")].map((e) => e.dataset.state) }));
+      check("FIN1 after Save with no run the status reads Ready, never 'Result on shelf', over empty readouts", /Ready/.test(empty.word) && empty.state === "idle" && empty.ro.every((x) => x === "empty"), JSON.stringify(empty));
+      // 4b. a run on the shelf, then Save: the run goes with the design
+      await openComposer(1440, 900, "dark");
+      await page.click('.ws-compose .seg[data-value="point"]');
+      await page.click(".ws-compose .run-key");
+      check("FIN1 point RUN before the save completes", (await waitRun(page)) === "done");
+      runPut = null;
+      const t2 = await saveCard();
+      check("FIN1 Saved toast with a run: names the spec hash, no path, wraps", /saved with its last run/i.test(t2.text) && /0123456789ab/.test(t2.text) && !/[\\/]|\.yaml/.test(t2.text) && t2.wrap === "anywhere" && t2.fits, JSON.stringify(t2));
+      check("FIN1 Save stores the last run (a result object with scalars) and the spec", !!runPut && !!runPut.run?.scalars && runPut.spec?.schema === "fsim-composed/1", JSON.stringify(Object.keys(runPut || {})));
+      // 4c. reopening the saved design shows that run as a saved result with its spec hash
+      savedGet = { name: "composer-verify-card", run: runPut.run, spec_hash: "0123456789ab", saved_at: "2026-10-13T12:00:00", matches: true };
+      await page.goto(`${BASE}/#/overview`, { waitUntil: "load" });
+      await page.goto(`${BASE}/#/compose/composer-verify-card`, { waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 30000 });
+      await sleep(1200);
+      const reo = await page.evaluate(() => ({ word: document.querySelector(".ws-compose .status-word")?.textContent.trim(), state: document.querySelector(".ws-compose .status-word")?.dataset.state, hash: document.querySelector(".ws-compose .saved-hash")?.textContent || "", ro: [...document.querySelectorAll(".ws-compose .readout")].map((e) => e.dataset.state) }));
+      check("FIN1 reloading the saved design shows its run, marked 'Saved result' with the spec hash", /Saved result/.test(reo.word) && reo.state === "saved" && /0123456789ab/.test(reo.hash) && reo.ro.some((x) => x === "value"), JSON.stringify(reo));
+      await page.screenshot({ path: path.join(SHOTS, "composer-saved-result-dark-1440.png") });
+      savedGet = { name: "composer-verify-card", run: runPut.run, spec_hash: "ffffffffffff", matches: false };
+      await page.goto(`${BASE}/#/overview`, { waitUntil: "load" });
+      await page.goto(`${BASE}/#/compose/composer-verify-card`, { waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 30000 });
+      await sleep(900);
+      const stale = await page.evaluate(() => ({ state: document.querySelector(".ws-compose .status-word")?.dataset.state, hash: !!document.querySelector(".ws-compose .saved-hash"), ro: [...document.querySelectorAll(".ws-compose .readout")].map((e) => e.dataset.state) }));
+      check("FIN1 a stored run whose spec hash no longer matches the design is not shown", stale.state === "idle" && !stale.hash && stale.ro.every((x) => x === "empty"), JSON.stringify(stale));
+    }
     check("screenshots written (dark + light, 1440x900 and 390x844)", ["dark", "light"].every((t) => [1440, 390].every((w) => fs.existsSync(path.join(SHOTS, `composer-${t}-${w}.png`)))));
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
@@ -780,7 +962,7 @@ async function waitRun(page, timeout = 120000) {
       }
       check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
     }
-    check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+    check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | ") + (notFound.length ? ` | 404s: ${notFound.slice(0, 5).join(", ")}` : ""));
   } catch (e) {
     check("verifier ran to the end", false, `${e.stack || e.message}${errors.length ? ` | page errors: ${errors.slice(0, 3).join(" | ")}` : ""}`);
   } finally {

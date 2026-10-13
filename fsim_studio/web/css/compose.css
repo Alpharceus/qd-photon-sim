@@ -7,8 +7,10 @@
 .ws-compose { overflow: hidden; }
 .composer { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); height: 100%; min-height: 0; }
 .composer.is-loading .board, .composer.is-loading .shelf { gap: 14px; }
-/* the 3D viewport is the elastic row: the chain, the temperature plate and RUN stay on screen at 1440 x 900 */
-.ws-compose .board-table { grid-template-rows: minmax(190px, 1fr) auto auto auto; gap: 12px; }
+/* the 3D viewport has a floor: a row of clamp(440px, 56vh, 680px) leaves the slot >= 380 px at 1440 x 900 and 1280 x 720;
+   the column (.board-table, overflow: auto) scrolls to reach the chain and the temperature plate (R2 finish, FIN1) */
+.ws-compose .board-table { grid-template-rows: clamp(440px, 56vh, 680px) auto auto auto; gap: 12px; }
+.ws-compose .viewport-mount { min-height: 0; }
 .ws-compose .board { gap: 10px; }
 .bh-titleline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ws-compose .chain { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -55,10 +57,10 @@
 .mount-body:hover .mf-edit { text-decoration: underline; text-underline-offset: 3px; }
 .mv.is-edited { border-left: 2px dashed var(--ink-2); padding-left: 5px; margin-left: -7px; }
 .mv-k .sym { font-size: 1.08em; }
-.ws-compose .mount-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11.5px; color: var(--muted); border-top: 1px dashed var(--rim-hi); padding-top: 5px; }
-.mf-edit { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; color: var(--ink-1); }
+.ws-compose .mount-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px 6px; min-width: 0; font-size: 11.5px; color: var(--muted); border-top: 1px dashed var(--rim-hi); padding-top: 5px; }
+.mf-edit { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; color: var(--ink-1); white-space: nowrap; }
 .mount-body[aria-expanded="true"] .mf-edit .ico { transform: rotate(90deg); }
-.mf-n { color: var(--ink-2); }
+.mf-n { color: var(--ink-2); white-space: nowrap; }
 .ws-compose .mount.is-open { border-color: var(--ink-1); box-shadow: var(--shadow-mount), inset 0 -2px 0 var(--ink-1); }
 .mount-issue { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-cap); color: var(--ink-1); }
 
@@ -208,3 +210,66 @@
 
 .cp-entry[data-compat="no"] .cp-badge { display: none; }
 .cp-entry[data-compat="no"] .cp-top { justify-content: flex-start; }
+
+/* ---- R2 finish (FIN1) ---- */
+/* picker: a greyed (incompatible) entry stays selectable */
+.cp-entry[data-compat="no"] { cursor: pointer; }
+.cp-entry[data-compat="no"]:hover { border-color: var(--ink-2); }
+
+/* INCOMPATIBLE: the word and the run bar line */
+.plaque[data-incompatible="true"] .plaque-word { letter-spacing: 0.1em; }
+.run-eta.is-incompatible { color: var(--ink-1); font-weight: 600; overflow-wrap: anywhere; }
+
+/* the 2D fallback plate stays inside the viewport box: it scrolls instead of spilling over the mount row */
+.ws-compose .vp-placeholder { overflow: auto; place-items: start center; align-content: center; }
+.ws-compose .vp-plate { max-width: 100%; min-width: 0; text-align: center; }
+.ws-compose .vp-chain { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); width: 100%; }
+.ws-compose .vp-link { min-width: 0; }
+.ws-compose .vp-lv { overflow-wrap: anywhere; }
+
+/* viewport view toggle (Device | Band) and the material band panel */
+.vm-views { display: inline-flex; gap: 0; border: 1px solid var(--rim-hi); border-radius: var(--radius); overflow: hidden; margin-right: auto; margin-left: 12px; }
+.vm-view { padding: 2px 12px; font-family: var(--font-label); font-weight: 600; font-size: 11px; letter-spacing: var(--label-tracking); text-transform: uppercase; background: var(--surface); color: var(--ink-2); border: 0; }
+.vm-view + .vm-view { border-left: 1px solid var(--rim-hi); }
+.vm-view[aria-pressed="true"] { background: var(--ink-1); color: var(--plate); }
+.band-host { flex: 1; min-height: 0; margin: 8px; border: 1px solid var(--rim); border-radius: 1px; background: var(--plate); overflow: auto; }
+.band-host[hidden], .viewport-slot[hidden] { display: none; }
+.band-panel { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; color: var(--ink-1); min-height: 100%; }
+.bp-svg { width: 100%; height: auto; max-height: 100%; flex: 1 1 auto; min-height: 220px; }
+.bp-svg .bp-axis { stroke: var(--ink-2); stroke-width: 1; fill: none; }
+.bp-svg .bp-t { fill: var(--ink-1); font-size: 11.5px; font-family: var(--font-ui); }
+.bp-svg .bp-tick { fill: var(--ink-2); font-size: 10.5px; font-family: var(--font-num); }
+.bp-svg .bp-note { fill: var(--muted); font-size: 10.5px; font-style: italic; }
+.bp-svg .bp-edge { fill: none; stroke-width: 2.2; stroke-linejoin: round; }
+.bp-svg .bp-cb { stroke: var(--ink-1); }
+.bp-svg .bp-vb { stroke: var(--ink-1); stroke-dasharray: 7 3; }
+.bp-svg .bp-slab { fill: var(--ink-1); opacity: 0.06; }
+.bp-svg .bp-level { stroke-width: 3; stroke: var(--ink-1); }
+.bp-svg .bp-h { stroke-dasharray: 2 0; opacity: 0.75; }
+.bp-svg .bp-photon { stroke: var(--ink-1); stroke-width: 1.5; fill: none; stroke-dasharray: 4 3; }
+.bp-svg .bp-photon-head { fill: var(--ink-1); }
+.bp-svg .bp-dim { stroke: var(--ink-2); stroke-width: 1; fill: none; }
+.bp-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; }
+.bp-kv { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; min-width: 0; }
+.bp-k { color: var(--muted); font-size: var(--fs-cap); }
+.bp-v { font-family: var(--font-num); font-weight: 500; margin-left: auto; }
+.bp-cap, .bp-none { margin: 0; font-size: var(--fs-cap); color: var(--ink-2); }
+
+/* the Saved toast wraps; the path lives in its tooltip */
+.toast-msg { min-width: 0; overflow-wrap: anywhere; }
+.saved-hash { max-width: 100%; }
+
+@media (max-width: 1100px) {
+  .ws-compose .board-table { grid-template-rows: 380px auto auto auto; }
+}
+@media (max-width: 760px) {
+  .ws-compose .board-table { grid-template-rows: 340px auto auto auto; }
+  /* mount footers: stacked, left-aligned, never on one line */
+  .ws-compose .mount-foot { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .ws-compose .board-table { grid-template-rows: 420px auto auto auto; }
+  .ws-compose .vm-rail { flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  .vm-views { margin-left: 0; }
+  .bp-svg { min-height: 0; flex: none; }
+  .bp-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 10px; }
+  .bp-kv { flex-wrap: wrap; gap: 0 6px; }
+}

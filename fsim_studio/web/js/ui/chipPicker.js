@@ -1,7 +1,8 @@
 // Chip picker: a popover grid of registry entries for one axis (devlib-p11).
 // Each entry shows label, summary, refs and a status badge. An entry that does not fit the rest of
-// the chain is greyed with a dashed rim and the reason (from validate); an entry whose status is
-// needs_physics reads "awaiting physics" and cannot be chosen. Nothing here knows a kind by name:
+// the chain is greyed with a dashed rim and the reason (from validate) but stays selectable (choosing it makes
+// the run bar say INCOMPATIBLE with that reason); an entry whose status is needs_physics reads
+// "awaiting physics" and cannot be chosen. Nothing here knows a kind by name:
 // the entries and their status come from GET /api/compose/registry.
 import { h, clear } from "./dom.js";
 import { icon } from "./icons.js";
@@ -43,7 +44,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
       type: "button", role: "option", dataset: { kind: e.kind, status: e.status },
       "aria-selected": e.kind === current ? "true" : "false",
       "aria-disabled": awaiting ? "true" : null,
-      on: { click: () => { if (btn.getAttribute("aria-disabled") !== "true") pick(e); } },
+      on: { click: () => { if (e.status !== "needs_physics") pick(e); } },
     },
     h("span.cp-top",
       h("span.cp-label", registryText(e.label)),
@@ -77,7 +78,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
     if (pending <= 0 && open) {
       const nBad = [...cards.values()].filter((b) => b.dataset.compat === "no").length;
       note.textContent = nBad
-        ? `${nBad} greyed: they do not fit the rest of the chain as it stands. Change another mount first, or open the reason.`
+        ? `${nBad} greyed: they do not fit the rest of the chain as it stands (hover for the reason). You can still pick one; the run bar then says INCOMPATIBLE.`
         : "Every ready entry fits the rest of the chain as it stands.";
     }
   };
@@ -89,7 +90,7 @@ export function openChipPicker(anchor, { axisLabel, entries, current, check, onP
       const btn = cards.get(e.kind);
       btn.dataset.compat = res.ok ? "yes" : "no";
       if (!res.ok && e.kind !== current) {
-        btn.setAttribute("aria-disabled", "true");
+        btn.setAttribute("aria-disabled", "true");   // greyed, not blocked: the click handler lets it through
         const badge = btn.querySelector(".cp-badge");
         if (badge) badge.hidden = true;   // a greyed entry shows only its reason, never a READY badge
         const why = btn.querySelector(".cp-why");

@@ -16,6 +16,7 @@ import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors } from "../charts/theme.js";
 import { renderParamForm, readLeaf } from "../ui/paramForm.js";
 import { openChipPicker } from "../ui/chipPicker.js";
+import { bandPanel } from "../ui/bandProfile.js";
 
 // Chain order and display names. The registry key is only a lookup into the payload.
 const AXES = [
@@ -53,6 +54,7 @@ export function mount(el, ctx) {
     mode: "point", tGrid: { lo: 4, hi: 100, n: 13 }, ser: { path: null, lo: 0, hi: 1, n: 21, obs: [] },
     openAxis: null, forms: {}, charts: {}, readouts: {}, dom: {}, job: null, runState: "idle", timer: null,
     scene: null, sceneSeq: 0, card: null, edits: 0, lastError: null, disposers: [], tt0: 0,
+    vmView: "device", runSpec: null, savedRun: null,
   };
   el.classList.add("ws-compose");
   S.disposers.push(ctx.state.on("theme", (m) => S?.scene?.setTheme?.(m)));
@@ -99,9 +101,12 @@ export async function update(args) {
     }
     if (!S || S.card !== card) return;
     S.run = null; S.series = null; S.edits = 0; S.lastError = null; S.openAxis = null;
+    S.runSpec = null; S.savedRun = null; S.runState = "idle";
     S.ctx.state.set({ run: null });
     S.ser.path = null;
+    await loadSavedRun();
     renderAll();
+    if (S.runState === "saved") S.dom.runStatus.textContent = "Saved result loaded; RUN makes a fresh one";
     await revalidate();
     loadScene();
   } catch (e) {
@@ -111,6 +116,19 @@ export async function update(args) {
       actions: [{ label: "Retry", fn: () => { S.card = "\u0000"; update(args); } }],
     })));
   }
+}
+
+/** A card saved with its last run: show that run, marked as a saved result with its spec hash (R2 finish). Stale or missing: nothing. */
+async function loadSavedRun() {
+  if (!S.card) return;
+  try {
+    const r = await S.ctx.api.getJSON(`/api/compose/saved-run/${encodeURIComponent(S.card)}`);
+    if (!S || !r?.run || !r.matches) return;
+    S.run = r.run;
+    S.runSpec = clone(S.spec);
+    S.savedRun = { hash: r.spec_hash, at: r.saved_at, run: r.run };
+    S.runState = "saved";
+  } catch { /* a shipped card, or no stored run: nothing to show */ }
 }
 
 /** Papers -> "Open in Composer": state.composeSeed first, sessionStorage as fallback; taken once. */
@@ -170,6 +188,7 @@ async function openDesign(design, name) {
   S.job?.cancel?.();
   S.spec = spec; S.exampleName = name; S.seed = null;
   S.run = null; S.series = null; S.edits = 0; S.lastError = null; S.openAxis = null; S.val = null;
+  S.runSpec = null; S.savedRun = null; S.runState = "idle";
   S.ctx.state.set({ run: null });
   S.ser.path = null;
   renderAll();
@@ -223,6 +242,13 @@ function issuesFor(axis) {
   return (S.val?.issues || []).filter((i) => String(i.path || "").startsWith(`${axis}.`) || i.path === `${axis}.kind` || i.path === axis);
 }
 
+/** The validator's reason when the (material, structure) pair is declared unbuildable (spec.py), else null. Such a chain is not a device. */
+const INCOMPAT_RE = /^incompatible with the chosen material: /;
+function incompatibility() {
+  const hit = (S.val?.issues || []).find((i) => i.level === "error" && INCOMPAT_RE.test(String(i.message || "")));
+  return hit ? String(hit.message).replace(INCOMPAT_RE, "") : null;
+}
+
 // ---------------------------------------------------------------- skeleton + layout
 function renderSkeleton() {
   clear(S.el).append(h("div.composer.is-loading", { "aria-busy": "true" },
@@ -251,6 +277,7 @@ function renderAll() {
   renderPlaque();
   renderResults();
   syncRunbar();
+  syncView();
   requestAnimationFrame(drawBeam);
 }
 
@@ -286,9 +313,16 @@ function renderBoard() {
   S.dom.viewport = h("div.viewport-slot", { "aria-label": "Device model", role: "region" });
   S.dom.vmNote = h("span.vm-note", "");
   S.dom.vmId = h("span.id-chip.is-static.vm-id", { hidden: true, title: "Catalog ID of this device" }, h("span.id-k", "DEVICE"), S.dom.vmNote);
+  S.dom.bandHost = h("div.band-host", { hidden: true, role: "region", "aria-label": "Material band view" });
+  S.dom.vmViews = h("div.vm-views", { role: "group", "aria-label": "Viewport content" },
+    ...[["device", "Device"], ["band", "Band"]].map(([v, label]) => h("button.vm-view", {
+      type: "button", dataset: { view: v }, "aria-pressed": String(S.vmView === v),
+      title: v === "band" ? "Band-edge and confinement profile of the chosen dot material" : "The 3D device model",
+      on: { click: () => setView(v) },
+    }, label)));
   const viewportMount = h("div.viewport-mount",
-    h("div.vm-rail", h("span.engrave", "Device model"), S.dom.vmId),
-    S.dom.viewport, h("span.post", { "aria-hidden": "true" }));
+    h("div.vm-rail", h("span.engrave", "Device model"), S.dom.vmViews, S.dom.vmId),
+    S.dom.viewport, S.dom.bandHost, h("span.post", { "aria-hidden": "true" }));
 
   S.dom.beamSvg = svgEl("svg", { class: "beam-svg", "aria-hidden": "true" });
   S.dom.mountHost = {};
@@ -350,6 +384,32 @@ function openStartMenu(anchor, kind) {
   queueMicrotask(() => (pop.querySelector('[aria-pressed="true"]') || pop.querySelector(".start-item:not(:disabled)"))?.focus());
 }
 
+// ---------------------------------------------------------------- material band view
+function setView(v) {
+  S.vmView = v;
+  syncView();
+}
+
+/** Device (3D) or Band (the material's confinement profile): one viewport box, two contents. */
+function syncView() {
+  if (!S?.dom?.viewport) return;
+  const band = S.vmView === "band";
+  S.dom.viewport.hidden = band;
+  S.dom.bandHost.hidden = !band;
+  for (const b of S.dom.vmViews.querySelectorAll(".vm-view")) b.setAttribute("aria-pressed", String(b.dataset.view === S.vmView));
+  if (band) renderBand();
+  else requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));    // the 3D stage re-measures its slot
+}
+
+function renderBand() {
+  if (!S?.dom?.bandHost || S.vmView !== "band") return;
+  const e = entry("material");
+  const params = S.spec.material.params;
+  const get = (name) => { const p = e.params.find((q) => q.name === name); return p ? readLeaf(p, params[name]) : null; };
+  const { el } = bandPanel(e, get);
+  S.dom.bandHost.replaceChildren(el);
+}
+
 // ---------------------------------------------------------------- mounts
 function leafText(p, raw) {
   const l = readLeaf(p, raw);
@@ -400,6 +460,7 @@ function renderMounts() {
         nEdit ? h("span.mf-n", `${nEdit} edited`) : null)));
     host.replaceChildren(mount, h("span.post", { "aria-hidden": "true" }));
   }
+  renderBand();
 }
 
 function toggleSheet(axis) {
@@ -487,7 +548,7 @@ function openPicker(a, anchor) {
       // not keep saying "Result on shelf" over empty readouts (N2: a test that waited for 'done' then read the empty shelf)
       S.job?.cancel?.();
       S.job = null;
-      S.run = null; S.series = null; S.lastError = null;
+      S.run = null; S.series = null; S.lastError = null; S.savedRun = null; S.runSpec = null;
       S.ser.path = null;
       setRunState("idle");
       renderMounts();
@@ -715,11 +776,15 @@ function syncRunbar() {
   const ok = !!S.val?.ok;
   const running = S.runState === "running";
   S.dom.runBtn.disabled = running || !ok || (S.mode === "series" && (!S.ser.obs.length || !S.ser.path));
-  S.dom.runBtn.title = !ok ? "The spec is not valid; the plaque lists why" : S.mode === "series" && !S.ser.obs.length ? "Choose at least one observable" : "";
+  const inc = incompatibility();
+  S.dom.runBtn.title = inc ? `INCOMPATIBLE: ${inc}` : !ok ? "The spec is not valid; the plaque lists why" : S.mode === "series" && !S.ser.obs.length ? "Choose at least one observable" : "";
   const eta = S.val?.eta_s;
   const n = pointsFor();
   renderHint();
+  S.dom.eta.classList.toggle("is-incompatible", !!inc);
+  S.dom.runBtn.dataset.incompatible = inc ? "true" : "false";
   S.dom.eta.textContent = !S.val ? "Validating"
+    : inc ? `INCOMPATIBLE: ${inc}`
     : !ok ? "Not runnable until the issues on the plaque are resolved"
     : isNum(eta) ? `${n} point${n === 1 ? "" : "s"}; estimated ${fmtSeconds(eta * n)} (${fmtSeconds(eta)} per point)` : `${n} point${n === 1 ? "" : "s"}`;
 }
@@ -762,7 +827,7 @@ function run() {
     if (!S || S.job !== job) return;
     S.job = null;
     if (mode === "series") S.series = { ...r.result, spec_path: S.ser.path, obs: [...S.ser.obs] };
-    else { S.run = r.result; S.ctx.state.set({ run: r.result }); }
+    else { S.run = r.result; S.runSpec = spec; S.savedRun = null; S.ctx.state.set({ run: r.result }); }
     setRunState("done", { elapsed: r.elapsed_s, cached: r.cached });
     renderResults({ fresh: true });
     drawBeam();
@@ -927,8 +992,9 @@ function renderPlaque() {
   const reasons = [...errs.map((i) => ({ k: i.path, t: i.message, lvl: "error" })), ...(runInvalid ? (run.invalid_reasons || []).map((r) => ({ k: "run", t: r, lvl: "error" })) : []), ...warns.map((i) => ({ k: i.path, t: i.message, lvl: "warn" }))];
   const notes = (run?.notes || []).filter((n) => /phonon|polaron|Z\^2|Z²/i.test(n));
   const result = !!run;
-  const word = result ? (status === "pass" ? "VALID RESULT" : "INVALID RESULT") : (status === "pass" ? "VALID" : "INVALID");
-  clear(S.dom.plaqueHost).append(h("section.plaque", { class: `plaque-${status}${result ? "" : " plaque-line"}`, "aria-label": "Validity", dataset: { status, ok: String(ok), kind: result ? "result" : "check" } },
+  const inc = !ok ? incompatibility() : null;
+  const word = inc ? "INCOMPATIBLE" : result ? (status === "pass" ? "VALID RESULT" : "INVALID RESULT") : (status === "pass" ? "VALID" : "INVALID");
+  clear(S.dom.plaqueHost).append(h("section.plaque", { class: `plaque-${status}${result ? "" : " plaque-line"}`, "aria-label": "Validity", dataset: { status, ok: String(ok), kind: result ? "result" : "check", incompatible: inc ? "true" : "false" } },
     h("div.plaque-top",
       h("div.plaque-word", icon(status === "pass" ? "check" : "cross", { size: 18 }), h("span", word)),
       h("div.plaque-denom", h("span.k", "solver"), h("span.v", solver || "none"))),
@@ -937,7 +1003,7 @@ function renderPlaque() {
       isNum(v.eta_s) ? h("span.plaque-kv", h("span.k", "estimate"), h("span.v", fmtSeconds(v.eta_s))) : null),
     reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", richText(displayNotation(r.t)))))) : null,
     notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", richText(displayNotation(n)))))) : null,
-    h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
+    h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : inc ? "Not a device: change the dot or the structure; RUN stays disabled until the pair fits" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
 }
 
 /** The empty shelf says what fills it: RUN, and how long it takes. */
@@ -954,11 +1020,15 @@ function renderHint() {
 function renderStatus() {
   if (!S?.dom?.status) return;
   const r = S.run;
-  const word = { idle: "Ready", running: "Running", done: "Result on shelf", error: "Run failed", cancelled: "Cancelled" }[S.runState] || S.runState;
-  const ico = { idle: "minus", running: "retry", done: "check", error: "warn", cancelled: "stop" }[S.runState] || "minus";
+  // "Result on shelf" only when a result is on the shelf: after a Save, a card swap or a spec change the heading reads Ready
+  const saved = !!(S.savedRun && r && r === S.savedRun.run);
+  const st = (S.runState === "done" || S.runState === "saved") && !r && !S.series ? "idle" : S.runState === "saved" && !saved ? "done" : S.runState;
+  const word = { idle: "Ready", running: "Running", done: "Result on shelf", saved: "Saved result", error: "Run failed", cancelled: "Cancelled" }[st] || st;
+  const ico = { idle: "minus", running: "retry", done: "check", saved: "check", error: "warn", cancelled: "stop" }[st] || "minus";
   // Node.append() stringifies null ("nullnull"): pass only real nodes.
   clear(S.dom.status).append(...[
-    h("span.status-word", { dataset: { state: S.runState } }, icon(ico, { size: 16 }), word),
+    h("span.status-word", { dataset: { state: st } }, icon(ico, { size: 16 }), word),
+    saved ? h("span.id-chip.is-static.saved-hash", { title: `The stored result of this design${S.savedRun.at ? `, saved ${S.savedRun.at}` : ""}; it is shown only while the design still hashes to it` }, h("span.id-k", "SPEC"), h("span.id-v", S.savedRun.hash)) : null,
     r ? h("span.status-mode", r.mode === "tsweep" || (r.T_grid || []).length > 1 ? `T sweep, ${r.T_grid.length} points` : "point run") : null,
     r?.run_id ? h("span.id-chip.is-static", h("span.id-k", "RUN"), h("span.id-v", r.run_id)) : null].filter(Boolean));
 }
@@ -1241,7 +1311,13 @@ function saveAsPopover(anchor) {
           const r = await S.ctx.api.putJSON(`/api/cards/${encodeURIComponent(name)}`, { design: { name, platform: "composed", composed: clone(S.spec) } });
           await S.ctx.refreshCards?.();
           closePopover();
-          toast(`Saved ${r.path || name}`, { kind: "ok" });
+          // The last run is stored with the design only when it was made from exactly this spec; otherwise say so.
+          let stored = null;
+          if (S.run && S.runSpec && JSON.stringify(S.runSpec) === JSON.stringify(S.spec)) {
+            try { stored = await S.ctx.api.putJSON(`/api/compose/saved-run/${encodeURIComponent(name)}`, { spec: clone(S.spec), run: S.run }); } catch { stored = null; }
+          }
+          const t = toast(stored ? `Design saved with its last run (spec ${stored.spec_hash})` : `Design saved as ${name} (run not saved)`, { kind: "ok", timeout: 6000 });
+          if (t && r.path) t.title = r.path;   // the file path is a tooltip, never the message
           S.edits = 0;
           if (S.dom.dirty) S.dom.dirty.hidden = true;
           S.ctx.navigate(`#/compose/${name}`);

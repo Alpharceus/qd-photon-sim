@@ -238,6 +238,37 @@ def run_checks(tmp):
         row = next((x for x in cards if x["name"] == "composed-probe-card"), None)
         check("7b /api/cards lists it with platform 'composed'", row is not None and row.get("platform") == "composed",
               str(row))
+        # 7c. R2 finish (FIN1): the last run is stored beside the saved card, keyed by the design's spec hash
+        fake_run = {"mode": "point", "scalars": {"g2_0": 0.123, "valid": True}, "run_id": "probe"}
+        g0 = c.get("/api/compose/saved-run/composed-probe-card")
+        check("7c saved-run GET before any run: run null, matches false",
+              g0.status_code == 200 and j(g0)["run"] is None and j(g0)["matches"] is False, str(g0.status_code))
+        rp = c.put("/api/compose/saved-run/composed-probe-card", json={"spec": SPEC, "run": fake_run}, headers=HDR)
+        check("7d saved-run PUT stores the run and returns a 12-hex spec hash",
+              rp.status_code == 200 and len(j(rp)["spec_hash"]) == 12, f"{rp.status_code} {rp.get_data(as_text=True)[:120]}")
+        g1 = c.get("/api/compose/saved-run/composed-probe-card")
+        check("7e saved-run GET returns the stored run, the same hash, and matches the card's design",
+              g1.status_code == 200 and j(g1)["run"] == fake_run and j(g1)["spec_hash"] == j(rp)["spec_hash"] and j(g1)["matches"] is True,
+              g1.get_data(as_text=True)[:200])
+        c.put("/api/cards/composed-probe-card", json={"design": dict(design, composed=dict(SPEC, T_K=7.0))}, headers=HDR)
+        g2 = c.get("/api/compose/saved-run/composed-probe-card")
+        check("7f after the design changes, the stored run no longer matches its hash",
+              g2.status_code == 200 and j(g2)["matches"] is False and j(g2)["spec_hash"] == j(rp)["spec_hash"] != j(g2)["current_hash"],
+              g2.get_data(as_text=True)[:200])
+        check("7g saved-run: GET on an unsaved card -> 200 run null; PUT -> 404; a bad name -> 400, a body without a run -> 400, no header -> 403",
+              c.get("/api/compose/saved-run/no-such-card").status_code == 200 and j(c.get("/api/compose/saved-run/no-such-card"))["run"] is None
+              and c.put("/api/compose/saved-run/no-such-card", json={"spec": SPEC, "run": fake_run}, headers=HDR).status_code == 404
+              and c.put("/api/compose/saved-run/Bad_Name", json={"spec": SPEC, "run": fake_run}, headers=HDR).status_code == 400
+              and c.put("/api/compose/saved-run/composed-probe-card", json={"spec": SPEC}, headers=HDR).status_code == 400
+              and c.put("/api/compose/saved-run/composed-probe-card", json={"spec": SPEC, "run": fake_run}).status_code == 403)
+        # 7h. an incompatible pair is not a device over HTTP: validate -> ok:false (an error), run -> 400
+        inc_spec = dict(SPEC, material={"kind": "cdse_znse", "params": {}}, structure={"kind": "edge_ridge", "params": {}})
+        vi = post("/api/compose/validate", {"spec": inc_spec})
+        check("7h incompatible pair (edge_ridge + cdse_znse): /validate ok:false with an incompatible error, eta_s null",
+              vi.status_code == 200 and j(vi)["ok"] is False and j(vi)["eta_s"] is None
+              and any(i["level"] == "error" and "incompatible" in i["message"] for i in j(vi)["issues"]), vi.get_data(as_text=True)[:200])
+        ri = post("/api/compose/run", {"spec": inc_spec, "mode": "point"})
+        check("7i incompatible pair: /run is refused with a 4xx, not a crash", 400 <= ri.status_code < 500, str(ri.status_code))
 
     # ------------------------------------------------------------ 8. scene
     if have("fsim_studio.scene_compose"):
