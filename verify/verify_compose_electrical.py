@@ -759,6 +759,41 @@ check("11g2. electrical_cw bg_frac 0.08 (Lazic rho 0.92): the ideal cw emitter's
       abs(bgc_c["g2_0"]["central"] - (1 - 0.92 ** 2)) < 1e-12 and abs(bgc_c["g2_0:bg_corrected"]["central"]) < 1e-12)
 
 
+# 12. R2 D3: mu = pairs loaded INTO THE DOT for every mechanism (eta_capture only thins the pump Fano factor)
+def cw_spec(drp, mat=None):
+    sp = espec(drp, mat, solver="rate")
+    sp["drive"] = {"kind": "electrical_cw", "params": drp}
+    return sp
+
+
+def run_ctx(sp):
+    spec = engine._as_spec(sp)
+    ents = engine._entries(spec)
+    vals = engine._central_values(engine._leaves(spec, ents))
+    return engine._run_point(ents, vals, float(spec.T_K) if not isinstance(spec.T_K, dict) else 4.2, "rate")
+
+
+r12 = engine.evaluate_spec(cw_spec({"mechanism": "M-1 poisson-rail", "mu": 0.4, "eta_capture": 0.05}, MAT))["scalars"]
+G12 = float(r12["Gamma_ns"])
+want12 = G12 * 0.4 / 1.4                                    # two-level incoherent cw, r = mu Gamma [DR, ch02 steady state]
+check("12a. D3 anchor: M-1 cw, mu 0.4, eta_capture 0.05 (two-level): flux = Gamma mu/(1+mu) (1e-6; 0.0196/ns before the fix), g2 = 0",
+      abs(float(r12["flux_ns"]) - want12) < 1e-6 and abs(float(r12["g2_0"])) < 1e-9,
+      f"{float(r12['flux_ns']):.6f} vs {want12:.6f} (Gamma {G12:.4f})")
+r12b = engine.evaluate_spec(cw_spec({"mechanism": "M-1 poisson-rail", "mu": 0.4, "eta_capture": 1.0}, MAT))["scalars"]
+check("12b. D3: eta_capture does not change the M-1 cw flux (0.05 vs 1.0, 1e-12)",
+      abs(float(r12["flux_ns"]) - float(r12b["flux_ns"])) < 1e-12, f"{float(r12['flux_ns']):.6f} {float(r12b['flux_ns']):.6f}")
+c12 = run_ctx(cw_spec({"mechanism": "M-2 quiet-rail", "mu": 0.4, "eta_capture": 0.5}, MAT))
+itf12 = c12.plan.interface
+fd12 = 1.0 - 0.5 * (1.0 - float(itf12.F_p))
+check("12c. M-2 quiet rail: extra F_dot = 1 - eta (1 - F_pump) (independent of the code path) and a 'not modelled' note when F_pump != 1",
+      float(itf12.F_p) < 1.0 and abs(c12.res.extra["F_dot"] - fd12) < 1e-12
+      and any("Fano factor not modelled" in str(n) for n in c12.res.extra["notes"]),
+      f"F_pump {float(itf12.F_p):.4g}, F_dot {c12.res.extra.get('F_dot')}")
+c12m1 = run_ctx(cw_spec({"mechanism": "M-1 poisson-rail", "mu": 0.4, "eta_capture": 0.5}, MAT))
+check("12d. M-1 (F_pump = 1): F_dot = 1 and no Fano note",
+      abs(c12m1.res.extra["F_dot"] - 1.0) < 1e-12 and not any("Fano" in str(n) for n in c12m1.res.extra["notes"]))
+
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_electrical checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

@@ -56,8 +56,8 @@ devlib-p10e (electrical drives; all off by default = bit-identical to the rectan
     chirped pulse run on the polaron step-propagator machinery with the phonons switched off.
 
 devlib-fx3b (all off by default = bit-identical):
-  * M-3 pulsed pump: mu = eta_capture N_c already contains the capture efficiency, so _interp_pump no longer multiplies
-    eta_capture a second time for it (the other mechanisms keep mu as the operating point before capture).
+  * M-3 pulsed pump: mu = eta_capture N_c already contains the capture efficiency, so _interp_pump does not multiply
+    eta_capture a second time (R2 D3 extends this to every mechanism: mu = pairs loaded into the dot).
   * electrical cascade (plan.needs {"cascade"}, plan.inputs["pump_ratio_xx"]) runs on the rate solver (G-X-XX with
     pulse_counting.pulse_g2 and the shaped pump): strong pumping parks the dot in XX and g2 saturates then falls.
   * plan.inputs["bg_frac"] (electrical drives too): g2 = 1 - rho^2 (1 - g2_signal), rho = 1 - bg_frac (as above_band).
@@ -87,6 +87,7 @@ from .. import lindblad as lb
 from .. import pulse_counting as pcnt
 from .. import resonant_source as rs
 from ..spectral import KB
+from . import rates as _rates_mod
 from .registry import Solver, get as _get, kinds as _kinds, register
 from .types import SolverResult
 
@@ -153,22 +154,39 @@ def _pulsed_coherent_check(plan) -> Optional[str]:
 
 def _interp_pump(plan, rt):
     """(pump rate 1/ns, window ns) of an incoherent / electrical plan.
-    Electrical plans carry only a DriveInterface: pulsed r = mu_dot / tau_on (mean loadings per window, tau_on =
-    interface tau_eff_ns, default 1 ns); cw r = mu_dot Gamma (mean loadings per radiative lifetime) [A].
-    mu_dot = mu eta_capture, EXCEPT for the M-3 pulsed mechanism whose mu = eta_capture N_c already contains the
-    capture efficiency (drive_mech.mech_pulsed; devlib-fx3b: the second factor was a double count, found by the Ellis
-    card whose eta had to be folded into I_uA). M-1/M-2/M-4/M-5 keep mu as the operating point BEFORE capture [A]."""
+    Electrical plans carry only a DriveInterface: pulsed r = mu / tau_on (mean loadings per window, tau_on =
+    interface tau_eff_ns, default 1 ns); cw r = mu (Gamma + k_nr) (mean loadings per X lifetime, the same definition
+    above_band cw uses: P/P_sat x (Gamma + k)) [A].
+    R2 D3: mu is the number of pairs loaded INTO THE DOT per window for EVERY mechanism (ch05 eq. de-mu, ch10 eq.
+    in-rdot: r_dot already contains eta_inj f_QD). eta_capture does NOT rescale it; it only thins the pump Fano factor
+    (F_dot = 1 - eta (1 - F_pump), see _pump_fano) and, for M-3 only, converts the current to mu = eta I tau / e
+    (drive_mech.mech_pulsed). Before R2 the M-1/M-2/M-4/M-5 paths multiplied mu by eta_capture a second time."""
     if plan.pump_rate_ns > 0.0:
         return float(plan.pump_rate_ns), float(plan.tau_on_ns)
     itf = plan.interface
     if itf is not None:
-        m3 = "carriers_per_window" in itf.notes            # M-3 pulsed: mu = eta N_c already holds eta_capture
-        eff = float(itf.mu) if m3 else float(itf.mu) * float(itf.eta_capture)
+        eff = float(itf.mu)
         if plan.timing == "pulsed":
             tau = float(plan.tau_on_ns) if plan.tau_on_ns > 0 else 1.0
             return eff / tau, tau
-        return eff * float(rt.Gamma_ns), 0.0
+        return eff * (float(rt.Gamma_ns) + float(rt.k_nr_ns)), 0.0
     return 0.0, float(plan.tau_on_ns)
+
+
+def _pump_fano(plan):
+    """(F_dot, notes) of an electrical plan: the DELIVERED pump Fano factor F_dot = 1 - eta (1 - F_pump)
+    (loading.f8b_thin_fano). The compose solvers do not model sub-Poissonian loading in the counting hierarchy (separate
+    spec), so when F_pump != 1 the value is only reported and a note says the effect is not in g2 (R2: M-2/M-4 were
+    silent no-ops)."""
+    itf = plan.interface
+    if itf is None:
+        return None, []
+    F_p, eta = float(itf.F_p), float(itf.eta_capture)
+    F_dot = 1.0 - eta * (1.0 - F_p)
+    notes = []
+    if abs(F_p - 1.0) > 1e-12:
+        notes.append(f"pump Fano factor not modelled by this solver (F_pump = {F_p:.4g}, F_dot = {F_dot:.4g} reported only)")
+    return F_dot, notes
 
 
 def _eid(plan) -> float:
@@ -343,9 +361,17 @@ class RateSolver(Solver):
         return gX, gXX, kX, kXX, p
 
     def run(self, plan, em, rt):
-        gX, gXX, kX, kXX, pr = self._rates(plan, em, rt)
         r, tau_on = _interp_pump(plan, rt)
+        if plan.timing == "cw":
+            # R2: the cw pump broadens the dot line the cavity filter sees, P = r (1 + p) (ch08 eq. dp-lor); r keeps
+            # the planner's definition (unbroadened Gamma), the rates use the broadened L
+            p_xx = float(plan.inputs.get("pump_ratio_xx", 1.0)) if "cascade" in plan.needs else 0.0
+            rt = _rates_mod.apply_pump(rt, r * (1.0 + p_xx))
+        gX, gXX, kX, kXX, pr = self._rates(plan, em, rt)
         reasons = ["rate solver: capture/relaxation jitter and coherence are not modelled"]
+        F_dot, fano_notes = _pump_fano(plan)
+        reasons += fano_notes
+        fano_extra = {} if F_dot is None else {"F_dot": F_dot}
         bg = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
         bgf = (lambda g: 1.0 - (1.0 - bg) ** 2 * (1.0 - g)) if bg > 0.0 else (lambda g: g)
         if float(plan.inputs.get("p_refill", 0.0) or 0.0) > 0.0 or float(plan.inputs.get("k0_ns", 0.0) or 0.0) > 0.0:
@@ -373,7 +399,7 @@ class RateSolver(Solver):
             return SolverResult(g2_0=float(bgf(out["g2"])), n_ph=float(out["mean_counts"]), I_single=NAN,
                                 inversion=None,
                                 extra={"p_loaded": 1.0 - math.exp(-r * tau_on), "g2_signal": float(out["g2"]),
-                                       "converged": bool(out["converged"]), "notes": reasons, **extra_el},
+                                       "converged": bool(out["converged"]), "notes": reasons, **fano_extra, **extra_el},
                                 valid=bool(out["converged"]),
                                 reasons=() if out["converged"] else ("periodic steady state did not converge",))
         scale = max(gX + kX, 1e-12)
@@ -384,7 +410,7 @@ class RateSolver(Solver):
                             extra={"flux_ns": float(gX * P[1]), "tau_dip_ns": 1.0 / (gX + kX + r),
                                    "g2_signal": float(g2[0]),
                                    "series": {"g2_tau": _series_xy(taus, g2)}, "notes": reasons,
-                                   **_el_extras(plan, rt)})
+                                   **fano_extra, **_el_extras(plan, rt)})
 
     def eta_seconds(self, plan, n_points):
         return 0.005 * max(1, int(n_points))
@@ -668,6 +694,8 @@ class IncoherentLindbladSolver(Solver):
         rho_sig = 1.0 - bg
         g2 = 1.0 - rho_sig ** 2 * (1.0 - g2_sig) if bg > 0.0 else g2_sig   # uncorrelated background (Brouri form)
         reasons = ["HOM assumes instantaneous loading at t = 0 (window re-excitation ignored) [A]"]
+        F_dot, fano_notes = _pump_fano(plan)
+        reasons += fano_notes
         if iW is not None:
             reasons.append("p_refill: refill is a delayed second capture (trap refilling) [A]")
         if bg > 0.0:
@@ -679,7 +707,7 @@ class IncoherentLindbladSolver(Solver):
             reasons.append("periodic steady state did not converge")
         extra = {"p_loaded": 1.0 - math.exp(-r * tau_on), "g_relax_ns": (1.0 / relax if with_res else None),
                  "g2_signal": g2_sig, "p_refill": p_ref, "bg_frac": bg, "k_esc_ns": k_esc, "notes": reasons,
-                 **extra_el}
+                 **({} if F_dot is None else {"F_dot": F_dot}), **extra_el}
         return SolverResult(g2_0=float(g2), n_ph=float(out["mean_counts"]), I_single=float(I),
                             inversion=None, extra=extra,
                             valid=bool(out["converged"]),

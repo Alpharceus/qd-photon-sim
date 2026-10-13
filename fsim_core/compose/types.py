@@ -53,7 +53,7 @@ class Pulse:
     shape: str
     fwhm_ps: float                   # INTENSITY FWHM (physics brief pitfall 2)
     area_rad: float
-    detuning_meV: float = 0.0        # laser minus dot is the paper convention; the solver converts (brief pitfall 1)
+    detuning_meV: float = 0.0        # REPO/Scully-Zubairy Delta = omega_X - omega_L; the planners already convert from the user's delta = omega_L - omega_X (Metcalf-van der Straten); solvers must not flip again
     chirp_meV_ps: float = 0.0
     t0_ps: float = 0.0
     phase_rad: float = 0.0

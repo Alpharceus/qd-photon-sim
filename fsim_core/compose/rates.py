@@ -40,7 +40,7 @@ like everywhere else (g > (kappa + Gamma_bg + k_nr + gamma*_repo)/4). Regime
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from typing import Optional
 
 from .. import lindblad as lb
@@ -65,6 +65,32 @@ class RatesEx(Rates):
     linewidth_ueV: float = 0.0              # emitter FWHM hbar (Gamma + k_nr + gamma*) (Purcell-broadened, informational)
     dot_linewidth_ueV: float = 0.0          # width used for L: hbar (Gamma_bg + k_nr + gamma*), no Purcell channel
     beta0: float = 0.0                      # background-channel collected fraction (the structure's beta0)
+
+
+def apply_pump(rt: RatesEx, P_ns: float) -> RatesEx:
+    """Rates of the same emitter/structure with the cw incoherent pump P = r (1 + p) added to the dot line width
+    (R2, ch08 eq. dp-lor: FWHM = Gamma + k + P + Gamma_ph):
+
+        w_dot = hbar (Gamma_bg + k_nr + gamma*_repo + P)     ->  L, Gamma, beta recomputed.
+
+    Needs the cavity data kept in `rt` (kappa, detuning, F_P L); without a cavity (L = 1) nothing depends on w_dot and
+    `rt` is returned unchanged. A pure function of `rt` so the solvers can call it once the pump rate is known
+    (the planner needs Gamma to set r, so combine() itself cannot include P)."""
+    P = float(P_ns)
+    if not (P > 0.0) or rt.kappa_ns is None or rt.kappa_ns <= 0.0 or rt.Gamma0_ns <= 0.0 or rt.L <= 0.0:
+        return rt
+    h = lb.HBAR_MEV_NS * 1e3
+    G0, k, gs = float(rt.Gamma0_ns), float(rt.k_nr_ns), float(rt.gamma_star_ns)
+    F_bg = float(rt.Gamma_bg_ns) / G0
+    F_P = float(rt.F_P_eff) / float(rt.L)
+    w_dot = h * (float(rt.Gamma_bg_ns) + k + gs + P)
+    L = float(cavity_transmission(float(rt.detuning_ueV), w_dot, float(rt.kappa_ns) * h))
+    FPL = F_P * L
+    Gamma = G0 * (F_bg + FPL)
+    beta = (float(rt.beta0) * F_bg + FPL) / (F_bg + FPL)
+    return _dc_replace(rt, Gamma_ns=Gamma, L=L, F_P_eff=FPL, beta=beta, dot_linewidth_ueV=w_dot,
+                       linewidth_ueV=h * (Gamma + k + gs + P),
+                       notes=tuple(rt.notes) + (f"cw pump P = {P:.4g}/ns added to the dot line width seen by the cavity (L = {L:.4g})",))
 
 
 def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:

@@ -772,11 +772,11 @@ def main():
     mu_a = engine.evaluate_spec(rspec("electrical_pulsed", {"eta_capture": 0.4, "tau_on_ns": 0.2, "I_uA": I3, "f_rep_MHz": 200.0}))["scalars"]
     check("16a'. and eta_capture does scale mu: the same current at eta = 0.4 loads 1 - e^{-0.4 mu}",
           near(mu_a["eta_prep"], 1.0 - math.exp(-0.4 * mu3), ab=1e-12), f"{mu_a['eta_prep']:.6f}")
-    # non-M-3 mechanisms keep mu as the operating point BEFORE capture (cw r = mu eta Gamma)
+    # R2 D3: every mechanism's mu is the pairs loaded INTO THE DOT; eta_capture does not rescale it (cw r = mu (Gamma + k_nr))
     cw_r = engine.evaluate_spec(rspec("electrical_cw", {"mechanism": "M-1 poisson-rail", "mu": 0.5, "eta_capture": 0.2}))["scalars"]
     G16 = float(cw_r["Gamma_ns"])
-    n_x = 0.1 / (0.1 + 1.0)                      # r = mu eta Gamma = 0.1 Gamma: n_X = r/(r + Gamma)
-    check("16a''. M-1 cw keeps r = mu eta_capture Gamma (unchanged; the fix is M-3 only): flux_ns/Gamma = r/(r + Gamma) "
+    n_x = 0.5 / (0.5 + 1.0)                      # r = mu Gamma = 0.5 Gamma (k_nr = 0 at 4 K): n_X = r/(r + Gamma)
+    check("16a''. M-1 cw r = mu Gamma, eta_capture = 0.2 does NOT rescale mu (R2 D3): flux_ns/Gamma = r/(r + Gamma) "
           "(independent two-level steady state)", near(float(cw_r["flux_ns"]) / G16, n_x, rel=1e-9),
           f"{float(cw_r['flux_ns']) / G16:.6f} vs {n_x:.6f}")
 
@@ -869,6 +869,30 @@ def main():
     check("FX4-6. corrected HOM visibility > 1 -> NaN with the reason 'corrected visibility > 1: ...' (never a pass)",
           not math.isfinite(sc_w["hom_V_corr"]) and "corrected visibility > 1" in sc_w.get("hom_V_corr_invalid_reason", "")
           and math.isfinite(sc_w["hom_V_raw"]))
+
+    # 17. R2: cw incoherent pump P broadens the dot line the cavity filter sees (ch08 eq. dp-lor): w_dot = hbar (Gamma_bg + k + gamma* + P)
+    def cav_cw(pump):
+        return {"schema": "fsim-composed/1", "T_K": 4.2,
+                "material": {"kind": "inas_gaas_sk", "params": {"tau_bare_ns": 0.599, "gamma_star_4K_ns": 0.0,
+                                                               "a_ac_ns_per_K": 0.0}},
+                "structure": {"kind": "generic_cavity", "params": {"F_P": 5.0, "kappa_ueV": 20.0, "detuning_ueV": 0.0}},
+                "drive": {"kind": "above_band", "params": {"cw": True, "pump": pump}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "rate"}
+    sc0 = engine.evaluate_spec(cav_cw(1e-6))["scalars"]
+    sc1 = engine.evaluate_spec(cav_cw(3.0))["scalars"]
+    G0_ = 1.0 / 0.599
+    hb = lb.HBAR_MEV_NS * 1e3
+    kap_ = 20.0
+    L0_ = kap_ / (kap_ + hb * G0_)                         # zero-detuning Lorentzian overlap kappa/(kappa + w) [DR]
+    Gam0_ = G0_ * (1.0 + 5.0 * L0_)
+    r_ = 3.0 * Gam0_                                       # planner: r = P/P_sat (Gamma + k) with the UNBROADENED Gamma
+    L1_ = kap_ / (kap_ + hb * (G0_ + r_))
+    Gam1_ = G0_ * (1.0 + 5.0 * L1_)
+    want_flux = Gam1_ * r_ / (r_ + Gam1_)
+    check("17a. cw above_band, cavity: flux = Gamma_P r/(r + Gamma_P) with Gamma_P = Gamma0 (1 + F_P kappa/(kappa + hbar(Gamma0 + r))) "
+          "(independent closed form, 1e-6)", abs(float(sc1["flux_ns"]) - want_flux) < 1e-6 * want_flux,
+          f"{float(sc1['flux_ns']):.6f} vs {want_flux:.6f}")
+    check("17b. the pump broadening lowers Gamma seen by the solver: Gamma_P < Gamma_unbroadened (3 P_sat)", Gam1_ < Gam0_ - 1e-6, f"{Gam1_:.4f} < {Gam0_:.4f}")
 
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
