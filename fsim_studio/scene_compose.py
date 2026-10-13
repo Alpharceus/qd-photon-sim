@@ -2,7 +2,8 @@
 
 `describe(spec) -> dict` turns a composed spec (schema "fsim-composed/1") into a SceneSpec-style
 descriptor ("fsim.scene/1", kind "device") that fsim_studio/web/js/viz3d draws with one of the
-builders micropillar | open_cavity | bullseye | phc_waveguide | phc_cavity | mesa.  An unknown or
+builders micropillar | open_cavity | bullseye | phc_waveguide | phc_cavity | mesa | photonic_nanowire | planar_dbr |
+nitride_cavity | ridge_waveguide | lumped_cavity (R2-3D: every registered structure kind has one).  An unknown or
 unsupported structure kind, or a spec that does not resolve, gives the fallback descriptor
 (variant/builder "fallback2d"): the front end then shows the existing 2D view.
 
@@ -35,7 +36,8 @@ from fsim_core.compose.spec import T_K_SPEC
 
 SCHEMA = "fsim.scene/1"
 FALLBACK = "fallback2d"
-BUILDERS = ("micropillar", "open_cavity", "bullseye", "phc_waveguide", "phc_cavity", "mesa")
+BUILDERS = ("micropillar", "open_cavity", "bullseye", "phc_waveguide", "phc_cavity", "mesa",
+            "photonic_nanowire", "planar_dbr", "nitride_cavity", "ridge_waveguide", "lumped_cavity")
 
 # structure kind -> builder id (used when the registry entry's own `viz` is not a known builder).
 KIND_BUILDER = {
@@ -47,7 +49,16 @@ KIND_BUILDER = {
     "sil_mesa": "mesa",
     "mesa_reflector": "mesa",
     "bulk_planar": "mesa",
+    "photonic_nanowire": "photonic_nanowire",
+    "planar_dbr": "planar_dbr",
+    "nitride_planar_cavity": "nitride_cavity",
+    "edge_ridge": "ridge_waveguide",
+    "generic_cavity": "lumped_cavity",
 }
+
+# generic_cavity is a lumped model; a spec may ask for an ILLUSTRATIVE display geometry through
+# describe(spec, display={"display_as": ...}) (api_compose sets it from a paper card meta.display_as).
+DISPLAY_AS = ("micropillar",)
 
 # Display defaults: (key -> (value, why)).  Each is flagged display_default in `geometry_src`.
 DISPLAY = {
@@ -94,6 +105,40 @@ DISPLAY = {
         "n_rows": (5, "rows on each side of the cavity row"),
         "end_shift_over_a": (0.15, "outward shift of the two holes at the L3 ends (a common Q optimisation)"),
         "v_aspect": (2.0, "mode ellipsoid x : y aspect for the L3 mode (H1 uses 1.3)"),
+    },
+    "photonic_nanowire": {
+        "length_um": (10.0, "wire height is not a model input; a typical photonic-nanowire height is drawn"),
+        "flare_half_angle_deg": (5.0, "trumpet half-angle (adiabatic taper class value); the registry has only the top mode radius"),
+        "flare_len_cap_frac": (0.6, "the flare never takes more than this fraction of the wire height"),
+        "mirror_um": (0.3, "bottom mirror thickness (illustrative)"),
+        "mirror_halfwidth_um": (1.6, "mirror plate half-width drawn before the break"),
+        "dot_height_frac": (0.3, "dot at 0.3 of the wire height when the mirror phase is unknown"),
+        "dot_height_over_lambda_n": (0.5, "mirror phase ok: the dot is on a field antinode; drawn lambda/(2 n_wire) above the mirror"),
+    },
+    "planar_dbr": {
+        "lateral_um": (6.0, "lateral width drawn before the break: the 1-D model has no lateral extent"),
+        "substrate_um": (1.0, "substrate thickness is not modelled; drawn as a broken plate"),
+    },
+    "nitride_cavity": {
+        "n_high": (2.45, "GaN-like high-index layer (nitride DBR class value)"),
+        "n_low": (2.15, "AlN-like low-index layer (nitride DBR class value)"),
+        "N_top": (8, "top DBR pairs drawn (the entry has no pair counts)"),
+        "N_bot": (12, "bottom DBR pairs drawn (the entry has no pair counts)"),
+        "cavity_order": (1.0, "spacer = 1 lambda/n_high"),
+        "dot_frac": (0.5, "dot at the spacer centre (the spatial_overlap default of the entry is 1: antinode)"),
+        "mode_height_over_lambda_n": (0.5, "mode ellipsoid full height in units of lambda/n_high; its lateral radius follows from V"),
+        "lateral_um": (4.0, "lateral width drawn before the break (the entry does not fix the post size)"),
+        "substrate_um": (1.0, "substrate thickness is not modelled; drawn as a broken plate"),
+    },
+    "ridge_waveguide": {
+        "front_len_um": (12.0, "length of the ridge drawn in front of the break (the full cavity is L)"),
+        "back_len_um": (3.0, "length of the back stub drawn after the break"),
+        "shoulder_nm": (1500.0, "etched shoulder width drawn each side of the ridge"),
+        "substrate_um": (0.9, "substrate thickness is not modelled; drawn as a broken plate"),
+    },
+    "lumped_cavity": {
+        "gap_um": (1.0, "mirror gap of the schematic: NOT a model quantity"),
+        "plate_um": (2.4, "mirror plate diameter of the schematic: NOT a model quantity"),
     },
     "mesa": {
         "mesa_d_um": (5.0, "mesa diameter (the registry mesa entries hold only efficiency tables)"),
@@ -165,6 +210,19 @@ def _structure_extra(spec, sent, sblk, mblk):
     sv = {k: v[0] for k, v in _resolve_block("structure", sblk, sent).items()}
     em = ment.build(mv, T_K)
     return dict(getattr(sent.response(sv, em, T_K, 0.75), "extra", {}) or {})
+
+
+def _structure_resp(spec, sent, sblk, mblk):
+    """The structure's full response at the spec's central values (same chain as _structure_extra)."""
+    ment = _registry.get("material", mblk.get("kind"))
+    T_K = 5.0
+    try:
+        T_K = float(central(resolve_leaf(spec.get("T_K"), T_K_SPEC, "T_K")))
+    except Exception:
+        pass
+    mv = {k: v[0] for k, v in _resolve_block("material", mblk, ment).items()}
+    sv = {k: v[0] for k, v in _resolve_block("structure", sblk, sent).items()}
+    return sent.response(sv, ment.build(mv, T_K), T_K, 0.75)
 
 
 def _false_colour(lam):
@@ -427,12 +485,257 @@ def _mesa(kind, vals, lam, S):
     return layers, labels, ["lambda_nm"]
 
 
+# ---------------------------------------------------------------- R2-3D: the five remaining structure kinds
+
+def _resp_derived(S, resp, keys=("kappa", "Q_eff", "eta_out")):
+    """Response numbers a cavity readout shows (all DR: computed by the structure's own response())."""
+    if "F_P" in keys:
+        S.derived("F_P", float(resp.F_P), ["structure.*"], "", "structure response (additional Purcell rate ratio)")
+    if "kappa" in keys:
+        k = None if resp.kappa_meV is None else 1000.0 * float(resp.kappa_meV)
+        S.derived("kappa_ueV", k, ["structure.*"], "ueV", "cavity linewidth from the structure response")
+    if "Q_eff" in keys:
+        q = None
+        if resp.kappa_meV and resp.E_mode_meV:
+            q = float(resp.E_mode_meV) / float(resp.kappa_meV)
+        S.derived("Q_eff", q, ["structure.*"], "", "E_mode / kappa from the structure response")
+    if "eta_out" in keys:
+        S.derived("eta_out", float(resp.eta_out), ["structure.*"], "", "outcoupling from the structure response")
+
+
+def _photonic_nanowire(vals, lam, S, ex):
+    d_nm = vals["d_nm"][0]
+    S.reg("d_nm", d_nm, vals["d_nm"][1], "structure.d_nm")
+    S.reg("n_wire", vals["n_wire"][0], vals["n_wire"][1], "structure.n_wire")
+    S.reg("taper_T", vals["taper_T"][0], vals["taper_T"][1], "structure.taper_T")
+    S.reg("mirror_R", vals["mirror_R"][0], vals["mirror_R"][1], "structure.mirror_R")
+    S.reg("mirror_phase_ok", bool(vals["mirror_phase_ok"][0]), vals["mirror_phase_ok"][1], "structure.mirror_phase_ok")
+    S.reg("taper_mfr_nm", vals["taper_mfr_nm"][0], vals["taper_mfr_nm"][1], "structure.taper_mfr_nm")
+    S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
+    S.derived("mirror_field_r", float(ex["mirror_field_r"]), ["structure.mirror_R"], "", "|r| = sqrt(R) (structure response)")
+    S.derived("V_number", float(ex["V_number"]), ["structure.d_nm", "structure.n_wire", "material.lambda_nm"], "",
+              "HE11 V number (structure response)")
+    S.derived("mode_radius_nm", float(ex["mode_field_radius_nm"]),
+              ["structure.d_nm", "structure.n_wire", "structure.taper_mfr_nm"], "nm",
+              "mode-field radius at the top facet: the taper's mfr, else the bare-wire Marcuse radius (structure response)")
+    S.derived("beta_he11", float(ex["beta_he11"]), ["structure.d_nm", "structure.n_wire"], "", "HE11 coupling beta (structure response)")
+    S.derived("upward_fraction", float(ex["upward_fraction"]), ["structure.mirror_R", "structure.mirror_phase_ok"], "",
+              "upward collected fraction beta0 (structure response)")
+    S.derived("rate_boost", float(ex["rate_boost"]), ["structure.mirror_R"], "", "standing-wave rate boost 1 + beta|r| (structure response)")
+    L = S.disp("photonic_nanowire", "length_um")
+    ang_deg = S.disp("photonic_nanowire", "flare_half_angle_deg")
+    cap = S.disp("photonic_nanowire", "flare_len_cap_frac")
+    S.disp("photonic_nanowire", "mirror_um")
+    S.disp("photonic_nanowire", "mirror_halfwidth_um")
+    trumpet = float(vals["taper_mfr_nm"][0]) > 0.0
+    S.geometry["trumpet"] = bool(trumpet)
+    S.src["trumpet"] = {"tag": "DR", "display_default": False, "kind": "derived", "from": ["structure.taper_mfr_nm"], "unit": "",
+                        "note": "taper_mfr_nm > 0: the wire widens towards the top (trumpet); 0: needle"}
+    r0 = d_nm / 2.0
+    tan_a = math.tan(math.radians(ang_deg))
+    r_top, flare = r0, 0.0
+    if trumpet and float(vals["taper_mfr_nm"][0]) > r0:
+        want = float(vals["taper_mfr_nm"][0])                       # top radius = the mode-field radius it must carry
+        flare = min(cap * L, (want - r0) / 1000.0 / tan_a)
+        r_top = r0 + flare * 1000.0 * tan_a                         # capped flare keeps the half angle
+    S.derived("top_d_nm", 2.0 * r_top, ["structure.d_nm", "structure.taper_mfr_nm", "flare_half_angle_deg"], "nm",
+              "display rule: trumpet top radius = taper mode-field radius, limited by the flare cap; needle: = d")
+    S.derived("flare_len_um", flare, ["structure.taper_mfr_nm", "flare_half_angle_deg", "length_um"], "um",
+              "display rule: (r_top - r)/tan(half angle), capped")
+    nw = float(vals["n_wire"][0])
+    if vals["mirror_phase_ok"][0]:
+        S.disp("photonic_nanowire", "dot_height_over_lambda_n")
+        S.geometry["dot_height_um"] = 0.5 * lam / nw / 1000.0
+        S.src["dot_height_um"] = {"tag": "A", "display_default": True, "kind": "display",
+                                  "why": "mirror_phase_ok: the dot is on a field antinode; drawn lambda/(2 n_wire) above the mirror"}
+    else:
+        fr = S.disp("photonic_nanowire", "dot_height_frac")
+        S.geometry["dot_height_um"] = fr * L
+        S.src["dot_height_um"] = {"tag": "A", "display_default": True, "kind": "display",
+                                  "why": "mirror_phase_ok is false: the dot position is unknown; drawn at 0.3 of the wire height"}
+    S.display.append("dot_height_um")
+    layers = [_layer("bottom mirror", S.geometry["mirror_um"] * 1000.0, "contact", "A", "display thickness"),
+              _layer("wire", L * 1000.0, "core", "A", "display height; diameter from the registry")]
+    labels = [f"wire diameter {d_nm:g} nm drawn true scale; wire height, flare half angle, mirror size and dot height are display defaults [A]",
+              ("trumpet: the top flares until its radius reaches the taper mode-field radius" if trumpet
+               else "needle: no taper (taper_mfr_nm = 0), constant diameter"),
+              ("mirror_phase_ok: dot drawn on a field antinode (coherent mirror boost)" if vals["mirror_phase_ok"][0]
+               else "mirror phase unknown: incoherent power return, dot position not a model input")]
+    return layers, labels, ["d_nm", "beta_he11", "upward_fraction", "V_number", "lambda_nm"]
+
+
+def _planar_dbr(vals, lam, S, ex, resp):
+    n_top, n_bot = int(vals["N_top"][0]), int(vals["N_bot"][0])
+    S.reg("N_top", n_top, vals["N_top"][1], "structure.N_top")
+    S.reg("N_bot", n_bot, vals["N_bot"][1], "structure.N_bot")
+    for k in ("n_high", "n_low", "n_cavity", "n_substrate", "z_dot_frac"):
+        S.reg(k, vals[k][0], vals[k][1], f"structure.{k}")
+    S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
+    t_h, t_l, sp = float(ex["t_high_nm"]), float(ex["t_low_nm"]), float(ex["spacer_nm"])
+    S.derived("t_high_nm", t_h, ["material.lambda_nm", "structure.n_high"], "nm", "quarter wave lambda/4n (structure response)")
+    S.derived("t_low_nm", t_l, ["material.lambda_nm", "structure.n_low"], "nm", "quarter wave lambda/4n (structure response)")
+    S.derived("spacer_nm", sp, ["material.lambda_nm", "structure.n_cavity"], "nm", "lambda cavity: lambda/n_cavity (structure response)")
+    S.derived("z_dot_nm", float(ex["z_dot_nm"]), ["structure.z_dot_frac", "structure.n_cavity", "material.lambda_nm"], "nm",
+              "dot height above the spacer bottom: z_dot_frac x spacer (structure response)")
+    S.disp("planar_dbr", "lateral_um")
+    sub = S.disp("planar_dbr", "substrate_um")
+    top_nm, bot_nm = n_top * (t_h + t_l), n_bot * (t_h + t_l)
+    S.derived("height_um", (top_nm + bot_nm + sp) / 1000.0,
+              ["structure.N_top", "structure.N_bot", "structure.n_high", "structure.n_low", "structure.n_cavity",
+               "material.lambda_nm"], "um", "DBRs + spacer (no substrate)")
+    S.geometry["mode"] = "planar_1d"
+    S.src["mode"] = {"tag": "DR", "display_default": False, "kind": "derived", "unit": "", "from": [],
+                     "note": "1-D transfer-matrix model: no lateral confinement, no mode volume"}
+    _resp_derived(S, resp, ("kappa", "eta_out"))
+    S.derived("rate_factor", float(resp.F_bg), ["structure.*"], "",
+              "angle-integrated total emission-rate factor planar_total_rate (structure response)")
+    layers = [_layer("substrate", sub * 1000.0, "substrate", "A", "thickness not modelled"),
+              _layer(f"bottom DBR ({n_bot} pairs)", bot_nm, "mirror", "DR", "N_bot x (lambda/4n_h + lambda/4n_l)"),
+              _layer("spacer", sp, "core", "DR", "lambda/n_cavity"),
+              _layer(f"top DBR ({n_top} pairs)", top_nm, "mirror", "DR", "N_top x (lambda/4n_h + lambda/4n_l)")]
+    labels = ["unetched planar cavity: a 1-D transfer-matrix model, drawn as a wafer piece broken laterally",
+              f"quarter-wave layers lambda/4n: {t_h:.1f} nm (high), {t_l:.1f} nm (low), true scale",
+              "lateral width and substrate thickness are display defaults [A]"]
+    return layers, labels, ["N_top", "N_bot", "kappa_ueV", "eta_out", "rate_factor", "lambda_nm"]
+
+
+def _nitride_cavity(vals, lam, S, resp):
+    for k in ("Q", "mode_volume_norm", "spatial_overlap", "eta_out", "T_track"):
+        S.reg(k, vals[k][0], vals[k][1], f"structure.{k}")
+    S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
+    nh, nl = S.disp("nitride_cavity", "n_high"), S.disp("nitride_cavity", "n_low")
+    n_top, n_bot = int(S.disp("nitride_cavity", "N_top")), int(S.disp("nitride_cavity", "N_bot"))
+    order = S.disp("nitride_cavity", "cavity_order")
+    S.disp("nitride_cavity", "lateral_um")
+    sub = S.disp("nitride_cavity", "substrate_um")
+    dot_frac = S.disp("nitride_cavity", "dot_frac")
+    hfrac = S.disp("nitride_cavity", "mode_height_over_lambda_n")
+    t_h, t_l = lam / (4.0 * nh), lam / (4.0 * nl)
+    S.derived("t_high_nm", t_h, ["material.lambda_nm", "n_high"], "nm", "quarter wave, display index")
+    S.derived("t_low_nm", t_l, ["material.lambda_nm", "n_low"], "nm", "quarter wave, display index")
+    sp = order * lam / nh
+    S.derived("spacer_nm", sp, ["material.lambda_nm", "n_high"], "nm", "cavity order x lambda/n_high")
+    S.derived("z_dot_nm", dot_frac * sp, ["spacer_nm", "dot_frac"], "nm", "dot height above the spacer bottom (display)")
+    top_nm, bot_nm = n_top * (t_h + t_l), n_bot * (t_h + t_l)
+    S.derived("height_um", (top_nm + bot_nm + sp) / 1000.0, ["N_top", "N_bot", "n_high", "n_low", "material.lambda_nm"], "um",
+              "DBRs + spacer (no substrate)")
+    # equal-volume ellipsoid of V (lambda/n)^3: height from the display rule, lateral radius from V
+    lam_n_um = lam / 1000.0 / nh
+    vol = float(vals["mode_volume_norm"][0]) * lam_n_um ** 3
+    c = 0.5 * hfrac * lam_n_um
+    a = math.sqrt(3.0 * vol / (4.0 * math.pi * c))
+    S.derived("mode_semiaxes_um", [a, a, c],
+              ["structure.mode_volume_norm", "material.lambda_nm", "n_high", "mode_height_over_lambda_n"], "um",
+              "ellipsoid of volume V (lambda/n)^3 with the display height")
+    _resp_derived(S, resp, ("F_P", "kappa", "Q_eff"))
+    S.geometry["mode"] = "ellipsoid"
+    S.src["mode"] = {"tag": "DR", "display_default": False, "kind": "derived", "unit": "", "from": [], "note": "equal-volume mode ellipsoid"}
+    layers = [_layer("substrate", sub * 1000.0, "substrate", "A", "thickness not modelled"),
+              _layer(f"bottom DBR ({n_bot} pairs)", bot_nm, "mirror", "A", "display pairs"),
+              _layer("spacer", sp, "core", "A", "display order x lambda/n_high"),
+              _layer(f"top DBR ({n_top} pairs)", top_nm, "mirror", "A", "display pairs")]
+    labels = ["the entry models Q, V, overlap and outcoupling only: DBR pairs, indices, spacer order and post width are display defaults [A]",
+              "mode glow: ellipsoid of volume V (lambda/n)^3 (V from the registry, height a display rule)",
+              "tracked mode: E_cav follows the dot with temperature (not drawn)"]
+    return layers, labels, ["Q", "mode_volume_norm", "F_P", "kappa_ueV", "eta_out", "lambda_nm"]
+
+
+def _ridge_waveguide(vals, lam, S, resp):
+    ex = resp.extra
+    for k in ("ridge_width_nm", "etch_depth_nm", "L_um", "alpha_cm", "R_back", "dot_position"):
+        S.reg(k, vals[k][0], vals[k][1], f"structure.{k}")
+    S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
+    S.derived("stack_lambda_nm", float(ex["lambda_nm"]), ["material.lambda_nm", "structure.lambda_nm"], "nm",
+              "wavelength of the stack's refractive indices: the structure's lambda_nm override, else the emitter's")
+    stack = [dict(x) for x in ex["stack"]]
+    total = sum(x["t_nm"] for x in stack)
+    S.geometry["stack"] = stack
+    S.src["stack"] = {"tag": "E", "display_default": False, "kind": "derived", "from": ["material.lambda_nm"], "unit": "nm",
+                      "note": "waveguide.hkust_ridge_stack(lambda): the stack the mode solve uses [E] (structure response)"}
+    S.derived("total_nm", total, ["stack"], "nm", "stack height")
+    S.derived("etch_floor_nm", max(total - float(vals["etch_depth_nm"][0]), 0.0), ["stack", "structure.etch_depth_nm"], "nm",
+              "height of the etched floor above the stack bottom: total - etch depth")
+    dot_c, y = 0.0, 0.0
+    for x in stack:
+        if x["is_dot"]:
+            dot_c = y + x["t_nm"] / 2.0
+        y += x["t_nm"]
+    S.derived("dot_height_nm", dot_c, ["stack"], "nm", "centre of the dot layer above the stack bottom")
+    S.derived("n_eff", float(ex["n_eff"]), ["structure.ridge_width_nm", "structure.etch_depth_nm"], "",
+              "effective index of the ridge mode (structure response)")
+    S.derived("wx_um", float(ex["wx_um"]), ["structure.ridge_width_nm", "structure.etch_depth_nm"], "um",
+              "1/e^2 intensity radius, lateral (structure response)")
+    S.derived("wy_um", float(ex["wy_um"]), ["structure.ridge_width_nm", "structure.etch_depth_nm"], "um",
+              "1/e^2 intensity radius, vertical (structure response)")
+    S.derived("T_facet", float(ex["T_facet"]), ["n_eff"], "", "facet power transmission (structure response)")
+    _resp_derived(S, resp, ("F_P", "eta_out"))
+    fl = S.disp("ridge_waveguide", "front_len_um")
+    S.disp("ridge_waveguide", "back_len_um")
+    S.disp("ridge_waveguide", "shoulder_nm")
+    sub = S.disp("ridge_waveguide", "substrate_um")
+    layers = [_layer("substrate", sub * 1000.0, "substrate", "A", "thickness not modelled")]
+    for x in stack:
+        role = "active" if x["is_dot"] else ("cladding" if "cladding" in x["name"] else "core")
+        layers.append(_layer(x["name"].replace("_", " "), x["t_nm"], role, "E", "waveguide.hkust_ridge_stack", x["n"], x["material"]))
+    labels = [f"ridge {float(vals['ridge_width_nm'][0]):g} nm wide, etched {float(vals['etch_depth_nm'][0]):g} nm, true scale in all three axes",
+              f"only the front {fl:g} um of the {float(vals['L_um'][0]):g} um ridge and a short back stub are drawn (break)",
+              "guided mode: Gaussian-equivalent 1/e^2 intensity radii wx, wy from the effective-index solve",
+              "drawn length, shoulder width and substrate thickness are display defaults [A]"]
+    return layers, labels, ["ridge_width_nm", "F_P", "n_eff", "eta_out", "R_back", "lambda_nm"]
+
+
+def _lumped_numbers(vals, resp, S):
+    """The generic_cavity inputs and the response numbers it yields (no geometry exists)."""
+    S.reg("F_P", float(vals["F_P"][0]), vals["F_P"][1], "structure.F_P")
+    for k in ("detuning_ueV", "beta0"):
+        S.reg(k, vals[k][0], vals[k][1], f"structure.{k}")
+    _resp_derived(S, resp, ("kappa", "Q_eff", "eta_out"))
+
+
+def _lumped_cavity(vals, lam, S, resp):
+    S.derived("lambda_nm", lam, ["material.lambda_nm"], "nm")
+    _lumped_numbers(vals, resp, S)
+    S.disp("lumped_cavity", "gap_um")
+    S.disp("lumped_cavity", "plate_um")
+    S.geometry["lumped"] = True
+    S.src["lumped"] = {"tag": "DR", "display_default": False, "kind": "derived", "unit": "", "from": [],
+                       "note": "generic_cavity is a lumped model: F_P, kappa, beta, eta_out; there is no geometry"}
+    layers = [_layer("lumped mode", 1000.0, "core", "A", "schematic only, not a model quantity")]
+    labels = ["NO GEOMETRY IN THIS MODEL: generic_cavity is lumped (F_P, kappa, detuning, beta, eta_out)",
+              "mirror gap, plate size and the mode glow are a schematic, not to scale; no mode volume is modelled"]
+    return layers, labels, ["F_P", "kappa_ueV", "Q_eff", "eta_out", "beta0", "lambda_nm"]
+
+
+def _illustrative_micropillar(spec, mblk, lam, S, vals, resp):
+    """generic_cavity drawn as a micropillar (paper card meta.display_as): the registry micropillar defaults, all [A]."""
+    ment = _registry.get("structure", "micropillar")
+    S2 = _Src()
+    layers, labels, _keys = _micropillar(_resolve_block("structure", {}, ment), lam, S2, _structure_extra(spec, ment, {}, mblk))
+    why = "illustrative micropillar geometry (the cavity model is lumped): the registry micropillar default, not a model input"
+    for k, v in S2.geometry.items():
+        S.geometry[k] = v
+        if k == "lambda_nm":
+            S.src[k] = S2.src[k]
+        else:
+            S.src[k] = {"tag": "A", "display_default": True, "kind": "display", "why": why}
+            S.display.append(k)
+    _lumped_numbers(vals, resp, S)
+    S.geometry["illustrative"] = True
+    S.src["illustrative"] = {"tag": "A", "display_default": True, "kind": "display", "why": why}
+    S.display.append("illustrative")
+    layers = [dict(L_, tag="A", source="illustrative geometry (lumped model)") for L_ in layers]
+    labels = ["illustrative geometry (the model is lumped): this micropillar is NOT a model input; only F_P, kappa, detuning, "
+              "beta and eta_out are"] + [x for x in labels if "display default" not in x]
+    return layers, labels, ["F_P", "kappa_ueV", "Q_eff", "eta_out", "lambda_nm"]
+
+
 # ---------------------------------------------------------------- entry point
 
 def describe(spec, display=None) -> dict:
     """Geometry descriptor for a composed spec (dict, schema "fsim-composed/1").
 
-    display: optional overrides of display defaults, {"cell": "H1"} (phc_cavity only).
+    display: optional overrides of display defaults, {"cell": "H1"} (phc_cavity only) or {"display_as": "micropillar"}
+    (generic_cavity only: draw an illustrative micropillar for the lumped model).
     Never raises for an unknown structure kind or an unresolvable leaf: returns the fallback descriptor."""
     display = dict(display or {})
     try:
@@ -446,6 +749,11 @@ def describe(spec, display=None) -> dict:
         except Exception:
             return _fallback(spec, f"unknown structure kind {skind!r}", skind)
         builder = sent.viz if sent.viz in BUILDERS else KIND_BUILDER.get(skind, FALLBACK)
+        display_as = display.get("display_as")
+        if display_as is not None:
+            if skind != "generic_cavity" or display_as not in DISPLAY_AS:
+                raise ValueError(f"display_as {display_as!r} is only valid for generic_cavity, one of {list(DISPLAY_AS)}")
+            builder = display_as
         # emission wavelength: the material's resolved lambda_nm
         lam = None
         mblk = spec.get("material") or {}
@@ -461,7 +769,9 @@ def describe(spec, display=None) -> dict:
             return _fallback(spec, "material has no resolvable emission wavelength", skind, lam)
         vals = _resolve_block("structure", sblk, sent)
         S = _Src()
-        if builder == "micropillar":
+        if display_as == "micropillar":
+            layers, labels, keys = _illustrative_micropillar(spec, mblk, lam, S, vals, _structure_resp(spec, sent, sblk, mblk))
+        elif builder == "micropillar":
             layers, labels, keys = _micropillar(vals, lam, S, _structure_extra(spec, sent, sblk, mblk))
         elif builder == "open_cavity":
             layers, labels, keys = _open_cavity(vals, lam, S, _structure_extra(spec, sent, sblk, mblk))
@@ -471,12 +781,23 @@ def describe(spec, display=None) -> dict:
             layers, labels, keys = _phc_waveguide(vals, lam, S)
         elif builder == "phc_cavity":
             layers, labels, keys = _phc_cavity(vals, lam, S, display)
+        elif builder == "photonic_nanowire":
+            layers, labels, keys = _photonic_nanowire(vals, lam, S, _structure_extra(spec, sent, sblk, mblk))
+        elif builder == "planar_dbr":
+            layers, labels, keys = _planar_dbr(vals, lam, S, _structure_extra(spec, sent, sblk, mblk),
+                                               _structure_resp(spec, sent, sblk, mblk))
+        elif builder == "nitride_cavity":
+            layers, labels, keys = _nitride_cavity(vals, lam, S, _structure_resp(spec, sent, sblk, mblk))
+        elif builder == "ridge_waveguide":
+            layers, labels, keys = _ridge_waveguide(vals, lam, S, _structure_resp(spec, sent, sblk, mblk))
+        elif builder == "lumped_cavity":
+            layers, labels, keys = _lumped_cavity(vals, lam, S, _structure_resp(spec, sent, sblk, mblk))
         else:
             layers, labels, keys = _mesa(skind, vals, lam, S)
     except Exception as e:          # an unresolved spec must not break the viewport
         return _fallback(spec if isinstance(spec, dict) else {}, f"{type(e).__name__}: {e}",
                          (spec.get("structure") or {}).get("kind") if isinstance(spec, dict) else None)
-    d = _base(builder, f"{sent.label} - composed", spec, lam)
+    d = _base(builder, f"{sent.label} - composed" + (", illustrative micropillar" if display_as else ""), spec, lam)
     d["structure_kind"] = skind
     d["material_kind"] = mblk.get("kind")
     d["geometry"] = copy.deepcopy(S.geometry)

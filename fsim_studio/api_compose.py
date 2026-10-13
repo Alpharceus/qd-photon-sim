@@ -229,6 +229,66 @@ def _collapse_leaf(leaf):
     return leaf, False
 
 
+_HINT_CACHE: dict = {}
+
+
+def _leaf_value(leaf):
+    """The central value of a card/spec leaf (value, or the midpoint of a range, or the first choice)."""
+    leaf, _hit = _collapse_leaf(leaf)
+    return leaf.get("value") if isinstance(leaf, dict) else leaf
+
+
+def _same_value(a, b) -> bool:
+    if isinstance(a, bool) or isinstance(b, bool) or not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+        return a == b
+    return math.isclose(float(a), float(b), rel_tol=1e-9, abs_tol=1e-12)
+
+
+def _display_hint_cards() -> list:
+    """[(material kind, structure kind, {param: central value}, display_as, card id)] for the paper cards that carry
+    meta.display_as (an illustrative 3D geometry for a lumped structure, R2-3D); re-read when a card file changes."""
+    import yaml
+    files = sorted(PAPERS_DIR.glob("*.yaml"))
+    sig = tuple((f.name, f.stat().st_mtime_ns) for f in files)
+    if _HINT_CACHE.get("sig") == sig:
+        return _HINT_CACHE["cards"]
+    out = []
+    for f in files:
+        if f.name.startswith("_"):
+            continue
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            da = (doc.get("meta") or {}).get("display_as")
+            dev = doc.get("device") or {}
+            if not da:
+                continue
+            st = dev.get("structure") or {}
+            out.append(((dev.get("material") or {}).get("kind"), st.get("kind"),
+                        {k: _leaf_value(v) for k, v in (st.get("params") or {}).items()}, da, f.stem))
+        except Exception:  # noqa: BLE001 -- a broken card must not break the scene route
+            continue
+    _HINT_CACHE.update(sig=sig, cards=out)
+    return out
+
+
+def display_hint(spec):
+    """{"display_as": X} when `spec` is (the central design of) a paper card whose meta.display_as names an illustrative
+    geometry for its lumped structure; else None.  The composer posts only the spec, so the hint is recovered by matching
+    the material kind and the structure kind + parameters against the cards.  Editing a structure parameter drops the
+    hint (the lumped schematic is shown); when several cards match, they must agree."""
+    try:
+        st = spec.get("structure") or {}
+        mat = (spec.get("material") or {}).get("kind")
+        post = {k: _leaf_value(v) for k, v in (st.get("params") or {}).items()}
+        hits = set()
+        for m, k, params, da, _cid in _display_hint_cards():
+            if m == mat and k == st.get("kind") and params and all(n in post and _same_value(post[n], v) for n, v in params.items()):
+                hits.add(da)
+        return {"display_as": hits.pop()} if len(hits) == 1 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def central_design(paper_id: str, device: dict) -> dict:
     spec = copy.deepcopy(device)
     collapsed = []
@@ -417,6 +477,10 @@ def register(app):
             raise ComposeError("spec must be a composed spec object")
         if display is not None and not isinstance(display, dict):
             raise ComposeError("display must be an object")
+        if not (display or {}).get("display_as"):
+            hint = display_hint(spec)                 # R2-3D: a paper card's illustrative geometry for a lumped structure
+            if hint:
+                display = {**(display or {}), **hint}
         return _out(mod.describe(spec, display))
 
     @app.get("/api/compose/scene")
@@ -484,5 +548,5 @@ def register(app):
         return _out(central_design(paper_id, _pget(paper, "device")))
 
 
-__all__ = ["register", "ComposeError", "series_job", "reproduce_job", "validate_payload",
+__all__ = ["register", "ComposeError", "display_hint", "series_job", "reproduce_job", "validate_payload",
            "registry_payload_cached", "central_design", "list_examples", "fock_design"]

@@ -75,6 +75,10 @@ import { buildBullseye } from './builders/bullseye.js';
 import { buildPhcWaveguide } from './builders/phcWaveguide.js';
 import { buildPhcCavity } from './builders/phcCavity.js';
 import { buildMesa } from './builders/mesa.js';
+import { buildPhotonicNanowire } from './builders/photonicNanowire.js';
+import { buildPlanarDbr } from './builders/planarDbr.js';
+import { buildRidgeWaveguide } from './builders/ridgeWaveguide.js';
+import { buildLumpedCavity } from './builders/lumpedCavity.js';
 import { renderFallback } from './fallback2d.js';
 import * as THREE from 'three';
 import { addFloor, solidBox } from './builders/floor.js';
@@ -94,6 +98,8 @@ function injectCss() {
 const COMPOSED = {
   micropillar: buildMicropillar, open_cavity: buildOpenCavity, bullseye: buildBullseye,
   phc_waveguide: buildPhcWaveguide, phc_cavity: buildPhcCavity, mesa: buildMesa,
+  photonic_nanowire: buildPhotonicNanowire, planar_dbr: buildPlanarDbr, nitride_cavity: buildPlanarDbr,
+  ridge_waveguide: buildRidgeWaveguide, lumped_cavity: buildLumpedCavity,
 };
 
 function pickBuilder(kind, spec) {

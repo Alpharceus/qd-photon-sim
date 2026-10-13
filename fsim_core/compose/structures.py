@@ -695,10 +695,14 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
         notes.append("NA > 1 clipped to 1 (the HE11 acceptance integral saturates at the forward hemisphere)")
     inputs = {"beta0": _path("d_nm") + "+mirror_R+mirror_phase_ok", "eta_out": _path("taper_T") + "+taper_mfr_nm",
               "F_bg": _path("F_bg") + "+mirror_R"}
-    return StructureResponse(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=v.pos("F_bg") * boost,
-                             beta0=float(up), eta_out=float(eta_out), eta_out_fn=fn,
-                             pol_factor=1.0, notes=tuple(notes), inputs=inputs,
-                             tag_floor="A")                     # Marcuse / multimode envelopes calibrated on GaAs/InAs wires [A]
+    # geometry numbers for the 3D scene (R2-3D): read from the module's own diagnostics, no new physics
+    extra = {"V_number": float(r["V_number"]), "mode_field_radius_nm": float(r["diagnostics"]["mode_field_radius_nm"]),
+             "beta_he11": float(beta), "upward_fraction": float(up), "rate_boost": float(boost),
+             "mirror_field_r": math.sqrt(R), "phase_ok": bool(phase_ok)}
+    return StructureResponseX(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=v.pos("F_bg") * boost,
+                              beta0=float(up), eta_out=float(eta_out), eta_out_fn=fn,
+                              pol_factor=1.0, notes=tuple(notes), inputs=inputs,
+                              tag_floor="A", extra=extra)       # Marcuse / multimode envelopes calibrated on GaAs/InAs wires [A]
 
 
 PHOTONIC_NANOWIRE = _Struct(
@@ -764,10 +768,13 @@ def _planar_dbr(self, vals, em, T_K, NA):
         notes.append("cavity_mode found no resolvable resonance (kappa NaN); kappa returned as None")
     inputs = {"F_bg": _path("z_dot_frac"), "E_mode_meV": _path("N_top"), "kappa_meV": _path("N_bot"),
               "eta_out": _path("N_top"), "beta0": _path("beta0")}
-    return StructureResponse(F_P=0.0, kappa_meV=float(kappa) if kappa_ok else None,
-                             E_mode_meV=float(mode["E_cav_meV"]), g_meV=None, F_bg=float(F_tot),
-                             beta0=v.frac("beta0"), eta_out=float(Tt / (Tt + Tb)), eta_out_fn=None,
-                             pol_factor=1.0, notes=tuple(notes), inputs=inputs, tag_floor="E")
+    # geometry numbers for the 3D scene (R2-3D): the same quarter-wave stack the transfer matrix used
+    extra = {"t_high_nm": float(lam / (4.0 * n_h)), "t_low_nm": float(lam / (4.0 * n_l)), "spacer_nm": float(d_c),
+             "z_dot_nm": float(z), "lambda_nm": float(lam)}
+    return StructureResponseX(F_P=0.0, kappa_meV=float(kappa) if kappa_ok else None,
+                              E_mode_meV=float(mode["E_cav_meV"]), g_meV=None, F_bg=float(F_tot),
+                              beta0=v.frac("beta0"), eta_out=float(Tt / (Tt + Tb)), eta_out_fn=None,
+                              pol_factor=1.0, notes=tuple(notes), inputs=inputs, tag_floor="E", extra=extra)
 
 
 PLANAR_DBR = _Struct(
@@ -887,9 +894,15 @@ def _edge_ridge(self, vals, em, T_K, NA):
              "NA is applied inside edge_emission (Gaussian or numeric); no eta_out_fn (each NA needs a mode solve)"]
     notes.extend(e.notes)
     inputs = {"F_P": _path("ridge_width_nm"), "eta_out": _path("L_um"), "F_bg": _path("alpha_cm"), "beta0": _path("R_back")}
-    return StructureResponse(F_P=float(e.F_wg), kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0,
-                             eta_out=float(eta_out), eta_out_fn=None, pol_factor=1.0, notes=tuple(notes), inputs=inputs,
-                             tag_floor="E")                     # waveguide.hkust_ridge_stack is an [E] stack
+    # geometry numbers for the 3D scene (R2-3D): the stack the mode solve used and the mode's 1/e^2 intensity radii
+    mode = waveguide.effective_index_ridge(stack, lam, w, etch)
+    extra = {"stack": [{"name": L_.name, "t_nm": float(L_.thickness_nm), "n": float(L_.n), "is_dot": bool(L_.is_dot),
+                        "material": L_.material or ""} for L_ in stack],
+             "n_eff": float(e.n_eff), "n_g": float(e.n_g), "T_facet": float(e.T_facet),
+             "wx_um": float(mode.wx_um), "wy_um": float(mode.wy_um), "lambda_nm": float(lam)}
+    return StructureResponseX(F_P=float(e.F_wg), kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0,
+                              eta_out=float(eta_out), eta_out_fn=None, pol_factor=1.0, notes=tuple(notes), inputs=inputs,
+                              tag_floor="E", extra=extra)       # waveguide.hkust_ridge_stack is an [E] stack
 
 
 EDGE_RIDGE = _Struct(

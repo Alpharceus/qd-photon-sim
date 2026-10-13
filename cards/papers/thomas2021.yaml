@@ -6,6 +6,7 @@ meta:
   arxiv: "2007.04330v4"
   extraction: .workers/devlib/papers/thomas2021.yaml
   read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Thomas et al., Phys. Rev. Lett. 126, 233601 (2021): electrically contacted micropillar [V] (.workers/devlib/papers/thomas2021.yaml); drawn with [A] display defaults
   summary: "InGaAs QD (neutral X, linear dipole) in an electrically contacted micropillar, Q ~4000 (Sample A), LA-phonon-assisted blue-detuned ~17 ps pulses, T ~8 K: BFL 0.50, g2(0) 0.046, Ms 0.909"
 
 device:
@@ -83,3 +84,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: phonon_assisted is now available; g2_BFL, Ms_BFL, pQD_BFL expect unavailable -> fail (real outcomes: model 0.18 / 0.49 / 0.395 vs 0.046 / 0.909 / 0.77)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card input: gamma* entered (FX2b diagnosis)", note: "material.gamma_star_4K_ns 0.65 /ns DR (from resonant Ms 0.915 at F_P midpoint 6, tau_bare 1.0 ns) and a_ac_ns_per_K 0 A; first run with the input: g2_BFL fail (0.184), Ms_BFL fail (0.49 -> 0.711, envelope 0.60-0.756), pQD_BFL fail (0.395), expects unchanged. Final re-run at the end of the session (a concurrent engine change had landed in the HOM path): Ms_BFL model 0.871 (envelope 0.782-0.911, paper 0.909 inside) -> expect fail -> pass; g2_BFL (0.184) and pQD_BFL (0.395) still fail. Note gamma* 0.65 was itself derived from the resonant Ms 0.915 at F_P = 6, so the Ms_BFL pass is a transfer from the resonant to the phonon-assisted drive, not an independent dephasing test"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: Ms_BFL class M -> C with fits (material.gamma_star_4K_ns was derived from the resonant Ms 0.915 of the same paper); expect unchanged (pass)"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}

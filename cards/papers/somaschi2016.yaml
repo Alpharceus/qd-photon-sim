@@ -11,6 +11,7 @@ meta:
   arxiv: "1510.06499"
   extraction: ".workers/devlib/papers/somaschi2016.yaml"
   read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Somaschi et al., Nat. Photonics 10, 340 (2016): electrically contacted micropillar [V] (main text; .workers/devlib/papers/somaschi2016.yaml); drawn with [A] display defaults
   summary: "InGaAs dot QD3 in an electrically tuned micropillar (F_P 9.8, Q ~12000), 15 ps resonant cross-polarised pulses, 4 K; paper: g2 0.0028, M 0.989 raw / 0.9956 corrected, brightness 0.154"
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "p.3 text (devices studied at 4 K)"}
@@ -89,3 +90,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 12: laser_leak range [0, 0.03] E -> [0, 0.003] DR (p.4 few percent times etalon/pulse bandwidth)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation V_corr = I/(1-g2) (uncapped, can exceed 1): M_corr fail -> pass (model 0.89 [0.82,0.97] -> 0.920 [0.848,1.004]; envelope-driven, weak)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: M_corr expect pass -> pass-envelope (central 0.920; paper value only at the top of the gamma* envelope [0.848, 0.999])"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}

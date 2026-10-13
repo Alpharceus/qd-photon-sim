@@ -190,6 +190,7 @@ export function buildMicropillar(spec, ctx) {
   labels.add(root, [0, yTop + 0.35, R], `pillar Ø ${nice(g.d_um)} µm · H ${nice(g.height_um, 3)} µm`, { tag: tg('d_um'), anchor: 'center', priority: 80 });
   labels.add(root, [-R - 0.2, yTop - tH * 3, 0], `λ/4n · ${nice(g.t_high_nm, 3)} / ${nice(g.t_low_nm, 3)} nm`, { tag: 'DR', anchor: 'right', priority: 60, sub: `n ${nice(g.n_high, 3)} / ${nice(g.n_low, 3)}` });
   labels.add(root, [subR * 0.75, -subT * 0.5, subR * 0.6], 'substrate', { tag: 'A', priority: 30, sub: 'thickness not modelled' });
+  if (g.illustrative) labels.add(root, [0, yTop + 1.05, 0], 'illustrative geometry: the model is lumped', { tag: 'A', anchor: 'center', priority: 99, sub: 'only F_P, κ, η_out are model inputs; the pillar is a display default' });
 
   // --- magnifier: true-scale layers around the spacer
   const mag = makeMagnifier(stage, hud, {

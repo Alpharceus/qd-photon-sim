@@ -8,6 +8,7 @@ meta:
   arxiv: "1510.06499"
   extraction: ".workers/devlib/papers/somaschi2016.yaml"
   read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Somaschi et al., Nat. Photonics 10, 340 (2016): electrically contacted micropillar [V] (main text; .workers/devlib/papers/somaschi2016.yaml); drawn with [A] display defaults
   summary: "InGaAs dot QD1 in an electrically tuned micropillar (F_P 7.6, Q ~12000, eta_out 0.70), 3 ps above-band pump at 2.45 P_sat, 4 K; paper: g2 0.024, M 0.74 raw / 0.78 corrected, brightness 0.65"
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "p.3 text (devices studied at 4 K)"}
@@ -67,3 +68,4 @@ reproduce:
 fits: []
 history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
