@@ -25,6 +25,16 @@ def fit_params_source() -> str:
     return "fsim_core/data/phase0_fit_params.json (tracked snapshot)"
 
 
-def load_fit_params() -> dict:
-    """Full bundle JSON (keys include "params")."""
+# D1 (devlib-r2-pha2): opt-in IBM-calibrated refit bundle (fitting.fit_phase0(..., lineshape="ibm"),
+# written by scripts/fit_ibm_bundle.py).  Tracked file only; the Lorentzian bundle above is unchanged.
+_IBM_PATH = _ROOT / "fsim_core" / "data" / "phase0_fit_params_ibm.json"
+
+
+def load_fit_params(lineshape: str = "lorentzian") -> dict:
+    """Full bundle JSON (keys include "params").  lineshape "lorentzian" (default, legacy, bit-identical)
+    or "ibm" (opt-in IBM-calibrated refit, fsim_core/data/phase0_fit_params_ibm.json)."""
+    if lineshape == "ibm":
+        return json.loads(_IBM_PATH.read_text(encoding="utf-8"))
+    if lineshape != "lorentzian":
+        raise ValueError(f"lineshape must be 'lorentzian' or 'ibm', got {lineshape!r}")
     return json.loads(fit_params_path().read_text(encoding="utf-8"))

@@ -39,7 +39,7 @@
 meta:
   ledger_version: 2
   written: "2026-10-12"
-  revised: "2026-10-12 (devlib-rc2: faithful inputs, corrected reasons; devlib-r2-physb: island-strain brackets, Pryor relabel, Desh2013/Zhang2013 nanowire/pillar items, Desh2014 XX diagnostics)"
+  revised: "2026-10-12 (devlib-r2-pha2: IBM-calibrated refit va_ibm_*/dev_ibm_* re-pointed, Reischle fast-exchange bracket, LAF identifiability, Zhao unavailable-dB; devlib-rc2: faithful inputs, corrected reasons; devlib-r2-physb: island-strain brackets, Pryor relabel, Desh2013/Zhang2013 nanowire/pillar items, Desh2014 XX diagnostics)"
   model_head: "rt-edge-emitter @ deb733a (working tree)"
   runtime_budget_s: 180
 
@@ -61,33 +61,53 @@ items:
     tol: {kind: upper_bound, value: 0.01}
     tol_reason: "published uncertainty on the bound is +-0.01 (card err); model must not exceed 0.02 + 0.01"
     expect: fail
-    reason: "V-a model 0.035 violates the published upper bound; the +-0.03 point gate passes only because the bound is treated two-sided there. Mechanism (p2-rootcause 2a): g2_dot at 78 K is only 0.007; the rest is the fit background b0 = 0.0128 (T-independent), forced by the tau(T)/tau(78) = S(T)/S(78) block, which assumes a T-independent radiative rate [A] (violated in a lambda-microcavity as the X line walks off the mode). With the tau block dropped the refit gives 0.028. The production fit is not swapped (verify_fsim/audit bit-identity; user decision)"
+    reason: "Lorentzian lineshape has no sideband leakage; the fit absorbs it into a T-independent b0 (b0/B = 1.00 at all T), which cannot satisfy g2(78) < 0.02 (needs B/S <= 0.011) while giving B/S = 0.13 at 230 K (r2-physics-a Q3; the earlier tau-block mechanism was wrong: the tau block is consistent, Gamma_r drift 0.82-1.19). The +-0.03 point gate passes only because the bound is treated two-sided there. The production fit is not swapped (verify_fsim/audit bit-identity; user decision); the opt-in IBM-calibrated refit is the va_ibm_* block below"
+
+  # devlib-r2-pha2 (2026-10-12) D1, PRE-REGISTERED BEFORE THE FIRST RUN from the r2-physics-a Q3 arithmetic (every point inside
+  # +-0.03 and the 78 K bound met under an IBM refit).  Production path: fitting.fit_phase0(lineshape="ibm") (ZPL narrowed so
+  # FWHM_IBM = Gamma(T); 78 K inequality weighted err/3 [A]); same card, blocks and priors as the Lorentzian fit.
+  - {id: va_ibm_g2_T78,  class: C, desc: "IBM-calibrated V-a refit g2 at 78 K", source: chatz_va_ibm.g2_T78,  paper: {value: 0.02, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5; cards/chatzarakis.yaml"}, tol: {kind: abs, value: 0.03}, tol_reason: "fsim_core.fitting.V_A_TOL = 0.03 per point", expect: pass}
+  - {id: va_ibm_g2_T120, class: C, desc: "IBM-calibrated V-a refit g2 at 120 K", source: chatz_va_ibm.g2_T120, paper: {value: 0.10, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "V_A_TOL = 0.03", expect: pass}
+  - {id: va_ibm_g2_T150, class: C, desc: "IBM-calibrated V-a refit g2 at 150 K", source: chatz_va_ibm.g2_T150, paper: {value: 0.15, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "V_A_TOL = 0.03", expect: pass}
+  - {id: va_ibm_g2_T170, class: C, desc: "IBM-calibrated V-a refit g2 at 170 K", source: chatz_va_ibm.g2_T170, paper: {value: 0.18, err: 0.02, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "V_A_TOL = 0.03", expect: pass}
+  - {id: va_ibm_g2_T210, class: C, desc: "IBM-calibrated V-a refit g2 at 210 K", source: chatz_va_ibm.g2_T210, paper: {value: 0.28, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "V_A_TOL = 0.03", expect: fail, reason: "FLIPPED after first run (pre-registered pass, r2-physics-a Q3): the IBM-calibrated refit (ZPL narrowed so FWHM_IBM = Gamma, 78 K inequality weighted err/3) misses by +0.039 at 210 K (tolerance NOT widened). The Q3 arithmetic that predicted pass used the IBM eps at ZPL = the full fitted Gamma (eps 0.232 at 230 K); the honest narrowed line gives 0.182 there, so the sideband relief the arithmetic counted on is smaller, and the weighted 78 K bound (g2 < 0.03 needs B/S <= 0.011) now trades against 210/230 K: the joint fit sacrifices the 210/230 K points (and Gamma block, worst 36 %, tau block 20 %) rather than break the bound. A calibration (C) outcome, bundle fsim_core/data/phase0_fit_params_ibm.json records it; never tuned"}
+  - {id: va_ibm_g2_T230, class: C, desc: "IBM-calibrated V-a refit g2 at 230 K", source: chatz_va_ibm.g2_T230, paper: {value: 0.36, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "V_A_TOL = 0.03", expect: fail, reason: "FLIPPED after first run (pre-registered pass, r2-physics-a Q3): the IBM-calibrated refit (ZPL narrowed so FWHM_IBM = Gamma, 78 K inequality weighted err/3) misses by +0.063 at 230 K (tolerance NOT widened). The Q3 arithmetic that predicted pass used the IBM eps at ZPL = the full fitted Gamma (eps 0.232 at 230 K); the honest narrowed line gives 0.182 there, so the sideband relief the arithmetic counted on is smaller, and the weighted 78 K bound (g2 < 0.03 needs B/S <= 0.011) now trades against 210/230 K: the joint fit sacrifices the 210/230 K points (and Gamma block, worst 36 %, tau block 20 %) rather than break the bound. A calibration (C) outcome, bundle fsim_core/data/phase0_fit_params_ibm.json records it; never tuned"}
+  - {id: va_ibm_78K_upper_bound, class: C, desc: "IBM-calibrated V-a refit g2 at 78 K vs the published UPPER BOUND 0.02 (+-0.01)", source: chatz_va_ibm.g2_T78, paper: {value: 0.02, err: 0.01, bound: upper, tag: V, where: "Chatzarakis 2023 Fig. 5 (g2 < 0.02)"}, tol: {kind: upper_bound, value: 0.01}, tol_reason: "published uncertainty on the bound is +-0.01", expect: pass}
 
   # ------------------------------------------------------------------ 2. Chatzarakis2023 device-tier IBM recomposition (C)
   # Production path: call sequence of scripts/run_v1_validation.py (DeviceDesign + evaluate, IBM lineshape, published windows).
+  # devlib-r2-pha2 (2026-10-12) D1: dev_ibm_* RE-POINTED to the IBM-calibrated bundle (d.dot.fit_bundle = "ibm": bundle
+  # parameters + the ZPL narrowed so FWHM_IBM = Gamma(T), device.evaluate).  Expects PRE-REGISTERED before the first run
+  # (r2-physics-a Q3: 210 K and 230 K pass once the double count is refit away).  The old wiring (Lorentzian bundle, full
+  # width as ZPL width) stays visible as dev_ibm_lorbundle_* (its three informative items).
   - {id: dev_ibm_g2_78K,  class: C, desc: "device-tier IBM g2 at 78 K", source: chatz_dev_ibm.g2_T78,  paper: {value: 0.02, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5; cards/chatzarakis2023.yaml"}, tol: {kind: abs, value: 0.03}, tol_reason: "same +-0.03 per-point criterion as the V-a fit (spec)", expect: pass}
   - {id: dev_ibm_g2_120K, class: C, desc: "device-tier IBM g2 at 120 K", source: chatz_dev_ibm.g2_T120, paper: {value: 0.10, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: pass}
   - {id: dev_ibm_g2_150K, class: C, desc: "device-tier IBM g2 at 150 K", source: chatz_dev_ibm.g2_T150, paper: {value: 0.15, err: 0.01, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: pass}
   - {id: dev_ibm_g2_170K, class: C, desc: "device-tier IBM g2 at 170 K", source: chatz_dev_ibm.g2_T170, paper: {value: 0.18, err: 0.02, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: pass}
-  - {id: dev_ibm_g2_210K, class: C, desc: "device-tier IBM g2 at 210 K", source: chatz_dev_ibm.g2_T210, paper: {value: 0.28, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: fail, reason: "FLIPPED after first run (first guess was pass): the IBM sideband pass sits just outside +-0.03 at 210 K; tolerance NOT widened. Cause (p2-rootcause 2b): IBM sidebands are added on top of Lorentzian-calibrated parameters (no refit) with the full measured FWHM used as the ZPL width, so phonon broadening is counted twice (+0.002..+0.022 on eps); without an IBM refit this is not a validation"}
-  - id: dev_ibm_g2_230K
+  - {id: dev_ibm_g2_210K, class: C, desc: "device-tier IBM g2 at 210 K", source: chatz_dev_ibm.g2_T210, paper: {value: 0.28, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: fail, reason: "FLIPPED after first run (pre-registered pass): the device-tier recomposition on the IBM bundle reproduces the refit exactly (0.3185 vs 0.3185), so it inherits the refit residual +0.039 at 210 K; see va_ibm_g2_T210 for the cause. Tolerance NOT widened"}
+  - {id: dev_ibm_g2_230K, class: C, desc: "device-tier IBM g2 at 230 K", source: chatz_dev_ibm.g2_T230, paper: {value: 0.36, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec); equals the published err at this point", expect: fail, reason: "FLIPPED after first run (pre-registered pass): device-tier recomposition on the IBM bundle reproduces the refit exactly (0.4225 vs 0.4225), so it inherits the refit residual +0.063 at 230 K; see va_ibm_g2_T230 for the cause. Tolerance NOT widened"}
+  - {id: dev_ibm_78K_upper_bound, class: C, desc: "device-tier IBM g2 at 78 K vs the published UPPER BOUND 0.02 (+-0.01)", source: chatz_dev_ibm.g2_T78, paper: {value: 0.02, err: 0.01, bound: upper, tag: V, where: "Chatzarakis 2023 Fig. 5 (g2 < 0.02)"}, tol: {kind: upper_bound, value: 0.01}, tol_reason: "published uncertainty on the bound is +-0.01", expect: pass}
+
+  - {id: dev_ibm_lorbundle_g2_210K, class: C, desc: "device-tier IBM g2 at 210 K, LEGACY wiring (Lorentzian bundle, full measured FWHM used as the ZPL width)", source: chatz_dev_ibm_lor.g2_T210, paper: {value: 0.28, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}, tol: {kind: abs, value: 0.03}, tol_reason: "+-0.03 per point (spec)", expect: fail, reason: "FLIPPED after first run (first guess was pass): the IBM sideband pass sits just outside +-0.03 at 210 K; tolerance NOT widened. Cause (p2-rootcause 2b): IBM sidebands are added on top of Lorentzian-calibrated parameters (no refit) with the full measured FWHM used as the ZPL width, so phonon broadening is counted twice (+0.002..+0.022 on eps); without an IBM refit this is not a validation"}
+  - id: dev_ibm_lorbundle_g2_230K
     class: C
-    desc: "device-tier IBM g2 at 230 K"
-    source: chatz_dev_ibm.g2_T230
+    desc: "device-tier IBM g2 at 230 K, LEGACY wiring (Lorentzian bundle, full measured FWHM as ZPL width)"
+    source: chatz_dev_ibm_lor.g2_T230
     paper: {value: 0.36, err: 0.03, tag: V, where: "Chatzarakis 2023 Fig. 5"}
     tol: {kind: abs, value: 0.03}
     tol_reason: "+-0.03 per point (spec); equals the published err at this point"
     expect: fail
     reason: "scripts/run_v1_validation.py IBM 230 K = 0.405 vs 0.36+-0.03; the script labels it pass only under an unregistered x2 band. Cause: inherited V-a residual (+0.028) plus the double-counted phonon broadening of the un-refit IBM tier (p2-rootcause 2b)"
-  - id: dev_ibm_78K_upper_bound
+  - id: dev_ibm_lorbundle_78K_upper_bound
     class: C
-    desc: "device-tier IBM g2 at 78 K vs the published UPPER BOUND 0.02 (+-0.01)"
-    source: chatz_dev_ibm.g2_T78
+    desc: "device-tier IBM g2 at 78 K, LEGACY wiring, vs the published UPPER BOUND 0.02 (+-0.01)"
+    source: chatz_dev_ibm_lor.g2_T78
     paper: {value: 0.02, err: 0.01, bound: upper, tag: V, where: "Chatzarakis 2023 Fig. 5 (g2 < 0.02)"}
     tol: {kind: upper_bound, value: 0.01}
     tol_reason: "published uncertainty on the bound is +-0.01"
     expect: fail
     reason: "IBM pass 78 K = 0.038 violates the bound: the V-a background floor (b0, see va_78K_upper_bound) plus the un-refit IBM sideband increment (p2-rootcause 2a/2b)"
+
 
   # ------------------------------------------------------------------ 3. Laferriere unfitted (U)
   # Pre-registered parameter set: the CENTRE of each [E] range in cards/laferriere2023.yaml
@@ -101,7 +121,7 @@ items:
     tol: {kind: abs, value: 0.10}
     tol_reason: "audit fix 4: +-0.10 absolute, pre-registered"
     expect: fail
-    reason: "UNIDENTIFIABLE, not a solver miss (p2-rootcause 3): mid-point 220 K g2 0.576 vs 0.34. delta_xx and which filter applies at 220 K are unpublished; with the XX line inside the 12.5 meV window (eps_op ~ 0.95) the cap-2 Poisson law has a floor g2 >~ 0.5 at any mu, and the model has no XX-selective loss channel (S_XX = S_X). Only the 8 meV (12 nm) filter reaches 0.33; kept as a known failure, no tuning"
+    reason: "UNIDENTIFIABLE, not a solver miss (p2-rootcause 3; r2-physics-a Q5): mid-point 220 K g2 0.576 vs 0.34. For the filtered cap-2 cascade g2[0] = 2 P2 eps_eff/[P1 + P2(1 + eps_eff)]^2, mu is irrelevant and the model floor is g2 >= eps_eff = eps S_XX/S_X; the data need eps_eff ~ 0.33 (0.340/0.338/0.324/0.301 at mu 0.25/0.65/1.6/3.0), i.e. a third of the XX line in the window at ANY pump. Which filter applies at 220 K and delta_xx decide it, and neither is published: eps_op ~ 0.95 at the card mid-point (delta_xx 3.5, w 12.5 meV) is excluded by the data, while (delta_xx 5.5, w <= 9 meV = the paper's 12 nm filter at 1.35 um) or (3.5, w <= 5.5) reproduce it. The one missing physics term, XX-selective loss k_XX = 2 k_X e^{E_b/kT} [DR] (opt-in cw_g2.escape_rates_from_retention xx_escape_Eb_meV, default off), gives S_XX/S_X = 0.85 at the proxy S_X and moves g2 0.585 -> ~0.56 only; it would need S_XX/S_X ~ 0.35 (a 20 meV activation difference) to reach 0.34. Kept as a known failure; E_b / the filter are NEVER tuned on this point"
   - {id: laf_g2_300K, class: U, desc: "Laferriere mid-point g2 at 300 K", source: laf_mid.g2_T300, paper: {value: 0.57, err: 0.05, tag: V, where: "Laferriere 2023; cards/laferriere2023.yaml"}, tol: {kind: abs, value: 0.10}, tol_reason: "audit fix 4: +-0.10 absolute, pre-registered", expect: pass}
 
   # ------------------------------------------------------------------ 4. Reischle 80 K (U)
@@ -134,11 +154,17 @@ items:
   # if that happens the model dip is faster than measured, which is then part of the result). Tolerances = the paper's own errors:
   #   0.03 background-corrected: err 0.065 [DR] = 0.05 / rho^2 (0.25 +- 0.05 deconvolved, rho = 0.88, Eq. 1);
   #   0.25 deconvolved: +-0.05 (paper); 0.43 raw: +-0.05 (anchor rel 0.12, rt_edge_anchors.yaml).
+  # (rc2 text, SUPERSEDED for the raw item by the devlib-r2-pha2 fast-exchange block below.)
   # Predictions registered BEFORE the first run: g2_dot and meas_rho088 pass (the background law with the measured rho IS the
   # paper's Eq. 1); both raw items fail (production 80 K retention S ~ 0.09 -> k_X ~ 10/ns -> a dip far narrower than ~1 ns).
   - {id: reischle_dc_g2_dot_bgcorr, class: U, desc: "FAITHFUL DC (r from dip width): model intrinsic g2_dot(0) vs the paper's BACKGROUND-CORRECTED 0.03", source: reischle_dc.g2_dot0, paper: {value: 0.03, err: 0.065, tag: DR, where: "Reischle 2008 Opt. Express 16, 12771: rho-corrected g2(0) = 0.03 (QD C, 80 K); err = 0.05 / 0.88^2 propagated from the deconvolved 0.25 +- 0.05 through Eq. 1"}, tol: {kind: abs, value: 0.065}, tol_reason: "propagated published uncertainty (see err)", expect: pass}
   - {id: reischle_dc_meas_rho088, class: U, desc: "U given MEASURED rho 0.88 (background TRANSCRIBED from the paper, not predicted): model with-background g2(0) vs deconvolved 0.25", source: reischle_dc.g2_meas0_rho088, paper: {value: 0.25, err: 0.05, tag: V, where: "Reischle 2008 Fig. 3b; verify/data/rt_edge_anchors.yaml id reischle08-g2-80k-deconvolved"}, tol: {kind: abs, value: 0.05}, tol_reason: "the paper's own +-0.05 (the as-configured items used a looser +-0.10)", expect: pass}
-  - {id: reischle_dc_raw_rho088, class: U, desc: "U given MEASURED rho 0.88 (background transcribed): model raw g2(0) (convolved with the 0.5 ns exponential IRF) vs measured raw dip 0.43", source: reischle_dc.g2_raw0_rho088, paper: {value: 0.43, err: 0.05, tag: V, where: "Reischle 2008 Fig. 3b; rt_edge_anchors.yaml id reischle08-g2-80k (rel 0.12)"}, tol: {kind: abs, value: 0.05}, tol_reason: "the paper's own +-0.05", expect: fail, reason: "registered prediction: the production 80 K retention (S ~ 0.09, k_X ~ 10/ns) makes the model dip ~10x narrower than the measured ~1 ns recovery, so the 0.5 ns IRF washes it out (raw near 0.9). The comparison is like-for-like; the miss is a model feature (retention at 80 K for this confinement chain), not an observable mismatch"}
+  # devlib-r2-pha2 (2026-10-12) Q4: sink mapping replaced by the ch09 fast-exchange mapping (cw_g2.rates_fast_exchange,
+  # Gamma_eff = S D_eff, k_eff = (1 - S) D_eff, D_eff + r = 1/tau_c, r/D_eff = 0.2 [A]); S unchanged.  The raw dip is now a
+  # BRACKET over tau_c in [1.0 ns (prose, V), 1.6 ns (DR, inverting the paper's own raw 0.43 / deconvolved 0.25 pair, tau_i
+  # 0.5 ns)], kind `contained`: PRE-REGISTERED expect pass (r2-physics-a Q4 probe: model 0.42-0.49 vs 0.43).  g2_dot / meas_rho088
+  # keep passing (tau_c = 1.0 ns); raw_predicted_rho stays fail (background not predicted).
+  - {id: reischle_dc_raw_rho088, class: U, desc: "U given MEASURED rho 0.88 (background transcribed): FAST-EXCHANGE model raw g2(0) (0.5 ns exponential IRF) bracket over tau_c in [1.0 ns V, 1.6 ns DR] vs measured raw dip 0.43", source: reischle_dc.g2_raw0_rho088_tauc16, source_hi: reischle_dc.g2_raw0_rho088_tauc10, paper: {value: 0.43, err: 0.05, tag: V, where: "Reischle 2008 Fig. 3b; rt_edge_anchors.yaml id reischle08-g2-80k (rel 0.12)"}, tol: {kind: contained}, tol_reason: "the measured 0.43 must lie inside the model bracket over the recovery time (no tolerance added: the bracket is the model's own uncertainty in tau_c)", expect: pass}
   - {id: reischle_dc_raw_predicted_rho, class: U, desc: "U (background NOT predicted by any production term): model raw g2(0) with the MODEL's own rho (~1.0) vs measured raw dip 0.43", source: reischle_dc.g2_raw0_rho_model, paper: {value: 0.43, err: 0.05, tag: V, where: "Reischle 2008 Fig. 3b"}, tol: {kind: abs, value: 0.05}, tol_reason: "the paper's own +-0.05", expect: fail, reason: "background not predicted (p2-rootcause 1, item c): the model's injection background is ~2e3/s vs ~9e7/s signal (rho ~ 1.0) while the paper measured 0.88 from current spreading and ensemble/barrier emission under a 460 nm aperture; no production term predicts that"}
 
   # ------------------------------------------------------------------ 5. Zhao (SDE tier)
@@ -152,7 +178,7 @@ items:
     tol: {kind: combined_sigma, k: 1.0}
     tol_reason: "the script's own pre-existing criterion: |diff| <= hypot(MC standard error, published err); N_dots/E_a/eps_gain were tuned on this row so it is calibration"
     expect: fail
-    reason: "FLIPPED after first run (first guess was pass, following the scripts/run_zhao_fit.py docstring 'reproduces closely'): the production sde.py outcome is outside the 1-sigma combined criterion even on the calibrated row; tolerance NOT widened. Residual 1.6 sigma, MC-stable over 5 seeds (1.0173-1.0177): a real offset of a calibration to a possibly WRONG observable (intracavity, see zhao_quiet); do not retune until an output-flux estimator settles which observable the calibration should target (p2-rootcause 6b)"
+    reason: "FLIPPED after first run (first guess was pass, following the scripts/run_zhao_fit.py docstring 'reproduces closely'): the production sde.py outcome is outside the 1-sigma combined criterion even on the calibrated row; tolerance NOT widened. Residual 1.6 sigma, MC-stable over 5 seeds (1.0173-1.0177): a real offset of a calibration to a possibly WRONG observable (intracavity, see zhao_quiet); do not retune until an output-flux estimator settles which observable the calibration should target (p2-rootcause 6b). devlib-r2-pha2: the paper's g2 is derived from measured noise through its own Var(S) = (g2 - 1)<S>^2 + <S> with the SM's <S>, not reproducible without the SM; N_dots NOT retuned"
   - id: zhao_quiet
     class: U
     desc: "Zhao quiet-pump g2(0) at I = 4 I_th"
@@ -161,7 +187,7 @@ items:
     tol: {kind: combined_sigma, k: 1.0}
     tol_reason: "same criterion as the normal row"
     expect: fail
-    reason: "WRONG OBSERVABLE (p2-rootcause 6a): g2 here comes from the INTRACAVITY photon-number variance, which is not squeezed (g2 > 1 for every F_pump); the pump regulation appears only in the low-frequency OUTPUT photon flux (Fano 0.64 at a 6 ns window for F_pump 0.08, versus ~9-11 at 10-100 ps), which is what Zhao measured (broadband photocurrent squeezing). The earlier reason (tuning near-miss) does not identify this. Needs an output-flux estimator (rank-3 fix in sde.py, not in this spec)"
+    reason: "OBSERVABLE MISMATCH (p2-rootcause 6a; devlib-r2-pha2 r2-physics-a Q6): g2 here comes from the INTRACAVITY photon-number variance, which is not squeezed (g2 > 1 for every F_pump). The paper derives its g2 from the MEASURED broadband noise through its own Var(S) = (g2 - 1)<S>^2 + <S> with the Supplementary Material's <S>, so it is not reproducible without the SM; do not retune N_dots. The pump regulation appears in the OUTPUT photon-flux noise spectrum, now estimated by sde.output_noise_spectrum (verify_zhao_spectrum.py: lowest-decade F 1.15 quiet vs 2.24 normal; Yamamoto asymptote 0.36 not reached because of excess RO/partition noise); the paper's dB value is unavailable (see `unavailable:`)"
 
   # ------------------------------------------------------------------ 6. Known deviations (KD)
   # 6a dot_levels physical comparisons (production fsim_core.dot_levels, same calls as verify_dot_levels.py).
@@ -367,8 +393,21 @@ items:
     expect: pass
   - {id: kd_nw_claudon_eta_pin, class: KD, desc: "regression pin: Claudon-matched eta_collection_X", source: nanowire.claudon_eta, paper: {pin: 0.82, pin_note: "audit-recorded 0.82 (p0-verifiability.md)"}, tol: {kind: regression, value: 0.01}, tol_reason: "drift guard only, 0.01", expect: pass}
 
+# Quantities the workspace cannot decide; registered so the gap is visible and gated (non-empty reason required), NEVER
+# counted as a pass.  (devlib-r2-pha2)
+unavailable:
+  - id: zhao_squeezing_dB
+    class: U
+    desc: "Zhao broadband amplitude squeezing (dB) vs the output-noise-spectrum estimator sde.output_noise_spectrum"
+    source: zhao.squeezing_dB
+    reason: "paper value UNRESOLVED: cards/zhao.yaml carries 3.1 dB [E, disputed] while _goal/paper_digests.md:231 (full text of the arXiv:2309.09703v1 PDF) records 0.9 +- 0.1 dB (6.7 %, near 8 GHz, band 3-12 GHz) and 6.7 % is itself 0.3 dB, not 0.9 dB; no Zhao PDF or digest exists under .workers/devlib/papers, so the conflict cannot be settled from the workspace sources (r2-physics-a Q6: register as unavailable). The estimator is verified in verify_zhao_spectrum.py; a dB pass/fail waits on the published number"
+
 # Every expect that was flipped after the first run is listed here by the verifier's author.
 flips:
+  - {id: va_ibm_g2_T210, from: pass, to: fail, why: "devlib-r2-pha2 first run: IBM refit 0.3185 vs 0.28 +-0.03; the r2-physics-a Q3 arithmetic used the double-counted full-width ZPL eps; tolerance unchanged"}
+  - {id: va_ibm_g2_T230, from: pass, to: fail, why: "devlib-r2-pha2 first run: IBM refit 0.4225 vs 0.36 +-0.03; same cause; tolerance unchanged"}
+  - {id: dev_ibm_g2_210K, from: pass, to: fail, why: "devlib-r2-pha2 first run (re-pointed to the IBM bundle): inherits the refit residual (0.3185); tolerance unchanged"}
+  - {id: dev_ibm_g2_230K, from: pass, to: fail, why: "devlib-r2-pha2 first run (re-pointed to the IBM bundle): inherits the refit residual (0.4225); tolerance unchanged"}
   - {id: dev_ibm_g2_210K, from: pass, to: fail, why: "first run: outside the pre-registered +-0.03; guess was wrong, tolerance unchanged"}
   - {id: zhao_normal, from: pass, to: fail, why: "first run: outside the script's own 1-sigma combined criterion; guess followed the script docstring, tolerance unchanged"}
   # devlib-r2-physb (2026-10-12): NO expect flipped after a run. Removed (retired to pins, not flipped): kd_nit_desh2013_lambda,

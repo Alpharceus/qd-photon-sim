@@ -685,3 +685,132 @@ def output_counting_stats(params: QDLaserParams, I_over_Ith: float, window_ns,
                 g2_out0=float(g2_run.mean()),
                 g2_out0_se=float(g2_run.std(ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan"),
                 n_runs=n_runs, R_pump=r["R_pump"])
+
+
+# ============================================================ output-flux noise SPECTRUM (devlib-r2-pha2, Z1')
+#
+# ADDITIVE (r2-physics-a Q6).  Zhao et al. measure BROADBAND photocurrent amplitude noise relative to shot noise, i.e.
+# the output photon-flux noise SPECTRUM, not the intracavity g2.  S-Z form (normally ordered variance of a counting
+# window T): Var(n_T)/<n_T> = F_T = 1 + (2R/T) int_0^T (T - tau)[g2(tau) - 1] dtau, whose T -> inf limit is the
+# zero-frequency Fano factor; frequency resolved (Wiener-Khinchin, S-Z ch. 4; Mandel-Wolf 14.9) [DR]:
+#
+#     F(f) = S_dN(f)/R = 1 + 2 R int_0^inf cos(2 pi f tau) [g2(tau) - 1] dtau        (R = mean output photon rate)
+#
+# Detection (binomial thinning holds per frequency): F_det(f) = 1 - eta (1 - F(f)); squeezing_dB = 10 log10 F_det.
+# Estimator: the d_loss series of _integrate_output (same noise draws, same seed -> same trajectories) is binned to
+# bin_ps, the per-run mean is removed, and a Hann-windowed 50 %-overlap Welch periodogram normalised so that a
+# Poisson stream gives F = 1 (|FFT|^2 / (sum w^2 <n_bin>)); Parseval then ties the frequency average of F to the
+# binned-count Fano factor Var(n_bin)/<n_bin>, which the result reports for a normalisation cross-check.
+
+def yamamoto_fano(F_pump: float, eta_q: float, I_over_Ith: float) -> float:
+    """Far-above-threshold zero-frequency output Fano factor of a pump-regulated laser,
+    F(0) -> 1 - eta_q (1 - F_pump)(1 - I_th/I).  [E] Yamamoto, Machida & Nilsson, Phys. Rev. A 34, 4025 (1986)
+    (amplitude squeezing by pump-noise suppression); eta_q = differential quantum efficiency, I_over_Ith = I/I_th.
+    At 4 I_th, F_pump = 0.08, eta_q = 1: 0.31 (-5.1 dB); F_pump = 1: 1.0 (0 dB)."""
+    return float(1.0 - eta_q * (1.0 - F_pump) * (1.0 - 1.0 / I_over_Ith))
+
+
+def differential_efficiency(params: QDLaserParams, I_over_Ith: float, rel_step: float = 0.02) -> float:
+    """Deterministic differential quantum efficiency eta_q = d(S/tau_p)/dR_pump (output photons per extra pump pair)
+    from the noise-free fixed point, central difference at I_over_Ith (module axis, 1.0 = I_ref)."""
+    lo = steady_state(params, I_over_Ith * (1.0 - rel_step))
+    hi = steady_state(params, I_over_Ith * (1.0 + rel_step))
+    return float((hi["S"] - lo["S"]) / params.tau_p / (hi["R_pump"] - lo["R_pump"]))
+
+
+def welch_fano(counts, n_seg: int):
+    """Welch Fano spectrum of binned photon counts (n_runs, n_bins): per-run mean removed, Hann-windowed segments of
+    n_seg bins with 50 % overlap, periodogram normalised so that a Poisson stream gives F = 1
+    (|FFT|^2 / (sum w^2 <n_bin>)).  Returns (F_run of shape (n_runs, n_seg//2 + 1), list of segment starts).  The
+    rfft bin k sits at f = k / (n_seg bin_s); k = 0 (DC, removed by the mean subtraction) is meaningless."""
+    counts = np.asarray(counts, dtype=float)
+    n_runs, n_bins = counts.shape
+    mu = counts.mean(axis=1)
+    w = np.hanning(n_seg)
+    norm = float(np.sum(w**2))
+    hop = max(1, n_seg // 2)
+    starts = list(range(0, n_bins - n_seg + 1, hop))
+    F_run = np.empty((n_runs, n_seg // 2 + 1))
+    for i in range(n_runs):
+        x = counts[i] - mu[i]
+        acc = np.zeros(n_seg // 2 + 1)
+        for s0 in starts:
+            acc += np.abs(np.fft.rfft(w * x[s0:s0 + n_seg])) ** 2
+        F_run[i] = acc / len(starts) / norm / max(mu[i], 1e-300)
+    return F_run, starts
+
+
+def output_noise_spectrum(params: QDLaserParams, I_over_Ith: float, f_band_Hz=None, n_runs: int = 16,
+                          t_end: float = 40.0e-9, dt: float = 2.0e-13, bin_ps: float = 10.0,
+                          seed: Optional[int] = None, F_pump: Optional[float] = None, eta_det: float = 1.0,
+                          seg_ns: Optional[float] = None, disable_stim: bool = False) -> dict:
+    """Output-flux noise spectrum F(f) of the same SDE as g2_vs_pump / output_counting_stats (same seeding).
+
+    f_band_Hz = (f1, f2): the detection band over which F(f) is averaged.  None -> the lowest resolved decade
+    (f_min, 10 f_min) with f_min = 1/segment [A].  Zhao's broadband squeezing sits at 3-12 GHz (pass (3e9, 12e9));
+    a 10-100 MHz band needs segments >= 2/f1 = 200 ns, i.e. a much longer t_end (ValueError if the segment is too
+    short to resolve the band).  Segment length: seg_ns, else min(2/f1, 1/4 of the post-burn-in record).
+
+    Returns f_Hz (positive Welch grid), F (run-mean), F_se (run scatter), the band average F_band with its standard
+    error, F_det_band = 1 - eta_det (1 - F_band), squeezing_dB = 10 log10 F_det_band (+ its SE), the effective band,
+    the lowest-bin F_low, the binned-count Fano F_bin_time (= Var(n_bin)/<n_bin>, time domain) and F_bin_parseval
+    (frequency average of F) for the normalisation cross-check, the windowed Fano F_window at the segment length
+    (same data), mean counts per bin, n_segments per run, and metadata."""
+    r = _integrate_output(params, I_over_Ith, t_end, dt, n_runs=n_runs, seed=seed,
+                          disable_stim=disable_stim, F_pump=F_pump)
+    k = int(round(bin_ps * 1.0e-12 / dt))
+    if k < 1:
+        raise ValueError("bin_ps must be >= dt")
+    tail = r["d_loss"][:, r["n_burn"]:]
+    n_bins = tail.shape[1] // k
+    counts = tail[:, :n_bins * k].reshape(n_runs, n_bins, k).sum(axis=2)       # photons per bin
+    bin_s = k * dt
+    mu = counts.mean(axis=1)                                                    # per-run mean counts per bin
+    fs = 1.0 / bin_s
+
+    if seg_ns is not None:
+        n_seg = int(round(seg_ns * 1.0e-9 / bin_s))
+    elif f_band_Hz is not None:
+        n_seg = min(int(round(2.0 / f_band_Hz[0] / bin_s)), n_bins // 4)
+    else:
+        n_seg = n_bins // 4
+    n_seg = max(8, min(n_seg, n_bins))
+    f_min = fs / n_seg
+    if f_band_Hz is None:
+        f_band_Hz = (f_min, 10.0 * f_min)
+    f1, f2 = float(f_band_Hz[0]), float(f_band_Hz[1])
+    f = np.fft.rfftfreq(n_seg, d=bin_s)
+    mask = (f >= max(f1, f_min * (1.0 - 1e-9))) & (f <= f2) & (f > 0)
+    if not mask.any():
+        raise ValueError(f"band ({f1:.3g}, {f2:.3g}) Hz is not resolved by segments of {n_seg * bin_s * 1e9:.2f} ns "
+                         f"(f_min = {f_min:.3g} Hz); lengthen t_end or pass seg_ns")
+    F_run, starts = welch_fano(counts, n_seg)
+    # |X(f)|^2 / sum(w^2) of white counts with variance mu per bin is mu, so a Poisson stream gives F = 1 (no factor 2).
+    F = F_run.mean(axis=0)
+    F_se = F_run.std(axis=0, ddof=1) / np.sqrt(n_runs) if n_runs > 1 else np.full(f.size, np.nan)
+    band_run = F_run[:, mask].mean(axis=1)
+    F_band = float(band_run.mean())
+    F_band_se = float(band_run.std(ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan")
+    F_det = 1.0 - eta_det * (1.0 - F_band)
+    dB = 10.0 * np.log10(F_det) if F_det > 0 else float("nan")
+    det_run = 1.0 - eta_det * (1.0 - band_run)
+    dB_se = (float(np.std(10.0 * np.log10(np.maximum(det_run, 1e-300)), ddof=1) / np.sqrt(n_runs))
+             if n_runs > 1 else float("nan"))
+    # cross-checks on the same data
+    F_bin_time = float(np.mean(counts.var(axis=1, ddof=1) / np.maximum(mu, 1e-300)))
+    F_bin_parseval = float(np.mean(F_run[:, 1:-1].mean(axis=1)))              # mean over the open interval (0, f_Nyquist)
+    nw = n_bins // n_seg
+    if nw >= 2:
+        cw = counts[:, :nw * n_seg].reshape(n_runs, nw, n_seg).sum(axis=2)
+        fw_run = cw.var(axis=1, ddof=1) / np.maximum(cw.mean(axis=1), 1e-300)
+        F_window = float(np.mean(fw_run))
+        F_window_se = float(np.std(fw_run, ddof=1) / np.sqrt(n_runs)) if n_runs > 1 else float("nan")
+    else:
+        F_window, F_window_se = float("nan"), float("nan")
+    return dict(f_Hz=f, F=F, F_se=F_se, band_Hz=(float(f[mask][0]), float(f[mask][-1])),
+                F_band=F_band, F_band_se=F_band_se, F_det_band=float(F_det), squeezing_dB=float(dB),
+                squeezing_dB_se=dB_se, F_low=float(F[1]), F_low_se=float(F_se[1]),
+                F_bin_time=F_bin_time, F_bin_parseval=F_bin_parseval, F_window=F_window, F_window_se=F_window_se,
+                window_ns=n_seg * bin_s * 1e9, mean_counts_per_bin=float(mu.mean()), n_segments=len(starts),
+                n_runs=n_runs, bin_ps=bin_s * 1e12, eta_det=eta_det, F_pump=r["F_pump"], R_pump=r["R_pump"],
+                t_end=t_end, dt=dt)

@@ -103,17 +103,42 @@ def _run_point(DeviceDesign, evaluate, d, T, w, dx, mu, delta, gamma_target=None
     return float(evaluate(d, T_grid=[T])["scalars"]["g2_op"])
 
 
-def ev_chatz_dev_ibm():
+def ev_chatz_va_ibm():
+    """devlib-r2-pha2 D1: the opt-in IBM-calibrated V-a refit in memory (production fit_phase0, lineshape="ibm")."""
+    from fsim_core.fitting import fit_phase0
+    fit = fit_phase0(_chatz_card(), lineshape="ibm")
+    return {f"g2_T{int(r['T'])}": float(m) for r, m in zip(fit.data, fit.model_g2)}
+
+
+def _chatz_dev(ibm_bundle):
     from fsim_core.device import DeviceDesign, evaluate
     _ensure_class_proxy()
     card = yaml.safe_load((ROOT / "cards" / "chatzarakis2023.yaml").read_text())
     dev = card["device"]
+    delta_xx, r_xx = dev["delta_xx"], None
+    if ibm_bundle:
+        from fsim_core.fit_bundle import load_fit_params
+        bp = load_fit_params("ibm")["params"]
+        delta_xx, r_xx = bp["delta_xx"], bp["r_xx"]   # the bundle's own XX offset / width ratio
     out = {}
     for pt in card["data"]["g2_vs_T"]["points"]:
         d = _base_design(DeviceDesign, "ibm", dev["geometry"], alpha=dev["phonon_alpha_ps2"], rho_one=False)
+        if ibm_bundle:
+            d.dot.fit_bundle = "ibm"   # non-field opt-in attribute read by device.evaluate (D1)
+            d.dot.r_xx = r_xx
         out[f"g2_T{int(pt['T'])}"] = _run_point(DeviceDesign, evaluate, d, float(pt["T"]), float(pt["w"]),
-                                                float(pt["dx"]), dev["mu"], dev["delta_xx"])
+                                                float(pt["dx"]), dev["mu"], delta_xx)
     return out
+
+
+def ev_chatz_dev_ibm():
+    """Device tier on the IBM-calibrated bundle (devlib-r2-pha2: re-pointed from the Lorentzian bundle)."""
+    return _chatz_dev(True)
+
+
+def ev_chatz_dev_ibm_lor():
+    """LEGACY wiring kept visible: Lorentzian bundle, full measured FWHM used as the IBM ZPL width."""
+    return _chatz_dev(False)
 
 
 def _centre(rng):
@@ -154,7 +179,9 @@ def ev_reischle():
 
 
 # devlib-rc2: faithful DC comparison for Reischle 2008 (QD C, 80 K).  Constants are paper inputs, fixed before the first run.
-REISCHLE_TAU_C_NS = 1.0       # [V] Reischle 2008: system recovery time ~1 ns from the rise of the antibunching dip
+REISCHLE_TAU_C_NS = 1.0       # [V] Reischle 2008: system recovery time ~1 ns from the rise of the antibunching dip (prose, rounded)
+REISCHLE_TAU_C_DR_NS = 1.6    # [DR] r2-physics-a Q4: inverting the paper's own pair (raw 0.43, deconvolved 0.25, tau_i 0.5 ns)
+REISCHLE_R_OVER_D = 0.2       # [A] r/D_eff, sub-saturation (moves g2_dot0 by 0.004 only); D_eff + r = 1/tau_c
 REISCHLE_RHO_MEASURED = 0.88  # [V] Reischle 2008: measured rho = S/(S+B), QD C (80 K); TRANSCRIBED, not predicted
 REISCHLE_IRF_FWHM_PS = 693.0  # [V] 2 ln2 x 0.5 ns: the paper's fit-model IRF C exp(-|tau/0.5 ns|), exponential shape
 REISCHLE_APERTURE_UM = 0.46   # [V] nanosphere shadow-mask aperture
@@ -164,9 +191,10 @@ REISCHLE_I_PROBE_UA = 0.001   # [A] low-current probe point (the paper's 11.9 mA
 
 def ev_reischle_dc():
     """Card-faithful DC comparison.  device.evaluate (EL-transport, drive.cw) supplies gamma_X, the 80 K retention S
-    (-> k_X, k_XX = 2 k_X as cw_g2.escape_rates_from_retention) and eps; cw_g2.cw_report (production) then gives the
-    intrinsic, with-background and IRF-convolved g2(0) at r fixed by the measured dip width.  The extraction is
-    cross-checked against device.evaluate's own g2_cw0 / g2_cw0_raw at the probe point (raises if it disagrees)."""
+    (-> sink k_X, k_XX = 2 k_X as cw_g2.escape_rates_from_retention) and eps; the sink extraction is cross-checked
+    against device.evaluate's own g2_cw0 / g2_cw0_raw at the probe point (raises if it disagrees).  The comparison
+    itself (devlib-r2-pha2, r2-physics-a Q4) maps S -> (Gamma_eff, k_eff) by cw_g2.rates_fast_exchange at the dip-width
+    D_eff and gives the intrinsic, with-background and IRF-convolved g2(0) via cw_g2.cw_report."""
     from fsim_core import cw_g2
     from fsim_core.device import DeviceDesign, evaluate
     d = DeviceDesign()
@@ -185,7 +213,7 @@ def ev_reischle_dc():
     sc = evaluate(d, [80.0])["scalars"]
     gX, S, eps = float(sc["cw_gamma_X_ns"]), float(sc["S_resolved"]), float(sc["eps_op"])
     r_dev, rho_dev = float(sc["cw_r_ns"]), float(sc["cw_rho_op"])
-    kX = gX * (1.0 / S - 1.0)
+    kX = gX * (1.0 / S - 1.0)   # perfect-sink mapping: used only for the device.evaluate cross-check below
     kXX = 2.0 * kX
 
     def rep(r, rho):
@@ -197,15 +225,25 @@ def ev_reischle_dc():
                                (chk["g2_raw0"], float(sc["g2_cw0_raw"]), "g2_cw0_raw")):
         if abs(mine - theirs) > 1e-3 * max(1.0, abs(theirs)):
             raise RuntimeError(f"reischle_dc extraction disagrees with device.evaluate on {name}: {mine} vs {theirs}")
-    r_dip = 1.0 / REISCHLE_TAU_C_NS - gX - kX
-    r_set = max(r_dip, REISCHLE_R_FLOOR_NS)
-    r_hi = rep(r_set, 1.0)
-    r_m = rep(r_set, REISCHLE_RHO_MEASURED)
-    r_d = rep(r_set, rho_dev)
-    return {"g2_dot0": float(r_hi["g2_dot0"]), "g2_meas0_rho088": float(r_m["g2_meas0"]),
-            "g2_raw0_rho088": float(r_m["g2_raw0"]), "g2_raw0_rho_model": float(r_d["g2_raw0"]),
-            "r_set_ns": float(r_set), "r_dip_ns": float(r_dip), "gamma_X_ns": gX, "k_X_ns": float(kX),
-            "eps": eps, "rho_model": rho_dev, "tau_dip_ns": float(r_m["tau_dip"])}
+    # r2-physics-a Q4: the sink mapping (kX above) is kept ONLY for the cross-check against device.evaluate.  The
+    # comparison itself uses the ch09 fast-exchange mapping: same S, Gamma_eff = S D_eff, k_eff = (1 - S) D_eff, with the
+    # dip width fixing D_eff + r = 1/tau_c at r/D_eff = 0.2 [A]; tau_c is the bracket [1.0 (prose, V), 1.6 (DR)].
+    def fx(tau_c, rho):
+        D = 1.0 / (tau_c * (1.0 + REISCHLE_R_OVER_D))
+        G_eff, k_eff = cw_g2.rates_fast_exchange(gX, S, D)
+        return cw_g2.cw_report(REISCHLE_R_OVER_D * D, G_eff, 2.0 * G_eff, k_eff, 2.0 * k_eff, 1.0, eps, rho,
+                               REISCHLE_IRF_FWHM_PS, tau_max_ns=10.0, irf_shape="exponential"), D, G_eff, k_eff
+
+    f10_hi, D10, G10, k10 = fx(REISCHLE_TAU_C_NS, 1.0)
+    f10_m, _, _, _ = fx(REISCHLE_TAU_C_NS, REISCHLE_RHO_MEASURED)
+    f16_m, D16, _, _ = fx(REISCHLE_TAU_C_DR_NS, REISCHLE_RHO_MEASURED)
+    f10_d, _, _, _ = fx(REISCHLE_TAU_C_NS, rho_dev)
+    return {"g2_dot0": float(f10_hi["g2_dot0"]), "g2_meas0_rho088": float(f10_m["g2_meas0"]),
+            "g2_raw0_rho088_tauc16": float(f16_m["g2_raw0"]), "g2_raw0_rho088_tauc10": float(f10_m["g2_raw0"]),
+            "g2_raw0_rho_model": float(f10_d["g2_raw0"]),
+            "D_eff_tauc10_ns": float(D10), "D_eff_tauc16_ns": float(D16), "Gamma_eff_tauc10_ns": float(G10),
+            "k_eff_tauc10_ns": float(k10), "gamma_X_ns": gX, "k_X_sink_ns": float(kX), "S": S,
+            "eps": eps, "rho_model": rho_dev, "tau_dip_ns": float(f10_m["tau_dip"])}
 
 
 def ev_zhao():
@@ -385,7 +423,8 @@ def ev_nanowire():
     return out
 
 
-EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_dev_ibm": ev_chatz_dev_ibm, "laf_mid": ev_laf_mid,
+EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_va_ibm": ev_chatz_va_ibm, "chatz_dev_ibm": ev_chatz_dev_ibm,
+              "chatz_dev_ibm_lor": ev_chatz_dev_ibm_lor, "laf_mid": ev_laf_mid,
               "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "dot_levels": ev_dot_levels,
               "nitride": ev_nitride, "nanowire": ev_nanowire}
 
@@ -437,6 +476,11 @@ def load_ledger(path=LEDGER_PATH):
         assert it["class"] in ("C", "U", "H", "KD"), it["id"]
         if it["expect"] == "fail" and not str(it.get("reason", "")).strip():
             raise AssertionError(f"{it['id']}: expect: fail needs a reason")
+    # devlib-r2-pha2: `unavailable:` entries (no judgement possible); a reason is mandatory, never counted as a pass
+    for it in led.get("unavailable", []):
+        for k in ("id", "class", "desc", "source", "reason"):
+            assert str(it.get(k, "")).strip(), f"unavailable item missing {k}: {it}"
+        assert it["id"] not in ids, f"{it['id']}: unavailable id clashes with an item"
     return led
 
 
@@ -477,7 +521,7 @@ def exit_code(results):
     return 0 if all(r["outcome"] == r["expect"] for r in results if r["outcome"] != "skipped") else 1
 
 
-def report(results):
+def report(results, led=None):
     print(f"{'id':26s} {'cl':>2s} {'paper':>16s} {'model':>10s} {'tol':>26s} {'outcome':>7s} {'expect':>6s}  match")
     for r in results:
         if r["outcome"] in ("skipped", "error"):
@@ -505,6 +549,8 @@ def report(results):
     for r in ran:
         if r["outcome"] != r["expect"]:
             print(f"MISMATCH {r['id']}: outcome {r['outcome']} but ledger expects {r['expect']}")
+    for it in (led or {}).get("unavailable", []):
+        print(f"UNAVAILABLE {it['id']} (not counted): {it['reason'][:150]}...")
     print(f"{len(matched)}/{len(ran)} reproduce checks matched ledger ({P} pass, {F} known-fail)")
 
 
@@ -530,7 +576,7 @@ def main(argv=None):
         print(f"runtime {time.time() - t0:.1f} s")
         return rc
     results = evaluate_ledger(led, run_all="--all" in argv)
-    report(results)
+    report(results, led)
     print(f"runtime {time.time() - t0:.1f} s")
     return exit_code(results)
 

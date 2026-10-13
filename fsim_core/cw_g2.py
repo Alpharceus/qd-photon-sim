@@ -106,7 +106,7 @@ _GRID_MAX_N = 200_001
 # ------------------------------------------------------------------- escape rates
 
 def escape_rates_from_retention(gamma_X_ns, a_esc, E_a, b_p, E_b, T,
-                                gamma_XX_ns=None, k_nr_XX_ns=0.0):
+                                gamma_XX_ns=None, k_nr_XX_ns=0.0, xx_escape_Eb_meV=0.0):
     """Non-radiative escape rates (1/ns) consistent with integrator.retention:
 
         k = gamma * (a_esc e^{-E_a/kT} + b_p e^{-E_b/kT})   =>   S = gamma/(gamma + k)
@@ -115,14 +115,52 @@ def escape_rates_from_retention(gamma_X_ns, a_esc, E_a, b_p, E_b, T,
     level; gamma_XX_ns defaults to 2 gamma_X_ns (the standard cascade ratio
     tau_XX = tau_X/2 used by drive_mech.reexc_g2). Energies in meV, T in K.
 
+    NOTE (r2-physics-a Q4): this maps the retention S to a PERFECT-SINK loss
+    rate (the escaped carrier is gone for good).  For a thermalised reservoir
+    with fast capture/escape exchange use rates_fast_exchange() instead: same
+    S, a completely different (slow) time scale.
+
     k_nr_XX_ns (default 0, opt-in): an XX-only extra loss rate (1/ns) added to
-    k_XX [A] (r2-physics-b Q3c; also wanted for Laferriere 220 K). Never tuned
-    on a measurement."""
+    k_XX [A] (r2-physics-b Q3c). Never tuned on a measurement.
+
+    xx_escape_Eb_meV (default 0 = off, bit-identical; opt-in, r2-physics-a Q5):
+    XX-selective loss. Single-carrier escape from XX leaves X plus a free
+    carrier, so its activation energy is lower than X's by the XX binding
+    energy E_b = -delta_xx [DR, energy balance]:
+
+        k_XX = (gamma_XX/gamma_X) k_X e^{+E_b/kT}   (= 2 k_X e^{E_b/kT} at the default ratio),
+
+    giving S_XX/S_X = (1 + k/gamma)/(1 + (k/gamma) e^{E_b/kT}) [DR]: 0.85 at
+    k/gamma = 6.87, E_b = 3.5 meV, 220 K.  Never tune E_b on a measurement."""
     kT = KB * float(T)
     esc = a_esc * np.exp(-E_a / kT) + b_p * np.exp(-E_b / kT)
     if gamma_XX_ns is None:
         gamma_XX_ns = 2.0 * gamma_X_ns
+    if xx_escape_Eb_meV:
+        esc_xx = esc * np.exp(float(xx_escape_Eb_meV) / kT)
+        return float(gamma_X_ns * esc), float(gamma_XX_ns * esc_xx + k_nr_XX_ns)
     return float(gamma_X_ns * esc), float(gamma_XX_ns * esc + k_nr_XX_ns)
+
+
+def rates_fast_exchange(gamma_X_ns, S, D_eff_ns):
+    """(Gamma_eff, k_eff) for a dot in fast capture/escape exchange with a thermalised reservoir
+    (r2-physics-a Q4, Reischle 80 K).  [DR, ch09 eq. es-balance]
+
+    Escape is the reverse of capture (c P_empty = k P_full); when c, k >> Gamma, 1/tau_m the carrier is re-captured
+    many times before it recombines anywhere, and the exciton population after a detection relaxes at the SLOW
+    eigenvalue
+
+        D_eff = f_d Gamma + (1 - f_d)/tau_m,   f_d = c/(c + k) (dot occupancy fraction),   S = f_d Gamma / D_eff,
+
+    with tau_m the reservoir recombination time.  The same S therefore needs
+
+        Gamma_eff = S D_eff,   k_eff = (1 - S) D_eff            (Gamma_eff + k_eff = D_eff).
+
+    The dip width then measures D_eff + r.  Limit: D_eff -> Gamma + k_sink (tau_m -> 0) is the perfect-sink mapping of
+    escape_rates_from_retention (k_eff = Gamma (1/S - 1))."""
+    S = float(S)
+    D = float(D_eff_ns)
+    return S * D, (1.0 - S) * D
 
 
 # ------------------------------------------------------------------ rate generator
