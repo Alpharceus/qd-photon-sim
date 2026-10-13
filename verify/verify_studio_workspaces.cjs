@@ -197,6 +197,31 @@ async function waitReady(page, sel, timeout = 45000) {
         const ax = await page.$eval(".ex-chart .chart-plot", (gd) => ({ top: gd.layout.yaxis.range?.[1], max: Math.max(...gd.data.flatMap((t) => (t.y || []).filter((v) => typeof v === "number"))) }));
         const above = await page.$eval(".ex-count", (e) => e.textContent);
         check("H18: g2 axis extends to include data above 1 and reports it", ax.max > 1 && ax.top >= ax.max && /above g.{0,40}= 1: axis extended/.test(above), `${JSON.stringify(ax)} · ${above.slice(0, 160)}`);
+        // FIN3: every chart's PNG and SVG export downloads a valid file
+        for (const [fmt, sig] of [["PNG", (b) => b.length > 2000 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))], ["SVG", (b) => b.length > 500 && /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/.test(b.toString("utf8", 0, 300)) && b.toString("utf8").includes("</svg>")]]) {
+          try {
+            const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.click(`.ex-chart .chart-tool[aria-label$="as ${fmt}"]`)]);
+            const fp = await dl.path();
+            const buf = fs.readFileSync(fp);
+            check(`FIN3: chart ${fmt} export downloads a valid ${fmt} (${dl.suggestedFilename()})`, sig(buf) && dl.suggestedFilename().toLowerCase().endsWith(fmt.toLowerCase()), `${buf.length} bytes`);
+          } catch (e) { check(`FIN3: chart ${fmt} export downloads a valid file`, false, e.message.split(String.fromCharCode(10))[0]); }
+        }
+        // FIN3: the HOM-vs-separation curve is the same quantity as the I_HOM tile (curve at the smallest separation == tile within 1e-3)
+        {
+          const ex = await (await fetch(`${BASE}/api/compose/examples`)).json();
+          const spec = ex.find((e) => e.name === "example-pillar-resonant").design.composed;
+          const r = await (await fetch(`${BASE}/api/compose/run`, { method: "POST", headers: { "Content-Type": "application/json", "X-FSIM-Studio": "1" }, body: JSON.stringify({ spec, mode: "point" }) })).json();
+          let res = r.result || null;
+          for (let i = 0; !res && i < 120; i++) {
+            await new Promise((ok) => setTimeout(ok, 500));
+            const j = await (await fetch(`${BASE}/api/jobs/${r.job_id}`)).json();
+            if (j.result) res = j.result;
+            else if (j.state === "error" || j.status === "error") break;
+          }
+          res = res || {};
+          const tile = res.scalars?.hom_I, y0 = res.series?.hom_vs_dt?.y?.[0];
+          check("FIN3: HOM-vs-separation curve at the smallest separation equals the I_HOM tile within 1e-3 (same convention)", Number.isFinite(tile) && Number.isFinite(y0) && Math.abs(tile - y0) <= 1e-3, `tile ${tile} curve ${y0}`);
+        }
       }
       const tr = await traceAudit(page, ".res-main");
       check(`results ${id}: no dotted line; dashed lines >= 2.5px`, !tr.bad.length, tr.bad.slice(0, 4).join(","));

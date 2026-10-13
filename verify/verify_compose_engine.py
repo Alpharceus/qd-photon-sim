@@ -1076,12 +1076,16 @@ def main():
               "structure": {"kind": "edge_ridge", "params": {}}, "drive": {"kind": "above_band", "params": {}},
               "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
     vi = SPEC.validate_spec(sp_inc)
-    sc_inc = engine.evaluate_spec(sp_inc)["scalars"]
+    try:                                   # R2 FIN1: an incompatible pair is not a device -> the engine refuses the spec
+        engine.evaluate_spec(sp_inc)
+        refused = ""
+    except ValueError as exc:
+        refused = str(exc)
     cp = R.registry_payload()["compat"]
-    check("18r. edge_ridge + gan_aln: validate_spec warns, the engine run is invalid with the named reason, the registry compat list names the pair "
-          "(and not inp_gainp_red)",
-          any(i["level"] == "warning" and "incompatible" in i["message"] for i in vi["issues"]) and vi["ok"]
-          and (not sc_inc["valid"]) and any("incompatible material / structure pair" in r for r in sc_inc["invalid_reasons"])
+    check("18r. edge_ridge + gan_aln: validate_spec errors (ok false, R2 FIN1), the engine refuses it with the named reason, the registry compat "
+          "list names the pair (and not inp_gainp_red)",
+          any(i["level"] == "error" and "incompatible" in i["message"] for i in vi["issues"]) and not vi["ok"]
+          and "incompatible" in refused and "290 nm" in refused
           and {"material": "gan_aln", "structure": "edge_ridge"}.items() <= next(c for c in cp if c["material"] == "gan_aln").items()
           and not any(c["material"] == "inp_gainp_red" for c in cp), f"{len(cp)} pairs")
 

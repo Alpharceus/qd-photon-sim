@@ -13,6 +13,7 @@ import { sro } from "../ui/figure.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fieldRow } from "../ui/fieldRow.js";
 import { symbolNode, symbolFor } from "../ui/math.js";
+import { cleanMeta, fieldLabel, fieldUnit, humanValue, words } from "../ui/labels.js";
 import { fmt, fmtInterval, fmtSeconds, isNum, unitText, SCALAR_UNITS } from "../ui/format.js";
 import { chartCard } from "../charts/chartCard.js";
 import { buildG2T, buildSecondary, g2TableRows, SECONDARY } from "../charts/g2T.js";
@@ -148,7 +149,7 @@ export async function update(args) {
     if (!S || S.card !== card) return;
     S.info = info;
     S.design = clone(info.design);
-    S.meta = info.meta || {};
+    S.meta = cleanMeta(info.meta);
     S.envDefaults = meta.ENV_DEFAULTS || {};
     S.verdict = verdictFromApi(verdict, campaigns);
     S.seed = takeSeed(card);
@@ -853,7 +854,7 @@ function renderPin() {
       opT: heroOpT(), design: S.design, pinned: new Date().toISOString(),
     };
     S.ctx.state.set({ slots: all });
-    toast(`Pinned ${S.run.run_id} to slot ${slot}.`, { kind: "ok", action: { label: "Open Compare", fn: () => S.ctx.navigate("#/compare") } });
+    toast(`Pinned ${S.run.run_id} to slot ${slot}.`, { kind: "ok", group: "pin", action: { label: "Open Compare", fn: () => S.ctx.navigate("#/compare") } });
     closePopover();
     syncPin();
   };
@@ -1153,11 +1154,15 @@ function inspectKpi(key, spec) {
 }
 
 // ---------------------------------------------------------------- details drawer
+const GROUP_LABELS = { core: "Core", edge: "Edge emitter", finite_pulse: "Finite pulse", cw: "CW model", aperture: "Aperture", photon_budget: "Photon budget", track: "Track", injection: "Injection", background: "Background", retention: "Retention" };
+
 function groupOf(k) {
   if (k.includes(".")) return k.split(".")[0];
   for (const p of ["edge_", "finite_pulse_", "cw_", "aperture_", "photon_budget", "track_", "injection", "background", "retention", "nitride_", "nanowire_", "wire_", "set_"]) if (k.startsWith(p)) return p.replace(/_$/, "");
   return "core";
 }
+
+const unitOf = (k) => SCALAR_UNITS[k] || fieldUnit(k);
 
 function renderDetails() {
   const r = S.opOverride?.result || S.run;
@@ -1175,16 +1180,16 @@ function renderDetails() {
   const order = Object.keys(groups).sort((a, b) => (a === "core" ? -1 : b === "core" ? 1 : a.localeCompare(b)));
   for (const g of order) {
     body.append(h("section.dgroup",
-      h("h3.dgroup-h", h("span.engrave", g), tagChip(tag, { size: "sm", title: "every value in this run carries the run's tag chain" })),
+      h("h3.dgroup-h", h("span.engrave", GROUP_LABELS[g] || words(g)), tagChip(tag, { size: "sm", title: "every value in this run carries the run's tag chain" })),
       h("dl.dgroup-list", groups[g].map((k) => {
         const v = s[k];
         let text;
         if (v === null) text = h("span.nan", s[`${k}__nan_reason`] || "not computed on this path");
         else if (Array.isArray(v)) text = v.length ? v.join("; ") : h("span.nan", "none");
-        else if (typeof v === "object") text = Object.entries(v).map(([a, b]) => `${a} ${typeof b === "number" ? fmt(b) : b}`).join("; ");
-        else text = typeof v === "number" ? `${fmt(v)}${SCALAR_UNITS[k] ? ` ${SCALAR_UNITS[k]}` : ""}` : String(v);
+        else if (typeof v === "object") text = Object.entries(v).map(([a, b]) => `${fieldLabel(a)} ${typeof b === "number" ? fmt(b) : humanValue(b)}`).join("; ");
+        else text = typeof v === "number" ? `${fmt(v)}${unitOf(k) ? ` ${unitOf(k)}` : ""}` : humanValue(String(v), k);
         const band = r.scalar_bands?.[k];
-        return h("div.drow", h("dt", k), h("dd", band ? `${fmtInterval(band[0], band[1])}${SCALAR_UNITS[k] ? ` ${SCALAR_UNITS[k]}` : ""}` : text));
+        return h("div.drow", h("dt", { title: k }, fieldLabel(k)), h("dd", band ? `${fmtInterval(band[0], band[1])}${unitOf(k) ? ` ${unitOf(k)}` : ""}` : text));
       }))));
   }
 }
@@ -1294,9 +1299,9 @@ function presetInfo(axis, key, p) {
   const assumed = !noteTag && !metaTag && fields.length > 0;
   return {
     desc, tag: noteTag || metaTag || (assumed ? "A" : null),
-    tagTitle: noteTag ? "tag printed in this preset's note (fsim_core/presets.py); the design fields keep their META tag"
+    tagTitle: noteTag ? "tag printed in this preset's note; the design fields keep their own tag"
       : metaTag ? "widest META tag of the fields this preset sets"
-      : assumed ? "no tag recorded for these values in presets.py or META; assumed widest" : null,
+      : assumed ? "no tag recorded for these values; assumed widest" : null,
   };
 }
 
@@ -1327,7 +1332,7 @@ function togglePresetSheet() {
   const sheet = h("section.sheet.preset-sheet", { "aria-label": "New device from presets" },
     h("header.sheet-head",
       h("div", h("h2.engrave.sheet-title", "New device from presets"),
-        h("p.sheet-sub", "Five preset axes from fsim_core/presets.py, composed by preset_device + apply_injection_preset (the desktop designer's order). Opens as an unsaved design.")),
+        h("p.sheet-sub", "Five preset axes (dot, thermal template, cavity, drive, injection), combined in the order the desktop designer uses. Opens as an unsaved design.")),
       h("button.icon-btn", { type: "button", "aria-label": "Close the preset builder", on: { click: () => togglePresetSheet() } }, icon("close", { size: 18 }))),
     h("div.preset-body", h("div.preset-axes", axes),
       h("aside.preset-side", h("h3.engrave", "Resulting design"), S.dom.presetSummary,
@@ -1357,7 +1362,7 @@ async function presetApply() {
     return;
   }
   if (!S || seq !== presetSeq || !S.dom.presetSummary) return;
-  S.presetBuilt = { sel, design: res.design, meta: res.meta || {} };
+  S.presetBuilt = { sel, design: res.design, meta: cleanMeta(res.meta) };
   const d = res.design, meta = res.meta || {};
   const rows = SUMMARY_PATHS.filter((p) => meta[p] && getPath(d, p) !== undefined && getPath(d, p) !== null).map((p) => {
     const v = getPath(d, p);
@@ -1431,7 +1436,8 @@ function saveAsPopover(anchor) {
           S.ctx.state.set({ draft: null, unsaved: null });
           await S.ctx.refreshCards?.();
           closePopover();
-          toast(`Saved ${r.path}`, { kind: "ok" });
+          const saved = toast(`Saved card ${name}`, { kind: "ok", group: "save" }); // the short name; the full path is the tooltip
+          if (saved) saved.querySelector(".toast-msg").title = String(r.path || "");
           if (S.card === name) { S.leaveOK = false; syncUnsaved(); } else S.ctx.navigate(`#/design/${name}`);
         } catch (err) {
           msg.textContent = err.status === 409 ? `Refused (409): ${err.message}` : err.message;
@@ -1585,7 +1591,7 @@ function renderAnimSheet() {
   const syncEta = () => {
     A.n = Math.round(Number(A.dom.n.value));
     const { per, total } = animEta(A);
-    A.dom.eta.textContent = `${Number.isFinite(A.n) ? A.n : "?"} frames × ${fmtSeconds(per)} per evaluate() on ${POOL} workers: about ${fmtSeconds(total)}; frames already in the cache are free. ${A.grid === "op" ? "Each frame is the operating point only, so T_c is not available." : "Each frame runs the full T_hs grid."}`;
+    A.dom.eta.textContent = `${Number.isFinite(A.n) ? A.n : "?"} frames × ${fmtSeconds(per)} per model run on ${POOL} workers: about ${fmtSeconds(total)}; frames already in the cache are free. ${A.grid === "op" ? "Each frame is the operating point only, so T_c is not available." : "Each frame runs the full T_hs grid."}`;
   };
   A.dom.n.addEventListener("input", syncEta);
   syncEta();
@@ -1597,7 +1603,7 @@ function renderAnimSheet() {
   A.dom.sheet = h("section.sheet.anim-sheet", { "aria-label": "Response animation", dataset: { phase: "setup", param: A.param } },
     h("header.sheet-head",
       h("div", h("h2.engrave.sheet-title", "Animate the response"),
-        h("p.sheet-sub", "Frames are computed once on the CPU pool (one evaluate() each), then played back here. Between computed frames the shelf interpolates for display and says interp.")),
+        h("p.sheet-sub", "Frames are computed once on the CPU pool (one model run each), then played back here. Between computed frames the shelf interpolates for display and says interp.")),
       h("button.icon-btn", { type: "button", "aria-label": "Close the animation", on: { click: () => closeAnim() } }, icon("close", { size: 18 }))),
     h("div.anim-setup",
       h("label.anim-field", h("span.engrave", "Parameter"), sel, tagChip(A.meta.tag, { size: "sm", title: A.meta.source })),

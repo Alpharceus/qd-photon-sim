@@ -365,6 +365,43 @@ async function waitRun(page, timeout = 120000) {
       await page.context().close();
     }
 
+    // ---------------------------------------------------------------- FIN3: no developer text on any route
+    // The visible text of every route, outside <code>, shows no file name (x.py), no "docstring" and no snake_case identifier.
+    {
+      page = await newPage();
+      const cards = await (await fetch(`${BASE}/api/cards`)).json();
+      const camps = await (await fetch(`${BASE}/api/campaigns`)).json();
+      const routes = ["#/overview", `#/design/${cards.find((c) => c.kind === "design").name}`, "#/compose", "#/papers", "#/compare",
+        ...camps.filter((c) => c.kind === "campaign" || c.kind === "collection").flatMap((c) => ["verdict", "explore", "provenance"].map((t) => `#/results/${c.id}/${t}`)),
+        ...["spectral", "cascade", "band", "va-fit", "cw-g2", "pulse-counting", "lindblad", "phonon", "transport", "laser"].map((t) => `#/explain/${t}`),
+        "#/story/rt-single-photons/1", "#/story/rt-single-photons/5", "#/library", "#/nonexistent"];
+      const PY = String.raw`\b\w+\.py\b`, DOC = "docstring";
+      const SNAKE = String.raw`(?<![\w./\-])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![\w/\-])(?!\.[A-Za-z])`;
+      const bad = [];
+      for (const r of routes) {
+        await page.goto(`${BASE}/${r}`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector("#workspace > *", { timeout: 30000 }).catch(() => {});
+        await page.waitForFunction(() => !document.querySelector("#workspace .skeleton, #workspace [aria-busy='true']"), null, { timeout: 30000 }).catch(() => {});
+        await page.waitForTimeout(r.startsWith("#/design") || r.startsWith("#/overview") ? 3500 : 2200);
+        const hits = await page.evaluate(([py, doc, snake]) => {
+          const rp = new RegExp(py), rd = new RegExp(doc, "i"), rs = new RegExp(snake);
+          const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          const out = [];
+          let n;
+          while ((n = w.nextNode())) {
+            const v = n.nodeValue, el = n.parentElement;
+            if (!v || !v.trim() || !el || el.closest(".katex-mathml, script, style, code, pre, textarea, option, svg, kbd, .id-v") || !el.getClientRects().length) continue;
+            const m = v.match(rp) || v.match(rd) || v.match(rs);
+            if (m) out.push(`${m[0]} in "${v.trim().slice(0, 60)}"`);
+          }
+          return out;
+        }, [PY, DOC, SNAKE]);
+        for (const h2 of hits) bad.push(`${r}: ${h2}`);
+      }
+      check(`FIN3: no x.py file name, "docstring" or snake_case identifier in the visible text of ${routes.length} routes (outside <code>)`, bad.length === 0, `${bad.length}: ${bad.slice(0, 4).join(" | ")}`);
+      await page.context().close();
+    }
+
     // ---------------------------------------------------------------- offline + errors
     check("no request left the Studio host (KaTeX, fonts and Plotly are all local)", external.length === 0, [...new Set(external)].slice(0, 3).join(" "));
     const kerr = errors.filter((e) => !/favicon|ERR_ABORTED|net::ERR_FAILED/.test(e));

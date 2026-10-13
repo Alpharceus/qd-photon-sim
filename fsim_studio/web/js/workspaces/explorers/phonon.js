@@ -50,7 +50,7 @@ export async function mount(body, host) {
     gamma: ctl(P, { id: "gamma", label: "ZPL width Γ_zpl", min: D.gamma_zpl[0], max: D.gamma_zpl[1], default: DEF.gamma_zpl, unit: "meV", scale: "log", tag: "A", note: "phenomenological; the V-a fit Γ(T) is shown beside it [DR]" }, () => filterChanged()),
     w: ctl(P, { id: "w", label: "Filter width w", min: D.w[0], max: D.w[1], step: 0.1, default: DEF.w, unit: "meV", tag: TG.filter, note: TN.filter }, () => filterChanged()),
     kappa: ctl(P, { id: "kappa", label: "Cavity κ", min: D.kappa[0], max: D.kappa[1], step: 0.05, default: 1.0, unit: "meV", tag: TG.cavity, note: TN.filter }, () => filterChanged()),
-    F: ctl(P, { id: "F", label: "Purcell factor F_cav", min: D.F_cav[0], max: D.F_cav[1], step: 0.5, default: DEF.F_cav, tag: TG.cavity, note: "total ZPL rate factor supplied by the caller (qd_gf.ibm_purcell_transmission)" }, () => filterChanged()),
+    F: ctl(P, { id: "F", label: "Purcell factor F_cav", min: D.F_cav[0], max: D.F_cav[1], step: 0.5, default: DEF.F_cav, tag: TG.cavity, note: "total ZPL rate factor supplied by the caller" }, () => filterChanged()),
     delta: ctl(P, { id: "delta", label: "Line offset δ from filter centre", min: D.delta[0], max: D.delta[1], step: 0.1, default: DEF.delta, unit: "meV", tag: TG.filter }, () => filterChanged()),
   };
   S.alpha.disable(true);
@@ -151,13 +151,13 @@ export async function mount(body, host) {
     ro.Z.update({ value: r.Z, tag: t, caption: `fraction of the line left in the ZPL, ${where}. Not brightness.`, markChange: false });
     ro.S.update({ value: r.S_total, tag: t, caption: "int dE J/E² coth(E/2kT)", markChange: false });
     ro.sb.update({ value: r.sideband_fraction, tag: t, caption: "weight a ZPL-tuned narrow filter can never collect", markChange: false });
-    ro.t_ibm.update({ value: r.point.t_ibm, tag: t, caption: `ibm_transmission, δ = ${fmt(r.delta)} meV`, markChange: false });
+    ro.t_ibm.update({ value: r.point.t_ibm, tag: t, caption: `independent-boson transmission, δ = ${fmt(r.delta)} meV`, markChange: false });
     ro.t_lor.update({ value: r.point.t_lorentz, tag: t, caption: "spectral.transmission (Lorentzian only)", markChange: false });
     ro.gap.update({ value: r.point.optimism_gap, tag: t, caption: "t_Lorentz-only - t_IBM", markChange: false });
-    ro.t_pur.update({ value: r.point.t_purcell, tag: t, caption: `ibm_purcell_transmission, F_cav = ${fmt(r.F_cav)}`, markChange: false });
+    ro.t_pur.update({ value: r.point.t_purcell, tag: t, caption: `independent-boson transmission with Purcell, F_cav = ${fmt(r.F_cav)}`, markChange: false });
     ro.z_eff.update({ value: r.point.Z_eff, tag: t, caption: "redistributed ZPL fraction", markChange: false });
     ro.rate.update({ value: r.point.rate_mult, tag: t, caption: "Z F_cav + (1 - Z)", markChange: false });
-    ro.gfit.update({ value: r.gamma_fit, unit: "meV", tag: TG.gamma_fit, caption: "effective_gamma_zpl; the a_ac T term partly double-counts acoustic broadening", markChange: false });
+    ro.gfit.update({ value: r.gamma_fit, unit: "meV", tag: TG.gamma_fit, caption: "effective ZPL linewidth; the a_ac T term partly double-counts acoustic broadening", markChange: false });
     ro.alpha.update({ value: r.alpha_ps2, unit: "ps²", tag: TG.alpha, caption: st.alphaOn ? "override" : "computed from material constants", markChange: false });
     clear(src).append(sourceLine(meta.calls, "Model: independent boson."));
     chartA.setTitle("Emission spectrum: ZPL plus phonon sidebands", `T = ${fmt(r.T)} K · Γ_zpl ${fmt(r.gamma_zpl)} meV · Z = ${fmt(r.Z)} · ${where}`);

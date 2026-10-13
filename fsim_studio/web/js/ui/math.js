@@ -501,6 +501,13 @@ if (typeof window !== "undefined") {
   if (!installPlotlyMath()) window.addEventListener("DOMContentLoaded", () => installPlotlyMath(), { once: true });
 }
 
+// ---------------------------------------------------------------- identifiers in prose
+// snake_case ids (not file or URL paths, not dotted names) read as words: "mean_counts" -> "mean counts".
+const IDENT_TOKEN = /(?<![\w./\-])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![\w/\-])(?!\.[A-Za-z])/g;
+export function tidyIds(str) {
+  return typeof str === "string" && str.includes("_") ? str.replace(IDENT_TOKEN, (m) => m.replace(/_/g, " ")) : str;
+}
+
 // ---------------------------------------------------------------- typeset what is written to the DOM as plain text
 // `el.textContent = "..."` (status lines, notes, captions) bypasses h(); one MutationObserver typesets those text nodes
 // (`$...$` and the ASCII notation of autoMath) so no call site is left with a raw subscript or formula.
@@ -516,7 +523,9 @@ function typesetTextNode(n) {
   let frag = null;
   if (v.includes("$") && parseRich(v).some((s) => s.t !== "text")) frag = richText(v);
   else frag = autoMath(v);
-  if (frag) p.replaceChild(frag, n);
+  if (frag) { p.replaceChild(frag, n); return; }
+  const t = tidyIds(v); // safety net: a machine identifier that no symbol rule knew is shown as words, never as snake_case
+  if (t !== v) n.nodeValue = t;
 }
 
 function typesetTree(root) {

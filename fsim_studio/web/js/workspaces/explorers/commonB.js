@@ -82,7 +82,7 @@ export function jobResult(api, resp, hooks) {
 }
 
 export function sourceLine(calls, extra = "") {
-  return h("p.xp-src", icon("info", { size: 14 }), ` ${extra}${extra ? " " : ""}Calls: ${(calls || []).join(", ")}.`);
+  return h("p.xp-src", icon("info", { size: 14 }), ` ${extra}${extra ? " " : ""}Calls: `, ...(calls || []).flatMap((c, i) => [i ? ", " : "", h("code.code-name", c)]), ".");
 }
 
 /** Run fn after ms of quiet, dropping superseded calls. Returns {run(), cancel()}. */

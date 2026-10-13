@@ -462,6 +462,11 @@ async function b612Audit(page) {
     await page.fill(".save-name", "p2a-verify-preset");
     await page.click(".save-go");
     await page.waitForFunction(() => location.hash === "#/design/p2a-verify-preset", null, { timeout: 15000 });
+    {
+      const tm = await page.$eval(".toasts .toast-msg", (e) => ({ text: e.textContent, title: e.title })).catch(() => null);
+      check("FIN3: the Designer Saved toast shows the short card name; the full path is only the tooltip",
+        !!tm && /Saved card p2a-verify-preset/.test(tm.text) && !/[\\/]/.test(tm.text) && /p2a-verify-preset\.yaml/.test(tm.title), JSON.stringify(tm));
+    }
     await page.waitForFunction(() => document.querySelector(".board-title")?.textContent === "p2a-verify-preset", null, { timeout: 15000 });
     st = await waitRunDone(page);
     const saved = await page.evaluate(() => ({
@@ -766,25 +771,58 @@ async function b612Audit(page) {
     await m.waitForTimeout(900);
     const hscroll = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     check("mobile 390px: no horizontal page scroll", !hscroll);
+    // FIN3 (replaces the R1 scroll-affordance checks): on a phone the six mounts WRAP 2 x 3, so none is cut off or needs a swipe
     const chainA = await m.evaluate(() => {
-      const w = document.querySelector(".chain-wrap"), sc = document.querySelector(".chain-scroll"), tr = document.querySelector(".chain-track");
-      if (!w || !sc || !tr) return { missing: true };
-      const th = tr.firstElementChild.getBoundingClientRect(), trr = tr.getBoundingClientRect();
-      const mask = getComputedStyle(sc).maskImage || getComputedStyle(sc).webkitMaskImage || "none";
-      return { overflow: w.dataset.overflow, edge: w.dataset.edge, mask, trackW: trr.width, trackH: trr.height, thumbW: th.width,
-        sw: sc.scrollWidth, cw: sc.clientWidth, thin: getComputedStyle(sc).scrollbarWidth };
-    });
-    check("R1: mobile chain row overflows with a visible scroll affordance (edge fade mask + thin track, thumb < track)",
-      !chainA.missing && chainA.overflow === "1" && chainA.edge === "start" && /gradient/.test(chainA.mask) && chainA.trackW > 0 && chainA.trackH >= 2
-      && chainA.thumbW > 0 && chainA.thumbW < chainA.trackW - 1 && chainA.thin === "thin", JSON.stringify(chainA).slice(0, 220));
-    await m.screenshot({ path: path.join(SHOTS, "designer-mobile.png"), fullPage: true });
-    const chainEnd = await m.evaluate(async () => {
+      const cells = [...document.querySelectorAll(".chain .mount-cell")];
+      const vw = window.innerWidth;
+      const r = cells.map((c) => c.getBoundingClientRect());
       const sc = document.querySelector(".chain-scroll");
-      sc.scrollLeft = sc.scrollWidth;
-      await new Promise((r) => setTimeout(r, 150));
-      return document.querySelector(".chain-wrap").dataset.edge;
+      return { n: cells.length, inside: r.every((x) => x.left >= -0.5 && x.right <= vw + 0.5 && x.width > 100),
+        rows: new Set(r.map((x) => Math.round(x.top))).size, cols: new Set(r.map((x) => Math.round(x.left))).size,
+        noScroll: sc ? sc.scrollWidth <= sc.clientWidth + 1 : false };
     });
-    check("R1: scrolling the chain to its end flips the fade to the leading edge", chainEnd === "end", String(chainEnd));
+    check("FIN3 mobile 390px: the six Designer mounts wrap 2 x 3, every one fully inside the viewport, no horizontal scroll in the row",
+      chainA.n === 6 && chainA.inside && chainA.cols === 2 && chainA.rows === 3 && chainA.noScroll, JSON.stringify(chainA));
+    await m.screenshot({ path: path.join(SHOTS, "designer-mobile.png"), fullPage: true });
+    // FIN3: Pinned toasts replace each other, so they never stack over the chart, and they leave by themselves
+    await m.click(".pin-main");
+    await m.click(".pin-main");
+    await m.waitForTimeout(300);
+    const pinToasts = await m.$$eval(".toasts .toast", (e) => e.filter((t) => /Pinned/.test(t.textContent)).length);
+    check("FIN3: two pins in a row leave ONE Pinned toast (a newer one replaces the older)", pinToasts === 1, `${pinToasts}`);
+    await m.waitForFunction(() => !document.querySelector(".toasts .toast"), null, { timeout: 8000 }).then(() => check("FIN3: the Pinned toast dismisses itself within 8 s", true)).catch(() => check("FIN3: the Pinned toast dismisses itself within 8 s", false));
+    // FIN3: Story / Present on a phone: nothing runs past the right edge
+    await m.goto(`${BASE}/#/story/rt-single-photons/1`, { waitUntil: "domcontentloaded" });
+    await m.waitForSelector(".story .st-title", { timeout: 30000 });
+    await m.waitForTimeout(1500);
+    const stClip = await m.evaluate(() => {
+      const vw = window.innerWidth;
+      const bad = [];
+      for (const e of document.querySelectorAll(".story *")) {
+        if (e.closest(".st-rail, .js-plotly-plot, .viewport, canvas, svg, .st-proof")) continue;
+        const r = e.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0 && r.right > vw + 1) bad.push(`${e.className || e.tagName}:${Math.round(r.right)}`);
+      }
+      return { bad: bad.slice(0, 6), sw: document.documentElement.scrollWidth, vw };
+    });
+    check("FIN3 mobile 390px: Story text and bars are not clipped on the right", stClip.bad.length === 0 && stClip.sw <= stClip.vw + 1, JSON.stringify(stClip));
+    await m.screenshot({ path: path.join(SHOTS, "story-mobile.png"), fullPage: true });
+    // FIN3: a shipped story does not greet the user with a stale-bake warning
+    const staleBar = await m.$(".bake.is-stale");
+    check("FIN3: Story slide 1 shows no stale-bake warning (the bake matches the sources)", !staleBar, staleBar ? (await staleBar.textContent()).slice(0, 80) : "");
+    // FIN3: an unknown route says so, with a way back; it never silently shows the Overview
+    await m.goto(`${BASE}/#/nonexistent`, { waitUntil: "domcontentloaded" });
+    await m.waitForSelector(".not-found", { timeout: 15000 }).catch(() => {});
+    const nf = await m.evaluate(() => ({ plate: !!document.querySelector(".not-found h1"), text: document.querySelector(".not-found")?.textContent || "",
+      back: document.querySelector(".not-found a[href='#/overview']") !== null, overview: !!document.querySelector(".ov-board"), hash: location.hash }));
+    check("FIN3: #/nonexistent shows a not-found view with a link back; the Overview is not rendered; the URL is kept",
+      nf.plate && /not found/i.test(nf.text) && nf.text.includes("#/nonexistent") && nf.back && !nf.overview && nf.hash === "#/nonexistent", JSON.stringify(nf).slice(0, 200));
+    // FIN3: Overview: the CARD selector and the device panel name the same card
+    await m.goto(`${BASE}/#/overview`, { waitUntil: "domcontentloaded" });
+    await m.waitForSelector(".hero-viewport", { timeout: 30000 });
+    await m.waitForTimeout(1200);
+    const ov = await m.evaluate(() => ({ sel: document.getElementById("card-picker")?.value, open: (document.getElementById("hero-open")?.getAttribute("href") || "").replace("#/design/", "") }));
+    check("FIN3: Overview CARD selector and the device panel name the same card", !!ov.sel && `${ov.sel}` === ov.open, JSON.stringify(ov));
     await mctx.close();
   } catch (e) {
     check("script ran to completion", false, e.message.split("\n")[0]);

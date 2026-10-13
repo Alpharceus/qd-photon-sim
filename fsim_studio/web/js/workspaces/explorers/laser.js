@@ -38,7 +38,7 @@ export async function mount(body, host) {
 
   const P = "xb-ls";
   const S = {
-    I: stepper(P, { id: "I", label: "Pump I/I_th (selects a frame)", values: meta.I_grid, index: Math.max(0, meta.I_grid.indexOf(DEF.I)), tag: TG.model, note: "Axis is I/I_th, not amperes (sde.py:196-203)", onInput: () => select() }),
+    I: stepper(P, { id: "I", label: "Pump I/I_th (selects a frame)", values: meta.I_grid, index: Math.max(0, meta.I_grid.indexOf(DEF.I)), tag: TG.model, note: "Axis is I/I_th, not amperes", onInput: () => select() }),
     n_runs: ctl(P, { id: "n_runs", label: "Runs per frame", min: D.n_runs[0], max: D.n_runs[1], step: 1, default: DEF.n_runs, tag: "A", note: "more runs: smaller SE, longer job" }, () => dirty()),
     t_end: ctl(P, { id: "t_end", label: "Run length t_end", min: D.t_end[0] * 1e9, max: D.t_end[1] * 1e9, step: 0.5, default: DEF.t_end * 1e9, unit: "ns", tag: "A", note: "first 10% is discarded as SDE transient (BURNIN_FRAC)" }, () => dirty()),
   };
@@ -108,7 +108,7 @@ export async function mount(body, host) {
     if (st.li) {
       const k = st.li.I.indexOf(I);
       ro.Ith.update({ value: st.li.I_th, tag, caption: "find_threshold: linear-fit extrapolation of the L-I curve", markChange: false });
-      ro.Sss.update({ value: k >= 0 ? st.li.S[k] : null, tag, reason: "not on the L-I grid", caption: k >= 0 ? `steady_state residual ${fmt(st.li.residual[k])}` : "", markChange: false });
+      ro.Sss.update({ value: k >= 0 ? st.li.S[k] : null, tag, reason: "not on the L-I grid", caption: k >= 0 ? `steady-state residual ${fmt(st.li.residual[k])}` : "", markChange: false });
     }
     const cp = card.card_points.find((p) => p.pump === (st.F === 1 ? "normal" : "quiet"));
     if (cp) ro.card.update({ value: cp.g2, tag: card.card_tag, caption: `± ${fmt(cp.err)} · ${cp.pump} pump · cards/zhao.yaml`, markChange: false });

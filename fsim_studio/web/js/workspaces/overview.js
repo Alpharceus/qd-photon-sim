@@ -9,6 +9,7 @@ import { icon } from "../ui/icons.js";
 import { skeleton, errorState } from "../ui/controls.js";
 import { verdictBadge, lineStatus, lineScope, humanWord, COUNT_KEYS, countWithDenom, conservativeLine } from "../ui/verdictBadge.js";
 import { sro, campaignTag } from "../ui/figure.js";
+import { fieldLabel, fieldUnit, campaignTitle, words, humanValue } from "../ui/labels.js";
 
 const CAMPAIGNS = [
   { id: "rt_edge", title: "RT edge emitter", sub: "InP dots in GaInP / GaAsP, finite-pulse headline model" },
@@ -29,6 +30,7 @@ export function mount(el, ctx) {
   O = { el, ctx, scene: null, sceneSeq: 0, disposers: [], heroCard: pickHeroCard(ctx) };
   el.classList.add("ws-overview");
   O.disposers.push(ctx.state.on("theme", (m) => O?.scene?.setTheme?.(m)));
+  if (ctx.state.get("card") !== O.heroCard) ctx.state.set({ card: O.heroCard }); // the CARD selector names the card the hero shows
   render();
 }
 
@@ -40,14 +42,19 @@ export function unmount() {
   O = null;
 }
 
+// The hero shows the card the context bar names (FIN3: the CARD selector and the device panel must agree).
+// When the current card is not a design card, the first hero card is used and the context bar is brought along.
 function pickHeroCard(ctx) {
   const cur = ctx.state.get("card");
-  const plat = cur ? ctx.platformOf(cur) : null;
-  if (plat) {
-    const hit = HERO_CARDS.find((c) => ctx.platformOf(c.card)?.id === plat.id);
-    if (hit) return hit.card;
-  }
+  const isDesign = cur && ctx.cards().some((c) => c.name === cur && c.kind === "design" && c.platform !== "composed");
+  if (isDesign) return cur;
   return HERO_CARDS[0].card;
+}
+
+/** Hero tab of the platform a card belongs to (null when the card has no tab of its own). */
+function tabOf(card) {
+  const plat = O?.ctx.platformOf(card);
+  return plat ? HERO_CARDS.find((c) => O.ctx.platformOf(c.card)?.id === plat.id) || null : null;
 }
 
 async function render() {
@@ -126,13 +133,13 @@ function campaignPlaque(c, camp, tagInfo) {
       : null),
   h("div.cp-reason",
     v ? h("p.cp-scope", h("span.cp-line", `VERDICT line ${v.line}`), lineScope(v) ? ` · ${lineScope(v)}` : "", why && nLines > 1 ? ` · ${why}` : "") : h("p.cp-scope", "No VERDICT line in this campaign."),
-    reasonKeys.length ? h("div.cp-kv", reasonKeys.map((k) => sro({ label: k.replace(/_/g, " "), value: Number(f[k]), raw: f[k], unit: k.startsWith("flux") ? "/s" : "", tag, note: tagInfo?.note, size: "sm" }))) : null),
+    reasonKeys.length ? h("div.cp-kv", reasonKeys.map((k) => sro({ label: fieldLabel(k), value: Number(f[k]), raw: f[k], unit: fieldUnit(k), tag, note: tagInfo?.note, size: "sm" }))) : null),
   counts.length ? h("div.cp-counts", { role: "group", "aria-label": "Counts with their own denominators" },
     counts.map((k) => {
       const c = countWithDenom(f, k);
-      return sro({ label: k.replace(/_/g, " "), value: c.text, raw: f[k], tag, note: tagInfo?.note, size: "sm", key: `count:${k}`, title: c.denomFrom ? `denominator: the N of ${c.denomFrom} on line ${v.line}` : null });
+      return sro({ label: fieldLabel(k), value: c.text, raw: f[k], tag, note: tagInfo?.note, size: "sm", key: `count:${k}`, title: c.denomFrom ? `denominator: the N of ${c.denomFrom} on line ${v.line}` : null });
     }),
-    cover ? sro({ label: cover.replace(/_/g, " "), value: String(f[cover]).replace(/\s*\/\s*/, " / "), raw: f[cover], tag, note: tagInfo?.note, size: "sm", key: `count:${cover}` }) : null) : null,
+    cover ? sro({ label: fieldLabel(cover), value: String(f[cover]).replace(/\s*\/\s*/, " / "), raw: f[cover], tag, note: tagInfo?.note, size: "sm", key: `count:${cover}` }) : null) : null,
   nLines > 1 ? lineRail(camp) : null,
   h("footer.cp-foot",
     h("span.cp-meta", icon("folder", { size: 14 }), camp.path),
@@ -163,13 +170,13 @@ function bestStrip(camp, tagInfo) {
   return h("section.best-strip", { "aria-labelledby": "best-h" },
     h("header.best-head",
       h("h2.engrave#best-h", "Best passing flux · nanowires"),
-      h("p.best-note", "BEST_PASSING_FLUX lines from out/nitride_nanowire/full/results.md. Commanded flux is idealized; delivered is what the as-built contact passes. Neither is a hardware pass.")),
+      h("p.best-note", "Best-passing-flux lines from out/nitride_nanowire/full/results.md. Commanded flux is idealized; delivered is what the as-built contact passes. Neither is a hardware pass.")),
     h("div.best-rows", best.map((b) => {
       const f = b.fields || {};
       return h("article.best-row", { dataset: { family: f.family } },
         h("div.best-id",
-          h("span.best-fam", (f.family || "").replace(/_/g, " ")),
-          h("span.best-meta", `${b.kind === "BEST_PASSING_FLUX_300K" ? "at 300 K" : "any T"} · row ${f.row_id} · T_hs ${f.T_hs} K · ${Number(f.rep_rate_hz) / 1e6} MHz · ${f.strain_bound}`),
+          h("span.best-fam", words(f.family || "")),
+          h("span.best-meta", `${b.kind === "BEST_PASSING_FLUX_300K" ? "at 300 K" : "any T"} · row ${f.row_id} · T_hs ${f.T_hs} K · ${Number(f.rep_rate_hz) / 1e6} MHz · ${words(f.strain_bound || "")}`),
           f.hardware_qualified === "False" ? h("span.best-hw", icon("cross", { size: 12 }), "hardware not qualified") : null),
         h("div.best-pair",
           sro({ label: "commanded", value: Number(f.commanded_flux), raw: f.commanded_flux, unit: "/s", tag, note: tagInfo?.note }),
@@ -189,7 +196,7 @@ function collections(list) {
     h("h2.engrave#coll-h", "Figures + CSV collections"),
     h("ul.coll-list", list.map((c) => h("li",
       h("a.coll-item", { href: `#/results/${c.id}` },
-        h("span.coll-id", c.id),
+        h("span.coll-id", { title: `out/${c.id}` }, campaignTitle(c.id, c.title)),
         h("span.coll-kind", c.kind === "legacy" ? "legacy F-series" : c.collection_label || "figures + CSV"),
         h("span.coll-date", String(c.generated || "").slice(0, 10)),
         h("span.coll-commit", c.commit || ""),
@@ -200,8 +207,8 @@ function collections(list) {
 function renderHero() {
   const tabs = h("div.hero-tabs", { role: "tablist", "aria-label": "Device scene" },
     HERO_CARDS.map((c) => h("button.hero-tab", {
-      type: "button", role: "tab", dataset: { card: c.card }, "aria-selected": String(c.card === O.heroCard),
-      on: { click: () => { O.heroCard = c.card; syncTabs(); loadScene(); } },
+      type: "button", role: "tab", dataset: { card: c.card }, "aria-selected": String(tabOf(O.heroCard)?.card === c.card),
+      on: { click: () => { O.heroCard = c.card; O.ctx.state.set({ card: c.card }); syncTabs(); loadScene(); } },
     }, c.label)));
   const slot = h("div.hero-viewport", { role: "region", "aria-label": "3D device model" });
   const cap = h("p.hero-cap");
@@ -213,7 +220,7 @@ function renderHero() {
 }
 
 function syncTabs() {
-  for (const t of O.heroDom.tabs.children) t.setAttribute("aria-selected", String(t.dataset.card === O.heroCard));
+  for (const t of O.heroDom.tabs.children) t.setAttribute("aria-selected", String(tabOf(O.heroCard)?.card === t.dataset.card));
   const a = document.getElementById("hero-open");
   if (a) a.href = `#/design/${O.heroCard}`;
 }

@@ -71,7 +71,7 @@ export async function mount(body, host) {
     const t = r.tags;
     const q = r.readouts;
     caveat.set([r.caveat, r.bunching ? r.caveat_bunching : null]);
-    ro.g2_dot0.update({ value: q.g2_dot0, tag: t.g2_dot0, qualifier: r.bunching ? "cascade bunching" : "", caption: "closed form, cw_g2.g2_cw_zero via cw_report", markChange: false });
+    ro.g2_dot0.update({ value: q.g2_dot0, tag: t.g2_dot0, qualifier: r.bunching ? "cascade bunching" : "", caption: "closed form", markChange: false });
     ro.g2_meas0.update({ value: q.g2_meas0, tag: t.g2_meas0, caption: "background law 1 − ρ²(1 − g²_dot)", markChange: false });
     ro.g2_raw0.update({ value: q.g2_raw0, tag: t.g2_raw0, caption: `what a ${fmt(r.inputs.irf_fwhm_ps)} ps ${r.inputs.irf_shape} IRF measures`, markChange: false });
     ro.tau_dip.update({ value: q.tau_dip, unit: "ns", tag: t.tau_dip, caption: "single-exponential dip fitted to g²_meas", markChange: false });

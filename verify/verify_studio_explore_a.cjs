@@ -100,9 +100,9 @@ async function chartReady(page, n = 1) {
       for (const m of c.querySelectorAll(".math[data-src]")) m.replaceWith(m.dataset.src);
       return c.textContent;
     }).catch(() => "");
-    const captMath = await page.$$eval('.xa-caveat[data-caveat="caveat"] .math[data-src="g2_raw"]', (els) => els.map((e) => !!e.querySelector(".katex .msupsub")));
+    const captMath = await page.$$eval('.xa-caveat[data-caveat="caveat"] .math[data-src="g2"]', (els) => els.map((e) => !!e.querySelector(".katex .msupsub")));
     check("cw-g2: pinned caveat visible (Rabi drive, 500 ps HBT)",
-      capt.includes("not valid for resonant (Rabi) drive") && capt.includes("g2_raw is what a 500 ps HBT measures") && captMath.length === 1 && captMath[0], capt.slice(0, 260));
+      capt.includes("not valid for resonant (Rabi) drive") && capt.includes("raw g2 is what a 500 ps HBT measures") && captMath.length >= 1 && captMath.every(Boolean), capt.slice(0, 260));
     const g0 = await readoutText(page, "g2_dot0");
     check("cw-g2: g2_dot(0) default reads 0.1474 with a tag chip", g0 && g0.value === "0.1474" && !!g0.tag, JSON.stringify(g0));
     const audit1 = await tagAudit(page);
@@ -128,7 +128,7 @@ async function chartReady(page, n = 1) {
     check("pulse-counting: readouts have values", await until(page, () => document.querySelectorAll('.xp-body .readout[data-state="value"]').length >= 8));
     const capp = await page.$eval('.xa-caveat[data-caveat="caveat"]', (e) => e.textContent).catch(() => "");
     check("pulse-counting: pinned caveat visible (rectangular pump, long-delay peak, f1b gap, no background)",
-      capp.includes("Rectangular pump [A]") && capp.includes("g2_adj is the adjacent-normalised") && capp.includes("re-excitation") && capp.includes("rho is a device.py addition"), capp.slice(0, 60));
+      capp.includes("Rectangular pump [A]") && capp.includes("adjacent-normalised value is shown as g2 adj") && capp.includes("re-excitation") && capp.includes("rho is a device-level addition") && !/\.py|docstring/.test(capp), capp.slice(0, 60));
     const gp = await readoutText(page, "g2");
     check("pulse-counting: g2 default reads a number with a tag chip", gp && gp.state === "value" && !!gp.tag, JSON.stringify(gp));
     const audit2 = await tagAudit(page);

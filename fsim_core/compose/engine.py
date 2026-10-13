@@ -178,11 +178,16 @@ def _series(ctx) -> dict:
     if plan.timing == "pulsed" and math.isfinite(ctx.res.I_single) and ctx.solver.name != "jc":
         sig = float(lb.mev_to_rate(em.sigma_sd_ueV * 1e-3))
         dts = np.logspace(-1, 3, 25)
-        y = [rs.hom_vs_separation(float(dt), float(rt.Gamma_ns),
-                                  float(rt.gamma_star_ns), sig, float(em.tau_sd_ns)) for dt in dts]
+        # same convention as the hom_I tile: the spectral-diffusion shape of the curve is anchored so that its dt -> 0 value IS the
+        # tile (hom_I, which carries the solver's overlap and the ZPL-fraction factor q^2); the analytic dt -> 0 limit differs from it
+        args = (float(rt.Gamma_ns), float(rt.gamma_star_ns), sig, float(em.tau_sd_ns))
+        hom_I = float(ctx.d.get("hom_I", float("nan")))
+        f0 = float(rs.hom_vs_separation(1e-9, *args))
+        scale = hom_I / f0 if math.isfinite(hom_I) and math.isfinite(f0) and f0 > 0.0 else 1.0
+        y = [scale * rs.hom_vs_separation(float(dt), *args) for dt in dts]
         out["hom_vs_dt"] = {"x": [float(v) for v in dts], "y": [float(v) for v in y], "x_unit": "ns",
                             "note": "spectral diffusion (sigma_sd, tau_sd) between photons dt apart; "
-                                    "single-emitter overlap Gamma/(Gamma+gamma*) at dt -> 0"}
+                                    "shape of the single-emitter overlap against separation, anchored to the I_HOM tile at dt -> 0 (same convention)"}
     return out
 
 

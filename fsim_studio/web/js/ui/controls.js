@@ -46,15 +46,20 @@ export function switchToggle({ label, checked, onChange, hideLabel = false }) {
 }
 
 // ------------------------------------------------------------------ toast
-export function toast(message, { kind = "info", timeout = 4200, action = null } = {}) {
+export function toast(message, { kind = "info", timeout = null, action = null, group = null } = {}) {
   const host = document.getElementById("toasts");
   if (!host) return;
+  // A toast must never pile up over the chart it reports on: one per group (a newer one replaces it),
+  // at most three at once, and a short life (errors stay a little longer).
+  if (group) for (const old of host.querySelectorAll(`.toast[data-group="${group}"]`)) old.remove();
+  while (host.children.length >= 3) host.firstElementChild.remove();
   const ico = { info: "info", error: "warn", ok: "check" }[kind] || "info";
-  const el = h("div.toast", { class: `toast-${kind}` }, icon(ico, { size: 18 }), h("span.toast-msg", message),
+  const el = h("div.toast", { class: `toast-${kind}`, dataset: group ? { group } : {} }, icon(ico, { size: 18 }), h("span.toast-msg", message),
     action ? h("button.btn.btn-quiet", { type: "button", on: { click: () => { action.fn(); el.remove(); } } }, action.label) : null,
     h("button.icon-btn", { type: "button", "aria-label": "Dismiss", on: { click: () => el.remove() } }, icon("close", { size: 16 })));
   host.appendChild(el);
-  if (timeout) setTimeout(() => el.remove(), timeout);
+  const life = timeout ?? (kind === "error" ? 5600 : 3200);
+  if (life) setTimeout(() => el.remove(), life);
   return el;
 }
 

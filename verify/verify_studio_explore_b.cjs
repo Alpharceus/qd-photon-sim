@@ -118,7 +118,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     const framesOk = await until(page, () => /T frames ready/.test(document.querySelector('[data-role="frames"]')?.textContent || ""), null, 120000);
     check("phonon: T frames computed on the job pool (one batch)", framesOk, await page.$eval('[data-role="frames"]', (e) => e.textContent));
     const pc = await caveat("caveat");
-    check("phonon: pinned caveat verbatim and not-brightness note", pc.includes("Independent-boson model, bulk LA deformation potential only, no LO or piezo term (:191-197) [E]. Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening (:436-443). Lengths are wavefunction extents, not dot sizes (:127-134).") && pc.includes("not brightness"), pc.slice(0, 80));
+    check("phonon: pinned caveat verbatim and not-brightness note", pc.includes("Independent-boson model, bulk LA deformation potential only, no LO or piezo term [E]. Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening. Lengths are wavefunction extents, not dot sizes.") && pc.includes("not brightness"), pc.slice(0, 80));
     let ph = await live("/api/explore/phonon/live?T=100&l_xy=4.5&l_z=1.5&gamma_zpl=0.5&w=2&kappa=1&F_cav=1&delta=0");
     await setSlider(page, "T", 5); // index 5 = 100 K
     await page.waitForTimeout(400);
@@ -154,7 +154,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     await page.goto(`${BASE}/#/explain/transport`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('.xb-caveat[data-caveat="transport"]', { timeout: 30000 });
     const tc = await caveat("transport");
-    check("transport: pinned InP caveat verbatim (LOWER bound on leakage, mu ~ 6000)", tc.includes("leak_valleys='G' is a LOWER bound on leakage (docstring item 5, 'GX' moves 50x per 0.1 eV)") && tc.includes("1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into one dot (item 6)."), tc.slice(0, 60));
+    check("transport: pinned InP caveat verbatim (LOWER bound on leakage, mu ~ 6000)", tc.includes("leakage through the G valley only is a LOWER bound on leakage (including the X valley moves it 50x per 0.1 eV)") && tc.includes("1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into one dot.") && !/docstring|transport\.py|item [0-9]/.test(tc), tc.slice(0, 60));
     check("transport: four InP charts render (sweep ran as a job)", await until(page, () => [...document.querySelectorAll('.xb-panel[data-panel="inp"] .chart-plot .main-svg')].length >= 4, null, 90000));
     const pt = await api("/api/explore/transport/point?preset=red&I_uA=1&T=230&n_dot=2000000000&aperture=1&tau_pulse=0.1&w=2&dE_WL=100&tau_rad=1");
     await page.waitForTimeout(600);
@@ -178,7 +178,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     const traceOk = await until(page, () => /traces ready \(one point/.test(document.querySelector('[data-role="stark-status"]')?.textContent || ""), null, 120000);
     check("transport: three Stark traces computed as jobs", traceOk, await page.$eval('[data-role="stark-status"]', (e) => e.textContent));
     const nc = await caveat("nitride");
-    check("transport: pinned nitride caveat verbatim", nc.includes("barrier-limited, doping dependence omitted [A]; screening fixed along a trace; m- and a-plane coincide by construction (out/nitride_geometry_stark/results.md:328); Zhang is 10 K, x=0.15, another device (results.md:129)"), nc.slice(0, 60));
+    check("transport: pinned nitride caveat verbatim", nc.includes("barrier-limited, doping dependence omitted [A]; screening fixed along a trace; m- and a-plane coincide by construction (see the nitride geometry and Stark report); Zhang is 10 K, x=0.15, another device (same report)"), nc.slice(0, 60));
     const nch = await charts(page);
     const eC = nch.find((c) => /Exciton energy/.test(c.title)), sC = nch.find((c) => /slope/i.test(c.title));
     check("transport: E_X chart has 3 screening series + the Zhang guide; slope chart has 3 series", eC && eC.traces.length === 4 && eC.traces.some((t) => /Zhang/.test(t.name) && /guide only/.test(t.name)) && sC && sC.traces.length === 3, JSON.stringify(eC?.traces.map((t) => t.name)));

@@ -301,7 +301,8 @@ async function route() {
     history.replaceState(null, "", `#/compose/${r.args[0]}`);
     return route();
   }
-  let ws = WORKSPACES.find((w) => w.id === r.ws) ? r.ws : "overview";
+  if (!WORKSPACES.some((w) => w.id === r.ws)) { showNotFound(r); return; }
+  let ws = r.ws;
   let args = r.args;
   if (!location.hash || location.hash === "#" || location.hash === "#/") history.replaceState(null, "", "#/overview");
   if (ws === "design") {
@@ -339,6 +340,28 @@ async function route() {
     console.error(e);
     els.main.append(h("div.error-state", { role: "alert" }, h("p.err-title", `The ${def.label} workspace failed to load.`), h("p.err-msg", e.message)));
   }
+}
+
+// ------------------------------------------------------------------ unknown route
+// An address that names no workspace says so (with the way back); it never shows the Overview under a wrong URL.
+function showNotFound(r) {
+  lastHash = location.hash;
+  try { current.mod?.unmount?.(); } catch (e) { console.warn(e); }
+  closeInspector();
+  state.set({ route: { ws: "notfound", args: r.args } });
+  syncRail(null);
+  syncContextBar();
+  document.title = "Page not found · FSIM Studio";
+  clear(els.main);
+  els.main.dataset.ws = "notfound";
+  current = { ws: "notfound", mod: null };
+  els.main.append(h("section.not-found", { "aria-labelledby": "nf-h" },
+    h("div.nf-plate",
+      icon("warn", { size: 28 }),
+      h("h1.ws-title#nf-h", "Page not found"),
+      h("p.nf-msg", "There is no page at ", h("code", location.hash || "#/"), ". The address may be mistyped or from an older version of the Studio."),
+      h("a.btn.btn-outline.nf-home", { href: "#/overview" }, icon("overview", { size: 16 }), "Back to the Overview"),
+      h("ul.nf-links", { "aria-label": "Workspaces" }, WORKSPACES.map((w) => h("li", h("a.btn.btn-quiet", { href: `#/${w.id}` }, w.label)))))));
 }
 
 // ------------------------------------------------------------------ offline banner

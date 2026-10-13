@@ -449,7 +449,7 @@ def _chatz_g2(card, doc):
     g2 = [g2_of_T(T, p).g2 for T in Ts]
     tc_fit = solve_Tc(p)
     tc_fix = solve_Tc(dict(fit.params, w=3.0, dx=-0.7))
-    label = (f"calibration, not held out (V_A_TOL {V_A_TOL}, fitting.py:44): the model is fitted to these points, "
+    label = (f"calibration, not held out (tolerance {V_A_TOL}): the model is fitted to these points, "
              f"so it passes near them by construction. Published windows (w, dx) interpolated per point [E]; "
              f"the 78 K point is an upper bound. T_c = {tc_fit:.1f} K with the fit windows ({tc_fix:.1f} K at fixed "
              f"w = 3 meV, dx = -0.7 meV) lies beyond the data range and is not drawn.")
@@ -619,7 +619,7 @@ def _reischle_rho(card, doc):
     win = sorted(_read_csv(VC_RHO_WINDOW_CSV), key=lambda r: float(r["w_meV"]))
     ws = [float(r["w_meV"]) for r in win]
     req = [float(r["rho_required"]) for r in win]
-    label = (f"trion: eps = 0 structurally, so g2 = 1 - rho^2 (integrator.g2_from at eps = 0). The line is the rho the "
+    label = (f"trion: eps = 0 structurally, so g2 = 1 - rho^2. The line is the rho the "
              f"100 MHz point (g2 = {base['g2']}) requires, read from out/phase1/vc_rho_window.csv; the 200/500 MHz "
              f"points (0.53, 0.49) are temporal refilling, outside the spectral model.")
     return _ov("reischle", "DR", ["integrator.g2_from", "out/phase1/vc_rho_window.csv"], label,
@@ -642,16 +642,16 @@ def _reischle_oe(card, doc):
         v = [float(intrinsic_from_raw(r["g2_raw"], td, IRF_OE2008_PS, "exponential")) for td in tds]
         lo.append(min(v))
         hi.append(max(v))
-    label = ("trion: eps = 0 structurally, g2 = 1 - rho^2. Markers: F2 inversion g2_s = (g2_b - (1 - rho^2))/rho^2 "
-             "of the published g2_b with the published rho (matches g2_corr to 0.011). Band: cw_g2.intrinsic_from_raw "
-             f"of the raw g2 through the {IRF_OE2008_PS:.0f} ps exponential IRF for dip recovery tau_d "
+    label = ("trion: eps = 0 structurally, g2 = 1 - rho^2. Markers: the published background-limited g2 inverted with the published rho, "
+             "g2 = (g2 measured - (1 - rho^2))/rho^2 (matches the published corrected g2 to 0.011). Band: the intrinsic g2 recovered "
+             f"from the raw g2 through the {IRF_OE2008_PS:.0f} ps exponential IRF for dip recovery tau_d "
              f"{min(implied):.2f}-{max(implied):.2f} ns, the values the published raw/intrinsic pairs imply "
              f"(anchor {implied[0]:.2f} ns for raw 0.41 -> 0.15 [DR]; tau_d itself is not printed). Each point "
              "recovers its published g2_b at its own implied tau_d by construction.")
     return _ov("reischle", "DR", ["cw_g2.intrinsic_from_raw (cw_g2.deconvolve_dip)", "studio_support.inverted_background_g2",
                                   "studio_support.implied_dip_recovery_time"], label,
-               series=[{"name": "g2_s (F2 inversion of g2_b)", "x": Ts, "y": g2s, "mode": "markers"}],
-               bands=[{"name": "IRF deconvolution of g2_raw (implied tau_d range)", "x": Ts, "lo": lo, "hi": hi}],
+               series=[{"name": "inverted g2 (published background-limited value)", "x": Ts, "y": g2s, "mode": "markers"}],
+               bands=[{"name": "IRF deconvolution of the raw g2 (implied tau_d range)", "x": Ts, "lo": lo, "hi": hi}],
                params_source="cards/reischle.yaml g2_oe2008; IRF 500 ps exponential [V]; tau_d implied [DR]",
                readouts={"tau_d_implied_ns": implied})
 
@@ -687,7 +687,7 @@ def _zhao_g2(card, doc):
              f"through the quiet point. Axis is I/I_th (I/I_th = 4, {ZHAO_N_RUNS} runs, {ZHAO_T_END * 1e9:g} ns); "
              f"quiet = F_pump {ZHAO_F_QUIET} [E].")
     return _ov("zhao", "E", ["sde.QDLaserParams", "sde.find_threshold", "sde.g2_vs_pump"], label,
-               series=[{"name": "sde.g2_vs_pump (SE)", "x": pumps, "y": y, "err": se, "mode": "markers"}],
+               series=[{"name": "simulated g2 against pump (SE)", "x": pumps, "y": y, "err": se, "mode": "markers"}],
                params_source="QDLaserParams() defaults, seed 42",
                readouts={"sigma": sig, "sigma_committed": sig_csv, "verdict": verdict,
                          "verdict_source": "out/zhao/zhao_fit_comparison.csv"})

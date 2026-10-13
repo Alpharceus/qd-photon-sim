@@ -91,7 +91,12 @@ export function qs(obj) {
   return p.toString();
 }
 
+/** The model calls behind a number, as code names ("a, b"): references, never prose. */
+export function callList(calls) {
+  return (calls || []).flatMap((c, i) => [i ? ", " : "", h("code.code-name", c)]);
+}
+
 /** One footer line listing the fsim_core calls and the parameter source. */
 export function sourceLine(r) {
-  return h("p.xp-src", icon("info", { size: 14 }), ` ${r.params_source ? `${r.params_source}. ` : ""}Calls: ${(r.calls || []).join(", ")}.`);
+  return h("p.xp-src", icon("info", { size: 14 }), ` ${r.params_source ? `${r.params_source}. ` : ""}Calls: `, callList(r.calls), ".");
 }
