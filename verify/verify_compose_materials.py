@@ -264,8 +264,21 @@ _lf = [(k_, p_, l_) for k_, b_ in _bands.items() for p_, l_ in _leaves(b_)]
 check("band block: every number carries a tag in V/DR/E/A, a unit and a non-empty `where`",
       all(l_.get("tag") in ("V", "DR", "E", "A") and l_.get("unit") and str(l_.get("where", "")).strip() and isinstance(l_.get("value"), (int, float))
           for _, _, l_ in _lf), str([(k_, p_) for k_, p_, l_ in _lf if l_.get("tag") not in ("V", "DR", "E", "A")]))
-check("band block: every [V] value is stored checked: false (recalled from the reviews, not re-checked) and no other tag has checked: true",
-      all((l_.get("checked") is False) == (l_["tag"] == "V") and l_.get("checked") is not True for _, _, l_ in _lf))
+check("band block: every [V] value carries a boolean `checked`; checked: true only on [V] leaves and then with a non-empty checked_against; no other tag has `checked`",
+      all((isinstance(l_.get("checked"), bool) if l_["tag"] == "V" else "checked" not in l_)
+          and (l_.get("checked") is not True or str(l_.get("checked_against", "")).strip()) for _, _, l_ in _lf))
+_true = sorted((k_, p_) for k_, p_, l_ in _lf if l_.get("checked") is True)
+check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves and the WZ98 CdSe/ZnSe dE_v are checked: true; VM03 leaves and the CsPbBr3 masses stay false",
+      _true == sorted([("gaas_algaas_droplet", "unstr.Eg_dot"), ("inas_gaas_sk", "Eg_barrier"), ("inas_gaas_sk", "unstr.Eg_dot"),
+                       ("inas_ingaas_metamorphic_cband", "unstr.Eg_dot"), ("inas_inp_cband", "Eg_barrier"), ("inas_inp_cband", "unstr.Eg_dot"),
+                       ("ingaas_gaas", "Eg_barrier"), ("inp_gainp_red", "unstr.Eg_dot"), ("cdse_znse", "unstr.dE_v")])
+      and all(l_["checked"] is False for k_, p_, l_ in _lf if k_ in ("gan_aln", "cspbbr3_colloidal") and l_["tag"] == "V"), str(_true))
+_cd = _bands["cdse_znse"]["variants"]["unstr"]
+_ip = _bands["inp_gainp_red"]["variants"]["strained"]
+check("band block 2026-10-13 corrections: CdSe/ZnSe dE_v 70 [V] / dE_c 990 [DR] (WZ98), CsPbBr3 E_g 2.342 / barrier 5.842, InP/GaInP strained 1.48 / 220 / 303",
+      (_cd["dE_v"]["value"], _cd["dE_v"]["tag"], _cd["dE_c"]["value"], _cd["dE_c"]["tag"]) == (70, "V", 990, "DR")
+      and (_bands["cspbbr3_colloidal"]["variants"]["unstr"]["Eg_dot"]["value"], _bands["cspbbr3_colloidal"]["Eg_barrier"]["value"]) == (2.342, 5.842)
+      and (_ip["Eg_dot"]["value"], _ip["dE_c"]["value"], _ip["dE_v"]["value"]) == (1.48, 220, 303))
 _closed, _bad = 0, []
 for k_, b_ in _bands.items():
     for vn_, v_ in b_["variants"].items():

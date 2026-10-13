@@ -182,10 +182,13 @@ export function bandPanel(entry, getLeaf) {
   if (flags.hard_wall) root.append(flagP("Hard wall: the shell or glass puts both carriers several eV from the nanocrystal edges. The barriers are drawn broken and are effectively infinite."));
   if (mixed) root.append(flagP(`Mixed strain variants: the drawn conduction offset is E_g,barrier - E_g,dot - ΔE_v = ${fmt(dEc * 1000)} meV; the table gives ${fmt(dEcTab * 1000)} meV (${varName[sel.dEc.from]}).`));
   const allLeaves = [band.Eg_barrier, ...Object.values(band.masses || {}), ...Object.values(band.variants || {}).flatMap((vv) => Object.values(vv))];
-  const anyV = allLeaves.some((l) => normTag(l?.tag) === "V");
+  const vLeaves = allLeaves.filter((l) => normTag(l?.tag) === "V");
+  const nChecked = vLeaves.filter((l) => l.checked === true).length;
+  const nUnchecked = vLeaves.length - nChecked;
   root.append(h("p.bp-cap", richText(`${entry.label}: ${band.dot} in ${band.barrier}, type ${band.type}. Offsets are literature values at 0-10 K (display only; no solver reads them). `
     + `Sources: ${(band.sources || []).join("; ")}. `
-    + (anyV ? "The [V] values are recalled from those reviews and have not been re-checked against the papers. " : "")
+    + (nChecked ? `${nChecked} [V] value${nChecked === 1 ? " was" : "s were"} checked against the source tables (2026-10-13). ` : "")
+    + (nUnchecked ? `${nUnchecked} [V] value${nUnchecked === 1 ? " is" : "s are"} recalled from the reviews and not yet re-checked against the papers. ` : "")
     + "Level split: inverse-mass rule, clamped to 0.85 of each offset [A].")));
   const tags = [band.Eg_barrier.tag, sel.Eg.tag, sel.dEc.tag, sel.dEv.tag].map((t) => normTag(t));
   root.dataset.ex = EX.toFixed(4);
