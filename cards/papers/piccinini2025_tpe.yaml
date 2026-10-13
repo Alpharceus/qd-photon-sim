@@ -14,7 +14,6 @@ device:
     params:
       lambda_nm: {value: 783.38, unit: nm, tag: V, where: "text p.1-2 and Fig 1a (neutral exciton X at 783.38 nm)"}
       tau_bare_ns: {value: 0.2, unit: ns, tag: V, where: "abstract (decay time ~200 ps) and Methods (identical emission rate Gamma = (200 ps)^-1 for all transitions)"}
-      fss_ueV: {value: 12.0, unit: ueV, tag: V, where: "Fig 1 caption (FSS approx 12 ueV)"}
       E_b_meV: {value: 4.0, unit: meV, tag: V, where: "text p.2 (biexciton at 785.38 nm, binding energy approx 4.0 meV)"}
       gamma_xx_ratio: {value: 1.0, unit: "1", tag: V, where: "Methods (identical emission rate for all transitions, so Gamma_XX = Gamma_X)"}
       gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: A, source: "Methods: the four-level master equation has no dephasing term (only radiative Lindblad terms); 0 is the paper's model, not a measured value"}
@@ -50,3 +49,4 @@ fits: []
 
 history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: sibling card piccinini2025_tpe (tpe drive, E_b 4.0, Delta -2 meV = E_b/2), g2 0.009+-0.002 M"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 12.0 ueV [V] (Fig 1 caption (FSS approx 12 ueV)) is no longer carried by the card"}

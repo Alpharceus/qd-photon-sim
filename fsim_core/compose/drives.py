@@ -71,8 +71,10 @@ OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt"}      # abo
 OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion", "s_0", "s_sat", "coherent_fraction"}
 OBS_INCOHERENT_CW = _COMMON | _CW_RATES
 # devlib-p10e: EL decay time, binned (GHz) histogram g2 and gated HOM for pulsed electrical drives; IRF-convolved g2 for cw
-OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated", "spectral_overlap"}
-OBS_ELECTRICAL_CW = _COMMON | _CW_RATES | {"tau_EL_ps", "g2_irf", "spectral_overlap"}
+# R2 dead controls: F_dot = delivered pump Fano factor (mechanism, eta_cap, impedances, SET pricing), hom_gate_fraction = photons in
+# the HOM gate (gate start / width)
+OBS_ELECTRICAL_PULSED = _COMMON | _PULSED | {"tau_EL_ps", "g2_binned", "hom_I_gated", "hom_gate_fraction", "spectral_overlap", "F_dot"}
+OBS_ELECTRICAL_CW = _COMMON | _CW_RATES | {"tau_EL_ps", "g2_irf", "spectral_overlap", "F_dot"}
 
 
 @dataclass(frozen=True)
@@ -310,10 +312,15 @@ def _incoherent_plan(self, vals, em, rt, relax_name, shell):
     cap2 = bool(g("cap2")) if not shell else False
     inputs = {"pump_P_over_Psat": pump, "cap2": cap2, "reexcitation": not shell,
               "relax_param": relax_name}
+    bright = 1.0
     if shell:
         inputs["b_dark"] = float(g("b_dark"))
         if not 0.0 <= inputs["b_dark"] <= 1.0:
             raise ValueError(f"b_dark must be in [0, 1], got {inputs['b_dark']!r}")
+        # R2 F10c [A]: a fraction b_dark of the carriers relaxing p -> s ends in the optically dark exciton (spin flip in the
+        # relaxation), so only (1 - b_dark) of the pump loads the bright state: rate_bright = (1 - b_dark) rate. The dark state
+        # is not re-emitted (no dark -> bright flip in this model). b_dark = 0 multiplies by exactly 1 (bit-identical).
+        bright = 1.0 - inputs["b_dark"]
     # FX2b: trap refilling, uncorrelated background, thermal escape/recapture (all [A]/[E]; 0 = the original scheme)
     names = {p.name for p in self.params}
     for nm, lo, hi in (("p_refill", 0.0, 0.9), ("bg_frac", 0.0, 0.99), ("E_act_meV", 0.0, math.inf),
@@ -328,7 +335,7 @@ def _incoherent_plan(self, vals, em, rt, relax_name, shell):
     needs = frozenset({"cascade"}) if cap2 else frozenset()
     if cw:
         # P/P_sat = 1 means the pump rate equals the total X decay rate [A]
-        rate = pump * (float(rt.Gamma_ns) + float(rt.k_nr_ns))
+        rate = pump * bright * (float(rt.Gamma_ns) + float(rt.k_nr_ns))
         return DrivePlan(family="incoherent", timing="cw", f_rep_MHz=None, target="X",
                          pump_rate_ns=rate, tau_on_ns=0.0, pump_ratio=pump,
                          relax_ns=relax_ps * 1e-3, needs=needs, inputs=inputs)
@@ -338,7 +345,7 @@ def _incoherent_plan(self, vals, em, rt, relax_name, shell):
     # rect window: mean excitations per pulse p*tau_on = P/P_sat, so p_X = 1 - exp(-P/P_sat) [DR]
     inputs["window_ps"] = window_ps
     return DrivePlan(family="incoherent", timing="pulsed", f_rep_MHz=f_rep, target="X",
-                     pump_rate_ns=pump / tau_on, tau_on_ns=tau_on, pump_ratio=pump,
+                     pump_rate_ns=pump * bright / tau_on, tau_on_ns=tau_on, pump_ratio=pump,
                      relax_ns=relax_ps * 1e-3, needs=needs, inputs=inputs)
 
 
@@ -398,7 +405,7 @@ P_SHELL = PlannedDrive(
            help="p-shell to s-shell relaxation time (the HOM jitter)."),
         _FREP,
         _P("b_dark", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC_A, group="advanced",
-           help="Branching fraction of relaxation into a dark state."),
+           help=r"Branching fraction $b_{\mathrm{dark}}$ of the p -> s relaxation into an optically dark state; only $(1 - b_{\mathrm{dark}})$ of the pump loads the bright exciton (the dark state is not re-emitted)."),
     ) + _REFILL + (
         _P("E_act_meV", "meV", 0.0, lo=0.0, hi=200.0, tag="E", source="Arrhenius activation of the thermal "
            "escape of s-shell carriers to the p shell / wetting layer; [E] class model, no paper activation", group="advanced",
@@ -435,7 +442,7 @@ _USES = {
     "m4a": ("eps_cycle", "radius_nm", "R_T_ohm"),
     "m4b": ("eps_cycle", "radius_nm", "R_T_ohm"),
     "m4c": ("eps_cycle", "radius_nm", "R_T_ohm"),
-    "m5a": ("eta_boost", "dg_inj_factor", "F_p_rail"),
+    "m5a": ("eta_boost", "F_p_rail"),
 }
 _MU_IGNORED = ("M-3 pulsed", "M-4 SET/turnstile")      # mu is computed / fixed by these
 
@@ -462,7 +469,7 @@ def _build_interface(self, vals, mech_choices):
             p.pop(a, None)
             p.pop(b, None)
     iface = drive_mech.mech_from_card(card, p, T_K=float(g("T_junction_K")),
-                                      mu=float(g("mu")), eta=float(g("eta_capture")))
+                                      mu=float(g("mu")) if _has(self, "mu") else 0.5, eta=float(g("eta_capture")))
     return iface, g
 
 
@@ -610,9 +617,14 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
     ps = [
         _P("mechanism", "", default_mech, choices=choices, tag="A", source="drive_mech.roster() names",
            sweepable=False, help="Injection mechanism (drive_mech roster)."),
-        _P("mu", "1", 0.5, lo=0.0, hi=20.0, tag="A", source=_SRC_DM,
-           visible_if={"mechanism": [m for m in choices if m not in _MU_IGNORED]},
-           help=r"Operating point $\mu$: mean carriers loaded per window."),
+    ]
+    if not pulsed:
+        # R2 F10b: mu is the cw operating point. Every pulsed mechanism ignores it (M-3 computes mu = eta I tau / e from the
+        # current, the M-4 turnstile fixes mu = 1), so the pulsed kind does not show it (old saved specs still load: removed.py).
+        ps.append(_P("mu", "1", 0.5, lo=0.0, hi=20.0, tag="A", source=_SRC_DM,
+                     visible_if={"mechanism": [m for m in choices if m not in _MU_IGNORED]},
+                     help=r"Operating point $\mu$: mean carriers loaded per window."))
+    ps += [
         _P("eta_capture", "1", eta_default, lo=0.0, hi=1.0, scale="lin", tag="A", source=_SRC_A,
            help=r"Delivery / capture efficiency $\eta_{\mathrm{cap}}$ into the dot."),
         _P("T_junction_K", "K", 300.0, lo=1.0, hi=500.0, tag="A", source=_SRC_DM,
@@ -652,8 +664,6 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
                       help=r"Tunnel resistance $R_{\mathrm T}$ (needs $R_{\mathrm T} \gg R_{\mathrm Q}$)."),
         "eta_boost": _P("eta_boost", "1", 2.0, lo=1.0, hi=20.0, tag="A", source=_SRC_DM,
                         help=r"Capture-efficiency boost $\eta_{\mathrm{boost}}$ of resonant-tunnelling injection."),
-        "dg_inj_factor": _P("dg_inj_factor", "1", 0.5, lo=0.0, hi=1.0, tag="A", source=_SRC_DM,
-                            help=r"Injection-broadening scale factor $f_{\mathrm{inj}}$ of resonant-tunnelling injection."),
     }
     for name, p in spec.items():
         labs = [m for m in _labels_using(name) if m in choices]
@@ -756,7 +766,7 @@ STARK_GATED_RESONANT = PlannedDrive(
     ),
     refs=("p3-electrical-brief.md 2.1 (Cao 2015 gated resonance), 2.2 (Bennett gate); polaron.PulseTrain det_profile",),
     provides=frozenset({"coherent_pulse"}),
-    observables=OBS_COHERENT_PULSED | {"g2_binned", "hom_I_gated", "spectral_overlap"}, planner=_plan_stark_gated)
+    observables=OBS_COHERENT_PULSED | {"g2_binned", "hom_I_gated", "hom_gate_fraction", "spectral_overlap"}, planner=_plan_stark_gated)
 
 
 # ======================================================================

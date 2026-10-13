@@ -51,7 +51,7 @@ _CONVERT = {
 _ADV = "advanced"
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
 _TEX = {
-    "lambda_nm": r"\lambda", "tau_bare_ns": r"\tau_{\mathrm{bare}}", "fss_ueV": r"\delta_{\mathrm{FSS}}",
+    "lambda_nm": r"\lambda", "tau_bare_ns": r"\tau_{\mathrm{bare}}",
     "E_b_meV": r"E_{\mathrm b}", "gamma_xx_ratio": r"\Gamma_{XX}/\Gamma_{X}", "gamma_star_4K_ns": r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)",
     "a_ac_ns_per_K": r"a_{\mathrm{ac}}", "alpha_ps2": r"\alpha", "D_c_eV": r"D_{\mathrm c}", "D_v_eV": r"D_{\mathrm v}",
     "rho_kg_m3": r"\rho", "c_LA_m_s": r"c_{\mathrm{LA}}", "l_xy_nm": r"\ell_{xy}", "l_z_nm": r"\ell_{z}",
@@ -62,7 +62,6 @@ _TEX = {
 _PARAMS = {
     "lambda_nm": ("nm", "main", r"Zero-phonon exciton emission wavelength $\lambda$; $E_X = 1239841.98/\lambda$ meV with $\lambda$ in nm."),
     "tau_bare_ns": ("ns", "main", r"Bare (homogeneous-medium) exciton radiative lifetime $\tau_{\mathrm{bare}}$; $\Gamma_0 = 1/\tau_{\mathrm{bare}}$."),
-    "fss_ueV": ("ueV", "main", r"Exciton fine-structure splitting $\delta_{\mathrm{FSS}}$ (a quantum beat, not dephasing)."),
     "E_b_meV": ("meV", "main", r"Biexciton binding energy $E_{\mathrm b}$, positive = binding ($E_{XX} = 2E_X - E_{\mathrm b}$)."),
     "gamma_xx_ratio": ("1", "main", r"Radiative rate ratio $\Gamma_{XX}/\Gamma_X$ of the biexciton to the exciton."),
     "gamma_star_4K_ns": ("1/ns", "main", r"Pure-dephasing linewidth $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}} = 2/T_2^{*}$ at 4 K "
@@ -120,7 +119,7 @@ _BLINK = ParamSpec(
 _INPUT_FIELDS = {
     "E_X_meV": "lambda_nm", "lambda_nm": "lambda_nm", "n_host": "n_host", "gamma0_ns": "tau_bare_ns",
     "k_nr_ns": "k_nr_ns", "delta_xx_meV": "E_b_meV", "gamma_xx_ratio": "gamma_xx_ratio",
-    "fss_ueV": "fss_ueV", "dipole": "dipole", "sigma_sd_ueV": "sigma_sd_ueV", "tau_sd_ns": "tau_sd_ns",
+    "dipole": "dipole", "sigma_sd_ueV": "sigma_sd_ueV", "tau_sd_ns": "tau_sd_ns",
 }
 
 
@@ -237,7 +236,7 @@ class DataMaterial(Material):
             E_X_meV=HC_MEV_NM / lam, lambda_nm=lam, n_host=float(g("n_host")),
             gamma0_ns=1.0 / tau, k_nr_ns=float(g("k_nr_ns")), gamma_star_ns=gs, phonon=ph,
             delta_xx_meV=-float(g("E_b_meV")), gamma_xx_ratio=float(g("gamma_xx_ratio")),
-            fss_ueV=float(g("fss_ueV")), transitions=frozenset(trans), dipole=str(g("dipole")),
+            fss_ueV=0.0, transitions=frozenset(trans), dipole=str(g("dipole")),
             dEdT_meV_K=_dEdT_meV_K(self.varshni, T), sigma_sd_ueV=float(g("sigma_sd_ueV")),
             tau_sd_ns=float(g("tau_sd_ns")), inputs=inputs)
 

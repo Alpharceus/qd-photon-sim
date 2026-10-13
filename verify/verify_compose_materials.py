@@ -36,7 +36,7 @@ def check(name, ok, detail=""):
 KINDS = ["inas_gaas_sk", "ingaas_gaas", "gaas_algaas_droplet", "inas_inp_cband",
          "inas_ingaas_metamorphic_cband", "inp_gainp_red", "ingan_gan", "gan_aln", "cdse_znse",
          "cspbbr3_colloidal"]
-REQUIRED = ["lambda_nm", "tau_bare_ns", "fss_ueV", "E_b_meV", "gamma_xx_ratio", "gamma_star_4K_ns",
+REQUIRED = ["lambda_nm", "tau_bare_ns", "E_b_meV", "gamma_xx_ratio", "gamma_star_4K_ns",
             "a_ac_ns_per_K", "alpha_ps2", "D_c_eV", "D_v_eV", "rho_kg_m3", "c_LA_m_s", "l_xy_nm", "l_z_nm",
             "n_host", "E_LO_meV", "k_nr_ns", "sigma_sd_ueV", "tau_sd_ns", "charge_state", "dipole"]
 HBAR_MEV_NS = 6.582119569e-4          # independent CODATA value (meV ns)

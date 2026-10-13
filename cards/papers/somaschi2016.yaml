@@ -19,7 +19,6 @@ device:
     kind: ingaas_gaas
     params:
       tau_bare_ns: {value: 1.3, unit: ns, tag: V, where: "p.3 text (bulk exciton lifetime of 1.3 ns assumed for F_P)"}
-      fss_ueV: {value: 15.0, unit: ueV, tag: V, where: "p.5 text (FSS of 15 ueV used for QD3; 10-15 ueV on p.4); a beat, not used by the two-level engine"}
       gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "no pure-dephasing number in the main text; registry InGaAs class range 0-1 ueV (brief 4)"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "T = 4 K equals the reference temperature; no slope measured"}
   structure:
@@ -91,3 +90,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation V_corr = I/(1-g2) (uncapped, can exceed 1): M_corr fail -> pass (model 0.89 [0.82,0.97] -> 0.920 [0.848,1.004]; envelope-driven, weak)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: M_corr expect pass -> pass-envelope (central 0.920; paper value only at the top of the gamma* envelope [0.848, 0.999])"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 15.0 ueV [V] (p.5 text (FSS of 15 ueV used for QD3; 10-15 ueV on p.4); a beat, not used by the two-level engine) is no longer carried by the card"}

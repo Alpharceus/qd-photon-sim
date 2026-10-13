@@ -833,6 +833,112 @@ check("13c. electrical_cw in a cavity (rate solver): Gamma_ns / tau_ps of the re
       "(closed form, 1e-9)", abs(sc13["Gamma_ns"] - Gam_p) < 1e-9 * Gam_p and abs(sc13["tau_ps"] - 1e3 / Gam_p) < 1e-6 and Gam_p < Gam_un - 1e-6,
       f"{sc13['Gamma_ns']:.6f} vs {Gam_p:.6f} (unpumped {Gam_un:.6f})")
 
+
+# ------------------------------------------------------------------ 14. R2 dead controls (F10, F10b, F10c, N1)
+from fsim_core.compose.spec import validate_spec                       # noqa: E402
+
+
+def ctx_of(sp, solver="auto"):
+    spec = engine._as_spec(sp)
+    ents = engine._entries(spec)
+    vals = engine._central_values(engine._leaves(spec, ents))
+    return engine._run_point(ents, vals, 4.2, solver)
+
+
+def F_dot_of(sp, solver="auto"):
+    return OB.get_observable("F_dot").compute(ctx_of(sp, solver))
+
+
+# F_dot = 1 - eta (1 - F_pump), hand arithmetic with the documented F_pump of each mechanism
+cw14 = lambda p: cw_spec(p, MAT)                                                           # noqa: E731
+check("14a. F_dot of M-2 quiet rail (Z_d 3e3, Z_j 7e3 -> F_pump = Z_j/(Z_j + Z_d) = 0.7, eta 0.6) = 1 - 0.6 x 0.3 = 0.82; "
+      "of M-1 (F_pump = 1) = 1 for any eta",
+      abs(F_dot_of(cw14({"mechanism": "M-2 quiet-rail", "Z_drive_ohm": 3e3, "Z_junction_ohm": 7e3, "eta_capture": 0.6})) - 0.82) < 1e-12
+      and F_dot_of(cw14({"mechanism": "M-1 poisson-rail", "eta_capture": 0.2})) == 1.0)
+Fp_reg = 1.0 - (1.0 - 0.7) * 1e8 / (1e8 + 1e9)                                             # finite regulation bandwidth [E]
+check("14b. F_dot of M-2 with finite regulation bandwidth (f_reg 1e8, f_sample 1e9): 1 - 0.3 f_reg/(f_reg + f_s) = 0.97273 (eta 1)",
+      abs(F_dot_of(cw14({"mechanism": "M-2 quiet-rail", "Z_drive_ohm": 3e3, "Z_junction_ohm": 7e3, "eta_capture": 1.0,
+                         "f_reg_Hz": 1e8, "f_sample_Hz": 1e9})) - Fp_reg) < 1e-12 and abs(Fp_reg - 0.972727272727) < 1e-9)
+tq = {"mechanism": "M-4 SET/turnstile", "eps_cycle": 0.05}
+check("14c. F_dot of a priced SET turnstile: eps_cycle = 0.05 when the island is cold and large (4 K, R 20 nm, R_T 1e6), 1 when it is "
+      "infeasible (300 K, or R_T below the quantum of resistance 25.8 kohm)",
+      abs(F_dot_of(espec({**tq, "T_junction_K": 4.0}, MAT)) - 0.05) < 1e-12
+      and F_dot_of(espec({**tq, "T_junction_K": 300.0}, MAT)) == 1.0
+      and F_dot_of(espec({**tq, "T_junction_K": 4.0, "R_T_ohm": 1e4}, MAT)) == 1.0)
+check("14d. F_dot of the pulsed rail M-3 (F_rail 0.5, eta 0.4) = 1 - 0.4 x 0.5 = 0.8; the drive advertises F_dot and hom_gate_fraction",
+      abs(F_dot_of(espec({"F_p_rail": 0.5, "eta_capture": 0.4, "I_uA": 1.0, "tau_on_ns": 1.0}, MAT)) - 0.8) < 1e-12
+      and "F_dot" in ep.observables and "hom_gate_fraction" in ep.observables and "F_dot" in ec.observables)
+# hom_gate_fraction = e^{-Gd t0} - e^{-Gd (t0 + T)}
+c14 = ctx_of(espec({**M3, "hom_gate_ps": 100.0, "hom_gate_start_ps": 50.0}, MAT))
+Gd14 = float(c14.rt.Gamma_ns) + float(c14.rt.k_nr_ns)
+want14 = math.exp(-Gd14 * 0.05) - math.exp(-Gd14 * 0.15)
+c14b = ctx_of(espec({**M3, "hom_gate_ps": 100.0, "hom_gate_start_ps": 0.0}, MAT))
+c14c = ctx_of(espec(M3, MAT))
+check("14e. hom_gate_fraction = exp(-G t0) - exp(-G (t0 + T)) for a rect gate (t0 50 ps, T 100 ps, 1e-9), falls with the start time, = 1 with no gate",
+      abs(OB.get_observable("hom_gate_fraction").compute(c14) - want14) < 1e-9
+      and OB.get_observable("hom_gate_fraction").compute(c14b) > OB.get_observable("hom_gate_fraction").compute(c14)
+      and OB.get_observable("hom_gate_fraction").compute(c14c) == 1.0,
+      f"{OB.get_observable('hom_gate_fraction').compute(c14):.6f} vs {want14:.6f}")
+# removed parameters: registry, old saved specs, engine
+reg14 = {k: {p.name for p in R.get("drive", k).params} for k in ("electrical_pulsed", "electrical_cw")}
+check("14f. removed from the registry: electrical_pulsed has no mu / dg_inj_factor, electrical_cw has no dg_inj_factor and keeps mu; "
+      "no material has fss_ueV",
+      "mu" not in reg14["electrical_pulsed"] and "dg_inj_factor" not in reg14["electrical_pulsed"]
+      and "dg_inj_factor" not in reg14["electrical_cw"] and "mu" in reg14["electrical_cw"]
+      and all("fss_ueV" not in {p.name for p in R.get("material", k).params} for k in R.kinds("material")))
+old14 = espec({**M3}, {**MAT, "fss_ueV": 25.0})
+old14["drive"]["params"]["mu"] = 0.7
+old14["drive"]["params"]["dg_inj_factor"] = 0.3
+v14 = validate_spec(old14)
+msgs14 = [i["message"] for i in v14["issues"] if i["level"] == "warning" and "removed" in i["message"]]
+bad14 = espec({**M3, "nonsense_key": 1.0}, MAT)
+a14, b14 = engine.evaluate_spec(old14)["scalars"], engine.evaluate_spec(espec(M3, MAT))["scalars"]
+check("14g. an old spec that still carries the removed keys (material.fss_ueV, drive.mu, drive.dg_inj_factor) loads: ok, one warning each, the engine "
+      "ignores them (same g2, n_ph as without); a genuinely unknown key is still an error",
+      v14["ok"] and len(msgs14) == 3 and a14["g2_0"] == b14["g2_0"] and a14["n_ph"] == b14["n_ph"] and not validate_spec(bad14)["ok"],
+      str(msgs14)[:200])
+# b_dark (p_shell): only (1 - b_dark) of the pump loads the bright state, so b_dark = 0.4 at pump P equals b_dark = 0 at pump 0.6 P
+def pshell(**dp):
+    return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": MAT},
+            "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": "p_shell", "params": dp},
+            "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+
+
+ps_a, ps_b = engine.evaluate_spec(pshell(pump=0.5, b_dark=0.4))["scalars"], engine.evaluate_spec(pshell(pump=0.3))["scalars"]
+ps_0 = engine.evaluate_spec(pshell(pump=0.5))["scalars"]
+check("14h. p_shell b_dark: b_dark 0.4 at pump 0.5 equals b_dark 0 at pump 0.3 (bright loading (1 - b) P; g2, n_ph identical) and differs from b_dark 0",
+      ps_a["g2_0"] == ps_b["g2_0"] and ps_a["n_ph"] == ps_b["n_ph"] and abs(ps_a["n_ph"] - ps_0["n_ph"]) > 1e-3,
+      f"n_ph {ps_a['n_ph']:.5f} {ps_b['n_ph']:.5f} {ps_0['n_ph']:.5f}")
+# phonon_assisted p_trion: the per-pulse probability p sin^2(Theta/2) is 0 at the default 10 pi and p at 11 pi: n_ph x (1 - p)
+def phas(area, p):
+    return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": MAT},
+            "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": "phonon_assisted", "params": {"area_pi": area, "p_trion": p}},
+            "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+
+
+n0, n1 = engine.evaluate_spec(phas(11.0, 0.0))["scalars"]["n_ph"], engine.evaluate_spec(phas(11.0, 0.4))["scalars"]["n_ph"]
+n10 = engine.evaluate_spec(phas(10.0, 0.4))["scalars"]["n_ph"]
+n10_0 = engine.evaluate_spec(phas(10.0, 0.0))["scalars"]["n_ph"]
+check("14i. phonon_assisted p_trion acts at an odd multiple of pi (11 pi: n_ph x (1 - p) = x 0.6, 1e-9) and not at the default 10 pi (sin^2(5 pi) = 0)",
+      abs(n1 / n0 - 0.6) < 1e-9 and abs(n10 / n10_0 - 1.0) < 1e-9, f"{n1 / n0:.9f} {n10 / n10_0:.9f}")
+
+
+# N1: hom_vs_dt is advertised by resonant_pulse; the jc solver cannot compute it (identical photons only) and says so
+def rp14(struct, solver="auto"):
+    return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": {}},
+            "structure": {"kind": struct, "params": {}}, "drive": {"kind": "resonant_pulse", "params": {}},
+            "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": solver}
+
+
+ev_j, ev_l = engine.evaluate_spec(rp14("open_cavity")), engine.evaluate_spec(rp14("bulk_planar"))
+check("14j. N1: resonant_pulse advertises hom_vs_dt; with the jc solver the run carries no series and a named reason "
+      "(scalars.series_unavailable), with the lindblad solver it carries the series and no such entry",
+      "hom_vs_dt" in R.get("drive", "resonant_pulse").observables
+      and ev_j["scalars"]["solver"] == "jc" and "hom_vs_dt" not in ev_j["series"]
+      and "Jaynes-Cummings" in ev_j["scalars"].get("series_unavailable", {}).get("hom_vs_dt", "")
+      and ev_l["scalars"]["solver"] != "jc" and len(ev_l["series"]["hom_vs_dt"]["y"]) == 25
+      and "series_unavailable" not in ev_l["scalars"], str(ev_j["scalars"].get("series_unavailable"))[:80])
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_electrical checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

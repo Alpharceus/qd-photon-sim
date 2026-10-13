@@ -42,29 +42,11 @@ COMPAT = ROOT / "verify" / "data" / "compose_compat.yaml"
 # KNOWN_OPEN: {id, finding, desc, match}. `match` maps a key of the failing check (slice, check, material, structure,
 # drive, solver, param, request) to a value or a list of values; all keys must match. Delete an entry when its fix lands.
 KNOWN_OPEN = [
-    {"id": "F3", "finding": 3, "desc": "edge_ridge raises ValueError (index table 650-800 nm) instead of a named incompatibility",
-     "match": {"structure": "edge_ridge", "check": "runs"}},
-    {"id": "F3b", "finding": 3, "desc": "edge_ridge parameter probe crashes outside the red InP wavelength band",
-     "match": {"check": "dead_control", "param": r"re:structure\.edge_ridge\..*"}},
-    {"id": "F4", "finding": 4, "desc": "strong-coupling remedy 'use solver jc' names a solver that then refuses the run",
-     "match": {"check": "remedy"}},
     {"id": "F5", "finding": 5, "desc": "the bare observable id the Composer sends for hom_V is not one of its conventions; the API accepts a bad convention",
      "match": {"check": ["composer_request", "api_convention"]}},
     {"id": "F6", "finding": 6, "desc": "drives advertise observables the engine returns as NaN at their defaults (hom_I / hom_V of cw drives, B_* of the cw variants, hom_I_gated without a gate)",
      "match": {"check": "advertised", "drive": ["electrical_cw", "above_band[cw]", "p_shell[cw]", "electrical_pulsed", "stark_gated_resonant"],
                "request": ["hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_I_gated", "hom_vs_dt"]}},
-    {"id": "N1", "finding": 6, "desc": "NEW (found by this matrix): resonant_pulse advertises hom_vs_dt but the jc solver returns no HOM-vs-separation series (engine._series skips jc)",
-     "match": {"check": "advertised", "request": "hom_vs_dt", "solver": "jc"}},
-    {"id": "F10", "finding": 10, "desc": "material.dipole is read by no structure, rate or observable",
-     "match": {"check": "dead_control", "param": r"re:material\..*\.(dipole|fss_ueV)"}},
-    {"id": "F10b", "finding": 10, "desc": "NEW (found by this matrix): the generic electrical drives' transport parameters (R_T, Z, C_dep, eps_cycle, ... "
-                                           "and non-default mechanisms) move no output on any probe chain; they feed only the RT-edge passthrough",
-     "match": {"check": "dead_control", "param": r"re:drive\.electrical_(cw|pulsed)\..*"}},
-    {"id": "F10c", "finding": 10, "desc": "UNCONFIRMED (found by this matrix): drive.p_shell.b_dark, drive.phonon_assisted.p_trion and drive.stark_gated_resonant.hom_gate_start_ps "
-                                           "moved no output on any probe chain; the owner must confirm they are dead or name the context in compose_compat.yaml",
-     "match": {"check": "dead_control", "param": ["drive.p_shell.b_dark", "drive.phonon_assisted.p_trion", "drive.stark_gated_resonant.hom_gate_start_ps"]}},
-    {"id": "F11b", "finding": 11, "desc": "invariant of finding 11: a valid pulsed coherent run with eta_prep < 0.05 carries a note (stark_gated / dichromatic at poor-detuning materials do not)",
-     "match": {"check": "prep_note"}},
 ]
 
 
@@ -133,10 +115,14 @@ def run_point(job):
         notes = [str(n) for n in engine._notes(ctx)]
     except Exception:                                                          # noqa: BLE001
         notes = []
+    try:
+        gone = {k: str(v) for k, v in engine._series_unavailable(ctx).items()}   # R2 N1: an advertised series left out WITH a reason
+    except Exception:                                                          # noqa: BLE001
+        gone = {}
     plan = ctx.plan
     out.update(outcome="ok" if valid else "invalid", valid=bool(valid), reasons=[str(r) for r in reasons],
                solver=ctx.solver.name, regime=str(ctx.rt.regime), family=str(plan.family), timing=str(plan.timing),
-               obs=obs, series=series, notes=notes, seconds=time.time() - t0)
+               obs=obs, series=series, series_unavailable=gone, notes=notes, seconds=time.time() - t0)
     return out
 
 
@@ -175,6 +161,7 @@ def probe_entry(task):
     for a phonon solver, a TPE cascade or a hot dot is still found."""
     from fsim_core.compose import registry as R
     axis, kind, chains, context = task["axis"], task["kind"], task["chains"], task["context"]
+    extra_cands = task.get("candidates", {})
     entry = R.get(axis, kind)
     res = {}
     base_cache = {}
@@ -192,7 +179,7 @@ def probe_entry(task):
         notes, verdict = [], None
         for chain, chain_over in chains:
             over = dict(chain_over)
-            over.update(context.get(path, {}))
+            over.update(context.get(f"{axis}.{kind}.{p.name}", context.get(path, {})))      # a per-kind key wins over the axis-wide one
             if p.visible_if:
                 for gname, allowed in p.visible_if.items():
                     allowed = [allowed] if isinstance(allowed, (str, bool, int, float)) else list(allowed or [])
@@ -223,7 +210,7 @@ def probe_entry(task):
                     cands = [x * 2.0 if x else 1.0, x * 0.5 if x else -1.0, x + 1.0]
                 if isinstance(p.default, int):
                     cands = [int(round(c)) for c in cands]
-            cands = [c for c in cands if c != dflt]
+            cands = [c for c in extra_cands.get(path, []) + cands if c != dflt]      # declared regimes first (R2 F10b)
             if not cands:
                 verdict = ("skip", "a single choice: nothing to move")
                 break
@@ -386,6 +373,8 @@ def combo_checks(r, ctx):
             ys = r["series"][oid]
             if not ys or not all(is_num(y) for y in ys):
                 fails.append(("advertised", {"request": oid}, f"series {oid} not finite"))
+        elif r.get("series_unavailable", {}).get(oid):
+            pass                                   # left out on purpose, with the reason the run reports (R2 N1)
         else:
             fails.append(("advertised", {"request": oid}, f"{oid} not produced"))
     return fails
@@ -510,7 +499,8 @@ def main():
                 mech = next((q for q in ent.params if q.name == "mechanism" and q.choices), None)
                 if mech:
                     chains += [((m, s, d), {"drive.mechanism": c}) for c in mech.choices]
-            tasks.append({"axis": axis, "kind": kind, "chains": chains, "context": ctxs})
+            tasks.append({"axis": axis, "kind": kind, "chains": chains, "context": ctxs,
+                          "candidates": compat["dead_control"].get("candidates", {})})
     if quick:
         tasks = tasks[:6]
 

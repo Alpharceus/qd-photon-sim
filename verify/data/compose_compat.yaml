@@ -86,12 +86,27 @@ dead_control:
     material.E_LO_meV: {material.gamma_T_model: lo_phonon, material.b_LO_meV: 500.0}
     material.b_LO_meV: {material.gamma_T_model: lo_phonon}
     drive.tau_refill_ps: {drive.p_refill: 0.3}
-    drive.b_dark: {drive.p_refill: 0.3}
     drive.E_act_meV: {drive.k0_ns: 1.0}
     drive.p_trion: {drive.eid_ps: 20.0}
+    # a key `drive.<kind>.<param>` beats the axis-wide `drive.<param>` above (R2 F10c)
+    drive.tpe.p_trion: {}                                    # TPE has no excitation-induced dephasing (eid_ps): p_trion acts alone
+    drive.phonon_assisted.p_trion: {drive.area_pi: 11.0}     # p_trion(area) = p sin^2(area/2): zero at the default 10 pi, 1 at 11 pi
+    # R2 F10b: electrical drives. The pump Fano factor F_dot (observable) is the output of the mechanism parameters.
+    drive.R_drive_ohm: {drive.C_dep_F: 1.0e-12}              # the rail RC shortens the M-3 window only when R AND C are given
+    drive.C_dep_F: {drive.R_drive_ohm: 1.0}
+    drive.f_reg_Hz: {drive.f_sample_Hz: 1.0e+9}               # finite regulation bandwidth of the quiet rail needs both numbers
+    drive.f_sample_Hz: {drive.f_reg_Hz: 1.0e+9}
+    drive.eta_boost: {drive.F_p_rail: 0.5}                   # eta_boost thins a Fano factor: it shows only when F_pump < 1
+    drive.eps_cycle: {drive.T_junction_K: 4.0}               # a Coulomb-blockade element is feasible (F_p = eps_cycle) only when cold
+    drive.radius_nm: {drive.T_junction_K: 4.0}
+    drive.R_T_ohm: {drive.T_junction_K: 4.0}
     drive.hom_gate_shape: {drive.hom_gate_ps: 100.0}
     drive.hom_gate_start_ps: {drive.hom_gate_ps: 100.0}
     drive.hom_jitter_ps: {drive.hom_gate_ps: 100.0}
+  # extra values to try for a parameter BEFORE the generic grid (the grid is lo..hi of the ParamSpec). A parameter that acts only in a narrow
+  # regime of its own range names that regime here; the generic candidates are still tried afterwards.
+  candidates:
+    drive.gate_ps: [1000.0, 3000.0]     # a counting gate acts when it is comparable to the lifetimes (~1 ns); the range goes to 100 ns
   exempt:
     drive.resonant_pulse.target: "the X+ choice needs a charged-exciton transition the default material does not have (refused with a named reason)"
     material.*.charge_state: "only enables a transition for drive.target X+/X-; judged by the charge_state pair check"

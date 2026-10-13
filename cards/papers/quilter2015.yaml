@@ -14,7 +14,6 @@ device:
     params:
       lambda_nm: {value: 953.7, unit: nm, tag: DR, where: "text p.1 (single QD peaks at energies close to 1.3 eV; converted 1239.84 / 1.30 = 953.7 nm, consistent with the extraction's about 954 nm)"}
       tau_bare_ns: {range: [0.8, 1.2], unit: ns, tag: E, source: "exciton radiative lifetime not stated in Quilter; registry ingaas_gaas class range [E], envelope only"}
-      fss_ueV: {value: 13.0, unit: ueV, tag: V, where: "text p.1 (fine-structure splitting 0.013 meV = 13 ueV)"}
       E_b_meV: {value: 1.96, unit: meV, tag: V, where: "text p.3 / Fig 2 caption (2X biexciton peak at -1.96 meV from the X transition)"}
       charge_state: {value: "X", tag: V, where: "text p.1 (neutral exciton X; two-level treatment)"}
   structure:
@@ -48,3 +47,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9 polaron solver: CX_max expect unavailable -> pass (model 0.644 [0.636, 0.650] vs 0.67 +- 0.06)"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 13.0 ueV [V] (text p.1 (fine-structure splitting 0.013 meV = 13 ueV)) is no longer carried by the card"}

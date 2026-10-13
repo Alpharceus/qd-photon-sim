@@ -186,6 +186,18 @@ def _series(ctx) -> dict:
     return out
 
 
+def _series_unavailable(ctx) -> dict:
+    """{series id: reason} of an advertised series the run does not produce on purpose (R2 N1, a named reason instead of a
+    silently missing curve). hom_vs_dt is the Gaussian average over the relative spectral-diffusion detuning of two photons dt
+    apart, which needs the overlap of two photons with a DETUNED second emitter. The jc solver has only the two-time overlap of
+    two identical photons (lb.indistinguishability), so it does not compute the series; the scalar hom_I is still the jc value."""
+    if ctx.plan.timing == "pulsed" and ctx.solver.name == "jc" and "hom_vs_dt" not in ctx.res.extra.get("series", {}):
+        return {"hom_vs_dt": "not computed with the Jaynes-Cummings solver: the separation series needs the overlap of photons with a "
+                             "detuned second emitter, the jc two-time machinery has only identical photons (hom_I is the jc value "
+                             "at dt -> 0)"}
+    return {}
+
+
 # ------------------------------------------------------------------ evaluate
 def evaluate_spec(spec, T_grid=None) -> dict:
     """spec: ComposedSpec or its dict. Returns {'curves', 'scalars', 'series'}."""
@@ -242,6 +254,9 @@ def evaluate_spec(spec, T_grid=None) -> dict:
         if k in ctx.res.extra:
             scalars[k] = float(ctx.d[k])
     scalars["captions"] = captions(ctx)
+    gone = _series_unavailable(ctx)
+    if gone:
+        scalars["series_unavailable"] = gone
     if any(l.is_free for l in leaves.values()):
         scalars["range_note"] = RANGE_NOTE
     return {"curves": curves, "scalars": scalars, "series": _series(ctx)}

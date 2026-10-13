@@ -252,11 +252,11 @@ dq = drive_mech.mech_quiet_rail(mu=0.7, Z_drive_ohm=3e3, Z_junction_ohm=7e3, eta
                                 f_reg_Hz=1e6, f_sample_Hz=1e8)
 check("electrical_cw M-2 quiet-rail (with regulation bandwidth): interface == direct mech_quiet_rail",
       plq.interface == dq and plq.timing == "cw" and plq.f_rep_MHz is None and plq.tau_on_ns == 0.0)
+# R2 F10b: dg_inj_factor (no consumer) is no longer a parameter; the engine uses the mech_rti default 0.5
 plr = ec.plan({"mechanism": "M-5a RTI", "mu": 0.4, "eta_capture": 0.05, "eta_boost": 3.0,
-               "dg_inj_factor": 0.4, "F_p_rail": 1.0}, EM, RT)
+               "F_p_rail": 1.0}, EM, RT)
 check("electrical_cw M-5a RTI: interface == direct mech_rti",
-      plr.interface == drive_mech.mech_rti(mu=0.4, eta_capture_base=0.05, eta_boost=3.0,
-                                           dg_inj_factor=0.4, F_p_rail=1.0))
+      plr.interface == drive_mech.mech_rti(mu=0.4, eta_capture_base=0.05, eta_boost=3.0, F_p_rail=1.0))
 pl1 = ec.plan({"mechanism": "M-1 poisson-rail", "mu": 0.4, "eta_capture": 0.8}, EM, RT)
 check("electrical_cw M-1: interface == direct mech_poisson_rail",
       pl1.interface == drive_mech.mech_poisson_rail(mu=0.4, eta_capture=0.8))

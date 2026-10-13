@@ -13,6 +13,7 @@ from typing import Optional
 
 from . import registry as _registry
 from .params import ParamSpec, resolve_leaf
+from .removed import removed_reason
 
 SCHEMA = "fsim-composed/1"
 SOLVERS = ("auto", "rate", "lindblad", "lindblad_incoherent", "polaron", "jc")
@@ -156,6 +157,11 @@ def validate_spec(spec, registry: Optional[_registry.Registry] = None) -> dict:
         known = {p.name for p in entry.params}
         for name in blk["params"]:
             if name not in known:
+                gone = removed_reason(axis, entry.kind, name)
+                if gone:                         # an old saved spec / card: ignored, not an error (R2 F10)
+                    issues.append(_issue("warning", f"{axis}.params.{name}",
+                                         f"param {name!r} was removed from {axis} kind {entry.kind!r} and is ignored: {gone}"))
+                    continue
                 issues.append(_issue("error", f"{axis}.params.{name}",
                                      f"unknown param {name!r} for {axis} kind {entry.kind!r}; "
                                      f"known: {sorted(known)}"))

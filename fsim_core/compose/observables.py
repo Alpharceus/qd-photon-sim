@@ -541,6 +541,17 @@ def _derive(c: Context) -> dict:
     else:
         d["hom_I_gated"] = NAN
         why["hom_I_gated"] = "no HOM detection gate set (drive.hom_gate_ps = 0)"
+        d["hom_gate_fraction"] = 1.0             # no gate: every emitted photon is inside the (whole-period) window
+    # R2 dead controls (F10b): the delivered pump Fano factor of an electrical drive, F_dot = 1 - eta_cap (1 - F_pump)
+    # (loading.f8b_thin_fano; F_pump from the mechanism: shot-noise rail 1, impedance divider Z_j/(Z_j + Z_d) [E] with the
+    # finite-regulation correction, a priced Coulomb-blockade element eps_cyc, a pulsed rail F_rail). REPORTED: the counting
+    # solvers do not feed it back into g2 (their notes say so).
+    itf = plan.interface
+    if itf is not None:
+        d["F_dot"] = float(itf.F_dot)
+    else:
+        d["F_dot"] = NAN
+        why["F_dot"] = "only the electrical drives carry a pump interface (Fano factor of the carrier supply)"
     # spectral X/XX leakage through a top-hat window (nitride high-T bookkeeping, brief 4.2)
     d.update(spectral_overlap_terms(c, em))
     # FX2b: XX-line stream of a TPE cascade (cascade solver only)
@@ -654,6 +665,8 @@ _OBS_TEX = {
     "spectral_overlap": r"\varepsilon_{XX}",
     "g2_irf": r"g^{(2)}_{\mathrm{IRF}}(0)",
     "hom_I_gated": r"I_{\mathrm{HOM}}^{\mathrm{gate}}",
+    "hom_gate_fraction": r"f_{\mathrm{gate}}",
+    "F_dot": r"F_{\mathrm{dot}}",
     "linewidth_ueV": r"\hbar\Gamma_{\mathrm{tot}}",
     "detuning_ueV": r"\delta_{\mathrm{EC}}",
     "g2_0": r"g^{(2)}(0)",
@@ -726,6 +739,10 @@ _o("spectral_overlap", "X-XX spectral leakage $\\varepsilon = t_{XX}/t_X$ throug
    key="spectral_overlap", by_conv={"intrinsic": "spectral_overlap", "rho": "rho_spectral", "g2": "g2_spectral"})
 _o("g2_irf", "$g^{(2)}(0)$ of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
 _o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), $q^2$ included", "1", _ALL + ("setup",))
+_o("hom_gate_fraction", "Fraction of the emitted photons inside the HOM detection gate (1 = no gate; set by the gate start and width)", "1",
+   _ALL)
+_o("F_dot", "Delivered pump Fano factor $F_{\\mathrm{dot}} = 1 - \\eta_{\\mathrm{cap}}(1 - F_{\\mathrm{pump}})$ of the electrical carrier supply "
+   "(reported; the counting solvers do not feed it back into $g^{(2)}$)", "1", ("drive",))
 _o("linewidth_ueV", "Emitter linewidth $\\hbar(\\Gamma + k + \\Gamma_{\\mathrm{ph}})$", "ueV", _MS)
 _o("detuning_ueV", "Emitter minus cavity detuning $\\delta_{\\mathrm{EC}}$", "ueV", _MS)
 _o("g2_0", "$g^{(2)}(0)$", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),

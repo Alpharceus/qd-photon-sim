@@ -340,8 +340,6 @@ def fock_card_to_spec(path=None, overrides=None) -> dict:
             "the fixed point of the engine's self-consistent linewidth is the card's own"),
         "a_ac_ns_per_K": _leaf("material", mat_kind, "a_ac_ns_per_K", 0.0, "A",
                                "Fock card has no temperature dependence of gamma*; slope set to 0"),
-        "fss_ueV": _leaf("material", mat_kind, "fss_ueV", 0.0, "A",
-                         "Fock card does not model a fine-structure splitting"),
         "alpha_ps2": _leaf("material", mat_kind, "alpha_ps2", float(src.phonon_alpha_ps2),
                            *C("phonon_alpha_ps2")[1:]),
         # Z(T) of the card comes from qd_gf.PhononParams(alpha_ps2=alpha) with the OTHER phonon

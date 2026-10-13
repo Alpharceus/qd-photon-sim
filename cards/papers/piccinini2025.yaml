@@ -16,7 +16,6 @@ device:
     params:
       lambda_nm: {value: 783.38, unit: nm, tag: V, where: "text p.1-2 and Fig 1a (neutral exciton X at 783.38 nm)"}
       tau_bare_ns: {value: 0.2, unit: ns, tag: V, where: "abstract (decay time ~200 ps) and Methods (identical emission rate Gamma = (200 ps)^-1 for all transitions)"}
-      fss_ueV: {value: 12.0, unit: ueV, tag: V, where: "Fig 1 caption (FSS approx 12 ueV)"}
       E_b_meV: {value: 4.0, unit: meV, tag: V, where: "text p.2 (biexciton at 785.38 nm, binding energy approx 4.0 meV)"}
       gamma_xx_ratio: {value: 1.0, unit: "1", tag: V, where: "Methods (identical emission rate for all transitions, so Gamma_XX = Gamma_X)"}
       gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: A, source: "Methods: the four-level master equation has no dephasing term (only radiative Lindblad terms); 0 is the paper's model, not a measured value"}
@@ -75,3 +74,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_SUPER expect pass -> pass-envelope: the paper value is inside the input envelope [0.0036, 26] only (central 0.789); an envelope of that width cannot discriminate, so it is no longer counted as a pass"}
   - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_SUPER central 0.79 -> 6.8 (envelope [0.0036, 90], still pass-envelope), inversion_SUPER_pred 0.09 -> 0.028 (P item still passes); delta2 -7.5 meV noted as the XX-mediated F2 point; no expect or tolerance changed"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 12.0 ueV [V] (Fig 1 caption (FSS approx 12 ueV)) is no longer carried by the card"}
