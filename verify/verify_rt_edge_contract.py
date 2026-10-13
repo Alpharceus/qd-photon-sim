@@ -73,6 +73,15 @@ REQUIRED_CLAIMS = {
     "delta_xx_inp_gaasp",
 }
 
+# Claims declared single-source (same declaration as verify_rt_edge_papers.py
+# SINGLE_SOURCE_CLAIMS, devlib-vf1 M8): the ledger has exactly one verified
+# primary source and the second could not be found; none is invented. They
+# are reported as "single-source, not anchor-grade" instead of failing, only
+# while they have EXACTLY one distinct verified DOI (zero still fails), and
+# are never counted as two-source evidence. docs/rt_edge_contract.md
+# "Evidence status" records the open gap.
+SINGLE_SOURCE_CLAIMS = frozenset({"reischle2008_g2_80K", "hkust_inp_gaasp_wavelength"})
+
 REQUIRED_HEADINGS = [
     "Block schema",
     "Units and normalization",
@@ -226,6 +235,12 @@ def run_checks(allow_missing: bool = False) -> tuple[bool, list]:
             warnings.append(name)
             print("WARN " + name + " -- allowed by --allow-missing "
                   "(evidence-gathering incomplete)")
+            continue
+        if (not sufficient and claim in SINGLE_SOURCE_CLAIMS
+                and len(distinct_dois) == 1):
+            ok(f"claim [{claim}] is single-source, not anchor-grade "
+               "(1 verified primary source; second source absent, none invented)",
+               True)
             continue
         ok(name, sufficient)
 
