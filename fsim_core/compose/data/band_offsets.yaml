@@ -4,19 +4,19 @@
 # J. Appl. Phys. 89, 5815 (2001); VM03 = Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003). Fact-check 2026-10-13
 # (.workers/devlib/r2-band-offsets-check.md): the V01 table and section numbers cited here were re-checked against the full text
 # and are correct. A [V] leaf is `checked: true` (with `checked_against`) only where a primary source was read directly: the V01
-# tables for the III-V gaps, Wei and Zunger 1998 Table I for CdSe/ZnSe dE_v. VM03 was NOT reachable (only secondary reproductions
-# matched), so VM03 leaves, the CsPbBr3 masses and the ZnSe gap stay `checked: false`. Tags are never upgraded here.
+# tables for the III-V gaps, Wei and Zunger 1998 Table I for CdSe/ZnSe dE_v. User PDFs read directly 2026-10-13 (Corrections (user PDFs) in
+# r2-band-offsets-answer.md): VM03 Tables I, III, IV, Madelung Sec. 3.14 for the ZnSe gap. The CsPbBr3 masses stay `checked: false` (SI absent). Tags are never upgraded.
 # Variants: unstr = bulk dot, strained = fully pseudomorphic 2D limit, indot = in-dot interior estimate. A variant that lists
 # Eg_dot, dE_c and dE_v is closed: dE_c + dE_v + Eg_dot = Eg_barrier within 5 meV (verify_compose_materials.py). Offsets in meV.
 schema: fsim-band-offsets/1
-note: 'Display-only literature band offsets at 0-10 K. Checked 2026-10-13 against primary sources read directly: V01 (Vurgaftman et al. 2001) Tables I, III, VI for the GaAs, InAs, InP gaps (the V01 table and section numbers cited here are correct; the AlGaAs, GaInAs, GaInP bowing and the InAs/GaAs and InAs/InP offsets of V01 Tables XII, XIII, XV and Sec. VI.C reproduce the [DR] numbers), and Wei and Zunger 1998 Table I for the CdSe/ZnSe valence offset (0.07 eV). Not checked (checked: false): VM03 nitride values (matched only secondary reproductions), the ZnSe gap, the CsPbBr3 masses, and every [E] estimate. Tags are never upgraded.'
+note: 'Display-only literature band offsets at 0-10 K. Checked 2026-10-13 against primary sources read directly: V01 (Vurgaftman et al. 2001) Tables I, III, VI for the GaAs, InAs, InP gaps (the V01 table and section numbers cited here are correct; the AlGaAs, GaInAs, GaInP bowing and the InAs/GaAs and InAs/InP offsets of V01 Tables XII, XIII, XV and Sec. VI.C reproduce the [DR] numbers), and Wei and Zunger 1998 Table I for the CdSe/ZnSe valence offset (0.07 eV). Not checked (checked: false): VM03 nitride values (matched only secondary reproductions), the ZnSe gap, the CsPbBr3 masses, and every [E] estimate. Tags are never upgraded. User PDFs 2026-10-13: VM03 read directly (Table I gaps GaN 3.510, AlN 6.25, InN 0.78; Table III GaInN bowing 1.4; Table IV VBO GaN/AlN 0.85 corrected from 0.8, InN/GaN 0.50) and Madelung Sec. 3.14 (ZnSe 2.8222 eV at 6 K); the Protesescu PDF lacks the SI so the CsPbBr3 masses stay unchecked; Pryor 1997 read, its unstrained InP/GaInP VBO has the opposite sign to the V01-derived value.'
 unverified_pending:
-- 'Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003), DOI 10.1063/1.1600519: GaN, AlN, InN gaps, AlN/GaN and InN/GaN valence offsets, InGaN bowing, wz hole masses and its table numbers (only secondary reproductions were found)'
-- 'Madelung, Semiconductors: Data Handbook, 3rd ed. (Springer, 2004): ZnSe 2.82 eV at 0 K and the zb CdSe gap'
-- 'Protesescu et al., Nano Lett. 15, 3692 (2015), Supporting Information: the numeric CsPbBr3 m_e and m_h (the main text has only a_B = 3.5 nm and E_b = 40 meV)'
+- 'VM03, J. Appl. Phys. 94, 3675 (2003), DOI 10.1063/1.1600519: wz GaN/AlN/InN hole masses (the paper lists only A1-A6 parameters, no scalar mass; the 1.1 m0 class estimate is unverified). Gaps, VBOs and the InGaN bowing are now checked'
+- 'Madelung, Semiconductors: Data Handbook, 3rd ed. (Springer, 2004): a low-T zb CdSe band gap (the handbook gives 1.74 eV at 300 K and the 1S exciton 1.757 eV at 0 K only; the 1.76 eV [E] leaf stays an estimate)'
+- 'Protesescu et al., Nano Lett. 15, 3692 (2015), Supporting Information (Tables S2, S3; absent from the user PDF): the numeric CsPbBr3 m_e and m_h (the main text has only a_B = 3.5 nm and E_b = 40 meV, both confirmed)'
 - 'Grundmann, Stier, Bimberg, Phys. Rev. B 52, 11969 (1995), and Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999): the in-dot InAs/GaAs band edges (0.85 eV, 450, 220 meV)'
 - 'Paul et al., Appl. Phys. Lett. 111, 033102 (2017): the In0.15Ga0.85As alloy choice'
-- 'Pryor, Pistol, Samuelson, Phys. Rev. B 56, 10404 (1997) (open copy arXiv:cond-mat/9705291, not read): InP/GaInP type-II sensitivity and the CuPt ordering shift'
+- 'Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), arXiv:cond-mat/9705291: read 2026-10-13; it has no CuPt-ordering statement (the ordering shift of up to ~0.1 eV is unsourced) and its unstrained InP/GaInP VBO (-45 meV) conflicts in sign with the V01-derived +168 meV; a primary for the V01 GaP/InP VBO question is still needed'
 - 'Yang et al., 2017 (CsPbBr3 magneto-absorption), reached only through arXiv:2004.05093 Table II: the primary for the 2.342 eV gap and mu = 0.126'
 - 'A primary source for a CdSe/ZnSe offset range of 0.1-0.3 eV (none identified; the class range is dropped, Wei and Zunger 1998 gives 0.07 eV)'
 materials:
@@ -32,15 +32,16 @@ materials:
       value: 2.82
       unit: eV
       tag: V
-      checked: false
-      where: Madelung 2004, ZnSe 2.82 eV at 0 K; table row 1
+      checked: true
+      checked_against: Madelung, Semiconductors Data Handbook 3rd ed., Sec. 3.14 ZnSe, p. 209 (PDF p. 223), E_g,dir(Gamma8v-Gamma6c) = 2.8222(1) eV at T = 6 K, two-photon spectroscopy; read directly from the user PDF 2026-10-13
+      where: Madelung 2004 Sec. 3.14 p. 209, 2.8222(1) eV at 6 K (stored rounded to 2.82, 0.2 meV; the source temperature is 6 K, not 0 K); table row 1
     variants:
       unstr:
         Eg_dot:
           value: 1.76
           unit: eV
           tag: E
-          where: zb CdSe scatter 1.74-1.77 eV; table row 1
+          where: 'zb CdSe: Madelung 2004 Sec. 3.18 p. 228 gives E_g,dir (E0) 1.74 eV at 300 K (ellipsometry) and the 1S exciton 1.757(5) eV extrapolated to 0 K (absorption); the handbook has no zb CdSe gap value at low T itself, so 1.76 stays [E] (checked 2026-10-13); table row 1'
         dE_c:
           value: 990
           unit: meV
@@ -109,13 +110,13 @@ materials:
         unit: m0
         tag: V
         checked: false
-        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14 (a_B = 3.5 nm, E_b = 40 meV). Checked 2026-10-13: the Protesescu main text gives a_B (7 nm diameter) and E_b (40 meV) but not these masses (they may be in its SI); an independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
       m_h:
         value: 0.14
         unit: m0
         tag: V
         checked: false
-        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14 (a_B = 3.5 nm, E_b = 40 meV). Checked 2026-10-13: the Protesescu main text gives a_B (7 nm diameter) and E_b (40 meV) but not these masses (they may be in its SI); an independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
     sources:
     - Protesescu et al., Nano Lett. 15, 3692 (2015)
   gaas_algaas_droplet:
@@ -175,27 +176,30 @@ materials:
       value: 6.25
       unit: eV
       tag: V
-      checked: false
-      where: VM03 wz AlN table; table row 4
+      checked: true
+      checked_against: VM03 (Vurgaftman and Meyer, J. Appl. Phys. 94, 3675), Table I p. 3680, wz AlN E_g = 6.25 eV; read directly from the user PDF 2026-10-13
+      where: VM03 Table I p. 3680 (wz AlN, E_g 6.25 eV); table row 4
     variants:
       unstr:
         Eg_dot:
           value: 3.51
           unit: eV
           tag: V
-          checked: false
-          where: VM03 wz GaN table; table row 4
+          checked: true
+          checked_against: VM03 Table I p. 3680, wz GaN E_g = 3.510 eV; read directly from the user PDF 2026-10-13
+          where: VM03 Table I p. 3680 (wz GaN, E_g 3.510 eV); table row 4
         dE_c:
-          value: 1940
+          value: 1890
           unit: meV
           tag: DR
-          where: (E_g,AlN - E_g,GaN) - dE_v; VM03
+          where: (E_g,AlN - E_g,GaN) - dE_v = (6.25 - 3.51) - 0.85 eV; VM03 (was 1940 meV with dE_v = 0.8 eV)
         dE_v:
-          value: 800
+          value: 850
           unit: meV
           tag: V
-          checked: false
-          where: VM03 band-offset section, AlN/GaN dE_v 0.8 eV
+          checked: true
+          checked_against: VM03 Table IV p. 3687, recommended VBO GaN/AlN (0001) = 0.85 eV (AlN/GaN (0001) = -0.20 eV); read directly from the user PDF 2026-10-13
+          where: VM03 Table IV p. 3687, GaN/AlN (0001) VBO 0.85 eV (was 800 meV; 0.8 eV is the value quoted from other studies on p. 3686, not the recommendation)
       strained:
         Eg_dot:
           value: 3.66
@@ -207,12 +211,12 @@ materials:
         value: 0.2
         unit: m0
         tag: E
-        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15)
+        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15); checked 2026-10-13, VM03 Table I p. 3680 gives wz GaN m_e = 0.20 (both directions), which matches
       m_h:
         value: 1.1
         unit: m0
         tag: E
-        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15)
+        where: GaN 0.20 / 1.1 (Fable placement rule, 85:15); checked 2026-10-13, VM03 gives no scalar wz GaN hole mass (Table I lists A1-A6), so 1.1 stays a class estimate
     sources:
     - Vurgaftman and Meyer, J. Appl. Phys. 94, 3675 (2003), wz GaN and AlN tables, band-offset section
     - 'caveat 2: spontaneous + piezoelectric fields 5-9 MV/cm'
@@ -495,15 +499,16 @@ materials:
       value: 3.51
       unit: eV
       tag: V
-      checked: false
-      where: VM03 wz GaN table
+      checked: true
+      checked_against: VM03 Table I p. 3680, wz GaN E_g = 3.510 eV; read directly from the user PDF 2026-10-13
+      where: VM03 Table I p. 3680 (wz GaN, E_g 3.510 eV)
     variants:
       unstr:
         Eg_dot:
           value: 2.74
           unit: eV
           tag: DR
-          where: VM03 wz GaN, InN 0.78 eV, InGaN bowing 1.4 eV, x = 0.2
+          where: VM03 Table I p. 3680 (GaN 3.510, InN 0.78 eV) and Table III p. 3684 (GaInN E_g,Gamma bowing 1.4 eV), x = 0.2; re-derived 2.740 eV, unchanged (checked 2026-10-13)
         dE_c:
           value: 670
           unit: meV
@@ -513,7 +518,7 @@ materials:
           value: 100
           unit: meV
           tag: DR
-          where: InN/GaN VBO 0.5 eV (VM03; V01 adopts 1.05 eV for wz GaN/InN, 0.26 eV is the zb value)
+          where: x = 0.2 times the InN/GaN (0001) VBO 0.50 eV, VM03 Table IV p. 3687 (confirmed 2026-10-13; linear interpolation in x is this file's assumption; V01 adopts 1.05 eV for wz GaN/InN, 0.26 eV is the zb value)
       strained:
         Eg_dot:
           value: 2.84
@@ -537,7 +542,7 @@ materials:
   inp_gainp_red:
     dot: InP
     barrier: Ga0.51In0.49P (disordered)
-    type: I for HH; LH and ordered-barrier case marginal / type II
+    type: 'I (strain-induced, HH, weak); II unstrained and for LH'
     flags:
       polar: false
       type2_risk: true
@@ -546,7 +551,7 @@ materials:
       value: 2.007
       unit: eV
       tag: DR
-      where: V01 Sec. IV GaInP bowing (0.65)
+      where: 'V01 Sec. IV GaInP bowing (0.65), 0 K disordered. Alternative: Pryor, Pistol, Samuelson 1997 Table I uses E_g(GaInP) = 1.97 eV (their ref 9); kept at 2.007 eV (D2)'
     variants:
       unstr:
         Eg_dot:
@@ -557,15 +562,17 @@ materials:
           checked_against: V01 Table VI p. 5829 (InP E_g(Gamma, 0 K) = 1.4236 eV, stored rounded to 1.424), read directly 2026-10-13
           where: V01 Table VI (InP)
         dE_c:
-          value: 415
+          value: 628
           unit: meV
           tag: DR
-          where: (E_g,bar - E_g,dot) - dE_v
+          where: '(E_g,bar - E_g,dot) - dE_v = (2.007 - 1.424) + 0.045 eV; closure with the Pryor dE_v (D2; was 415 meV with the V01 dE_v +168)'
         dE_v:
-          value: 168
+          value: -45
           unit: meV
-          tag: DR
-          where: VBO difference, GaP VBO -1.27 eV (V01 Table IV)
+          tag: V
+          checked: true
+          checked_against: 'Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), arXiv:cond-mat/9705291, Sec. IV (Fe-level alignment, 0.785 eV in InP vs 0.74 eV in GaInP: InP valence band 45 meV below GaInP; repeated in Sec. V as the unstrained InP valence-band offset of -45 meV), read 2026-10-13'
+          where: 'Pryor unstrained VBO, InP 45 meV BELOW GaInP: unstrained InP is a weak valence antidot and hole confinement is strain-induced only. Kept as an override, consistent with the solver (fsim_core dot_levels, D2). V01 own VBO (GaP -1.27 eV, Table IV) gives +168 meV and is superseded (was 168 meV [DR])'
       strained:
         Eg_dot:
           value: 1.48
@@ -573,15 +580,15 @@ materials:
           tag: DR
           where: heavy-hole gap under biaxial strain (re-derived 1.484 eV, eps_par = -3.64 %; was 1.49)
         dE_c:
-          value: 220
+          value: 437
           unit: meV
           tag: DR
-          where: unstrained dE_c less the CB shift (re-derived 220.5 meV; was 218)
+          where: '(E_g,bar - E_g,dot) - dE_v = (2.007 - 1.48) - 0.090 eV by closure (unstrained 628 meV less the CB strain shift of about 195 meV; was 220 meV with dE_v +303)'
         dE_v:
-          value: 303
+          value: 90
           unit: meV
           tag: DR
-          where: heavy-hole offset (re-derived 302.5 meV; was 304); the light-hole offset is ~0
+          where: 'heavy-hole offset = Pryor unstrained -45 meV plus the HH strain shift of the V01 strained row (303 - 168 = +135 meV, re-derived 302.5 - 167.6) = +90 meV; compare the solver strain-only hole barrier ~91 meV (dot_levels). Weak; the light-hole offset stays at or below 0 (was 303 meV)'
     masses:
       m_e:
         value: 0.08
@@ -594,6 +601,7 @@ materials:
         tag: E
         where: InP 0.08 / 0.53 (Fable placement rule, 87:13)
     sources:
-    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables IV, VI, Sec. IV
+    - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables IV, VI, Sec. IV (gaps and alloy bowing; its own VBO gives +168 meV for InP above GaInP and is superseded by the Pryor -45 meV for consistency with the solver, D2)
     - Pryor, Pistol, Samuelson, Phys. Rev. B 56, 10404 (1997)
-    - 'caveat 4: the V01 table gives GaP/InP 0.33 eV and another report 0.6 eV, so the VBO is poorly known; CuPt ordering lowers the barrier gap by up to ~0.1 eV (not checked)'
+    - 'caveat 4: the V01 table gives GaP/InP 0.33 eV and another report 0.6 eV, so the VBO is poorly known; CuPt ordering lowers the barrier gap by up to ~0.1 eV (not in Pryor 1997, not checked)'
+    - 'Pryor 1997 check 2026-10-13 (Table I, Sec. IV, Sec. V): E_g InP 1.424 eV (matches), GaInP 1.97 eV (file barrier 2.007, V01 0 K disordered), unstrained VBO InP 45 meV below GaInP (file +168 above), CB barrier about 250 meV (file 415 unstrained, 220 strained; Pryor includes strain; DLTS 240 meV), holes confined by strain only; CuPt ordering is not discussed'

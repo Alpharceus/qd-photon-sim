@@ -178,7 +178,7 @@ export function bandPanel(entry, getLeaf) {
   root.append(svg, facts);
   const flagP = (s) => h("p.bp-flag", s);
   if (flags.polar) root.append(flagP("Polar nitride: spontaneous and piezoelectric fields tilt the bands, so the dot region is drawn tilted with the electron and hole at opposite interfaces. For tall dots E_X can fall below the bulk gap (quantum-confined Stark effect), and the flat-band level split below is then clamped at zero."));
-  if (flags.type2_risk) root.append(flagP("Weak hole confinement (type-II risk): the light-hole offset is about 0 and the result hinges on the unmeasured GaP/InP valence offset and on CuPt ordering of the barrier. The heavy-hole offset is drawn."));
+  if (flags.type2_risk) root.append(flagP("Weak hole confinement (type-II risk): the unstrained valence offset can be negative (InP/GaInP: InP 45 meV below the barrier, Pryor 1997), so the holes are confined by strain only; the light-hole offset is about 0 and the result hinges on that offset and on CuPt ordering of the barrier. The heavy-hole offset is drawn."));
   if (flags.hard_wall) root.append(flagP("Hard wall: the shell or glass puts both carriers several eV from the nanocrystal edges. The barriers are drawn broken and are effectively infinite."));
   if (mixed) root.append(flagP(`Mixed strain variants: the drawn conduction offset is E_g,barrier - E_g,dot - ΔE_v = ${fmt(dEc * 1000)} meV; the table gives ${fmt(dEcTab * 1000)} meV (${varName[sel.dEc.from]}).`));
   const allLeaves = [band.Eg_barrier, ...Object.values(band.masses || {}), ...Object.values(band.variants || {}).flatMap((vv) => Object.values(vv))];
