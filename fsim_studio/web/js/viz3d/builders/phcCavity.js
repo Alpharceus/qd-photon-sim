@@ -19,7 +19,7 @@ export function buildPhcCavity(spec, ctx) {
   const tg = (k) => composeTag(spec, k);
   const a = g.a_nm, nx = g.n_cols, nr = g.n_rows;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const k = 12 / (nx * a);                          // world per nm
   const S = k * 1000;
   const root = new THREE.Group();
@@ -45,7 +45,7 @@ export function buildPhcCavity(spec, ctx) {
   stage.addPickable(mode, { title: 'cavity mode (volume)', tag: tg('V_lambda3'), rows: [['V', `${nice(g.V_lambda3, 3)} (λ/n)³`], ['Q', nice(g.Q, 4)], ['g', g.g_ueV > 0 ? `${nice(g.g_ueV, 3)} µeV` : 'unused'], ['semi-axes', `${[ax, ay, az].map((v) => nice(v * 1000, 3)).join(' / ')} nm`]], note: 'ellipsoid with volume V (λ/n)³; n and the aspect are display defaults [A]; not a field profile' });
   root.add(mode);
   composeDot(stage, root, rgb, [0, 0, 0], Math.max(g.dot_r_nm * k, 0.04),
-    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position', 'defect centre (display)']], note: 'dot size and position are not model inputs' });
+    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position', 'defect centre (display)']], note: 'dot size and position are not model inputs' });
   composeBeam(stage, root, [0, g.h_nm * k / 2 + 0.02, 0], [0, 1, 0], 5, Math.max(az * S * 0.9, 0.2));
 
   // annotations
@@ -54,7 +54,7 @@ export function buildPhcCavity(spec, ctx) {
   labels.add(root, [-ax * S - 0.1, 0.5, -hz * 0.15], `V ${nice(g.V_lambda3, 3)} (λ/n)³`, { tag: tg('V_lambda3'), anchor: 'right', priority: 85, sub: 'glow ellipsoid has this volume' });
   labels.add(root, [hw * 0.55, 0, hz + 0.15], `lattice a ${nice(a, 4)} nm · r ${nice(g.r_nm, 3)} nm`, { tag: 'A', priority: 70, sub: 'display defaults' });
   labels.add(root, [-hw * 0.7, g.h_nm * k / 2, hz * 0.9], `membrane ${nice(g.h_nm, 3)} nm`, { tag: 'A', anchor: 'right', priority: 50 });
-  labels.add(root, [0, 1.9, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 60, sub: falseColour ? 'NIR, false colour' : 'material emission wavelength' });
+  labels.add(root, [0, 1.9, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 60, sub: falseColour ? colourNote : 'material emission wavelength' });
 
   const mag = makeMagnifier(stage, hud, {
     mag: 1.2, title: 'cavity region (true scale)', unitLabel: 'nm',

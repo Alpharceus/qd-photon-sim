@@ -111,7 +111,8 @@ async function numberTagAudit(page) {
       const ok = await ready(page);
       check(`${card}: page ready`, ok);
       const hdr = await page.$eval(".lib-head h1", (e) => e.textContent).catch(() => "");
-      check(`${card}: header names the card`, hdr === card, hdr);
+      const hdrTip = await page.$eval(".lib-head h1", (e) => e.title).catch(() => "");
+      check(`${card}: header names the card (a human title; the id is the tooltip)`, hdr.replace(/\s+/g, "").toLowerCase() === card.toLowerCase() && hdrTip === card, `${hdr} / ${hdrTip}`);
       a = await numberTagAudit(page);
       check(`${card}: every number has a tag chip`, a.n > 0 && a.bad.length === 0, `${a.n} numbers; bad ${a.bad.slice(0, 5).join(",")}`);
       // ranges never collapsed: each range param renders two numbers inside a bracket span
@@ -162,6 +163,17 @@ async function numberTagAudit(page) {
     const nIn = await page.$$eval(".lib-params input.lib-in", (e) => e.length);
     const saveTxt = await page.$eval("#lib-save", (e) => e.textContent).catch(() => "");
     check("edit copy: read-only by default, inputs on 'Edit copy', saves to <name>-edited", nIn === 60 && /chatzarakis-edited/.test(saveTxt), `${nIn} inputs; ${saveTxt}`);
+    // R2 FIN2: human names (no raw ids) for card titles and dataset names; the id stays in the tooltip
+    await page.goto(`${BASE}/#/library`, { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const titles = await page.$$eval("a.lib-plaque", (as) => as.map((a) => ({ id: a.dataset.card, t: a.querySelector(".cp-title").textContent, tip: a.querySelector(".cp-title").title, ds: [...a.querySelectorAll(".lib-ds-name")].map((x) => x.textContent) })));
+    check("library cards: titles are human names (no digit-glued ids), the id is the tooltip",
+      titles.length >= 10 && titles.every((x) => x.t === x.t.replace(/^./, (c) => c.toUpperCase()) && !/[a-z]\d/.test(x.t) && x.tip === x.id), titles.slice(0, 3).map((x) => `${x.id} -> ${x.t}`).join("; "));
+    check("library cards: dataset names are labels, not ids (no underscore, no g2_vs_T)", titles.every((x) => x.ds.every((n) => !/_/.test(n) && !/g2_vs/.test(n))), titles.flatMap((x) => x.ds).slice(0, 4).join(" | "));
+    await page.goto(`${BASE}/#/library/chatzarakis`, { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const chartTitles = await page.$$eval(".lib-ds-card h3.chart-title", (e) => e.map((x) => x.textContent));
+    check("library card page: dataset chart titles are typeset labels, not ids", chartTitles.length > 0 && chartTitles.every((t) => !/_/.test(t)), chartTitles.join(" | ").slice(0, 160));
   } catch (e) {
     check("harness ran without throwing", false, e.stack || String(e));
   }

@@ -343,6 +343,52 @@ async function getJSON(url) {
       },
     });
 
+    // R2 FIN2: every paper's detail panel shows its device model (3D, lazy, one live WebGL view at a time)
+    {
+      const list = await getJSON("/api/papers");
+      const bad = [];
+      let live = 0, notes = 0, maxViews = 0;
+      for (const p of list) {
+        const id = p.id;
+        let expect = "live";
+        try {
+          const des = await getJSON(`/api/papers/${id}/design`);
+          const r = await fetch(`${BASE}/api/compose/scene`, { method: "POST", headers: { "content-type": "application/json", "X-FSIM-Studio": "1" }, body: JSON.stringify({ spec: { schema: "fsim-composed/1", ...des.design.composed } }) });
+          if (!r.ok) throw new Error(`scene ${r.status}`);
+          const sc = await r.json();
+          expect = sc && !sc.fallback && sc.builder && sc.builder !== "fallback2d" ? "live" : "note";
+          p._drive = sc?.drive?.kind || "";
+        } catch (e) { bad.push(`${id}: design/scene ${e.message}`); continue; }
+        await page.evaluate((h) => { location.hash = h; }, `#/papers/${id}`);
+        try {
+          await page.waitForSelector(`#workspace .pp-model[data-state="live"], #workspace .pp-model[data-state="note"]`, { timeout: 45000 });
+          // the selector may still match the PREVIOUS paper's panel for one frame: wait for this paper's title
+          await page.waitForFunction((pid) => document.querySelector("#workspace .pp-dev-line .id-v")?.textContent === `FS-paper-${pid}`, id, { timeout: 15000 });
+          await page.evaluate(() => document.querySelector("#workspace .pp-model")?.scrollIntoView({ block: "center" }));   // lazy: the view loads when the panel is on screen
+          await page.waitForSelector(`#workspace .pp-model[data-state="live"], #workspace .pp-model[data-state="note"]`, { timeout: 45000 });
+        } catch (e) { bad.push(`${id}: no device model panel (${e.message.slice(0, 60)}) state=${await page.evaluate(() => document.querySelector("#workspace .pp-model")?.dataset.state)}`); continue; }
+        const st = await page.evaluate(() => {
+          const m = document.querySelector("#workspace .pp-model");
+          const r = m.getBoundingClientRect();
+          return { state: m.dataset.state, drive: m.dataset.drive || "", canvases: m.querySelectorAll("canvas").length, views: document.querySelectorAll(".v3-root").length, w: r.width, h: r.height, text: m.textContent.slice(0, 80) };
+        });
+        maxViews = Math.max(maxViews, st.views);
+        if (st.state !== expect) bad.push(`${id}: ${st.state} (expected ${expect}) ${st.text}`);
+        else if (st.state === "live") { live++; if (st.canvases < 1 || st.h < 200 || st.drive !== p._drive) bad.push(`${id}: live view broken canvases=${st.canvases} h=${st.h} drive=${st.drive}/${p._drive}`); }
+        else { notes++; if (!/No 3D view/.test(st.text)) bad.push(`${id}: note without a reason`); }
+      }
+      check(`every reproduced paper's detail shows the device model (${list.length} papers: ${live} live 3D, ${notes} with a stated reason)`, list.length >= 30 && bad.length === 0 && live > 0, bad.slice(0, 4).join(" | "));
+      check("at most one live 3D view (one WebGL context) exists at any time on the Papers page", maxViews <= 1, `max ${maxViews}`);
+      await page.evaluate(() => { location.hash = "#/papers/somaschi2016"; });
+      await page.waitForSelector(`#workspace .pp-model[data-state="live"]`, { timeout: 45000 }).catch(() => {});
+      await shot("device-model-1440");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.waitForTimeout(800);
+      const ph = await page.evaluate(() => { const m = document.querySelector("#workspace .pp-model"); const r = m.getBoundingClientRect(); return { w: r.width, h: r.height, over: document.documentElement.scrollWidth > innerWidth + 1 }; });
+      check("device model fits the phone width (390) with no horizontal scroll", ph.w > 0 && ph.w <= 390 && ph.h >= 250 && !ph.over, `${ph.w}x${ph.h} over=${ph.over}`);
+      await shot("device-model-390");
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
       const { assertPng } = require("./png_check.cjs");

@@ -31,6 +31,7 @@ export function composeDot(stage, parent, rgb, pos, r, info) {
   halo.position.set(...pos);
   stage.markBloom(halo, 2.0);
   parent.add(core, halo);
+  stage.dotAnchor = { pos: new THREE.Vector3(...pos), r };      // the drive layer (drive.js) aims at the dot
   return core;
 }
 
@@ -99,7 +100,7 @@ export function buildMicropillar(spec, ctx) {
   const nm = (v) => (v / 1000) * S;
   const R = (g.d_um / 2) * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
 
   // --- layer stack, bottom -> top: bottom DBR, spacer, top DBR.  The layer next
@@ -178,7 +179,7 @@ export function buildMicropillar(spec, ctx) {
   stage.markBloom(mode);
   root.add(mode);
   composeDot(stage, root, rgb, [0, yd, 0], Math.max(R * 0.07, 0.03),
-    { title: 'quantum dot', tag: tg('dot_frac'), rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position', 'spacer centre (display default)']], note: 'dot depth is not a model input' });
+    { title: 'quantum dot', tag: tg('dot_frac'), rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position', 'spacer centre (display default)']], note: 'dot depth is not a model input' });
   composeBeam(stage, root, [0, yTop + 0.02, 0], [0, 1, 0], 5, Math.max(R * 0.35, 0.12));
 
   // --- annotations
@@ -186,7 +187,7 @@ export function buildMicropillar(spec, ctx) {
   labels.add(root, [lx, yTop - nm(g.N_top * (g.t_high_nm + g.t_low_nm)) / 2, 0], `top DBR · ${g.N_top} pairs · ${nice(g.N_top * (g.t_high_nm + g.t_low_nm) / 1000, 3)} µm`, { tag: tg('N_top'), priority: 70 });
   labels.add(root, [lx, yBotTop / 2, 0], `bottom DBR · ${g.N_bot} pairs · ${nice(g.N_bot * (g.t_high_nm + g.t_low_nm) / 1000, 3)} µm`, { tag: tg('N_bot'), priority: 70 });
   labels.add(root, [lx, (ySpacer0 + ySpacer1) / 2, 0], `spacer · ${nice(g.spacer_nm, 4)} nm`, { tag: 'DR', priority: 85, sub: 'λ/n_high; cavity order is a display default' });
-  labels.add(root, [-R - 0.2, yd, 0], `dot · ${nice(lam, 4)} nm`, { tag: tg('dot_frac'), anchor: 'right', priority: 90, sub: falseColour ? 'NIR, false colour' : 'depth not a model input' });
+  labels.add(root, [-R - 0.2, yd, 0], `dot · ${nice(lam, 4)} nm`, { tag: tg('dot_frac'), anchor: 'right', priority: 90, sub: falseColour ? colourNote : 'depth not a model input' });
   labels.add(root, [0, yTop + 0.35, R], `pillar Ø ${nice(g.d_um)} µm · H ${nice(g.height_um, 3)} µm`, { tag: tg('d_um'), anchor: 'center', priority: 80 });
   labels.add(root, [-R - 0.2, yTop - tH * 3, 0], `λ/4n · ${nice(g.t_high_nm, 3)} / ${nice(g.t_low_nm, 3)} nm`, { tag: 'DR', anchor: 'right', priority: 60, sub: `n ${nice(g.n_high, 3)} / ${nice(g.n_low, 3)}` });
   labels.add(root, [subR * 0.75, -subT * 0.5, subR * 0.6], 'substrate', { tag: 'A', priority: 30, sub: 'thickness not modelled' });

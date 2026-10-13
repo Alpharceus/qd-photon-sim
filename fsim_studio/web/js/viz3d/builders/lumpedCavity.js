@@ -13,7 +13,7 @@ export function buildLumpedCavity(spec, ctx) {
   const clip = stage.clipPlane;
   const tg = (k) => composeTag(spec, k);
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
   const R = g.plate_um, gap = g.gap_um * 2.2;           // schematic units, not a length scale
   const tp = 0.18;
@@ -38,7 +38,7 @@ export function buildLumpedCavity(spec, ctx) {
   stage.markBloom(m);
   root.add(m);
   composeDot(stage, root, rgb, [0, 0, 0], 0.09,
-    { title: 'quantum dot', tag: 'DR', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['F_P', nice(g.F_P, 4)], ['detuning', `${nice(g.detuning_ueV, 3)} µeV`]], note: 'schematic position: the model has no geometry' });
+    { title: 'quantum dot', tag: 'DR', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['F_P', nice(g.F_P, 4)], ['detuning', `${nice(g.detuning_ueV, 3)} µeV`]], note: 'schematic position: the model has no geometry' });
   const topY = gap / 2 + tp / 2;
   composeBeam(stage, root, [0, topY + 0.02, 0], [0, 1, 0], 3.4, 0.32);
 

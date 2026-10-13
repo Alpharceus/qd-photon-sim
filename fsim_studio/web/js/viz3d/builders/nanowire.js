@@ -21,7 +21,7 @@ export function buildNanowire(spec, ctx) {
   const rc = nm(g.core_radius_nm);
   const segDisp = horizontal ? 140 : 380;   // drawn length of the unmodelled doped segments (nm)
   const lam = spec.overlays.emission.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const L = spec.layers;
   const tOf = (Ly) => (Ly.t_nm == null ? segDisp : Ly.t_nm);
   const total = L.reduce((a, Ly) => a + tOf(Ly), 0);
@@ -113,7 +113,7 @@ export function buildNanowire(spec, ctx) {
     const mid = acc + t / 2;
     acc += t;
     if (Ly.role === 'active') {
-      labels.add(root, horizontal ? [0, -rc - 0.6, rc] : [-side, discY, 0], `InGaN disc · h ${nice(Ly.t_nm)} nm · r ${nice(g.dot.radius_nm)} nm`, { tag: Ly.tag, anchor: horizontal ? 'left' : 'right', sub: `λ ${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}` });
+      labels.add(root, horizontal ? [0, -rc - 0.6, rc] : [-side, discY, 0], `InGaN disc · h ${nice(Ly.t_nm)} nm · r ${nice(g.dot.radius_nm)} nm`, { tag: Ly.tag, anchor: horizontal ? 'left' : 'right', sub: `λ ${nice(lam, 4)} nm${colourSuffix}` });
       continue;
     }
     if (Ly.t_nm == null) {

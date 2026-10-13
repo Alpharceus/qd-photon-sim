@@ -14,6 +14,7 @@ import { fmt, isNum } from "../ui/format.js";
 import { richText, tex, symbolFor, texIndex, pathSymbol } from "../ui/math.js";
 import { exportButtons } from "../ui/exporter.js";
 import { paperOverlay } from "../charts/paperOverlay.js";
+import { mountDeviceModel } from "../viz3d/deviceModel.js";
 
 const AXES = [
   { key: "material", label: "Material" },
@@ -140,6 +141,7 @@ export function unmount() {
   NARROW.removeEventListener("change", syncFold);
   stopJob();
   disposeCharts();
+  disposeModel();
   P.el.classList.remove("ws-papers");
   delete P.el.dataset.ready;
   P = null;
@@ -154,6 +156,7 @@ export function update(args) {
   P.seq++;
   stopJob();
   disposeCharts();
+  disposeModel();
   P.paper = null;
   P.result = null;
   P.resultCached = false;
@@ -169,6 +172,11 @@ function ensureCss() {
   const href = new URL("../../css/papers.css", import.meta.url).href;
   const have = [...document.querySelectorAll('link[rel="stylesheet"]')].some((l) => l.href === href);
   if (!have) document.head.append(h("link", { rel: "stylesheet", href }));
+}
+
+function disposeModel() {
+  try { P.model?.dispose(); } catch { /* gone */ }
+  P.model = null;
 }
 
 function disposeCharts() {
@@ -456,6 +464,7 @@ function renderPaper() {
   d.err = h("div.pp-err");
   d.tableHost = h("div.pp-table-host");
   d.charts = h("div.pp-charts");
+  d.model = h("div.pp-model", { dataset: { role: "device-model", state: "pending" }, "aria-label": "Device model, 3D" });
 
   const doi = meta.doi ? h("a.pp-doi", { href: `https://doi.org/${meta.doi}`, target: "_blank", rel: "noopener noreferrer", title: "Open the paper at doi.org" }, `doi:${meta.doi}`) : null;
   const arxiv = meta.arxiv ? h("a.pp-doi", { href: `https://arxiv.org/abs/${String(meta.arxiv).replace(/v\d+$/, "")}`, target: "_blank", rel: "noopener noreferrer" }, `arXiv:${meta.arxiv}`) : null;
@@ -471,6 +480,7 @@ function renderPaper() {
         h("div.pp-actions",
           h("div.pp-status-col", d.progress, d.status),
           (d.exporter = exportButtons(exportArgs, { label: "Export" })).el, d.composerBtn, d.runBtn)),
+      d.model,
       meta.summary ? h("p.pp-summary-text", meta.summary) : null,
       h("div.pp-kinds.pp-dev-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${p.kinds[a.key]}` }, h("span.pp-kind-k", a.label), p.kinds[a.key].replace(/_/g, " ")) : null),
         classCounts(p.classes))),
@@ -482,6 +492,8 @@ function renderPaper() {
     h("section.pp-charts-sec", { "aria-label": "Series overlays" }, d.charts));
   renderTable();
   renderCharts();
+  disposeModel();
+  P.model = mountDeviceModel(d.model, { paper: p.id }, { api: P.ctx.api, theme: P.ctx.state.get("theme") });
 }
 
 /** Export of the reproduce result: the device spec, per-item paper and model numbers with their tags, versions in the header. */

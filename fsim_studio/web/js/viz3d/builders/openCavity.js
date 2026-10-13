@@ -20,7 +20,7 @@ export function buildOpenCavity(spec, ctx) {
   const S = 24 / g.fibre_d_um;                     // world units per um
   const um = (v) => v * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
   const Rf = um(g.fibre_d_um / 2), Rc = um(g.fibre_core_um / 2), chipR = um(g.chip_halfwidth_um);
   const L = um(g.L_um), roc = g.ROC_um, a = g.dimple_radius_um;
@@ -106,7 +106,7 @@ export function buildOpenCavity(spec, ctx) {
   }
   const yDot = -tMem / 2;
   composeDot(stage, root, rgb, [0, yDot, 0], Math.max(um(0.02), 0.04),
-    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position', 'membrane centre (display)']], note: 'dot position is not a model input' });
+    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position', 'membrane centre (display)']], note: 'dot position is not a model input' });
   composeBeam(stage, root, [0, yFibTop, 0], [0, 1, 0], 5, Math.max(Rc * 1.2, 0.2));
 
   // --- section lines (shown when the cut passes through the axis): the dimple meridian, the coating, the

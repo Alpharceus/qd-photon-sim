@@ -290,6 +290,88 @@ d_inc = describe(spec("edge_ridge", mat="cdse_znse"))
 check("ridge incompatible (c): falls back with the structure's own reason, not KeyError",
       d_inc.get("fallback") is True and "KeyError" not in str(d_inc.get("reason")), str(d_inc.get("reason"))[:90])
 
+# --- R2 FIN2: the drive layer (a `drive` block) and the colour band of the emission wavelength
+HC_MEV_NM = 1239841.98          # h c in meV nm, written out here (the module's constant is not reused)
+DRIVE_KINDS = ("resonant_pulse", "tpe", "phonon_assisted", "super", "dichromatic", "arp", "cw_resonant", "above_band", "p_shell",
+               "electrical_pulsed", "electrical_cw", "stark_gated_resonant")
+
+
+def dspec(kind, dparams=None, mat="ingaas_gaas", skind="micropillar"):
+    sp = spec(skind, mat=mat)
+    sp["drive"] = {"kind": kind, "params": dparams or {}}
+    return sp
+
+
+blocks = {k: describe(dspec(k))["drive"] for k in DRIVE_KINDS}
+check("drive: all 12 drive kinds carry a drive block of their own kind",
+      all(blocks[k]["kind"] == k and blocks[k]["family"] != "none" for k in DRIVE_KINDS))
+dumped = {k: json.dumps(b, sort_keys=True, default=str) for k, b in blocks.items()}
+check("drive: the 12 drive blocks are pairwise different", len(set(dumped.values())) == len(DRIVE_KINDS))
+check("drive: block is JSON-safe", all(json.loads(json.dumps(b)) == b for b in blocks.values()))
+fam = {"resonant_pulse": "optical", "tpe": "optical", "phonon_assisted": "optical", "super": "optical", "dichromatic": "optical",
+       "arp": "optical", "cw_resonant": "optical", "above_band": "optical", "p_shell": "optical",
+       "electrical_pulsed": "electrical", "electrical_cw": "electrical", "stark_gated_resonant": "stark_gated"}
+check("drive: family per kind (optical / electrical / stark_gated)", all(blocks[k]["family"] == fam[k] for k in DRIVE_KINDS))
+check("drive: beam count (2 for super and dichromatic, 1 other optical, 0 electrical, 1 laser for stark_gated)",
+      all(len(blocks[k]["beams"]) == (2 if k in ("super", "dichromatic") else 0 if fam[k] == "electrical" else 1) for k in DRIVE_KINDS))
+check("drive: pulsed vs cw: cw_resonant and the gated laser are cw, pulse drives are pulsed, electrical_cw is dc",
+      blocks["cw_resonant"]["temporal"] == "cw" and blocks["stark_gated_resonant"]["temporal"] == "cw" and blocks["electrical_cw"]["temporal"] == "dc"
+      and all(blocks[k]["temporal"] == "pulsed" for k in ("resonant_pulse", "tpe", "phonon_assisted", "super", "dichromatic", "arp", "electrical_pulsed")))
+check("drive: above_band with cw=True turns cw", describe(dspec("above_band", {"cw": True}))["drive"]["temporal"] == "cw")
+lamX = describe(dspec("resonant_pulse"))["overlays"]["emission"]["lambda_nm"]
+eX = HC_MEV_NM / lamX
+check("drive: resonant_pulse at Delta = 0 sits on the dot line", close(blocks["resonant_pulse"]["beams"][0]["lambda_nm"], lamX, 1e-6),
+      f"{blocks['resonant_pulse']['beams'][0]['lambda_nm']} nm vs {lamX}")
+b = describe(dspec("resonant_pulse", {"detuning_meV": 2.0}))["drive"]["beams"][0]
+check("drive: Delta = +2 meV is BLUE of the line, lambda = hc/(E_X + Delta)", close(b["lambda_nm"], HC_MEV_NM / (eX + 2.0), 1e-6) and b["lambda_nm"] < lamX,
+      f"{b['lambda_nm']} nm")
+b = describe(dspec("phonon_assisted"))["drive"]["beams"][0]
+check("drive: phonon_assisted default Delta = +1 meV", close(b["lambda_nm"], HC_MEV_NM / (eX + 1.0), 1e-6), f"{b['lambda_nm']} nm")
+bs = blocks["super"]["beams"]
+check("drive: SUPER beams at the Bracht Delta1 = -5, Delta2 = -13.56 meV (red of the line)",
+      close(bs[0]["lambda_nm"], HC_MEV_NM / (eX - 5.0), 1e-6) and close(bs[1]["lambda_nm"], HC_MEV_NM / (eX - 13.56), 1e-6)
+      and bs[0]["lambda_nm"] > lamX and bs[1]["lambda_nm"] > bs[0]["lambda_nm"])
+bd = blocks["dichromatic"]["beams"]
+check("drive: dichromatic components at +-0.6 meV with intensity weights a/(1+a) and 1/(1+a), a = 0.212",
+      close(bd[0]["lambda_nm"], HC_MEV_NM / (eX + 0.6), 1e-6) and close(bd[1]["lambda_nm"], HC_MEV_NM / (eX - 0.6), 1e-6)
+      and close(bd[0]["weight"], 0.212 / 1.212, 1e-9) and close(bd[1]["weight"], 1 / 1.212, 1e-9))
+sw = blocks["arp"]["sweep"]
+check("drive: ARP carries a sweep band round the carrier, rising for positive chirp",
+      sw is not None and sw["direction"] == "rising" and sw["span_meV"] > 0 and sw["to_nm"] < sw["from_nm"] < lamX + 1.0, f"{sw}")
+check("drive: ARP negative chirp falls", describe(dspec("arp", {"chirp_ps2": -30.0}))["drive"]["sweep"]["direction"] == "falling")
+em_ = _reg.get("material", "ingaas_gaas")
+dxx = em_.build({p_.name: p_.default for p_ in em_.params}, 5.0).delta_xx_meV
+bt = blocks["tpe"]["beams"][0]
+check("drive: TPE laser sits at the two-photon resonance E_X + delta_xx/2 (half the biexciton energy per photon)",
+      close(bt["lambda_nm"], HC_MEV_NM / (eX + dxx / 2.0), 1e-5) and bt.get("two_photon") is True, f"{bt['lambda_nm']} nm, delta_xx {dxx:.2f} meV")
+check("drive: electrical drives have contacts + current, no beam; the gated laser has a gate",
+      blocks["electrical_pulsed"]["electrical"]["I_uA"] == 10.0 and blocks["electrical_cw"]["electrical"]["mu"] == 0.5
+      and not blocks["electrical_pulsed"]["beams"] and blocks["stark_gated_resonant"]["gate"]["det_off_meV"] == 5.0)
+check("drive: above-band and p-shell pumps are flagged display defaults [A]",
+      blocks["above_band"]["beams"][0]["display_default"] is True and blocks["p_shell"]["beams"][0]["tag"] == "A")
+d_x = describe(spec("micropillar"))
+check("drive: an unknown drive kind gives family none (no raise) and the geometry is unchanged", d_x["drive"]["family"] == "none" and d_x["variant"] == "micropillar")
+check("drive: also on the fallback-free builders (every structure kind carries the block)",
+      all(describe(dspec("resonant_pulse", mat=MAT.get(k, "ingaas_gaas"), skind=k))["drive"]["family"] == "optical"
+          for k in ("micropillar", "open_cavity", "cbg", "phc_waveguide", "mesa_reflector", "photonic_nanowire", "planar_dbr", "generic_cavity")))
+
+# --- colour band of the emission wavelength (UV < 380, visible, NIR, telecom): "false colour" only outside the visible
+def band_of(mat):
+    e = describe(spec("micropillar", mat=mat))["overlays"]["emission"]
+    return e["lambda_nm"], e["band"], e["false_colour"], e["colour_label"]
+
+
+lam_gan, band_gan, fc_gan, lab_gan = band_of("gan_aln")
+check("colour band: GaN/AlN (about 290 nm) is UV, false colour", lam_gan < 380 and band_gan == "uv" and fc_gan and lab_gan == "UV, false colour", f"{lam_gan} nm {lab_gan}")
+lam_n, band_n, fc_n, lab_n = band_of("ingan_gan")
+check("colour band: InGaN/GaN is visible, true colour, not false", 380 <= lam_n <= 700 and band_n == "visible" and not fc_n and lab_n == "visible, true colour", f"{lam_n} nm")
+lam_i, band_i, fc_i, lab_i = band_of("ingaas_gaas")
+check("colour band: InGaAs/GaAs is NIR, false colour", 700 < lam_i < 1260 and band_i == "nir" and fc_i and lab_i == "NIR, false colour", f"{lam_i} nm")
+lam_c, band_c, fc_c, lab_c = band_of("inas_inp_cband")
+check("colour band: InAs/InP C-band is telecom, false colour", lam_c >= 1260 and band_c == "telecom" and fc_c and lab_c == "telecom, false colour", f"{lam_c} nm")
+check("colour band: the beam of a UV dot is labelled UV too", describe(dspec("resonant_pulse", mat="gan_aln"))["drive"]["beams"][0]["colour_label"] == "UV, false colour")
+
+
 n = sum(RES)
 print(f"{n}/{len(RES)} scene_compose checks passed")
 sys.exit(0 if n == len(RES) else 1)

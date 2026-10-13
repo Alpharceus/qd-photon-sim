@@ -31,7 +31,7 @@ export function buildBullseye(spec, ctx) {
   const S = 6 / outer;                           // world units per um
   const nm = (v) => (v / 1000) * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
   const tM = nm(g.membrane_nm), tSp = nm(g.spacer_nm), tRef = g.reflector ? nm(120) : 0;
   const R0 = nm(g.disk_radius_nm), P = nm(g.period_nm), W = nm(g.ring_width_nm), trench = nm(g.trench_nm);
@@ -77,7 +77,7 @@ export function buildBullseye(spec, ctx) {
   stage.markBloom(modeG);
   root.add(modeG);
   composeDot(stage, root, rgb, [0, yd, 0], Math.max(R0 * 0.05, 0.03),
-    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position', 'disk centre (display)']], note: 'dot position is not a model input' });
+    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position', 'disk centre (display)']], note: 'dot position is not a model input' });
   composeBeam(stage, root, [0, tSp + tRef + tM + 0.02, 0], [0, 1, 0], 5, Math.max(R0 * 0.55, 0.2));
 
   // annotations
@@ -89,7 +89,7 @@ export function buildBullseye(spec, ctx) {
   labels.add(root, [plateR * 0.95, tRef + tSp / 2, plateR * 0.2], `oxide ${nice(g.spacer_nm, 3)} nm`, { tag: 'A', priority: 45 });
   if (g.reflector) labels.add(root, [plateR * 0.95, tRef / 2, -plateR * 0.2], 'metal reflector', { tag: 'A', priority: 40 });
   labels.add(root, [-plateR * 0.7, 0, plateR * 0.6], 'substrate', { tag: 'A', anchor: 'right', priority: 25, sub: 'thickness not modelled' });
-  labels.add(root, [0, yTop + 1.5, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 70, sub: falseColour ? 'NIR, false colour' : 'material emission wavelength' });
+  labels.add(root, [0, yTop + 1.5, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 70, sub: falseColour ? colourNote : 'material emission wavelength' });
 
   // magnifier: radial section through disk and first rings (nm); the magnifier
   // camera sits at the origin, so the content is shifted to centre it

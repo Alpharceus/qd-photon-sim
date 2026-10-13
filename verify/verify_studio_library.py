@@ -328,6 +328,19 @@ def main():
     after = sorted(p.name for p in (ROOT / "cards").glob("*.yaml"))
     check("the repository's cards/ was not written", before == after)
 
+    # R2 FIN2: the Saved toast shows a short name (the file path is a tooltip), titles are human names, not ids
+    js = (ROOT / "fsim_studio/web/js/workspaces/library.js").read_text(encoding="utf-8")
+    import re as _re
+    saved = _re.findall(r"toast\(`Saved ([^`]*)`", js)
+    check("library.js: the Saved toast prints the card's short name, never the absolute path",
+          len(saved) == 1 and "r.path" not in saved[0] and "${cardTitle(target)}" in saved[0], str(saved))
+    check("library.js: the file path goes in the toast's tooltip (title attribute)", _re.search(r"\.title\s*=\s*r\.path", js) is not None)
+    check("library.js: card titles go through cardTitle() (plaque, error plaque, page title), the id stays in a tooltip",
+          js.count("cardTitle(c.name)") >= 3 and 'h("h3.cp-title", c.name)' not in js and 'h("h1.ws-title", c.name)' not in js)
+    check("library.js: dataset names are typeset labels (ui/labels.js fieldLabel), not ds.name.replace/raw text",
+          "fieldLabel(d.name)" in js and 'ds.name.replace(/_/g, " ")' not in js and 'h("span.lib-ds-name", d.name)' not in js)
+    check("library.js: the device-model thumbnail slot exists and is lazy (viz3d/deviceModel.js)", "deviceThumbnail(" in js and "lib-thumb" in js)
+
     n_pass = sum(ok for _, ok, _ in CHECKS)
     print(f"\n{n_pass}/{len(CHECKS)} studio library checks passed")
     return 0 if n_pass == len(CHECKS) else 1

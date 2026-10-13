@@ -204,3 +204,10 @@
   .pp-where, .pp-note, .pp-why { max-width: none; }
   .pp-mismatch { max-width: 100%; }
 }
+
+/* R2: the device model (3D) in the detail panel, beside the REPRODUCE actions: one live WebGL view, loaded lazily */
+.pp-model { margin: 4px 16px 8px; min-height: clamp(260px, 36vh, 420px); border: 1px solid var(--rim, rgba(128,128,128,.3)); border-radius: 2px; background: #0b0d10; position: relative; overflow: hidden; }
+.pp-model .dm-view { position: absolute; inset: 0; }
+.pp-model[data-state="pending"]::after { content: "Loading the device model"; position: absolute; inset: 0; display: grid; place-items: center; color: #8d8b84; font: 12px/1.3 var(--font-ui, system-ui); }
+.pp-model .dm-note { margin: 0; padding: 40px 16px; text-align: center; color: #b8b7ae; font: 13px/1.4 var(--font-ui, system-ui); }
+@media (max-width: 760px) { .pp-model { margin: 4px 12px 8px; min-height: 300px; } }

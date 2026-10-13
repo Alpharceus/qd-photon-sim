@@ -113,6 +113,34 @@ print(json.dumps(out))
   return JSON.parse(txt.trim().split('\n').pop());
 }
 
+
+// ---- R2 FIN2: the drive layer (12 drive kinds), the colour-band labels (GaN/AlN at 290 nm must say UV)
+const DRIVE_KINDS = ['resonant_pulse', 'tpe', 'phonon_assisted', 'super', 'dichromatic', 'arp', 'cw_resonant', 'above_band', 'p_shell',
+  'electrical_pulsed', 'electrical_cw', 'stark_gated_resonant'];
+// [name, structure kind, structure params, material, drive kind]
+const DRIVE_CASES = [
+  ...DRIVE_KINDS.map((k) => ['drive-' + k, 'micropillar', {}, 'ingaas_gaas', k]),
+  ['drive-visible-resonant_pulse', 'bulk_planar', { sil: 'weierstrass', mirror: true }, 'ingan_gan', 'resonant_pulse'],
+  ['drive-uv-resonant_pulse', 'micropillar', {}, 'gan_aln', 'resonant_pulse'],
+  ['drive-uv-electrical_cw', 'micropillar', {}, 'gan_aln', 'electrical_cw'],
+];
+
+function describeDrives() {
+  const py = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(ROOT)})
+from fsim_studio.scene_compose import describe
+out = []
+for name, skind, sparams, mat, dkind in json.loads(sys.stdin.read()):
+    spec = {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": mat, "params": {}},
+            "structure": {"kind": skind, "params": sparams}, "drive": {"kind": dkind, "params": {}}, "setup": {"kind": "y", "params": {}}}
+    out.append(describe(spec))
+print(json.dumps(out))
+`;
+  const txt = execFileSync('python', ['-I', '-c', py], { input: JSON.stringify(DRIVE_CASES), cwd: ROOT, stdio: ['pipe', 'pipe', 'ignore'], maxBuffer: 1 << 26 }).toString();
+  return JSON.parse(txt.trim().split('\n').pop());
+}
+
 (async () => {
   fs.mkdirSync(OUTDIR, { recursive: true });
   const descs = describeAll();
@@ -303,6 +331,149 @@ print(json.dumps(out))
       await page.close();
     }
   }
+
+  // ---- R2 FIN2: drive layer: every drive kind draws its own scene; the beam / contacts / gate are lit
+  {
+    const dd = describeDrives();
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto(`${BASE}/viz3d-lab.html?scene=band-nitride&only=1`, { waitUntil: 'load', timeout: 60000 });
+    await wait(page);
+    await page.evaluate(() => { window.__imgs = []; });
+    const vis = {};
+    for (let i = 0; i < DRIVE_CASES.length; i++) {
+      const [name, , , , dkind] = DRIVE_CASES[i];
+      const desc = dd[i];
+      try {
+        check(desc.fallback === false && desc.drive && desc.drive.kind === dkind && desc.drive.family !== 'none', `${name}: descriptor carries the ${dkind} drive block`, `variant=${desc.variant} ${desc.reason || ''}`);
+        errors.length = 0;
+        await mount(page, desc, 'dark');
+        await wait(page);
+        await page.waitForTimeout(900);
+        const dr = await page.evaluate(() => document.getElementById('view').__viz3d._drive());
+        check(dr && dr.family === desc.drive.family, `${name}: drive rig mounted`, dr ? `${dr.family} beams ${dr.beams} pulses ${dr.pulses} contacts ${dr.hasContacts} gate ${dr.hasGate}` : 'no rig');
+        const fam = desc.drive.family;
+        const objs = await page.evaluate(() => ['drive-beam', 'drive-pulse', 'drive-beam-glow', 'drive-current', 'drive-gate', 'drive-p-contact', 'drive-n-contact', 'drive-absorber']
+          .filter((n) => document.getElementById('view').__viz3d._has(n)));
+        const want = fam === 'optical' ? ['drive-beam'] : fam === 'electrical' ? ['drive-current', 'drive-p-contact', 'drive-n-contact'] : ['drive-beam', 'drive-gate'];
+        check(want.every((n) => objs.includes(n)), `${name}: scene holds ${want.join(', ')}`, objs.join(','));
+        if (desc.drive.temporal === 'cw' && fam !== 'electrical') check(objs.includes('drive-beam-glow'), `${name}: cw drive draws a continuous beam`);
+        if (desc.drive.temporal === 'pulsed' && fam === 'optical') check(dr.pulses >= 6 * desc.drive.beams.length && !objs.includes('drive-beam-glow'), `${name}: pulsed drive draws a pulse train, no continuous glow`, `${dr.pulses} pulses`);
+        const shot = await page.screenshot({ path: path.join(OUTDIR, `${name}.png`) });
+        // beam lit: the brightest pixel in a 7x7 patch at every probe point is well above the dark enclosure
+        const lit = await page.evaluate(async ({ b64, probes, view }) => {
+          const img = new Image();
+          img.src = 'data:image/png;base64,' + b64;
+          await img.decode();
+          const c = document.createElement('canvas');
+          c.width = img.width; c.height = img.height;
+          const g = c.getContext('2d');
+          g.drawImage(img, 0, 0);
+          const out = probes.map((p) => {
+            let best = 0, rgb = [0, 0, 0];
+            for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) {
+              const x = Math.round(view.x + p.x + dx), y = Math.round(view.y + p.y + dy);
+              if (x < 0 || y < 0 || x >= img.width || y >= img.height) continue;
+              const d = g.getImageData(x, y, 1, 1).data;
+              const l = (d[0] + d[1] + d[2]) / 3;
+              if (l > best) { best = l; rgb = [d[0], d[1], d[2]]; }
+            }
+            return { best, rgb };
+          });
+          // keep a half-size copy for the pairwise diff
+          const sc = 2, w = Math.floor(img.width / sc), h = Math.floor(img.height / sc);
+          const c2 = document.createElement('canvas');
+          c2.width = w; c2.height = h;
+          const g2 = c2.getContext('2d');
+          g2.drawImage(img, 0, 0, w, h);
+          window.__imgs.push(g2.getImageData(0, 0, w, h).data);
+          return out;
+        }, { b64: shot.toString('base64'), probes: dr.probes, view: dr.view });
+        vis[name] = lit;
+        check(lit.length > 0 && lit.every((p, k) => dr.probes[k].front && p.best > 70), `${name}: the drive element is lit at its probe points (not the dark enclosure)`,
+          lit.map((p) => `${p.best.toFixed(0)}[${p.rgb.join(',')}]`).join(' '));
+        check(errors.length === 0, `${name}: no console errors`, errors.slice(0, 3).join(' | '));
+      } catch (err) {
+        check(false, `${name}: run`, String(err).slice(0, 300));
+      }
+    }
+    // pairwise pixel difference of the 12 drive scenes (same structure, material and camera)
+    const diffs = await page.evaluate((n) => {
+      const arr = window.__imgs;
+      const out = [];
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        const a = arr[i], b = arr[j];
+        let cnt = 0;
+        for (let k = 0; k < a.length; k += 4) if (Math.max(Math.abs(a[k] - b[k]), Math.abs(a[k + 1] - b[k + 1]), Math.abs(a[k + 2] - b[k + 2])) > 40) cnt += 1;
+        out.push([i, j, cnt / (a.length / 4)]);
+      }
+      return out;
+    }, DRIVE_KINDS.length);
+    const worst = diffs.reduce((m, d) => (d[2] < m[2] ? d : m), [0, 0, 1]);
+    check(diffs.length === 66 && diffs.every((d) => d[2] >= 0.001), 'drive scenes: all 12 are pairwise different by pixel diff (>= 0.1% of the viewport differs by > 40/255)',
+      `${diffs.length} pairs, least different ${DRIVE_KINDS[worst[0]]} vs ${DRIVE_KINDS[worst[1]]}: ${(worst[2] * 100).toFixed(2)}%`);
+    // visible dot: a green 530 nm pump draws in true colour (not the deep-red NIR stand-in); no "false colour" label
+    const v = vis['drive-visible-resonant_pulse'];
+    const dv = dd[DRIVE_KINDS.length];
+    check(dv.drive.beams[0].band === 'visible' && dv.drive.beams[0].false_colour === false && v && v[0].rgb[1] > v[0].rgb[0], 'visible pump is drawn in its true (green) colour', v ? `rgb ${v[0].rgb.join(',')}` : '');
+    await page.close();
+
+    // colour band label: GaN/AlN at 290 nm says UV, never NIR; the visible InGaN dot says no false colour
+    const labelsOf = async (desc) => {
+      const pg = await ctx.newPage();
+      await pg.goto(`${BASE}/viz3d-lab.html?scene=band-nitride&only=1`, { waitUntil: 'load', timeout: 60000 });
+      await wait(pg);
+      await mount(pg, desc, 'dark');
+      await wait(pg);
+      await pg.waitForTimeout(500);
+      const t = await pg.evaluate(() => [...document.querySelectorAll('#view .v3-label')].map((x) => x.textContent).join(' | '));
+      await pg.close();
+      return t;
+    };
+    const tUv = await labelsOf(dd[DRIVE_KINDS.length + 1]);
+    check(/UV, false colour/.test(tUv) && !/NIR/.test(tUv), 'GaN/AlN (290 nm) labels say "UV, false colour", never NIR', `lambda ${dd[DRIVE_KINDS.length + 1].geometry.lambda_nm} nm`);
+    const tVis = await labelsOf(dv);
+    check(!/false colour/.test(tVis.split(' | ').filter((x) => /dot/.test(x)).join(' ')), 'visible (530 nm) dot label does not say false colour', '');
+    const tIr = await labelsOf(dd[0]);
+    check(/NIR, false colour/.test(tIr), 'NIR (950 nm) dot label says "NIR, false colour"', '');
+  }
+
+  // ---- R2 FIN2: the 3D readout plate shows names, never raw ids, and nothing is truncated (1440 and 390)
+  {
+    const base = describeDrives()[0];
+    const desc = JSON.parse(JSON.stringify(base));
+    desc.scalars.g2_headline = { value: 0.0123, unit: '', tag: 'DR', label: 'g2 headline', display_default: false };
+    desc.scalars.flux_headline = { value: 1.2e7, unit: 's^-1', tag: 'DR', label: 'collected flux, headline', display_default: false };
+    desc.readout_keys = ['g2_headline', 'flux_headline', ...desc.readout_keys];
+    for (const [vw, vh] of [[1440, 900], [390, 844]]) {
+      const pg = await (await browser.newContext({ viewport: { width: vw, height: vh }, deviceScaleFactor: 1 })).newPage();
+      try {
+        await pg.goto(`${BASE}/viz3d-lab.html?scene=band-nitride&only=1`, { waitUntil: 'load', timeout: 60000 });
+        await wait(pg);
+        await mount(pg, desc, 'dark');
+        await wait(pg);
+        await pg.waitForTimeout(500);
+        // open the plate fully (compact viewports fold rows behind "+N more")
+        await pg.evaluate(() => document.querySelector('#view .v3-more-btn')?.click());
+        await pg.waitForTimeout(300);
+        const rows = await pg.evaluate(() => [...document.querySelectorAll('#view .v3-readout-label')].map((e) => ({ key: e.parentElement.dataset.key, text: e.textContent, tip: e.title, trunc: e.scrollWidth > e.clientWidth + 1, shown: e.getClientRects().length > 0, typeset: !!e.querySelector('.sym, .katex') })));
+        const vis = rows.filter((r) => r.shown);
+        check(vis.some((r) => r.key === 'g2_headline') && vis.some((r) => r.key === 'flux_headline'), `readout plate @${vw}: the headline rows are present`, vis.map((r) => r.key).join(','));
+        const g = rows.find((r) => r.key === 'g2_headline');
+        check(rows.every((r) => !/_/.test(r.text)) && g && g.typeset, `readout plate @${vw}: no raw id (no underscore) and g2_headline is typeset`, rows.map((r) => r.text).slice(0, 4).join(' | '));
+        check(vis.every((r) => !r.trunc), `readout plate @${vw}: no label is truncated`, vis.filter((r) => r.trunc).map((r) => r.text).join(' | '));
+        const hdr = await pg.evaluate(() => { const r = document.querySelector('#view .v3-readouts').getBoundingClientRect(), v = document.getElementById('view').getBoundingClientRect(); return r.right <= v.right + 1 && r.left >= v.left - 1; });
+        check(hdr, `readout plate @${vw}: inside the viewport`);
+        await pg.screenshot({ path: path.join(OUTDIR, `readout-${vw}.png`) });
+      } catch (err) {
+        check(false, `readout plate @${vw}: run`, String(err).slice(0, 300));
+      }
+      await pg.context().close();
+    }
+  }
+
 
   await browser.close();
   const n = results.filter(Boolean).length;

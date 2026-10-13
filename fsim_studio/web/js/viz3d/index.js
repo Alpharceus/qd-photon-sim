@@ -19,7 +19,8 @@ import { Labels } from './core/labels.js';
 // ---- readout labels: the scene sends code names ("F P", "lambda nm", "V lambda3"); the plate shows notation.
 const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', rho: 'ρ', sigma: 'σ', tau: 'τ', chi: 'χ', phi: 'φ', omega: 'ω', pi: 'π' };
 import { displayUnit } from '../ui/units.js';
-import { tex } from '../ui/math.js';
+import { tex, richText } from '../ui/math.js';
+import { fieldLabel, knownField } from '../ui/labels.js';
 const unitKey = (u) => String(u || '').toLowerCase().replace(/µ/g, 'u').replace(/[^a-z0-9]/g, '');
 function texNode(src) { return tex(src, { cls: 'sym' }); }
 function readoutLabel(key, unit) {
@@ -27,7 +28,7 @@ function readoutLabel(key, unit) {
   const words = String(key).split('_').filter(Boolean);
   if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) words.pop();
   const base = words[0] || String(key);
-  const g = (w) => (GREEK[w] ? `\\${w}` : w);
+  const g = (w) => (GREEK[w] ? `\\${w}` : w === 'g2' ? 'g^{(2)}' : w);
   if (words.length === 1) {
     if (GREEK[base] || base.length <= 2) return texNode(g(base));
     return null;                                      // a plain word: keep the engraved caps
@@ -40,7 +41,8 @@ function symbolizeReadouts(root) {
     const unitEl = row.querySelector('.v3-readout-unit');
     const unit = unitEl?.textContent || '';
     const lab = row.querySelector('.v3-readout-label');
-    const node = readoutLabel(row.dataset.key, unit);
+    const key = row.dataset.key;
+    const node = knownField(key) ? richText(fieldLabel(key)) : readoutLabel(key, unit);
     if (lab && node) lab.replaceChildren(node);
     else if (lab) {
       // plain word: drop the unit token that the unit column already shows
@@ -73,6 +75,7 @@ import { buildLumpedCavity } from './builders/lumpedCavity.js';
 import { renderFallback } from './fallback2d.js';
 import * as THREE from 'three';
 import { addFloor, solidBox } from './builders/floor.js';
+import { addDrive } from './builders/drive.js';
 
 const KINDS = ['device', 'band', 'cascade', 'surface', 'lattice'];
 
@@ -226,6 +229,11 @@ export function mountScene(el, kind, spec, opts = {}) {
       const fl = addFloor(stage, built.root, { spanFromHeight: built.floorSpanFromHeight || 0, bounds: built.floorBounds || null });
       if (fl) built.extraNotes = [...(built.extraNotes || []), fl.note];
     }
+    // drive layer of a composed device (pump beams, contacts, gate): after the floor so it never moves it
+    let drive = null;
+    if (kind === 'device' && s.card === 'composed' && s.drive) {
+      try { drive = addDrive(s, { stage, labels, devBox, anchor: stage.dotAnchor }); } catch (err) { console.warn('drive layer skipped', err); }
+    }
     stage.contextLost = () => useFallback(current, 'WebGL context lost');
     hud.setReadouts(s.scalars, built.readoutKeys);
     symbolizeReadouts(hud.readouts);
@@ -320,6 +328,7 @@ export function mountScene(el, kind, spec, opts = {}) {
       el.classList.toggle('v3-compact', c);
       el.classList.toggle('v3-narrow', n);
       el.classList.toggle('v3-tiny', t);
+      el.classList.toggle('v3-short', t && rect0().height < 300);
       el.classList.toggle('v3-has-bar', c && hud.controls.children.length > 0);
       el.classList.toggle('v3-keep-legend', !!built.keepLegend);
       hud.setRowLimit(t ? 2 : 4);
@@ -398,7 +407,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     };
     el.addEventListener('keydown', onKey);
 
-    state = { stage, hud, labels, built, scalebar, onKey, goBookmark, devBox };
+    state = { stage, hud, labels, built, scalebar, onKey, goBookmark, devBox, drive };
     el.dataset.mode = 'webgl';
     stage.render();
     requestAnimationFrame(() => {
@@ -447,6 +456,17 @@ export function mountScene(el, kind, spec, opts = {}) {
       return { n: t.length, ratio: t.length ? t.reduce((x, y) => x + (y.base ? y.m[y.k] / y.base : 1), 0) / t.length : null };
     },
     _info() { return state?.built?.testInfo ? state.built.testInfo() : null; },
+    // drive layer: counts and the screen position (px in the view) of the lit probe points (pulse / beam / current path)
+    _drive() {
+      if (!state?.drive) return null;
+      const cam = state.stage.camera, r = state.stage.wrap.getBoundingClientRect(), er = el.getBoundingClientRect();
+      cam.updateMatrixWorld(true);
+      const pts = state.drive.probes.map((p) => {
+        const q = p.clone().project(cam);
+        return { x: r.left - er.left + (q.x + 1) / 2 * r.width, y: r.top - er.top + (1 - q.y) / 2 * r.height, front: q.z < 1 };
+      });
+      return { ...state.drive.info, probes: pts, view: { x: er.left, y: er.top, w: er.width, h: er.height } };
+    },
     // projected device box (solid meshes, floor excluded) as a fraction of
     // the canvas area, clipped to the canvas
     _deviceCover() {

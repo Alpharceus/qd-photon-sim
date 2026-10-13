@@ -22,7 +22,7 @@ export function buildRidgeWaveguide(spec, ctx) {
   const Lf = um(fl), Lb = um(bl), Lg = um(gapUm);
   const floorY = nm(g.etch_floor_nm);
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
 
   // --- the stack, bottom -> top, over the front window and the back stub
@@ -83,7 +83,7 @@ export function buildRidgeWaveguide(spec, ctx) {
   root.add(tube);
   const dotZ = -Math.min(Lf * 0.55, Lf - 0.4);
   composeDot(stage, root, rgb, [0, yDot, dotZ], Math.max(W * 0.05, 0.035),
-    { title: 'quantum dot', tag: tg('dot_position'), rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position along the ridge', `${nice(g.dot_position, 3)} of L`]], note: `dot_position is a fraction of the ${nice(g.L_um)} µm cavity; drawn inside the front window` });
+    { title: 'quantum dot', tag: tg('dot_position'), rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position along the ridge', `${nice(g.dot_position, 3)} of L`]], note: `dot_position is a fraction of the ${nice(g.L_um)} µm cavity; drawn inside the front window` });
   composeBeam(stage, root, [0, yDot, 0.03], [0, 0, 1], 5, Math.max(Math.max(wx, wy) * 1.1, 0.2));
 
   // --- back facet: coated (R_back >= 0) or bare cleaved
@@ -97,7 +97,7 @@ export function buildRidgeWaveguide(spec, ctx) {
   // --- annotations
   const xr = W / 2 + pad + 0.25;
   labels.add(root, [W / 2 + 0.1, H + 0.15, -Lf * 0.3], `ridge ${nice(g.ridge_width_nm, 4)} nm wide`, { tag: tg('ridge_width_nm'), priority: 85, sub: `etched ${nice(g.etch_depth_nm, 4)} nm from the top` });
-  labels.add(root, [-xr, yDot, -Lf * 0.1], `dot layer · ${nice(lam, 4)} nm`, { tag: 'E', anchor: 'right', priority: 90, sub: falseColour ? 'NIR, false colour; drawn as a line' : 'a few nm thick: drawn as a line' });
+  labels.add(root, [-xr, yDot, -Lf * 0.1], `dot layer · ${nice(lam, 4)} nm`, { tag: 'E', anchor: 'right', priority: 90, sub: falseColour ? `${colourNote}; drawn as a line` : 'a few nm thick: drawn as a line' });
   labels.add(root, [xr, H * 0.5, -Lf * 0.65], `stack ${nice(g.total_nm / 1000, 3)} µm`, { tag: 'E', priority: 60, sub: 'AlInP / AlGaInP core, dot in a well' });
   labels.add(root, [wx * 0.5, yDot + wy + 0.12, 0.05], `mode ${nice(2 * g.wx_um, 3)} × ${nice(2 * g.wy_um, 3)} µm`, { tag: 'DR', priority: 80, sub: `1/e² intensity diameters; n_eff ${nice(g.n_eff, 4)}` });
   labels.add(root, [0, H + 0.45, -(Lf + Lg / 2)], `break: cavity L = ${nice(g.L_um)} µm`, { tag: tg('L_um'), anchor: 'center', priority: 70, sub: `front ${nice(g.front_len_um)} µm and back stub ${nice(g.back_len_um)} µm drawn` });

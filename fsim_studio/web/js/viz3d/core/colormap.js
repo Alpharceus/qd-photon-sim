@@ -30,14 +30,30 @@ export function viridisGradientCss(dir = 'to right') {
   return `linear-gradient(${dir}, ${stops.join(', ')})`;
 }
 
-// Wavelength (nm) -> linear-ish sRGB triple in 0..1 plus a false-colour flag.
-// Visible range uses the Bruton piecewise approximation (display only);
-// above 700 nm the light is invisible, so a fixed deep red is used and
-// flagged so the UI can print "NIR, false colour".
+// Spectral band of a wavelength: UV (< 380 nm), visible (true colour), NIR (700..1260 nm) or telecom (>= 1260 nm).
+export function bandOf(nm) {
+  if (!Number.isFinite(nm) || nm <= 0) return 'unknown';
+  if (nm < 380) return 'uv';
+  if (nm <= 700) return 'visible';
+  return nm < 1260 ? 'nir' : 'telecom';
+}
+const BAND_NOTE = { uv: 'UV, false colour', nir: 'NIR, false colour', telecom: 'telecom, false colour', unknown: 'wavelength unknown' };
+
+// Wavelength (nm) -> linear-ish sRGB triple plus band / false-colour flags.
+// Visible range uses the Bruton piecewise approximation (display only); outside
+// it the light is invisible, so a fixed stand-in colour is used (deep red for
+// NIR and telecom, violet for UV) and flagged: colourNote is "UV, false colour",
+// "NIR, false colour" or "telecom, false colour" (empty for true colour) and
+// colourSuffix the same in brackets for appending to a value.
 export function lambdaToRGB(nm) {
-  if (!Number.isFinite(nm)) return { rgb: [0.85, 0.85, 0.85], falseColour: true };
-  if (nm > 700) return { rgb: [0.78, 0.06, 0.09], falseColour: true };
-  if (nm < 380) return { rgb: [0.45, 0.2, 0.75], falseColour: true };
+  const band = bandOf(nm);
+  const falseColour = band !== 'visible';
+  const colourNote = falseColour ? BAND_NOTE[band] : '';
+  const colourSuffix = falseColour ? ` (${colourNote})` : '';
+  const out = (rgb) => ({ rgb, falseColour, band, colourNote, colourSuffix });
+  if (band === 'unknown') return out([0.85, 0.85, 0.85]);
+  if (band === 'nir' || band === 'telecom') return out([0.78, 0.06, 0.09]);
+  if (band === 'uv') return out([0.45, 0.2, 0.75]);
   let r = 0, g = 0, b = 0;
   if (nm < 440) { r = -(nm - 440) / 60; b = 1; }
   else if (nm < 490) { g = (nm - 440) / 50; b = 1; }
@@ -48,7 +64,7 @@ export function lambdaToRGB(nm) {
   let f = 1;
   if (nm > 680) f = 0.3 + 0.7 * (700 - nm) / 20;
   else if (nm < 420) f = 0.3 + 0.7 * (nm - 380) / 40;
-  return { rgb: [r * f, g * f, b * f], falseColour: false };
+  return out([r * f, g * f, b * f]);
 }
 
 export function rgbCss([r, g, b], a = 1) {

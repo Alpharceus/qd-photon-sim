@@ -225,8 +225,28 @@ def _structure_resp(spec, sent, sblk, mblk):
     return sent.response(sv, ment.build(mv, T_K), T_K, 0.75)
 
 
+def _band(lam):
+    """Spectral band of a wavelength (nm): "uv" (< 380), "visible" (380..700, drawn in true colour), "nir" (700..1260) or
+    "telecom" (>= 1260: O to U band).  Only the visible band is drawn in true colour."""
+    if lam is None or not math.isfinite(lam) or lam <= 0:
+        return "unknown"
+    if lam < 380.0:
+        return "uv"
+    if lam <= 700.0:
+        return "visible"
+    return "nir" if lam < 1260.0 else "telecom"
+
+
+_COLOUR_LABEL = {"uv": "UV, false colour", "nir": "NIR, false colour", "telecom": "telecom, false colour",
+                 "visible": "visible, true colour", "unknown": "wavelength unknown"}
+
+
 def _false_colour(lam):
-    return bool(lam is not None and lam > 700.0)
+    return _band(lam) in ("uv", "nir", "telecom")
+
+
+def _colour_label(lam):
+    return _COLOUR_LABEL[_band(lam)]
 
 
 def _catalog(spec):
@@ -239,7 +259,8 @@ def _base(variant, title, spec, lam):
     return {"schema": SCHEMA, "kind": "device", "variant": variant, "builder": variant, "card": "composed",
             "title": title, "catalog_id": _catalog(spec), "units": {"length": "um"},
             "axes": {k: {"label": k, "unit": "um", "scale": 1, "badge": None} for k in "xyz"},
-            "layers": [], "overlays": {"emission": {"lambda_nm": lam, "false_colour": _false_colour(lam)}},
+            "layers": [], "overlays": {"emission": {"lambda_nm": lam, "false_colour": _false_colour(lam), "band": _band(lam),
+                                      "colour_label": _colour_label(lam)}},
             "scalars": {}, "labels": [], "notes": [], "provenance": {"calls": []}, "fallback": False}
 
 
@@ -735,6 +756,130 @@ def _illustrative_micropillar(spec, mblk, lam, S, vals, resp):
     return layers, labels, ["F_P", "kappa_ueV", "Q_eff", "eta_out", "lambda_nm"]
 
 
+# ---------------------------------------------------------------- drive layer (R2 FIN2)
+# A `drive` block on the descriptor: what the viewport draws for the spec's drive (pump beams in their wavelength
+# colour or a labelled false colour, pulsed vs cw, contacts and a current path for electrical drives, a gate
+# electrode for the Stark-gated laser).  Wavelengths are unit arithmetic on resolved registry numbers (E_L = E_X +
+# Delta, paper convention Delta = omega_L - omega_X; positive = blue); where the registry has no pump wavelength
+# (above-band, p-shell) the beam is a DISPLAY DEFAULT [A] and says so.  The browser never computes physics.
+_EV_NM_MEV = 1239841.98          # h c in meV nm [V: CODATA 2018]
+_ABOVE_BAND_MEV = 250.0          # display offset of an above-band pump over the dot line [A]
+_P_SHELL_MEV = 40.0              # display offset of a p-shell pump over the s-shell line [A]
+_OPTICAL_PULSED = ("resonant_pulse", "tpe", "phonon_assisted", "super", "dichromatic", "arp")
+_DRIVE_KINDS = _OPTICAL_PULSED + ("cw_resonant", "above_band", "p_shell", "electrical_pulsed", "electrical_cw",
+                                  "stark_gated_resonant")
+
+
+def _beam(role, lam_x, delta_mev, label, tag, extra_mev=0.0, **kw):
+    e_x = _EV_NM_MEV / lam_x
+    e_l = e_x + extra_mev + delta_mev
+    lam = _EV_NM_MEV / e_l if e_l > 0 else float("nan")
+    b = {"role": role, "lambda_nm": round(lam, 3), "band": _band(lam), "false_colour": _false_colour(lam),
+         "colour_label": _colour_label(lam), "delta_meV": round(float(delta_mev), 6),
+         "detuning_meV": round(float(delta_mev) + float(extra_mev), 6),
+         "label": label, "tag": tag}
+    b.update(kw)
+    return b
+
+
+def _drive_block(spec, lam, mblk):
+    dblk = spec.get("drive") or {}
+    kind = dblk.get("kind")
+    out = {"kind": kind, "label": str(kind), "family": "none", "temporal": None, "beams": [], "electrical": None,
+           "gate": None, "sweep": None, "pulse": None, "numbers": {}, "notes": []}
+    if kind not in _DRIVE_KINDS:
+        out["notes"].append("no drive visual for this drive kind")
+        return out
+    dent = _registry.get("drive", kind)
+    out["label"] = dent.label
+    vals = _resolve_block("drive", dblk, dent)
+    v = {k: x[0] for k, x in vals.items()}
+
+    def num(*names):
+        for name in names:
+            val, leaf = vals[name]
+            out["numbers"][name] = {"value": val, "unit": leaf.unit, "tag": leaf.tag, "label": name.replace("_", " ")}
+
+    def pulse(*names):
+        num(*[n for n in names if n in vals])
+        out["pulse"] = {"shape": v.get("shape"), "f_rep_MHz": v.get("f_rep_MHz"),
+                        "fwhm_ps": v.get("fwhm_ps", v.get("fwhm1_ps")), "area_pi": v.get("area_pi", v.get("area1_pi"))}
+
+    if kind in _OPTICAL_PULSED:
+        out["family"], out["temporal"] = "optical", "pulsed"
+        if kind == "resonant_pulse":
+            pulse("fwhm_ps", "area_pi", "detuning_meV", "f_rep_MHz")
+            out["beams"] = [_beam("pump", lam, v["detuning_meV"], "resonant pulse", "A")]
+        elif kind == "tpe":
+            pulse("fwhm_ps", "area_pi", "detuning_meV", "f_rep_MHz")
+            dxx = None
+            try:
+                ment = _registry.get("material", mblk.get("kind"))
+                mv = {k: x[0] for k, x in _resolve_block("material", mblk, ment).items()}
+                dxx = float(ment.build(mv, 5.0).delta_xx_meV)     # E_XX - 2 E_X (negative = bound)
+            except Exception:
+                dxx = None
+            half = (dxx / 2.0) if dxx is not None else 0.0
+            out["beams"] = [_beam("pump", lam, v["detuning_meV"], "two-photon pump, 2 x photon energy = E_XX",
+                                  "DR" if dxx is not None else "A", extra_mev=half, two_photon=True)]
+            out["numbers"]["delta_xx_meV"] = {"value": dxx, "unit": "meV", "tag": "DR", "label": "E_XX - 2 E_X"}
+        elif kind == "phonon_assisted":
+            pulse("fwhm_ps", "area_pi", "detuning_meV", "f_rep_MHz")
+            out["beams"] = [_beam("pump", lam, v["detuning_meV"], "phonon-assisted pump (blue of the line)", "A")]
+        elif kind == "super":
+            pulse("fwhm1_ps", "fwhm2_ps", "area1_pi", "area2_pi", "delta1_meV", "delta2_meV", "f_rep_MHz")
+            out["beams"] = [_beam("pump 1", lam, v["delta1_meV"], "SUPER pulse 1", "V"),
+                            _beam("pump 2", lam, v["delta2_meV"], "SUPER pulse 2", "V")]
+        elif kind == "dichromatic":
+            pulse("fwhm_ps", "area_pi", "delta_meV", "asymmetry", "f_rep_MHz")
+            a = float(v["asymmetry"])
+            out["beams"] = [_beam("blue component", lam, +v["delta_meV"], "dichromatic blue sideband", "V", weight=a / (1.0 + a)),
+                            _beam("red component", lam, -v["delta_meV"], "dichromatic red sideband", "V", weight=1.0 / (1.0 + a))]
+        else:   # arp
+            pulse("fwhm_ps", "area_pi", "detuning_meV", "chirp_ps2", "f_rep_MHz")
+            from fsim_core.compose.drives_phonon import arp_pulse_numbers
+            from fsim_core import qd_gf
+            sc, fwhm_c, kappa, s0 = arp_pulse_numbers(v["fwhm_ps"], v["chirp_ps2"])
+            span = abs(qd_gf.HBAR * kappa) * fwhm_c              # meV swept across the chirped FWHM [DR]
+            sgn = 1.0 if v["chirp_ps2"] >= 0 else -1.0
+            b0 = _beam("sweep start", lam, v["detuning_meV"] - sgn * span / 2.0, "", "DR")
+            b1 = _beam("sweep end", lam, v["detuning_meV"] + sgn * span / 2.0, "", "DR")
+            out["beams"] = [_beam("pump", lam, v["detuning_meV"], "chirped pulse (ARP)", "A")]
+            out["sweep"] = {"from_nm": b0["lambda_nm"], "to_nm": b1["lambda_nm"], "span_meV": round(span, 6),
+                            "fwhm_chirped_ps": round(fwhm_c, 6), "direction": "rising" if sgn > 0 else "falling", "tag": "DR"}
+    elif kind in ("cw_resonant", "above_band", "p_shell"):
+        out["family"] = "optical"
+        if kind == "cw_resonant":
+            out["temporal"] = "cw"
+            num("omega_ueV", "detuning_meV")
+            out["beams"] = [_beam("pump", lam, v["detuning_meV"], "cw resonant laser", "A")]
+        else:
+            out["temporal"] = "cw" if v.get("cw") else "pulsed"
+            pulse("f_rep_MHz", "window_ps")
+            off, txt = (_ABOVE_BAND_MEV, "above-band pump") if kind == "above_band" else (_P_SHELL_MEV, "p-shell pump")
+            out["beams"] = [_beam("pump", lam, 0.0, txt + " (wavelength is a display default)", "A", extra_mev=off,
+                                  display_default=True)]
+    elif kind == "stark_gated_resonant":
+        out["family"], out["temporal"] = "stark_gated", "cw"
+        num("det_off_meV", "det_on_meV", "t_gate_ps", "f_rep_MHz", "power_nW")
+        out["pulse"] = {"shape": "rect", "f_rep_MHz": v["f_rep_MHz"], "fwhm_ps": v["t_gate_ps"], "area_pi": None}
+        out["beams"] = [_beam("laser", lam, v["det_on_meV"], "cw laser, on resonance when the gate is on", "A")]
+        out["gate"] = {"det_off_meV": v["det_off_meV"], "det_on_meV": v["det_on_meV"], "t_gate_ps": v["t_gate_ps"],
+                       "f_rep_MHz": v["f_rep_MHz"], "tag": "A"}
+    else:       # electrical_pulsed / electrical_cw
+        out["family"] = "electrical"
+        out["temporal"] = "pulsed" if kind == "electrical_pulsed" else "dc"
+        el = {"mechanism": v["mechanism"], "T_junction_K": v.get("T_junction_K"), "tag": "A"}
+        if kind == "electrical_pulsed":
+            pulse("f_rep_MHz", "I_uA")
+            el.update(I_uA=v.get("I_uA"), pump_profile=v.get("pump_profile"), t_rise_ps=v.get("t_rise_ps"))
+        else:
+            num("mu", "Z_drive_ohm")
+            el.update(mu=v.get("mu"), Z_drive_ohm=v.get("Z_drive_ohm"), Z_junction_ohm=v.get("Z_junction_ohm"))
+        out["electrical"] = el
+    return out
+
+
 # ---------------------------------------------------------------- entry point
 
 def describe(spec, display=None) -> dict:
@@ -821,6 +966,12 @@ def describe(spec, display=None) -> dict:
                    "display_default": bool(src.get("display_default"))}
     d["scalars"] = scal
     d["readout_keys"] = keys
+    try:
+        d["drive"] = _drive_block(spec, lam, mblk)
+    except Exception as e:          # a drive that does not resolve must not break the device view
+        d["drive"] = {"kind": (spec.get("drive") or {}).get("kind"), "family": "none", "temporal": None, "beams": [],
+                      "electrical": None, "gate": None, "sweep": None, "pulse": None, "numbers": {},
+                      "notes": [f"drive not drawn: {type(e).__name__}: {e}"]}
     d["provenance"] = {"calls": ["fsim_core.compose.registry", "fsim_core.compose.params.resolve_leaf/central"],
                        "structure_kind": skind, "material_kind": mblk.get("kind")}
     return d

@@ -19,7 +19,7 @@ export function buildPhotonicNanowire(spec, ctx) {
   const um = (v) => v * S;
   const nm = (v) => (v / 1000) * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
 
   const r0 = nm(g.d_nm / 2), rTop = nm(g.top_d_nm / 2);
@@ -77,7 +77,7 @@ export function buildPhotonicNanowire(spec, ctx) {
   // --- dot
   const yd = yM + um(g.dot_height_um);
   composeDot(stage, root, rgb, [0, yd, 0], Math.max(r0 * 0.5, 0.05),
-    { title: 'quantum dot', tag: tg('dot_height_um'), rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['height above the mirror', `${nice(g.dot_height_um, 3)} µm (display)`]], note: 'dot height is not a model input' });
+    { title: 'quantum dot', tag: tg('dot_height_um'), rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['height above the mirror', `${nice(g.dot_height_um, 3)} µm (display)`]], note: 'dot height is not a model input' });
   composeBeam(stage, root, [0, yTop + 0.03, 0], [0, 1, 0], 5, Math.max(rTop * 0.7, 0.16));
 
   // --- annotations
@@ -88,7 +88,7 @@ export function buildPhotonicNanowire(spec, ctx) {
   labels.add(root, [mirR * 0.8, yM / 2, mirR * 0.5], `mirror R ${nice(g.mirror_R, 3)}`, { tag: tg('mirror_R'), priority: 80, sub: g.mirror_phase_ok ? `|r| ${nice(g.mirror_field_r, 3)}, coherent: rate × ${nice(g.rate_boost, 3)}` : 'phase unknown: incoherent return' });
   labels.add(root, [0, yTop + 0.55, spotR * 0.8], `β ${nice(g.beta_he11, 3)} · up ${nice(g.upward_fraction, 3)}`, { tag: 'DR', anchor: 'center', priority: 75, sub: `top mode-field radius ${nice(g.mode_radius_nm, 3)} nm` });
   labels.add(root, [-mirR * 0.7, -subT / 2, mirR * 0.5], 'substrate', { tag: 'A', anchor: 'right', priority: 25, sub: 'thickness not modelled' });
-  labels.add(root, [0, yTop + 1.9, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 50, sub: falseColour ? 'NIR, false colour' : 'material emission wavelength' });
+  labels.add(root, [0, yTop + 1.9, 0], `λ ${nice(lam, 4)} nm`, { tag: 'DR', anchor: 'center', priority: 50, sub: falseColour ? colourNote : 'material emission wavelength' });
 
   const tc = [0, yTop * 0.5, 0];
   const main = composeView(tc, [0.62, 0.16, 0.86], yTop * 2.1);

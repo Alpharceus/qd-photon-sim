@@ -56,7 +56,7 @@ export function buildPhcWaveguide(spec, ctx) {
   const tg = (k) => composeTag(spec, k);
   const a = g.a_nm, nx = g.n_cols_z, nr = g.n_rows;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const k = 12 / (nx * a);                       // world per nm (uniform)
   const S = k * 1000;                              // world per um
   const root = new THREE.Group();
@@ -85,7 +85,7 @@ export function buildPhcWaveguide(spec, ctx) {
   stage.addPickable(out, { title: 'guided mode', tag: 'E', rows: [['n_g', nice(g.n_g, 3)], ['A_eff', `${nice(g.A_eff_um2, 3)} µm²`], ['tube radius', `${nice(g.mode_radius_nm, 3)} nm`], ['η_coupler · η_prop', `${nice(g.eta_coupler, 3)} · ${nice(g.eta_prop, 3)}`]], note: 'tube = equal-area circle of A_eff; not a field profile' });
   root.add(out, back);
   composeDot(stage, root, rgb, [0, 0, 0], Math.max(g.dot_r_nm * k, 0.04),
-    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['position', 'in the row, mid-membrane (display)']], note: 'dot size and position are not model inputs' });
+    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['position', 'in the row, mid-membrane (display)']], note: 'dot size and position are not model inputs' });
   composeBeam(stage, root, [-Lw / 2, 0, 0], [-1, 0, 0], 5, Math.max(rm * 1.6, 0.2));
 
   // annotations
@@ -95,7 +95,7 @@ export function buildPhcWaveguide(spec, ctx) {
   labels.add(root, [-Lw * 0.28, 0.7, 0.4], `guided mode · n_g ${nice(g.n_g, 3)}`, { tag: tg('n_g'), priority: 90, sub: 'slow light: group index from the spec' });
   labels.add(root, [-Lw * 0.5, 0.45, -0.4], `A_eff ${nice(g.A_eff_um2, 3)} µm² · tube r ${nice(g.mode_radius_nm, 3)} nm`, { tag: tg('A_eff_um2'), anchor: 'right', priority: 80 });
   labels.add(root, [0.1, -hh * 0.5 - 0.15, -0.2], `dot · ${nice(lam, 4)} nm`, { tag: 'A', anchor: 'right', priority: 88, sub: 'in the missing row, mid-membrane (display)' });
-  labels.add(root, [Lw / 2, 0, 0.3], `λ ${nice(lam, 4)} nm`, { tag: 'DR', priority: 50, sub: falseColour ? 'NIR, false colour' : 'material emission wavelength' });
+  labels.add(root, [Lw / 2, 0, 0.3], `λ ${nice(lam, 4)} nm`, { tag: 'DR', priority: 50, sub: falseColour ? colourNote : 'material emission wavelength' });
   labels.add(root, [-Lw / 2 - 0.2, 0.2, 0.35], `coupler η ${nice(g.eta_coupler, 3)} · propagation η ${nice(g.eta_prop, 3)}`, { tag: tg('eta_coupler'), anchor: 'right', priority: 60 });
 
   const D = Lw * 1.9;

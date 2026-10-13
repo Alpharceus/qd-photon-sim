@@ -21,7 +21,7 @@ export function buildMesa(spec, ctx) {
   const S = 9 / Math.max(g.d_um, (sil !== 'none' ? 2 * silR : 0), 2);          // world per um
   const um = (v) => v * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
   const R = um(g.d_um / 2), h = um(g.h_um);
   const refT = g.mirror ? um(g.reflector_um) : 0;
@@ -83,13 +83,13 @@ export function buildMesa(spec, ctx) {
   }
 
   composeDot(stage, root, rgb, [0, yd, 0], Math.max(um(0.05), 0.05),
-    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['depth', `${nice(g.dot_depth_frac * g.h_um)} µm below the top (display)`]], note: 'dot depth is not a model input' });
+    { title: 'quantum dot', tag: 'A', rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['depth', `${nice(g.dot_depth_frac * g.h_um)} µm below the top (display)`]], note: 'dot depth is not a model input' });
   composeBeam(stage, root, [0, yExit + 0.02, 0], [0, 1, 0], 5, Math.max(R * 0.07, 0.15));
 
   // annotations
   const kind = spec.structure_kind;
   labels.add(root, [R + 0.2, refT + h * 0.5, 0], `${slab ? 'slab' : 'mesa'} Ø ${nice(g.d_um)} µm · ${nice(g.h_um)} µm`, { tag: 'A', priority: 85, sub: 'display default size' });
-  labels.add(root, [-R - 0.2, yd, 0], `dot · ${nice(lam, 4)} nm`, { tag: 'A', anchor: 'right', priority: 90, sub: falseColour ? 'NIR, false colour' : `${nice(g.dot_depth_frac * g.h_um)} µm below the top` });
+  labels.add(root, [-R - 0.2, yd, 0], `dot · ${nice(lam, 4)} nm`, { tag: 'A', anchor: 'right', priority: 90, sub: falseColour ? colourNote : `${nice(g.dot_depth_frac * g.h_um)} µm below the top` });
   if (sil !== 'none') labels.add(root, [um(silR) * 0.7, yExit - um(silR) * 0.25, um(silR) * 0.5], `${sil === 'hemi' ? 'hemispherical' : 'Weierstrass'} SIL · n ${nice(g.n_s, 3)}`, { tag: kind === 'bulk_planar' ? tg('sil') : 'A', priority: 80, sub: 'radius not to scale (real lens ~mm)' });
   if (g.mirror) labels.add(root, [plateR * 0.8, refT / 2, plateR * 0.4], 'metal reflector', { tag: kind === 'bulk_planar' ? tg('mirror') : 'A', priority: 55 });
   if (escapeDeg) labels.add(root, [-R * 0.5, (yd + yTop) / 2, R * 0.5], `escape cone ${nice(escapeDeg, 3)}° (n ${nice(g.n, 3)})`, { tag: tg('n'), anchor: 'right', priority: 70, sub: 'asin(1/n); total internal reflection outside' });

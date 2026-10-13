@@ -67,6 +67,7 @@ export class Hud {
       row.dataset.key = k;
       const lab = el('span', 'v3-readout-label');
       lab.append(richText(s.label || k));
+      lab.title = String(s.label || k).replace(/_/g, " ");
       const val = el('span', 'v3-readout-value');
       val.textContent = fmtNum(s.value, s.unit);
       if (s.note && (s.value === null || s.value === undefined)) val.title = s.note;
@@ -228,7 +229,7 @@ export class Hud {
       b.type = 'button';
       // "optical (waveguide.py)": the parenthetical drops on tiny viewports
       // (full text stays in the tooltip).
-      const m = /^(.*?)\s+(\(.*\))$/.exec(text);
+      const m = /^(.*?)\s+(\(.*\)|stack)$/.exec(text);
       if (m) {
         b.innerHTML = `${esc(m[1])}<span class="v3-seg-sub">&nbsp;${esc(m[2])}</span>`;
         b.title = text;

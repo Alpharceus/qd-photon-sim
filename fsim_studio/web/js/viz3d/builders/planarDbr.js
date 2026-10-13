@@ -32,7 +32,7 @@ export function buildPlanarDbr(spec, ctx) {
   const nm = (v) => (v / 1000) * S;
   const W = g.lateral_um * S;
   const lam = g.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const root = new THREE.Group();
 
   const tH = nm(g.t_high_nm), tL = nm(g.t_low_nm), tS = nm(g.spacer_nm);
@@ -108,7 +108,7 @@ export function buildPlanarDbr(spec, ctx) {
     root.add(fatLine(Array.from({ length: 65 }, (_, i) => [Math.cos((i / 64) * Math.PI * 2) * W * 0.36, yd, Math.sin((i / 64) * Math.PI * 2) * W * 0.36]), { color: 0xd8d6cf, width: 1.1, opacity: 0.55 }));
   }
   composeDot(stage, root, rgb, [0, yd, 0], Math.max(W * 0.012, 0.05),
-    { title: 'quantum dot', tag: nitride ? 'A' : tg('z_dot_frac'), rows: [['emission', `${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}`], ['height in the spacer', `${nice(g.z_dot_nm, 4)} nm`]], note: nitride ? 'dot depth is a display default [A]' : 'dot depth z_dot_frac x spacer from the spec' });
+    { title: 'quantum dot', tag: nitride ? 'A' : tg('z_dot_frac'), rows: [['emission', `${nice(lam, 4)} nm${colourSuffix}`], ['height in the spacer', `${nice(g.z_dot_nm, 4)} nm`]], note: nitride ? 'dot depth is a display default [A]' : 'dot depth z_dot_frac x spacer from the spec' });
 
   // emission: up through the top DBR, and (planar_dbr) the leak down through the substrate, lengths ∝ the split
   const eta = g.eta_out;
@@ -123,7 +123,7 @@ export function buildPlanarDbr(spec, ctx) {
   labels.add(root, [lx, yTop - nm(g.N_top * (g.t_high_nm + g.t_low_nm)) / 2, W / 2], `top DBR · ${g.N_top} pairs · ${nice(g.N_top * (g.t_high_nm + g.t_low_nm) / 1000, 3)} µm`, { tag: nitride ? 'A' : tg('N_top'), priority: 70 });
   labels.add(root, [lx, yBotTop / 2, W / 2], `bottom DBR · ${g.N_bot} pairs · ${nice(g.N_bot * (g.t_high_nm + g.t_low_nm) / 1000, 3)} µm`, { tag: nitride ? 'A' : tg('N_bot'), priority: 70 });
   labels.add(root, [lx, yBotTop + tS / 2, W / 2], `spacer · ${nice(g.spacer_nm, 4)} nm`, { tag: 'DR', priority: 85, sub: nitride ? 'λ/n_high; cavity order is a display default' : 'λ/n_cavity' });
-  labels.add(root, [-lx, yd, W * 0.3], `dot · ${nice(lam, 4)} nm`, { tag: nitride ? 'A' : tg('z_dot_frac'), anchor: 'right', priority: 90, sub: falseColour ? 'NIR, false colour' : `${nice(g.z_dot_nm, 3)} nm above the spacer bottom` });
+  labels.add(root, [-lx, yd, W * 0.3], `dot · ${nice(lam, 4)} nm`, { tag: nitride ? 'A' : tg('z_dot_frac'), anchor: 'right', priority: 90, sub: falseColour ? colourNote : `${nice(g.z_dot_nm, 3)} nm above the spacer bottom` });
   labels.add(root, [0, yTop + 0.5, W / 2], `${nitride ? 'nitride cavity' : 'planar cavity'} · ${nice(g.height_um, 3)} µm tall`, { tag: 'DR', anchor: 'center', priority: 80, sub: `${nice(g.lateral_um)} µm width is a display default [A]` });
   labels.add(root, [-lx, yTop - nm(g.t_high_nm) * 3, W / 2], `λ/4n · ${nice(g.t_high_nm, 3)} / ${nice(g.t_low_nm, 3)} nm`, { tag: nitride ? 'A' : 'DR', anchor: 'right', priority: 60, sub: nitride ? 'display indices' : `n ${nice(g.n_high, 3)} / ${nice(g.n_low, 3)}` });
   if (nitride) {
