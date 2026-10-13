@@ -59,6 +59,13 @@ SDE_CAVEAT = (
     "g2 ~ 1 is correct physics. Normal pump reproduces 1.0224+-0.003 to 1.7 sigma; quiet pump does NOT: "
     "1.017 vs 0.982, 5.8 sigma (out/zhao/zhao_fit_comparison.csv, verdict FAIL both rows). Mechanism "
     "and 12 tuning experiments: sde.py:59-91; Supplement parameters unavailable (sde.py:15-23).")
+SDE_OBSERVABLE_NOTE = (
+    "These g2 values are the INTRACAVITY photon-number g2, which is not squeezed for any pump regulation, so the quiet-pump "
+    "FAIL is partly an observable mismatch: Zhao measured the broadband OUTPUT photon-flux noise spectrum, and the paper's "
+    "g2 is derived from that noise with the Supplementary Material's <S>, which is not available. The output spectrum is "
+    "estimated separately (fsim_core.sde.output_noise_spectrum, not drawn here; verify/verify_zhao_spectrum.py: lowest-decade "
+    "Fano 1.15 quiet vs 2.24 normal, short of the Yamamoto asymptote). The paper's squeezing in dB is unavailable (card 3.1 dB "
+    "against 0.9 dB in the paper digest: unresolved source conflict), and N_dots is not retuned on either observable.")
 SDE_AXIS_NOTE = "Axis is I/I_th, not amperes (sde.py:196-203). No curve is drawn through the quiet point."
 
 
@@ -453,7 +460,7 @@ def sde_meta():
     return {
         "domain": {k: list(v) for k, v in SDE_DOMAIN.items()}, "dt": SDE_DT, "I_grid": list(SDE_I_GRID),
         "F_pumps": list(SDE_F_PUMPS), "defaults": {"I": 4.0, "n_runs": 8, "t_end": 1e-9, "seed": 1, "F_pump": 1.0},
-        "caveat": SDE_CAVEAT, "axis_note": SDE_AXIS_NOTE, "burnin_frac": 0.1,
+        "caveat": SDE_CAVEAT, "observable_note": SDE_OBSERVABLE_NOTE, "axis_note": SDE_AXIS_NOTE, "burnin_frac": 0.1,
         "tags": {"model": "E", "card": "V", "temperature": "V", "result": "E"},
         "tag_notes": {"model": "N_dots, E_a_ES, tau_p, I_ref, F_pump: all [E] (sde.py:137, 159, 172, 196, 205); T 300 K [V]",
                       "card": "cards/zhao.yaml:34-35 [V]"},

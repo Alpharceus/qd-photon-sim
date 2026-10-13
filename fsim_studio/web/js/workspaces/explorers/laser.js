@@ -32,7 +32,7 @@ export async function mount(body, host) {
   Object.assign(host.charts, { lA: chartA, lB: chartB, lC: chartC });
   for (const c of [chartA, chartB, chartC]) c.setTag(TG.result);
 
-  const caveat = caveatBox([meta.caveat, meta.axis_note], { id: "zhao" });
+  const caveat = caveatBox([meta.caveat, meta.observable_note, meta.axis_note], { id: "zhao" });
   const status = h("p.xp-status", { "aria-live": "polite" });
   const note = h("p.xb-note", { dataset: { role: "frames" } });
 
@@ -53,7 +53,7 @@ export async function mount(body, host) {
 
   body.append(h("div.xp-split",
     h("div.xp-main", caveat.el, chartB.el, h("div.xb-grid2", chartA.el, chartC.el),
-      h("p.xp-cap", "Each marker is one seeded run batch with its standard error; the hollow diamonds are the committed fit run (out/zhao). The Zhao card points are drawn at I/I_th = 4 with their error bars and are not connected to the simulation. The quiet pump is expected to sit below the normal pump in sign only; the model does not reach the published magnitude.")),
+      h("p.xp-cap", "Each marker is one seeded run batch with its standard error; the hollow diamonds are the committed fit run (out/zhao). The Zhao card points are drawn at I/I_th = 4 with their error bars and are not connected to the simulation. The quiet pump is expected to sit below the normal pump in sign only; the model does not reach the published magnitude. These are intracavity g² values; Zhao measured the output noise spectrum (see the caveat above).")),
     h("aside.xp-side.panel", h("header.panel-head", h("h2.engrave", "Inputs"), status),
       h("div.xp-ctls", S.I.row, h("div.xs-row", h("span.xs-label", "Series in the readouts ", tagChip(TG.model, { size: "sm" })), fSeg.el), S.n_runs.row, S.t_end.row,
         h("div.xs-row", h("label.xs-label", { for: "xb-ls-seed" }, "Seed ", tagChip("A", { size: "sm" })), h("div.xs-ctl", Object.assign(seed, { id: "xb-ls-seed" }))),

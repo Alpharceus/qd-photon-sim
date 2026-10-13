@@ -213,7 +213,9 @@ export function autoMath(str) {
       t = `g^{(2)}${g.gsub ? `_{${subTex(g.gsub)}}` : ""}${arg ? `(${arg === "τ" ? "\\tau" : arg})` : ""}`;
     }
     if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
-    frag.appendChild(tex(t));
+    const node = tex(t);
+    node.dataset.src = m[0]; // the ASCII source, so a verbatim-text check can read the string the backend sent
+    frag.appendChild(node);
     last = m.index + m[0].length;
     hit = true;
   }

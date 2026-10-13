@@ -572,8 +572,22 @@ async function waitRun(page, timeout = 120000) {
         }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         if (w === 390) {
-          check(`phone width ${theme}: no horizontal page overflow`, overflow <= 1, `${overflow}px`);
+          const ovCulprits = overflow > 1 ? await page.evaluate(() => {
+            const W = window.innerWidth, o = [];
+            for (const e of document.querySelectorAll("body *")) { const r = e.getBoundingClientRect(); if (r.right > W + 1 && r.width > 0) o.push(`${e.tagName}.${String(e.className.baseVal ?? e.className).slice(0, 30)} ${Math.round(r.left)}-${Math.round(r.right)}`); }
+            return o.slice(0, 8).join(" | ");
+          }) : "";
+          check(`phone width ${theme}: no horizontal page overflow`, overflow <= 1, `${overflow}px ${ovCulprits}`);
           check(`phone width ${theme}: document scrollWidth is exactly 390`, (await page.evaluate(() => document.scrollingElement.scrollWidth)) === 390);
+          // R2: a parameter sheet carries ellipsised source lines with typeset math; KaTeX's absolutely positioned MathML twin used to escape the
+          // overflow:hidden of those lines and widen the page (scrollWidth 622 at 390 px)
+          await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true }).catch(() => {});
+          await page.waitForSelector(".ws-compose .sheet .field-row", { timeout: 5000 }).catch(() => {});
+          await settle(page, 400);
+          const sheetSw = await page.evaluate(() => document.scrollingElement.scrollWidth);
+          check(`phone width ${theme}: a parameter sheet open does not widen the page (scrollWidth 390)`, sheetSw === 390, `${sheetSw}`);
+          await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true }).catch(() => {});
+          await settle(page, 300);
           if (theme === "dark") {
             const grid = await page.$$eval(".ws-compose .mount-cell", (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top)]; }));
             check("phone: the chain is a 2 x 2 grid of mounts (no clipped scroller)", new Set(grid.map((g) => g[0])).size === 2 && new Set(grid.map((g) => g[1])).size === 2, JSON.stringify(grid));
@@ -593,7 +607,55 @@ async function waitRun(page, timeout = 120000) {
             check("phone: bottom nav items do not overlap", navBoxes.every((b, i) => i === 0 || b[0] >= navBoxes[i - 1][1] - 1), "");
           }
         }
+        if (w === 390) {
+          // a full-page capture is as wide as the document, so a late overflow shows up as a wide PNG: assert the width again at capture time
+          const culprit = await page.evaluate(() => {
+            const W = window.innerWidth, o = [];
+            for (const e of document.querySelectorAll("body *")) { const r = e.getBoundingClientRect(); if (r.right > W + 1 && r.width > 0) o.push(`${e.tagName}.${String(e.className.baseVal ?? e.className).slice(0, 30)} ${Math.round(r.left)}-${Math.round(r.right)}`); }
+            return `${document.scrollingElement.scrollWidth}: ${o.slice(0, 6).join(" | ")}`;
+          });
+          check(`phone width ${theme}: scrollWidth is still 390 when the full-page screenshot is taken`, culprit.startsWith("390:"), culprit);
+        }
         await page.screenshot({ path: path.join(SHOTS, `composer-${theme}-${w}.png`), fullPage: w === 390 });
+      }
+    }
+    // ---------------------------------------------------------------- N2 (R2 tests): swap -> RUN -> swap -> RUN leaves no em dash on the shelf
+    {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+      await page.reload({ waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 90000 });
+      const state = () => page.$eval(".ws-compose .status-word", (e) => e.dataset.state);
+      const shelf = () => page.$$eval(".ws-compose .readout", (els) => els.map((e) => [e.dataset.readout, e.dataset.state]));
+      const pickKind = async (axis, kind) => {
+        await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
+        await page.waitForSelector(".cp-entry", { timeout: 15000 });
+        await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
+        const target = kind || (await page.$$eval(".cp-entry", (els, cur) => (els.find((e) => e.dataset.kind !== cur && e.getAttribute("aria-disabled") !== "true" && e.dataset.status !== "needs_physics") || {}).dataset?.kind,
+          await page.$eval(`.ws-compose .kind-chip[data-axis="${axis}"]`, (e) => e.dataset.kind)));
+        await page.click(`.cp-entry[data-kind="${target}"]`);
+        await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, target], { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+        return target;
+      };
+      for (const struct of ["planar_dbr", "sil_mesa"]) {
+        try {
+          await pickKind("structure", struct);
+          await page.click(".ws-compose .run-key");
+          await waitRun(page);
+          const d1 = await pickKind("drive", null);
+          const idle = await state();
+          const emptyShelf = (await shelf()).every(([, st]) => st === "empty");
+          check(`N2 ${struct}: after a swap the status line says Ready (not 'Result on shelf') over the emptied shelf`, idle === "idle" && emptyShelf, `${idle}; ${JSON.stringify(await shelf())}`);
+          await page.click(".ws-compose .run-key");
+          await waitRun(page);
+          // read the shelf the moment the status says done: no retry, a short paint allowance only
+          await page.waitForTimeout(300);
+          const after = await shelf();
+          const dashes = after.filter(([, st]) => st === "empty" || st === "pending").map(([k]) => k);
+          check(`N2 ${struct} -> drive ${d1}: no KPI readout shows the empty dash after a finished RUN`, (await state()) === "done" && dashes.length === 0, `${await state()} ${dashes.join(",")}`);
+        } catch (e) { check(`N2 ${struct}: swap, RUN, swap, RUN`, false, e.message.split("\n")[0]); }
       }
     }
     check("screenshots written (dark + light, 1440x900 and 390x844)", ["dark", "light"].every((t) => [1440, 390].every((w) => fs.existsSync(path.join(SHOTS, `composer-${t}-${w}.png`)))));

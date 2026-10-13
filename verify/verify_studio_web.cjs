@@ -541,7 +541,14 @@ async function b612Audit(page) {
         performance.clearMeasures("fsim-anim-frame");
         A.seek(0);
         A.play();
-        await new Promise((r) => setTimeout(r, 2600));
+        // sample for at least 2.6 s AND until 60 ticks are recorded (cap 40 s): under CPU throttling the rAF rate drops, and a
+        // fixed 2.6 s window saw only 7 ticks (R2). play() restarts from the first frame when playback has reached the end
+        // (no loop), so a short animation does not cap the count. The budget below is unchanged.
+        const t0 = performance.now();
+        while (performance.now() - t0 < 40000 && (performance.now() - t0 < 2600 || performance.getEntriesByName("fsim-anim-frame").length < 60)) {
+          await new Promise((r) => setTimeout(r, 100));
+          A.play();
+        }
         A.pause();
         const d = performance.getEntriesByName("fsim-anim-frame").map((e) => e.duration).sort((x, y) => x - y);
         const mean = d.reduce((x, y) => x + y, 0) / Math.max(1, d.length);

@@ -24,3 +24,7 @@
 .katex, .katex * { border-color: currentColor; }
 .katex .mord, .katex .mop, .katex .mbin, .katex .mrel, .katex .minner { color: inherit; }
 .num-exp { font-size: 0.72em; line-height: 0; }
+/* KaTeX's hidden MathML twin is position:absolute. Without a positioned ancestor it escapes the overflow:hidden of an ellipsised
+   line (e.g. .pf-src, plaque notes) and, sitting where the clipped text would have run on, stretches the page's scrollWidth
+   (390 px phone: 622 with a parameter sheet open). Positioning the math span makes the clip apply to it. */
+.math { position: relative; }

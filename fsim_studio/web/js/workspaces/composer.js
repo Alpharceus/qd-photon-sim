@@ -483,8 +483,13 @@ function openPicker(a, anchor) {
       if (kind === S.spec[a.key].kind) return;
       S.spec[a.key] = { kind, params: {} };
       markEdited();
-      S.run = null; S.series = null;
+      // the swap drops the result the shelf was showing: a run still in flight belongs to the old chain, and the status line must
+      // not keep saying "Result on shelf" over empty readouts (N2: a test that waited for 'done' then read the empty shelf)
+      S.job?.cancel?.();
+      S.job = null;
+      S.run = null; S.series = null; S.lastError = null;
       S.ser.path = null;
+      setRunState("idle");
       renderMounts();
       if (S.openAxis === a.key) renderSheet();
       renderResults();
@@ -794,6 +799,8 @@ function setRunState(st, info = {}) {
     S.dom.runStatus.textContent = "Submitting";
     tick();
     S.timer = setInterval(tick, 250);
+  } else if (st === "idle") {
+    S.dom.runStatus.textContent = "";
   } else if (st === "done") {
     S.dom.runStatus.textContent = info.cached ? `Done from cache in ${fmtSeconds(info.elapsed)}` : `Done in ${fmtSeconds(info.elapsed)}`;
   } else if (st === "cancelled") {
