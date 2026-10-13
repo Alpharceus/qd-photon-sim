@@ -22,14 +22,16 @@ structure_reference_material:
 # SolverUnavailable, or a run flagged invalid with a stated reason. A raw exception is a failure. A combination that
 # turns out to run fine is reported as a note ("table is stale") and does not fail.
 excluded:
+  # Updated 2026-10-13 (R2 F56) to the truth after the F3 fix: edge_ridge now runs for the InAs/InGaAs/InP/GaAs/InGaN emitters
+  # (GaAs / InP / GaN ridge platforms from the materials tables) and phc_cavity now runs the incoherent, cw-resonant and electrical
+  # drives (above_band, p_shell, cw_resonant, electrical_cw, electrical_pulsed) in the strong-coupling regime. What stays excluded is
+  # listed below; each is refused or run-flagged invalid with a stated reason.
   - structure: edge_ridge
-    material: [cdse_znse, cspbbr3_colloidal, gan_aln, inas_gaas_sk, inas_ingaas_metamorphic_cband, inas_inp_cband,
-               ingaas_gaas, ingan_gan]
-    reason: "edge_ridge uses waveguide.hkust_ridge_stack(lambda), whose Al0.52In0.48P index is tabulated only at 650-800 nm; only inp_gainp_red (670 nm) and gaas_algaas_droplet (785 nm) emit inside that band"
+    material: [cdse_znse, cspbbr3_colloidal, gan_aln]
+    reason: "edge_ridge has no ridge-waveguide stack with a tabulated index at 510-650 nm (II-VI ZnSe/ZnMgSSe, colloidal) and none at 290 nm (GaN/AlN needs Al-rich AlGaN claddings): refused with a named reason"
   - structure: phc_cavity
-    drive: [above_band, arp, cw_resonant, dichromatic, electrical_cw, electrical_pulsed, p_shell, phonon_assisted,
-            stark_gated_resonant, super, tpe]
-    reason: "the default phc_cavity (Q 1e4, V 0.7) is in the strong-coupling regime, the weak-coupling Purcell model is invalid there, and the jc solver supports only coherent single-colour pulsed drives (resonant_pulse)"
+    drive: [arp, dichromatic, phonon_assisted, stark_gated_resonant, super, tpe]
+    reason: "the default phc_cavity (Q 1e4, V 0.7) is in the strong-coupling regime, the weak-coupling Purcell model is invalid there, and the jc solver supports only coherent single-colour pulsed drives (resonant_pulse): polaron (phonon-dressed), Stark-gate (time-dependent detuning) and TPE (biexciton ladder) drives with a cavity mode are flagged invalid with that reason"
 
 # Solver x drive: the drives each solver is declared to accept (bulk_planar, reference material). Every other pairing must
 # be refused with SolverUnavailable. jc additionally needs a cavity (declared separately below).

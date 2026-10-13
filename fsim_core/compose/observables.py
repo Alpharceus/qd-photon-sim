@@ -540,7 +540,7 @@ def _derive(c: Context) -> dict:
                                            gate_shape=shape)["n_T"]
     else:
         d["hom_I_gated"] = NAN
-        why["hom_I_gated"] = "no HOM detection gate set (drive.hom_gate_ps = 0)"
+        why["hom_I_gated"] = "no HOM gate set; set the HOM gate width (drive.hom_gate_ps > 0)"
         d["hom_gate_fraction"] = 1.0             # no gate: every emitted photon is inside the (whole-period) window
     # R2 dead controls (F10b): the delivered pump Fano factor of an electrical drive, F_dot = 1 - eta_cap (1 - F_pump)
     # (loading.f8b_thin_fano; F_pump from the mechanism: shot-noise rail 1, impedance divider Z_j/(Z_j + Z_d) [E] with the

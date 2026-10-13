@@ -1064,6 +1064,25 @@ def fix2_checks():
     check("fix2: _check_observables names the valid conventions for a bad one and accepts valid requests",
           out["hom_V"] != "ok" and "convention" in out["hom_V"] and "raw" in out["hom_V"] and out["g2_0:nonsense"] != "ok"
           and out["hom_V:raw"] == "ok" and out["hom_V:corrected"] == "ok" and out["g2_0"] == "ok" and out["nope"] != "ok", json.dumps(out)[:200])
+    # R2 F5: every request composer.js can send (line 681: bare id only for 'intrinsic', else id:convention) is accepted, and any
+    # bare id of an observable that has no 'intrinsic' convention, or any invented convention, is refused
+    from fsim_core.compose import observables as _om, registry as _R
+    sent_ok, bad_ok = [], []
+    for oid in _R.kinds("observable"):
+        for conv in _om.get_observable(oid).conventions:
+            req = oid if conv == "intrinsic" else f"{oid}:{conv}"
+            try:
+                ac._check_observables([req])
+            except ac.ComposeError:
+                sent_ok.append(req)
+        for req in (f"{oid}:nonsense",) + ((oid,) if "intrinsic" not in _om.get_observable(oid).conventions else ()):
+            try:
+                ac._check_observables([req])
+                bad_ok.append(req)
+            except ac.ComposeError:
+                pass
+    check("fix56: _check_observables accepts every request the Composer sends and refuses id:nonsense and a bare id without an 'intrinsic' convention",
+          not sent_ok and not bad_ok, f"refused {sent_ok[:3]}, accepted {bad_ok[:3]}")
 
 
 if __name__ == "__main__":

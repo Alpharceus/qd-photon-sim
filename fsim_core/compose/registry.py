@@ -255,6 +255,8 @@ def _entry_dict(e) -> dict:
          "viz": e.viz, "eta_hint": list(e.eta_hint)}
     if axis == "drive":
         d["observables"] = sorted(e.observables)
+        if getattr(e, "observables_cw", None) is not None:       # R2 F6: the advertised set of the cw variant (drive param cw = true)
+            d["observables_cw"] = sorted(e.observables_cw)
     return d
 
 

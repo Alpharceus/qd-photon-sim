@@ -345,6 +345,18 @@ def run_checks(tmp):
     rr = post("/api/compose/series", {"spec": SPEC, "path": "structure.F_P", "values": [1.0, 2.0], "observables": ["hom_V"]})
     check("5f series with a bare hom_V is a 400 at submit time with a clear message, not a failed job",
           rr.status_code == 400 and "convention" in json.dumps(j(rr)), str(rr.status_code))
+    # R2 F56: the payload carries the cw-variant advertised set; an unavailable series request comes back with its reason
+    pay56 = {d["kind"]: d for d in j(c.get("/api/compose/registry"))["drives"]}
+    check("5g registry payload: above_band / p_shell carry observables_cw without the per-pulse ids, resonant_pulse does not carry it",
+          all("observables_cw" in pay56[k] and not ({"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt"} & set(pay56[k]["observables_cw"]))
+              and "hom_I" in pay56[k]["observables"] for k in ("above_band", "p_shell"))
+          and "observables_cw" not in pay56["resonant_pulse"])
+    ep_spec = dict(SPEC, drive={"kind": "electrical_pulsed", "params": {}}, structure={"kind": "bulk_planar", "params": {}})
+    rr = post("/api/compose/series", {"spec": ep_spec, "path": "T_K", "values": [4.0, 6.0], "observables": ["hom_I_gated", "g2_0"]})
+    snap56 = wait_job(j(rr)["job_id"]) if rr.status_code == 202 else {"state": str(rr.status_code)}
+    un56 = ((snap56.get("result") or {}).get("series") or {}).get("unavailable") or {}
+    check("5h series of hom_I_gated with no HOM gate: done, 'unavailable' carries the reason, g2_0 is not listed",
+          snap56["state"] == "done" and "no HOM gate set" in un56.get("hom_I_gated", "") and "g2_0" not in un56, json.dumps(un56)[:160])
     r = post(f"/api/papers/{pid}/reproduce", {})
     resp = j(r)
     check("9e reproduce: 202 job", r.status_code == 202 and "job_id" in resp and resp["cached"] is False)

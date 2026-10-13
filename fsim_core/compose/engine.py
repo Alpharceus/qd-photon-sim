@@ -191,6 +191,9 @@ def _series_unavailable(ctx) -> dict:
     silently missing curve). hom_vs_dt is the Gaussian average over the relative spectral-diffusion detuning of two photons dt
     apart, which needs the overlap of two photons with a DETUNED second emitter. The jc solver has only the two-time overlap of
     two identical photons (lb.indistinguishability), so it does not compute the series; the scalar hom_I is still the jc value."""
+    if ctx.plan.timing != "pulsed" and "hom_vs_dt" not in ctx.res.extra.get("series", {}):
+        # R2 F6: the cw variants of above_band / p_shell no longer advertise it; a request is answered with this reason
+        return {"hom_vs_dt": "a cw stream has no per-pulse HOM overlap, so there is no overlap-against-separation series"}
     if ctx.plan.timing == "pulsed" and ctx.solver.name == "jc" and "hom_vs_dt" not in ctx.res.extra.get("series", {}):
         return {"hom_vs_dt": "not computed with the Jaynes-Cummings solver: the separation series needs the overlap of photons with a "
                              "detuned second emitter, the jc two-time machinery has only identical photons (hom_I is the jc value "
@@ -254,6 +257,20 @@ def evaluate_spec(spec, T_grid=None) -> dict:
         if k in ctx.res.extra:
             scalars[k] = float(ctx.d[k])
     scalars["captions"] = captions(ctx)
+    # R2 F56: an observable the drive advertises (beyond SCALAR_OBS) that is NaN at the operating point comes with its reason
+    # (hom_I_gated with no HOM gate set): never a bare NaN
+    adv = entries["drive"]
+    adv = adv.observables_for({k.split(".", 1)[1]: v for k, v in values.items() if k.startswith("drive.")})         if hasattr(adv, "observables_for") else adv.observables
+    gone_o = {}
+    for oid in sorted(set(adv) - set(SCALAR_OBS)):
+        try:
+            o = obs_mod.get_observable(oid)
+            if not math.isfinite(o.compute(ctx, o.conventions[0])):
+                gone_o[oid] = str(o.invalid_reason(ctx, o.conventions[0]) or f"{oid} is not computed for this spec")
+        except Exception:  # noqa: BLE001 -- a series id (g2_tau, ...) is not a registered scalar
+            continue
+    if gone_o:
+        scalars["observables_unavailable"] = gone_o
     gone = _series_unavailable(ctx)
     if gone:
         scalars["series_unavailable"] = gone
@@ -354,6 +371,7 @@ def series(spec, path: str, values, observables) -> dict:
     base = _central_values(leaves)
     y = {r: [] for r in observables}
     failed, floor = [], ""
+    last_ctx = None
     reads = {a: set() for a in AXIS_KEYS}
     for i, x in enumerate(values):
         p = {**base, path: x}
@@ -368,14 +386,26 @@ def series(spec, path: str, values, observables) -> dict:
             reads[a] |= c.reads[a]
         if c.sr.tag_floor:
             floor = obs_mod.widest_tag(floor, c.sr.tag_floor) if floor else c.sr.tag_floor
+        last_ctx = c
         for r in observables:
             y[r].append(_value_of(c, r))
     tags = {}
     for r in observables:
         o = obs_mod.get_observable(obs_mod.parse_request(r)[0])
         tags[r] = obs_mod.tag_of(o, leaves, reads, floor)[0]
-    return {"path": path, "unit": leaves[path].unit, "x": [float(v) for v in values],
-            "y": {r: [float(t) for t in v] for r, v in y.items()}, "tag": tags, "failed": failed}
+    out = {"path": path, "unit": leaves[path].unit, "x": [float(v) for v in values],
+           "y": {r: [float(t) for t in v] for r, v in y.items()}, "tag": tags, "failed": failed}
+    # R2 F56: a request that is NaN at every point comes back WITH the reason the engine states for it (never a bare NaN)
+    gone = {}
+    if last_ctx is not None:
+        for r in observables:
+            if out["y"][r] and not any(math.isfinite(t) for t in out["y"][r]):
+                oid, conv = obs_mod.parse_request(r)
+                reason = obs_mod.get_observable(oid).invalid_reason(last_ctx, conv)
+                gone[r] = str(reason) if reason else f"{r} is not computed for this spec (NaN at every point)"
+    if gone:
+        out["unavailable"] = gone
+    return out
 
 
 def estimate(spec, n_points: int = 1) -> float:

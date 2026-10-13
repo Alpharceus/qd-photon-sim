@@ -648,7 +648,19 @@ function sweepPaths() {
   return out;
 }
 
+/** Observables the current drive VARIANT does not advertise (R2 F6): a cw incoherent pump has no per-pulse HOM or brightness. */
+function hiddenObs() {
+  const d = (S.reg.drives || []).find((x) => x.kind === S.spec?.drive?.kind);
+  if (!d || !Array.isArray(d.observables_cw)) return new Set();
+  const cwParam = (d.params || []).find((p) => p.name === "cw");
+  const leaf = cwParam ? readLeaf(cwParam, S.spec.drive.params?.cw) : null;
+  const cw = !!(leaf && leaf.value);
+  return cw ? new Set(d.observables.filter((o) => !d.observables_cw.includes(o))) : new Set();
+}
+
 function ensureSeriesPath() {
+  const hid = hiddenObs();
+  if (hid.size) S.ser.obs = S.ser.obs.filter((q) => !hid.has(String(q).split(":")[0]));
   const list = sweepPaths();
   if (!list.some((x) => x.path === S.ser.path)) { S.ser.path = list[0]?.path || null; seriesDefaults(); }
   if (!S.ser.obs.length) S.ser.obs = (S.reg.observables || []).map((o) => o.id).filter((id) => DEFAULT_OBS.includes(id));
@@ -678,7 +690,8 @@ function renderSeriesBox() {
   const inp = (key, label, int) => h("label.rb-f", h("span.rb-fl", label),
     h("input.fr-num.rb-in", { type: "number", step: "any", value: String(Number(Number(S.ser[key]).toPrecision(6))), "aria-label": label,
       on: { change: (e) => { const v = Number(e.target.value); if (Number.isFinite(v)) { S.ser[key] = int ? Math.round(v) : v; clampGrid(); syncRunbar(); } } } }));
-  const obs = (S.reg.observables || []).flatMap((o) => (o.conventions || ["intrinsic"]).map((c, _i, all) => ({ req: c === "intrinsic" ? o.id : `${o.id}:${c}`, label: `${o.label}${all.length > 1 ? ` (${c})` : ""}` })));
+  const hid = hiddenObs();
+  const obs = (S.reg.observables || []).filter((o) => !hid.has(o.id)).flatMap((o) => (o.conventions || ["intrinsic"]).map((c, _i, all) => ({ req: c === "intrinsic" ? o.id : `${o.id}:${c}`, label: `${o.label}${all.length > 1 ? ` (${c})` : ""}` })));
   const obsBox = h("details.rb-obs", h("summary.btn.btn-quiet", `Observables (${S.ser.obs.length})`),
     h("div.rb-obs-list", obs.map((o) => h("label.rb-check",
       h("input", { type: "checkbox", checked: S.ser.obs.includes(o.req), dataset: { obs: o.req },
@@ -694,7 +707,11 @@ function syncRunbar() {
   S.seg.select(S.mode);
   S.dom.tsweepBox.hidden = S.mode !== "tsweep";
   S.dom.seriesBox.hidden = S.mode !== "series";
-  if (S.mode === "series") { ensureSeriesPath(); if (!S.dom.seriesBox.firstChild) renderSeriesBox(); }
+  if (S.mode === "series") {
+    ensureSeriesPath();
+    const hidKey = [...hiddenObs()].sort().join(",");               // the advertised set changed (drive swap or cw switch): rebuild the list
+    if (!S.dom.seriesBox.firstChild || hidKey !== S.hidKey) { S.hidKey = hidKey; renderSeriesBox(); }
+  }
   const ok = !!S.val?.ok;
   const running = S.runState === "running";
   S.dom.runBtn.disabled = running || !ok || (S.mode === "series" && (!S.ser.obs.length || !S.ser.path));
@@ -976,7 +993,7 @@ function renderResults() {
     R.update({
       value: v, unit: ro.unit, tag, tagNote: prov?.inputs ? `${prov.inputs.length} inputs` : null,
       qualifier: mid ? "range midpoint" : "", caption: cap.line, why: cap.why, markChange: true,
-      reason: (s.invalid_reasons || [])[0] || `${ro.label} not computed for this spec`,
+      reason: s[`${ro.key}_invalid_reason`] || (s.invalid_reasons || [])[0] || `${ro.label} not computed for this spec`,   // the observable's own stated reason first (R2 F56)
     });
   }
   const odd = READOUTS.length % 2;
@@ -991,7 +1008,7 @@ function renderResults() {
   S.charts.tcurve.setEmpty(running && S.mode === "tsweep" ? loadingPlate() : emptyState({
     title: r && (r.curves?.T_hs || []).length <= 1 ? "Single temperature" : "No T sweep yet",
     body: r && (r.curves?.T_hs || []).length <= 1 ? "Run a T sweep to draw the curves against temperature." : "Choose T sweep and RUN.", iconName: "chart" }));
-  S.charts.hom.setEmpty(emptyState({ title: "No HOM curve", body: r ? "This drive and solver return no photon-separation curve." : "Runs of pulsed coherent drives fill this plot.", iconName: "chart" }));
+  S.charts.hom.setEmpty(emptyState({ title: "No HOM curve", body: r ? (r.scalars?.series_unavailable?.hom_vs_dt || "This drive and solver return no photon-separation curve.") : "Runs of pulsed coherent drives fill this plot.", iconName: "chart" }));
   S.charts.series.render();
   S.charts.tcurve.render();
   S.charts.hom.render();
@@ -1071,16 +1088,20 @@ function unitOfReq(req) { return displayUnit((S.reg.observables || []).find((x) 
 function buildSeries() {
   const sr = S?.series?.series;
   if (!sr) return null;
-  const reqs = Object.keys(sr.y || {});
+  const gone = sr.unavailable || {};                      // R2 F56: requests that are NaN at every point, with the engine's reason
+  const reqs = Object.keys(sr.y || {}).filter((q) => !(q in gone));
   const withheld = reqs.filter((q) => !normTag(sr.tag?.[q]));
   const rows = reqs.filter((q) => normTag(sr.tag?.[q])).map((q) => ({ x: sr.x, y: sr.y[q], label: labelOf(q), unit: unitOfReq(q), tag: sr.tag[q] }));
-  if (!rows.length) return withheld.length ? { data: [], layout: {}, withheld: withheld.map(labelOf) } : null;
+  if (!rows.length && Object.keys(gone).length) {
+    S.charts.series.setTitle("Series", `unavailable: ${Object.entries(gone).map(([q, why]) => `${richPlain(labelOf(q))} (${why})`).join("; ")}`);
+  }
+  if (!rows.length) return withheld.length || Object.keys(gone).length ? { data: [], layout: {}, withheld: withheld.map(labelOf) } : null;
   const log = S.ser.log && S.series.spec_path === S.ser.path;
   const p = sr.path || S.series.spec_path;
   const out = stacked(rows, { xTitle: `${pathRich(p)}${sr.unit ? ` (${displayUnit(sr.unit)})` : ""}`, xLog: log });
   out.withheld = withheld.map(labelOf);
   S.charts.series.el.style.setProperty("--chart-h", `${Math.max(240, 118 * rows.length + 60)}px`);
-  S.charts.series.setTitle("Series", `${richPlain(pathRich(p))} · ${sr.x.length} points${sr.failed?.length ? ` · ${sr.failed.length} failed (gaps)` : ""} · other inputs at their central values`);
+  S.charts.series.setTitle("Series", `${richPlain(pathRich(p))} · ${sr.x.length} points${sr.failed?.length ? ` · ${sr.failed.length} failed (gaps)` : ""} · other inputs at their central values${Object.keys(gone).length ? ` · unavailable: ${Object.entries(gone).map(([q, why]) => `${richPlain(labelOf(q))} (${why})`).join("; ")}` : ""}`);
   return out;
 }
 function seriesTable() {

@@ -66,6 +66,10 @@ _PULSED = frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre"})
 OBS_COHERENT_PULSED = _COMMON | _PULSED | {"inversion", "hom_vs_dt"}
 _CW_RATES = frozenset({"B_first_lens_Hz", "B_fibre_Hz"})     # devlib-fx3b: photon flux into the lens / fibre (cw)
 OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt"}      # above_band / p_shell also run cw
+# R2 F6: above_band / p_shell with cw = True are a cw stream: the per-pulse brightness B_*, the per-pulse HOM overlap
+# (hom_I, hom_V) and its separation series hom_vs_dt are undefined there, so the cw variant does not advertise them
+# (the photon fluxes B_*_Hz and rate_detected_Hz are the cw quantities). Decision: NOT ADVERTISED (r2-f56-decisions.md).
+OBS_INCOHERENT_CW_VARIANT = OBS_INCOHERENT_PULSED - frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt"})
 # R2 FIX-1a (audit 6): a cw stream has no per-pulse HOM overlap (it needs a timing-window definition), so the cw drives no
 # longer advertise hom_I / hom_V; the engine returns NaN with a reason if one is requested anyway.
 OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion", "s_0", "s_sat", "coherent_fraction"}
@@ -83,6 +87,16 @@ class PlannedDrive(Drive):
     `reason` is non-empty exactly for status == "needs_physics" entries."""
     planner: Optional[Callable] = None
     reason: str = ""
+    # R2 F6: the advertised set when the drive runs with `cw` = True (None = the same as `observables`)
+    observables_cw: Optional[frozenset] = None
+
+    def observables_for(self, vals=None) -> frozenset:
+        """Observables advertised for these parameter values (the timing variant decides: a cw stream drops the per-pulse ones)."""
+        vals = vals or {}
+        if self.observables_cw is not None and "cw" in {p.name for p in self.params}:
+            if bool(vals["cw"] if "cw" in vals else self.param("cw").default):
+                return self.observables_cw
+        return self.observables
 
     def plan(self, vals: dict, em, rt):
         if self.status == "needs_physics":
@@ -392,7 +406,7 @@ ABOVE_BAND = PlannedDrive(
     ) + _REFILL,
     refs=(_REF_BRIEF + ": above-band incoherent row",),
     provides=frozenset({"incoherent_pump"}),
-    observables=OBS_INCOHERENT_PULSED, planner=_plan_above_band)
+    observables=OBS_INCOHERENT_PULSED, observables_cw=OBS_INCOHERENT_CW_VARIANT, planner=_plan_above_band)
 
 P_SHELL = PlannedDrive(
     kind="p_shell", label="p-shell / quasi-resonant pump",
@@ -417,7 +431,7 @@ P_SHELL = PlannedDrive(
     ),
     refs=(_REF_BRIEF + ": p-shell / quasi-resonant row",),
     provides=frozenset({"incoherent_pump"}),
-    observables=OBS_INCOHERENT_PULSED, planner=_plan_p_shell)
+    observables=OBS_INCOHERENT_PULSED, observables_cw=OBS_INCOHERENT_CW_VARIANT, planner=_plan_p_shell)
 
 
 # ======================================================================

@@ -277,6 +277,19 @@ check("electrical summaries carry the RT-edge passthrough label",
 check("every plan payload field in inputs is JSON-serialisable",
       all(json.dumps(p.inputs) for p in plans.values()))
 
+# R2 F6: the timing variant decides the advertised set (above_band / p_shell with cw = true drop the per-pulse observables)
+_PP = {"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt"}
+for _k in ("above_band", "p_shell"):
+    _e = entries[_k]
+    check(f"{_k}: pulsed advertises the per-pulse observables, the cw variant (cw = true) none of them but keeps the cw rates",
+          _PP <= set(_e.observables_for({})) and _PP <= set(_e.observables_for({"cw": False}))
+          and not (_PP & set(_e.observables_for({"cw": True}))) and {"B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz"} <= set(_e.observables_for({"cw": True})),
+          f"{sorted(_PP & set(_e.observables_for({'cw': True})))}")
+_pay = {d["kind"]: d for d in R.registry_payload()["drives"]}
+check("registry payload carries observables_cw for above_band / p_shell only, equal to observables_for(cw = true)",
+      all(sorted(entries[k].observables_for({"cw": True})) == _pay[k]["observables_cw"] for k in ("above_band", "p_shell"))
+      and not any("observables_cw" in _pay[k] for k in _pay if k not in ("above_band", "p_shell")))
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_drives checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

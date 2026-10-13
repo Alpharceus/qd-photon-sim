@@ -41,13 +41,7 @@ COMPAT = ROOT / "verify" / "data" / "compose_compat.yaml"
 # ---------------------------------------------------------------------------------------------------------------------
 # KNOWN_OPEN: {id, finding, desc, match}. `match` maps a key of the failing check (slice, check, material, structure,
 # drive, solver, param, request) to a value or a list of values; all keys must match. Delete an entry when its fix lands.
-KNOWN_OPEN = [
-    {"id": "F5", "finding": 5, "desc": "the bare observable id the Composer sends for hom_V is not one of its conventions; the API accepts a bad convention",
-     "match": {"check": ["composer_request", "api_convention"]}},
-    {"id": "F6", "finding": 6, "desc": "drives advertise observables the engine returns as NaN at their defaults (hom_I / hom_V of cw drives, B_* of the cw variants, hom_I_gated without a gate)",
-     "match": {"check": "advertised", "drive": ["electrical_cw", "above_band[cw]", "p_shell[cw]", "electrical_pulsed", "stark_gated_resonant"],
-               "request": ["hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_I_gated", "hom_vs_dt"]}},
-]
+KNOWN_OPEN = []
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -97,12 +91,14 @@ def run_point(job):
         out.update(outcome="crash", detail=f"{type(e).__name__}: {str(e)[:300]}")
         return out
     valid, reasons = engine._validity(ctx)
-    obs = {}
+    obs, obs_reason = {}, {}
     for oid in R.kinds("observable"):
         o = obs_mod.get_observable(oid)
         for conv in o.conventions:
             try:
                 obs[f"{oid}:{conv}"] = _fl(o.compute(ctx, conv))
+                if obs[f"{oid}:{conv}"] != obs[f"{oid}:{conv}"]:               # NaN: the reason the engine states for it (R2 F6)
+                    obs_reason[f"{oid}:{conv}"] = str(o.invalid_reason(ctx, conv) or "")
             except Exception as e:                                             # noqa: BLE001
                 obs[f"{oid}:{conv}"] = f"ERR {type(e).__name__}: {str(e)[:120]}"
     series = {}
@@ -122,7 +118,7 @@ def run_point(job):
     plan = ctx.plan
     out.update(outcome="ok" if valid else "invalid", valid=bool(valid), reasons=[str(r) for r in reasons],
                solver=ctx.solver.name, regime=str(ctx.rt.regime), family=str(plan.family), timing=str(plan.timing),
-               obs=obs, series=series, series_unavailable=gone, notes=notes, seconds=time.time() - t0)
+               obs=obs, obs_reason=obs_reason, series=series, series_unavailable=gone, notes=notes, seconds=time.time() - t0)
     return out
 
 
@@ -367,7 +363,9 @@ def combo_checks(r, ctx):
         k = first_conv_key(r, oid)
         if k is not None:
             v = r["obs"][k]
-            if not is_num(v):
+            if not is_num(v) and r.get("obs_reason", {}).get(k):
+                pass                               # unavailable WITH a stated reason (R2 F6: e.g. hom_I_gated with no gate)
+            elif not is_num(v):
                 fails.append(("advertised", {"request": oid}, f"{k}={v if isinstance(v, str) else 'nan'}"[:90]))
         elif oid in r["series"]:
             ys = r["series"][oid]
@@ -589,7 +587,9 @@ def main():
             if out != "ok":
                 fails.append(("runs", {}, f"{out}: {r.get('detail') or '; '.join(r.get('reasons', []))}"[:300]))
         if out in ("ok", "invalid") and why is None and out == "ok":
-            ctx = {"drive_obs": set(R.get("drive", job["d"]).observables)}
+            ent = R.get("drive", job["d"])
+            dvals = {k.split(".", 1)[1]: x for k, x in (job.get("over") or {}).items() if k.startswith("drive.")}
+            ctx = {"drive_obs": set(ent.observables_for(dvals) if hasattr(ent, "observables_for") else ent.observables)}
             fails += combo_checks(r, ctx)
             rule = compat["purpose"].get(job["d"])
             if rule and s == ref_s and not tag and slice_of.get(key) in ("SxD", "MxD") and m == ref_m:
@@ -646,12 +646,13 @@ def main():
         rep.add(f"auto solver for {d} at {ref_s} is {want}",
                 [] if r.get("solver") == want else [("auto_solver", {}, f"got {r.get('solver')!r}")], {"slice": "auto", "drive": d})
 
-    # -------- Composer observable requests (R2 5): re-derive composer.js: first convention -> bare id, others id:conv
+    # -------- Composer observable requests (R2 5): re-derive composer.js line 681 (since 8073001, FIX2):
+    #   req: c === "intrinsic" ? o.id : `${o.id}:${c}`      (the bare id ONLY for the convention 'intrinsic')
     bad = []
     for oid in R.kinds("observable"):
         o = obs_mod.get_observable(oid)
-        for i, conv in enumerate(o.conventions):
-            req = oid if i == 0 else f"{oid}:{conv}"
+        for conv in o.conventions:
+            req = oid if conv == "intrinsic" else f"{oid}:{conv}"
             try:
                 pid, pconv = obs_mod.parse_request(req)
             except Exception as e:                                             # noqa: BLE001
@@ -672,8 +673,34 @@ def main():
                 pass
         rep.add("API _check_observables rejects an observable with a convention it does not have (g2_0:nonsense, hom_V, hom_V:nonsense)",
                 [("api_convention", {}, "accepted: " + ", ".join(errs))] if errs else [], {"slice": "contract"})
+        refused = []                                       # ... and accepts every request composer.js can send (line 681)
+        for oid in R.kinds("observable"):
+            for conv in obs_mod.get_observable(oid).conventions:
+                req = oid if conv == "intrinsic" else f"{oid}:{conv}"
+                try:
+                    api_compose._check_observables([req])
+                except api_compose.ComposeError as e:
+                    refused.append(f"{req}: {e}")
+        rep.add("API _check_observables accepts every request the Composer can send",
+                [("api_convention", {}, "refused: " + "; ".join(refused)[:300])] if refused else [], {"slice": "contract"})
     except ImportError as e:
         rep.notes.append(f"api_compose not importable, API convention check skipped: {e}")
+
+    # -------- R2 F6: a cw variant does not advertise the per-pulse observables (the timing variant decides the advertised set)
+    per_pulse = {"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt"}
+    fl6 = []
+    for v in variants.values():
+        ent = R.get("drive", v["drive"])
+        cw = set(ent.observables_for(v["params"]))
+        pu = set(ent.observables_for({"cw": False}))
+        if cw & per_pulse:
+            fl6.append(f"{v['name']} still advertises {sorted(cw & per_pulse)}")
+        if not per_pulse <= pu:
+            fl6.append(f"{v['drive']} pulsed lost {sorted(per_pulse - pu)}")
+        if not {"B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz"} <= cw:
+            fl6.append(f"{v['name']} lost its cw rates")
+    rep.add("cw variants advertise no per-pulse observable (hom_I, hom_V, B_first_lens, B_fibre, hom_vs_dt), the pulsed drives keep them",
+            [("variant_obs", {}, "; ".join(fl6))] if fl6 else [], {"slice": "contract"})
 
     # -------- dead controls
     for pr in sorted(probe_results, key=lambda p: (p["axis"], p["kind"])):

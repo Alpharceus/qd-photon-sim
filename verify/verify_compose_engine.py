@@ -1085,6 +1085,27 @@ def main():
           and {"material": "gan_aln", "structure": "edge_ridge"}.items() <= next(c for c in cp if c["material"] == "gan_aln").items()
           and not any(c["material"] == "inp_gainp_red" for c in cp), f"{len(cp)} pairs")
 
+    # 18s. R2 F56: unavailable observables come back with a stated reason (no bare NaN)
+    def _spec56(drive, params=None):
+        return {"schema": "fsim-composed/1", "T_K": 4.2, "material": {"kind": "inas_gaas_sk", "params": {}},
+                "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": drive, "params": params or {}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    sc_ep = engine.evaluate_spec(_spec56("electrical_pulsed"))["scalars"]
+    check("18s. electrical_pulsed with no HOM gate: hom_I_gated is listed in scalars.observables_unavailable with the reason 'set the HOM gate width'",
+          "no HOM gate set" in sc_ep.get("observables_unavailable", {}).get("hom_I_gated", "")
+          and "hom_gate_ps" in sc_ep.get("observables_unavailable", {}).get("hom_I_gated", ""),
+          str(sc_ep.get("observables_unavailable")))
+    ev_cw = engine.evaluate_spec(_spec56("above_band", {"cw": True}))
+    check("18t. above_band cw: B_first_lens / hom_I are NaN with a reason, hom_vs_dt is absent with series_unavailable naming a cw stream",
+          not math.isfinite(ev_cw["scalars"]["B_first_lens"]) and ev_cw["scalars"].get("B_first_lens_invalid_reason")
+          and ev_cw["scalars"].get("hom_I_invalid_reason") and "hom_vs_dt" not in ev_cw["series"]
+          and "cw stream" in ev_cw["scalars"].get("series_unavailable", {}).get("hom_vs_dt", ""),
+          str(ev_cw["scalars"].get("series_unavailable")))
+    sr56 = engine.series(_spec56("electrical_pulsed"), "T_K", [4.0, 6.0], ["hom_I_gated", "g2_0"])
+    check("18u. engine.series: an all-NaN request carries its reason in 'unavailable', a finite one does not",
+          "no HOM gate set" in sr56.get("unavailable", {}).get("hom_I_gated", "") and "g2_0" not in sr56.get("unavailable", {}),
+          str(sr56.get("unavailable")))
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

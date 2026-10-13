@@ -705,6 +705,61 @@ async function waitRun(page, timeout = 120000) {
         } catch (e) { check(`N2 ${struct}: swap, RUN, swap, RUN`, false, e.message.split("\n")[0]); }
       }
     }
+    // ---------------------------------------------------------------- R2 F56: unavailable observables are explained, not dashed; a cw variant does not offer per-pulse ones
+    {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+      await page.reload({ waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 90000 });
+      const pick = async (axis, kind) => {
+        await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
+        await page.waitForSelector(".cp-entry", { timeout: 15000 });
+        await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
+        await page.click(`.cp-entry[data-kind="${kind}"]`);
+        await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, kind], { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+      };
+      const obsIds = async () => {
+        await page.click(".ws-compose .rb-obs summary").catch(() => {});
+        const ids = await page.$$eval(".ws-compose .rb-obs-list input[data-obs]", (els) => els.map((e) => e.dataset.obs));
+        await page.click(".ws-compose .rb-obs summary").catch(() => {});
+        return ids;
+      };
+      try {
+        await pick("structure", "bulk_planar");
+        await pick("drive", "above_band");
+        await page.click(`.ws-compose .mount-body[data-axis="drive"]`);
+        await page.waitForSelector('.ws-compose .sheet .pf-item[data-param="cw"] input[type=checkbox]', { timeout: 10000 });
+        await page.click('.ws-compose .sheet .pf-item[data-param="cw"] .switch');
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+        await page.click('.ws-compose .seg[data-value="series"]');
+        await page.waitForSelector(".ws-compose .rb-series .rb-path");
+        const cwIds = await obsIds();
+        check("F56 above_band with cw on: the series observable list offers no per-pulse observable but keeps the cw rates",
+          !cwIds.some((i) => /^(hom_I|hom_V|B_first_lens|B_fibre|hom_vs_dt)(:|$)/.test(i)) && cwIds.includes("B_first_lens_Hz") && cwIds.includes("g2_0"), cwIds.slice(0, 12).join(","));
+        await page.click('.ws-compose .seg[data-value="point"]');
+        await page.click(".ws-compose .run-key");
+        check("F56 above_band cw: RUN completes", (await waitRun(page)) === "done");
+        const ro = await page.$$eval(".ws-compose .readout", (els) => els.filter((e) => ["hom_I", "B_first_lens"].includes(e.dataset.readout)).map((e) => [e.dataset.readout, e.dataset.state, e.textContent]));
+        check("F56 cw readouts of the per-pulse KPIs show n/a with the stated reason, not an em dash",
+          ro.length === 2 && ro.every(([, st, t]) => st === "nan" && /cw|continuous/i.test(t) && !/—/.test(t)), JSON.stringify(ro).slice(0, 300));
+        await pick("drive", "electrical_pulsed");
+        await page.click('.ws-compose .seg[data-value="series"]');
+        await page.waitForSelector(".ws-compose .rb-series .rb-path");
+        const epIds = await obsIds();
+        check("F56 a pulsed drive offers hom_I and B_first_lens again", epIds.includes("hom_I") && epIds.includes("B_first_lens"), epIds.slice(0, 8).join(","));
+        await page.click(".ws-compose .rb-obs summary");
+        const gate = await page.$('.ws-compose .rb-obs-list input[data-obs="hom_I_gated"]');
+        if (gate) await gate.check();
+        await page.click(".ws-compose .rb-obs summary");
+        await page.click(".ws-compose .run-key");
+        check("F56 series of hom_I_gated with no gate completes", (await waitRun(page)) === "done");
+        await page.waitForTimeout(600);
+        const sub = await page.$eval('.ws-compose [data-chart="series"]', (e) => e.textContent).catch(() => "");
+        check("F56 the series card says why hom_I_gated is unavailable (no HOM gate set), not a blank plot", !!gate && /no HOM gate set/.test(sub), sub.slice(0, 200));
+      } catch (e) { check("F56 composer unavailable-reason checks ran", false, e.message.split("\n")[0]); }
+    }
     check("screenshots written (dark + light, 1440x900 and 390x844)", ["dark", "light"].every((t) => [1440, 390].every((w) => fs.existsSync(path.join(SHOTS, `composer-${t}-${w}.png`)))));
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
