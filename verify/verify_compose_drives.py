@@ -59,9 +59,12 @@ READY = ("resonant_pulse", "tpe", "cw_resonant", "above_band", "p_shell", "elect
 
 # ---------------------------------------------------------------- 1. registration / payload
 reg = R.REGISTRY
-check("all 11 drive kinds registered on import",
-      set(reg.kinds("drive")) >= set(READY) | set(NEEDS_PHYSICS) | set(PHONON_READY),
-      str(reg.kinds("drive")))
+STARK_GATED = ("stark_gated_resonant",)                    # p10e: registered in drives.py, planned in section 3 of the engine checks
+check(f"registered drive kinds == the declared set ({len(R.kinds('drive'))} kinds, exact equality with the registry; R2 audit 16)",
+      set(reg.kinds("drive")) == set(READY) | set(NEEDS_PHYSICS) | set(PHONON_READY) | set(STARK_GATED)
+      and len(reg.kinds("drive")) == len(set(reg.kinds("drive"))),
+      f"registry-only: {sorted(set(reg.kinds('drive')) - set(READY) - set(PHONON_READY) - set(STARK_GATED))}; "
+      f"declared-only: {sorted((set(READY) | set(PHONON_READY) | set(STARK_GATED)) - set(reg.kinds('drive')))}")
 entries = {k: reg.get("drive", k) for k in READY + NEEDS_PHYSICS + PHONON_READY}
 check("every drive has full ParamSpecs and a non-empty observables set",
       all(e.params and e.observables for e in entries.values()))

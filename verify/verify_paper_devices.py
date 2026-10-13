@@ -27,6 +27,33 @@ from fsim_core.compose import papers as PP                      # noqa: E402
 
 CARDS = ROOT / "cards" / "papers"
 
+# R2 audit 7: an M item that a NULL model (g2 -> 0, HOM overlap/visibility -> 1, efficiency/preparation -> ideal 1) would
+# also pass cannot discriminate; it must carry `weak: true`. KNOWN_OPEN = (card id, item id) pairs that currently pass the
+# null model without being flagged weak; the cards are flagged in the next wave, then delete the entries.
+KNOWN_OPEN_NULL = {   # R2 audit 7; measured 2026-10-12: each passes the null model and is not flagged weak (tolerance wider than the effect)
+    ("ding2016", "eta_prep_96"),
+    ("ding2016", "hom_corr_2p1ns"),
+    ("he2013", "hom_corr"),
+    ("karli2022", "g2_corr"),
+    ("muller2014", "g2_X_darkcorr"),
+    ("muller2014", "g2_X_raw"),
+    ("nawrath2022", "g2_analyt_76"),
+    ("piccinini2025_tpe", "g2_TPE"),
+    ("vajner2024", "g2_XX"),
+    ("wang2019a", "hom_corr_pillar"),
+}
+
+
+def null_value(observable: str):
+    """Value of the trivial model for an observable, or None when no null model is defined."""
+    if observable.startswith("g2"):
+        return 0.0
+    if observable.startswith("hom_"):
+        return 1.0
+    if observable.startswith("eta_"):
+        return 1.0
+    return None
+
 
 def _num(v) -> str:
     return "nan" if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:.4g}"
@@ -125,6 +152,32 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
             c_tot[c] += summ[c]["n"]
         for o in PP.OUTCOMES:
             r_tot[o] += summ["R"][o]
+    # ---- null-model discrimination (R2 audit 7)
+    null_rows, null_bad, null_known = [], [], []
+    for p, rep in zip(loaded, reports):
+        for r in rep.items:
+            if r.cls != "M" or r.kind != "scalar" or r.outcome != "pass" or r.expect != "pass":
+                continue
+            nv = null_value(r.observable)
+            if nv is None or r.paper is None:
+                continue
+            if PP._scalar_outcome(r.paper, r.err, nv, 0.0, 0.0, r.tol) == "pass":
+                null_rows.append((p.id, r.id, r.observable, r.paper, nv, r.weak))
+                if not r.weak:
+                    (null_known if (p.id, r.id) in KNOWN_OPEN_NULL else null_bad).append((p.id, r.id))
+    print(f"null-model report: {len(null_rows)} M passes would also pass the null model "
+          f"({sum(1 for x in null_rows if x[5])} flagged weak, {len(null_known)} KNOWN-OPEN, {len(null_bad)} unflagged)")
+    for pid, iid, obs, pv, nv, weak in null_rows:
+        tag = "weak" if weak else ("KNOWN-OPEN" if (pid, iid) in KNOWN_OPEN_NULL else "UNFLAGGED")
+        print(f"  null passes {pid} {iid} ({obs}: paper {pv:.4g}, null {nv:g}) [{tag}]")
+    stale = sorted(KNOWN_OPEN_NULL - {(a, b) for a, b, *_ in null_rows if True})
+    for pid, iid in stale:
+        print(f"  [FIXED?] KNOWN_OPEN_NULL entry ({pid}, {iid}) no longer passes the null model unflagged: delete it")
+    total += 1
+    matched += int(not null_bad)
+    print(f"{'PASS' if not null_bad else 'FAIL'} every M pass that the null model also passes is flagged weak"
+          + (f"  ({len(null_bad)} unflagged: {', '.join(f'{a}/{b}' for a, b in null_bad)})" if null_bad else ""))
+    print(f"M discriminating passes: {m_pass - len(null_rows)}/{m_n} (M tests passing minus those the null model also passes; headline)")
     print(f"M tests (central within tolerance): {m_pass}/{m_n}")
     print(f"M pass-envelope (paper value inside the input envelope only, not a pass): {m_env}")
     print(f"M weak passes (flagged weak in the ledger, included in the {m_pass} above): {m_weak}")
@@ -132,7 +185,7 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
           f"envelope {r_tot['pass-envelope']}, fail {r_tot['fail']}, unavail {r_tot['unavailable']})")
     print("per-class item counts: " + ", ".join(f"{c}={c_tot[c]}" for c in PP.CLASSES))
     print(f"{matched}/{total} paper-device checks matched ledger")
-    return exit_code(reports, schema_ok=schema_fail == 0)
+    return exit_code(reports, schema_ok=schema_fail == 0 and not null_bad)
 
 
 # ------------------------------------------------------------------ self-test

@@ -1,0 +1,97 @@
+# Declared compatibility of the composable engine's registry axes (read by verify/verify_compose_matrix.py).
+#
+# The verifier enumerates the kinds from the registry (fsim_core.compose.registry.kinds); this file only DECLARES what
+# is expected to work, and why a combination is refused. It never lists a kind that exists to be tested: a kind that is
+# absent here is expected to work everywhere. Every kind named here must exist in the registry (a typo fails).
+#
+# Provenance of the entries: [A] = assumption of the test author, taken from the registry summaries and from the
+# solver `supports()` reasons on 2026-10-12; the physics behind each reason is in .workers/devlib/r2-test-audit.md.
+schema: fsim-compose-compat/1
+
+# Material used when a structure or a drive is varied (the registry default of the Composer).
+reference_material: inas_gaas_sk
+reference_structure: bulk_planar        # structure used when a material x drive slice is run
+reference_drive: resonant_pulse         # drive used when a material x structure slice is run
+
+# A structure that cannot host the reference material runs with this one instead in the structure x drive slice.
+structure_reference_material:
+  edge_ridge: inp_gainp_red             # HKUST ridge stack: Al0.52In0.48P index tabulated only 650-800 nm [A]
+
+# Combinations that are NOT supported. Each entry lists axis -> kind (a string or a list of strings); a combination is
+# excluded when every listed axis matches. An excluded combination must be REFUSED CLEANLY: validate_spec not ok, or a
+# SolverUnavailable, or a run flagged invalid with a stated reason. A raw exception is a failure. A combination that
+# turns out to run fine is reported as a note ("table is stale") and does not fail.
+excluded:
+  - structure: edge_ridge
+    material: [cdse_znse, cspbbr3_colloidal, gan_aln, inas_gaas_sk, inas_ingaas_metamorphic_cband, inas_inp_cband,
+               ingaas_gaas, ingan_gan]
+    reason: "edge_ridge uses waveguide.hkust_ridge_stack(lambda), whose Al0.52In0.48P index is tabulated only at 650-800 nm; only inp_gainp_red (670 nm) and gaas_algaas_droplet (785 nm) emit inside that band"
+  - structure: phc_cavity
+    drive: [above_band, arp, cw_resonant, dichromatic, electrical_cw, electrical_pulsed, p_shell, phonon_assisted,
+            stark_gated_resonant, super, tpe]
+    reason: "the default phc_cavity (Q 1e4, V 0.7) is in the strong-coupling regime, the weak-coupling Purcell model is invalid there, and the jc solver supports only coherent single-colour pulsed drives (resonant_pulse)"
+
+# Solver x drive: the drives each solver is declared to accept (bulk_planar, reference material). Every other pairing must
+# be refused with SolverUnavailable. jc additionally needs a cavity (declared separately below).
+solver_drives:
+  rate: [above_band, electrical_cw, electrical_pulsed, p_shell]
+  lindblad: [cw_resonant, resonant_pulse, stark_gated_resonant, tpe]
+  lindblad_incoherent: [above_band, electrical_pulsed, p_shell]
+  polaron: [arp, dichromatic, phonon_assisted, resonant_pulse, stark_gated_resonant, super]
+  jc: []                               # none at bulk_planar (no cavity mode); see jc_cavity_drives
+jc_cavity_structure: micropillar       # a weak-coupling cavity that hosts jc
+jc_cavity_drives: [resonant_pulse]
+
+# The solver that "auto" must pick at bulk_planar with the reference material.
+auto_solver_bulk:
+  above_band: lindblad_incoherent
+  arp: polaron
+  cw_resonant: lindblad
+  dichromatic: polaron
+  electrical_cw: rate
+  electrical_pulsed: lindblad_incoherent
+  p_shell: lindblad_incoherent
+  phonon_assisted: polaron
+  resonant_pulse: lindblad
+  stark_gated_resonant: lindblad
+  super: polaron
+  tpe: lindblad
+
+# Drive variants run in the S x D / M x D slices in addition to the defaults (cw flavours of the incoherent drives).
+variants:
+  - {drive: above_band, params: {cw: true}, name: "above_band[cw]"}
+  - {drive: p_shell, params: {cw: true}, name: "p_shell[cw]"}
+
+# What a drive is FOR, at registry defaults on the reference material in bulk_planar (the claim comes from the registry
+# summary): the preparation metric must exceed `min`. metric: inversion (coherent two-level inversion after the pulse) or
+# eta_prep (P(n >= 1)).
+purpose:
+  resonant_pulse: {metric: inversion, min: 0.5, source: "summary: coherent pulsed excitation; default 1 pi pulse, sin^2(A/2) = 1"}
+  tpe: {metric: eta_prep, min: 0.5, source: "summary: resonant two-photon excitation of XX at 1 TPE pi area"}
+  arp: {metric: inversion, min: 0.5, source: "summary: robust inversion above the adiabatic threshold (Wei et al., PRL 113, 097401 (2014))"}
+  phonon_assisted: {metric: inversion, min: 0.5, source: "summary: strong detuned pulse drives the dot through LA-phonon relaxation (Quilter 2015)"}
+  super: {metric: inversion, min: 0.5, source: "summary: swing-up of the emitter population (Bracht et al., PRX Quantum 2, 040354 (2021), theory ~0.97)"}
+  dichromatic: {metric: inversion, min: 0.05, source: "summary: phonons and an intensity asymmetry create the population (ideal TLS returns to the ground state)"}
+  stark_gated_resonant: {metric: inversion, min: 0.05, source: "summary: the gate tunes the dot into resonance with the held laser (Cao 2015)"}
+
+# Dead-control harness (every param of every kind must move at least one output). `context` gives extra overrides that
+# make a param observable (a parameter that only acts when another is non-zero); `exempt` needs a declared reason.
+dead_control:
+  context:
+    setup.coinc_window_ns: {setup.dark_cps: 5000.0}
+    setup.filter_offset_meV: {setup.filter_width_meV: 5.0, setup.xx_x_ratio: 1.0}
+    setup.xx_width_ratio: {setup.filter_width_meV: 5.0, setup.xx_x_ratio: 1.0}
+    drive.cross_pol: {drive.laser_leak: 0.01}
+    material.tau_sd_ns: {material.sigma_sd_ueV: 2.0}
+    material.E_LO_meV: {material.gamma_T_model: lo_phonon, material.b_LO_meV: 500.0}
+    material.b_LO_meV: {material.gamma_T_model: lo_phonon}
+    drive.tau_refill_ps: {drive.p_refill: 0.3}
+    drive.b_dark: {drive.p_refill: 0.3}
+    drive.E_act_meV: {drive.k0_ns: 1.0}
+    drive.p_trion: {drive.eid_ps: 20.0}
+    drive.hom_gate_shape: {drive.hom_gate_ps: 100.0}
+    drive.hom_gate_start_ps: {drive.hom_gate_ps: 100.0}
+    drive.hom_jitter_ps: {drive.hom_gate_ps: 100.0}
+  exempt:
+    drive.resonant_pulse.target: "the X+ choice needs a charged-exciton transition the default material does not have (refused with a named reason)"
+    material.*.charge_state: "only enables a transition for drive.target X+/X-; judged by the charge_state pair check"
