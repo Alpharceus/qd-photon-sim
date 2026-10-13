@@ -834,6 +834,44 @@ check("DF-e. 'repo gamma*' wording is gone: the EID help and the gamma_star_ns l
       "repo gamma" not in drives.RESONANT_PULSE.param("eid_ps").help and "Gamma_{\\mathrm{ph}}" in drives.RESONANT_PULSE.param("eid_ps").help
       and "pure-dephasing linewidth" in obs_gs.label.lower() and "repo convention" not in obs_gs.label)
 
+# ---- R2 SUPCMP: optimum items (fsim_core/compose/optimum.py) against the exciton-frame bare propagator above ----
+from scipy.optimize import minimize                                                       # noqa: E402
+from fsim_core.compose import optimum as OPT                                              # noqa: E402
+_kar = PP.load_paper(ROOT / "cards" / "papers" / "karli2022.yaml")
+_ent = next(e for e in _kar.reproduce if e["item"] == "inversion_theory")
+_res = OPT.optimise(_kar.device, _ent["optimum"])
+_fw = 2 * math.sqrt(math.log(2)) * 0.6582119569 / 0.2                    # transform limit of the 0.2 meV mask: independent re-derivation
+_Pt = lambda T2: float(np.interp(T2, [0.0, 0.65, 1.0], [0.7, 10.9, 18.8]))
+
+
+def _kar_px(d2, T2):                                                      # swing-up area1 and sqrt(power) area2, re-derived here (not optimum.py)
+    a1 = math.sqrt((d2 + 4.9) ** 2 - 4.9 ** 2) / 0.6582119569 * _fw * math.sqrt(2 * math.pi) / (2 * math.sqrt(math.log(2))) / math.pi
+    return bare_px(a1, a1 * math.sqrt(_Pt(T2) / 15.5), _fw, _fw, -4.9, d2, dt=2e-3)
+
+
+_g = [(d2, T2, _kar_px(d2, T2)) for d2 in np.linspace(-11.0, -10.0, 11) for T2 in np.linspace(0.0, 1.0, 26)]
+_d2b, _T2b, _vb = max(_g, key=lambda r: r[2])
+_r = minimize(lambda u: -_kar_px(-11.0 + min(max(u[0], 0.0), 1.0), min(max(u[1], 0.0), 1.0)), [(_d2b + 11.0), _T2b], method="Nelder-Mead",
+              options={"initial_simplex": [[_d2b + 11.0, _T2b], [min(_d2b + 11.05, 1.0), _T2b], [_d2b + 11.0, min(_T2b + 0.03, 1.0)]],
+                       "maxfev": 60, "xatol": 1e-4, "fatol": 1e-6})
+_v_ind = max(_vb, -float(_r.fun))
+check("SUPCMP A. karli2022 inversion_theory optimum (phonons off, decay off; engine propagation at the argmax) equals the maximum of an INDEPENDENT "
+      "exciton-frame bare_px scan + bounded refinement over the same (Delta2, T2) window within 0.01",
+      abs(_res["value"] - _v_ind) <= 0.01, f"optimum.py {_res['value']:.5f} at {_res['argmax']}, bare_px {_v_ind:.5f}")
+_xa = _res["argmax"]
+check("SUPCMP B. at the reported argmax the engine occupation equals bare_px (independent propagator) within 0.002, and the accelerator used by the grid "
+      "agrees with the engine propagation within 1e-6",
+      abs(_res["value"] - _kar_px(_xa["delta2"], _xa["T2"])) <= 0.002 and _res["info"]["fast_vs_engine_phonon_free"] <= 1e-6,
+      f"engine {_res['value']:.5f}, bare_px {_kar_px(_xa['delta2'], _xa['T2']):.5f}, accelerator diff {_res['info']['fast_vs_engine_phonon_free']:.1e}")
+_stats = [e for e in _kar.reproduce if e["item"] == "inversion_8K_pred"]
+_sig = lambda o: ([(v["name"], v.get("path"), v["window"], v["n"]) for v in o["scan"]],      # numbers only (the provenance text differs)
+                  [(d["path"], d["rule"], d.get("table"), d.get("P1_uW"), d.get("from")) for d in o["derive"]],
+                  {k: v["value"] for k, v in o["overrides"].items()})
+check("SUPCMP C. the optimum search keeps within its window and the 8 K prediction uses the same scan as the theory item (only the phonon switch differs)",
+      -11.0 - 1e-9 <= _xa["delta2"] <= -10.0 + 1e-9 and 0.0 <= _xa["T2"] <= 1.0 and len(_stats) == 1
+      and _sig(_stats[0]["optimum"]) == _sig(_ent["optimum"])
+      and _stats[0]["optimum"]["solver"]["phonons"] == "on" and _ent["optimum"]["solver"]["phonons"] == "off")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

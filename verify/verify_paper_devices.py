@@ -62,14 +62,14 @@ def _num(v) -> str:
 def item_line(pid: str, r) -> str:
     if r.kind == "scalar":
         paper = _num(r.paper) + (f"+-{_num(r.err)}" if r.err is not None else "")
-        model = f"model {_num(r.model)} [{_num(r.lo)},{_num(r.hi)}]"
+        model = f"model {_num(r.model)} [{_num(r.lo)},{_num(r.hi)}]" if not r.mode else f"{r.mode} model {_num(r.model)}"
         what = f"paper {paper} {model}"
     elif r.kind == "series":
         what = f"series rms_rel {_num(r.model)}"
     else:
-        what = f"prediction model {_num(r.model)}"
+        what = f"prediction model {_num(r.model)}" if not r.mode else f"{r.mode} model {_num(r.model)}"
     tol = f" tol {r.tol_str}" if r.tol_str else ""
-    why = f" -- {r.note}" if r.note and r.outcome in ("unavailable", "error") else ""
+    why = f" -- {r.note}" if r.note and (r.outcome in ("unavailable", "error") or r.mode) else ""
     weak = f" [WEAK: {r.weak_reason}]" if r.weak and r.outcome == "pass" else ""
     return (f"{pid} {r.id} {r.cls} {what}{tol} {r.outcome.upper()}{weak} "
             f"(expect {r.expect}) {'MATCH' if r.match else 'MISMATCH'}{why}")
@@ -322,6 +322,28 @@ def self_test() -> int:
           exit_code([rep_f]) == 1 and not rep_f.matched,
           "; ".join(f"{r.id} {r.outcome} vs expect {r.expect}" for r in rep_f.items if not r.match))
     check("schema failure forces exit 1", exit_code([rep], schema_ok=False) == 1)
+
+    # R2 SUPCMP: optimum entries (fsim_core/compose/optimum.py) are validated by their own schema
+    from fsim_core.compose import optimum as _OPT
+    good = {"item": "opt", "class": "P", "mode": "optimum", "tol_reason": "r", "expect": "pass",
+            "optimum": {"observable": "inversion", "reduction": "max", "solver": {"phonons": "off", "radiative": False},
+                        "scan": [{"name": "a1", "path": "drive.area1_pi", "window": [0.0, 20.0], "n": 11, "tag": "E", "source": "s"}]}}
+
+    def opt_problems(mut):
+        d = copy.deepcopy(good)
+        mut(d)
+        out = []
+        _OPT.validate_entry("reproduce[opt]", d, {}, {"drive.area1_pi": {}}, out, [])
+        return out
+    check("SUPCMP: a well-formed optimum entry validates (bool radiative: off accepted)", opt_problems(lambda d: None) == [],
+          "; ".join(opt_problems(lambda d: None)))
+    check("SUPCMP: an inverted scan window is rejected",
+          any("window" in x for x in opt_problems(lambda d: d["optimum"]["scan"][0].update(window=[5.0, 1.0]))))
+    check("SUPCMP: an optimum scan that moves no pulse area is rejected",
+          any("pulse area" in x for x in opt_problems(lambda d: d["optimum"]["scan"][0].update(path="T_K"))) or
+          any("not a device leaf" in x for x in opt_problems(lambda d: d["optimum"]["scan"][0].update(path="T_K"))))
+    check("SUPCMP: a class M optimum item must compare with a reported id",
+          any("reported" in x for x in opt_problems(lambda d: d.update({"class": "M", "tol": {"abs": 0.1}}))))
 
     unavail = copy.deepcopy(raw)
     # FX2c: arp is ready now; register a throwaway needs_physics drive (restored afterwards, never shipped)

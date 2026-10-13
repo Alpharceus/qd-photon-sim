@@ -32,6 +32,7 @@ import numpy as np
 import yaml
 
 from . import engine
+from . import optimum as _opt
 from . import registry as _reg
 from .params import TAGS
 from .solvers import SolverUnavailable
@@ -99,6 +100,8 @@ class ItemResult:
     reason: str = ""
     weak: bool = False                 # FX4: a pass that cannot discriminate (reason in weak_reason)
     weak_reason: str = ""
+    mode: str = ""                      # "" | optimum | at_optimum (optimum.py)
+    argmax: dict = field(default_factory=dict)   # optimum items: the scanned values and pulse leaves at the maximum
 
     @property
     def request(self) -> str:
@@ -316,6 +319,7 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
 
     # ---- reproduce + class rules
     seen = set()
+    opt_order: list = []
     for i, e in enumerate(_aslist(raw.get("reproduce"), "reproduce", P)):
         if not isinstance(e, dict):
             P.append(f"reproduce[{i}]: must be a mapping")
@@ -343,6 +347,9 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
             P.append(f"{w}: reason required when expect is {e['expect']!r}")
         if item in fitted and cls != "C":
             P.append(f"{w}: appears in fits[].fitted_to so its class must be C, got {cls}")
+        if e.get("mode") is not None:                 # R2 SUPCMP: optimum / at_optimum items (optimum.py)
+            _opt.validate_entry(w, e, ids, resolved, P, opt_order)
+            continue
         if cls == "P":
             if item in ids:
                 P.append(f"{w}: class P means no reported value, but {item!r} is a reported/series id")
@@ -470,7 +477,15 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
 
     def base(e) -> ItemResult:
         item = e["item"]
-        if e["class"] == "P":
+        if e.get("mode") == "optimum":                 # R2 SUPCMP: compare_to names the reported value (default: the item id)
+            ref = e.get("compare_to", item)
+            if e["class"] == "M":
+                kind, ent = ids[ref]
+                oid, conv = ent["observable"], ent.get("convention", "intrinsic")
+            else:
+                kind, ent = "predict", {}
+                oid, conv = e["optimum"]["observable"], "intrinsic"
+        elif e["class"] == "P":
             kind, ent = "predict", {}
             oid, conv = e["observable"], e.get("convention", "intrinsic")
         else:
@@ -482,7 +497,7 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
         r = ItemResult(id=item, cls=e["class"], kind=kind, observable=oid, convention=conv,
                        expect=e["expect"], where=ent.get("where", ""), tol=dict(e.get("tol") or {}),
                        tol_reason=e.get("tol_reason", ""), reason=e.get("reason", ""),
-                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""))
+                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""), mode=e.get("mode", ""))
         if kind == "scalar":
             r.paper, r.err = float(ent["value"]), (None if ent.get("err") is None else float(ent["err"]))
         if r.tol:
@@ -513,7 +528,7 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
     report = ReproduceReport(paper.id, items, valid=rep_valid, invalid_reasons=rep_reasons,
                              solver=str(central.get("solver", "")), notes=list(central.get("notes", [])))
 
-    scal = [r for r in items if r.kind in ("scalar", "predict")]
+    scal = [r for r in items if r.kind in ("scalar", "predict") and not r.mode]
     env: dict = {}
     if scal:
         reqs = sorted({r.request for r in scal})
@@ -573,6 +588,16 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             r.inputs = [p for p in ev["inputs"] if p in paper.inputs_from_paper]
         except Exception:                                        # noqa: BLE001
             pass
+    opt_store: dict = {}                                         # R2 SUPCMP: optimum items, in ledger order
+    for e, r in zip(paper.reproduce, items):
+        if not r.mode:
+            continue
+        try:
+            _opt.run_item(paper, e, r, opt_store)
+        except SolverUnavailable as ex:
+            r.outcome, r.note = "unavailable", f"solver unavailable: {ex}"
+        except Exception as ex:                                  # noqa: BLE001
+            r.outcome, r.note = "error", f"optimum search error: {type(ex).__name__}: {ex}"
     for r in items:
         r.match = r.outcome == r.expect
     return report
