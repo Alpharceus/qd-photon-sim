@@ -153,6 +153,17 @@ async function getJSON(url) {
         check("the list badge follows: 'k/N AGREE' with the ledger as a quiet second part", /AGREE\s*\d+\/\d+/.test(listAfter) && /ledger \d+\/\d+/.test(listAfter), listAfter);
         const summaries = await page.$$eval("#workspace summary", (els) => els.filter((e) => e.offsetParent !== null).map((e) => getComputedStyle(e).listStyleType + "|" + getComputedStyle(e, "::after").content));
         check("disclosure markers are chevrons (no native triangles)", summaries.length > 0 && summaries.every((x) => x.startsWith("none|") && !/none$/.test(x)), summaries.slice(0, 4).join(" ; "));
+        // FIN4: filter chips and plaque kind chips use the registry display names, not the lower-case ids
+        const reg = await (await fetch(`${BASE}/api/compose/registry`)).json();
+        const labelOf = { material: new Map(reg.materials.map((e) => [e.kind, e.label])), structure: new Map(reg.structures.map((e) => [e.kind, e.label])), drive: new Map(reg.drives.map((e) => [e.kind, e.label])) };
+        const chips = await page.$$eval("button.pp-filter", (bs) => bs.map((b) => ({ axis: b.dataset.axis, kind: b.dataset.kind, text: b.textContent.trim() })));
+        const badChip = chips.filter((c) => {
+          const full = labelOf[c.axis]?.get(c.kind) || "";
+          const short = full.replace(/\s*\([^)]*\)\s*$/, "");
+          return !full || /_/.test(c.text) || c.text === c.kind.replace(/_/g, " ") || c.text.replace(/\s+/g, " ") !== short.replace(/\s+/g, " ");
+        });
+        check("FIN4: papers filter chips show registry display names (material / structure / drive label), not lower-case ids",
+          chips.length >= 6 && badChip.length === 0, `${chips.length} chips; bad: ${badChip.slice(0, 3).map((c) => `${c.kind} -> ${c.text}`).join(" | ")}; e.g. ${chips.slice(0, 3).map((c) => c.text).join(" | ")}`);
         const mm = await page.evaluate(() => [...document.querySelectorAll(".pp-table tbody tr")].every((tr) => {
           const o = tr.querySelector(".pp-outcome");
           return !o || !o.classList.contains("pp-mismatch") || /LEDGER MISMATCH/.test(o.textContent);

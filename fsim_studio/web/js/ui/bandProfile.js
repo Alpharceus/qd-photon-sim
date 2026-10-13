@@ -12,7 +12,7 @@
 import { h, svgEl } from "./dom.js";
 import { tagChip, normTag, widest } from "./tagChip.js";
 import { fmt } from "./format.js";
-import { tex } from "./math.js";
+import { tex, richText } from "./math.js";
 
 const HC_EV_NM = 1239.84198;          // h c in eV nm [V] CODATA
 const CLAMP = 0.85;                   // [A] a level sits at most this fraction of the way up its offset
@@ -183,10 +183,10 @@ export function bandPanel(entry, getLeaf) {
   if (mixed) root.append(flagP(`Mixed strain variants: the drawn conduction offset is E_g,barrier - E_g,dot - ΔE_v = ${fmt(dEc * 1000)} meV; the table gives ${fmt(dEcTab * 1000)} meV (${varName[sel.dEc.from]}).`));
   const allLeaves = [band.Eg_barrier, ...Object.values(band.masses || {}), ...Object.values(band.variants || {}).flatMap((vv) => Object.values(vv))];
   const anyV = allLeaves.some((l) => normTag(l?.tag) === "V");
-  root.append(h("p.bp-cap", `${entry.label}: ${band.dot} in ${band.barrier}, type ${band.type}. Offsets are literature values at 0-10 K (display only; no solver reads them). `
+  root.append(h("p.bp-cap", richText(`${entry.label}: ${band.dot} in ${band.barrier}, type ${band.type}. Offsets are literature values at 0-10 K (display only; no solver reads them). `
     + `Sources: ${(band.sources || []).join("; ")}. `
     + (anyV ? "The [V] values are recalled from those reviews and have not been re-checked against the papers. " : "")
-    + "Level split: inverse-mass rule, clamped to 0.85 of each offset [A]."));
+    + "Level split: inverse-mass rule, clamped to 0.85 of each offset [A].")));
   const tags = [band.Eg_barrier.tag, sel.Eg.tag, sel.dEc.tag, sel.dEv.tag].map((t) => normTag(t));
   root.dataset.ex = EX.toFixed(4);
   root.dataset.lz = String(lz);

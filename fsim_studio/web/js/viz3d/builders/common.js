@@ -5,6 +5,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { ROLE_TINT } from '../core/colormap.js';
+import { richText } from '../../ui/math.js';
 
 export function layerMaterial(role, { clip = null, opacity = null, emissive = 0x000000, emissiveIntensity = 0 } = {}) {
   const transparentRoles = { cladding: 0.2, oxide: 0.35, thermal: 0.45, mirror: 0.75 };
@@ -110,7 +111,7 @@ export function makeMagnifier(stage, hud, { mag, buildInset, unitLabel = 'nm', m
   const badge = frame.querySelector('.v3-inset-badge');
   const rule = frame.querySelector('.v3-scalebar-rule');
   const stext = frame.querySelector('.v3-scalebar-text');
-  frame.querySelector('.v3-inset-note').textContent = info.note || '';
+  frame.querySelector('.v3-inset-note').replaceChildren(richText(info.note || ''));
   const rect = () => {
     const r = frame.getBoundingClientRect(), p = stage.wrap.getBoundingClientRect();
     return { x: Math.round(r.left - p.left), y: Math.round(r.top - p.top + 26), w: Math.round(r.width), h: Math.round(r.height - 52) };

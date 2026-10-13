@@ -6,6 +6,8 @@
 //                        counts with spaces around the slash, identifiers as words, booleans as yes / no
 //   campaignTitle(id) -> "RT edge emitter" for out/rt_edge
 //   words(id)         -> "deterministic_pair" -> "deterministic pair"
+//   cardTitle(name)   -> "chatzarakis2023" -> "Chatzarakis 2023" (Library card names; hyphens of an id are kept)
+//   designTitle(name) -> "edge-inp-gainp-design" -> "Edge InP GaInP design" (scene titles)
 // The raw key stays available for a tooltip (title attribute) and for tests (data attributes), never as visible text.
 import { fmt, isNum } from "./format.js";
 import { displayUnit } from "./units.js";
@@ -14,6 +16,35 @@ import { symbolFor } from "./math.js";
 /** "deterministic_pair" -> "deterministic pair" (identifier-shaped text only; anything else is returned unchanged). */
 export const IDENT_RE = /^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+$/;
 export const words = (s) => (typeof s === "string" && IDENT_RE.test(s) ? s.replace(/_/g, " ") : s);
+
+// ---------------------------------------------------------------- parameter-card names
+const CARD_TOKENS = { inp: "InP", gainp: "GaInP", gaasp: "GaAsP", gaas: "GaAs", ingan: "InGaN", gan: "GaN", qw: "QW", qcap: "QCAP",
+  set: "SET", cw: "CW", rt: "RT", hom: "HOM", nm: "nm" };
+/** Human name of a parameter card: "chatzarakis2023" -> "Chatzarakis 2023". The id stays in a title attribute. */
+export function cardTitle(name) {
+  const t = words(String(name)).replace(/([A-Za-z])(\d)/g, "$1 $2").replace(/(\d)([A-Za-z])/g, "$1 $2");
+  return t.replace(/^./, (c) => c.toUpperCase());
+}
+/** Display name of a design card: "edge-inp-gainp-design" -> "Edge InP GaInP design" (material names in their usual case). */
+export function designTitle(name) {
+  const t = String(name).split(/[-_]+/).filter(Boolean).map((tok) => {
+    const m = /^([A-Za-z]+)(\d.*)$/.exec(tok);              // chatzarakis2023 -> chatzarakis 2023; 4K -> 4 K
+    if (m) return `${CARD_TOKENS[m[1].toLowerCase()] ?? m[1]} ${m[2]}`;
+    const m2 = /^(\d+)([A-Za-z]+)$/.exec(tok);
+    if (m2) return `${m2[1]} ${m2[2]}`;
+    return CARD_TOKENS[tok.toLowerCase()] ?? tok;
+  }).join(" ");
+  return t.replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Rich title of a SceneSpec: the card id at its head becomes the card's display name, "XX -> X -> 0" is typeset. */
+export function sceneTitle(spec) {
+  let t = String(spec?.title || spec?.kind || "");
+  const card = spec?.card;
+  if (card && t.startsWith(`${card} - `)) t = `${designTitle(card)} - ${t.slice(card.length + 3)}`;
+  else if (card && t === card) t = designTitle(card);
+  return t.replace("XX -> X -> 0", "$XX \\to X \\to 0$");
+}
 
 // ---------------------------------------------------------------- campaigns (folders under out/)
 const CAMPAIGN_TITLES = {

@@ -1,5 +1,7 @@
 
 /* R2: device-model thumbnail on a card (a static picture of the composed 3D scene; hidden while pending / when the card has no composed design) */
 .lib-thumb { margin: 0 0 8px; border: 1px solid var(--rim, rgba(128,128,128,.3)); border-radius: 2px; background: #0b0d10; overflow: hidden; aspect-ratio: 8 / 5; }
-.lib-thumb[data-state="pending"], .lib-thumb[data-state="none"] { display: none; }
+.lib-thumb[data-state="pending"] { display: none; }
+.lib-thumb[data-state="reason"] { aspect-ratio: auto; background: transparent; border-style: dashed; }
+.lib-thumb-why { margin: 0; padding: 8px 10px; color: var(--ink-2); font-size: var(--fs-cap, 12px); line-height: 1.4; }
 .lib-thumb-img { display: block; width: 100%; height: 100%; object-fit: cover; }

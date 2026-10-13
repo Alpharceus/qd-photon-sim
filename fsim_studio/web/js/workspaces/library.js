@@ -13,7 +13,7 @@ import { tagChip, normTag, tagDash, tagWidth, TAG_MEANING } from "../ui/tagChip.
 import { skeleton, errorState, emptyState, toast } from "../ui/controls.js";
 import { fmt, unitText, isNum } from "../ui/format.js";
 import { richText, richPlain } from "../ui/math.js";
-import { fieldLabel, words } from "../ui/labels.js";
+import { fieldLabel, cardTitle } from "../ui/labels.js";
 import { deviceThumbnail } from "../viz3d/deviceModel.js";
 import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors, alpha } from "../charts/theme.js";
@@ -124,16 +124,21 @@ function legend() {
 }
 
 // The card's device model as a static picture of the composed 3D scene (one offscreen context at a time).  Only cards that
-// have a composed design (a paper card of the same name) get one; the slot stays empty and hidden otherwise.
+// have a composed design (a paper card of the same name) get one.  Every other card states why there is none: a literature
+// parameter card carries a paper's published numbers, not a device geometry, and the legacy scene builder (scene.py) only
+// accepts design cards.
+const NO_MODEL = "No 3D model: this card holds a paper's published parameters, not a device design.";
 function fillThumb(a) {
   const slot = a.querySelector(".lib-thumb");
   if (!slot || !L) return;
   const name = a.dataset.card;
+  const noModel = (why) => { slot.replaceChildren(h("p.lib-thumb-why", why)); slot.dataset.state = "reason"; };
   deviceThumbnail({ paper: name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") }).then((url) => {
-    if (!url || !slot.isConnected) { slot.dataset.state = "none"; return; }
+    if (!slot.isConnected) return;
+    if (!url) { noModel(NO_MODEL); return; }
     slot.append(h("img.lib-thumb-img", { src: url, alt: `${cardTitle(name)}: device model`, width: 480, height: 300, loading: "lazy" }));
     slot.dataset.state = "ready";
-  }).catch(() => { slot.dataset.state = "none"; });
+  }).catch((e) => { if (slot.isConnected) noModel(`3D model unavailable: ${e?.message || "the scene could not be built"}`); });
 }
 
 function plaque(c) {
@@ -158,12 +163,9 @@ function plaque(c) {
       : h("p.lib-none", "no datasets: parameters only"));
 }
 
-// Human names for the machine ids: a card "chatzarakis2023" reads "Chatzarakis 2023", a dataset "g2_vs_T" reads
-// "g2(0) against temperature" (ui/labels.js).  The id stays in a tooltip / data attribute.
-export function cardTitle(name) {
-  const t = words(String(name)).replace(/([A-Za-z])(\d)/g, "$1 $2").replace(/(\d)([A-Za-z])/g, "$1 $2");
-  return t.replace(/^./, (c) => c.toUpperCase());
-}
+// Human names for the machine ids: cardTitle() (ui/labels.js) and, for a dataset "g2_vs_T", "g2(0) against temperature".
+// The id stays in a tooltip / data attribute.
+export { cardTitle };
 const dsLabel = (name) => richPlain(fieldLabel(name));
 
 // ---------------------------------------------------------------- card page

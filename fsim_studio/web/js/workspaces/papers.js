@@ -11,7 +11,7 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest } from "../ui/tagChip.js";
 import { skeleton, errorState, toast } from "../ui/controls.js";
 import { fmt, isNum } from "../ui/format.js";
-import { richText, tex, symbolFor, texIndex, pathSymbol } from "../ui/math.js";
+import { richText, registryText, tex, symbolFor, texIndex, pathSymbol } from "../ui/math.js";
 import { exportButtons } from "../ui/exporter.js";
 import { paperOverlay } from "../charts/paperOverlay.js";
 import { mountDeviceModel } from "../viz3d/deviceModel.js";
@@ -229,6 +229,7 @@ async function loadList() {
   try {
     P.list = await P.ctx.api.getJSON("/api/papers");
     P.listErr = null;
+    try { P.reg = await P.ctx.api.composeRegistry?.(); } catch { /* chips fall back to the ids */ }
   } catch (e) {
     if (!P) return;
     P.list = [];
@@ -254,6 +255,18 @@ async function prefetchAgreement() {
   if (P && seq === P.seq) renderCatalogue();
 }
 
+/** Registry display name of a catalogue kind (material / structure / drive id): "gaas_algaas_droplet" -> "GaAs/AlGaAs droplet-etched dot".
+ *  The wavelength range in brackets and the "(optional ...)" asides stay in the tooltip; the id is the fallback while the registry loads. */
+const KIND_PLURAL = { material: "materials", structure: "structures", drive: "drives" };
+function kindFull(axis, id) {
+  const e = (P?.reg?.[KIND_PLURAL[axis]] || []).find((x) => x.kind === id);
+  return e?.label || String(id).replace(/_/g, " ");
+}
+function kindShort(axis, id) {
+  return kindFull(axis, id).replace(/\s*\([^)]*\)\s*$/, "");
+}
+const kindNode = (axis, id) => registryText(kindShort(axis, id));
+
 function kindsOf(axis) {
   return [...new Set(P.list.map((p) => p.kinds?.[axis]).filter(Boolean))].sort();
 }
@@ -273,9 +286,9 @@ function renderCatalogue() {
         h("span.pp-flabel.engrave", a.label),
         h("div.pp-fchips", kinds.map((k) => h("button.chip.pp-filter", {
           type: "button", "aria-pressed": String(P.filters[a.key] === k), dataset: { axis: a.key, kind: k },
-          title: `${a.label}: ${k}. Click again to clear.`,
+          title: `${a.label}: ${kindFull(a.key, k)}. Click again to clear.`,
           on: { click: () => { P.filters[a.key] = P.filters[a.key] === k ? null : k; renderCatalogue(); } },
-        }, k.replace(/_/g, " "))))));
+        }, kindNode(a.key, k))))));
     }
     if (AXES.some((a) => P.filters[a.key])) {
       d.filters.append(h("button.btn.btn-quiet.pp-clear", { type: "button", on: { click: () => { for (const a of AXES) P.filters[a.key] = null; renderCatalogue(); } } }, icon("close", { size: 14 }), "Clear filters"));
@@ -356,7 +369,7 @@ function plaque(p) {
     h("div.cp-top",
       h("div.cp-titles", h("h2.cp-title", titleOf(p.id, p.cite)), h("p.pp-cite", { title: p.cite || "" }, p.cite || "")),
       h("span.cp-go", icon("chevronRight", { size: 18 }))),
-    h("div.pp-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${p.kinds[a.key]}` }, p.kinds[a.key].replace(/_/g, " ")) : null)),
+    h("div.pp-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${kindFull(a.key, p.kinds[a.key])}` }, kindNode(a.key, p.kinds[a.key])) : null)),
     h("div.pp-row", readBadge(p.read_level), classCounts(p.classes)),
     h("div.pp-foot",
       lastBadge(p.last_outcome, p.id),
@@ -481,8 +494,8 @@ function renderPaper() {
           h("div.pp-status-col", d.progress, d.status),
           (d.exporter = exportButtons(exportArgs, { label: "Export" })).el, d.composerBtn, d.runBtn)),
       d.model,
-      meta.summary ? h("p.pp-summary-text", meta.summary) : null,
-      h("div.pp-kinds.pp-dev-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${p.kinds[a.key]}` }, h("span.pp-kind-k", a.label), p.kinds[a.key].replace(/_/g, " ")) : null),
+      meta.summary ? h("p.pp-summary-text", registryText(meta.summary)) : null,
+      h("div.pp-kinds.pp-dev-kinds", AXES.map((a) => p.kinds?.[a.key] ? h("span.chip.pp-kind", { title: `${a.label}: ${kindFull(a.key, p.kinds[a.key])}` }, h("span.pp-kind-k", a.label), kindNode(a.key, p.kinds[a.key])) : null),
         classCounts(p.classes))),
     d.err, d.summary,
     h("section.panel.pp-table-panel", { "aria-label": "Model versus paper" },

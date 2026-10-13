@@ -4,6 +4,7 @@
 // value without a tag is not rendered.
 import { tagChip, esc } from './labels.js';
 import { richText } from '../../ui/math.js';
+import { sceneTitle } from '../../ui/labels.js';
 
 export function fmtNum(v, unit = '') {
   if (v === null || v === undefined || (typeof v === 'number' && !Number.isFinite(v))) return 'n/a';
@@ -35,7 +36,9 @@ export class Hud {
     root.appendChild(h);
     this.el = h;
     const head = el('div', 'v3-head');
-    head.appendChild(el('div', 'v3-title', esc(spec.title || spec.kind)));
+    const title = el('div', 'v3-title');
+    title.replaceChildren(richText(sceneTitle(spec)));
+    head.appendChild(title);
     const id = el('div', 'v3-catalog');
     id.textContent = spec.catalog_id || '';
     head.appendChild(id);

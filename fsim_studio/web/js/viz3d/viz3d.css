@@ -236,6 +236,9 @@
   background: var(--v3-plate); border: 1px solid var(--v3-rim); border-radius: 2px; width: fit-content;
 }
 .v3-notes-chip::-webkit-details-marker { display: none; }
+.v3-notes-chip { align-items: center; gap: 7px; }
+.v3-notes-chip::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-1px); transition: transform 160ms; }
+.v3-notes-box[open] > .v3-notes-chip::after { transform: rotate(225deg) translate(-1px, 0); }
 .v3-notes-box[open] > .v3-notes-chip { color: var(--v3-ink); border-color: var(--v3-rim-hi); }
 .v3-more-btn {
   grid-column: 1 / -1; justify-self: start; appearance: none; background: none; border: 0; padding: 2px 0; cursor: pointer;

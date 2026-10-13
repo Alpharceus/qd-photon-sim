@@ -5,6 +5,8 @@
 import { viridisCss, lambdaToRGB, ROLE_TINT } from './core/colormap.js';
 import { tagChip, esc } from './core/labels.js';
 import { fmtNum } from './core/hud.js';
+import { richText } from '../ui/math.js';
+import { sceneTitle } from '../ui/labels.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
@@ -209,7 +211,8 @@ export function renderFallback(el, kind, spec, { reason = '' } = {}) {
   const box = document.createElement('div');
   box.className = 'v3-fallback';
   const head = document.createElement('div');
-  head.innerHTML = `<div class="v3-title">${esc(spec.title || kind)}</div><div class="v3-note">2D fallback (${esc(reason)}), drawn from the same SceneSpec</div>`;
+  head.innerHTML = `<div class="v3-title"></div><div class="v3-note">2D fallback (${esc(reason)}), drawn from the same SceneSpec</div>`;
+  head.querySelector('.v3-title').replaceChildren(richText(sceneTitle({ ...spec, title: spec.title || kind })));
   box.appendChild(head);
   const s = svg(900, 520);
   ({ device, band, cascade, surface, lattice })[kind]?.(s, spec);
@@ -229,7 +232,7 @@ export function renderFallback(el, kind, spec, { reason = '' } = {}) {
   for (const l of spec.labels || []) {
     const n = document.createElement('div');
     n.className = 'v3-note';
-    n.textContent = l;
+    n.replaceChildren(richText(l));
     box.appendChild(n);
   }
   el.appendChild(box);

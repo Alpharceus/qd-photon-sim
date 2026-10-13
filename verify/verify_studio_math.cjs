@@ -402,6 +402,107 @@ async function waitRun(page, timeout = 120000) {
       await page.context().close();
     }
 
+    // ---------------------------------------------------------------- FIN4: scene titles, band explorer, alloys, units
+    {
+      page = await newPage();
+      const settleRoute = async (r, ms = 3500) => {
+        await page.goto(`${BASE}/${r}`, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector("#workspace > *", { timeout: 30000 }).catch(() => {});
+        await page.waitForFunction(() => !document.querySelector("#workspace .skeleton, #workspace [aria-busy='true']"), null, { timeout: 30000 }).catch(() => {});
+        await page.waitForTimeout(ms);
+      };
+      // cascade: the 3D title names the design (not its id) and typesets XX -> X -> 0; the g2 note is typeset, no g2_op
+      await settleRoute("#/explain/cascade", 4500);
+      const cas = await page.evaluate(() => {
+        const t = document.querySelector(".v3-title");
+        const notes = [...document.querySelectorAll(".v3-note")].map((n) => n.textContent).join(" | ");
+        return { title: t?.textContent || "", tex: [...(t?.querySelectorAll(".math") || [])].map((m) => m.dataset.tex), notes, noteTex: [...document.querySelectorAll(".v3-note .math")].map((m) => m.dataset.tex) };
+      });
+      check("FIN4: cascade title shows the design's display name and a typeset XX -> X -> 0 (no card id, no ASCII arrows)",
+        /Edge InP GaInP design/.test(cas.title) && !/edge-inp-gainp-design/.test(cas.title) && !/->/.test(cas.title) && cas.tex.some((x) => /XX\s*\\to\s*X\s*\\to\s*0/.test(x)), JSON.stringify({ title: cas.title.slice(0, 80), tex: cas.tex }));
+      check("FIN4: cascade g2 note is typeset g^(2)(0) and names no g2_op", !/g2_op/.test(cas.notes) && cas.noteTex.some((x) => /g\^\{\(2\)\}\(0\)/.test(x)), cas.notes.slice(0, 160));
+      // band explorer: overlap^2 and |psi|^2 are typeset; the barrier label does not sit on an energy tick label
+      await settleRoute("#/explain/band", 5000);
+      const band = await page.evaluate(() => {
+        const vis = (el) => el.getClientRects().length > 0 && getComputedStyle(el).display !== "none" && getComputedStyle(el).visibility !== "hidden";
+        const raw = [];
+        const w = document.createTreeWalker(document.querySelector("#workspace"), NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = w.nextNode())) {
+          const el = n.parentElement;
+          if (!el || el.closest(".katex-mathml, script, style, code")) continue;
+          if (/\w\^\d|\|psi\||\|phi\|/.test(n.nodeValue)) raw.push(n.nodeValue.trim().slice(0, 50));
+        }
+        const tex = [...document.querySelectorAll("#workspace .math")].map((m) => m.dataset.tex);
+        const ticks = [...document.querySelectorAll(".v3-label-tick")].filter(vis).map((e) => ({ t: e.textContent, r: e.getBoundingClientRect() }));
+        const notes = [...document.querySelectorAll(".v3-label-note")].filter(vis).map((e) => ({ t: e.textContent, r: e.getBoundingClientRect() }));
+        const hit = [];
+        for (const a of notes) for (const b of ticks) {
+          const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+          if (ix > 2 && iy > 2) hit.push(`${a.t.trim().slice(0, 24)} x ${b.t.trim()}`);
+        }
+        return { raw, tex, hit, nTicks: ticks.length, nNotes: notes.length };
+      });
+      check("FIN4: band explorer: no raw 'overlap^2' or '|psi|^2' in the visible text; both are typeset",
+        band.raw.length === 0 && band.tex.some((x) => /text\{overlap\}\^\{2\}/.test(x)) && band.tex.some((x) => /\|\\psi\|\^\{2\}/.test(x)), `${band.raw.slice(0, 3).join(" | ")}; ${band.tex.length} typeset`);
+      check("FIN4: band explorer: no region label overlaps an energy tick label", band.nTicks > 0 && band.nNotes > 0 && band.hit.length === 0, `${band.nTicks} ticks, ${band.nNotes} labels; ${band.hit.slice(0, 3).join(" | ")}`);
+      check("FIN4: alloy compositions are subscripted on the band explorer (Ga0.51In0.49P is Ga_{0.51}In_{0.49}P)",
+        band.tex.some((x) => /\\mathrm\{Ga\}_\{0\.51\}\\mathrm\{In\}_\{0\.49\}\\mathrm\{P\}/.test(x)), band.tex.filter((x) => /Ga/.test(x)).slice(0, 2).join(" | "));
+      // designer: alloy subscripts in the card description and no clipped unit on a mount
+      await settleRoute("#/design/edge-inp-gainp-design", 3500);
+      const des = await page.evaluate(() => {
+        const rawAlloy = [];
+        const w = document.createTreeWalker(document.querySelector("#workspace"), NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = w.nextNode())) {
+          const el = n.parentElement;
+          if (!el || el.closest(".katex-mathml, script, style, code, input, textarea")) continue;
+          const m = n.nodeValue.match(/(?:Ga|In|Al|As)\d?\.\d+/);
+          if (m) rawAlloy.push(m[0]);
+        }
+        const clipped = [...document.querySelectorAll(".mount .mv-u, .mount .mv-v")].filter((e) => e.getClientRects().length && e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent);
+        const mounts = [...document.querySelectorAll(".mount")].map((m) => m.getBoundingClientRect());
+        const out = [...document.querySelectorAll(".mount .mv-u, .mount .mv-v")].filter((e) => {
+          if (!e.getClientRects().length) return false;
+          const r = e.getBoundingClientRect();
+          return !mounts.some((m) => r.left >= m.left - 1 && r.right <= m.right + 1);
+        }).map((e) => e.textContent);
+        return { rawAlloy, clipped, out, nUnits: document.querySelectorAll(".mount .mv-u").length };
+      });
+      check("FIN4: designer: no raw alloy composition (Ga0.51In0.49P) in the visible text", des.rawAlloy.length === 0, des.rawAlloy.slice(0, 3).join(" | "));
+      check("FIN4: designer: no mount value or unit is clipped or leaves its mount", des.nUnits > 0 && des.clipped.length === 0 && des.out.length === 0, `${des.nUnits} units; ${des.clipped.concat(des.out).slice(0, 4).join(" | ")}`);
+      // alloy compositions in the Papers detail (summary) and the Composer band caption
+      const rawAlloyIn = (sel) => page.evaluate((q) => {
+        const root = document.querySelector(q);
+        if (!root) return ["no root " + q];
+        const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const raw = [];
+        let n;
+        while ((n = w.nextNode())) {
+          if (n.parentElement.closest(".katex-mathml, script, style, code, input, textarea")) continue;
+          const m = n.nodeValue.match(/(?:Ga|In|Al|As)\d?\.\d+/);
+          if (m) raw.push(m[0]);
+        }
+        return raw;
+      }, sel);
+      await settleRoute("#/papers/he2013", 3500);
+      const pRaw = await rawAlloyIn("#workspace");
+      const pTex = await page.evaluate(() => [...document.querySelectorAll("#workspace .pp-summary-text .math")].map((m) => m.dataset.tex));
+      check("FIN4: Papers detail: Al0.9Ga0.1As is typeset with subscripts (no raw composition)", pRaw.length === 0 && pTex.some((x) => /mathrm\{Al\}_\{0\.9\}/.test(x)), `${pRaw.slice(0, 3).join(" | ")}; ${pTex.slice(0, 2).join(" | ")}`);
+      await settleRoute("#/compose", 3000);
+      await page.click('.ws-compose .kind-chip[data-axis="material"]');
+      await page.waitForSelector('.cp-entry[data-kind="inp_gainp_red"]', { timeout: 15000 });
+      await page.waitForTimeout(300);
+      await page.click('.cp-entry[data-kind="inp_gainp_red"]');
+      await page.waitForTimeout(600);
+      await page.click('.ws-compose .vm-view[data-view="band"]');
+      await page.waitForSelector(".ws-compose .band-panel", { timeout: 10000 });
+      const cRaw = await rawAlloyIn(".ws-compose .band-panel");
+      const cTex = await page.evaluate(() => [...document.querySelectorAll(".ws-compose .band-panel .bp-cap .math")].map((m) => m.dataset.tex));
+      check("FIN4: Composer band caption: Ga0.51In0.49P is typeset with subscripts (no raw composition)", cRaw.length === 0 && cTex.some((x) => /mathrm\{Ga\}_\{0\.51\}/.test(x)), `${cRaw.slice(0, 3).join(" | ")}; ${cTex.slice(0, 2).join(" | ")}`);
+      await page.context().close();
+    }
+
     // ---------------------------------------------------------------- offline + errors
     check("no request left the Studio host (KaTeX, fonts and Plotly are all local)", external.length === 0, [...new Set(external)].slice(0, 3).join(" "));
     const kerr = errors.filter((e) => !/favicon|ERR_ABORTED|net::ERR_FAILED/.test(e));

@@ -154,6 +154,16 @@ export function richText(str) {
 // into the DOM, so no call site has to be converted by hand and no prose shows an underscore as a subscript.
 // A subscript is `_` + 1..6 alphanumerics, NOT followed by another `_word` (so snake_case ids such as a_ac_ns_per_K stay untouched
 // unless the registry knows them: then the id is replaced by its symbol).
+// Alloy compositions (FIN4): Ga0.51In0.49P, (Al0.55Ga0.45)0.51In0.49P, GaAs0.60P0.40 -> upright symbols with subscript fractions.
+// Only fractions with a decimal point count, so "InP", "GaAs" and "P2" stay plain text.
+const ALLOY_EL = "(?:Al|Ga|In|As|Sb|Zn|Cd|Se|Mg|Si|Pb|Cs|Br|Ge|Hg|Te|N|P|B|S)";
+const ALLOY_FR = "(?:\\d?\\.\\d+)";
+const ALLOY_UNIT = `(?:${ALLOY_EL}|\\((?:${ALLOY_EL}${ALLOY_FR}?)+\\))${ALLOY_FR}?`;
+const ALLOY_SRC = `(?<![A-Za-z0-9_.])(?<alloy>(?:${ALLOY_UNIT}){2,})(?![A-Za-z0-9_])`;
+/** TeX of an alloy formula: element names upright, every decimal fraction a subscript. */
+export function alloyTex(f) {
+  return String(f).replace(/[A-Za-z]+/g, (e) => `\\mathrm{${e}}`).replace(/(\d?\.\d+)/g, "_{$1}");
+}
 const AUTO_RE = new RegExp(
   [
     "(?<![A-Za-z0-9_])g(?:²|\\^2|\\(2\\))(?:_(?<gsub>[A-Za-z]{2,6})(?![A-Za-z0-9_]))?(?:\\((?<garg>[0τt])\\))?", // g²(0), g^2(0), g(2)(0), bare g², g²_dot
@@ -163,6 +173,9 @@ const AUTO_RE = new RegExp(
     "(?<![A-Za-z0-9_])(?:γ|gamma)\\*", // γ*
     "(?<mant>\\d(?:\\.\\d+)?)×10(?<exp>[⁻⁺]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)", // 1.2×10⁻⁵ (what fmt() writes)
     "(?<![A-Za-z0-9_.])(?<id>[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+)(?![A-Za-z0-9_])", // a registry id (eta_out, pol_factor) in prose
+    "(?<![A-Za-z0-9_])\\|(?<psiw>psi|phi)\\|\\^(?<psie>\\d)", // |psi|^2
+    "(?<![A-Za-z0-9_.])(?<wsqw>[A-Za-z][A-Za-z]{2,})\\^(?<wsqe>\\d)(?![A-Za-z0-9_])", // overlap^2, density^2: a word with a superscript
+    ALLOY_SRC,
   ].join("|"), "g");
 const SUPCH = { "⁻": "-", "⁺": "+", "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
 const subTex = (w) => (/^\d+$/.test(w) ? w : `\\mathrm{${w}}`);
@@ -185,7 +198,7 @@ export function registerSymbols(reg) {
 /** DocumentFragment for a plain string with typeset ASCII notation, or null when nothing in it needs typesetting. */
 export function autoMath(str) {
   const s = String(str);
-  if (!/[_²^*(×]/.test(s) || s.length > 4000) return null;
+  if (!/[_²^*(×]|\d\.\d/.test(s) || s.length > 4000) return null;
   let last = 0;
   let hit = false;
   const frag = document.createDocumentFragment();
@@ -202,6 +215,11 @@ export function autoMath(str) {
       last = m.index + m[0].length;
       hit = true;
       continue;
+    } else if (g.psiw !== undefined) t = `|\\${g.psiw}|^{${g.psie}}`;
+    else if (g.wsqw !== undefined) t = `\\text{${g.wsqw}}^{${g.wsqe}}`;
+    else if (g.alloy !== undefined) {
+      if (!/\d?\.\d/.test(g.alloy)) continue; // no fraction: InP, GaAs stay text
+      t = alloyTex(g.alloy);
     } else if (g.base !== undefined) t = `${g.base}_{${subTex(g.sub)}}`;
     else if (g.gbase !== undefined) t = `\\${g.gbase}_{${subTex(g.gsub2)}}`;
     else if (g.id !== undefined) {

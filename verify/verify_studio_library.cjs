@@ -170,6 +170,17 @@ async function numberTagAudit(page) {
     check("library cards: titles are human names (no digit-glued ids), the id is the tooltip",
       titles.length >= 10 && titles.every((x) => x.t === x.t.replace(/^./, (c) => c.toUpperCase()) && !/[a-z]\d/.test(x.t) && x.tip === x.id), titles.slice(0, 3).map((x) => `${x.id} -> ${x.t}`).join("; "));
     check("library cards: dataset names are labels, not ids (no underscore, no g2_vs_T)", titles.every((x) => x.ds.every((n) => !/_/.test(n) && !/g2_vs/.test(n))), titles.flatMap((x) => x.ds).slice(0, 4).join(" | "));
+    // FIN4: every Library card shows a device model or a stated reason (never an empty slot); at most one WebGL canvas
+    await page.waitForFunction(() => [...document.querySelectorAll("a.lib-plaque .lib-thumb")].every((t) => t.dataset.state !== "pending"), null, { timeout: 40000 }).catch(() => {});
+    const thumbs = await page.$$eval("a.lib-plaque", (as) => as.map((a) => {
+      const t = a.querySelector(".lib-thumb");
+      const img = t?.querySelector("img.lib-thumb-img"), why = t?.querySelector(".lib-thumb-why");
+      return { id: a.dataset.card, state: t?.dataset.state, img: !!img && img.naturalWidth > 0, why: (why?.textContent || "").trim(), shown: !!t && t.getClientRects().length > 0 };
+    }));
+    check("FIN4: every library card shows a device model or a stated reason (no empty thumbnail slot)",
+      thumbs.length >= 10 && thumbs.every((x) => x.shown && ((x.state === "ready" && x.img) || (x.state === "reason" && x.why.length > 20))),
+      thumbs.map((x) => `${x.id}:${x.state}`).slice(0, 12).join(" "));
+    check("FIN4: the library page holds at most one WebGL canvas", (await page.$$eval("canvas", (c) => c.length)) <= 1);
     await page.goto(`${BASE}/#/library/chatzarakis`, { waitUntil: "domcontentloaded" });
     await ready(page);
     const chartTitles = await page.$$eval(".lib-ds-card h3.chart-title", (e) => e.map((x) => x.textContent));

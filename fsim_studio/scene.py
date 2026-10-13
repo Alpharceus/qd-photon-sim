@@ -834,7 +834,7 @@ def cascade_scene(card, T=None):
         "delta_xx": _S(dxx, "meV", _tag_of(d, "dot.delta_xx", "A"), "XX binding delta_xx"),
     }
     spec["labels"] = ["illustrative sampling of computed rates",
-                      "g2 shown is the evaluated g2_op, never counted from the animation",
+                      "the $g^{(2)}(0)$ shown is the evaluated value, never counted from the animation",
                       "time is slowed: two playback speeds, labelled live",
                       f"sprite rates boosted: X x{boost['X']:.3g}, XX x{boost['XX']:.3g}, escape x{boost['esc']:.3g}"]
     if lab_head:
