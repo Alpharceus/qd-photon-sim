@@ -222,6 +222,14 @@ _a, _b = mu.build({}, 4.0), mu.build({"eta_blink": 0.65}, 4.0)
 check("eta_blink never changes the lifetime-controlling EmitterModel (gamma0, k_nr, gamma*) - it is a brightness factor only",
       (_a.gamma0_ns, _a.k_nr_ns, _a.gamma_star_ns) == (_b.gamma0_ns, _b.k_nr_ns, _b.gamma_star_ns))
 
+# devlib-r2-fix1b: the repo gamma* is the pure-dephasing LINEWIDTH Gamma_ph = 2 gamma_ph (Scully-Zubairy gamma_ph = coherence
+# decay rate); values are unchanged, only the wording / symbol moved
+_gs = R.get("material", sorted(R.kinds("material"))[0]).param("gamma_star_4K_ns")
+_all_help = " ".join(p_.help for k_ in R.kinds("material") for p_ in R.get("material", k_).params)
+check("gamma*(4 K) is presented as the pure-dephasing linewidth Gamma_ph = 2 gamma_ph (symbol and help), no 'repo gamma' wording left",
+      _gs.tex == r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)" and r"\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}" in _gs.help
+      and "repo gamma" not in _all_help.lower() and "repo convention" not in _all_help.lower())
+
 n, total = sum(RESULTS), len(RESULTS)
 print(f"{n}/{total} compose materials checks passed")
 sys.exit(0 if n == total else 1)

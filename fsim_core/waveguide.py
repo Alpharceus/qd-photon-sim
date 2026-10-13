@@ -365,6 +365,105 @@ def hkust_ridge_stack(lambda_nm=668.0):
             Layer("upper_cladding", cl, 1000, material=cl_label)]
 
 
+# ---------------------------------------------------------------------------
+# Ridge-waveguide stacks per material system (devlib-r2-fix1b, audit finding 3).
+# hkust_ridge_stack above covers the AlGaInP/AlInP red band only (its cladding
+# index is tabulated at 650-850 nm). ridge_stack_for(lambda) dispatches on the
+# emission wavelength to the epitaxial platform that normally hosts a dot of
+# that colour, and says WHY when none applies (never raises). All stacks are
+# class designs, not a specific device [E]; the red band returns the
+# hkust_ridge_stack object bit-for-bit.
+# ---------------------------------------------------------------------------
+RIDGE_BANDS = (
+    # key, lo_nm, hi_nm, label
+    ("algainp_red", 650.0, 850.0, "AlInP / AlGaInP core, InP dot in GaAsP (HKUST class)"),
+    ("gaas_algaas", 880.0, 1050.0, "Al0.40Ga0.60As claddings, GaAs core (InAs / InGaAs / GaAs dots)"),
+    ("inp_ingaasp", 1260.0, 1600.0, "InP claddings, InGaAsP (Q1.15) core (InAs/InP telecom dots)"),
+    ("gan_algan", 400.0, 510.0, "AlGaN (about 10 % Al) claddings, GaN core (InGaN dots)"),
+)
+
+
+def _n_extrap(label, lambda_nm, tol_nm=80.0):
+    """materials.refractive_index inside the tabulated window; linear extrapolation of the nearest two points up to
+    tol_nm outside it [E] (the InP-family tables hold only 1310 and 1550 nm)."""
+    from .materials import MATERIAL_EXTRA
+    tab = MATERIAL_EXTRA[label]["n"]
+    lams = sorted(tab)
+    if lams[0] - 1e-9 <= lambda_nm <= lams[-1] + 1e-9:
+        return refractive_index(label, lambda_nm)
+    if len(lams) < 2:
+        raise ValueError(f"{label}: n tabulated only at {lams} nm")
+    a, b = (lams[0], lams[1]) if lambda_nm < lams[0] else (lams[-2], lams[-1])
+    edge = lams[0] if lambda_nm < lams[0] else lams[-1]
+    if abs(lambda_nm - edge) > tol_nm:
+        raise ValueError(f"{label}: n tabulated only at {lams} nm; asked {lambda_nm}")
+    return float(tab[a] + (tab[b] - tab[a]) * (lambda_nm - a) / (b - a))
+
+
+def ridge_family(lambda_nm):
+    """(key, label, None) of the ridge platform for lambda_nm, or (None, None, reason) when no stack applies."""
+    lam = float(lambda_nm)
+    for key, lo, hi, label in RIDGE_BANDS:
+        if lo <= lam <= hi:
+            return key, label, None
+    if lam < 400.0:
+        why = ("deep-UV (GaN/AlN) emission needs Al-rich AlGaN claddings and cores whose n(lambda) is not tabulated here; "
+               "GaN absorbs below 365 nm")
+    elif lam < 650.0:
+        why = ("no epitaxial ridge-waveguide stack with a tabulated index in this repo covers 510-650 nm (II-VI ZnSe/ZnMgSSe "
+               "and colloidal nanocrystals are not ridge-waveguide platforms here)")
+    elif lam < 880.0:
+        why = "850-880 nm is between the AlGaInP stack (ends 850 nm) and the GaAs core (absorbs below 873 nm)"
+    elif lam < 1260.0:
+        why = "1050-1260 nm: no tabulated ridge stack (GaAs-based ends 1050 nm, InP-based starts 1260 nm)"
+    else:
+        why = "beyond 1600 nm no ridge stack index is tabulated"
+    return None, None, f"edge_ridge is not available at {lam:g} nm: {why}"
+
+
+def ridge_stack_for(lambda_nm):
+    """(stack, family_key, family_label) for the platform at lambda_nm, or (None, None, reason) [E].
+
+    gaas_algaas: n_GaAs, n_AlAs from materials.MATERIAL_EXTRA (Skauli JAP 94, 6447 (2003); Fern & Onton JAP 42, 3499
+    (1971)); the Al0.40Ga0.60As cladding is the LINEAR interpolation n = n_GaAs + 0.4 (n_AlAs - n_GaAs) [E] (Afromowitz,
+    Solid State Commun. 15, 167 (1974); Aspnes JAP 60, 754 (1986) class), core 2 x 124 nm GaAs (single mode, V ~ 1.1).
+    inp_ingaasp: InP, InGaAsP-Q1.15 (Adachi JAP 53, 5863 (1982)) and In0.53Ga0.47As dot proxy from MATERIAL_EXTRA,
+    core 2 x 200 nm [E]. gan_algan: GaN n = 2.45 at 450 nm (the repo host value, brief section 4) with an assumed slope
+    -1.0e-3 /nm, cladding 0.03 lower (about 10 % Al, AlN ~ 2.16 at 450 nm [E]), dot proxy +0.10 (InGaN) [A]; layers are
+    numeric (not wavelength-aware), so n_g falls back to n_eff. All stacks keep 1000 nm claddings so the 1200 nm default
+    etch ends inside the core like the red stack."""
+    key, label, why = ridge_family(lambda_nm)
+    if key is None:
+        return None, None, why
+    lam = float(lambda_nm)
+    try:
+        if key == "algainp_red":
+            return hkust_ridge_stack(lam), key, label
+        if key == "gaas_algaas":
+            nG, nA = refractive_index("GaAs", lam), refractive_index("AlAs", lam)
+            cl = nG + 0.40 * (nA - nG)
+            return [Layer("lower_cladding", cl, 1000),
+                    Layer("core_lower", nG, 124, material="GaAs"),
+                    Layer("dot", nG, 2, True, material="GaAs"),
+                    Layer("core_upper", nG, 124, material="GaAs"),
+                    Layer("upper_cladding", cl, 1000)], key, label
+        if key == "inp_ingaasp":
+            cl, core, dot = _n_extrap("InP", lam), _n_extrap("InGaAsP-Q1.15", lam), _n_extrap("In0.53Ga0.47As", lam)
+            return [Layer("lower_cladding", cl, 1000, material="InP"),
+                    Layer("core_lower", core, 200, material="InGaAsP-Q1.15"),
+                    Layer("dot", dot, 2, True, material="In0.53Ga0.47As"),
+                    Layer("core_upper", core, 200, material="InGaAsP-Q1.15"),
+                    Layer("upper_cladding", cl, 1000, material="InP")], key, label
+        core = 2.45 - 1.0e-3 * (lam - 450.0)
+        return [Layer("lower_cladding", core - 0.03, 1000),
+                Layer("core_lower", core, 200),
+                Layer("dot", core + 0.10, 2, True),
+                Layer("core_upper", core, 200),
+                Layer("upper_cladding", core - 0.03, 1000)], key, label
+    except ValueError as e:
+        return None, None, f"edge_ridge is not available at {lam:g} nm: {e}"
+
+
 def _redispersed(stack, lambda_nm):
     """Rebuild `stack` with each wavelength-aware Layer's n re-evaluated at
     lambda_nm via materials.refractive_index (council review 2026-09-05 item

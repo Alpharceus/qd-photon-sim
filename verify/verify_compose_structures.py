@@ -426,6 +426,149 @@ check("FX4: micropillar response carries the quarter-wave layer thicknesses lamb
       abs(rm.extra["t_high_nm"] - em_d.lambda_nm / (4 * 3.5)) < 1e-9 and abs(rm.extra["t_low_nm"] - em_d.lambda_nm / (4 * 2.95)) < 1e-9
       and abs(rm.extra["spacer_unit_nm"] - em_d.lambda_nm / 3.5) < 1e-9)
 
+# ======================================================================= devlib-r2-fix1b
+# ---- finding 3: edge_ridge across every material (stack per material system) or a named incompatibility
+R.ensure_loaded()
+import warnings                                                          # noqa: E402
+warnings.filterwarnings("ignore")
+E_RIDGE = R.get("structure", "edge_ridge")
+mat_status = {}
+raised = []
+for mk in R.kinds("material"):
+    for T_ in (4.2, 300.0):
+        try:
+            emm = R.get("material", mk).build({}, T_)
+            rr_ = E_RIDGE.response({}, emm, T_, 0.65)
+            why = S.incompatibility("edge_ridge", emm)
+            mat_status[(mk, T_)] = (rr_, why, emm)
+        except Exception as ex_:                                         # noqa: BLE001
+            raised.append(f"{mk}@{T_}: {ex_!r}"[:80])
+check("edge_ridge never raises for any of the registered materials at 4.2 and 300 K", not raised and len(mat_status) == 2 * len(R.kinds("material")),
+      "; ".join(raised[:2]))
+fin_ok = all(math.isfinite(rr_.F_P) and rr_.F_P >= 0 and 0.0 <= rr_.eta_out <= 1.0 and rr_.beta0 == 0.0 for rr_, _w, _e in mat_status.values())
+check("edge_ridge response is finite with F_P >= 0, eta_out in [0, 1] for every material", fin_ok)
+inc = sorted({mk for (mk, _T), (_r, why, _e) in mat_status.items() if why})
+ok_mats = sorted({mk for (mk, _T), (_r, why, _e) in mat_status.items() if not why})
+check("an incompatible pair carries a named reason in extra['incompatible'] (== structures.incompatibility), a compatible one does not",
+      all((bool(why) == ("incompatible" in rr_.extra)) and (not why or rr_.extra["incompatible"] == why) for rr_, why, _e in mat_status.values()))
+check("compatible: the 7 epitaxial dots (red InP, GaAs droplet, InAs/InGaAs on GaAs, both C-band, InGaN); incompatible: GaN/AlN UV, CdSe/ZnSe, CsPbBr3",
+      set(ok_mats) == {"gaas_algaas_droplet", "inas_gaas_sk", "inas_ingaas_metamorphic_cband", "inas_inp_cband", "ingaas_gaas",
+                       "ingan_gan", "inp_gainp_red"} and set(inc) == {"cdse_znse", "cspbbr3_colloidal", "gan_aln"}, f"ok {ok_mats} inc {inc}")
+check("the incompatibility reason names the wavelength", all(("nm" in why) for _r, why, _e in mat_status.values() if why))
+# anchor: n_eff between cladding and core indices, mode size in the known class (a few 0.1 um vertically, ~um laterally)
+anc = []
+for mk in ok_mats:
+    rr_, _w, emm = mat_status[(mk, 4.2)]
+    st_ = rr_.extra["stack"]
+    n_cl = min(x["n"] for x in st_ if "cladding" in x["name"])
+    n_co = max(x["n"] for x in st_)
+    good = n_cl < rr_.extra["n_eff"] < n_co and 0.1 < rr_.extra["wy_um"] < 2.0 and 0.2 < rr_.extra["wx_um"] < 4.0 and 0.0 < rr_.F_P < 0.5
+    anc.append((mk, good, round(rr_.extra["n_eff"], 3), round(rr_.extra["wx_um"], 2), round(rr_.extra["wy_um"], 2)))
+check("edge_ridge anchor: cladding < n_eff < core, mode radii 0.1-2 um (vertical) / 0.2-4 um (lateral), F_wg 0-0.5 for every compatible material",
+      all(g_[1] for g_ in anc), "; ".join(f"{a_[0]}:{a_[2]}/{a_[3]}/{a_[4]}" for a_ in anc if not a_[1]))
+# the red band is the legacy stack bit-for-bit
+st_red, key_red, _l = waveguide.ridge_stack_for(670.0)
+st_ref = waveguide.hkust_ridge_stack(670.0)
+check("ridge_stack_for(670 nm) is waveguide.hkust_ridge_stack(670 nm) layer for layer (legacy bit-identical)",
+      key_red == "algainp_red" and [(x.name, x.n, x.thickness_nm, x.is_dot, x.material) for x in st_red] ==
+      [(x.name, x.n, x.thickness_nm, x.is_dot, x.material) for x in st_ref])
+# GaAs cladding n is the linear Al0.4 interpolation of the tabulated GaAs / AlAs indices (closed form)
+st_g, _k, _l = waveguide.ridge_stack_for(930.0)
+nG_, nA_ = 3.59, 2.97                                                    # MATERIAL_EXTRA tables at 930 nm
+check("GaAs/AlGaAs stack at 930 nm: cladding n = n_GaAs + 0.4 (n_AlAs - n_GaAs) = 3.342 (tables 3.59 / 2.97)",
+      abs(st_g[0].n - (nG_ + 0.4 * (nA_ - nG_))) < 1e-12 and abs(st_g[2].n - nG_) < 1e-12)
+check("ridge_stack_for outside every band returns (None, None, reason) and never raises",
+      all(waveguide.ridge_stack_for(l_)[0] is None and "nm" in waveguide.ridge_stack_for(l_)[2] for l_ in (290.0, 530.0, 860.0, 1100.0, 1700.0)))
+# an unbound-mode geometry (etch cannot remove the lower cladding) is an incompatible response, not an exception
+emg = R.get("material", "ingaas_gaas").build({}, 4.2)
+rb_ = E_RIDGE.response({"etch_depth_nm": 4500.0}, emg, 4.2, 0.65)
+check("edge_ridge: a geometry the mode solver rejects returns an incompatible response (no raise)", "incompatible" in rb_.extra and rb_.eta_out == 0.0)
+
+# ---- finding 19: the inputs of the edge_ridge response are exactly the params that change each field
+emi = R.get("material", "ingaas_gaas").build({}, 4.2)
+base_ = E_RIDGE.response({}, emi, 4.2, 0.65)
+pert = {"ridge_width_nm": 1500.0, "etch_depth_nm": 900.0, "L_um": 400.0, "alpha_cm": 20.0, "R_back": 0.5, "lambda_nm": 1000.0,
+        "dot_position": 0.2, "na_method": "numeric"}
+changes = {"F_P": set(), "eta_out": set(), "F_bg": set(), "beta0": set()}
+for k_, v_ in pert.items():
+    r_ = E_RIDGE.response({k_: v_}, emi, 4.2, 0.65)
+    for fld in changes:
+        if getattr(r_, fld) != getattr(base_, fld):
+            changes[fld].add(k_)
+listed = {fld: {t.replace("structure.", "") for t in base_.inputs.get(fld, "").split("+") if t} for fld in changes}
+check("finding 19: edge_ridge inputs[F_P] / inputs[eta_out] list exactly the params that change them when perturbed",
+      listed["F_P"] == changes["F_P"] and listed["eta_out"] == changes["eta_out"],
+      f"F_P listed {sorted(listed['F_P'])} vs {sorted(changes['F_P'])}; eta {sorted(listed['eta_out'])} vs {sorted(changes['eta_out'])}")
+check("finding 19: F_bg (hard 1.0) and beta0 (hard 0.0) have no inputs and no param changes them",
+      not changes["F_bg"] and not changes["beta0"] and "F_bg" not in base_.inputs and "beta0" not in base_.inputs)
+
+# ---- finding 10: the material dipole acts per structure
+ax = make_em(dipole="axial")
+ip = make_em(dipole="in_plane")
+EPS = S.AXIAL_RESIDUAL
+check("dipole_projection: in_plane -> 1, axial -> AXIAL_RESIDUAL (0.05 [A])", S.dipole_projection(ip) == 1.0 and S.dipole_projection(ax) == EPS == 0.05)
+for kind_, vals_ in (("micropillar", {"Q_measured": 6124.0, "d_um": 2.5}), ("phc_cavity", {}), ("phc_waveguide", {}),
+                     ("open_cavity", {"mode": "geometry"})):
+    ra_, ri_ = resp(kind_, vals_, em=ax), resp(kind_, vals_, em=ip)
+    check(f"dipole: {kind_} computed F_P scales by the cos^2 projection (axial = 0.05 x in-plane)", abs(ra_.F_P / ri_.F_P - EPS) < 1e-12,
+          f"{ra_.F_P / ri_.F_P:.6g}")
+ra_, ri_ = resp("open_cavity", {}, em=ax), resp("open_cavity", {}, em=ip)
+check("dipole: open_cavity direct (g, kappa) and generic_cavity entered F_P are the device's own numbers: unchanged",
+      ra_.F_P == ri_.F_P and ra_.g_meV == ri_.g_meV and resp("generic_cavity", {}, em=ax).F_P == resp("generic_cavity", {}, em=ip).F_P)
+ra_, ri_ = resp("phc_cavity", {"g_ueV": 50.0}, em=ax), resp("phc_cavity", {"g_ueV": 50.0}, em=ip)
+check("dipole: phc_cavity with an entered g is unchanged", ra_.F_P == ri_.F_P)
+# nanowire: HE11 couples to the transverse (in-plane) dipole; an axial one does not (Bleuse 2011 / Claudon 2010 class [E])
+nwv = {"d_nm": 220.0, "n_wire": 3.45, "n_group": 3.6}
+b_ip = resp("photonic_nanowire", dict(nwv, mirror_R=0.0), em=ip, NA=0.75).beta0
+b_ax = resp("photonic_nanowire", dict(nwv, mirror_R=0.0), em=ax, NA=0.75).beta0
+check("nanowire anchor: beta(axial) << beta(in-plane) (Bleuse 2011 / Claudon 2010 class [E]): ratio < 0.1 and in-plane > 0.4",
+      b_ax < 0.1 * b_ip and b_ip > 0.4, f"in-plane {b_ip:.4f}, axial {b_ax:.4f}")
+# closed form of the axial beta: eps G / (eps G + 1 - eps c) x multimode penalty (diagnostics of the module itself)
+vv_ = S._V(R.get("structure", "photonic_nanowire"), dict(nwv, mirror_R=0.0))
+r_nw = S._nanowire_resp(vv_, ax, 0.75)
+dg_ = r_nw["diagnostics"]
+c_, G_ = dg_["confinement_fraction"], dg_["confinement_fraction"] * dg_["group_index_ratio"]
+b_cf = EPS * G_ / (EPS * G_ + 1.0 - EPS * c_) * dg_["beta_multimode_penalty"]
+b_mod = S._nanowire_beta(vv_, ax, r_nw)[0]
+check("nanowire axial beta equals the closed form eps G/(eps G + 1 - eps c) x penalty (rate partition of the free emission)",
+      abs(b_mod - min(max(b_cf, 0.0), 1.0)) < 1e-14, f"{b_mod:.6g} vs {b_cf:.6g}")
+# bulk_planar: azimuth-averaged in-plane pattern (3/16 pi)(1 + cos^2) vs axial (3/8 pi) sin^2: small cone x = NA/n
+n_b, NA_b = 3.5, 0.5
+x_b = NA_b / n_b
+T_F = 4 * n_b / (1 + n_b) ** 2
+eta_ip = S.bulk_planar_eta(NA_b, n_b)
+eta_ax = S.bulk_planar_eta(NA_b, n_b, dipole="axial")
+from scipy.integrate import quad                                         # noqa: E402
+th0 = math.asin(x_b)
+num_ip = quad(lambda t: 3 / (16 * math.pi) * (1 + math.cos(t) ** 2) * math.sin(t) * 2 * math.pi, 0, th0)[0] * T_F
+num_ax = quad(lambda t: 3 / (8 * math.pi) * math.sin(t) ** 2 * math.sin(t) * 2 * math.pi, 0, th0)[0] * T_F
+check("bulk_planar: axial eta = (3/16) x^4 T_F, in-plane (3/8) x^2 T_F; both within 3 % of the exact angular integral of the dipole patterns",
+      abs(eta_ax - 0.1875 * x_b ** 4 * T_F) < 1e-15 and abs(eta_ax / num_ax - 1) < 0.03 and abs(eta_ip / num_ip - 1) < 0.03
+      and eta_ax < 0.05 * eta_ip, f"ip {eta_ip:.4g}/{num_ip:.4g}, ax {eta_ax:.4g}/{num_ax:.4g}")
+check("bulk_planar response uses the material dipole (axial eta_out < in-plane); default dipole path unchanged",
+      resp("bulk_planar", {}, em=ax, NA=0.5).eta_out < resp("bulk_planar", {}, em=ip, NA=0.5).eta_out
+      and resp("bulk_planar", {}, em=ip, NA=0.5).eta_out == S.bulk_planar_eta(0.5, 3.5, False, "none", 2.0))
+# planar_dbr: axial dipole -> vertical-dipole LDOS (the existing orientation option)
+check("dipole: planar_dbr axial material == orientation 'vertical' (F_bg), in-plane unchanged",
+      resp("planar_dbr", {}, em=ax).F_bg == resp("planar_dbr", {"orientation": "vertical"}, em=ip).F_bg
+      and resp("planar_dbr", {}, em=ip).F_bg == resp("planar_dbr", {"orientation": "inplane"}, em=ip).F_bg)
+# edge_ridge and the nitride cavity
+emx = R.get("material", "ingaas_gaas").build({}, 4.2)
+from dataclasses import replace as _rp                                   # noqa: E402
+emx_ax = _rp(emx, dipole="axial")
+check("dipole: edge_ridge F_P scales by 0.05 for an axial dipole, eta_out unchanged",
+      abs(E_RIDGE.response({}, emx_ax, 4.2, 0.65).F_P / E_RIDGE.response({}, emx, 4.2, 0.65).F_P - EPS) < 1e-12
+      and E_RIDGE.response({}, emx_ax, 4.2, 0.65).eta_out == E_RIDGE.response({}, emx, 4.2, 0.65).eta_out)
+emn = R.get("material", "ingan_gan").build({}, 300.0)
+emn_ax = _rp(emn, dipole="axial")
+rn_i = R.get("structure", "nitride_planar_cavity").response({}, emn, 300.0, 0.65)
+rn_a = R.get("structure", "nitride_planar_cavity").response({}, emn_ax, 300.0, 0.65)
+check("dipole: nitride_planar_cavity F_P scales by 0.05 for an axial dipole", abs(rn_a.F_P / rn_i.F_P - EPS) < 1e-12 and rn_i.F_P > 0)
+
+# ---- symbols: every structure param has a tex symbol and a marked-up help (parse-checked by verify_param_tex.py)
+check("every structures.py param carries a tex symbol and a $...$ help",
+      all(p_.tex and "$" in p_.help for k_ in R.kinds("structure") for p_ in R.get("structure", k_).params))
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_structures checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

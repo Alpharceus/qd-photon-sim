@@ -117,18 +117,39 @@ def eta_table_fn(text: str) -> Callable[[float], float]:
     return fn
 
 
-def bulk_planar_eta(NA, n, mirror=False, sil="none", n_s=2.0):
-    """First-lens collected fraction of an in-plane dipole in a planar high-index
-    host, small cone [DR]: eta = (3/8) x^2 T_F, x = NA_eff/n capped at 1, NA_eff =
+def bulk_planar_eta(NA, n, mirror=False, sil="none", n_s=2.0, dipole="in_plane"):
+    """First-lens collected fraction of a dipole in a planar high-index
+    host, small cone [DR]: eta = (3/8) x^2 T_F for an in-plane dipole (azimuth-averaged
+    pattern (3/16 pi)(1 + cos^2 th) per sr), (3/16) x^4 T_F for an axial one (pattern
+    (3/8 pi) sin^2 th per sr: no light on axis), x = NA_eff/n capped at 1, NA_eff =
     NA x (1 | n_s | n_s^2) for no SIL | hemispherical | Weierstrass, T_F = 4n/(1+n)^2;
     a bottom mirror doubles it (capped at 1)."""
     mult = {"none": 1.0, "hemi": float(n_s), "weierstrass": float(n_s) ** 2}[sil]
     x = min(float(NA) * mult / float(n), 1.0)
     T_F = 4.0 * n / (1.0 + n) ** 2
-    eta = 0.375 * x * x * T_F
+    eta = (0.1875 * x ** 4 if str(dipole) == "axial" else 0.375 * x * x) * T_F
     if mirror:
         eta *= 2.0
     return float(min(eta, 1.0))
+
+
+# --------------------------------------------------------------------------
+# Dipole orientation (devlib-r2-fix1b, audit finding 10)
+# --------------------------------------------------------------------------
+# The material `dipole` (in_plane | axial) is the orientation of the transition dipole relative to the growth axis.
+# Every cavity / waveguide mode of the entries below is polarised in the plane (HE11 and micropillar fields are
+# transverse, photonic-crystal slab modes and TE ridge modes lie in the plane), so the coupling is the cos^2 projection
+# of the dipole on the mode field [DR]: 1 for an in-plane dipole, 0 for an exactly axial one. An exactly axial dipole is
+# an idealisation (tilt, light-hole admixture), so a small residual projection is kept [A].
+AXIAL_RESIDUAL = 0.05          # [A] cos^2 projection of an axial dipole on an in-plane mode field (tilt / LH admixture)
+
+
+def dipole_projection(em):
+    """cos^2 projection of the emitter's transition dipole on an in-plane mode field: 1.0 (in_plane) or AXIAL_RESIDUAL
+    (axial) [DR/A]. Applied to the COMPUTED Purcell factors (micropillar, geometry-mode open cavity, Q/V phc_cavity,
+    phc_waveguide, edge_ridge, nitride cavity); entered F_P / g numbers (generic_cavity, cbg, direct open cavity, entered
+    g) describe the device's own dot and are left as entered."""
+    return AXIAL_RESIDUAL if str(getattr(em, "dipole", "in_plane")) == "axial" else 1.0
 
 
 # --------------------------------------------------------------------------
@@ -142,11 +163,86 @@ class _Struct(Structure):
         return self.fn(self, vals, em, T_K, NA)
 
 
+# display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the param id; UI only
+_TEX = {
+    "F_P": r"F_{\mathrm P}",
+    "kappa_ueV": r"\hbar\kappa",
+    "Q": r"Q",
+    "detuning_ueV": r"\hbar\Delta_{\mathrm c}",
+    "beta0": r"\beta_0",
+    "eta_out": r"\eta_{\mathrm{out}}",
+    "F_bg": r"F_{\mathrm{bg}}",
+    "d_um": r"d",
+    "N_top": r"N_{\mathrm{top}}",
+    "N_bot": r"N_{\mathrm{bot}}",
+    "n_high": r"n_{\mathrm H}",
+    "n_low": r"n_{\mathrm L}",
+    "Q_measured": r"Q_{\mathrm{meas}}",
+    "loss_rt": r"\mathcal{L}_{\mathrm{rt}}",
+    "Q_sw_1um": r"Q_{\mathrm{sw}}(1\,\mu\mathrm m)",
+    "Q_sw_alpha": r"\alpha_{\mathrm{sw}}",
+    "mode_area": r"\mathrm{mode\ area}",
+    "d_over_w0": r"d/w_0",
+    "r_factor": r"\xi_{\mathrm r}",
+    "pol_factor": r"\cos^2\theta_{\mathrm{pol}}",
+    "mode": r"\mathrm{mode}",
+    "g_ueV": r"\hbar g",
+    "ROC_um": r"R_{\mathrm{ROC}}",
+    "L_um": r"L",
+    "L_pen_um": r"L_{\mathrm{pen}}",
+    "T_top": r"T_{\mathrm{top}}",
+    "T_bot": r"T_{\mathrm{bot}}",
+    "loss": r"\mathcal{L}",
+    "pol_collect": r"\eta_{\mathrm{pol,c}}",
+    "pol_dipole": r"\cos^2\theta_{\mu}",
+    "eta_table": r"\eta(\mathrm{NA})",
+    "table_mode": r"\mathrm{table\ mode}",
+    "leak": r"F_{\mathrm{leak}}",
+    "V_lambda3": r"V/(\lambda/n)^3",
+    "spatial_overlap": r"\xi",
+    "n_g": r"n_{\mathrm g}",
+    "A_eff_um2": r"A_{\mathrm{eff}}",
+    "beta_direct": r"\beta_{\mathrm{wg}}",
+    "pos_factor": r"\xi_{\mathrm r}",
+    "eta_coupler": r"\eta_{\mathrm{coup}}",
+    "eta_prop": r"\eta_{\mathrm{prop}}",
+    "d_nm": r"d",
+    "n_wire": r"n_{\mathrm{wire}}",
+    "n_group": r"n_{\mathrm{g,wire}}",
+    "taper_T": r"T_{\mathrm{taper}}",
+    "mirror_R": r"R_{\mathrm m}",
+    "mirror_phase_ok": r"\mathrm{antinode}",
+    "taper_mfr_nm": r"w_{\mathrm{taper}}",
+    "n_cavity": r"n_{\mathrm c}",
+    "n_substrate": r"n_{\mathrm{sub}}",
+    "z_dot_frac": r"z_{\mathrm{dot}}/d_{\mathrm c}",
+    "orientation": r"\hat{\boldsymbol\mu}",
+    "n": r"n",
+    "mirror": r"\mathrm{mirror}",
+    "sil": r"\mathrm{SIL}",
+    "n_s": r"n_{\mathrm{SIL}}",
+    "rate_factor": r"F_{\mathrm{rate}}",
+    "ridge_width_nm": r"w_{\mathrm{ridge}}",
+    "etch_depth_nm": r"h_{\mathrm{etch}}",
+    "alpha_cm": r"\alpha_{\mathrm{loss}}",
+    "R_back": r"R_{\mathrm{back}}",
+    "lambda_nm": r"\lambda",
+    "na_method": r"\mathrm{NA\ method}",
+    "dot_position": r"x_{\mathrm{dot}}/L",
+    "mode_volume_norm": r"V/(\lambda/n)^3",
+    "T_track": r"T_{\mathrm{track}}",
+    "dEdT_cav_meV_K": r"\mathrm dE_{\mathrm c}/\mathrm dT",
+    "detuning_offset_meV": r"\delta E_{\mathrm{off}}",
+    "purcell_enabled": r"\mathrm{Purcell\ on}",
+    "E_X_track_eV": r"E_X(T_{\mathrm{track}})",
+}
+
+
 def _p(name, unit, default, lo=None, hi=None, tag="A", source="", help="", scale="lin",
        choices=None, group="main", visible_if=None, sweepable=True):
     return ParamSpec(name, unit, default, lo=lo, hi=hi, scale=scale, choices=choices, tag=tag,
                      source=source or "assumed value; replace with the device's own number [A]",
-                     help=help, group=group, visible_if=visible_if, sweepable=sweepable)
+                     help=help, group=group, visible_if=visible_if, sweepable=sweepable, tex=_TEX[name])
 
 
 class _V:
@@ -234,16 +330,15 @@ def _generic_cavity(self, vals, em, T_K, NA):
 
 GENERIC_CAVITY = _Struct(
     kind="generic_cavity", label="Generic cavity (enter F_P, kappa)",
-    summary="Any single-mode cavity described by its Purcell factor, linewidth, detuning and "
-            "outcoupling; the Fock / legacy path.",
+    summary=r"Any single-mode cavity described by its Purcell factor $F_{\mathrm P}$, linewidth $\hbar\kappa$, detuning $\hbar\Delta_{\mathrm c}$ and outcoupling $\eta_{\mathrm{out}}$; the Fock / legacy path.",
     params=(
-        _p("F_P", "1", 5.0, 0.0, 1000.0, help="Cavity-mode Purcell factor at zero detuning (ADDITIONAL rate ratio; total = 1 + F_P)."),
-        _p("kappa_ueV", "ueV", 150.0, 1.0, 5000.0, scale="log", help="Cavity linewidth (FWHM) in ueV; ignored when Q > 0."),
-        _p("Q", "1", 0.0, 0.0, 1e6, help="Quality factor; if > 0, kappa = E_mode/Q and kappa_ueV is ignored (0 = unused).", group="advanced"),
-        _p("detuning_ueV", "ueV", 0.0, -5000.0, 5000.0, help="Dot minus mode energy; positive = dot above the mode."),
-        _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of the background (F_bg) emission that is already in the collected mode."),
-        _p("eta_out", "1", 0.5, 0.0, 1.0, help="Mode-to-first-lens outcoupling efficiency including collection."),
-        _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background (non-cavity) decay rate in units of Gamma0 (1 = free; < 1 inhibited; > 1 leaky)."),
+        _p("F_P", "1", 5.0, 0.0, 1000.0, help=r"Cavity-mode Purcell factor $F_{\mathrm P}$ at zero detuning (ADDITIONAL rate ratio: total $= F_{\mathrm{bg}} + F_{\mathrm P} L$)."),
+        _p("kappa_ueV", "ueV", 150.0, 1.0, 5000.0, scale="log", help=r"Cavity linewidth $\hbar\kappa$ (FWHM) in ueV; ignored when $Q > 0$."),
+        _p("Q", "1", 0.0, 0.0, 1e6, help=r"Quality factor $Q$; if $> 0$, $\kappa = E_{\mathrm{mode}}/Q$ and $\hbar\kappa$ is ignored (0 = unused).", group="advanced"),
+        _p("detuning_ueV", "ueV", 0.0, -5000.0, 5000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
+        _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of the background ($F_{\mathrm{bg}}$) emission that is already in the collected mode."),
+        _p("eta_out", "1", 0.5, 0.0, 1.0, help=r"Outcoupling efficiency $\eta_{\mathrm{out}}$ from the mode to the first lens, including the far-field collection."),
+        _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background (non-cavity) decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$ (1 = free; $< 1$ inhibited; $> 1$ leaky)."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.05, 0.9), fn=_generic_cavity)
 
@@ -294,7 +389,8 @@ def _micropillar(self, vals, em, T_K, NA):
     v = _V(self, vals)
     c = _micropillar_calc(v, em)
     r_factor, pol = v.frac("r_factor"), v.frac("pol_factor")
-    F_P = (3.0 / (4.0 * math.pi ** 2)) * (c["lam"] * 1e-3 / c["n_c"]) ** 3 * c["Q"] / c["V_um3"] * r_factor * pol
+    dp = dipole_projection(em)
+    F_P = (3.0 / (4.0 * math.pi ** 2)) * (c["lam"] * 1e-3 / c["n_c"]) ** 3 * c["Q"] / c["V_um3"] * r_factor * pol * dp
     det = v.f("detuning_ueV") * 1e-3
     kappa = (em.E_X_meV - det) / c["Q"]
     lam, w0, em_ = c["lam"], c["w0"], c["eta_mirror"]
@@ -310,7 +406,8 @@ def _micropillar(self, vals, em, T_K, NA):
              f"Q_sw = {c['Q_sw']:.0f} (A d^alpha, [A])",
              "fractional DBR pair counts are truncated to integers (dbr uses int(n_pairs))",
              "position factor r_factor and polarisation factor pol_factor (cos^2 dipole-field) are both folded into F_P (brief 3); "
-             "the response pol_factor is 1"]
+             "the response pol_factor is 1",
+             f"material dipole {getattr(em, 'dipole', 'in_plane')}: cos^2 projection on the transverse HE11 field = {dp:.4g} folded into F_P [DR/A]"]
     inputs = {"F_P": _path("Q_measured") if v.f("Q_measured") > 0 else _path("d_um"),
               "kappa_meV": _path("detuning_ueV"), "eta_out": _path("N_top"), "pol_factor": _path("pol_factor"),
               "beta0": _path("beta0"), "F_bg": _path("F_bg")}
@@ -326,27 +423,26 @@ MICROPILLAR = _Struct(
     summary="Etched GaAs/AlAs DBR micropillar: Q from the mirrors and sidewall scattering (or "
             "measured), V from the pillar diameter, outcoupling from the mirror asymmetry.",
     params=(
-        _p("d_um", "um", 2.5, 0.5, 10.0, tag="V", source="Ding et al., PRL 116, 020401 (2016): d = 2.5 um", help="Pillar diameter."),
-        _p("N_top", "1", 25, 1, 60, help="Top DBR pairs (fractional counts are truncated)."),
-        _p("N_bot", "1", 40, 1, 60, help="Bottom DBR pairs (fractional counts are truncated)."),
-        _p("n_high", "1", 3.5, 2.0, 4.0, tag="E", source="GaAs near 930 nm [E]", help="High-index DBR layer and spacer (GaAs)."),
-        _p("n_low", "1", 2.95, 1.2, 3.5, tag="E", source="AlAs near 930 nm [E]", help="Low-index DBR layer (AlAs)."),
-        _p("Q_measured", "1", 0.0, 0.0, 1e6, tag="A", source="user-entered measured Q", help="Measured Q; if > 0 it overrides the computed Q (0 = compute)."),
-        _p("loss_rt", "1", 1e-4, 0.0, 0.1, help="Round-trip absorption / scattering loss of the planar cavity.", group="advanced"),
-        _p("Q_sw_1um", "1", 200.0, 1.0, 1e9, scale="log", help="Sidewall-scattering Q of a 1 um pillar, Q_sw = A d^alpha.", group="advanced"),
-        _p("Q_sw_alpha", "1", 4.0, 0.0, 8.0, help="Diameter exponent of the sidewall-scattering Q.", group="advanced"),
+        _p("d_um", "um", 2.5, 0.5, 10.0, tag="V", source="Ding et al., PRL 116, 020401 (2016): d = 2.5 um", help=r"Pillar diameter $d$."),
+        _p("N_top", "1", 25, 1, 60, help=r"Top DBR pairs $N_{\mathrm{top}}$ (fractional counts are truncated)."),
+        _p("N_bot", "1", 40, 1, 60, help=r"Bottom DBR pairs $N_{\mathrm{bot}}$ (fractional counts are truncated)."),
+        _p("n_high", "1", 3.5, 2.0, 4.0, tag="E", source="GaAs near 930 nm [E]", help=r"High-index DBR layer and spacer index $n_{\mathrm H}$ (GaAs)."),
+        _p("n_low", "1", 2.95, 1.2, 3.5, tag="E", source="AlAs near 930 nm [E]", help=r"Low-index DBR layer index $n_{\mathrm L}$ (AlAs)."),
+        _p("Q_measured", "1", 0.0, 0.0, 1e6, tag="A", source="user-entered measured Q", help=r"Measured $Q_{\mathrm{meas}}$; if $> 0$ it overrides the computed $Q$ (0 = compute)."),
+        _p("loss_rt", "1", 1e-4, 0.0, 0.1, help=r"Round-trip absorption and scattering loss $\mathcal{L}_{\mathrm{rt}}$ of the planar cavity.", group="advanced"),
+        _p("Q_sw_1um", "1", 200.0, 1.0, 1e9, scale="log", help=r"Sidewall-scattering quality factor of a 1 um pillar, $Q_{\mathrm{sw}} = A\,d^{\alpha_{\mathrm{sw}}}$.", group="advanced"),
+        _p("Q_sw_alpha", "1", 4.0, 0.0, 8.0, help=r"Diameter exponent $\alpha_{\mathrm{sw}}$ of the sidewall-scattering $Q_{\mathrm{sw}}$.", group="advanced"),
         _p("mode_area", "enum", "gaussian", choices=("gaussian", "cylinder"),
-           help="Mode volume: Gaussian HE11 V = (pi/4) w0^2 L_eff (default) or 'cylinder' V = pi d^2/4 x L_eff "
-                "(upper bound on V = lower bound on F_P).", group="advanced"),
+           help=r"Mode volume: Gaussian HE11, $V = (\pi/4)\,w_0^2 L_{\mathrm{eff}}$ (default), or 'cylinder', $V = \pi d^2 L_{\mathrm{eff}}/4$ (an upper bound on $V$, i.e. a lower bound on $F_{\mathrm P}$).", group="advanced"),
         _p("d_over_w0", "1", D_OVER_W0, 1.5, 4.0, tag="E", source="HE11 Gaussian approximation w0 ~ d/2.7 [E] (Gerard et al., PRL 81, 1110 (1998) class)",
-           help="Pillar diameter over Gaussian waist radius, w0 = d/(d_over_w0).", group="advanced"),
-        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help="Dot minus mode energy; positive = dot above the mode."),
-        _p("r_factor", "1", 1.0, 0.0, 1.0, help="Position factor |E(r)|^2/|E_max|^2 of the dot (folded into F_P)."),
-        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Polarisation factor cos^2(angle(dipole, cavity field)); folded into F_P."),
-        _p("eta_out", "1", -1.0, -1.0, 1.0, help="Mirror outcoupling override; negative = computed T_top/(T_top+T_bot+loss)."),
-        _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
+           help=r"Pillar diameter over Gaussian waist radius, $w_0 = d/(d/w_0)$.", group="advanced"),
+        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
+        _p("r_factor", "1", 1.0, 0.0, 1.0, help=r"Position factor $\xi_{\mathrm r} = |E(\mathbf r)|^2/|E_{\max}|^2$ of the dot (folded into $F_{\mathrm P}$)."),
+        _p("pol_factor", "1", 1.0, 0.0, 1.0, help=r"Polarisation factor $\cos^2\theta_{\mathrm{pol}}$ between the dipole and the cavity field (folded into $F_{\mathrm P}$)."),
+        _p("eta_out", "1", -1.0, -1.0, 1.0, help=r"Mirror outcoupling override $\eta_{\mathrm{out}}$; negative = computed $T_{\mathrm{top}}/(T_{\mathrm{top}} + T_{\mathrm{bot}} + \mathcal{L}_{\mathrm{rt}})$."),
+        _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of background emission already in the mode."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="A", source="leaky rate = Gamma0 [A], Somaschi 2016 (beta 0.88 at F_P 7.6) [V]",
-           help="Background decay rate in units of Gamma0."),
+           help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
     ),
     refs=(_REF_PURCELL, _REF_GERARD, _REF_SOMASCHI), eta_hint=(0.1, 0.8), viz="micropillar", fn=_micropillar)
 
@@ -389,6 +485,11 @@ def _open_cavity(self, vals, em, T_K, NA):
     lam_g = em.lambda_nm * 1e-3
     waist = math.sqrt((lam_g / math.pi) * math.sqrt(L_g * (R_g - L_g))) if 0.0 < L_g < R_g else None
     pol_d = v.frac("pol_dipole")
+    dp = dipole_projection(em)
+    if v("mode") != "direct" and dp < 1.0:
+        pol_d *= dp
+        notes.append(f"material dipole {em.dipole}: cos^2 projection {dp:.4g} on the transverse cavity field folded into pol_dipole "
+                     "(geometry mode only; a directly entered g is the device's own coupling) [DR/A]")
     if pol_d < 1.0:
         F_P *= pol_d
         g *= math.sqrt(pol_d)
@@ -409,28 +510,26 @@ OPEN_CAVITY = _Struct(
     summary="Tunable open cavity: enter the coupling g and linewidth kappa directly (preferred), or "
             "radius of curvature, length and mirror transmissions.",
     params=(
-        _p("mode", "enum", "direct", choices=("direct", "geometry"), help="Enter (g, kappa) directly, or build them from the geometry."),
+        _p("mode", "enum", "direct", choices=("direct", "geometry"), help=r"Enter $(g, \kappa)$ directly, or build them from the geometry."),
         _p("g_ueV", "ueV", 17.2, 0.1, 500.0, tag="V", source="Tomm 2021: g/2pi = 4.16 GHz = 17.2 ueV [V]",
-           help="Dot-cavity coupling g (not the Rabi splitting).", visible_if={"mode": "direct"}),
+           help=r"Dot-cavity coupling $\hbar g$ (not the Rabi splitting $2\hbar g$).", visible_if={"mode": "direct"}),
         _p("kappa_ueV", "ueV", 96.4, 1.0, 5000.0, tag="V", source="Tomm 2021: kappa/2pi = 23.3 GHz = 96.4 ueV [V]",
-           help="Cavity linewidth (FWHM).", visible_if={"mode": "direct"}),
-        _p("ROC_um", "um", 20.0, 1.0, 1000.0, help="Radius of curvature of the concave mirror.", visible_if={"mode": "geometry"}),
-        _p("L_um", "um", 2.0, 0.1, 100.0, help="Mirror separation (air gap).", visible_if={"mode": "geometry"}),
-        _p("L_pen_um", "um", 0.0, 0.0, 5.0, help="Total mirror penetration depth added to the length (0 = ignore).",
+           help=r"Cavity linewidth $\hbar\kappa$ (FWHM).", visible_if={"mode": "direct"}),
+        _p("ROC_um", "um", 20.0, 1.0, 1000.0, help=r"Radius of curvature $R_{\mathrm{ROC}}$ of the concave mirror.", visible_if={"mode": "geometry"}),
+        _p("L_um", "um", 2.0, 0.1, 100.0, help=r"Mirror separation $L$ (air gap).", visible_if={"mode": "geometry"}),
+        _p("L_pen_um", "um", 0.0, 0.0, 5.0, help=r"Total mirror penetration depth $L_{\mathrm{pen}}$ added to the length (0 = ignore).",
            visible_if={"mode": "geometry"}, group="advanced"),
-        _p("T_top", "1", 1e-3, 1e-6, 0.5, scale="log", help="Output-mirror power transmission.", visible_if={"mode": "geometry"}),
-        _p("T_bot", "1", 5e-5, 1e-6, 0.5, scale="log", help="Back-mirror power transmission.", visible_if={"mode": "geometry"}),
-        _p("loss", "1", 5e-5, 0.0, 0.1, help="Round-trip scattering + absorption loss.", visible_if={"mode": "geometry"}),
-        _p("eta_out", "1", 0.5, 0.0, 1.0, help="Mode-to-detector outcoupling incl. fibre match (direct mode).", visible_if={"mode": "direct"}),
-        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help="Dot minus mode energy; positive = dot above the mode."),
-        _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
+        _p("T_top", "1", 1e-3, 1e-6, 0.5, scale="log", help=r"Output-mirror power transmission $T_{\mathrm{top}}$.", visible_if={"mode": "geometry"}),
+        _p("T_bot", "1", 5e-5, 1e-6, 0.5, scale="log", help=r"Back-mirror power transmission $T_{\mathrm{bot}}$.", visible_if={"mode": "geometry"}),
+        _p("loss", "1", 5e-5, 0.0, 0.1, help=r"Round-trip scattering and absorption loss $\mathcal{L}$.", visible_if={"mode": "geometry"}),
+        _p("eta_out", "1", 0.5, 0.0, 1.0, help=r"Mode-to-detector outcoupling $\eta_{\mathrm{out}}$ including the fibre match (direct mode).", visible_if={"mode": "direct"}),
+        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
+        _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of background emission already in the mode."),
         _p("pol_collect", "1", 1.0, 0.0, 1.0,
-           help="Polarisation collection factor (brightness only): fraction of the cavity output reaching the detector in the "
-                "detected polarisation (mode splitting / analyser); it does not change the dot-cavity coupling."),
+           help=r"Polarisation collection factor $\eta_{\mathrm{pol,c}}$ (brightness only): fraction of the cavity output reaching the detector in the detected polarisation (mode splitting, analyser); it does not change the dot-cavity coupling."),
         _p("pol_dipole", "1", 1.0, 0.0, 1.0,
-           help="Dipole alignment cos^2(angle(dipole, cavity field)): scales g^2 (and F_P) of the dot-cavity coupling; "
-                "g -> g sqrt(pol_dipole). 1 = aligned.", group="advanced"),
-        _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background decay rate in units of Gamma0."),
+           help=r"Dipole alignment $\cos^2\theta_{\mu}$ between the dipole and the cavity field: scales $g^2$ (and $F_{\mathrm P}$) of the dot-cavity coupling, $g \to g\sqrt{\cos^2\theta_{\mu}}$. 1 = aligned.", group="advanced"),
+        _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
     ),
     refs=(_REF_TOMM, _REF_PURCELL), eta_hint=(0.2, 0.7), viz="open_cavity", fn=_open_cavity)
 
@@ -494,17 +593,16 @@ CBG = _Struct(
             "versus NA and a leaky-channel fraction, all entered numbers.",
     params=(
         _p("F_P", "1", 10.0, 0.0, 100.0, tag="A", source="class value; Wang 2019 PRL F_P 11.3, Kolatschek F_P ~ 4, Gschwandtner F_P ~ 18 [V-abs]",
-           help="Cavity-mode Purcell factor at zero detuning (additional rate ratio)."),
-        _p("Q", "1", 150.0, 20.0, 1000.0, tag="E", source="CBG Q ~ 100-300 class [E]", help="Quality factor (broad: kappa ~ 5-10 meV)."),
+           help=r"Cavity-mode Purcell factor $F_{\mathrm P}$ at zero detuning (additional rate ratio)."),
+        _p("Q", "1", 150.0, 20.0, 1000.0, tag="E", source="CBG Q ~ 100-300 class [E]", help=r"Quality factor $Q$ (broad: $\hbar\kappa \sim$ 5-10 meV)."),
         _p("eta_table", "", "0.7:0.6", tag="A", source="single FDTD-class point (NA 0.7 -> 0.6) [A]; Wang 2019 PRL 0.62 at F 11.3 [V-abs]",
-           help="TOTAL first-lens efficiency table 'NA:eta[, NA:eta ...]' of the device at its design F_P (the FDTD / FEM number, as quoted in the papers)."),
+           help=r"TOTAL first-lens efficiency table $\eta(\mathrm{NA})$ 'NA:eta[, NA:eta ...]' of the device at its design $F_{\mathrm P}$ (the FDTD / FEM number, as quoted in the papers)."),
         _p("table_mode", "enum", "total", choices=("total", "cavity_only"), tag="E",
            source="total: grating far-field redistribution acts on all emission (Davanco 2011 / Liu 2019 class) [E]; cavity_only = legacy model",
-           help="total: the table applies to ALL radiative emission (beta0 = 1; F_P only sets the rate). cavity_only: legacy, "
-                "only the cavity channel is collected (eta_out = table/beta_res).", group="advanced"),
-        _p("r_factor", "1", 1.0, 0.0, 1.0, help="Position factor |E(r)|^2/|E_max|^2 of the dot (folded into F_P like micropillar)."),
-        _p("leak", "1", 0.0, 0.0, 10.0, help="Extra leaky decay in units of Gamma0 (cavity_only mode: beta = F_P/(1 + F_P + leak); total mode: rate only)."),
-        _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help="Dot minus mode energy; positive = dot above the mode."),
+           help=r"total: the table applies to ALL radiative emission ($\beta_0 = 1$; $F_{\mathrm P}$ only sets the rate). cavity_only: legacy, only the cavity channel is collected ($\eta_{\mathrm{out}} = \eta/\beta_{\mathrm{res}}$).", group="advanced"),
+        _p("r_factor", "1", 1.0, 0.0, 1.0, help=r"Position factor $\xi_{\mathrm r} = |E(\mathbf r)|^2/|E_{\max}|^2$ of the dot (folded into $F_{\mathrm P}$ like the micropillar)."),
+        _p("leak", "1", 0.0, 0.0, 10.0, help=r"Extra leaky decay $F_{\mathrm{leak}}$ in units of $\Gamma_0$ (cavity_only mode: $\beta = F_{\mathrm P}/(1 + F_{\mathrm P} + F_{\mathrm{leak}})$; total mode: rate only)."),
+        _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.2, 0.7), viz="bullseye", fn=_cbg)
 
@@ -521,8 +619,12 @@ def _phc_cavity(self, vals, em, T_K, NA):
              "unless the far field is engineered",
              "usually strong coupling (g ~ 100 ueV vs kappa ~ 50-100 ueV): the regime test flags it and the JC solver is needed"]
     g_in = v.f("g_ueV")
-    F_P = (3.0 / (4.0 * math.pi ** 2)) * Q / Vn * v.frac("spatial_overlap")
-    inputs = {"F_P": _path("Q"), "kappa_meV": _path("Q"), "E_mode_meV": _path("detuning_ueV"),
+    dp = dipole_projection(em)
+    F_P = (3.0 / (4.0 * math.pi ** 2)) * Q / Vn * v.frac("spatial_overlap") * dp
+    if dp < 1.0:
+        notes.append(f"material dipole {em.dipole}: cos^2 projection {dp:.4g} on the in-plane slab mode folded into the Q/V F_P "
+                     "(not into an entered g) [DR/A]")
+    inputs = {"F_P": _path("Q") + "+V_lambda3+spatial_overlap", "kappa_meV": _path("Q"), "E_mode_meV": _path("detuning_ueV"),
               "eta_out": _path("eta_out"), "F_bg": _path("F_bg"), "beta0": _path("beta0")}
     if g_in > 0:
         g = g_in * 1e-3
@@ -541,14 +643,14 @@ PHC_CAVITY = _Struct(
     summary="High-Q small-volume photonic-crystal cavity: Q and V in cubic wavelengths, optional g, "
             "entered vertical outcoupling.",
     params=(
-        _p("Q", "1", 1e4, 100.0, 1e7, scale="log", tag="E", source="L3 / H1 class Q 1e3-1e5 [E]", help="Quality factor."),
-        _p("V_lambda3", "1", 0.7, 0.3, 10.0, tag="E", source="L3 class V ~ 0.7 (lambda/n)^3 [E]", help="Mode volume in units of (lambda/n)^3."),
-        _p("g_ueV", "ueV", 0.0, 0.0, 500.0, help="Coupling g; if > 0, F_P = 4 g^2/(kappa hbar Gamma0) replaces the Q/V value (0 = unused)."),
-        _p("spatial_overlap", "1", 1.0, 0.0, 1.0, help="Position / polarisation overlap factor |E(r)|^2/|E_max|^2 x cos^2 (folded into F_P)."),
-        _p("eta_out", "1", 0.05, 0.0, 1.0, tag="E", source="few % vertical unless far-field engineered [E]", help="Mode-to-first-lens outcoupling."),
-        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help="Dot minus mode energy; positive = dot above the mode."),
-        _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of background emission already in the mode."),
-        _p("F_bg", "1", 1.0, 0.0, 10.0, help="Background decay rate in units of Gamma0."),
+        _p("Q", "1", 1e4, 100.0, 1e7, scale="log", tag="E", source="L3 / H1 class Q 1e3-1e5 [E]", help=r"Quality factor $Q = \omega_{\mathrm c}/\kappa$."),
+        _p("V_lambda3", "1", 0.7, 0.3, 10.0, tag="E", source="L3 class V ~ 0.7 (lambda/n)^3 [E]", help=r"Mode volume $V$ in units of $(\lambda/n)^3$."),
+        _p("g_ueV", "ueV", 0.0, 0.0, 500.0, help=r"Coupling $\hbar g$; if $> 0$, $F_{\mathrm P} = 4g^2/(\kappa\Gamma_0)$ replaces the $Q/V$ value (0 = unused)."),
+        _p("spatial_overlap", "1", 1.0, 0.0, 1.0, help=r"Position and polarisation overlap factor $\xi = |E(\mathbf r)|^2/|E_{\max}|^2 \times \cos^2\theta$ (folded into $F_{\mathrm P}$)."),
+        _p("eta_out", "1", 0.05, 0.0, 1.0, tag="E", source="few % vertical unless far-field engineered [E]", help=r"Mode-to-first-lens outcoupling $\eta_{\mathrm{out}}$."),
+        _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
+        _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of background emission already in the mode."),
+        _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.01, 0.2), viz="phc_cavity", fn=_phc_cavity)
 
@@ -573,7 +675,10 @@ def _phc_waveguide(self, vals, em, T_K, NA):
         inputs = {"F_P": _path("beta_direct")}
     else:
         F, _ = waveguide.beta_factor(v.pos("A_eff_um2"), em.lambda_nm, em.n_host, v.pos("n_g"), v.frac("pos_factor"))
-        F *= v.frac("pol_factor")                 # cos^2 dipole-mode overlap folded into F_wg (brief 3)
+        F *= v.frac("pol_factor") * dipole_projection(em)      # cos^2 dipole-mode overlap folded into F_wg (brief 3)
+        if dipole_projection(em) < 1.0:
+            notes.append(f"material dipole {em.dipole}: cos^2 projection {dipole_projection(em):.4g} on the in-plane TE mode folded "
+                         "into F_wg [DR/A]")
         notes.append("pol_factor (cos^2 dipole-mode) is folded into F_wg; the response pol_factor is 1")
         inputs = {"F_P": _path("A_eff_um2")}
     inputs.update({"F_bg": _path("F_bg"), "eta_out": _path("eta_coupler")})
@@ -587,15 +692,15 @@ PHC_WAVEGUIDE = _Struct(
     summary="Broadband guided-mode emitter: slow-light group index and effective area (or beta "
             "directly), coupler and propagation efficiencies.",
     params=(
-        _p("n_g", "1", 5.0, 1.0, 100.0, tag="E", source="slow-light group index class value [E]", help="Group index of the guided mode."),
+        _p("n_g", "1", 5.0, 1.0, 100.0, tag="E", source="slow-light group index class value [E]", help=r"Group index $n_{\mathrm g}$ of the guided mode."),
         _p("A_eff_um2", "um2", 0.03, 1e-3, 10.0, scale="log", tag="E", source="energy-normalised mode area class value [E]",
-           help="Energy-normalised effective mode area at the emitter."),
-        _p("beta_direct", "1", 0.0, 0.0, 0.999, help="Waveguide beta entered directly (0 = use n_g and A_eff)."),
-        _p("pos_factor", "1", 1.0, 0.0, 1.0, help="Position factor |E(r)|^2/|E_max|^2 of the dot."),
-        _p("eta_coupler", "1", 0.7, 0.0, 1.0, tag="E", source="grating-coupler class [E]", help="End-coupler efficiency."),
-        _p("eta_prop", "1", 0.95, 0.0, 1.0, tag="E", source="short-waveguide propagation [E]", help="Propagation transmission to the coupler."),
-        _p("F_bg", "1", 1.0, 0.0, 10.0, help="Leaky / background decay rate in units of Gamma0 (< 1 inhibited)."),
-        _p("pol_factor", "1", 1.0, 0.0, 1.0, help="Dipole-to-mode polarisation factor cos^2 (folded into F_wg; ignored when beta_direct is used)."),
+           help=r"Energy-normalised effective mode area $A_{\mathrm{eff}}$ at the emitter."),
+        _p("beta_direct", "1", 0.0, 0.0, 0.999, help=r"Waveguide $\beta_{\mathrm{wg}}$ entered directly (0 = use $n_{\mathrm g}$ and $A_{\mathrm{eff}}$)."),
+        _p("pos_factor", "1", 1.0, 0.0, 1.0, help=r"Position factor $\xi_{\mathrm r} = |E(\mathbf r)|^2/|E_{\max}|^2$ of the dot."),
+        _p("eta_coupler", "1", 0.7, 0.0, 1.0, tag="E", source="grating-coupler class [E]", help=r"End-coupler efficiency $\eta_{\mathrm{coup}}$."),
+        _p("eta_prop", "1", 0.95, 0.0, 1.0, tag="E", source="short-waveguide propagation [E]", help=r"Propagation transmission $\eta_{\mathrm{prop}}$ to the coupler."),
+        _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Leaky / background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$ ($< 1$ inhibited)."),
+        _p("pol_factor", "1", 1.0, 0.0, 1.0, help=r"Dipole-to-mode polarisation factor $\cos^2\theta_{\mathrm{pol}}$ (folded into $F_{\mathrm{wg}}$; ignored when $\beta_{\mathrm{wg}}$ is used)."),
     ),
     refs=(_REF_LECAMP,), eta_hint=(0.1, 0.8), viz="phc_waveguide", fn=_phc_waveguide)
 
@@ -635,11 +740,23 @@ def _nanowire_resp(v, em, NA):
 
 
 def _nanowire_beta(v, em, r):
-    """beta_HE11 (both directions) with the screened leaky rate; returns (beta, beta_unscreened_module, kappa)."""
+    """beta_HE11 (both directions) with the screened leaky rate; returns (beta, beta_unscreened_module, kappa).
+
+    Dipole orientation (audit finding 10): the HE11 field is transverse, so an in-plane dipole couples as above. An axial
+    (growth-axis) dipole on the wire axis sees E_z = 0 of HE11 and radiates almost entirely into radiation modes
+    (Bleuse et al., PRL 106, 103601 (2011) and Claudon et al., Nat. Photonics 4, 174 (2010) use in-plane dipoles [E]): the
+    guided rate is the in-plane one times the projection AXIAL_RESIDUAL = eps [A] (G -> eps G) and the remaining radiative
+    rate is the free one, unscreened (the dielectric screening acts on the TRANSVERSE dipole only):
+    beta = eps G/(eps G + 1 - eps c) with kappa = 1 [DR/E]."""
     dg = r["diagnostics"]
     c, gr = dg["confinement_fraction"], dg["group_index_ratio"]
     kappa = nanowire_leak_inhibition(v.pos("n_wire"), v.pos("d_nm") / em.lambda_nm)
     G = c * gr
+    if dipole_projection(em) < 1.0:
+        eps = dipole_projection(em)
+        den = eps * G + (1.0 - eps * c)
+        b_sm = eps * G / den if den > 0 else 0.0
+        return min(max(b_sm * dg["beta_multimode_penalty"], 0.0), 1.0), r["beta_HE11"], 1.0
     den = G + (1.0 - c) * kappa
     b_sm = G / den if den > 0 else 0.0
     return min(max(b_sm * dg["beta_multimode_penalty"], 0.0), 1.0), r["beta_HE11"], kappa
@@ -685,6 +802,8 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
              "expands to a larger mode-field radius at the top facet and the emission narrows) enters only through "
              "taper_mfr_nm. With taper_mfr_nm = 0 the acceptance is that of the BARE wire facet (mode radius = Marcuse w, "
              "~0.5 at NA 0.75 for d/lambda 0.23), which under-collects a tapered / trumpet device [DR]",
+             (f"material dipole = axial: HE11 coupling x {AXIAL_RESIDUAL:g}, unscreened free leaky rate (beta much smaller than in-plane) [DR/E]"
+              if dipole_projection(em) < 1.0 else "material dipole = in_plane (couples to the transverse HE11 field)"),
              f"V = {r['V_number']:.3f}, d/lambda = {2 * r['radius_over_lambda']:.3f}, beta_HE11 = {beta:.3f} (module "
              f"estimator without leaky-mode screening: {beta_mod:.3f}; screening kappa = {kappa:.3f} on the leaky rate, "
              f"X0 = {_NW_INH_X0} calibrated to the Bleuse 2011 peak ~0.95 [E])",
@@ -693,7 +812,7 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
         notes.append("module reports invalid: " + "; ".join(r["invalid_reasons"]))
     if float(NA) > 1.0:
         notes.append("NA > 1 clipped to 1 (the HE11 acceptance integral saturates at the forward hemisphere)")
-    inputs = {"beta0": _path("d_nm") + "+mirror_R+mirror_phase_ok", "eta_out": _path("taper_T") + "+taper_mfr_nm",
+    inputs = {"beta0": _path("d_nm") + "+n_wire+n_group+mirror_R+mirror_phase_ok", "eta_out": _path("taper_T") + "+taper_mfr_nm",
               "F_bg": _path("F_bg") + "+mirror_R"}
     # geometry numbers for the 3D scene (R2-3D): read from the module's own diagnostics, no new physics
     extra = {"V_number": float(r["V_number"]), "mode_field_radius_nm": float(r["diagnostics"]["mode_field_radius_nm"]),
@@ -707,25 +826,21 @@ def _photonic_nanowire(self, vals, em, T_K, NA):
 
 PHOTONIC_NANOWIRE = _Struct(
     kind="photonic_nanowire", label="Photonic nanowire / trumpet",
-    summary="Single-mode dielectric nanowire with a tapered output: HE11 coupling beta, taper and "
-            "mirror efficiencies, far-field acceptance at the setup NA.",
+    summary=r"Single-mode dielectric nanowire with a tapered output: HE11 coupling $\beta$, taper and mirror efficiencies, far-field acceptance at the setup NA. The HE11 field is transverse: an axial dipole couples poorly.",
     params=(
-        _p("d_nm", "nm", 220.0, 50.0, 2000.0, tag="E", source="Bleuse 2011 class: beta_HE11 peaks near d/lambda 0.22-0.25 [E]", help="Wire diameter."),
-        _p("n_wire", "1", 3.45, 1.5, 4.5, tag="E", source="GaAs near 930 nm [E]", help="Refractive index of the wire."),
+        _p("d_nm", "nm", 220.0, 50.0, 2000.0, tag="E", source="Bleuse 2011 class: beta_HE11 peaks near d/lambda 0.22-0.25 [E]", help=r"Wire diameter $d$."),
+        _p("n_wire", "1", 3.45, 1.5, 4.5, tag="E", source="GaAs near 930 nm [E]", help=r"Refractive index $n_{\mathrm{wire}}$ of the wire."),
         _p("n_group", "1", 3.6, 0.0, 5.0, tag="E", source="GaAs group index near 930 nm [E]; 0 = use n_wire (group-index ratio 1, [A])",
-           help="Group index of the wire material (needed by the beta estimator for a non-GaN wire).", group="advanced"),
-        _p("taper_T", "1", 0.95, 0.0, 1.0, tag="E", source="Bleuse 2011 / Claudon 2010 class 0.9-0.95 [E]", help="Taper transmission."),
+           help=r"Group index $n_{\mathrm{g,wire}}$ of the wire material (needed by the beta estimator for a non-GaN wire).", group="advanced"),
+        _p("taper_T", "1", 0.95, 0.0, 1.0, tag="E", source="Bleuse 2011 / Claudon 2010 class 0.9-0.95 [E]", help=r"Taper power transmission $T_{\mathrm{taper}}$."),
         _p("mirror_R", "1", 0.9, 0.0, 1.0, tag="E", source="bottom-mirror class [E]; Munsch 2013 |r| = 0.95 -> R = 0.9025 [V]",
-           help="Bottom-mirror POWER reflectivity R = |r|^2 (the field reflectivity |r| = sqrt(R) sets the coherent boost)."),
+           help=r"Bottom-mirror POWER reflectivity $R_{\mathrm m} = |r|^2$ (the field reflectivity $|r| = \sqrt{R_{\mathrm m}}$ sets the coherent boost)."),
         _p("mirror_phase_ok", "bool", False, tag="A", source="dot-mirror phase unknown unless the paper states antinode placement: incoherent power return [A] (FX4; Munsch 2013 designs an antinode, set True for such devices)",
-           help="True: the dot sits on a standing-wave antinode (rate x (1 + beta|r|), upward fraction (beta/2)(1 + |r|)^2/(1 + beta|r|)). "
-                "False: phase unknown, incoherent power return (1 + R)/2.", sweepable=False),
+           help=r"True: the dot sits on a standing-wave antinode (rate $\times (1 + \beta|r|)$, upward fraction $(\beta/2)(1 + |r|)^2/(1 + \beta|r|)$). False: phase unknown, incoherent power return $(1 + R_{\mathrm m})/2$.", sweepable=False),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="E", source="Gamma_HE11/Gamma_0 ~ 1; < 1 for leaky-mode inhibition [E]",
-           help="Decay-rate factor in units of Gamma0 (< 1 = inhibition of leaky modes)."),
+           help=r"Decay-rate factor $F_{\mathrm{bg}}$ in units of $\Gamma_0$ ($< 1$ = inhibition of leaky modes)."),
         _p("taper_mfr_nm", "nm", 0.0, 0.0, 3000.0, tag="A", source="0 = no mode expansion (bare-wire facet) [A]",
-           help="Mode-field radius at the top facet after an adiabatic taper / trumpet (0 = none: the emission leaves with the "
-                "bare-wire Marcuse mode radius). A larger radius narrows the far field and raises the NA acceptance; taper_T "
-                "stays the separate power loss.", group="advanced"),
+           help=r"Mode-field radius $w_{\mathrm{taper}}$ at the top facet after an adiabatic taper (0 = none: the emission leaves with the bare-wire Marcuse mode radius). A larger radius narrows the far field and raises the NA acceptance; $T_{\mathrm{taper}}$ stays the separate power loss.", group="advanced"),
     ),
     refs=(_REF_BLEUSE,), eta_hint=(0.2, 0.8), fn=_photonic_nanowire)
 
@@ -750,7 +865,10 @@ def _planar_dbr(self, vals, em, T_K, NA):
     d_c = lam / n_c
     z = v.frac("z_dot_frac") * d_c
     F_1d = dbr.planar_purcell(top, bottom, n_c, d_c, z, lam, n_in=1.0, n_out=n_s)
-    F_tot = dbr.planar_total_rate(top, bottom, n_c, d_c, z, lam, n_in=1.0, n_out=n_s, orientation=v("orientation"))
+    orient = v("orientation")
+    if str(getattr(em, "dipole", "in_plane")) == "axial" and orient == "inplane":
+        orient = "vertical"                      # material dipole axial = growth-axis dipole [DR]
+    F_tot = dbr.planar_total_rate(top, bottom, n_c, d_c, z, lam, n_in=1.0, n_out=n_s, orientation=orient)
     n_h, n_l = v.pos("n_high"), v.pos("n_low")
     Tt = 1.0 - dbr.qw_peak_reflectivity(1.0, n_c, n_h, n_l, int(v.f("N_top")))
     Tb = 1.0 - dbr.qw_peak_reflectivity(n_s, n_c, n_h, n_l, int(v.f("N_bot")))
@@ -764,6 +882,8 @@ def _planar_dbr(self, vals, em, T_K, NA):
              "eta_out = T_top/(T_top + T_bot) from the quarter-wave stack peak reflectivities; no NA model "
              "(planar emission is not Gaussian), so eta_out is independent of NA",
              "beta0 must be entered: the 1-D model cannot give the collected cavity-cone fraction (0 gives zero brightness)"]
+    if orient != v("orientation"):
+        notes.append("material dipole = axial: the total rate uses the vertical-dipole LDOS instead of the in-plane one [DR]")
     if not kappa_ok:
         notes.append("cavity_mode found no resolvable resonance (kappa NaN); kappa returned as None")
     inputs = {"F_bg": _path("z_dot_frac"), "E_mode_meV": _path("N_top"), "kappa_meV": _path("N_bot"),
@@ -782,15 +902,15 @@ PLANAR_DBR = _Struct(
     summary="Unetched lambda-cavity between two DBRs (1-D transfer matrix): mode position and linewidth, "
             "total emission-rate change, mirror asymmetry.",
     params=(
-        _p("N_top", "1", 20, 1, 60, help="Top DBR pairs."),
-        _p("N_bot", "1", 30, 1, 60, help="Bottom DBR pairs."),
-        _p("n_high", "1", 3.5, 2.0, 4.0, tag="E", source="GaAs near 930 nm [E]", help="High-index layer index."),
-        _p("n_low", "1", 2.95, 1.2, 3.5, tag="E", source="AlAs near 930 nm [E]", help="Low-index layer index."),
-        _p("n_cavity", "1", 3.5, 1.5, 4.0, tag="E", source="GaAs spacer [E]", help="Spacer index (lambda cavity)."),
-        _p("n_substrate", "1", 3.5, 1.0, 4.0, tag="E", source="GaAs substrate [E]", help="Exit medium below the bottom DBR."),
-        _p("z_dot_frac", "1", 0.5, 0.0, 1.0, help="Dot depth in the spacer as a fraction of its thickness (0.5 = antinode)."),
-        _p("orientation", "enum", "inplane", choices=("inplane", "vertical", "isotropic"), help="Dipole orientation for the total rate."),
-        _p("beta0", "1", 0.0, 0.0, 1.0, help="Fraction of emission collected into the cavity cone (not computable in 1-D)."),
+        _p("N_top", "1", 20, 1, 60, help=r"Top DBR pairs $N_{\mathrm{top}}$."),
+        _p("N_bot", "1", 30, 1, 60, help=r"Bottom DBR pairs $N_{\mathrm{bot}}$."),
+        _p("n_high", "1", 3.5, 2.0, 4.0, tag="E", source="GaAs near 930 nm [E]", help=r"High-index layer index $n_{\mathrm H}$."),
+        _p("n_low", "1", 2.95, 1.2, 3.5, tag="E", source="AlAs near 930 nm [E]", help=r"Low-index layer index $n_{\mathrm L}$."),
+        _p("n_cavity", "1", 3.5, 1.5, 4.0, tag="E", source="GaAs spacer [E]", help=r"Spacer index $n_{\mathrm c}$ ($\lambda$ cavity)."),
+        _p("n_substrate", "1", 3.5, 1.0, 4.0, tag="E", source="GaAs substrate [E]", help=r"Exit-medium index $n_{\mathrm{sub}}$ below the bottom DBR."),
+        _p("z_dot_frac", "1", 0.5, 0.0, 1.0, help=r"Dot depth $z_{\mathrm{dot}}$ in the spacer as a fraction of its thickness $d_{\mathrm c}$ (0.5 = antinode)."),
+        _p("orientation", "enum", "inplane", choices=("inplane", "vertical", "isotropic"), help=r"Dipole orientation $\hat{\boldsymbol\mu}$ for the total rate (an axial material dipole overrides in-plane with vertical)."),
+        _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of emission collected into the cavity cone (not computable in 1-D)."),
     ),
     refs=("[DR] Bjork et al., Phys. Rev. A 44, 669 (1991); Benisty et al., IEEE JQE 34, 1612 (1998): planar-cavity total rate",),
     eta_hint=(0.01, 0.5), fn=_planar_dbr)
@@ -803,16 +923,19 @@ def _bulk_planar(self, vals, em, T_K, NA):
     v = _V(self, vals)
     n, n_s = v.pos("n"), v.pos("n_s")
     mirror, sil = bool(v("mirror")), v("sil")
-    fn = lambda NA_: bulk_planar_eta(NA_, n, mirror, sil, n_s)       # noqa: E731
+    dip = str(getattr(em, "dipole", "in_plane"))
+    fn = lambda NA_: bulk_planar_eta(NA_, n, mirror, sil, n_s, dip)       # noqa: E731
     mult = {"none": 1.0, "hemi": n_s, "weierstrass": n_s ** 2}[sil]
     notes = [_COMMON_NOTE_EFFNA,
              "eta(NA) = (3/8) (NA_eff/n)^2 T_F, T_F = 4n/(1 + n)^2 (in-plane dipole, small cone) [DR]; bottom mirror x2; "
              "SIL: NA_eff = NA x n_s (hemispherical) or n_s^2 (Weierstrass), NA_eff/n capped at 1",
+             ("material dipole = axial: sin^2(theta) pattern, no emission on axis, eta = (3/16)(NA_eff/n)^4 T_F [DR]" if dip == "axial"
+              else "material dipole = in_plane (the formula above)"),
              "no cavity: F_P = 0, beta0 = 1 and eta_out is the collected fraction of all emission; rate_factor "
              "(planar interference, 0.5-1.5 [E]) enters as F_bg"]
     if NA * mult / n > 1.0:
         notes.append("NA_eff/n capped at 1 (full forward hemisphere of the host)")
-    inputs = {"eta_out": _path("n"), "F_bg": _path("rate_factor"), "beta0": _path("n")}
+    inputs = {"eta_out": _path("n") + "+mirror+sil+n_s", "F_bg": _path("rate_factor")}
     return StructureResponse(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=v.pos("rate_factor"),
                              beta0=1.0, eta_out=fn(NA), eta_out_fn=fn, pol_factor=1.0,
                              notes=tuple(notes), inputs=inputs)
@@ -823,11 +946,11 @@ BULK_PLANAR = _Struct(
     summary="Dot in a planar high-index host with no cavity: collected fraction from the escape cone, "
             "optionally with a back mirror and a solid-immersion lens.",
     params=(
-        _p("n", "1", 3.5, 1.5, 4.5, tag="E", source="GaAs near 930 nm [E]", help="Host refractive index."),
-        _p("mirror", "", False, help="Back mirror (doubles the upward collection)."),
-        _p("sil", "enum", "none", choices=("none", "hemi", "weierstrass"), help="Solid-immersion lens type."),
-        _p("n_s", "1", 2.0, 1.0, 4.5, tag="A", source="SIL index [A]", help="SIL refractive index.", visible_if={"sil": ["hemi", "weierstrass"]}),
-        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="planar interference factor 0.5-1.5 [E]", help="Total emission-rate factor (F_bg)."),
+        _p("n", "1", 3.5, 1.5, 4.5, tag="E", source="GaAs near 930 nm [E]", help=r"Host refractive index $n$."),
+        _p("mirror", "", False, help=r"Back mirror $\mathrm{mirror}$ (doubles the upward collection)."),
+        _p("sil", "enum", "none", choices=("none", "hemi", "weierstrass"), help=r"Solid-immersion lens $\mathrm{SIL}$ type."),
+        _p("n_s", "1", 2.0, 1.0, 4.5, tag="A", source="SIL index [A]", help=r"SIL refractive index $n_{\mathrm{SIL}}$.", visible_if={"sil": ["hemi", "weierstrass"]}),
+        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="planar interference factor 0.5-1.5 [E]", help=r"Total emission-rate factor $F_{\mathrm{rate}}$ (enters as $F_{\mathrm{bg}}$)."),
     ),
     refs=("[DR] small-cone escape fraction (3/8)(NA/n)^2 T_F (Schweickert et al. planar low-Q class, [V-abs])",),
     eta_hint=(0.005, 0.1), viz="mesa", fn=_bulk_planar)
@@ -855,8 +978,8 @@ SIL_MESA = _Struct(
     kind="sil_mesa", label="Mesa with solid-immersion lens",
     summary="Etched mesa under a solid-immersion lens: no Purcell gain, collection efficiency from an entered NA table.",
     params=(
-        _p("eta_table", "", "0.7:0.3", tag="E", source=_VAJNER, help="Collected fraction versus NA, 'NA:eta[, NA:eta ...]'."),
-        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help="Total emission-rate factor (F_bg)."),
+        _p("eta_table", "", "0.7:0.3", tag="E", source=_VAJNER, help=r"Collected fraction $\eta(\mathrm{NA})$ versus NA, 'NA:eta[, NA:eta ...]'."),
+        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help=r"Total emission-rate factor $F_{\mathrm{rate}}$ (enters as $F_{\mathrm{bg}}$)."),
     ),
     refs=(_VAJNER,), eta_hint=(0.1, 0.4), viz="mesa", fn=_table_struct)
 
@@ -864,8 +987,8 @@ MESA_REFLECTOR = _Struct(
     kind="mesa_reflector", label="Mesa with metal reflector",
     summary="Etched mesa on a metal back reflector: no Purcell gain, collection efficiency from an entered NA table.",
     params=(
-        _p("eta_table", "", "0.7:0.2", tag="E", source=_VAJNER, help="Collected fraction versus NA, 'NA:eta[, NA:eta ...]'."),
-        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help="Total emission-rate factor (F_bg)."),
+        _p("eta_table", "", "0.7:0.2", tag="E", source=_VAJNER, help=r"Collected fraction $\eta(\mathrm{NA})$ versus NA, 'NA:eta[, NA:eta ...]'."),
+        _p("rate_factor", "1", 1.0, 0.5, 1.5, tag="E", source="F_P ~ 1 class [E]", help=r"Total emission-rate factor $F_{\mathrm{rate}}$ (enters as $F_{\mathrm{bg}}$)."),
     ),
     refs=(_VAJNER,), eta_hint=(0.05, 0.3), viz="mesa", fn=_table_struct)
 
@@ -873,51 +996,96 @@ MESA_REFLECTOR = _Struct(
 # --------------------------------------------------------------------------
 # edge_ridge
 # --------------------------------------------------------------------------
-def edge_ridge_args(v, em):
-    """(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, kwargs) for waveguide.edge_emission."""
+def edge_ridge_stack(v, em):
+    """(stack, family_key, family_label, lambda_nm, reason): the ridge platform for the stack wavelength
+    (waveguide.ridge_stack_for). stack is None and reason names the incompatibility when no platform covers it."""
     lam = em.lambda_nm if v.f("lambda_nm") <= 0 else v.f("lambda_nm")
-    stack = waveguide.hkust_ridge_stack(lam)
+    stack, key, label = waveguide.ridge_stack_for(lam)
+    if stack is None:
+        return None, None, None, lam, label           # `label` carries the reason in this case
+    return stack, key, label, lam, None
+
+
+def edge_ridge_incompatibility(em, vals=None):
+    """Reason string when edge_ridge cannot be built for this emitter (greyed in the picker), else None. Pure function
+    of the stack wavelength (the structure's lambda_nm override, else the emitter's)."""
+    lam = em.lambda_nm
+    if vals:
+        try:
+            lo = float(vals.get("lambda_nm", 0.0))
+            lam = lo if lo > 0 else lam
+        except (TypeError, ValueError):
+            pass
+    return waveguide.ridge_family(lam)[2]
+
+
+def edge_ridge_args(v, em):
+    """(stack, ridge_width_nm, etch_depth_nm, lambda_nm, L_um, kwargs) for waveguide.edge_emission. stack is None when
+    the wavelength has no ridge platform (see edge_ridge_stack)."""
+    stack, _key, _label, lam, _why = edge_ridge_stack(v, em)
     rb = v.f("R_back")
     kw = dict(alpha_cm=v.f("alpha_cm"), R_back=None if rb < 0 else rb, coating=None,
               na_method=v("na_method"), dot_position=v.f("dot_position"))
     return stack, v.pos("ridge_width_nm"), v.pos("etch_depth_nm"), lam, v.f("L_um"), kw
 
 
+def _edge_ridge_incompatible(reason, lam):
+    """Neutral, finite response for a (material, edge_ridge) pair that cannot be built: no Purcell gain, nothing collected.
+    `extra["incompatible"]` carries the reason for the UI; the pair is declared incompatible, never an exception."""
+    return StructureResponseX(F_P=0.0, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0, eta_out=0.0,
+                              eta_out_fn=None, pol_factor=1.0, notes=("INCOMPATIBLE: " + reason,), inputs={},
+                              tag_floor="E", extra={"incompatible": reason, "lambda_nm": float(lam)})
+
+
 def _edge_ridge(self, vals, em, T_K, NA):
     v = _V(self, vals)
-    stack, w, etch, lam, L, kw = edge_ridge_args(v, em)
-    e = waveguide.edge_emission(stack, w, etch, lam, L, NA, **kw)
+    stack, key, family, lam, why = edge_ridge_stack(v, em)
+    if stack is None:
+        return _edge_ridge_incompatible(why, lam)
+    _, w, etch, lam, L, kw = edge_ridge_args(v, em)
+    try:
+        e = waveguide.edge_emission(stack, w, etch, lam, L, NA, **kw)
+        mode = waveguide.effective_index_ridge(stack, lam, w, etch)
+    except ValueError as err:                       # no bound mode / etch cannot be applied: a named incompatibility
+        return _edge_ridge_incompatible(f"{family}: the ridge mode solve failed ({err})", lam)
+    dp = dipole_projection(em)
     eta_out = e.eta_total / e.beta if e.beta > 0 else 0.0
     notes = ["adapter around waveguide.edge_emission: F_P = F_wg (Lecamp, energy-normalised area), beta0 = 0 so "
              "beta = F_wg/(1 + F_wg); eta_out = eta_total/beta = facet escape fraction x NA collection [DR]",
-             "broadband ridge: kappa = None (L = 1); stack is waveguide.hkust_ridge_stack(lambda) [E]",
+             f"broadband ridge: kappa = None (L = 1); stack is waveguide.ridge_stack_for({lam:g} nm) = {family} [E] "
+             "(red InP: waveguide.hkust_ridge_stack; GaAs / InP / GaN platforms from the materials tables)",
              "NA is applied inside edge_emission (Gaussian or numeric); no eta_out_fn (each NA needs a mode solve)"]
+    if dp < 1.0:
+        notes.append(f"material dipole {em.dipole}: cos^2 projection {dp:.4g} on the in-plane TE ridge mode folded into F_P [DR/A]")
     notes.extend(e.notes)
-    inputs = {"F_P": _path("ridge_width_nm"), "eta_out": _path("L_um"), "F_bg": _path("alpha_cm"), "beta0": _path("R_back")}
+    # F_bg = 1 and beta0 = 0 are fixed by the model; F_P / eta_out inputs are the leaves that change them when perturbed
+    inputs = {"F_P": "+".join(_path(k) for k in ("ridge_width_nm", "etch_depth_nm", "lambda_nm")),
+              "eta_out": "+".join(_path(k) for k in ("ridge_width_nm", "etch_depth_nm", "L_um", "alpha_cm", "R_back",
+                                                      "lambda_nm", "dot_position", "na_method"))}
     # geometry numbers for the 3D scene (R2-3D): the stack the mode solve used and the mode's 1/e^2 intensity radii
-    mode = waveguide.effective_index_ridge(stack, lam, w, etch)
     extra = {"stack": [{"name": L_.name, "t_nm": float(L_.thickness_nm), "n": float(L_.n), "is_dot": bool(L_.is_dot),
                         "material": L_.material or ""} for L_ in stack],
              "n_eff": float(e.n_eff), "n_g": float(e.n_g), "T_facet": float(e.T_facet),
-             "wx_um": float(mode.wx_um), "wy_um": float(mode.wy_um), "lambda_nm": float(lam)}
-    return StructureResponseX(F_P=float(e.F_wg), kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0,
+             "wx_um": float(mode.wx_um), "wy_um": float(mode.wy_um), "lambda_nm": float(lam),
+             "stack_family": key, "stack_label": family}
+    return StructureResponseX(F_P=float(e.F_wg) * dp, kappa_meV=None, E_mode_meV=None, g_meV=None, F_bg=1.0, beta0=0.0,
                               eta_out=float(eta_out), eta_out_fn=None, pol_factor=1.0, notes=tuple(notes), inputs=inputs,
-                              tag_floor="E", extra=extra)       # waveguide.hkust_ridge_stack is an [E] stack
+                              tag_floor="E", extra=extra)       # every ridge stack is an [E] class design
 
 
 EDGE_RIDGE = _Struct(
     kind="edge_ridge", label="Edge-emitting ridge waveguide",
-    summary="Dot in a ridge waveguide emitting from the cleaved facet: guided-mode Purcell, facet escape and NA collection.",
+    summary=r"Dot in a ridge waveguide emitting from the cleaved facet: guided-mode Purcell $F_{\mathrm P}$, facet escape and NA collection. The stack (AlGaInP, GaAs/AlGaAs, InP/InGaAsP, GaN/AlGaN) follows the emission wavelength; other wavelengths are incompatible.",
     params=(
-        _p("ridge_width_nm", "nm", 2000.0, 200.0, 10000.0, tag="A", source="cards/edge-inp-gainp-design.yaml emission.ridge_width_nm", help="Ridge width."),
-        _p("etch_depth_nm", "nm", 1200.0, 50.0, 5000.0, tag="A", source="fsim_core.device.EmissionBlock default", help="Ridge etch depth."),
-        _p("L_um", "um", 250.0, 10.0, 2000.0, tag="A", source="cards/edge-inp-gainp-design.yaml emission.L_um", help="Cavity / ridge length."),
-        _p("alpha_cm", "1/cm", 5.0, 0.0, 100.0, tag="E", source="ridge propagation loss class estimate [E]", help="Propagation loss."),
+        _p("ridge_width_nm", "nm", 2000.0, 200.0, 10000.0, tag="A", source="cards/edge-inp-gainp-design.yaml emission.ridge_width_nm", help=r"Ridge width $w_{\mathrm{ridge}}$."),
+        _p("etch_depth_nm", "nm", 1200.0, 50.0, 5000.0, tag="A", source="fsim_core.device.EmissionBlock default", help=r"Ridge etch depth $h_{\mathrm{etch}}$ (from the top)."),
+        _p("L_um", "um", 250.0, 10.0, 2000.0, tag="A", source="cards/edge-inp-gainp-design.yaml emission.L_um", help=r"Mirror separation $L$ (air gap)."),
+        _p("alpha_cm", "1/cm", 5.0, 0.0, 100.0, tag="E", source="ridge propagation loss class estimate [E]", help=r"Propagation loss $\alpha_{\mathrm{loss}}$."),
         _p("R_back", "1", 0.95, -1.0, 1.0, tag="A", source="cards/edge-inp-gainp-design.yaml emission.R_back",
-           help="Back-facet reflectivity; negative = bare cleaved facet (waveguide.edge_emission R_back=None)."),
-        _p("lambda_nm", "nm", 0.0, 0.0, 2000.0, help="Wavelength override for the stack; 0 = the emitter's lambda.", group="advanced"),
-        _p("na_method", "enum", "gaussian", choices=("gaussian", "numeric"), help="Far-field NA collection method.", group="advanced"),
-        _p("dot_position", "1", 0.5, 0.0, 1.0, help="Dot position along the ridge (fraction).", group="advanced"),
+           help=r"Back-facet reflectivity $R_{\mathrm{back}}$; negative = bare cleaved facet (waveguide.edge_emission R_back=None)."),
+        _p("lambda_nm", "nm", 0.0, 0.0, 2000.0, help=r"Wavelength $\lambda$ override for the stack; 0 = the emitter's wavelength. The stack platform (AlGaInP, GaAs/AlGaAs, InP/InGaAsP or GaN/AlGaN) follows $\lambda$; outside the covered bands the pair is declared incompatible.", group="advanced"),
+        _p("na_method", "enum", "gaussian", choices=("gaussian", "numeric"), help=r"Far-field $\mathrm{NA}$ collection method.", group="advanced"),
+        _p("dot_position", "1", 0.5, 0.0, 1.0, help=r"Dot position $x_{\mathrm{dot}}/L$ along the ridge (fraction).", group="advanced"),
     ),
     refs=(_REF_LECAMP, "[DR] Coldren, Corzine & Masanovic, Diode Lasers and Photonic Integrated Circuits, 2nd ed. (2012): facet escape"),
     eta_hint=(0.01, 0.4), fn=_edge_ridge)
@@ -951,7 +1119,10 @@ def _nitride_planar_cavity(self, vals, em, T_K, NA):
              "eta_out is the card's [A] outcoupling; no NA dependence"]
     inputs = {"F_P": _path("Q"), "kappa_meV": _path("Q"), "E_mode_meV": _path("dEdT_cav_meV_K"), "eta_out": _path("eta_out"),
               "F_bg": _path("purcell_enabled")}
-    return _cavity_resp(self, em, F_P=r["Fp_add"], kappa_meV=r["kappa_meV"], detuning_meV=em.E_X_meV - 1000.0 * r["E_cav_eV"],
+    dp = dipole_projection(em)
+    if dp < 1.0:
+        notes.append(f"material dipole {em.dipole}: cos^2 projection {dp:.4g} on the in-plane cavity field folded into F_P [DR/A]")
+    return _cavity_resp(self, em, F_P=r["Fp_add"] * dp, kappa_meV=r["kappa_meV"], detuning_meV=em.E_X_meV - 1000.0 * r["E_cav_eV"],
                         eta_out=r["eta_out"], notes=notes, inputs=inputs)
 
 
@@ -959,15 +1130,15 @@ NITRIDE_PLANAR_CAVITY = _Struct(
     kind="nitride_planar_cavity", label="Nitride planar / micropillar cavity",
     summary="InGaN/GaN dot in a vertical cavity with a tracked mode (nitride_cavity.response adapter).",
     params=(
-        _p("Q", "1", 2000.0, 10.0, 1e5, scale="log", tag="A", source="cards/nitride-cavity-pulse-design.yaml nitride.cavity.Q", help="Quality factor."),
-        _p("mode_volume_norm", "1", 2.0, 0.3, 50.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml (V/(lambda/n)^3)", help="Mode volume in (lambda/n)^3."),
-        _p("spatial_overlap", "1", 1.0, 0.0, 1.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help="Dot-field overlap."),
-        _p("eta_out", "1", 0.1, 0.0, 1.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help="Outcoupling efficiency."),
-        _p("T_track", "K", 300.0, 4.0, 500.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help="Temperature at which the mode is aligned with the dot."),
-        _p("dEdT_cav_meV_K", "meV/K", -0.04, -0.2, 0.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help="Cavity-mode temperature slope."),
-        _p("detuning_offset_meV", "meV", 0.0, -50.0, 50.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help="Static mode offset below the tracked dot energy."),
-        _p("purcell_enabled", "", True, help="False = cavity filtering without added Purcell (F_P = 0)."),
-        _p("E_X_track_eV", "eV", 0.0, 0.0, 6.0, help="Dot energy at T_track (0 = the emitter's E_X at the run temperature).", group="advanced"),
+        _p("Q", "1", 2000.0, 10.0, 1e5, scale="log", tag="A", source="cards/nitride-cavity-pulse-design.yaml nitride.cavity.Q", help=r"Quality factor $Q$."),
+        _p("mode_volume_norm", "1", 2.0, 0.3, 50.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml (V/(lambda/n)^3)", help=r"Mode volume $V$ in $(\lambda/n)^3$."),
+        _p("spatial_overlap", "1", 1.0, 0.0, 1.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help=r"Dot-field overlap $\xi$."),
+        _p("eta_out", "1", 0.1, 0.0, 1.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help=r"Outcoupling efficiency $\eta_{\mathrm{out}}$."),
+        _p("T_track", "K", 300.0, 4.0, 500.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help=r"Temperature $T_{\mathrm{track}}$ at which the mode is aligned with the dot."),
+        _p("dEdT_cav_meV_K", "meV/K", -0.04, -0.2, 0.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help=r"Cavity-mode temperature slope $\mathrm dE_{\mathrm c}/\mathrm dT$."),
+        _p("detuning_offset_meV", "meV", 0.0, -50.0, 50.0, tag="A", source="cards/nitride-cavity-pulse-design.yaml", help=r"Static mode offset $\delta E_{\mathrm{off}}$ below the tracked dot energy."),
+        _p("purcell_enabled", "", True, help=r"False = cavity filtering without added Purcell ($F_{\mathrm P} = 0$)."),
+        _p("E_X_track_eV", "eV", 0.0, 0.0, 6.0, help=r"Dot energy $E_X(T_{\mathrm{track}})$ at $T_{\mathrm{track}}$ (0 = the emitter's $E_X$ at the run temperature).", group="advanced"),
     ),
     refs=("[DR] Purcell, Phys. Rev. 69, 681 (1946); geometry, overlap, eta_out and slope [A]",), eta_hint=(0.05, 0.3), fn=_nitride_planar_cavity)
 
@@ -975,3 +1146,15 @@ NITRIDE_PLANAR_CAVITY = _Struct(
 for _e in (GENERIC_CAVITY, MICROPILLAR, OPEN_CAVITY, CBG, PHC_CAVITY, PHC_WAVEGUIDE, PHOTONIC_NANOWIRE,
            PLANAR_DBR, BULK_PLANAR, SIL_MESA, MESA_REFLECTOR, EDGE_RIDGE, NITRIDE_PLANAR_CAVITY):
     register(_e)
+
+
+# Declared (material, structure) incompatibilities (audit finding 3): kind -> fn(em, vals) -> reason or None. The reason is
+# shown by the Composer picker (greyed); the entry's response() returns a finite, named-incompatible response instead of
+# raising (extra["incompatible"]). Every other pair is expected to be finite.
+STRUCTURE_COMPAT = {"edge_ridge": edge_ridge_incompatibility}
+
+
+def incompatibility(kind, em, vals=None):
+    """Reason string if the structure `kind` cannot be built for the emitter `em`, else None."""
+    fn = STRUCTURE_COMPAT.get(kind)
+    return fn(em, vals) if fn else None

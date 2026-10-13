@@ -134,8 +134,12 @@ check("mesa_reflector: reflector, no SIL", d["geometry"]["mirror"] is True and d
 d = describe(spec("nope"))
 check("nope: fallback descriptor (unknown structure)", d["fallback"] is True and d["variant"] == "fallback2d" and "unknown structure" in d["reason"], d.get("reason", ""))
 d = describe(spec("edge_ridge"))
-check("edge_ridge on a 950 nm dot: stack out of the index table -> fallback with the reason, no raise",
-      d["fallback"] is True and d["variant"] == "fallback2d" and "tabulated" in d["reason"], d.get("reason", "")[:70])
+check("edge_ridge on a 950 nm dot: the GaAs/AlGaAs ridge stack is drawn (devlib-r2-fix1b), no fallback",
+      d["fallback"] is False and d["variant"] == "ridge_waveguide" and d["geometry"]["stack"][1]["material"] == "GaAs",
+      str(d.get("reason", ""))[:70])
+d = describe(spec("edge_ridge", mat="cdse_znse"))
+check("edge_ridge on a declared-incompatible 530 nm material: fallback descriptor, no raise",
+      d["fallback"] is True and d["variant"] == "fallback2d")
 check("non-mapping spec -> fallback, no raise", describe("x")["fallback"] is True)
 check("bad leaf (unit mismatch) -> fallback, no raise",
       describe(spec("micropillar", {"d_um": {"value": 2.5, "unit": "nm"}}))["fallback"] is True)
@@ -280,6 +284,11 @@ check("lumped (c): editing a structure parameter drops the hint (lumped schemati
 check("new descriptors: JSON-safe and layers present for the 2D fallback",
       all(json.loads(json.dumps(describe(spec(k, mat=MAT.get(k, "ingaas_gaas"))))) == describe(spec(k, mat=MAT.get(k, "ingaas_gaas")))
           and describe(spec(k, mat=MAT.get(k, "ingaas_gaas")))["layers"] for k in ("photonic_nanowire", "planar_dbr", "nitride_planar_cavity", "edge_ridge", "generic_cavity")))
+
+# --- (c) edge_ridge on a material with no covered stack: a named incompatibility, never KeyError: 'stack'
+d_inc = describe(spec("edge_ridge", mat="cdse_znse"))
+check("ridge incompatible (c): falls back with the structure's own reason, not KeyError",
+      d_inc.get("fallback") is True and "KeyError" not in str(d_inc.get("reason")), str(d_inc.get("reason"))[:90])
 
 n = sum(RES)
 print(f"{n}/{len(RES)} scene_compose checks passed")

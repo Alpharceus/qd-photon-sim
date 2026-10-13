@@ -52,7 +52,7 @@ _ADV = "advanced"
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
 _TEX = {
     "lambda_nm": r"\lambda", "tau_bare_ns": r"\tau_{\mathrm{bare}}", "fss_ueV": r"\delta_{\mathrm{FSS}}",
-    "E_b_meV": r"E_{\mathrm b}", "gamma_xx_ratio": r"\Gamma_{XX}/\Gamma_{X}", "gamma_star_4K_ns": r"\gamma^{*}(4\,\mathrm K)",
+    "E_b_meV": r"E_{\mathrm b}", "gamma_xx_ratio": r"\Gamma_{XX}/\Gamma_{X}", "gamma_star_4K_ns": r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)",
     "a_ac_ns_per_K": r"a_{\mathrm{ac}}", "alpha_ps2": r"\alpha", "D_c_eV": r"D_{\mathrm c}", "D_v_eV": r"D_{\mathrm v}",
     "rho_kg_m3": r"\rho", "c_LA_m_s": r"c_{\mathrm{LA}}", "l_xy_nm": r"\ell_{xy}", "l_z_nm": r"\ell_{z}",
     "n_host": r"n_{\mathrm{host}}", "E_LO_meV": r"E_{\mathrm{LO}}", "k_nr_ns": r"k_{\mathrm{nr}}",
@@ -65,9 +65,11 @@ _PARAMS = {
     "fss_ueV": ("ueV", "main", r"Exciton fine-structure splitting $\delta_{\mathrm{FSS}}$ (a quantum beat, not dephasing)."),
     "E_b_meV": ("meV", "main", r"Biexciton binding energy $E_{\mathrm b}$, positive = binding ($E_{XX} = 2E_X - E_{\mathrm b}$)."),
     "gamma_xx_ratio": ("1", "main", r"Radiative rate ratio $\Gamma_{XX}/\Gamma_X$ of the biexciton to the exciton."),
-    "gamma_star_4K_ns": ("1/ns", "main", r"Pure dephasing rate $\gamma^{*}$ at 4 K, repo convention (the coherence decays at "
-                                         r"$(\Gamma + \gamma^{*})/2$; $\gamma^{*} = \mathrm{FWHM}_{\mathrm{excess}}/\hbar$). Linear T model; LO term not included."),
-    "a_ac_ns_per_K": ("1/ns/K", "main", r"Linear acoustic T-dephasing slope $a_{\mathrm{ac}}$: $\gamma^{*}(T) = \gamma^{*}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$, "
+    "gamma_star_4K_ns": ("1/ns", "main", r"Pure-dephasing linewidth $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}} = 2/T_2^{*}$ at 4 K "
+                                         r"(Scully-Zubairy $\gamma_{\mathrm{ph}}$ is the coherence decay rate; the exciton line has FWHM "
+                                         r"$\hbar(\Gamma + k_{\mathrm{nr}} + \Gamma_{\mathrm{ph}})$ and $\Gamma_{\mathrm{ph}} = \mathrm{FWHM}_{\mathrm{excess}}/\hbar$). "
+                                         r"Linear T model; LO term not included."),
+    "a_ac_ns_per_K": ("1/ns/K", "main", r"Linear acoustic T-dephasing slope $a_{\mathrm{ac}}$: $\Gamma_{\mathrm{ph}}(T) = \Gamma_{\mathrm{ph}}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$, "
                                         r"clipped at $\geq 0$. LO term not included."),
     "alpha_ps2": ("ps^2", _ADV, r"Direct phonon coupling $\alpha$. 0 = compute from $D_{\mathrm c}, D_{\mathrm v}, \rho, c_{\mathrm{LA}}, \ell_{xy}, \ell_z$ "
                                 r"(qd_gf.coupling_alpha_ps2); $> 0$ pins $\alpha$."),
@@ -92,9 +94,9 @@ _OPTIONAL = {
 _OPT_PARAMS = {"b_LO_meV": ("meV", "advanced", r"LO-phonon coupling $b_{\mathrm{LO}}$ of the total width $\Gamma(T) = \Gamma_0 + a_{\mathrm{ac}}T + "
                        r"b_{\mathrm{LO}}/(e^{E_{\mathrm{LO}}/k_{\mathrm B}T} - 1)$ (used only when the temperature model is lo_phonon).")}
 _ENUMS = (
-    ParamSpec("gamma_T_model", "", "linear", tex=r"\gamma^{*}(T)\ \mathrm{model}", choices=("linear", "lo_phonon"), tag="A", sweepable=False,
+    ParamSpec("gamma_T_model", "", "linear", tex=r"\Gamma_{\mathrm{ph}}(T)\ \mathrm{model}", choices=("linear", "lo_phonon"), tag="A", sweepable=False,
               source="user choice of the dephasing temperature model [A]",
-              help=r"linear: $\gamma^{*}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$ (default, bit-identical to before). lo_phonon: the total "
+              help=r"linear: $\Gamma_{\mathrm{ph}}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$ (default, bit-identical to before). lo_phonon: the total "
                    r"non-resonant width of spectral.gamma_of_T, $\Gamma_0 + a_{\mathrm{ac}}T + b_{\mathrm{LO}}/(e^{E_{\mathrm{LO}}/k_{\mathrm B}T} - 1)$, over $\hbar$ "
                    r"(non-resonant TOTAL width: fine for spectral overlap and cw $g^{(2)}$, wrong for resonant HOM)."),
     ParamSpec("charge_state", "", "X", tex=r"q_{\mathrm{X}}", choices=("X", "X+", "X-"), tag="A", sweepable=False,

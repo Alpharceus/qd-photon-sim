@@ -47,8 +47,9 @@ from .. import lindblad as lb
 from ..spectral import cavity_transmission
 from .types import EmitterModel, Rates, StructureResponse
 
-GAMMA_STAR_CONVENTION = ("repo: coherence decays at (Gamma + k + gamma*)/2, gamma*_repo = 2 x textbook "
-                         "1/T2*; I = Gamma/(Gamma + gamma*_repo)")
+GAMMA_STAR_CONVENTION = (r"repo $\gamma^{*}$ is the pure-dephasing linewidth $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}} = 2/T_2^{*}$ "
+                         r"(Scully-Zubairy $\gamma_{\mathrm{ph}}$ = coherence decay rate): the $e$-$g$ coherence decays at "
+                         r"$(\Gamma + k_{\mathrm{nr}} + \Gamma_{\mathrm{ph}})/2$ and $I = \Gamma/(\Gamma + \Gamma_{\mathrm{ph}})$")
 
 
 @dataclass(frozen=True)

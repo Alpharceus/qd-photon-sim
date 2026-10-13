@@ -3,8 +3,8 @@
 Every ParamSpec of the material, drive and setup axes, and every observable, carries a `tex` symbol; every `$...$`
 segment of a help / label / summary string and every `tex` parses in KaTeX (the vendored 0.16.11, run under node with
 throwOnError and trust off), so the Studio never falls back to raw text. `tex` is UI-only: it is absent from
-`ParamSpec.to_meta()` when unset, so existing metadata dicts are unchanged. Structure params belong to structures.py
-(another owner this round): they are counted and listed, not failed.
+`ParamSpec.to_meta()` when unset, so existing metadata dicts are unchanged. Structure params carry symbols too (devlib-r2-fix1b);
+the repo gamma* wording (GAMMA_STAR_CONVENTION, the dephasing material help) is the pure-dephasing linewidth Gamma_ph.
 
 Run from the repo root: python verify/verify_param_tex.py   (needs node on PATH)
 Prints one line per check and "N/N param_tex checks passed"; exits 0 iff all pass.
@@ -27,7 +27,7 @@ from fsim_core.compose import registry  # noqa: E402
 from fsim_core.compose.params import ParamSpec  # noqa: E402
 
 KATEX = os.path.join(ROOT, "fsim_studio", "web", "vendor", "katex", "katex.min.js")
-IN_SCOPE_AXES = ("material", "drive", "setup")
+IN_SCOPE_AXES = ("material", "drive", "setup", "structure")
 DOLLAR = re.compile(r"(?<!\\)\$\$?(.+?)(?<!\\)\$\$?", re.S)
 
 RESULTS = []
@@ -89,8 +89,11 @@ def main():
     obs_missing = [o.id for o in obs if not o.tex]
     check(f"every observable has a tex symbol ({len(obs)} observables)", not obs_missing, ", ".join(obs_missing[:6]))
     struct = [(a, k, p) for a, k, p in params if a == "structure"]
-    struct_missing = sorted({p.name for _a, _k, p in struct if not p.tex})
-    print(f"INFO  structure params without tex (structures.py owner): {len(struct_missing)} of {len(struct)} " + ",".join(struct_missing[:12]))
+    struct_missing = [f"{k}.{p.name}" for _a, k, p in struct if not p.tex]
+    check(f"every structure param has a tex symbol ({len(struct)} params)", not struct_missing, ", ".join(struct_missing[:6]))
+    # help texts of the structures are marked up: every structure param help has at least one $...$ symbol
+    plain_help = [f"{k}.{p.name}" for _a, k, p in struct if not segments(p.help or "")]
+    check("every structure help text carries $...$ markup", not plain_help, ", ".join(plain_help[:6]))
 
     # consistency: one id never carries two different symbols within an axis
     by_name = {}
@@ -127,6 +130,14 @@ def main():
     check(f"all {len(items)} TeX strings parse in KaTeX (throwOnError, trust off)", not bad, " | ".join(bad[:3]))
     print(f"INFO  {len([1 for w, _ in items if '.help[' in w])} help segments, {len([1 for w, _ in items if w.endswith('.tex')])} symbols checked")
 
+    from fsim_core.compose import rates as _rates
+    gs_items = segments(_rates.GAMMA_STAR_CONVENTION)
+    gs_err = [e for e in katex_parse(gs_items) if e]
+    check("GAMMA_STAR_CONVENTION is $...$ markup naming Gamma_ph and parses", bool(gs_items) and not gs_err
+          and r"\Gamma_{\mathrm{ph}}" in _rates.GAMMA_STAR_CONVENTION, "; ".join(gs_err[:2]))
+    repo_gs = [f"{a}:{k}.{p.name}" for a, k, p in params if "repo gamma" in (p.help or "").lower() or "repo convention" in (p.help or "").lower()]
+    check("no material help still says 'repo gamma*' / 'repo convention'", not repo_gs, ", ".join(repo_gs[:4]))
+
     # help strings keep balanced dollars (an odd count would swallow the prose after it)
     unbalanced = []
     for a, k, p in params:
@@ -148,7 +159,7 @@ def main():
     g = R.get("drive", "resonant_pulse").param("fwhm_ps")
     check("spot check: resonant_pulse fwhm_ps symbol and help", g.tex == r"\tau_{\mathrm{FWHM}}" and r"$\Omega^2$" in g.help)
     m = R.get("material", sorted(R.kinds("material"))[0]).param("gamma_star_4K_ns")
-    check("spot check: gamma_star_4K_ns symbol", m.tex == r"\gamma^{*}(4\,\mathrm K)")
+    check("spot check: gamma_star_4K_ns symbol is Gamma_ph(4 K)", m.tex == r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)" and r"\Gamma_{\mathrm{ph}}" in m.help)
     o = R.get("observable", "g2_0")
     check("spot check: g2_0 observable symbol and label", o.tex == "g^{(2)}(0)" and o.label == "$g^{(2)}(0)$")
 
