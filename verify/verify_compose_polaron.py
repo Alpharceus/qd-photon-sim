@@ -71,9 +71,12 @@ check("phonon_assisted plan: paper Delta +0.83 -> repo det_X -0.83, needs {phono
       len(pa.pulses) == 1 and pa.pulses[0].detuning_meV == -0.83 and pa.needs == frozenset({"phonons"})
       and abs(pa.pulses[0].area_rad - 8.46 * math.pi) < 1e-12 and pa.inputs["Delta_paper_meV"] == 0.83)
 sp = kinds["super"].plan({}, EM0, RT)
-check("super plan: two pulses, repo det_X = +3.5 / +7.5 (paper -3.5 / -7.5), needs {phonons, two_colour}",
-      len(sp.pulses) == 2 and (sp.pulses[0].detuning_meV, sp.pulses[1].detuning_meV) == (3.5, 7.5)
+check("super plan (R2 defaults, Bracht 2021 Table 1 row 2): two pulses, repo det_X = +5.0 / +13.56 (paper -5.0 / -13.56), needs {phonons, two_colour}",
+      len(sp.pulses) == 2 and (sp.pulses[0].detuning_meV, sp.pulses[1].detuning_meV) == (5.0, 13.56)
       and sp.needs == frozenset({"phonons", "two_colour"}))
+sp_pic = kinds["super"].plan({"delta1_meV": -3.5, "delta2_meV": -7.5}, EM0, RT)
+check("super plan with the Piccinini detunings -3.5 / -7.5 meV passed explicitly: repo det_X = +3.5 / +7.5",
+      (sp_pic.pulses[0].detuning_meV, sp_pic.pulses[1].detuning_meV) == (3.5, 7.5))
 dc = kinds["dichromatic"].plan({"asymmetry": 3.0, "delta_meV": 1.0, "area_pi": 4.0}, EM0, RT)
 a_b, a_r = dc.pulses[0].area_rad, dc.pulses[1].area_rad
 check("dichromatic plan: blue det_X -delta, red +delta, area split sqrt(a/(1+a)), sqrt(1/(1+a)); intensity kept",
@@ -244,10 +247,21 @@ def ode_two_pulse(a1, a2, fw, d1_meV, d2_meV):
 rt_sup = Rates(Gamma_ns=5.0, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)   # Piccinini: (200 ps)^-1
 
 
-def super_run(a1, a2, fw):
-    pl_ = pplan([Pulse("gauss", fw, a1 * math.pi, detuning_meV=3.5), Pulse("gauss", fw, a2 * math.pi, detuning_meV=7.5)],
+def super_run(a1, a2, fw, d1=3.5, d2=7.5):            # d1, d2 = repo det_X (meV) = -Delta_paper
+    pl_ = pplan([Pulse("gauss", fw, a1 * math.pi, detuning_meV=d1), Pulse("gauss", fw, a2 * math.pi, detuning_meV=d2)],
                 T=4.0, f=80.0, needs=("phonons", "two_colour"))
     return SOLVER.run(pl_, em_with(0.0), rt_sup, with_hom=False)
+
+
+BR_ROWS = {4: (-8.0, -19.1630, 2.40, 3.04, 22.65, 19.29, -0.73)}      # Bracht 2021 Table 1 row 4: Delta1, Delta2, sigma1, sigma2 (ps), alpha1, alpha2 (pi), tau (ps) [V]
+rt_b4 = Rates(Gamma_ns=1.0, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)    # Bracht Fig. 3: Gamma = 1/ns
+
+
+def bracht_plan(row):
+    d1, d2, sg1, sg2, a1_, a2_, tau_ = row
+    f_ = lambda sg: 2 * sg * math.sqrt(math.log(2))
+    return pplan([Pulse("gauss", f_(sg1), a1_ * math.pi, detuning_meV=-d1),
+                  Pulse("gauss", f_(sg2), a2_ * math.pi, detuning_meV=-d2, t0_ps=tau_)], T=4.0, f=80.0, needs=("phonons", "two_colour"))
 
 
 rs_ode = []
@@ -741,14 +755,74 @@ dflt = {k: engine.evaluate_spec(ref_spec(k))["scalars"] for k in ("super", "dich
 sd = drives.SUPER
 a1_d, a2_d, w_d = sd.param("area1_pi").default, sd.param("area2_pi").default, sd.param("fwhm1_ps").default
 ode_d = ode_two_pulse(a1_d, a2_d, w_d, sd.param("delta1_meV").default, sd.param("delta2_meV").default)
-off_d = super_run(a1_d, a2_d, w_d).inversion
-check("DF-a. SUPER defaults are NOT a phonon-free swing-up (the independent unitary ODE of the same two-colour H gives P_X < 0.05 and the "
-      "phonon-free polaron run agrees to < 0.02): the default areas are tuned to the phonon-renormalised Rabi frequency sqrt(Z) Omega of the "
-      "polaron model, which is what DF-b exercises", ode_d < 0.05 and abs(off_d - ode_d) < 0.02,
-      f"ODE {ode_d:.4f}, polaron (phonons off, Gamma 5/ns) {off_d:.4f}")
-check("DF-b. SUPER at defaults with phonons (inas_gaas_sk, 4.2 K): inversion and eta_prep > 0.8 (Bracht 2021 theory ~0.97, Piccinini 2025 ~0.95 [V]); was 0.01",
-      dflt["super"]["inversion"] > 0.8 and dflt["super"]["eta_prep"] > 0.8,
-      f"inv {dflt['super']['inversion']:.3f}, eta_prep {dflt['super']['eta_prep']:.3f}")
+# R2 SUPER (Fable, .workers/devlib/r2-super-answer.md): the defaults are Bracht et al. 2021 Table 1 row 2; preparation is read
+# from eta_prep / P_X_max, never the window-end inversion (it carries the radiative decay over half the window).
+off_run = super_run(a1_d, a2_d, w_d, -sd.param("delta1_meV").default, -sd.param("delta2_meV").default)
+eta_off, pmax_off = off_run.extra["eta_prep"], off_run.extra["P_X_max"]
+check("DF-a. SUPER defaults (Bracht 2021 Table 1 row 2: -5.0 / -13.56 meV, 13.06 pi / 10.45 pi, 2.58 ps): the independent unitary ODE gives P_X >= 0.99 "
+      "(Bracht 99.99 % [V]) and the phonon-free polaron run (Gamma 5/ns) has eta_prep >= 0.99 and |ODE - P_X_max| < 0.01",
+      ode_d >= 0.99 and eta_off >= 0.99 and abs(ode_d - pmax_off) < 0.01,
+      f"ODE {ode_d:.4f}, polaron (phonons off) eta_prep {eta_off:.4f}, P_X_max {pmax_off:.4f}, window-end inversion {off_run.inversion:.3f}")
+b4 = BR_ROWS[4]
+r_b4 = SOLVER.run(bracht_plan(b4), R.get("material", "gaas_algaas_droplet").build({}, 4.0), rt_b4, with_hom=False)
+check("DF-b. Bracht row 4 (Fig. 3 set, GaAs droplet class, 4 K, Gamma 1/ns) with phonons: the B fix applies (B_mode none, R2 note) and eta_prep is within 0.03 of "
+      "the published exact path-integral value 0.9731 [V] (Bracht PRX Quantum 2, 040354 (2021): 99.99 % without, 97.31 % with phonons)",
+      r_b4.extra["B_mode"] == "none" and abs(r_b4.extra["eta_prep"] - 0.9731) < 0.03
+      and any("R2 SUPER" in n for n in r_b4.extra["notes"]),
+      f"eta_prep {r_b4.extra['eta_prep']:.4f}, P_X_max {r_b4.extra['P_X_max']:.4f}, inversion {r_b4.inversion:.4f}, "
+      f"B {r_b4.extra['B_renorm']:.3f} (static would be {math.sqrt(r_b4.extra['Z']):.3f})")
+def _raises(fn, exc):
+    try:
+        fn()
+    except exc:
+        return True
+    return False
+
+
+check("DF-b2. B_mode option: PhononModel default is 'static' (B = sqrt(Z), bit-identical), 'none' gives B = 1, a bad mode is refused; the engine rule "
+      "(hbar |Omega|_max > 3 E_c) selects 'none' for the SUPER defaults and 'static' for the Quilter phonon_assisted default",
+      PL.PhononModel(PH, 4.2).B == math.sqrt(PL.PhononModel(PH, 4.2).Z) and PL.PhononModel(PH, 4.2, "none").B == 1.0
+      and PL.PhononModel(None, 4.2).B == 1.0 and _raises(lambda: PL.PhononModel(PH, 4.2, "bogus"), ValueError)
+      and SOLVER.run(replace(sp, inputs={**sp.inputs, "T_K": 4.2}), em_with(), RT, with_hom=False).extra["B_mode"] == "none"
+      and SOLVER.run(replace(pa, inputs={**pa.inputs, "T_K": 4.2}), em_with(), RT, with_hom=False).extra["B_mode"] == "static",
+      "")
+check("DF-b3. SUPER at the registry defaults with phonons (inas_gaas_sk, 4.2 K): eta_prep and the end-of-window inversion > 0.9 (Bracht exact theory 0.973 [V]); was 0.73 with the static sqrt(Z)",
+      dflt["super"]["eta_prep"] > 0.9 and dflt["super"]["inversion"] > 0.9,
+      f"eta_prep {dflt['super']['eta_prep']:.3f}, inv {dflt['super']['inversion']:.3f}")
+
+# independent anchor: exciton-frame SU(2) propagator (no pulse-1 rotating frame; paper sign convention), r2-super-answer D
+def bare_px(a1_pi, a2_pi, fw1, fw2, d1, d2, tau=0.0, dt=1e-3, nsig=8.0):      # fw = intensity FWHM ps, d = paper Delta meV
+    HB_ = 0.6582119569
+    s1 = fw1 / (2 * math.sqrt(math.log(2)))
+    s2 = fw2 / (2 * math.sqrt(math.log(2)))
+    T = nsig * max(s1, s2) + abs(tau)
+    n = int(math.ceil(2 * T / dt))
+    t = -T + (np.arange(n) + 0.5) * (2 * T / n)
+    h = 2 * T / n
+    e1 = np.exp(-0.5 * (t / s1) ** 2) / (s1 * math.sqrt(2 * math.pi)) * np.exp(-1j * (d1 / HB_) * t)
+    e2 = np.exp(-0.5 * ((t - tau) / s2) ** 2) / (s2 * math.sqrt(2 * math.pi)) * np.exp(-1j * (d2 / HB_) * t)
+    g, x = 1 + 0j, 0j
+    for k in range(n):
+        om = 0.5 * (a1_pi * math.pi * e1[k] + a2_pi * math.pi * e2[k])
+        r = abs(om)
+        c = math.cos(r * h)
+        sn = math.sin(r * h) / r if r else h
+        g, x = c * g - 1j * sn * np.conj(om) * x, c * x - 1j * sn * om * g
+    return abs(x) ** 2
+
+
+tof = lambda sig: 2 * sig * math.sqrt(math.log(2))                       # Bracht field sigma -> intensity FWHM
+BR = {1: (25.00, 25.00, tof(4.50), tof(7.10), -5.0, -11.7826, 0.0), 2: (13.06, 10.45, tof(1.55), tof(1.55), -5.0, -13.5624, 0.0),
+      3: (15.30, 28.31, tof(2.23), tof(5.00), -5.0, -12.5522, 2.40), 4: (22.65, 19.29, tof(2.40), tof(3.04), -8.0, -19.1630, -0.73)}
+bp = {k: bare_px(*v) for k, v in BR.items()}
+check("SUPER anchor A. independent exciton-frame propagator reproduces Bracht 2021 Table 1 rows 1-4: bare P_X >= 0.999 each [V] (row 4: paper 99.99 %)",
+      all(v >= 0.999 for v in bp.values()), ", ".join(f"row {k} {v:.5f}" for k, v in bp.items()))
+bp_def = bare_px(a1_d, a2_d, w_d, sd.param("fwhm2_ps").default, sd.param("delta1_meV").default, sd.param("delta2_meV").default)
+bp_old = bare_px(42.0, 40.5, 3.0, 3.0, -3.5, -7.5)
+check("SUPER anchor B. registry defaults >= 0.99 on the independent propagator; the old defaults (42 pi / 40.5 pi, 3 ps, -3.5 / -7.5 meV) give < 0.02 (regression: they were a polaron-sqrt(Z) artefact)",
+      bp_def >= 0.99 and bp_old < 0.02, f"defaults {bp_def:.5f}, old {bp_old:.5f}")
+sym = abs(bare_px(13.06, 10.45, 2.58, 2.58, -5.0, -13.56) - bare_px(13.06, 10.45, 2.58, 2.58, 5.0, 13.56))
+check("SUPER anchor C. detuning sign symmetry of the phonon-free two-level model: P_X(Delta1, Delta2) = P_X(-Delta1, -Delta2) to 1e-6", sym < 1e-6, f"|diff| {sym:.2e}")
 check("DF-c. dichromatic defaults (Koong 2021: +-0.6 meV, C = -0.65, 3.65 ps, 5 pi): eta_prep within 0.1 of the paper simulation 0.60 [V]; was 0.32",
       abs(dflt["dichromatic"]["eta_prep"] - 0.60) <= 0.10, f"{dflt['dichromatic']['eta_prep']:.3f}")
 check("DF-d. phonon_assisted default within the pre-registered Quilter band 0.67 +- 0.12; ARP default >= 0.9; TPE default XX preparation > 0.9",

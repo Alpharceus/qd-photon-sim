@@ -74,6 +74,7 @@ from .types import SolverResult
 
 NAN = float("nan")
 DT_FACTOR = 0.1               # [A] fine step <= DT_FACTOR / rate_max (rate_max >= 2 Lambda_max)
+NONADIABATIC_EC = 3.0         # [E] drop the static sqrt(Z) when hbar|Omega|_max > NONADIABATIC_EC x E_c (r2-super, Fable)
 HOM_NODE_CAP = 2048           # [A] cap on HOM quadrature nodes (memory O(n^2))
 HOM_TOL = 1e-6                # [A] same as solvers._HOM_TOL
 HOM_DOUBLINGS = 5
@@ -127,16 +128,32 @@ def apply_trion(res, p):
 class PhononModel:
     """Spectral density, Bose occupation and dressed-state rates for one (PhononParams, T) pair."""
 
-    def __init__(self, ph, T_K: float):
+    def __init__(self, ph, T_K: float, B_mode: str = "static"):
+        if B_mode not in ("static", "none"):
+            raise ValueError(f"B_mode must be 'static' or 'none', got {B_mode!r}")
         self.ph = ph
         self.T_K = float(T_K)
+        self.B_mode = B_mode
         if ph is None:
             self.alpha_ps2 = 0.0
             self.Z = 1.0
         else:
             self.alpha_ps2 = float(qd_gf.coupling_alpha_ps2(ph))
             self.Z = float(qd_gf.zpl_weight(ph, self.T_K)) if self.alpha_ps2 > 0.0 else 1.0
-        self.B = math.sqrt(self.Z)
+        # Rabi-frequency renormalisation B. "static" = full-polaron sqrt(Z), valid only for Omega_r << omega_c; "none" = 1,
+        # the non-adiabatic limit (the cloud cannot follow Omega_r >~ 3 E_c; McCutcheon et al., PRB 84, 081305(R) (2011)
+        # variational B -> 1 for Omega >> omega_c) [DR, r2-super Fable prescription]. B_static is always kept for reporting.
+        self.B_static = math.sqrt(self.Z)
+        self.B = self.B_static if B_mode == "static" else 1.0
+
+    @property
+    def E_c_meV(self) -> float:
+        """Geometric phonon cutoff E_c = hbar sqrt(2) c_s / l_eff (meV), l_eff^2 = (2 l_xy^2 + l_z^2)/3 the angular average
+        of the form-factor length used by qd_gf [A]; 0 without phonons."""
+        if not self.active:
+            return 0.0
+        l_eff = math.sqrt((2.0 * self.ph.l_xy_nm ** 2 + self.ph.l_z_nm ** 2) / 3.0)
+        return float(lb.HBAR_MEV_NS * 1e3 * math.sqrt(2.0) * self.ph.c_s_m_s * 1e-3 / l_eff)  # hbar [meV ps] x c_s [nm/ps] / l [nm]
 
     @property
     def active(self) -> bool:
@@ -517,8 +534,14 @@ class PolaronSolver(Solver):
 
     def _setup(self, plan, em, rt):
         T = float(plan.inputs["T_K"])
-        pm = PhononModel(em.phonon, T)
         train = PulseTrain(plan.pulses, plan.det_profile)
+        pm = PhononModel(em.phonon, T)
+        # R2 SUPER (Fable): non-adiabatic limit. When the bare peak Rabi energy hbar sum|Omega_k| exceeds NONADIABATIC_EC x E_c the
+        # static sqrt(Z) renormalisation is unphysical (Bracht et al., PRX Quantum 2, 040354 (2021) exact path integral keeps
+        # the bare area); drop it. Below the threshold (phonon_assisted, Quilter) the solver is bit-identical.
+        om_pk = lb.HBAR_MEV_NS * sum(abs(c.amp) for c in train.comps)
+        if pm.active and om_pk > NONADIABATIC_EC * pm.E_c_meV:
+            pm = PhononModel(em.phonon, T, B_mode="none")
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
                          delta_ns=train.det0_ns)
         eid = float(plan.inputs.get("eid_ps", 0.0) or 0.0) * 1e-3
@@ -536,6 +559,10 @@ class PolaronSolver(Solver):
         n_f = fine_for(nq0)
         st = _counting(gen, n_f, plan.f_rep_MHz)
         reasons = ["polaron P1: weak-coupling dressed-state rates (no full polaron master equation)"]
+        if pm.active and pm.B_mode == "none":
+            reasons.append(f"R2 SUPER: polaron B none in the non-adiabatic regime (Fable): hbar|Omega|_max "
+                           f"{lb.HBAR_MEV_NS * sum(abs(c.amp) for c in train.comps):.3g} meV > {NONADIABATIC_EC:g} E_c "
+                           f"({pm.E_c_meV:.3g} meV), so the static sqrt(Z) = {pm.B_static:.3f} is not applied [DR]")
         if len({round(c.dw, 9) for c in train.comps}) > 1 and pm.active:
             reasons.append("multi-colour drive with phonons: instantaneous-basis rates for a rotating beat "
                            "phase are an approximation [A]")
@@ -552,7 +579,7 @@ class PolaronSolver(Solver):
         gd, gu = pm.rates(lam_c, mix_c)
         extra = {"eta_prep": float(st["eta_prep"]), "n_exc": float(st["n_exc"]), "P_X_end": float(st["rho_post"][1, 1].real),
                  "P_X_max": float(px[ipk]), "t_P_X_max_ps": float(st["t"][ipk] * 1e3),
-                 "B_renorm": pm.B, "Z": pm.Z, "T_K": pm.T_K, "alpha_ps2": pm.alpha_ps2,
+                 "B_renorm": pm.B, "B_mode": pm.B_mode, "Z": pm.Z, "T_K": pm.T_K, "alpha_ps2": pm.alpha_ps2,
                  "n_fine_steps": int(n_f), "dt_fine_fs": float(train.W / n_f * 1e6),
                  "window_ps": float(train.W * 1e3), "hom": info, "det_X_meV": float(plan.pulses[0].detuning_meV),
                  "gamma_down_centre_ns": float(gd[0]), "gamma_up_centre_ns": float(gu[0]),

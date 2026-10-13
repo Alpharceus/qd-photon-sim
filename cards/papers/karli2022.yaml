@@ -73,3 +73,4 @@ fits:
   - {param: setup.laser_leak, fitted_to: [g2_raw]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
+  - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_raw 0.185 -> 0.183, g2_corr 0.0154 -> 0.0135, inversion_theory 0.27 -> 0.33 (still fails vs 0.97); all verdicts unchanged; no expect or tolerance changed"}

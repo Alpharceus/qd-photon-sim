@@ -88,10 +88,11 @@ check("a needs_physics entry (test-registered throwaway, not shipped) carries a 
       THROWAWAY.status == "needs_physics" and THROWAWAY.reason and raises(
           NotImplementedError, THROWAWAY.plan, {}, EM, RT, contains=("awaiting physics", THROWAWAY.reason))[0])
 check("phonon drive ParamSpecs cover the brief ranges (phonon_assisted blue 0.8-1.3 meV incl. Thomas 0.58, 5-20 pi; "
-      "SUPER -3.5/-7.5 meV defaults)",
+      "SUPER Bracht Table 1 row 2 defaults -5.0/-13.56 meV, Piccinini -3.5/-7.5 meV inside the ranges)",
       (lambda pa, sp: pa.param("detuning_meV").lo <= 0.58 and pa.param("detuning_meV").hi >= 1.3
        and pa.param("area_pi").lo == 5 and pa.param("area_pi").hi == 20
-       and sp.param("delta1_meV").default == -3.5 and sp.param("delta2_meV").default == -7.5)(
+       and sp.param("delta1_meV").default == -5.0 and sp.param("delta2_meV").default == -13.56
+       and sp.param("delta1_meV").lo <= -3.5 <= sp.param("delta1_meV").hi and sp.param("delta2_meV").lo <= -7.5 <= sp.param("delta2_meV").hi)(
           entries["phonon_assisted"], entries["super"]))
 check("cw drives exclude per-pulse brightness; pulsed drives include it",
       not ({"B_first_lens", "B_fibre"} & (entries["cw_resonant"].observables | entries["electrical_cw"].observables))

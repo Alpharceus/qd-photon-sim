@@ -63,8 +63,6 @@ KNOWN_OPEN = [
     {"id": "F10c", "finding": 10, "desc": "UNCONFIRMED (found by this matrix): drive.p_shell.b_dark, drive.phonon_assisted.p_trion and drive.stark_gated_resonant.hom_gate_start_ps "
                                            "moved no output on any probe chain; the owner must confirm they are dead or name the context in compose_compat.yaml",
      "match": {"check": "dead_control", "param": ["drive.p_shell.b_dark", "drive.phonon_assisted.p_trion", "drive.stark_gated_resonant.hom_gate_start_ps"]}},
-    {"id": "F11", "finding": 11, "desc": "SUPER defaults (-3.5 / -7.5 meV, 5 pi / 5 pi) prepare about 1 % (purpose), g2 > 1 and V below its floor, no note",
-     "match": {"drive": "super", "check": ["purpose", "bounds", "prep_note"]}},
     {"id": "F11b", "finding": 11, "desc": "invariant of finding 11: a valid pulsed coherent run with eta_prep < 0.05 carries a note (stark_gated / dichromatic at poor-detuning materials do not)",
      "match": {"check": "prep_note"}},
 ]

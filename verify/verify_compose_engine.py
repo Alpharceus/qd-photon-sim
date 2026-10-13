@@ -1063,9 +1063,10 @@ def main():
                 "structure": {"kind": "bulk_planar", "params": {}}, "drive": {"kind": "super", "params": p},
                 "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
     s_bad = engine.evaluate_spec(super_spec(2.0, 2.0))["scalars"]
-    s_def = engine.evaluate_spec({**super_spec(42.0, 40.5), "drive": {"kind": "super", "params": {}}})["scalars"]
-    check("18q. SUPER at registry defaults prepares > 0.8 (Bracht 2021 theory ~0.97, Piccinini 2025 ~0.95 [V]); 2 pi / 2 pi areas prepare < 5 % and the run carries the note",
-          s_def["eta_prep"] > 0.8 and s_def["inversion"] > 0.8 and s_bad["eta_prep"] < 0.05
+    s_def = engine.evaluate_spec({**super_spec(13.06, 10.45), "drive": {"kind": "super", "params": {}}})["scalars"]
+    check("18q. SUPER at registry defaults (Bracht 2021 Table 1 row 2, polaron B none in the non-adiabatic regime) prepares eta_prep > 0.9 (Bracht exact theory 0.973 [V]; "
+          "eta_prep, not the window-end inversion, is the preparation measure); 2 pi / 2 pi areas prepare < 5 % and the run carries the note",
+          s_def["eta_prep"] > 0.9 and s_bad["eta_prep"] < 0.05
           and any("preparation probability" in n for n in s_bad["notes"]) and not any("preparation probability" in n for n in s_def["notes"]),
           f"default eta_prep {s_def['eta_prep']:.3f}, 2/2 pi eta_prep {s_bad['eta_prep']:.4f}")
 

@@ -6,7 +6,7 @@ meta:
   extraction: .workers/devlib/papers/piccinini2025.yaml
   read_level: V-full
   notes:
-    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans model g2 0.0036 to 26; the central value is 0.79. Read it as a vacuous envelope pass, not agreement."
+    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans model g2 0.0036 to 90; the central value is 6.8 (R2 SUPER, polaron B none). The paper inversion and g2 need the absolute areas, which are not derivable. Read it as a vacuous envelope pass, not agreement."
   summary: "GaAs/AlGaAs droplet QD (neutral X at 783.38 nm, XX binding 4.0 meV) in a low-Q micropillar (D 1.58 um), SUPER red-detuned pulses (-3.5, -7.5 meV), T 4 K: inversion ~95 percent, g2(0) 0.03"
 
 device:
@@ -27,8 +27,8 @@ device:
   drive:
     kind: super
     params:
-      delta1_meV: {value: -3.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta1 = -3.5 meV); paper convention Delta = omega_L - omega_X, red = negative"}
-      delta2_meV: {value: -7.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta2 = -7.5 meV); paper convention"}
+      delta1_meV: {value: -3.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta1 = -3.5 meV); paper convention Delta = omega_L - omega_X, red = negative; R2 note: -3.7 meV is the two-level X point of Fig 3 (F1), see delta2"}
+      delta2_meV: {value: -7.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta2 = -7.5 meV); paper convention; R2 note: -7.5 meV is the XX-mediated resonance (Fig 3, F2); the two-level X resonance is delta2 = -6.9 meV with delta1 = -3.7 meV"}
       shape: {value: rect, unit: "", tag: DR, where: "Methods Eq 4-5: square pulses with smooth corners (r = 10) centred at Delta_j"}
       fwhm1_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 0.923 h/(pi dE) = 2.53 ps"}
       fwhm2_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 2.53 ps (same laser, text p.2)"}
@@ -74,3 +74,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: structure -> bulk_planar (200 ps measured in pillar, no Purcell on top); tau_decay -> class C + fit on tau_bare_ns; fwhm1/2_ps -> 2.53 ps DR with rect shape (Methods Eq 4-5, 0.923 lambda^2/(pi c t_p)); area1/2_pi stay E ranges (Eq 6 needs the DBR field ratio F_j from ref 27, not given)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_SUPER expect pass -> pass-envelope: the paper value is inside the input envelope [0.0036, 26] only (central 0.789); an envelope of that width cannot discriminate, so it is no longer counted as a pass"}
+  - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_SUPER central 0.79 -> 6.8 (envelope [0.0036, 90], still pass-envelope), inversion_SUPER_pred 0.09 -> 0.028 (P item still passes); delta2 -7.5 meV noted as the XX-mediated F2 point; no expect or tolerance changed"}

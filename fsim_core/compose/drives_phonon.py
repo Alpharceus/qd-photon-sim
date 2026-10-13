@@ -116,29 +116,30 @@ SUPER = PlannedDrive(
             "(swing-up of the quantum emitter population). " + _PHONON_NOTE,
     params=(
         _GAUSS,
-        _P("delta1_meV", "meV", -3.5, lo=-6.0, hi=-1.0, tag="V",
-           source="Piccinini et al., arXiv:2510.21428 (2025), Fig 1 caption: SUPER pulses Delta1 = -3.5 meV [V]",
+        _P("delta1_meV", "meV", -5.0, lo=-12.0, hi=-1.0, tag="V",
+           source="Bracht et al., PRX Quantum 2, 040354 (2021), Table 1 row 2: Delta1 = -5.0 meV [V] (r2-super)",
            help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative). "
-                r"Default: Piccinini et al. 2025."),
-        _P("delta2_meV", "meV", -7.5, lo=-12.0, hi=-2.0, tag="V",
-           source="Piccinini et al., arXiv:2510.21428 (2025), Fig 1 caption: SUPER pulses Delta2 = -7.5 meV [V]",
-           help=r"Detuning $\Delta_2$ of pulse 2, paper convention. Default: Piccinini et al. 2025."),
-        _P("fwhm1_ps", "ps", 3.0, lo=2.0, hi=10.0, tag="E",
-           source="Piccinini et al. 2025 Methods: 2.53 ps pulses [DR from the quoted 0.48 meV bandwidth]; 3 ps default, the "
-                  "areas below were scanned at this width [E]",
-           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},1}$ of pulse 1. The swing-up areas below belong to 3 ps; they scale as "
-                r"$\propto 1/\tau_{\mathrm{FWHM}}$ at fixed peak Rabi energy."),
-        _P("fwhm2_ps", "ps", 3.0, lo=2.0, hi=10.0, tag="E",
-           source="Piccinini et al. 2025 Methods: 2.53 ps pulses [DR]; 3 ps default [E]",
-           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
-        _P("area1_pi", "pi", 42.0, lo=0.0, hi=60.0, tag="E",
-           source="swing-up scan of the engine at the Piccinini detunings, 3 ps Gaussian pulses, InAs/GaAs class phonons, 4 K: "
-                  "(42 pi, 40.5 pi) gives inversion 0.93 (R2 FIX-1a); the paper does not print absolute areas [E]",
+                r"Default: Bracht et al. 2021 Table 1 row 2. Piccinini et al. 2025 use -3.5 / -7.5 meV, which is their XX-mediated "
+                r"F2 point; their two-level X point is -3.7 / -6.9 meV (Fig. 3) [V]."),
+        _P("delta2_meV", "meV", -13.56, lo=-30.0, hi=-2.0, tag="V",
+           source="Bracht et al., PRX Quantum 2, 040354 (2021), Table 1 row 2: Delta2 = -13.56 meV [V] (Eq. 6 value -13.5624)",
+           help=r"Detuning $\Delta_2$ of pulse 2, paper convention. Default: Bracht et al. 2021 Table 1 row 2. The swing-up "
+                r"condition is Bracht Eq. 6, $\Delta_2 = \Delta_1 - \sqrt{\Omega_1(0)^2 + \Delta_1^2}$ with $\Omega_1(0)$ the "
+                r"peak Rabi energy of pulse 1."),
+        _P("fwhm1_ps", "ps", 2.58, lo=1.0, hi=15.0, tag="DR",
+           source="Bracht et al. 2021 Table 1 row 2: field width sigma = 1.55 ps [V]; intensity FWHM = 2 sigma sqrt(ln 2) = 2.581 ps [DR]",
+           help=r"Intensity FWHM $	au_{\mathrm{FWHM},1}$ of pulse 1 ($=2\sigma\sqrt{\ln 2}$ for the field width $\sigma$ Bracht quotes). "
+                r"At fixed peak Rabi energy the Gaussian area scales as $	au_{\mathrm{FWHM}}$ ($\Theta = \Omega_{\mathrm{pk}}\sigma\sqrt{2\pi}$)."),
+        _P("fwhm2_ps", "ps", 2.58, lo=1.0, hi=15.0, tag="DR",
+           source="Bracht et al. 2021 Table 1 row 2: sigma = 1.55 ps [V]; intensity FWHM 2.581 ps [DR]",
+           help=r"Intensity FWHM $	au_{\mathrm{FWHM},2}$ of pulse 2."),
+        _P("area1_pi", "pi", 13.06, lo=0.0, hi=60.0, tag="V",
+           source="Bracht et al. 2021 Table 1 row 2: alpha1 = 13.06 pi (area = int Omega dt, H = Omega/2 sigma_x) [V] (r2-super)",
            help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$. SUPER needs large areas (the peak Rabi energy must reach the "
-                r"detuning scale, here about 42$\pi$ for 3 ps) and the inversion oscillates quickly with both areas: scan them "
-                r"(Bracht et al., PRX Quantum 2, 040354 (2021): the swing-up resonance is a narrow condition)."),
-        _P("area2_pi", "pi", 40.5, lo=0.0, hi=60.0, tag="E",
-           source="same scan as area1_pi [E]",
+                r"detuning scale) and the inversion is a narrow resonance in both areas, about $0.5\pi$ wide: use Bracht Eq. 6 "
+                r"to set $\Delta_2$ and expect to tune the areas to that precision (Bracht et al., PRX Quantum 2, 040354 (2021))."),
+        _P("area2_pi", "pi", 10.45, lo=0.0, hi=60.0, tag="V",
+           source="Bracht et al. 2021 Table 1 row 2: alpha2 = 10.45 pi [V] (r2-super)",
            help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$ (see pulse 1)."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
