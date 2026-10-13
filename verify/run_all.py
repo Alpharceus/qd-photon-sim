@@ -135,6 +135,8 @@ def main(argv):
         record(p.name, counts, dt, status)
         if status != "ok":
             print("    last output: " + " | ".join(l.strip() for l in out.strip().splitlines()[-3:])[:400], flush=True)
+            for fl in [l.strip() for l in out.splitlines() if l.lstrip().startswith(("FAIL", "[FAIL"))][:12]:
+                print("    " + fl[:300], flush=True)
     if not fast and cjs:
         try:
             proc, url, senv, tmp = start_server(port)
@@ -151,6 +153,8 @@ def main(argv):
                     record(p.name, counts, dt, status)
                     if status != "ok":
                         print("    last output: " + " | ".join(l.strip() for l in out.strip().splitlines()[-3:])[:400], flush=True)
+                        for fl in [l.strip() for l in out.splitlines() if l.lstrip().startswith(("FAIL", "[FAIL"))][:12]:
+                            print("    " + fl[:300], flush=True)
             finally:
                 kill_tree(proc.pid)
                 for d in tmp:

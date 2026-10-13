@@ -5,20 +5,19 @@
 # (.workers/devlib/r2-band-offsets-check.md): the V01 table and section numbers cited here were re-checked against the full text
 # and are correct. A [V] leaf is `checked: true` (with `checked_against`) only where a primary source was read directly: the V01
 # tables for the III-V gaps, Wei and Zunger 1998 Table I for CdSe/ZnSe dE_v. User PDFs read directly 2026-10-13 (Corrections (user PDFs) in
-# r2-band-offsets-answer.md): VM03 Tables I, III, IV, Madelung Sec. 3.14 for the ZnSe gap. The CsPbBr3 masses stay `checked: false` (SI absent). Tags are never upgraded.
+# r2-band-offsets-answer.md): VM03 Tables I, III, IV, Madelung Sec. 3.14 for the ZnSe gap. The CsPbBr3 masses stay `checked: false` (SI absent). Tags are never upgraded. Second batch of user PDFs read 2026-10-13 (Grundmann 1995, Stier 1999, Paul 2017, Yang 2017, Katnani and Margaritondo 1983; sections H of r2-band-offsets-check.md and the matching section of r2-band-offsets-answer.md): InAs/GaAs in-dot dE_c 450 meV is now [V] (Grundmann p. 11977); the in-dot E_g and dE_v are NOT given by either paper and stay [E]; the CsPbBr3 gap 2.342 eV is now [V] (Yang Table 1); Paul 2017 does NOT support In0.15, so the C-band row now uses the paper cap In0.247Ga0.753As (24.7 %, [V]) with offsets re-derived; the CdSe/ZnSe dE_v 70 meV keeps WZ98 and gains Katnani and Margaritondo as a second, indirect source.
 # Variants: unstr = bulk dot, strained = fully pseudomorphic 2D limit, indot = in-dot interior estimate. A variant that lists
 # Eg_dot, dE_c and dE_v is closed: dE_c + dE_v + Eg_dot = Eg_barrier within 5 meV (verify_compose_materials.py). Offsets in meV.
 schema: fsim-band-offsets/1
 note: 'Display-only literature band offsets at 0-10 K. Checked 2026-10-13 against primary sources read directly: V01 (Vurgaftman et al. 2001) Tables I, III, VI for the GaAs, InAs, InP gaps (the V01 table and section numbers cited here are correct; the AlGaAs, GaInAs, GaInP bowing and the InAs/GaAs and InAs/InP offsets of V01 Tables XII, XIII, XV and Sec. VI.C reproduce the [DR] numbers), and Wei and Zunger 1998 Table I for the CdSe/ZnSe valence offset (0.07 eV). Not checked (checked: false): VM03 nitride values (matched only secondary reproductions), the ZnSe gap, the CsPbBr3 masses, and every [E] estimate. Tags are never upgraded. User PDFs 2026-10-13: VM03 read directly (Table I gaps GaN 3.510, AlN 6.25, InN 0.78; Table III GaInN bowing 1.4; Table IV VBO GaN/AlN 0.85 corrected from 0.8, InN/GaN 0.50) and Madelung Sec. 3.14 (ZnSe 2.8222 eV at 6 K); the Protesescu PDF lacks the SI so the CsPbBr3 masses stay unchecked; Pryor 1997 read, its unstrained InP/GaInP VBO has the opposite sign to the V01-derived value.'
 unverified_pending:
 - 'VM03, J. Appl. Phys. 94, 3675 (2003), DOI 10.1063/1.1600519: wz GaN/AlN/InN hole masses (the paper lists only A1-A6 parameters, no scalar mass; the 1.1 m0 class estimate is unverified). Gaps, VBOs and the InGaN bowing are now checked'
-- 'Madelung, Semiconductors: Data Handbook, 3rd ed. (Springer, 2004): a low-T zb CdSe band gap (the handbook gives 1.74 eV at 300 K and the 1S exciton 1.757 eV at 0 K only; the 1.76 eV [E] leaf stays an estimate)'
-- 'Protesescu et al., Nano Lett. 15, 3692 (2015), Supporting Information (Tables S2, S3; absent from the user PDF): the numeric CsPbBr3 m_e and m_h (the main text has only a_B = 3.5 nm and E_b = 40 meV, both confirmed)'
-- 'Grundmann, Stier, Bimberg, Phys. Rev. B 52, 11969 (1995), and Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999): the in-dot InAs/GaAs band edges (0.85 eV, 450, 220 meV)'
-- 'Paul et al., Appl. Phys. Lett. 111, 033102 (2017): the In0.15Ga0.85As alloy choice'
-- 'Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), arXiv:cond-mat/9705291: read 2026-10-13; it has no CuPt-ordering statement (the ordering shift of up to ~0.1 eV is unsourced) and its unstrained InP/GaInP VBO (-45 meV) conflicts in sign with the V01-derived +168 meV; a primary for the V01 GaP/InP VBO question is still needed'
-- 'Yang et al., 2017 (CsPbBr3 magneto-absorption), reached only through arXiv:2004.05093 Table II: the primary for the 2.342 eV gap and mu = 0.126'
-- 'A primary source for a CdSe/ZnSe offset range of 0.1-0.3 eV (none identified; the class range is dropped, Wei and Zunger 1998 gives 0.07 eV)'
+- 'Protesescu et al., Nano Lett. 15, 3692 (2015), Supporting Information (Tables S2, S3; absent from the user PDF): the numeric CsPbBr3 m_e and m_h (the main text has only a_B = 3.5 nm and E_b = 40 meV, both confirmed). Yang et al. 2017 gives only mu = 0.126 +/- 0.01 (no individual masses; its k.p trend formula assumes equal masses, i.e. 0.252 each, an assumption not a measurement), so the 0.15/0.14 split is unsourced and kept'
+- 'Grundmann, Stier, Bimberg, PRB 52, 11969 (1995), and Stier, Grundmann, Bimberg, PRB 59, 5688 (1999), read 2026-10-13: the in-dot dE_c 450 meV is confirmed (Grundmann p. 11977); neither paper gives an in-dot band gap or valence-band offset (only ground-state levels, bulk offsets and strain), so the in-dot E_g,dot 0.85 eV and dE_v 220 meV remain [E] estimates that close with the 450 meV'
+- 'Paul et al., Appl. Phys. Lett. 111, 033102 (2017), read 2026-10-13: resolved by switching the inas_ingaas_metamorphic_cband barrier from In0.15 to the capping layer In0.247Ga0.753As (24.7 %, [V]); the offsets are [DR] V01 re-derivations at x = 0.247. Remaining: the dots sit on the top of a 0-36.7 % In graded buffer (below the dot), so the strain reference of the dot is the buffer top, not the cap; only the cap is modelled here (display-only)'
+- 'Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), arXiv:cond-mat/9705291: read 2026-10-13; it has no CuPt-ordering statement (the ordering shift of up to ~0.1 eV is unsourced) and its unstrained InP/GaInP VBO (-45 meV) conflicts in sign with the V01-derived +168 meV (D2 follows Pryor); a primary for the V01 GaP/InP VBO question is still needed'
+- 'CdSe/ZnSe dE_v 130 meV: Woerz, Hampel, Flierl, Gebhardt, Acta Phys. Pol. A 90, 1113 (1996) is a conference proceeding with +/-0.07 eV and does not state the measurement temperature or the strain state of the 70-shuttercycle CdSe layer; the quantum-well fit it cites (Lankes et al., J. Cryst. Growth 159, 480 (1996), 0.17 +/- 0.01 eV) was not supplied. The Woerz CdSe/ZnSe direction is printed +0.12 in the text and -0.13 in the abstract (sign typo); the leaf uses 0.13 (ZnSe/CdSe direction)'
+- 'zb CdSe low-T gap: resolved by Shan, Song, Luo, Furdyna, PRB 50, 8012 (1994): E_g(0) = 1.766 +/- 0.003 eV (photoreflectance, 10-295 K, Varshni fit, MBE zb CdSe on ZnTe/GaAs(100), strain relaxed); the Madelung handbook still has no low-T zb CdSe gap'
 materials:
   cdse_znse:
     dot: CdSe (zb)
@@ -38,22 +37,24 @@ materials:
     variants:
       unstr:
         Eg_dot:
-          value: 1.76
+          value: 1.766
           unit: eV
-          tag: E
-          where: 'zb CdSe: Madelung 2004 Sec. 3.18 p. 228 gives E_g,dir (E0) 1.74 eV at 300 K (ellipsometry) and the 1S exciton 1.757(5) eV extrapolated to 0 K (absorption); the handbook has no zb CdSe gap value at low T itself, so 1.76 stays [E] (checked 2026-10-13); table row 1'
+          tag: V
+          checked: true
+          checked_against: Shan, Song, Luo, Furdyna, Phys. Rev. B 50, 8012 (1994), Eq. (3) fit E_0(T) = 1.766 - 6.96e-4 T^2/(281+T) eV, E_0(0) = 1.766 +/- 0.003 eV, p. 8014-8015; read directly from the user PDF 2026-10-13
+          where: 'zb CdSe, band-to-band E_g at 0 K from photoreflectance on a MBE zb CdSe epilayer (ZnTe buffer on GaAs(100)), 10 K to 295 K, strain relaxed in the layer; the excitonic feature is 1.752 eV at 10 K and a 13 meV free-exciton binding energy is added (Varshni a = 6.96e-4 eV/K, b = 281 K, E_g = 1.661 eV at 295 K); consistent with the Madelung 1S exciton 1.757 eV (was 1.76 eV [E]); table row 1'
         dE_c:
-          value: 990
+          value: 924
           unit: meV
           tag: DR
-          where: (E_g,bar - E_g,dot) - dE_v = (2.82 - 1.76) - 0.07 eV; inherits the [E] estimate of E_g,dot; table row 1 (was 850 meV [E])
+          where: (E_g,bar - E_g,dot) - dE_v = (2822.2 - 1766) - 130 meV with the stored 2.82 eV barrier gap (2820 - 1766 - 130 = 924); inherits the Shan gap and the Woerz offset (was 990 meV with 1.76 eV and 70 meV; 850 meV [E] before WZ98); table row 1
         dE_v:
-          value: 70
+          value: 130
           unit: meV
           tag: V
           checked: true
-          checked_against: Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998), Table I p. 2012 (II-VI, Se, Zn/Cd = 0.07 eV), read directly 2026-10-13
-          where: E_v(CdSe) above E_v(ZnSe) by 0.07 eV, the parenthesised table value (deduced by transitivity); a calculated natural offset, uncertainty about 0.05 eV (was 210 meV [E], which had no source)
+          checked_against: Woerz, Hampel, Flierl, Gebhardt, Acta Phys. Pol. A 90, 1113 (1996), Sec. 2.3 p. 1116 and Fig. 3, delta E_v(ZnSe/CdSe) = -(0.13 +/- 0.07) eV (CdSe valence band above ZnSe), read from the page images of the user PDF 2026-10-13
+          where: 'DIRECT interface measurement, in-situ synchrotron photoelectron spectroscopy during MBE/ALE growth of zb ZnSe and CdSe layers on GaAs(001), both growth orders: ZnSe on CdSe -(0.13 +/- 0.07) eV, CdSe on ZnSe +(0.12 +/- 0.07) eV (commutativity confirmed; the abstract prints -0.13 for the second direction, a sign typo against Sec. 2.3), band-bending corrected from the Se 3d shifts. Crystal phase zb. Not stated: the measurement temperature (in-situ UPS, taken as room temperature) and the strain state of the 70-shuttercycle CdSe layer. Supporting sources, both within the +/-0.07 eV: Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998), Table I p. 2012 (II-VI, Se, Zn/Cd), theory 0.07 eV (deduced by transitivity, uncertainty about 0.05 eV; was the primary, checked 2026-10-13); Katnani and Margaritondo, PRB 28, 1944 (1983), photoemission discontinuities against Ge and Si overlayers (Table II, +/-0.1 eV: CdSe-Ge 1.30, ZnSe-Ge 1.40, CdSe-Si 1.20, ZnSe-Si 1.25 eV; Table V positions rel. Ge: CdSe -1.33, ZnSe -1.41 eV) gives by transitivity [DR] +0.10 (Ge path), +0.05 (Si path), +0.08 eV (Table V), error about +/-0.14 eV per path, method accuracy 0.15-0.2 eV. The Katnani numbers are an INDIRECT transitivity estimate through two Ge/Si overlayer interfaces on separate room-temperature substrates, not a direct CdSe/ZnSe interface measurement (the paper itself finds commutativity deviations of 0.1-0.15 eV on average and 0.32-0.54 eV reported for ZnSe-Ge). Woerz cites an optical quantum-well result of 0.17 +/- 0.01 eV (Lankes, J. Cryst. Growth 159, 480 (1996)), not supplied. The Woerz value 130 differs from WZ98 70 by 0.86 sigma of the stated error, so it does not contradict it beyond error; the measurement is adopted as primary (was 70 meV [V] WZ98, 210 meV [E] before)'
       strained:
         Eg_dot:
           value: 2.0
@@ -73,7 +74,10 @@ materials:
         where: class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
     sources:
     - 'Madelung, Semiconductors: Data Handbook, 3rd ed. (Springer, 2004)'
-    - Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998)
+    - Woerz, Hampel, Flierl, Gebhardt, Acta Phys. Pol. A 90, 1113 (1996), direct PES valence offset 0.13 +/- 0.07 eV (primary for dE_v)
+    - Shan, Song, Luo, Furdyna, Phys. Rev. B 50, 8012 (1994), zb CdSe E_g(0) = 1.766 eV
+    - Wei and Zunger, Appl. Phys. Lett. 72, 2011 (1998), theory 0.07 eV (supporting)
+    - 'Katnani and Margaritondo, Phys. Rev. B 28, 1944 (1983): Tables II and V, indirect transitivity estimate +0.05 to +0.10 eV for E_v(CdSe) above E_v(ZnSe) (supporting, not a direct measurement)'
   cspbbr3_colloidal:
     dot: CsPbBr3 NC
     barrier: ligand shell / glass
@@ -92,8 +96,10 @@ materials:
         Eg_dot:
           value: 2.342
           unit: eV
-          tag: E
-          where: orthorhombic bulk, low T, 2.342 eV (Yang et al. magneto-absorption, via arXiv:2004.05093 Table II; literature values scatter by about 12 meV); NC PL 2.35-2.45 eV; table row 2 (was 2.33 eV)
+          tag: V
+          checked: true
+          checked_against: Yang et al., ACS Energy Lett. 2, 1621 (2017), Table 1 p. 1624 (CsPbBr3, orthorhombic, 2 K, E_g = 2342 meV), read directly from the user PDF 2026-10-13
+          where: orthorhombic bulk, 2 K, 2.342 eV (Yang et al. Table 1, fit of the Landau fan chart; R* = 33 +/- 1 meV, mu = 0.126 +/- 0.01 m0, eps_eff 7.3); the 1s minimum is at 2313 meV; literature values scatter by about 12 meV; NC PL 2.35-2.45 eV; table row 2 (was 2.33 eV, then [E] via arXiv:2004.05093)
         dE_c:
           value: 2000
           unit: meV
@@ -110,13 +116,13 @@ materials:
         unit: m0
         tag: V
         checked: false
-        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 +/- 0.01 (Yang et al. 2017 Table 1, read 2026-10-13) is 1.7x the 0.0724 implied by 0.15/0.14. Yang gives no individual m_e, m_h; only its two-band k.p trend (eq 3) assumes equal masses (0.252 each for mu = 0.126), an assumption for the trend and not a measured split, so it is no basis for replacing 0.15/0.14. Kept as is (unsourced, checked: false; treat as [E] class estimate); Yang E_b 33 meV vs Protesescu 40 meV also differ'
       m_h:
         value: 0.14
         unit: m0
         tag: V
         checked: false
-        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 (Yang et al.) is 1.7x the 0.0724 implied by 0.15/0.14'
+        where: 'Protesescu et al., Nano Lett. 15, 3692 (2015): m_e = 0.15, m_h = 0.14. User PDF read 2026-10-13: it is the 5-page main text only, the Supporting Information is NOT included. Journal p. 3694 gives the effective Bohr diameter 7 nm (a_B = 3.5 nm) and E_b = 40 meV for CsPbBr3 (both confirmed) and says the masses were estimated from the DFT band dispersion (Tables S2, S3 in the SI), but states no numeric mass, so these stay unchecked. An independent mu = 0.126 +/- 0.01 (Yang et al. 2017 Table 1, read 2026-10-13) is 1.7x the 0.0724 implied by 0.15/0.14. Yang gives no individual m_e, m_h; only its two-band k.p trend (eq 3) assumes equal masses (0.252 each for mu = 0.126), an assumption for the trend and not a measured split, so it is no basis for replacing 0.15/0.14. Kept as is (unsourced, checked: false; treat as [E] class estimate); Yang E_b 33 meV vs Protesescu 40 meV also differ'
     sources:
     - Protesescu et al., Nano Lett. 15, 3692 (2015)
   gaas_algaas_droplet:
@@ -275,17 +281,19 @@ materials:
           value: 0.85
           unit: eV
           tag: E
-          where: in-dot interior, Grundmann, Stier, Bimberg, Phys. Rev. B 52, 11969 (1995); Stier 1999
+          where: 'in-dot interior estimate. Checked 2026-10-13 against Grundmann 1995 and Stier 1999: neither paper gives an in-dot band gap (only ground-state levels, Fig. 10), so this stays an [E] estimate; it closes with dE_c 450 [V] and dE_v 220 [E] (0.85 + 0.45 + 0.22 = 1.52 eV)'
         dE_c:
           value: 450
           unit: meV
-          tag: E
-          where: in-dot class value, Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999)
+          tag: V
+          checked: true
+          checked_against: Grundmann, Stier, Bimberg, PRB 52, 11969 (1995), p. 11977 (Sec. IV A, text), electron confinement potential V_0 = -450 meV, the average over the QD; read directly from the user PDF 2026-10-13
+          where: 'Grundmann 1995 p. 11977, V_0 = 450 meV for electrons, averaged over the QD including the strain shift (in the spherical approximation; cf. Fig. 9, potential range about 200-450 meV). Cross-checks, not leaf values - unstrained bulk offsets: Grundmann Q_0 = 85 % with Table I gaps 1.519/0.41 gives dE_c 943, dE_v 166 meV; Stier 1999 lineup A dE_v 186 meV (Ec/Eg 0.83), lineup B 264 meV (0.76); Grundmann Fig. 10 (12 nm dot) lists ground-state levels e0 = -183, h0 = -253 meV (transition 1.083 eV), not band edges'
         dE_v:
           value: 220
           unit: meV
           tag: E
-          where: in-dot class value, Stier 1999
+          where: 'in-dot class value; NOT given by Grundmann 1995 or Stier 1999 (checked 2026-10-13: they give bulk dE_v 166 / 186 / 264 meV and in-dot hole levels, no in-dot VB offset), so it stays an [E] estimate that closes with dE_c 450 [V] and E_g,dot 0.85 [E]'
     masses:
       m_e:
         value: 0.04
@@ -303,17 +311,24 @@ materials:
     - Stier, Grundmann, Bimberg, Phys. Rev. B 59, 5688 (1999)
   inas_ingaas_metamorphic_cband:
     dot: InAs
-    barrier: In0.15Ga0.85As
+    barrier: In0.247Ga0.753As
+    barrier_x:
+      value: 0.247
+      unit: In fraction
+      tag: V
+      checked: true
+      checked_against: 'Paul et al., Appl. Phys. Lett. 111, 033102 (2017), p. 033102-2 (XRD: the indium content of the InGaAs cap layer is 24.7 %), read directly from the user PDF 2026-10-13'
+      where: Paul 2017 p. 033102-2, cap layer In0.247Ga0.753As (24.7 %). The InAs dots sit on the top of a metamorphic InGaAs buffer graded linearly from 0 to 36.7 % In (XRD, 1080 nm, then a 220 nm cavity layer), so the dots lie on the 36.7 % buffer top and are capped by the 24.7 % layer; only the cap is modelled as the barrier. QD PL 1540 nm, WL 1245 nm (confinement 190 meV). Was In0.15Ga0.85As, which is not in the paper
     type: I
     flags:
       polar: false
       type2_risk: false
       hard_wall: false
     Eg_barrier:
-      value: 1.293
+      value: 1.158
       unit: eV
       tag: DR
-      where: V01 Sec. IV GaInAs bowing (E_g 0.477, VBO -0.38) at x = 0.15; x = 0.25 gives 1.154 eV; Paul et al., Appl. Phys. Lett. 111, 033102 (2017) for the alloy choice
+      where: 'V01 Sec. IV GaInAs bowing (E_g 0.477, VBO -0.38) at x = 0.247 (Paul 2017 cap, see barrier_x): 1.519 x 0.753 + 0.417 x 0.247 - 0.477 x 0.247 x 0.753 = 1.1581 eV (stored 1.158); re-derived 2026-10-13 from x = 0.15 (was 1.293 eV)'
     variants:
       unstr:
         Eg_dot:
@@ -324,31 +339,31 @@ materials:
           checked_against: V01 Table III p. 5826 (InAs E_g(Gamma, 0 K) = 0.417 eV), read directly 2026-10-13
           where: V01 Table III (InAs)
         dE_c:
-          value: 746
+          value: 654
           unit: meV
           tag: DR
-          where: '(E_g,bar - E_g,dot) - dE_v; x = 0.25: 651'
+          where: '(E_g,bar - E_g,dot) - dE_v = (1158.1 - 417) - 87.5 meV at x = 0.247 (was 746 at x = 0.15)'
         dE_v:
-          value: 130
+          value: 87
           unit: meV
           tag: DR
-          where: 'VBO difference; x = 0.25: 86'
+          where: 'VBO difference at x = 0.247: VBO(x) = -0.80 (1-x) - 0.59 x + 0.38 x (1-x) = -0.6775 eV, InAs -0.59, so 87.5 meV (V01 Sec. IV GaInAs VBO bowing; was 130 at x = 0.15)'
       strained:
         Eg_dot:
-          value: 0.52
+          value: 0.507
           unit: eV
           tag: DR
-          where: 'biaxial strain, V01 deformation potentials; x = 0.25: 0.51'
+          where: 'biaxial strain on the x = 0.247 barrier lattice (5.7534 A, eps_par = -5.03 %, eps_perp = +5.47 %, eps_h = -4.60 %), V01 deformation potentials a_c -5.08, a_v -1.00, b -1.8, C12/C11 = 0.5434: CB +0.2335, HH +0.1431 eV, E_g 0.5074 eV (was 0.52 at x = 0.15)'
         dE_c:
-          value: 482
+          value: 420
           unit: meV
           tag: DR
-          where: 'x = 0.25: 418'
+          where: 'unstrained dE_c less the CB shift: 653.6 - 233.5 = 420 meV (was 482 at x = 0.15)'
         dE_v:
-          value: 291
+          value: 231
           unit: meV
           tag: DR
-          where: 'heavy-hole offset; x = 0.25: 228'
+          where: 'heavy-hole offset: 87.5 + 143.1 = 231 meV (was 291 at x = 0.15)'
     masses:
       m_e:
         value: 0.04
@@ -362,7 +377,7 @@ materials:
         where: InAs-class 0.04 / 0.33 reused from row 5; class estimate for the inverse-mass level split; the masses of this row are not in the Fable table [E]
     sources:
     - Vurgaftman, Meyer, Ram-Mohan, J. Appl. Phys. 89, 5815 (2001), Tables I, III, Sec. IV
-    - Paul et al., Appl. Phys. Lett. 111, 033102 (2017)
+    - 'Paul et al., Appl. Phys. Lett. 111, 033102 (2017), p. 033102-2: cap In0.247Ga0.753As (24.7 %), dots on a buffer graded 0-36.7 % In'
   inas_inp_cband:
     dot: InAs
     barrier: InP

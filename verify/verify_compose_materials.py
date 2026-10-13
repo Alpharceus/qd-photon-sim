@@ -268,20 +268,35 @@ check("band block: every [V] value carries a boolean `checked`; checked: true on
       all((isinstance(l_.get("checked"), bool) if l_["tag"] == "V" else "checked" not in l_)
           and (l_.get("checked") is not True or str(l_.get("checked_against", "")).strip()) for _, _, l_ in _lf))
 _true = sorted((k_, p_) for k_, p_, l_ in _lf if l_.get("checked") is True)
-check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves, the WZ98 CdSe/ZnSe dE_v, the Madelung ZnSe gap and the Pryor InP/GaInP dE_v and the 4 VM03 leaves (GaN/AlN gaps, AlN/GaN dE_v, InGaN barrier) are checked: true; the CsPbBr3 masses stay false (Protesescu SI absent)",
+check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves, the WZ98 CdSe/ZnSe dE_v, the Madelung ZnSe gap and the Pryor InP/GaInP dE_v and the 4 VM03 leaves (GaN/AlN gaps, AlN/GaN dE_v, InGaN barrier), the Grundmann 1995 in-dot dE_c the Yang 2017 CsPbBr3 gap and the Shan 1994 zb CdSe gap are checked: true; the CsPbBr3 masses stay false (Protesescu SI absent)",
       _true == sorted([("gaas_algaas_droplet", "unstr.Eg_dot"), ("inas_gaas_sk", "Eg_barrier"), ("inas_gaas_sk", "unstr.Eg_dot"),
                        ("inas_ingaas_metamorphic_cband", "unstr.Eg_dot"), ("inas_inp_cband", "Eg_barrier"), ("inas_inp_cband", "unstr.Eg_dot"),
                        ("ingaas_gaas", "Eg_barrier"), ("inp_gainp_red", "unstr.Eg_dot"), ("inp_gainp_red", "unstr.dE_v"), ("cdse_znse", "unstr.dE_v"),
                        ("cdse_znse", "Eg_barrier"), ("gan_aln", "Eg_barrier"), ("gan_aln", "unstr.Eg_dot"), ("gan_aln", "unstr.dE_v"),
-                       ("ingan_gan", "Eg_barrier")])
-      and all(l_["checked"] is False for k_, p_, l_ in _lf if k_ == "cspbbr3_colloidal" and l_["tag"] == "V"), str(_true))
+                       ("ingan_gan", "Eg_barrier"), ("inas_gaas_sk", "indot.dE_c"), ("cspbbr3_colloidal", "unstr.Eg_dot"), ("cdse_znse", "unstr.Eg_dot")])
+      and all(l_["checked"] is False for k_, p_, l_ in _lf if k_ == "cspbbr3_colloidal" and p_.startswith("masses")), str(_true))
 _cd = _bands["cdse_znse"]["variants"]["unstr"]
 _ip = _bands["inp_gainp_red"]["variants"]["strained"]
-check("band block 2026-10-13 corrections: CdSe/ZnSe dE_v 70 [V] / dE_c 990 [DR] (WZ98), CsPbBr3 E_g 2.342 / barrier 5.842, InP/GaInP strained 1.48 / 437 / 90 (D2, Pryor -45 meV unstrained)",
-      (_cd["dE_v"]["value"], _cd["dE_v"]["tag"], _cd["dE_c"]["value"], _cd["dE_c"]["tag"]) == (70, "V", 990, "DR")
+check("band block 2026-10-13 corrections: CdSe/ZnSe dE_v 130 [V] / dE_c 924 [DR] (Woerz 1996 and Shan 1994, superseding WZ98 70 / 990), CsPbBr3 E_g 2.342 / barrier 5.842, InP/GaInP strained 1.48 / 437 / 90 (D2, Pryor -45 meV unstrained)",
+      (_cd["dE_v"]["value"], _cd["dE_v"]["tag"], _cd["dE_c"]["value"], _cd["dE_c"]["tag"]) == (130, "V", 924, "DR")
       and (_bands["cspbbr3_colloidal"]["variants"]["unstr"]["Eg_dot"]["value"], _bands["cspbbr3_colloidal"]["Eg_barrier"]["value"]) == (2.342, 5.842)
       and (_ip["Eg_dot"]["value"], _ip["dE_c"]["value"], _ip["dE_v"]["value"]) == (1.48, 437, 90))
 _iu = _bands["inp_gainp_red"]["variants"]["unstr"]
+_ind = _bands["inas_gaas_sk"]["variants"]["indot"]
+_yy = _bands["cspbbr3_colloidal"]["variants"]["unstr"]["Eg_dot"]
+check("band block 2026-10-13 second batch: InAs/GaAs in-dot dE_c 450 [V, checked, Grundmann 1995 p. 11977]; in-dot E_g 0.85 and dE_v 220 stay [E] (not in Grundmann or Stier); CsPbBr3 gap 2.342 [V, checked, Yang Table 1]; CsPbBr3 masses 0.15/0.14 unchanged; CdSe/ZnSe dE_v 130 [V, Woerz 1996 direct PES] with WZ98 and Katnani as supporting, E_g,dot 1.766 [V, Shan 1994]; Paul 2017 cap In0.247Ga0.753As [V, checked] with re-derived offsets 1.158 / 654 / 87 (strained 0.507 / 420 / 231)",
+      (_ind["dE_c"]["value"], _ind["dE_c"]["tag"], _ind["dE_c"]["checked"]) == (450, "V", True) and "Grundmann" in _ind["dE_c"]["checked_against"]
+      and (_ind["Eg_dot"]["tag"], _ind["dE_v"]["tag"]) == ("E", "E")
+      and (_yy["value"], _yy["tag"], _yy["checked"]) == (2.342, "V", True) and "Yang" in _yy["checked_against"]
+      and (_bands["cspbbr3_colloidal"]["masses"]["m_e"]["value"], _bands["cspbbr3_colloidal"]["masses"]["m_h"]["value"]) == (0.15, 0.14)
+      and _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["value"] == 130 and "Woerz" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["checked_against"] and "Katnani" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["where"] and "Wei and Zunger" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["where"]
+      and (_bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["value"], _bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["tag"], _bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["checked"]) == (1.766, "V", True)
+      and any("Katnani" in x_ for x_ in _bands["cdse_znse"]["sources"])
+      and (_bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["value"], _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["tag"], _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["checked"]) == (0.247, "V", True)
+      and "Paul" in _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["checked_against"]
+      and _bands["inas_ingaas_metamorphic_cband"]["Eg_barrier"]["value"] == 1.158
+      and tuple(_bands["inas_ingaas_metamorphic_cband"]["variants"]["unstr"][q_]["value"] for q_ in ("dE_c", "dE_v")) == (654, 87)
+      and tuple(_bands["inas_ingaas_metamorphic_cband"]["variants"]["strained"][q_]["value"] for q_ in ("Eg_dot", "dE_c", "dE_v")) == (0.507, 420, 231))
 check("band block D2: InP/GaInP unstrained dE_v -45 meV [V, checked, Pryor 1997 Sec. IV], dE_c 628 [DR], barrier gap stays 2.007; type_2 flag kept; sources note V01 +168 superseded",
       (_iu["dE_v"]["value"], _iu["dE_v"]["tag"], _iu["dE_v"]["checked"], _iu["dE_c"]["value"]) == (-45, "V", True, 628)
       and "Pryor" in _iu["dE_v"]["checked_against"] and _bands["inp_gainp_red"]["Eg_barrier"]["value"] == 2.007
