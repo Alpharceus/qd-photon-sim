@@ -12,7 +12,7 @@ import { fieldRow } from "./fieldRow.js";
 import { tagChip, normTag } from "./tagChip.js";
 import { isNum } from "./format.js";
 import { paramLabelNode } from "./readout.js";
-import { symbolText, richPlain } from "./math.js";
+import { symbolText, richPlain, registryText } from "./math.js";
 import { displayUnit } from "./units.js";
 
 const TAGS = ["V", "DR", "E", "A"];
@@ -41,7 +41,7 @@ function visibleNow(p, params, specs) {
     if (!dep) return true;
     const cur = readLeaf(dep, params[name]);
     const v = cur.kind === "range" ? null : cur.value;
-    return (allowed || []).some((a) => String(a) === String(v));
+    return [].concat(allowed ?? []).some((a) => String(a) === String(v));   // the registry sends a bare value ("direct") or a list
   });
 }
 
@@ -154,7 +154,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     item.append(row,
       h("div.pf-foot",
         p.help ? h("p.pf-help", p.help) : null,
-        h("p.pf-src", { title: leaf.source || "" }, leaf.explicit ? "your value" : `default: ${leaf.source || "no source recorded"}`),
+        h("p.pf-src", { title: leaf.source || "" }, leaf.explicit ? "your value" : registryText(`default: ${leaf.source || "no source recorded"}`)),
         reset));
     return item;
   }

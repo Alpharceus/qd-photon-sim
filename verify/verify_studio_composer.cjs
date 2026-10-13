@@ -458,6 +458,53 @@ async function waitRun(page, timeout = 120000) {
         await page.screenshot({ path: path.join(SHOTS, "composer-open-cavity.png") });
       }
     }
+    // ---------------------------------------------------------------- ui3 / audit 17: formula captions come from the engine (scalars.captions)
+    {
+      const whyOf = async (key) => {
+        await page.click(`.ws-compose .readout[data-readout="${key}"] .ro-why`);
+        await page.waitForSelector(".popover .why-lede", { timeout: 5000 });
+        const r = await page.$eval(".popover .why-lede", (e) => ({ text: (() => { const c = e.cloneNode(true); c.querySelectorAll(".katex-mathml").forEach((x) => x.remove()); return c.textContent; })(), tex: [...e.querySelectorAll(".math[data-tex]")].map((m) => m.dataset.tex) }));
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
+        return r;
+      };
+      const runHere = async () => {
+        await page.waitForFunction(() => !document.querySelector(".ws-compose .run-key")?.disabled, null, { timeout: 60000 });
+        await page.click(".ws-compose .run-key");
+        return waitRun(page);
+      };
+      const hasFrep = (r) => r.tex.some((t) => /^f_\{\\mathrm\{rep\}\}$/.test(t));
+      await pickExample(page, "example-open-cavity-jc");
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+      const stJc = await runHere();
+      const jcTau = await whyOf("tau_ps");
+      const jcFlat = jcTau.text.replace(/\s+/g, " ");
+      check("JC example: the lifetime caption is the engine's JC text (slowest Liouvillian decay), not the plain '1/(Gamma + k_nr)'",
+        stJc === "done" && /slowest decay time/.test(jcFlat) && /Liouvillian/.test(jcFlat) && !/Purcell lifetime/.test(jcFlat) && /\bNOT\b/.test(jcFlat), `${stJc}; ${jcFlat.slice(0, 260)}`);
+      check("JC lifetime caption is typeset (tau as a symbol, no 'tau =' ASCII)", jcTau.tex.some((t) => t === "\\tau") && !/\btau\b/.test(jcTau.text), jcTau.tex.join(" | "));
+      await pickExample(page, "example-pillar-resonant");
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+      const stP = await runHere();
+      const pulsedRate = await whyOf("rate_detected_Hz");
+      const pulsedTau = await whyOf("tau_ps");
+      check("a pulsed default keeps f_rep in the detected-rate caption (typeset)", stP === "done" && hasFrep(pulsedRate) && !/no\s*f/.test(pulsedRate.text), `${stP}; ${pulsedRate.tex.join(" | ")}`);
+      check("a non-JC solver keeps the Purcell lifetime caption, tau = 1/(Gamma + k_nr)", /Purcell lifetime/.test(pulsedTau.text) && pulsedTau.tex.some((t) => /^k_\{\\mathrm\{nr\}\}$/.test(t)), pulsedTau.text.slice(0, 100));
+      // swap the drive to the cw resonant laser and run
+      await page.click('.ws-compose .kind-chip[data-axis="drive"]');
+      await page.waitForSelector(".cp-entry", { timeout: 15000 });
+      await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
+      const cwOk = await page.$('.cp-entry[data-kind="cw_resonant"]:not([aria-disabled="true"])');
+      if (cwOk) {
+        await cwOk.click();
+        await page.waitForFunction(() => document.querySelector('.ws-compose .kind-chip[data-axis="drive"]')?.dataset.kind === "cw_resonant", null, { timeout: 10000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+        const stCw = await runHere();
+        const cwRate = await whyOf("rate_detected_Hz");
+        // the cw caption says "(cw, no f_rep)": the phrase that denies the factor is allowed, a rep-rate factor is not
+        const remain = cwRate.text.replace(/\s+/g, " ").replace(/no\s*f\s*rep/i, "");
+        check("a cw drive's detected-rate caption has no f_rep factor", stCw === "done" && /cw/.test(cwRate.text) && !/f\s*rep/.test(remain) && /no\s*f\s*rep/i.test(cwRate.text.replace(/\s+/g, " ")), `${stCw}; ${cwRate.text.slice(0, 110)}`);
+      } else check("a cw drive's detected-rate caption has no f_rep factor", false, "cw_resonant not selectable on the default stack");
+    }
     await openStart(page, "tiers");
     const fockChip = await page.$('.start-pop .tier-chip[data-tier="fock"]');
     check("Fock tier entry is enabled", !!fockChip && !(await fockChip.isDisabled()));

@@ -8,7 +8,7 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest, tagDash, tagWidth } from "../ui/tagChip.js";
 import { createReadout, paramLabelNode } from "../ui/readout.js";
 import { exportButtons } from "../ui/exporter.js";
-import { tex, symbolFor, symbolText, richPlain, richText } from "../ui/math.js";
+import { tex, symbolFor, symbolText, richPlain, richText, registryText } from "../ui/math.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fmt, fmtSeconds, isNum } from "../ui/format.js";
 import { displayUnit, displayNotation } from "../ui/units.js";
@@ -314,7 +314,7 @@ function openStartMenu(anchor, kind) {
     items = (S.examples || []).map((ex) => h("button.start-item.example-chip", {
       type: "button", dataset: { example: ex.name }, "aria-pressed": String(S.exampleName === ex.name), title: ex.summary,
       on: { click: () => { close(); openDesign(ex.design, ex.name); } },
-    }, h("span.si-name", ex.label), ex.summary ? h("span.si-sum", richText(ex.summary)) : null));
+    }, h("span.si-name", ex.label), ex.summary ? h("span.si-sum", registryText(ex.summary)) : null));
   } else {
     items = (S.reg.tiers || []).map((t) => {
       const design = t.handoff === "design" && (t.cards || []).length;
@@ -335,7 +335,7 @@ function openStartMenu(anchor, kind) {
           } catch (e) { toast(`Could not open ${t.label}: ${e.message}`, { kind: "error" }); }
         } },
       }, h("span.si-name", t.label, on ? null : h("span.si-off", "not mapped")),
-      h("span.si-sum", design ? "Opens in the Designer" : here ? "Opens here" : t.summary || ""));
+      h("span.si-sum", design ? "Opens in the Designer" : here ? "Opens here" : registryText(t.summary || "")));
     });
   }
   const pop = popover(anchor, h("div.start-menu", { role: "group", "aria-label": kind === "examples" ? "Example devices" : "Tier presets" },
@@ -389,7 +389,7 @@ function renderMounts() {
         type: "button", dataset: { axis: a.key, kind: e.kind }, "aria-haspopup": "dialog", title: `${e.label}. ${e.summary || ""} Click to swap the kind.`,
         "aria-label": `${a.label} kind: ${e.label}. Swap it`,
         on: { click: (ev) => openPicker(a, ev.currentTarget) },
-      }, h("span.kc-label", shortKind(e.label)), icon("chevronDown", { size: 14 })),
+      }, h("span.kc-label", registryText(shortKind(e.label))), icon("chevronDown", { size: 14 })),
       h("button.mount-body", {
         type: "button", dataset: { axis: a.key }, "aria-expanded": String(open),
         "aria-label": `Open the ${a.label} parameter sheet`,
@@ -425,10 +425,10 @@ function renderSheet() {
   host.classList.add("is-open");
   host.append(h("section.sheet", { "aria-label": `${a.label} parameters`, dataset: { axis: a.key } },
     h("header.sheet-head",
-      h("div", h("h2.engrave.sheet-title", `${a.label}: ${e.label}`),
+      h("div", h("h2.engrave.sheet-title", registryText(`${a.label}: ${e.label}`)),
         h("p.sheet-sub", `${e.params.length} fields from the registry. Edits apply to the next run; bands warn, they never clamp.`)),
       h("button.icon-btn", { type: "button", "aria-label": `Close ${a.label} sheet`, on: { click: () => toggleSheet(a.key) } }, icon("close", { size: 18 }))),
-    e.refs?.length ? h("details.sheet-refs", h("summary", `${e.refs.length} reference${e.refs.length === 1 ? "" : "s"}`), h("ul", e.refs.map((r) => h("li", richText(r))))) : null,
+    e.refs?.length ? h("details.sheet-refs", h("summary", `${e.refs.length} reference${e.refs.length === 1 ? "" : "s"}`), h("ul", e.refs.map((r) => h("li", registryText(r))))) : null,
     form.el));
   if (!reducedMotion()) host.querySelector(".sheet").classList.add("mount-in");
   requestAnimationFrame(() => host.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" }));
@@ -1005,6 +1005,20 @@ function renderResults() {
 function widestOf(tagMap) { return tagMap ? widest(Object.values(tagMap)) : null; }
 function loadingPlate() { return h("div.chart-loading", skeleton("chart", { lines: 0 }), h("p", "Evaluating; the curve draws when the job finishes.")); }
 
+const CAP_GREEK = new Set(["alpha", "beta", "gamma", "delta", "epsilon", "eta", "theta", "kappa", "lambda", "mu", "nu", "rho", "sigma", "tau", "phi",
+  "omega", "Gamma", "Delta", "Theta", "Lambda", "Sigma", "Phi", "Omega"]);
+/** ASCII formula caption from the engine ("tau = 1/(Gamma + k_nr)", "f_rep . B_fibre") -> rich text with each symbol as $TeX$. */
+function captionRich(str) {
+  return String(str).replace(/\b([A-Za-z]+)(\d)?(?:_([A-Za-z0-9]+))?\b/g, (m, w, d, sub) => {
+    const greek = CAP_GREEK.has(w);
+    if (!sub && !d && !greek) return m;
+    if (!greek && w.length > 1) return m;                  // a word, or a snake_case id that is not a symbol
+    const base = greek ? "\\" + w : w;
+    const subs = [d, sub && (/^\d+$/.test(sub) ? sub : "\\mathrm{" + sub + "}")].filter(Boolean);
+    return "$" + base + (subs.length ? "_{" + subs.join("") + "}" : "") + "$";
+  }).replace(/ \. /g, " $\\cdot$ ");
+}
+
 /** KPI caption: one short plain line; the formula and convention detail sit behind "why". */
 function captionFor(key, s) {
   const obs = (S.reg.observables || []).find((o) => o.id === key);
@@ -1013,6 +1027,10 @@ function captionFor(key, s) {
   if (key === "B_first_lens") return { line: `${Conv} brightness, first lens`, why: String(s.brightness_convention || `${conv} brightness at the first collection lens`).replace(/;\s*/g, ". ") };
   if (key === "hom_I") return { line: `${Conv} photon overlap`, why: String.raw`${conv} overlap of two photons. The pure-dephasing linewidth is $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}$.` };
   if (key === "g2_0") return { line: `${Conv}: source only`, why: String.raw`${conv} $g^{(2)}(0)$: no laser leakage and no dark counts are added.` };
+  const engine = s.captions?.[key];   // the engine's formula caption, chosen from the solver and the pulse/cw timing (audit 17)
+  if (engine && (key === "rate_detected_Hz" || key === "tau_ps")) {
+    return { line: key === "tau_ps" ? "Emission lifetime" : "Photons counted per second", why: captionRich(engine) };
+  }
   if (key === "rate_detected_Hz") return { line: "Photons counted per second", why: String.raw`Detected rate $= f_{\mathrm{rep}}\,B_{\mathrm{fibre}}\,\eta_{\mathrm{optics}}\,\eta_{\mathrm{det}}$.` };
   if (key === "F_P_eff") return { line: "Extra decay rate from the cavity", why: String.raw`$F_{\mathrm P}$ is the additional rate ratio, so the total decay rate is $(1 + F_{\mathrm P}L)$ times the bare rate.` };
   if (key === "tau_ps") return { line: "Emission lifetime", why: String.raw`$\tau = 1/(\Gamma + k_{\mathrm{nr}})$: radiative plus non-radiative decay.` };

@@ -301,6 +301,70 @@ async function waitRun(page, timeout = 120000) {
     await page.keyboard.press("Escape");
     await page.context().close();
 
+    // ---------------------------------------------------------------- ui3: typeset identifiers in picker and sheet text (finding 17)
+    {
+      page = await newPage();
+      await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await settle(page, 800);
+      const RAW = String.raw`\b(E_b|tau_[a-z]+|lambda_nm|Omega_0|t_gate)\b`;
+      const MORE = String.raw`\+-|\b(Omega|Delta|Lambda|kappa|theta)\b|\bOmega\^2`;     // ASCII stand-ins that must be symbols
+      const CODE = String.raw`(qd_gf\.PhononParams|drive_mech|pulse_counting\.pulse_g2|nitride_cavity\.response|fsim_core\.[a-z_]+|DOT_PRESETS)`;
+      // visible text nodes (not the MathML copy) of `sel` that show a raw identifier; code names found inside KaTeX output
+      const scan = (sel) => page.evaluate(([s, raw, more, code]) => {
+        const root = document.querySelector(s);
+        const out = { raw: [], more: [], codeInKatex: [], codeSeen: 0, n: 0 };
+        if (!root) return out;
+        const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = w.nextNode())) {
+          const v = n.nodeValue, el = n.parentElement;
+          if (!v.trim() || !el || el.closest(".katex-mathml") || !el.getClientRects().length) continue;
+          out.n++;
+          if (new RegExp(raw).test(v)) out.raw.push(v.trim().slice(0, 70));
+          if (!el.closest("code") && new RegExp(more).test(v)) out.more.push(v.trim().match(new RegExp(more))[0] + " in " + v.trim().slice(0, 90));
+          if (new RegExp(code).test(v)) { out.codeSeen++; if (el.closest(".katex")) out.codeInKatex.push(v.trim().slice(0, 50)); }
+        }
+        for (const m of root.querySelectorAll("[data-src]")) if (new RegExp(code).test(m.dataset.src)) out.codeInKatex.push(`data-src ${m.dataset.src}`);
+        return out;
+      }, [sel, RAW, MORE, CODE]);
+      const tot = { raw: [], more: [], codeInKatex: [], codeSeen: 0, n: 0, kinds: 0, typeset: 0 };
+      const add = (r) => { for (const k of ["raw", "more", "codeInKatex"]) tot[k].push(...r[k]); tot.codeSeen += r.codeSeen; tot.n += r.n; };
+      for (const ax of ["drive", "material", "structure", "setup"]) {
+        await page.click(`.ws-compose .kind-chip[data-axis="${ax}"]`);
+        await page.waitForSelector(".cp-entry", { timeout: 10000 });
+        add(await scan(".cp"));
+        const kinds = await page.$$eval(".cp-entry", (els) => els.filter((e) => e.getAttribute("aria-disabled") !== "true").map((e) => e.dataset.kind));
+        tot.typeset += await page.$$eval(".cp-sum .katex, .cp-label .katex", (e) => e.length);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(250);
+        // the open sheet, for every kind of the axis (a kind swap re-renders the sheet)
+        for (const k of kinds) {
+          await page.click(`.ws-compose .kind-chip[data-axis="${ax}"]`);
+          await page.waitForSelector(".cp-entry", { timeout: 10000 });
+          await page.click(`.cp-entry[data-kind="${k}"]`);
+          await page.waitForFunction(([a, kk]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === kk, [ax, k], { timeout: 10000 });
+          await page.waitForTimeout(500);
+          // the mount carries .is-open while its sheet is the open one; click the body only when it is not
+          if (!(await page.$eval(`.ws-compose .mount[data-axis="${ax}"]`, (m) => m.classList.contains("is-open")))) await page.click(`.ws-compose .mount-body[data-axis="${ax}"]`);
+          await page.waitForSelector(`.ws-compose .sheet[data-axis="${ax}"]`, { timeout: 10000 });
+          add(await scan(".ws-compose .sheet"));
+          tot.kinds++;
+        }
+      }
+      await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await page.click('.ws-compose .start-btn[data-menu="examples"]');
+      await page.waitForSelector(".start-pop .start-item");
+      add(await scan(".start-pop"));
+      await page.keyboard.press("Escape");
+      check("composer pickers and every kind's open sheet: no E_b / tau_x / lambda_nm / Omega_0 / t_gate as visible text", tot.raw.length === 0 && tot.kinds >= 20, `${tot.kinds} sheets, ${tot.n} text nodes; ${tot.raw.slice(0, 3).join(" | ")}`);
+      check("picker and sheet text: no bare Omega/Delta/Lambda/kappa/theta, '+-' or 'Omega^2' left as ASCII", tot.more.length === 0, tot.more.slice(0, 3).join(" | "));
+      check("code and module names stay code: none is inside .katex or a typeset data-src", tot.codeSeen > 0 && tot.codeInKatex.length === 0, `${tot.codeSeen} seen; ${tot.codeInKatex.slice(0, 3).join(" | ")}`);
+      check("picker summaries are typeset (KaTeX present in the pickers)", tot.typeset >= 5, `${tot.typeset}`);
+      await page.context().close();
+    }
+
     // ---------------------------------------------------------------- offline + errors
     check("no request left the Studio host (KaTeX, fonts and Plotly are all local)", external.length === 0, [...new Set(external)].slice(0, 3).join(" "));
     const kerr = errors.filter((e) => !/favicon|ERR_ABORTED|net::ERR_FAILED/.test(e));

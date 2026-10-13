@@ -224,6 +224,74 @@ export function autoMath(str) {
   return wrapRt(frag);
 }
 
+// ---------------------------------------------------------------- registryText()
+// Registry summaries and references (picker, example menu, parameter sheet) are ASCII prose written by the backend.
+// registryText() = richText() plus: bare Greek names (Omega, kappa, Delta) -> symbols, Greek^n, Greek_unit (lambda_nm
+// -> the unit-free symbol), "+-Delta" -> \pm\Delta, T1/T2 -> T_1/T_2, and code names (module paths, file names,
+// drive_mech, DOT_PRESETS) -> <code>, never subscripted math.
+const GREEK_ALT = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho",
+  "sigma", "tau", "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma", "Phi", "Psi", "Omega"].join("|");
+const UNIT_SUB = "nm|um|ps|ns|ueV|meV|eV|MHz|Hz|GHz";
+const NB = "(?<![A-Za-z0-9_.\\/])";   // not inside a word or a path
+const REG_RE = new RegExp([
+  "(?<code>[\\w.\\/-]+\\.(?:py|md|yaml|json)\\b|\\bfsim_core\\/[\\w.\\/-]+|\\b[a-z][a-z0-9_]{2,}(?:\\.[A-Za-z_][A-Za-z0-9_]*)+|\\bdrive_mech\\b|\\bDOT_PRESETS\\b|\\bdet_profile\\b)",
+  `${NB}(?<pm>\\+-)(?<pmg>${GREEK_ALT})(?![A-Za-z0-9_])`,
+  `(?<![A-Za-z0-9_])(?<pm2>\\+-)(?=[\\d.\\s(])`,
+  `${NB}(?<ug>${GREEK_ALT})_(?:${UNIT_SUB})(?![A-Za-z0-9_])`,
+  `${NB}(?<sg>${GREEK_ALT})_(?<ssub>[A-Za-z0-9]{1,10})(?![A-Za-z0-9_])`,
+  `${NB}(?<pg>${GREEK_ALT})\\^(?<pexp>\\d)(?![A-Za-z0-9_])`,
+  `${NB}(?<dg>${GREEK_ALT})(?<dnum>\\d)(?![A-Za-z0-9_])`,
+  `${NB}(?<bg>${GREEK_ALT})(?![A-Za-z0-9_])`,
+  `${NB}T(?<tn>[12])(?![A-Za-z0-9_])`,
+].join("|"), "g");
+
+function registryNodes(seg) {
+  const out = [];
+  let last = 0;
+  const text = (t) => { if (t) out.push(autoMath(t) || document.createTextNode(t)); };
+  for (const m of seg.matchAll(REG_RE)) {
+    const g = m.groups;
+    let node;
+    if (g.pm2 !== undefined) {              // "+-0.6 meV": a plain plus-minus sign, not math
+      text(seg.slice(last, m.index));
+      out.push(document.createTextNode("±"));
+      last = m.index + m[0].length;
+      continue;
+    }
+    if (g.code !== undefined) {
+      node = document.createElement("code");
+      node.className = "code-name";
+      node.textContent = m[0];
+    } else {
+      let t;
+      if (g.pm !== undefined) t = `\\pm\\${g.pmg}`;
+      else if (g.ug !== undefined) t = `\\${g.ug}`;
+      else if (g.sg !== undefined) t = `\\${g.sg}_{${subTex(g.ssub)}}`;
+      else if (g.pg !== undefined) t = `\\${g.pg}^{${g.pexp}}`;
+      else if (g.dg !== undefined) t = `\\${g.dg}_{${g.dnum}}`;
+      else if (g.bg !== undefined) t = `\\${g.bg}`;
+      else t = `T_{${g.tn}}`;
+      node = tex(t);
+      node.dataset.src = m[0]; // the ASCII source, for verbatim-text checks
+    }
+    text(seg.slice(last, m.index));
+    out.push(node);
+    last = m.index + m[0].length;
+  }
+  text(seg.slice(last));
+  return out;
+}
+
+/** DocumentFragment for backend registry prose (summaries, references): see the notes above. */
+export function registryText(str) {
+  const frag = document.createDocumentFragment();
+  for (const seg of parseRich(str)) {
+    if (seg.t === "text") frag.append(...registryNodes(seg.v));
+    else frag.appendChild(tex(seg.v, { display: seg.t === "display" }));
+  }
+  return wrapRt(frag);
+}
+
 /** Plain-text version of a rich string (search text, aria-labels, tooltips, Plotly titles). */
 export function richPlain(str) {
   return parseRich(str).map((seg) => (seg.t === "text" ? seg.v : plainSymbol(seg.v))).join("");
