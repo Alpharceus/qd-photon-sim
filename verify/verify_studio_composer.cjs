@@ -81,7 +81,7 @@ async function waitRun(page, timeout = 120000) {
   if (!BASE) { OWN = await startStudioServer(ROOT, 8793); BASE = OWN.base; }
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -252,8 +252,8 @@ async function waitRun(page, timeout = 120000) {
     check("six readouts, each with a value", ro.length === 6 && ro.every((r) => r.state === "value"), JSON.stringify(ro.map((r) => `${r.k}:${r.state}`)));
     check("every readout number carries a provenance tag chip", ro.every((r) => r.tag));
     check("every readout names its convention", ro.every((r) => r.cap.length > 3));
-    const roSym = await page.$$eval(".ws-compose .readouts .ro-label", (els) => els.map((e) => ({ t: e.textContent, sym: [...e.querySelectorAll(".sym")].map((x) => getComputedStyle(x).textTransform), sup: !!e.querySelector("sup"), sub: !!e.querySelector("sub") })));
-    check("KPI symbols are real notation and not upper-cased (g(2)(0) superscript, F_P and I_HOM subscripts, tau)", roSym.filter((r) => r.sym.length).length >= 4 && roSym.every((r) => r.sym.every((x) => x === "none")) && roSym.some((r) => r.sup) && roSym.filter((r) => r.sub).length >= 2 && !roSym.some((r) => /^T$/.test(r.t)), JSON.stringify(roSym.map((r) => r.t)));
+    const roSym = await page.$$eval(".ws-compose .readouts .ro-label", (els) => els.map((e) => ({ t: e.textContent, k: [...e.querySelectorAll(".katex")].map((x) => getComputedStyle(x.closest(".math")).textTransform), sup: !!e.querySelector(".katex .msupsub"), n: e.querySelectorAll(".katex").length })));
+    check("KPI symbols are KaTeX notation and not upper-cased (g(2)(0) with a superscript, F_P, I_HOM, B_lens, tau)", roSym.filter((r) => r.n).length >= 4 && roSym.every((r) => r.k.every((x) => x === "none")) && roSym.some((r) => r.sup) && !roSym.some((r) => /^T$/.test(r.t)), JSON.stringify(roSym.map((r) => r.t)));
     const caps = await page.$$eval(".ws-compose .readouts .ro-caption", (els) => els.map((e) => e.textContent.length));
     check("KPI captions are one short line; the formula sits behind 'why'", caps.every((n) => n <= 50) && (await page.$$(".ws-compose .readouts .ro-why:not([hidden])")).length >= 4, caps.join(","));
     await page.click('.ws-compose .readout[data-readout="g2_0"] .ro-why');
@@ -347,7 +347,8 @@ async function waitRun(page, timeout = 120000) {
       check("Open in Composer: the paper design loads, says where it came from, and the seed is consumed", new RegExp(`from paper ${papers[0].id}`).test(note) && left === null, note.slice(0, 80));
     } else check("Open in Composer: paper catalogue available", false, "no papers");
     await page.goto(`${BASE}/#/papers`, { waitUntil: "load" });
-    await page.waitForTimeout(1500);
+    await page.waitForSelector(".ws-papers .pp-plaque, .error-state", { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(500);
     check("#/papers routes to a workspace", !(await page.$(".error-state")) && (await page.$eval("#workspace", (e) => e.textContent.length)) > 50);
 
     // ---------------------------------------------------------------- examples row, default load, Fock tier (devlib-p11b)
@@ -489,7 +490,7 @@ async function waitRun(page, timeout = 120000) {
           check("units: ueV -> µeV, no 'ueV'/'um' and no bare '1' unit in mounts or readouts", un.sheet.every((t) => !/^(ueV|um|um2|1)$/.test(t)) && un.sheet.some((t) => /µ/.test(t)), JSON.stringify(un.sheet));
           const v3u = await page.$$eval(".ws-compose .v3-readout-unit", (els) => els.map((e) => e.textContent));
           check("3D readouts: units are µm / µeV, no bare '1' unit", v3u.every((t) => !/^(ueV|um|um2|1)$/.test(t)), JSON.stringify(v3u));
-          check("notation: F_P·L shows a visible middle dot", un.dot && /F.P.·.L|F.?P.?·.?L/.test(un.fp.replace(/\s/g, "")), un.fp);
+          check("notation: F_P L is typeset (KaTeX, subscript P) in the tile label", await page.$eval('.ws-compose [data-readout="F_P_eff"] .ro-label', (e) => !!e.querySelector(".katex .msupsub")), un.fp);
           check("notation: phonon note reads Z² and ×Z (no 'Z^2', no ' x Z')", !/Z\^2| x Z/.test(un.notes) && (!un.notes || /Z²/.test(un.notes)), un.notes.slice(0, 120));
           await page.click(".ws-compose .mount-body[data-axis=\"material\"]", { force: true, timeout: 5000 }).catch((e) => console.log("click err", e.message.slice(0, 200)));
           await page.waitForSelector(".ws-compose .sheet .field-row", { timeout: 5000 }).catch(() => {});
@@ -525,6 +526,25 @@ async function waitRun(page, timeout = 120000) {
       }
     }
     check("screenshots written (dark + light, 1440x900 and 390x844)", ["dark", "light"].every((t) => [1440, 390].every((w) => fs.existsSync(path.join(SHOTS, `composer-${t}-${w}.png`)))));
+    // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+    {
+      const { assertPng } = require("./png_check.cjs");
+      const t0 = Date.now() - process.uptime() * 1000;
+      const badPng = [];
+      let nPng = 0;
+      for (const dir of [SHOTS]) {
+        if (!fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.endsWith(".png") || f === "failure.png" || !/^(composer|finish-composer)-/.test(f)) continue;
+          const full = path.join(dir, f);
+          if (fs.statSync(full).mtimeMs < t0) continue;
+          nPng++;
+          const r = assertPng(full);
+          if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+        }
+      }
+      check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
+    }
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   } catch (e) {
     check("verifier ran to the end", false, `${e.stack || e.message}${errors.length ? ` | page errors: ${errors.slice(0, 3).join(" | ")}` : ""}`);

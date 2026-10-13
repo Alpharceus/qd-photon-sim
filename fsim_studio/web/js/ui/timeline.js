@@ -15,6 +15,7 @@
 // demand); every tick is timed with the Performance API ("fsim-anim-frame" measures).
 import { h, clear, reducedMotion } from "./dom.js";
 import { icon } from "./icons.js";
+import { richPlain } from "./math.js";
 
 const FPS_1X = 8; // grid frames per second at 1x
 export const PERF_MEASURE = "fsim-anim-frame";
@@ -67,7 +68,9 @@ export function createTimeline(opts) {
     type: "button", "aria-pressed": String(loop), title: "Loop playback", "aria-label": "Loop playback", disabled: reduced,
     on: { click: () => { loop = !loop; loopBtn.setAttribute("aria-pressed", String(loop)); } },
   }, icon("retry", { size: 16 }), h("span.tl-loop-t", "Loop"));
-  const posText = h("span.tl-pos", { "aria-live": "off" });
+  const posLabel = h("span.tl-pos-l", opts.label ? [opts.label, " "] : null); // typeset once, never per frame
+  const posVal = h("span.tl-pos-v");
+  const posText = h("span.tl-pos", { "aria-live": "off" }, posLabel, posVal);
   const countText = h("span.tl-count");
   const legend = h("div.tl-legend", { "aria-hidden": "true" },
     h("span.tl-key", h("span.tl-sw", { dataset: { state: "computed" } }), "computed frame"),
@@ -114,8 +117,9 @@ export function createTimeline(opts) {
     headEl.dataset.kind = w.kind;
     // a snap shows the value of the frame the readouts come from, not the interpolated parameter value
     const v = w.kind === "snap" ? valueOfFrame(w.near) : valueAt(pos);
-    posText.textContent = `${opts.label || ""} ${v}${w.kind === "interp" ? " · interp." : w.kind === "gap" ? " · not computed" : w.kind === "snap" ? ` · snapped to frame ${w.held + 1}/${n}` : ` · frame ${w.held + 1}/${n}`}${waiting ? " · waiting for the next frame" : ""}`;
-    track.setAttribute("aria-valuetext", posText.textContent);
+    const txt = `${v}${w.kind === "interp" ? " · interp." : w.kind === "gap" ? " · not computed" : w.kind === "snap" ? ` · snapped to frame ${w.held + 1}/${n}` : ` · frame ${w.held + 1}/${n}`}${waiting ? " · waiting for the next frame" : ""}`;
+    posVal.textContent = txt;
+    track.setAttribute("aria-valuetext", `${richPlain(opts.label || "")} ${txt}`);
     return w;
   }
   function valueAt(p) {

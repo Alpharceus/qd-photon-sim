@@ -38,8 +38,8 @@ from .. import qd_gf
 from ..resonant_source import gaussian_sigma
 from .types import DrivePlan, Pulse
 
-_PHONON_NOTE = ("Needs the polaron solver (tier P1 dressed-basis phonon rates, Omega_r = sqrt(Z) Omega); "
-                "with a material whose alpha is 0 it reduces to the Lindblad pulse.")
+_PHONON_NOTE = (r"Needs the polaron solver (tier P1 dressed-basis phonon rates, $\Omega_{\mathrm r} = \sqrt{Z}\,\Omega$); "
+                r"with a material whose $\alpha$ is 0 it reduces to the Lindblad pulse.")
 
 
 # ======================================================================
@@ -70,8 +70,8 @@ PHONON_ASSISTED = PlannedDrive(
         _P("detuning_meV", "meV", 1.0, lo=-3.0, hi=3.0, tag="E", source=_E_BRIEF + " (blue, paper convention)",
            help=_PAPER_CONV + " Class values: +0.8 to +1.3 meV (blue); a red value is allowed so the "
                               "emission/absorption asymmetry can be explored."),
-        _P("area_pi", "pi", 10.0, lo=5.0, hi=20.0, tag="E", source=_E_BRIEF, help="Pulse area in units of pi."),
-        _P("fwhm_ps", "ps", 15.0, lo=10.0, hi=20.0, tag="E", source=_E_BRIEF, help="Intensity FWHM."),
+        _P("area_pi", "pi", 10.0, lo=5.0, hi=20.0, tag="E", source=_E_BRIEF, help=r"Pulse area $\Theta$ in units of $\pi$."),
+        _P("fwhm_ps", "ps", 15.0, lo=10.0, hi=20.0, tag="E", source=_E_BRIEF, help=r"Intensity FWHM $\tau_{\mathrm{FWHM}}$."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,
@@ -116,14 +116,14 @@ SUPER = PlannedDrive(
         _GAUSS,
         _P("delta1_meV", "meV", -3.5, lo=-6.0, hi=-1.0, tag="E",
            source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-           help="Detuning of pulse 1, paper convention Delta = omega_L - omega_X (red = negative)."),
+           help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative)."),
         _P("delta2_meV", "meV", -7.5, lo=-12.0, hi=-2.0, tag="E",
            source="Piccinini et al. value as quoted in physics brief 2.3 (not re-checked) [E]",
-           help="Detuning of pulse 2, paper convention."),
-        _P("fwhm1_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help="Intensity FWHM of pulse 1."),
-        _P("fwhm2_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help="Intensity FWHM of pulse 2."),
-        _P("area1_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Area of pulse 1 in units of pi."),
-        _P("area2_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help="Area of pulse 2 in units of pi."),
+           help=r"Detuning $\Delta_2$ of pulse 2, paper convention."),
+        _P("fwhm1_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help=r"Intensity FWHM $\tau_{\mathrm{FWHM},1}$ of pulse 1."),
+        _P("fwhm2_ps", "ps", 5.0, lo=3.0, hi=10.0, tag="E", source=_E_BRIEF, help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
+        _P("area1_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$."),
+        _P("area2_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A, help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,
@@ -168,13 +168,13 @@ DICHROMATIC = PlannedDrive(
     params=(
         _GAUSS,
         _P("delta_meV", "meV", 1.0, lo=0.2, hi=5.0, tag="A", source=_SRC_A,
-           help="Half spacing of the two spectral components."),
+           help=r"Half spacing $\delta$ of the two spectral components."),
         _P("asymmetry", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_A,
-           help="Intensity asymmetry ratio a = I_blue / I_red of the two components (1 = symmetric)."),
-        _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="A", source=_SRC_A, help="Intensity FWHM."),
+           help=r"Intensity asymmetry ratio $a = I_{\mathrm{blue}}/I_{\mathrm{red}}$ of the two components (1 = symmetric)."),
+        _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="A", source=_SRC_A, help=r"Intensity FWHM $\tau_{\mathrm{FWHM}}$."),
         _P("area_pi", "pi", 5.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A,
-           help="Pulse area of the common envelope in units of pi (split between the components so the "
-                "pair carries the intensity of one envelope)."),
+           help=r"Pulse area $\Theta$ of the common envelope in units of $\pi$ (split between the components so the "
+                r"pair carries the intensity of one envelope)."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,
@@ -232,16 +232,16 @@ ARP = PlannedDrive(
         _P("chirp_ps2", "ps^2", 30.0, lo=-200.0, hi=200.0, tag="DR",
            source="Wei et al., PRL 113, 097401 (2014): 3 ps transform-limited stretched to 30 ps gives "
                   "phi2 ~ s0 sigma_c ~ 30 ps^2 (derived from those two durations, not read from the paper) [DR]",
-           help="Spectral chirp (group-delay dispersion phi2) of the transform-limited pulse. Positive = laser "
-                "frequency rises in time (Wei positive chirp); the swept rate is phi2/(s0^4 + phi2^2)."),
+           help=r"Spectral chirp (group-delay dispersion $\varphi_2$) of the transform-limited pulse. Positive = laser "
+                r"frequency rises in time (Wei positive chirp); the swept rate is $\varphi_2/(s_0^4 + \varphi_2^2)$."),
         _P("detuning_meV", "meV", 0.0, lo=-3.0, hi=3.0, tag="A", source=_SRC_A,
            help=_PAPER_CONV + " Detuning of the carrier at the pulse centre (centre of the sweep)."),
         _P("area_pi", "pi", 2.0, lo=0.0, hi=10.0, tag="A", source="Wei 2014 plateau 1.5 pi - 3 pi [A]",
-           help="Pulse area of the transform-limited pulse in units of pi (chirping conserves the pulse "
-                "energy, so the chirped envelope area is area_pi sqrt(sigma_c/sigma_0))."),
+           help=r"Pulse area $\Theta$ of the transform-limited pulse in units of $\pi$ (chirping conserves the pulse "
+                r"energy, so the chirped envelope area is $\Theta\sqrt{\sigma_{\mathrm c}/\sigma_0}$)."),
         _P("fwhm_ps", "ps", 3.0, lo=0.5, hi=20.0, scale="log", tag="E",
            source="Wei et al., PRL 113, 097401 (2014): 3 ps transform-limited pulses (before stretching) [E]",
-           help="Intensity FWHM of the transform-limited pulse before the chirp."),
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM}}$ of the transform-limited pulse before the chirp."),
         _P("f_rep_MHz", "MHz", 76.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate (mode-locked Ti:sapphire class)."),
         _EID, _TRION,

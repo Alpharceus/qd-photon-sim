@@ -4,6 +4,7 @@ import { h, clear } from "./dom.js";
 import { icon } from "./icons.js";
 import { tagChip, TAG_MEANING, normTag } from "./tagChip.js";
 import { fmt, unitText, isNum } from "./format.js";
+import { tex, symbolNode } from "./math.js";
 
 let host = null;
 let lastFocus = null;
@@ -44,7 +45,7 @@ export function inspectField({ path, meta, value, inBand }, { quiet = false } = 
   if (!host || (quiet && host.hidden)) return;
   const unit = unitText(meta?.unit === "enum" ? "" : meta?.unit);
   const band = meta?.band;
-  frame(meta?.label || path, path,
+  frame(meta?.tex ? tex(meta.tex) : meta?.label ? meta.label : symbolNode({ name: String(path).split(".").pop() }), path,
     tagBlock(meta?.tag, meta?.source),
     h("dl.insp-dl",
       row("Value", value === null ? "auto (resolved by the model)" : `${typeof value === "number" ? fmt(value) : String(value)}${unit ? ` ${unit}` : ""}`),

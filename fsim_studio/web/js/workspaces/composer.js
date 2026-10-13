@@ -6,7 +6,8 @@
 import { h, clear, svgEl, debounce, reducedMotion } from "../ui/dom.js";
 import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest, tagDash, tagWidth } from "../ui/tagChip.js";
-import { createReadout, sym, paramName, paramLabelNode } from "../ui/readout.js";
+import { createReadout, paramLabelNode } from "../ui/readout.js";
+import { tex, symbolFor, symbolText, richPlain } from "../ui/math.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fmt, fmtSeconds, isNum } from "../ui/format.js";
 import { displayUnit, displayNotation } from "../ui/units.js";
@@ -31,12 +32,12 @@ const T_SOURCE = "operating temperature set in the Composer";
 // Readouts on the shelf: observable id, label, unit, which result field carries the number.
 // `sym` is the display notation (sub/superscripts, never engraved caps); `label` is its plain-text twin.
 const READOUTS = [
-  { key: "g2_0", label: "g²(0)", sym: "g^{(2)}(0)", unit: "", curve: "g2" },
-  { key: "hom_I", label: "I_HOM", sym: "I_{HOM}", unit: "" },
-  { key: "B_first_lens", label: "B, first lens", unit: "" },
+  { key: "g2_0", label: "g²(0)", tex: String.raw`g^{(2)}(0)`, unit: "", curve: "g2" },
+  { key: "hom_I", label: "I_HOM", tex: String.raw`I_{\mathrm{HOM}}`, unit: "" },
+  { key: "B_first_lens", label: "B, first lens", tex: String.raw`B_{\mathrm{lens}}`, unit: "" },
   { key: "rate_detected_Hz", label: "Detected rate", unit: "Hz" },
-  { key: "F_P_eff", label: "F_P · L", sym: "F_{P}·L", unit: "" },
-  { key: "tau_ps", label: "τ", sym: "τ", unit: "ps" },
+  { key: "F_P_eff", label: "F_P L", tex: String.raw`F_{\mathrm P}L`, unit: "" },
+  { key: "tau_ps", label: "τ", tex: String.raw`\tau`, unit: "ps" },
 ];
 const DEFAULT_OBS = ["g2_0", "hom_I", "B_first_lens"];
 const DEFAULT_EXAMPLE = "example-pillar-resonant";
@@ -376,8 +377,8 @@ function renderMounts() {
     const open = S.openAxis === a.key;
     const vals = h("div.mount-vals", shown.map((p) => {
       const t = leafText(p, params[p.name]);
-      return h("div.mv", { class: params[p.name] !== undefined ? "is-edited" : "", title: `${p.name}: ${p.help || ""}` },
-        h("span.mv-k", paramLabelNode(p.name, p.unit)),
+      return h("div.mv", { class: params[p.name] !== undefined ? "is-edited" : "", title: `${symbolText(p)}: ${richPlain(p.help || "")}` },
+        h("span.mv-k", paramLabelNode(p)),
         h("span.mv-line", h("span.mv-v", t.text), h("span.mv-u", t.unit), tagChip(t.tag, { size: "sm", title: p.source })));
     }));
     const mount = h("div.mount", { class: `${open ? "is-open" : ""} ${bad.length ? "has-issue" : ""}`, dataset: { axis: a.key, rim: wide || "" }, role: "group", "aria-label": `${a.label} mount: ${e.label}` },
@@ -597,6 +598,15 @@ function clampGrid() {
   S.ser.n = Math.max(2, Math.min(SERIES_MAX, S.ser.n));
 }
 
+/** "drive.fwhm_ps" -> "Drive $\tau_{\mathrm{FWHM}}$": axis label plus the typeset symbol; the registry id is never shown. */
+function pathRich(path) {
+  if (path === "T_K") return "Temperature $T$";
+  const [axis] = String(path).split(".");
+  const p = paramSpecOf(path);
+  const ax = AXES.find((a) => a.key === axis)?.label || axis;
+  return `${ax} $${symbolFor(p || { name: String(path).split(".").pop() })}$`;
+}
+
 function paramSpecOf(path) {
   const [axis, name] = path.split(".");
   return entry(axis)?.params.find((p) => p.name === name) || null;
@@ -604,13 +614,13 @@ function paramSpecOf(path) {
 
 /** Sweepable numeric leaves of the current spec: T_K plus every numeric sweepable parameter that resolved. */
 function sweepPaths() {
-  const out = [{ path: "T_K", label: "T_K (K)" }];
+  const out = [{ path: "T_K", label: "Temperature T (K)" }];
   const resolved = S.val?.resolved || {};
   for (const a of AXES) {
     for (const p of entry(a.key).params) {
       const path = `${a.key}.${p.name}`;
       const r = resolved[path];
-      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${paramName(p.name, p.unit).text}${p.unit && p.unit !== "enum" && displayUnit(p.unit) ? ` (${displayUnit(p.unit)})` : ""}` });
+      if (p.sweepable && typeof p.default === "number" && r && typeof r.value === "number") out.push({ path, label: `${a.label}: ${symbolText(p)}${p.unit && p.unit !== "enum" && displayUnit(p.unit) ? ` (${displayUnit(p.unit)})` : ""}` });
     }
   }
   return out;
@@ -788,7 +798,7 @@ function renderShelf() {
   S.dom.labels = h("div.shelf-labels");
   S.readouts = {};
   S.dom.readouts = h("div.readouts", { role: "group", "aria-label": "Key readouts" },
-    READOUTS.map((r) => (S.readouts[r.key] = createReadout({ key: r.key, label: r.sym ? sym(r.sym) : r.label, labelText: r.label, onInspect: inspectKpi })).el));
+    READOUTS.map((r) => (S.readouts[r.key] = createReadout({ key: r.key, label: r.tex ? tex(r.tex) : r.label, labelText: r.label, onInspect: inspectKpi })).el));
   S.charts.series = chartCard({
     title: "Series", height: 280,
     build: () => buildSeries(), table: () => seriesTable(), filename: () => `${S?.run?.run_id || "fsim"}-series`,
@@ -822,7 +832,7 @@ function inspectKpi(key, last) {
     tag: last?.tag,
     notes: (prov?.inputs || []).slice(0, 40).map((p) => {
       const r = S.val?.resolved?.[p];
-      return { key: p, tag: r?.tag, note: r ? `${r.value ?? JSON.stringify(r.range ?? r.choice)}${r.unit ? ` ${r.unit}` : ""}` : "" };
+      return { key: h("span", pathRich(p)), tag: r?.tag, note: r ? `${r.value ?? JSON.stringify(r.range ?? r.choice)}${r.unit && displayUnit(r.unit) ? ` ${displayUnit(r.unit)}` : ""}` : "" };
     }).filter((n) => n.tag),
     source: s.solver ? `fsim_core.compose engine, solver ${s.solver}` : "fsim_core.compose engine",
   });
@@ -946,11 +956,11 @@ function captionFor(key, s) {
   const conv = obs?.conventions?.[0] || "intrinsic";
   const Conv = conv.charAt(0).toUpperCase() + conv.slice(1);
   if (key === "B_first_lens") return { line: `${Conv} brightness, first lens`, why: String(s.brightness_convention || `${conv} brightness at the first collection lens`).replace(/;\s*/g, ". ") };
-  if (key === "hom_I") return { line: `${Conv} photon overlap`, why: `${conv} overlap of two photons. The dephasing rate γ* is the repo convention, twice the textbook γ*.` };
-  if (key === "g2_0") return { line: `${Conv}: source only`, why: `${conv} g(2)(0): no laser leakage and no dark counts are added.` };
-  if (key === "rate_detected_Hz") return { line: "Photons counted per second", why: "Detected rate = f_rep · B_fibre · η_optics · η_det." };
-  if (key === "F_P_eff") return { line: "Extra decay rate from the cavity", why: "F_P is the additional rate ratio, so the total decay rate is (1 + F_P·L) times the bare rate." };
-  if (key === "tau_ps") return { line: "Emission lifetime", why: "τ = 1 / (Γ + k_nr): radiative plus non-radiative decay." };
+  if (key === "hom_I") return { line: `${Conv} photon overlap`, why: String.raw`${conv} overlap of two photons. The dephasing rate $\gamma^{*}$ is the repo convention, twice the textbook $\gamma^{*}$.` };
+  if (key === "g2_0") return { line: `${Conv}: source only`, why: String.raw`${conv} $g^{(2)}(0)$: no laser leakage and no dark counts are added.` };
+  if (key === "rate_detected_Hz") return { line: "Photons counted per second", why: String.raw`Detected rate $= f_{\mathrm{rep}}\,B_{\mathrm{fibre}}\,\eta_{\mathrm{optics}}\,\eta_{\mathrm{det}}$.` };
+  if (key === "F_P_eff") return { line: "Extra decay rate from the cavity", why: String.raw`$F_{\mathrm P}$ is the additional rate ratio, so the total decay rate is $(1 + F_{\mathrm P}L)$ times the bare rate.` };
+  if (key === "tau_ps") return { line: "Emission lifetime", why: String.raw`$\tau = 1/(\Gamma + k_{\mathrm{nr}})$: radiative plus non-radiative decay.` };
   return { line: Conv, why: "" };
 }
 
@@ -994,17 +1004,17 @@ function buildSeries() {
   if (!rows.length) return withheld.length ? { data: [], layout: {}, withheld: withheld.map(labelOf) } : null;
   const log = S.ser.log && S.series.spec_path === S.ser.path;
   const p = sr.path || S.series.spec_path;
-  const out = stacked(rows, { xTitle: `${p}${sr.unit ? ` (${displayUnit(sr.unit)})` : ""}`, xLog: log });
+  const out = stacked(rows, { xTitle: `${pathRich(p)}${sr.unit ? ` (${displayUnit(sr.unit)})` : ""}`, xLog: log });
   out.withheld = withheld.map(labelOf);
   S.charts.series.el.style.setProperty("--chart-h", `${Math.max(240, 118 * rows.length + 60)}px`);
-  S.charts.series.setTitle("Series", `${p} · ${sr.x.length} points${sr.failed?.length ? ` · ${sr.failed.length} failed (gaps)` : ""} · other inputs at their central values`);
+  S.charts.series.setTitle("Series", `${richPlain(pathRich(p))} · ${sr.x.length} points${sr.failed?.length ? ` · ${sr.failed.length} failed (gaps)` : ""} · other inputs at their central values`);
   return out;
 }
 function seriesTable() {
   const sr = S?.series?.series;
   if (!sr) return null;
   const reqs = Object.keys(sr.y);
-  return { columns: [{ key: "x", label: sr.path }, ...reqs.map((q, i) => ({ key: `y${i}`, label: `${labelOf(q)} [${sr.tag?.[q] || "?"}]` }))], rows: sr.x.map((x, j) => Object.fromEntries([["x", x], ...reqs.map((q, i) => [`y${i}`, sr.y[q][j]])])) };
+  return { columns: [{ key: "x", label: pathRich(sr.path) }, ...reqs.map((q, i) => ({ key: `y${i}`, label: `${labelOf(q)} [${sr.tag?.[q] || "?"}]` }))], rows: sr.x.map((x, j) => Object.fromEntries([["x", x], ...reqs.map((q, i) => [`y${i}`, sr.y[q][j]])])) };
 }
 
 function curveRows() {
@@ -1012,7 +1022,7 @@ function curveRows() {
   const T = r?.curves?.T_hs;
   if (!T || T.length < 2) return null;
   const rows = [];
-  for (const [key, label, unit] of [["g2", "g²(0)", ""], ["hom_I", "I_HOM", ""], ["B_first_lens", "B, first lens", ""], ["rate_detected_Hz", "Detected rate", "Hz"], ["tau_ps", "τ", "ps"]]) {
+  for (const [key, label, unit] of [["g2", "$g^{(2)}(0)$", ""], ["hom_I", "$I_{\\mathrm{HOM}}$", ""], ["B_first_lens", "$B_{\\mathrm{lens}}$, first lens", ""], ["rate_detected_Hz", "Detected rate", "Hz"], ["tau_ps", "$\\tau$", "ps"]]) {
     const y = r.curves[key];
     const provKey = key === "g2" ? "g2_0" : key;
     const tag = normTag(r.provenance?.[provKey]?.tag) || normTag(r.tag_chain);
@@ -1043,11 +1053,11 @@ function buildHom() {
   const hs = homSeries();
   if (!hs) return null;
   S.charts.hom.setSub?.(hs.note);
-  return stacked([{ x: hs.x, y: hs.y, label: "I_HOM", unit: "", tag: hs.tag }], { xTitle: `photon separation Δt (${hs.x_unit || "ns"})`, xLog: true });
+  return stacked([{ x: hs.x, y: hs.y, label: "$I_{\\mathrm{HOM}}$", unit: "", tag: hs.tag }], { xTitle: `photon separation $\\Delta t$ (${hs.x_unit || "ns"})`, xLog: true });
 }
 function homTable() {
   const hs = homSeries();
-  return hs ? { columns: [{ key: "x", label: `dt (${hs.x_unit || "ns"})` }, { key: "y", label: `I_HOM [${hs.tag}]` }], rows: hs.x.map((x, i) => ({ x, y: hs.y[i] })) } : null;
+  return hs ? { columns: [{ key: "x", label: `dt (${hs.x_unit || "ns"})` }, { key: "y", label: `$I_{\\mathrm{HOM}}$ [${hs.tag}]` }], rows: hs.x.map((x, i) => ({ x, y: hs.y[i] })) } : null;
 }
 
 // ================================================================ VIEWPORT

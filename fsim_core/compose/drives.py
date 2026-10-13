@@ -28,7 +28,36 @@ from .params import ParamSpec
 from .registry import Drive, register
 from .types import DrivePlan, Pulse
 
-_P = ParamSpec
+# display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
+_TEX = {
+    "shape": r"\Omega(t)", "fwhm_ps": r"\tau_{\mathrm{FWHM}}", "area_pi": r"\Theta", "detuning_meV": r"\Delta", "f_rep_MHz": r"f_{\mathrm{rep}}",
+    "target": r"\mathrm{target}", "cross_pol": r"\mathrm{cross\text{-}pol}", "laser_leak": r"f_{\mathrm{leak}}",
+    "omega_ueV": r"\hbar\Omega", "saturation_s": r"s", "pump": r"P/P_{\mathrm{sat}}", "cw": r"\mathrm{cw}",
+    "window_ps": r"T_{\mathrm{win}}", "p_refill": r"p_{\mathrm{refill}}", "tau_refill_ps": r"\tau_{\mathrm{refill}}",
+    "bg_frac": r"f_{\mathrm{bg}}", "tau_cap_ps": r"\tau_{\mathrm{cap}}", "cap2": r"\mathrm{cap}_{2}",
+    "tau_relax_ps": r"\tau_{\mathrm{relax}}", "b_dark": r"b_{\mathrm{dark}}", "E_act_meV": r"E_{\mathrm{act}}", "k0_ns": r"k_{0}",
+    "pump_profile": r"r(t)", "t_rise_ps": r"t_{\mathrm r}", "k_esc_on_ns": r"k_{\mathrm{esc}}^{\mathrm{on}}",
+    "k_esc_off_ns": r"k_{\mathrm{esc}}^{\mathrm{off}}", "gate_ps": r"T_{\mathrm{gate}}", "hom_gate_ps": r"T_{\mathrm{HOM}}",
+    "hom_gate_shape": r"\mathrm{gate\ shape}", "hom_gate_start_ps": r"t_{\mathrm{HOM}}", "hom_jitter_ps": r"\sigma_{\mathrm{jit}}",
+    "irf_ps": r"\tau_{\mathrm{IRF}}", "cascade": r"\mathrm{cascade}", "pump_ratio_xx": r"\rho_{XX}",
+    "mechanism": r"\mathrm{mechanism}", "mu": r"\mu", "eta_capture": r"\eta_{\mathrm{cap}}", "T_junction_K": r"T_{\mathrm j}",
+    "f_rep_MHz_el": r"f_{\mathrm{rep}}", "I_uA": r"I", "tau_on_ns": r"\tau_{\mathrm{on}}", "F_p_rail": r"F_{\mathrm{rail}}",
+    "R_drive_ohm": r"R_{\mathrm{drive}}", "C_dep_F": r"C_{\mathrm{dep}}", "Z_drive_ohm": r"Z_{\mathrm{drive}}",
+    "Z_junction_ohm": r"Z_{\mathrm j}", "f_reg_Hz": r"f_{\mathrm{reg}}", "f_sample_Hz": r"f_{\mathrm s}",
+    "eps_cycle": r"\varepsilon_{\mathrm{cyc}}", "radius_nm": r"R_{\mathrm{island}}", "R_T_ohm": r"R_{\mathrm T}",
+    "eta_boost": r"\eta_{\mathrm{boost}}", "dg_inj_factor": r"f_{\mathrm{inj}}", "det_off_meV": r"\Delta_{\mathrm{off}}",
+    "det_on_meV": r"\Delta_{\mathrm{on}}", "t_gate_ps": r"t_{\mathrm{gate}}", "t_r_ps": r"t_{\mathrm r}",
+    "rabi_period_ns": r"T_{\Omega}", "power_ref_nW": r"P_{\mathrm{ref}}", "power_nW": r"P",
+    "eid_ps": r"\xi_{\mathrm{EID}}", "p_trion": r"p_{\mathrm{trion}}",
+    "delta1_meV": r"\Delta_{1}", "delta2_meV": r"\Delta_{2}", "fwhm1_ps": r"\tau_{\mathrm{FWHM},1}", "fwhm2_ps": r"\tau_{\mathrm{FWHM},2}",
+    "area1_pi": r"\Theta_{1}", "area2_pi": r"\Theta_{2}", "delta_meV": r"\delta", "asymmetry": r"a", "chirp_ps2": r"\varphi_{2}",
+}
+
+
+def _P(name, *args, **kw):
+    """ParamSpec with the display symbol of this registry id (tex=None when the id has none)."""
+    kw.setdefault("tex", _TEX.get(name))
+    return ParamSpec(name, *args, **kw)
 
 # observable id sets (design 2.6); cw drives exclude the per-pulse brightness (B_*) ids
 _COMMON = frozenset({"g2_0", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps", "beta", "eta_extract",
@@ -85,21 +114,21 @@ def _pulse_inputs(shape, fwhm_ps):
     return d
 
 
-_PAPER_CONV = ("Paper convention Delta = omega_L - omega_X, positive = laser BLUE of the dot; the plan "
-               "stores the repo det_X = -Delta [DR].")
+_PAPER_CONV = (r"Paper convention $\Delta = \omega_{\mathrm L} - \omega_X$, positive = laser BLUE of the dot; the plan "
+               r"stores the repo $\mathrm{det}_X = -\Delta$ [DR].")
 _SRC_A = "assumed default; set to the experiment [A]"
 _REF_BRIEF = "physics brief 2.3 (.workers/devlib/p1-physics-brief.md)"
 
 # devlib-fx3b, both default OFF (= bit-identical): excitation-induced dephasing and a dark-trion branch of coherent pulses
 _SRC_FX3B = "devlib-fx3b engine extension [E]: class model, the coefficient is NOT taken from a paper"
 _EID = _P("eid_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="E", source=_SRC_FX3B, group="advanced",
-          help="Excitation-induced dephasing: pure dephasing rate gamma_EID = eid_ps x |Omega(t)|^2 (Omega in rad/ps) "
-               "added to gamma* during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
-               "step propagators (pulsed two-level drives, no TPE).")
+          help=r"Excitation-induced dephasing: pure dephasing rate $\gamma_{\mathrm{EID}} = \xi_{\mathrm{EID}}\,|\Omega(t)|^2$ ($\Omega$ in rad/ps) "
+               r"added to $\gamma^{*}$ during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
+               r"step propagators (pulsed two-level drives, no TPE).")
 _TRION = _P("p_trion", "1", 0.0, lo=0.0, hi=0.99, tag="E", source=_SRC_FX3B, group="advanced",
-            help="Probability, at a pi pulse, that the excitation ends in a dark trion / excess-charge state "
-                 "(Vajner-type damping of the Rabi oscillation); the per-pulse probability is p_trion sin^2(area/2). "
-                 "Scales n_ph and the preparation by (1 - p) and g2 by 1/(1 - p). 0 = off.")
+            help=r"Probability, at a $\pi$ pulse, that the excitation ends in a dark trion / excess-charge state "
+                 r"(Vajner-type damping of the Rabi oscillation); the per-pulse probability is $p_{\mathrm{trion}}\sin^2(\Theta/2)$. "
+                 r"Scales $n_{\mathrm{ph}}$ and the preparation by $(1 - p)$ and $g^{(2)}$ by $1/(1 - p)$. 0 = off.")
 
 
 def _dark_inputs(g, inputs, eid=True):
@@ -148,13 +177,13 @@ RESONANT_PULSE = PlannedDrive(
         _P("shape", "", "gauss", choices=("gauss", "rect"), tag="A", source=_SRC_A, sweepable=False,
            help="Pulse envelope of the Rabi frequency."),
         _P("fwhm_ps", "ps", 3.0, lo=0.1, hi=200.0, scale="log", tag="A", source=_SRC_A,
-           help="INTENSITY FWHM of Omega^2 (what papers quote as the laser autocorrelation width); "
-                "the amplitude FWHM is sqrt(2) larger."),
+           help=r"INTENSITY FWHM $\tau_{\mathrm{FWHM}}$ of $\Omega^2$ (what papers quote as the laser autocorrelation width); "
+                r"the amplitude FWHM is $\sqrt{2}$ larger."),
         _P("area_pi", "pi", 1.0, lo=0.0, hi=20.0, tag="A", source=_SRC_A,
-           help="Pulse area in units of pi (1 = pi pulse)."),
+           help=r"Pulse area $\Theta$ in units of $\pi$ (1 = $\pi$ pulse)."),
         _P("detuning_meV", "meV", 0.0, lo=-10.0, hi=10.0, tag="A", source=_SRC_A,
-           help="Laser detuning, paper convention Delta = omega_L - omega_X (positive = laser BLUE "
-                "of the dot). Stored in the plan as det_X = -Delta."),
+           help=r"Laser detuning $\Delta$, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (positive = laser BLUE "
+                r"of the dot). Stored in the plan as $\mathrm{det}_X = -\Delta$."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _P("target", "", "X", choices=("X", "X+"), tag="A", source=_SRC_A, sweepable=False,
@@ -163,8 +192,8 @@ RESONANT_PULSE = PlannedDrive(
            help="Cross-polarised excitation/collection: laser light leaks in as a background."),
         _P("laser_leak", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC_A, group="advanced",
            visible_if={"cross_pol": [True]},
-           help="Residual laser as a fraction of the signal (used only when cross_pol is on; "
-                "do not also enter it in the setup)."),
+           help=r"Residual laser $f_{\mathrm{leak}}$ as a fraction of the signal (used only when cross-pol is on; "
+                r"do not also enter it in the setup)."),
         _EID, _TRION,
     ),
     refs=(_REF_BRIEF + ": strict resonant pi row; Rabi area theorem",),
@@ -206,12 +235,12 @@ TPE = PlannedDrive(
         _P("shape", "", "gauss", choices=("gauss", "rect"), tag="A", source=_SRC_A, sweepable=False,
            help="Pulse envelope of the Rabi frequency."),
         _P("fwhm_ps", "ps", 10.0, lo=1.0, hi=200.0, scale="log", tag="A", source=_SRC_A,
-           help="INTENSITY FWHM of Omega^2."),
+           help=r"INTENSITY FWHM $\tau_{\mathrm{FWHM}}$ of $\Omega^2$."),
         _P("area_pi", "pi", 1.0, lo=0.0, hi=5.0, tag="A", source=_SRC_A,
-           help="Area in units of the TPE pi area (computed by the solver via tpe_pi_area)."),
+           help=r"Area $\Theta$ in units of the TPE $\pi$ area (computed by the solver via tpe_pi_area)."),
         _P("detuning_meV", "meV", 0.0, lo=-2.0, hi=2.0, tag="A", source=_SRC_A,
-           help="Laser offset from the two-photon resonance, paper convention (positive = blue); "
-                "0 sits at E_XX_total/2."),
+           help=r"Laser offset $\Delta$ from the two-photon resonance, paper convention (positive = blue); "
+                r"0 sits at $E_{XX,\mathrm{tot}}/2$."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _TRION,
@@ -257,9 +286,9 @@ CW_RESONANT = PlannedDrive(
             "saturation parameter s = Omega^2 T1 T2, plus a detuning.",
     params=(
         _P("omega_ueV", "ueV", 1.0, lo=0.0, hi=100.0, tag="A", source=_SRC_A,
-           help="Rabi energy hbar*Omega; ignored when the saturation parameter is > 0."),
+           help=r"Rabi energy $\hbar\Omega$; ignored when the saturation parameter is $> 0$."),
         _P("saturation_s", "1", 0.0, lo=0.0, hi=1000.0, tag="A", source=_SRC_A,
-           help="Saturation parameter s = Omega^2 T1 T2; 0 means use omega_ueV instead."),
+           help=r"Saturation parameter $s = \Omega^2 T_1 T_2$; 0 means use $\hbar\Omega$ instead."),
         _P("detuning_meV", "meV", 0.0, lo=-1.0, hi=1.0, tag="A", source=_SRC_A,
            help=_PAPER_CONV),
     ),
@@ -320,20 +349,20 @@ def _plan_p_shell(self, vals, em, rt):
 
 
 _PUMP = _P("pump", "1", 1.0, lo=0.0, hi=100.0, tag="A", source=_SRC_A,
-           help="Pump strength P/P_sat; brightness saturates as 1 - exp(-P/P_sat). In cw it is the pump "
-                "rate in units of the total X decay rate [A].")
+           help=r"Pump strength $P/P_{\mathrm{sat}}$; brightness saturates as $1 - e^{-P/P_{\mathrm{sat}}}$. In cw it is the pump "
+                r"rate in units of the total X decay rate [A].")
 _CW = _P("cw", "", False, tag="A", source=_SRC_A, sweepable=False, help="Continuous pump instead of pulses.")
 _WIN = _P("window_ps", "ps", 10.0, lo=0.1, hi=1000.0, scale="log", tag="A", source=_SRC_A,
           visible_if={"cw": [False]}, help="Length of the rectangular pump window.")
 _REFILL = (
     _P("p_refill", "1", 0.0, lo=0.0, hi=0.9, tag="A", source=_SRC_A, group="advanced",
-       help="Probability per emission of a second, uncorrelated capture after the first emission (trap "
-            "refilling). Small-p limit: g2 = 2 p_refill / p_loaded (exactly, for a geometric refill chain) [DR]."),
+       help=r"Probability per emission of a second, uncorrelated capture after the first emission (trap "
+            r"refilling). Small-$p$ limit: $g^{(2)} = 2\,p_{\mathrm{refill}}/p_{\mathrm{loaded}}$ (exactly, for a geometric refill chain) [DR]."),
     _P("tau_refill_ps", "ps", 100.0, lo=1.0, hi=10000.0, scale="log", tag="A", source=_SRC_A, group="advanced",
        visible_if={"cw": [False]}, help="Delay of the refilling capture after the emission."),
     _P("bg_frac", "1", 0.0, lo=0.0, hi=0.99, tag="A", source=_SRC_A, group="advanced",
-       help="Uncorrelated background as a fraction of the detected light; g2 = 1 - rho^2 (1 - g2_signal) "
-            "with rho = 1 - bg_frac. HOM and brightness are the signal-only values."),
+       help=r"Uncorrelated background as a fraction $f_{\mathrm{bg}}$ of the detected light; $g^{(2)} = 1 - \rho^2\,(1 - g^{(2)}_{\mathrm{sig}})$ "
+            r"with $\rho = 1 - f_{\mathrm{bg}}$. HOM and brightness are the signal-only values."),
 )
 
 _FREP = _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
@@ -371,11 +400,11 @@ P_SHELL = PlannedDrive(
     ) + _REFILL + (
         _P("E_act_meV", "meV", 0.0, lo=0.0, hi=200.0, tag="E", source="Arrhenius activation of the thermal "
            "escape of s-shell carriers to the p shell / wetting layer; [E] class model, no paper activation", group="advanced",
-           help="Activation energy of the thermal escape; k_esc(T) = k0 exp(-E_act / kT)."),
+           help=r"Activation energy of the thermal escape; $k_{\mathrm{esc}}(T) = k_0\,e^{-E_{\mathrm{act}}/k_{\mathrm B}T}$."),
         _P("k0_ns", "1/ns", 0.0, lo=0.0, hi=1e6, tag="E", source="Arrhenius prefactor of the thermal escape; "
            "[E] class model; 0 = off (reproduces the T-independent result bit-for-bit)", group="advanced",
-           help="Arrhenius prefactor. Escape X -> R (delays/jitters the emission) and recapture G -> R of "
-                "thermally released carriers between pulses (uncorrelated extra photons: g2(T) grows)."),
+           help=r"Arrhenius prefactor $k_0$. Escape X $\to$ R (delays/jitters the emission) and recapture G $\to$ R of "
+                r"thermally released carriers between pulses (uncorrelated extra photons: $g^{(2)}(T)$ grows)."),
     ),
     refs=(_REF_BRIEF + ": p-shell / quasi-resonant row",),
     provides=frozenset({"incoherent_pump"}),
@@ -514,37 +543,37 @@ def _electrical_shape_params():
     return [
         _P("pump_profile", "", "rect", choices=("rect", "rc", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
            group="advanced",
-           help="Time profile of the incoherent electrical pump r(t) at fixed operating point mu = int r dt: rect, "
-                "rect + RC rise/tail (diode current through R_s C_j) or Gaussian (generator pulse). An RC tail "
-                "LENGTHENS the effective window (tau_eff ~ tau_on + 1.7 t_r) and raises the re-excitation g2."),
+           help=r"Time profile of the incoherent electrical pump $r(t)$ at fixed operating point $\mu = \int r\,\mathrm dt$: rect, "
+                r"rect + RC rise/tail (diode current through $R_{\mathrm s}C_{\mathrm j}$) or Gaussian (generator pulse). An RC tail "
+                r"LENGTHENS the effective window ($\tau_{\mathrm{eff}} \approx \tau_{\mathrm{on}} + 1.7\,t_{\mathrm r}$) and raises the re-excitation $g^{(2)}$."),
         _P("t_rise_ps", "ps", 100.0, lo=0.0, hi=2000.0, tag="A", source="50 ohm x 2 pF class RC, brief 1.3 [E]; "
            "used only when the mechanism has no R and C of its own", group="advanced",
            visible_if={"pump_profile": ["rc"]},
-           help="RC time constant R_s C_j of the pump profile (the pulse tail e^{-t/t_r})."),
+           help=r"RC time constant $R_{\mathrm s}C_{\mathrm j}$ of the pump profile (the pulse tail $e^{-t/t_{\mathrm r}}$)."),
         _P("k_esc_on_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source=_SRC_P10E, group="advanced",
-           help="Photonless tunnelling escape rate X -> G while the pump is on (flat band, small)."),
+           help=r"Photonless tunnelling escape rate $k_{\mathrm{esc}}^{\mathrm{on}}$, X $\to$ G, while the pump is on (flat band, small)."),
         _P("k_esc_off_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source="Ellis et al., Appl. Phys. Lett. 92, 2008: "
            "EL decay 1.59/ns vs TRPL 1.40/ns gives k_off = 0.19/ns [DR from V]; Schlehahn et al. 2015: 3.1/ns [DR from V]",
            group="advanced",
-           help="Escape rate X -> G in the dark window (bias below turn-on, higher field). The EL decay time is "
-                "1/(Gamma + k_off); it is reported (tau_EL_ps) and never used as the radiative lifetime."),
+           help=r"Escape rate $k_{\mathrm{esc}}^{\mathrm{off}}$, X $\to$ G, in the dark window (bias below turn-on, higher field). The EL decay time is "
+                r"$1/(\Gamma + k_{\mathrm{off}})$; it is reported ($\tau_{\mathrm{EL}}$) and never used as the radiative lifetime."),
         _P("gate_ps", "ps", 0.0, lo=0.0, hi=1e5, tag="A", source=_SRC_P10E, group="advanced",
-           help="Photon-counting gate from the pump onset (g2 and brightness); 0 = count the whole period."),
+           help=r"Photon-counting gate $T_{\mathrm{gate}}$ from the pump onset ($g^{(2)}$ and brightness); 0 = count the whole period."),
         _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
-           help="Detection-gate width T of a Stark-gated HOM (Bennett-like); 0 = off. Observable hom_I_gated."),
+           help=r"Detection-gate width $T_{\mathrm{HOM}}$ of a Stark-gated HOM (Bennett-like); 0 = off. Observable $I_{\mathrm{HOM}}^{\mathrm{gate}}$."),
         _P("hom_gate_shape", "", "rect", choices=("rect", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
            group="advanced",
-           help="Shape of the HOM detection gate: rect (top-hat of width hom_gate_ps, opening at hom_gate_start_ps) or "
-                "gauss (Gaussian window of INTENSITY FWHM hom_gate_ps CENTRED at hom_gate_start_ps; Bennett's 31 ps "
-                "window is a Gaussian)."),
+           help=r"Shape of the HOM detection gate: rect (top-hat of width $T_{\mathrm{HOM}}$, opening at $t_{\mathrm{HOM}}$) or "
+                r"gauss (Gaussian window of INTENSITY FWHM $T_{\mathrm{HOM}}$ CENTRED at $t_{\mathrm{HOM}}$; Bennett's 31 ps "
+                r"window is a Gaussian)."),
         _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
-           help="Time after the excitation at which the HOM gate opens (rect) / its centre (gauss)."),
+           help=r"Time $t_{\mathrm{HOM}}$ after the excitation at which the HOM gate opens (rect) / its centre (gauss)."),
         _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
-           help="Std dev of the relative timing jitter between the two photons' detection gates (Gaussian). The overlap "
+           help=r"Standard deviation $\sigma_{\mathrm{jit}}$ of the relative timing jitter between the two photons' detection gates (Gaussian). The overlap "
                 "falls monotonically with it; the displaced windows share only part of the photon."),
         _P("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_P10E, group="advanced",
-           help="Detector timing response (Gaussian FWHM); 0 = off. Adds the IRF-convolved g2 (cw dip) and the IRF "
-                "leak of the binned histogram (g2_binned)."),
+           help=r"Detector timing response $\tau_{\mathrm{IRF}}$ (Gaussian FWHM); 0 = off. Adds the IRF-convolved $g^{(2)}$ (cw dip) and the IRF "
+                r"leak of the binned histogram ($g^{(2)}_{\mathrm{bin}}$)."),
     ]
 
 
@@ -552,26 +581,26 @@ def _electrical_cascade_params():
     """Cap-2 cascade (XX) loading and the background-only fraction (devlib-fx3b); default = off."""
     return [
         _P("cascade", "", False, tag="A", source=_SRC_FX3B_EL, sweepable=False, group="advanced",
-           help="Allow loading of the biexciton (capacity 2, rate solver cascade G-X-XX). Strong pumping then PARKS the dot "
-                "in XX and the pulsed g2 saturates and falls (Sartison brief anchor: rect cascade 0.135 at mu 4, 0.049 at "
-                "mu 20) instead of rising like the two-level pump."),
+           help=r"Allow loading of the biexciton (capacity 2, rate solver cascade G-X-XX). Strong pumping then PARKS the dot "
+                r"in XX and the pulsed $g^{(2)}$ saturates and falls (Sartison brief anchor: rect cascade 0.135 at $\mu = 4$, 0.049 at "
+                r"$\mu = 20$) instead of rising like the two-level pump."),
         _P("pump_ratio_xx", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_FX3B_EL, group="advanced",
            visible_if={"cascade": [True]},
-           help="Rate of loading X -> XX relative to G -> X (1 = equal; 0 = two-level pump)."),
+           help=r"Rate $\rho_{XX}$ of loading X $\to$ XX relative to G $\to$ X (1 = equal; 0 = two-level pump)."),
         _P("bg_frac", "1", 0.0, lo=0.0, hi=0.99, tag="A", source=_SRC_FX3B_EL, group="advanced",
-           help="Uncorrelated BACKGROUND as a fraction of the detected light (neighbouring dots, spectral leakage): "
-                "g2 = 1 - rho^2 (1 - g2_signal) with rho = 1 - bg_frac, the same law as above_band. Use this instead of "
-                "setup.laser_leak (which is a laser, not a background). HOM and brightness stay signal-only. "
-                "The background-corrected convention g2_0:bg_corrected recovers g2_signal."),
+           help=r"Uncorrelated BACKGROUND as a fraction $f_{\mathrm{bg}}$ of the detected light (neighbouring dots, spectral leakage): "
+                r"$g^{(2)} = 1 - \rho^2\,(1 - g^{(2)}_{\mathrm{sig}})$ with $\rho = 1 - f_{\mathrm{bg}}$, the same law as above_band. Use this instead of "
+                r"the setup leak $f_{\mathrm{leak}}$ (which is a laser, not a background). HOM and brightness stay signal-only. "
+                r"The background-corrected convention $g^{(2)}(0)$:bg_corrected recovers $g^{(2)}_{\mathrm{sig}}$."),
     ]
 
 
 def _electrical_cw_params():
     return [
         _P("k_esc_on_ns", "1/ns", 0.0, lo=0.0, hi=50.0, tag="A", source=_SRC_P10E, group="advanced",
-           help="Photonless tunnelling escape rate X -> G at the cw bias."),
+           help=r"Photonless tunnelling escape rate $k_{\mathrm{esc}}^{\mathrm{on}}$, X $\to$ G, at the cw bias."),
         _P("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_P10E, group="advanced",
-           help="Detector timing response (Gaussian FWHM); 0 = off. Adds the IRF-convolved dip g2 (g2_irf)."),
+           help=r"Detector timing response $\tau_{\mathrm{IRF}}$ (Gaussian FWHM); 0 = off. Adds the IRF-convolved dip $g^{(2)}_{\mathrm{IRF}}(0)$."),
     ]
 
 
@@ -581,12 +610,12 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
            sweepable=False, help="Injection mechanism (drive_mech roster)."),
         _P("mu", "1", 0.5, lo=0.0, hi=20.0, tag="A", source=_SRC_DM,
            visible_if={"mechanism": [m for m in choices if m not in _MU_IGNORED]},
-           help="Operating point: mean carriers loaded per window."),
+           help=r"Operating point $\mu$: mean carriers loaded per window."),
         _P("eta_capture", "1", eta_default, lo=0.0, hi=1.0, scale="lin", tag="A", source=_SRC_A,
-           help="Delivery / capture efficiency into the dot."),
+           help=r"Delivery / capture efficiency $\eta_{\mathrm{cap}}$ into the dot."),
         _P("T_junction_K", "K", 300.0, lo=1.0, hi=500.0, tag="A", source=_SRC_DM,
            visible_if={"mechanism": [m for m in choices if _CARD_NAME[m] in ("m4a", "m4b", "m4c")]},
-           help="Junction / island temperature used to price a Coulomb-blockade element."),
+           help=r"Junction / island temperature $T_{\mathrm j}$ used to price a Coulomb-blockade element."),
     ]
     if pulsed:
         ps.append(_P("f_rep_MHz", "MHz", 80.0, lo=0.01, hi=2000.0, scale="log", tag="A", source=_SRC_A,
@@ -596,33 +625,33 @@ def _electrical_params(choices, default_mech, eta_default, pulsed):
         ps += _electrical_cw_params()
     ps += _electrical_cascade_params()
     spec = {
-        "I_uA": _P("I_uA", "uA", 10.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM, help="Drive current."),
+        "I_uA": _P("I_uA", "uA", 10.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM, help=r"Drive current $I$."),
         "tau_on_ns": _P("tau_on_ns", "ns", 1.0, lo=0.0, hi=1e4, tag="A", source=_SRC_DM,
-                        help="Current window length."),
+                        help=r"Current window length $\tau_{\mathrm{on}}$."),
         "F_p_rail": _P("F_p_rail", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_DM,
-                       help="Pump Fano factor of the rail (1 = shot-noise limited)."),
+                       help=r"Pump Fano factor $F_{\mathrm{rail}}$ of the rail (1 = shot-noise limited)."),
         "R_drive_ohm": _P("R_drive_ohm", "ohm", 0.0, lo=0.0, hi=1e7, tag="A", source=_SRC_DM,
-                          help="Rail resistance for the rise time; 0 = not given (needs C_dep_F too)."),
+                          help=r"Rail resistance $R_{\mathrm{drive}}$ for the rise time; 0 = not given (needs $C_{\mathrm{dep}}$ too)."),
         "C_dep_F": _P("C_dep_F", "F", 0.0, lo=0.0, hi=1e-9, tag="A", source=_SRC_DM,
-                      help="Depletion capacitance for the rise time; 0 = not given."),
+                      help=r"Depletion capacitance $C_{\mathrm{dep}}$ for the rise time; 0 = not given."),
         "Z_drive_ohm": _P("Z_drive_ohm", "ohm", 1e5, lo=1.0, hi=1e9, scale="log", tag="A", source=_SRC_DM,
-                          help="Drive impedance of the quiet rail."),
+                          help=r"Drive impedance $Z_{\mathrm{drive}}$ of the quiet rail."),
         "Z_junction_ohm": _P("Z_junction_ohm", "ohm", 1e3, lo=1.0, hi=1e9, scale="log", tag="A",
-                             source=_SRC_DM, help="Junction impedance (F9 impedance divider)."),
+                             source=_SRC_DM, help=r"Junction impedance $Z_{\mathrm j}$ (F9 impedance divider)."),
         "f_reg_Hz": _P("f_reg_Hz", "Hz", 0.0, lo=0.0, hi=1e12, tag="A", source=_SRC_DM,
-                       help="Regulation bandwidth; 0 = ideal (needs f_sample_Hz too)."),
+                       help=r"Regulation bandwidth $f_{\mathrm{reg}}$; 0 = ideal (needs $f_{\mathrm s}$ too)."),
         "f_sample_Hz": _P("f_sample_Hz", "Hz", 0.0, lo=0.0, hi=1e12, tag="A", source=_SRC_DM,
-                          help="Sampling rate of the regulated rail; 0 = not given."),
+                          help=r"Sampling rate $f_{\mathrm s}$ of the regulated rail; 0 = not given."),
         "eps_cycle": _P("eps_cycle", "1", 0.01, lo=0.0, hi=1.0, tag="E", source=_SRC_DM + " [E]",
-                        help="Per-cycle error of a single-carrier SET source (F_p ~ eps)."),
+                        help=r"Per-cycle error $\varepsilon_{\mathrm{cyc}}$ of a single-carrier SET source ($F_{\mathrm p} \approx \varepsilon_{\mathrm{cyc}}$)."),
         "radius_nm": _P("radius_nm", "nm", 20.0, lo=1.0, hi=500.0, tag="A", source=_SRC_DM,
-                        help="Island radius setting the charging energy."),
+                        help=r"Island radius $R$ setting the charging energy."),
         "R_T_ohm": _P("R_T_ohm", "ohm", 1e6, lo=1e3, hi=1e9, scale="log", tag="A", source=_SRC_DM,
-                      help="Tunnel resistance (needs R_T >> R_Q)."),
+                      help=r"Tunnel resistance $R_{\mathrm T}$ (needs $R_{\mathrm T} \gg R_{\mathrm Q}$)."),
         "eta_boost": _P("eta_boost", "1", 2.0, lo=1.0, hi=20.0, tag="A", source=_SRC_DM,
-                        help="Capture-efficiency boost of resonant-tunnelling injection."),
+                        help=r"Capture-efficiency boost $\eta_{\mathrm{boost}}$ of resonant-tunnelling injection."),
         "dg_inj_factor": _P("dg_inj_factor", "1", 0.5, lo=0.0, hi=1.0, tag="A", source=_SRC_DM,
-                            help="Injection-broadening scale factor of resonant-tunnelling injection."),
+                            help=r"Injection-broadening scale factor $f_{\mathrm{inj}}$ of resonant-tunnelling injection."),
     }
     for name, p in spec.items():
         labs = [m for m in _labels_using(name) if m in choices]
@@ -695,33 +724,33 @@ STARK_GATED_RESONANT = PlannedDrive(
             "frequency from the measured period and power; optional detection-gate HOM (Bennett-type).",
     params=(
         _P("det_off_meV", "meV", 5.0, lo=-30.0, hi=30.0, tag="A", source=_SRC_CAO,
-           help="Laser detuning OUTSIDE the gate, paper convention Delta = omega_L - omega_X (positive = laser BLUE of "
-                "the dot). Must be >> hbar Gamma_2 so the off-gate excitation is negligible."),
+           help=r"Laser detuning $\Delta_{\mathrm{off}}$ OUTSIDE the gate, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (positive = laser BLUE of "
+                r"the dot). Must be $\gg \hbar\Gamma_2$ so the off-gate excitation is negligible."),
         _P("det_on_meV", "meV", 0.0, lo=-30.0, hi=30.0, tag="A", source=_SRC_CAO,
-           help="Laser detuning INSIDE the gate, same convention (0 = on resonance)."),
+           help=r"Laser detuning $\Delta_{\mathrm{on}}$ INSIDE the gate, same convention (0 = on resonance)."),
         _P("t_gate_ps", "ps", 300.0, lo=1.0, hi=1e4, scale="log", tag="A", source=_SRC_CAO,
-           help="Width of the electrical gate (boxcar) during which the dot is tuned to det_on."),
+           help=r"Width $t_{\mathrm{gate}}$ of the electrical gate (boxcar) during which the dot is tuned to $\Delta_{\mathrm{on}}$."),
         _P("t_r_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC_CAO,
-           help="RC time constant of the gate edges (0 = sharp). The Rabi window is t_gate + 6 t_r."),
+           help=r"RC time constant $t_{\mathrm r}$ of the gate edges (0 = sharp). The Rabi window is $t_{\mathrm{gate}} + 6\,t_{\mathrm r}$."),
         _P("rabi_period_ns", "ns", 1.6, lo=0.05, hi=100.0, scale="log", tag="A", source=_SRC_CAO,
-           help="Period 2 pi / Omega of the measured Rabi oscillation at power_ref_nW."),
+           help=r"Period $T_\Omega = 2\pi/\Omega$ of the measured Rabi oscillation at $P_{\mathrm{ref}}$."),
         _P("power_ref_nW", "nW", 500.0, lo=0.01, hi=1e6, scale="log", tag="A", source=_SRC_CAO,
-           help="Laser power at which rabi_period_ns was measured."),
+           help=r"Laser power $P_{\mathrm{ref}}$ at which $T_\Omega$ was measured."),
         _P("power_nW", "nW", 500.0, lo=0.0, hi=1e6, tag="A", source=_SRC_CAO,
-           help="Laser power used; the Rabi frequency scales as sqrt(power / power_ref_nW)."),
+           help=r"Laser power $P$ used; the Rabi frequency scales as $\sqrt{P/P_{\mathrm{ref}}}$."),
         _P("f_rep_MHz", "MHz", 200.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_CAO,
            help="Gate repetition rate."),
         _P("hom_gate_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
-           help="Detection-gate width T of a gated HOM; 0 = off. Observable hom_I_gated."),
+           help=r"Detection-gate width $T_{\mathrm{HOM}}$ of a gated HOM; 0 = off. Observable $I_{\mathrm{HOM}}^{\mathrm{gate}}$."),
         _P("hom_gate_shape", "", "rect", choices=("rect", "gauss"), tag="A", source=_SRC_P10E, sweepable=False,
            group="advanced",
-           help="Shape of the HOM detection gate: rect (top-hat, opens at hom_gate_start_ps) or gauss (INTENSITY FWHM "
-                "hom_gate_ps centred at hom_gate_start_ps)."),
+           help=r"Shape of the HOM detection gate: rect (top-hat, opens at $t_{\mathrm{HOM}}$) or gauss (INTENSITY FWHM "
+                r"$T_{\mathrm{HOM}}$ centred at $t_{\mathrm{HOM}}$)."),
         _P("hom_gate_start_ps", "ps", 0.0, lo=0.0, hi=1e4, tag="A", source=_SRC_P10E, group="advanced",
            help="Time after the excitation at which the HOM gate opens (rect) / its centre (gauss)."),
         _P("hom_jitter_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="A", source=_SRC_P10E, group="advanced",
-           help="Std dev of the relative timing jitter between the two photons' detection gates inside the HOM gate "
-                "(Gaussian); the overlap falls monotonically with it."),
+           help=r"Standard deviation $\sigma_{\mathrm{jit}}$ of the relative timing jitter between the two photons' detection gates inside the HOM gate "
+                r"(Gaussian); the overlap falls monotonically with it."),
     ),
     refs=("p3-electrical-brief.md 2.1 (Cao 2015 gated resonance), 2.2 (Bennett gate); polaron.PulseTrain det_profile",),
     provides=frozenset({"coherent_pulse"}),

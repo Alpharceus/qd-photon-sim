@@ -66,7 +66,7 @@ async function numberTagAudit(page) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const consoleErrors = [];

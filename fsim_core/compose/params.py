@@ -40,6 +40,7 @@ class ParamSpec:
     group: str = "main"              # main | advanced
     visible_if: Optional[dict] = None
     sweepable: bool = True
+    tex: Optional[str] = None        # display symbol in KaTeX TeX (UI only; never used by the physics)
 
     def __post_init__(self):
         if self.tag not in TAGS:
@@ -62,6 +63,8 @@ class ParamSpec:
             m["hi"] = self.hi
         if self.choices is not None:
             m["choices"] = list(self.choices)
+        if self.tex is not None:
+            m["tex"] = self.tex
         return m
 
 

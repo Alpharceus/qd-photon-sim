@@ -11,7 +11,7 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, widest } from "../ui/tagChip.js";
 import { skeleton, errorState, toast } from "../ui/controls.js";
 import { fmt, isNum } from "../ui/format.js";
-import { sym } from "../ui/readout.js";
+import { richText, tex, symbolFor, texIndex, pathSymbol } from "../ui/math.js";
 import { paperOverlay } from "../charts/paperOverlay.js";
 
 const AXES = [
@@ -34,20 +34,62 @@ const READ_INFO = {
   "V-snip": "Read from a snippet only",
 };
 
-// Display notation of the observables the ledgers use (labels only; the registry's own names are sentences).
-const OBS_SYM = {
-  g2_0: "g^{(2)}(0)", g2_XX: "g^{(2)}(0) of the XX line", hom_I: "HOM overlap I", hom_V: "HOM visibility V", hom_XX: "HOM overlap of the XX line",
-  F_P_eff: "Effective Purcell factor F_{P}·L", tau_ps: "Lifetime τ", tau_XX_ps: "XX lifetime τ_{XX}", tau_purcell_ps: "Purcell lifetime τ_{P}",
-  Gamma_ns: "Radiative rate Γ", beta: "β factor", eta_extract: "Extraction β·η_{out}", eta_prep: "State preparation η_{prep}", eta_rad: "Radiative efficiency η_{rad}",
-  B_fibre: "Brightness into the fibre", B_first_lens: "First-lens brightness", rate_detected_Hz: "Detected count rate", Z_phonon: "ZPL weight Z",
-  inversion: "Inversion after the pulse", linewidth_ueV: "Emitter linewidth",
+// Display notation of the observables the ledgers use (rich strings: `$...$` is typeset; the registry's own names are sentences).
+const OBS_RICH = {
+  g2_0: "$g^{(2)}(0)$", g2_XX: "$g^{(2)}(0)$ of the XX line", g2_raw: "$g^{(2)}(0)$", g2_binned: "binned $g^{(2)}(0)$", g2_irf: "IRF-convolved $g^{(2)}(0)$",
+  hom_I: "HOM overlap $I_{\\mathrm{HOM}}$", hom_V: "HOM visibility $V_{\\mathrm{HOM}}$", hom_XX: "HOM overlap of the XX line", hom_I_gated: "gated HOM overlap $I_{\\mathrm{HOM}}^{\\mathrm{gate}}$",
+  F_P_eff: "Effective Purcell factor $F_{\\mathrm P}L$", F_P_peak: "Purcell factor $F_{\\mathrm P}$ at resonance", tau_ps: "Lifetime $\\tau$", tau_XX_ps: "XX lifetime $\\tau_{XX}$",
+  tau_purcell_ps: "Purcell lifetime $\\tau_{\\mathrm P}$", tau_EL_ps: "EL decay time $\\tau_{\\mathrm{EL}}$", Gamma_ns: "Radiative rate $\\Gamma$", beta: "$\\beta$ factor",
+  eta_extract: "Extraction $\\beta\\,\\eta_{\\mathrm{out}}$", eta_out: "Extraction $\\eta_{\\mathrm{out}}$", eta_prep: "State preparation $\\eta_{\\mathrm{prep}}$",
+  eta_rad: "Radiative efficiency $\\eta_{\\mathrm{rad}}$", eta_rad_eff: "Effective radiative efficiency $\\eta_{\\mathrm{rad}}^{\\mathrm{eff}}$",
+  B_fibre: "Brightness into the fibre $B_{\\mathrm{fibre}}$", B_first_lens: "First-lens brightness $B_{\\mathrm{lens}}$", B_lens: "First-lens brightness $B_{\\mathrm{lens}}$",
+  rate_detected_Hz: "Detected count rate $R_{\\mathrm{det}}$", Z_phonon: "ZPL weight $Z(T)$", inversion: "Inversion $w$ after the pulse",
+  linewidth_ueV: "Emitter linewidth $\\hbar\\Gamma_{\\mathrm{tot}}$", lambda_nm: "Wavelength $\\lambda$", spectral_overlap: "Spectral leakage $\\varepsilon_{XX}$",
 };
 
 /** "raw g(2)(0)": the convention in words, then the observable in notation (intrinsic is the default and stays silent). */
 function obsNode(obs, conv) {
-  const base = OBS_SYM[obs] || String(obs || "").replace(/_/g, " ");
-  const c = conv && conv !== "intrinsic" ? `${conv} ` : "";
-  return h("span.pp-obsl", { title: "paper and model are compared in the same convention only" }, c, OBS_SYM[obs] ? sym(base) : base);
+  const c = conv && conv !== "intrinsic" ? `${String(conv).replace(/_/g, " ")} ` : "";
+  const body = OBS_RICH[obs] || (obs ? `$${symbolFor({ name: obs })}$` : "");
+  return h("span.pp-obsl", { title: "paper and model are compared in the same convention only" }, c, richText(body));
+}
+
+// A ledger item id ("eta_X_QD1", "g2_ps_vs_T") is a file key: shown as a typeset head symbol plus words, never as snake_case.
+const ITEM_HEAD = {
+  g2: String.raw`$g^{(2)}(0)$`, eta: String.raw`$\eta$`, tau: String.raw`$\tau$`, beta: String.raw`$\beta$`, lambda: String.raw`$\lambda$`,
+  gamma: String.raw`$\Gamma$`, F: String.raw`$F_{\mathrm P}$`, FP: String.raw`$F_{\mathrm P}$`, Z: String.raw`$Z$`, T1: String.raw`$T_1$`,
+  Fprep: String.raw`$F_{\mathrm{prep}}$`, M: String.raw`$M$`, hom: "HOM", linewidth: "linewidth", rate: "rate", inversion: "inversion",
+  extraction: "extraction", brightness: "brightness", sys: "system efficiency", pQD: String.raw`$p_{\mathrm{QD}}$`, CX: String.raw`$C_X$`,
+};
+const ITEM_WORD = {
+  pred: "prediction", prediction: "prediction", corr: "corrected", raw: "raw", meas: "measured", sim: "simulated", sat: "at saturation",
+  res: "resonant", env: "envelope", lying: "mislabelled", dc: "dark-count corrected", darkcorr: "dark-count corrected", analyt: "analytic",
+  bgc: "background-corrected", irf: "IRF", ps: "pulsed", vs: "vs", frep: String.raw`$f_{\mathrm{rep}}$`, T: String.raw`$T$`, FP: String.raw`$F_{\mathrm P}$`,
+  rabi: "Rabi", xcorr: "cross-correlation", EL: "EL", eff: "efficiency", dev: "device", rad: "radiative", cav: "cavity", fit: "fit",
+  max: "max", star: String.raw`$\gamma^{*}$`, det: "detected", ebg: "eBG", cbg: "CBG", TPE: "TPE", TPI: "TPI", XX: "XX", X: "X",
+};
+function itemToken(t) {
+  let m;
+  if (ITEM_WORD[t] !== undefined) return ITEM_WORD[t];
+  if ((m = /^(\d+)p(\d+)([A-Za-z]+)$/.exec(t)) || (m = /^(\d+)()([A-Za-z]+)$/.exec(t))) {
+    const num = m[2] ? `${m[1]}.${m[2]}` : m[1];
+    const u = m[3].replace(/^u/, "µ");
+    return u === "Psat" ? String.raw`${num}$\,P_{\mathrm{sat}}$` : `${num} ${u}`;
+  }
+  return t;
+}
+function itemLabel(id) {
+  const toks = String(id).split("_").filter(Boolean);
+  const head = ITEM_HEAD[toks[0]];
+  const rest = toks.slice(head ? 1 : 0).map(itemToken);
+  return [head, ...rest].filter(Boolean).join(" · ");
+}
+
+function leafNode(path) {
+  const s = String(path);
+  const axis = s.split(".")[0];
+  const word = { material: "material", structure: "structure", drive: "drive", setup: "setup" }[axis] || axis;
+  return h("span.pp-leaf", `${word} `, tex(pathSymbol(s, P?.texIdx || null)));
 }
 
 /** The ledger's tolerance string in words: "2sigma|abs0.005" -> "±2 sigma or ±0.005 abs (whichever is larger)". */
@@ -55,7 +97,7 @@ function tolHuman(str) {
   if (!str) return "";
   const parts = String(str).split("|").map((t) => {
     let m;
-    if ((m = /^([\d.]+)sigma$/.exec(t))) return `±${m[1]} sigma`;
+    if ((m = /^([\d.]+)sigma$/.exec(t))) return String.raw`±${m[1]}$\,\sigma$`;
     if ((m = /^rel([\d.]+)%$/.exec(t))) return `±${m[1]}%`;
     if ((m = /^abs(.+)$/.exec(t))) return `±${m[1]} abs`;
     if ((m = /^(.+)<=(.+)$/.exec(t))) return `${m[1].replace(/_/g, " ")} at most ${m[2]}`;
@@ -89,6 +131,7 @@ export function mount(el, ctx) {
   buildShell();
   NARROW.addEventListener("change", syncFold);
   loadList().then(() => { if (P) update(P.ctx.args); });
+  ctx.api.composeRegistry?.().then((reg) => { if (P) { P.texIdx = texIndex(reg); if (P.paper) renderTable(); } }).catch(() => { /* symbols fall back to the derived ones */ });
 }
 
 export function unmount() {
@@ -570,7 +613,7 @@ function inputsCell(r) {
     near ? h("p.pp-note.pp-near", icon("warn", { size: 12 }), " every input comes from this paper: the item is near-transcription") : null,
     h("ul.pp-in-list", ins.map((k) => {
       const fp = set.has(k);
-      return h("li", { dataset: { fromPaper: fp ? "1" : "0" } }, h("span.pp-leaf", k), tagChip(P.paper.resolved?.[k]?.tag, { size: "sm", title: fp ? "taken from the paper" : "not from the paper" }),
+      return h("li", { dataset: { fromPaper: fp ? "1" : "0" } }, leafNode(k), tagChip(P.paper.resolved?.[k]?.tag, { size: "sm", title: fp ? "taken from the paper" : "not from the paper" }),
         fp ? h("span.label-chip.pp-fp", "paper") : h("span.pp-muted.pp-notfp", "not from paper"));
     }))));
 }
@@ -584,7 +627,7 @@ function row(r) {
   return h("tr", { dataset: { item: r.id, cls: r.cls, outcome: it?.outcome || "", state: it ? "run" : "ledger" } },
     h("th.pp-item", { scope: "row" },
       h("span.pp-item-obs", obsNode(obs, conv)),
-      h("span.pp-item-id", r.id),
+      h("span.pp-item-id", { title: r.id }, itemLabel(r.id)),
       h("span.pp-item-meta", classBadge(r.cls), h("span.pp-item-kind", r.cls === "P" ? "prediction" : r.cls === "R" ? "paper reference" : ser ? "series" : "scalar"))),
     paperCell(r), modelCell(r), tolCell(r),
     outcomeCell(r), inputsCell(r));

@@ -4,6 +4,11 @@
 import { h } from "./dom.js";
 import { icon } from "./icons.js";
 import { lineStatus } from "./verdictBadge.js";
+import { tex } from "./math.js";
+
+// VERDICT-line keys that are physics symbols; every other key is shown as plain words (never snake_case)
+const KEY_TEX = { g2_min: String.raw`g^{(2)}_{\min}`, flux_max: String.raw`\Phi_{\max}`, strain_bound: String.raw`\varepsilon_{\max}` };
+const keyNode = (k) => (KEY_TEX[k] ? tex(KEY_TEX[k]) : String(k).replace(/_/g, " "));
 
 const REASON_KEYS = ["g2_min", "flux_max", "idealized_status", "paired_optical_pass", "hardware_qualified",
   "quality_pass", "regime", "family", "strain_bound"];
@@ -36,7 +41,7 @@ export function verdictPlaque(verdict, { source = "", note = "", count = 0, camp
     || DENOM_KEYS.find((k) => f[k] != null);
   const idealShown = statusOf(verdict.word) === "fail" && String(f.idealized_status || "").toLowerCase() === "pass_hardware_infeasible";
   const reasons = REASON_KEYS.filter((k) => f[k] != null && k !== denomKey && !(idealShown && k === "idealized_status")).slice(0, 3)
-    .map((k) => h("span.plaque-kv", h("span.k", k), h("span.v", f[k])));
+    .map((k) => h("span.plaque-kv", h("span.k", keyNode(k)), h("span.v", f[k])));
 
   let wordEl;
   if (status === "split") {
@@ -53,7 +58,7 @@ export function verdictPlaque(verdict, { source = "", note = "", count = 0, camp
     h("span.split-half.is-fail", icon("cross", { size: 14 }), "hardware FAIL")) : null;
   return h("section.plaque", { class: `plaque-${status}`, "aria-label": "Campaign verdict", dataset: { status } },
     h("div.plaque-top", wordEl,
-      denomKey ? h("div.plaque-denom", h("span.k", denomKey.replace(/_/g, " ")), h("span.v", f[denomKey])) : null),
+      denomKey ? h("div.plaque-denom", h("span.k", keyNode(denomKey)), h("span.v", f[denomKey])) : null),
     ideal,
     h("div.plaque-reasons", reasons),
     h("p.plaque-source",

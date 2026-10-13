@@ -12,6 +12,7 @@ import { verdictPlaque } from "../ui/verdictPlaque.js";
 import { sro } from "../ui/figure.js";
 import { segmented, toast, skeleton, emptyState, errorState, popover, closePopover } from "../ui/controls.js";
 import { fieldRow } from "../ui/fieldRow.js";
+import { symbolNode, symbolFor } from "../ui/math.js";
 import { fmt, fmtInterval, fmtSeconds, isNum, unitText, SCALAR_UNITS } from "../ui/format.js";
 import { chartCard } from "../charts/chartCard.js";
 import { buildG2T, buildSecondary, g2TableRows, SECONDARY } from "../charts/g2T.js";
@@ -334,7 +335,7 @@ function renderMount(b) {
     for (const p of b.show.filter((x) => S.meta[x] && getPath(S.design, x) !== undefined).slice(0, 2)) {
       const v = getPath(S.design, p);
       const m = S.meta[p];
-      vals.append(h("div.mv", { title: `${p}: ${m.source || ""}` }, h("span.mv-k", m.label || p.split(".").pop()),
+      vals.append(h("div.mv", { title: `${p}: ${m.source || ""}` }, h("span.mv-k", m.label || symbolNode({ name: p.split(".").pop() })),
         h("span.mv-line", h("span.mv-v", v === null ? "auto" : typeof v === "number" ? fmt(v) : String(v)),
           h("span.mv-u", unitText(m.unit)), tagChip(m.tag, { size: "sm" }))));
     }
@@ -1093,7 +1094,7 @@ function renderSeed() {
   const tagLive = ok ? normTag(live.tag_chain) : null;
   const labels = ok ? (live.labels || []) : [];
   host.append(h("section.seed", { "aria-label": "Seeded sweep row", dataset: { seeded: "1" } }, head,
-    h("p.seed-note", `The card carries the row's grid values and model switches (${rtEdgeSeedFields(row).map(([k]) => k.split(".").pop()).join(", ")}); evaluated as a point at T_hs = ${fmt(row.T_hs_K)} K.`),
+    h("p.seed-note", `The card carries the row's grid values and model switches (${rtEdgeSeedFields(row).map(([k]) => `$${symbolFor({ name: k.split(".").pop() })}$`).join(", ")}); evaluated as a point at T_hs = ${fmt(row.T_hs_K)} K.`),
     labels.length ? h("p.seed-labels", labels.map((l) => h("span.label-chip", l))) : null,
     h("table.data-table.cmp-table.seed-table",
       h("thead", h("tr", h("th", "quantity"), h("th.num", "CSV (committed)"), h("th.num", "live now"), h("th.num", "match"))),
@@ -1541,7 +1542,7 @@ function addAnimGlyph(row, p) {
   }, icon("run", { size: 14 })));
 }
 
-function paramLabel(A) { return A.meta?.label || A.param.split(".").pop(); }
+function paramLabel(A) { return A.meta?.label || `$${symbolFor({ name: A.param.split(".").pop() })}$`; }
 function paramText(A, v) { const u = unitText(A.meta?.unit); return `${fmt(v)}${u ? ` ${u}` : ""}`; }
 
 function openAnim(param) {

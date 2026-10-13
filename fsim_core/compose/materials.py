@@ -49,30 +49,39 @@ _CONVERT = {
 }
 
 _ADV = "advanced"
+# display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
+_TEX = {
+    "lambda_nm": r"\lambda", "tau_bare_ns": r"\tau_{\mathrm{bare}}", "fss_ueV": r"\delta_{\mathrm{FSS}}",
+    "E_b_meV": r"E_{\mathrm b}", "gamma_xx_ratio": r"\Gamma_{XX}/\Gamma_{X}", "gamma_star_4K_ns": r"\gamma^{*}(4\,\mathrm K)",
+    "a_ac_ns_per_K": r"a_{\mathrm{ac}}", "alpha_ps2": r"\alpha", "D_c_eV": r"D_{\mathrm c}", "D_v_eV": r"D_{\mathrm v}",
+    "rho_kg_m3": r"\rho", "c_LA_m_s": r"c_{\mathrm{LA}}", "l_xy_nm": r"\ell_{xy}", "l_z_nm": r"\ell_{z}",
+    "n_host": r"n_{\mathrm{host}}", "E_LO_meV": r"E_{\mathrm{LO}}", "k_nr_ns": r"k_{\mathrm{nr}}",
+    "sigma_sd_ueV": r"\sigma_{\mathrm{sd}}", "tau_sd_ns": r"\tau_{\mathrm{sd}}", "b_LO_meV": r"b_{\mathrm{LO}}",
+}
 # name -> (ParamSpec unit, group, help). Order = display order.
 _PARAMS = {
-    "lambda_nm": ("nm", "main", "Zero-phonon exciton emission wavelength; E_X = 1239841.98 / lambda_nm meV."),
-    "tau_bare_ns": ("ns", "main", "Bare (homogeneous-medium) exciton radiative lifetime; Gamma0 = 1 / tau_bare."),
-    "fss_ueV": ("ueV", "main", "Exciton fine-structure splitting (a beat, not dephasing)."),
-    "E_b_meV": ("meV", "main", "Biexciton binding energy, positive = binding (E_XX = 2 E_X - E_b)."),
-    "gamma_xx_ratio": ("1", "main", "Radiative rate ratio Gamma_XX / Gamma_X of the biexciton to the exciton."),
-    "gamma_star_4K_ns": ("1/ns", "main", "Pure dephasing rate gamma* at 4 K, repo convention (coherence decays at "
-                                         "(Gamma + gamma*)/2; gamma* = excess FWHM / hbar). Linear T model; LO term not included."),
-    "a_ac_ns_per_K": ("1/ns/K", "main", "Linear acoustic T-dephasing slope: gamma*(T) = gamma*(4 K) + a_ac (T - 4 K), clipped >= 0. "
-                                        "LO term not included."),
-    "alpha_ps2": ("ps^2", _ADV, "Direct phonon coupling alpha. 0 = compute from D_c, D_v, rho, c_LA, l_xy, l_z "
-                                "(qd_gf.coupling_alpha_ps2); > 0 pins alpha."),
-    "D_c_eV": ("eV", _ADV, "Conduction-band deformation potential (only D_c - D_v enters alpha)."),
-    "D_v_eV": ("eV", _ADV, "Valence-band deformation potential."),
-    "rho_kg_m3": ("kg/m^3", _ADV, "Matrix mass density (phonons are bulk LA of the matrix)."),
-    "c_LA_m_s": ("m/s", _ADV, "Matrix LA sound velocity; cutoff E_c = hbar sqrt(2) c_s / l (qd_gf convention)."),
-    "l_xy_nm": ("nm", _ADV, "In-plane Gaussian confinement length of the exciton wavefunction (not the island size)."),
-    "l_z_nm": ("nm", _ADV, "Growth-axis Gaussian confinement length of the exciton wavefunction."),
-    "n_host": ("1", "main", "Host refractive index at the emission wavelength."),
-    "E_LO_meV": ("meV", "main", "LO phonon energy of the host (used by build() only when gamma_T_model = lo_phonon)."),
-    "k_nr_ns": ("1/ns", "main", "Photonless escape rate (carrier loss without photon emission); 0 unless stated [A]."),
-    "sigma_sd_ueV": ("ueV", _ADV, "Spectral-diffusion width (Gaussian sigma)."),
-    "tau_sd_ns": ("ns", _ADV, "Spectral-diffusion correlation time."),
+    "lambda_nm": ("nm", "main", r"Zero-phonon exciton emission wavelength $\lambda$; $E_X = 1239841.98/\lambda$ meV with $\lambda$ in nm."),
+    "tau_bare_ns": ("ns", "main", r"Bare (homogeneous-medium) exciton radiative lifetime $\tau_{\mathrm{bare}}$; $\Gamma_0 = 1/\tau_{\mathrm{bare}}$."),
+    "fss_ueV": ("ueV", "main", r"Exciton fine-structure splitting $\delta_{\mathrm{FSS}}$ (a quantum beat, not dephasing)."),
+    "E_b_meV": ("meV", "main", r"Biexciton binding energy $E_{\mathrm b}$, positive = binding ($E_{XX} = 2E_X - E_{\mathrm b}$)."),
+    "gamma_xx_ratio": ("1", "main", r"Radiative rate ratio $\Gamma_{XX}/\Gamma_X$ of the biexciton to the exciton."),
+    "gamma_star_4K_ns": ("1/ns", "main", r"Pure dephasing rate $\gamma^{*}$ at 4 K, repo convention (the coherence decays at "
+                                         r"$(\Gamma + \gamma^{*})/2$; $\gamma^{*} = \mathrm{FWHM}_{\mathrm{excess}}/\hbar$). Linear T model; LO term not included."),
+    "a_ac_ns_per_K": ("1/ns/K", "main", r"Linear acoustic T-dephasing slope $a_{\mathrm{ac}}$: $\gamma^{*}(T) = \gamma^{*}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$, "
+                                        r"clipped at $\geq 0$. LO term not included."),
+    "alpha_ps2": ("ps^2", _ADV, r"Direct phonon coupling $\alpha$. 0 = compute from $D_{\mathrm c}, D_{\mathrm v}, \rho, c_{\mathrm{LA}}, \ell_{xy}, \ell_z$ "
+                                r"(qd_gf.coupling_alpha_ps2); $> 0$ pins $\alpha$."),
+    "D_c_eV": ("eV", _ADV, r"Conduction-band deformation potential (only $D_{\mathrm c} - D_{\mathrm v}$ enters $\alpha$)."),
+    "D_v_eV": ("eV", _ADV, r"Valence-band deformation potential $D_{\mathrm v}$."),
+    "rho_kg_m3": ("kg/m^3", _ADV, r"Matrix mass density $\rho$ (phonons are bulk LA of the matrix)."),
+    "c_LA_m_s": ("m/s", _ADV, r"Matrix LA sound velocity $c_{\mathrm{LA}}$; cutoff $E_{\mathrm c} = \hbar\sqrt{2}\,c_{\mathrm{LA}}/\ell$ (qd_gf convention)."),
+    "l_xy_nm": ("nm", _ADV, r"In-plane Gaussian confinement length $\ell_{xy}$ of the exciton wavefunction (not the island size)."),
+    "l_z_nm": ("nm", _ADV, r"Growth-axis Gaussian confinement length $\ell_z$ of the exciton wavefunction."),
+    "n_host": ("1", "main", r"Host refractive index $n_{\mathrm{host}}$ at the emission wavelength."),
+    "E_LO_meV": ("meV", "main", r"LO phonon energy $E_{\mathrm{LO}}$ of the host (used by build() only when the temperature model is lo_phonon)."),
+    "k_nr_ns": ("1/ns", "main", r"Photonless escape rate $k_{\mathrm{nr}}$ (carrier loss without photon emission); 0 unless stated [A]."),
+    "sigma_sd_ueV": ("ueV", _ADV, r"Spectral-diffusion width $\sigma_{\mathrm{sd}}$ (Gaussian standard deviation)."),
+    "tau_sd_ns": ("ns", _ADV, r"Spectral-diffusion correlation time $\tau_{\mathrm{sd}}$."),
 }
 # devlib-p10e: optional yaml leaf (entries that do not list it get the default: no LO coupling)
 _OPTIONAL = {
@@ -80,18 +89,18 @@ _OPTIONAL = {
                  "source": "assumption: no LO-phonon linewidth coupling (gamma_T_model = lo_phonon then equals the "
                            "linear model up to the 4 K reference) [A]", "band": [0.0, 1.0e4]},
 }
-_OPT_PARAMS = {"b_LO_meV": ("meV", "advanced", "LO-phonon coupling b_LO of the total width Gamma(T) = Gamma0 + a_ac T + "
-                       "b_LO/(exp(E_LO/kT) - 1) (used only when gamma_T_model = lo_phonon).")}
+_OPT_PARAMS = {"b_LO_meV": ("meV", "advanced", r"LO-phonon coupling $b_{\mathrm{LO}}$ of the total width $\Gamma(T) = \Gamma_0 + a_{\mathrm{ac}}T + "
+                       r"b_{\mathrm{LO}}/(e^{E_{\mathrm{LO}}/k_{\mathrm B}T} - 1)$ (used only when the temperature model is lo_phonon).")}
 _ENUMS = (
-    ParamSpec("gamma_T_model", "", "linear", choices=("linear", "lo_phonon"), tag="A", sweepable=False,
+    ParamSpec("gamma_T_model", "", "linear", tex=r"\gamma^{*}(T)\ \mathrm{model}", choices=("linear", "lo_phonon"), tag="A", sweepable=False,
               source="user choice of the dephasing temperature model [A]",
-              help="linear: gamma*(4 K) + a_ac (T - 4 K) (default, bit-identical to before). lo_phonon: the total "
-                   "non-resonant width of spectral.gamma_of_T, Gamma0 + a_ac T + b_LO/(exp(E_LO/kT) - 1) over hbar "
-                   "(non-resonant TOTAL width: fine for spectral overlap / cw g2, wrong for resonant HOM)."),
-    ParamSpec("charge_state", "", "X", choices=("X", "X+", "X-"), tag="A", sweepable=False,
+              help=r"linear: $\gamma^{*}(4\,\mathrm K) + a_{\mathrm{ac}}(T - 4\,\mathrm K)$ (default, bit-identical to before). lo_phonon: the total "
+                   r"non-resonant width of spectral.gamma_of_T, $\Gamma_0 + a_{\mathrm{ac}}T + b_{\mathrm{LO}}/(e^{E_{\mathrm{LO}}/k_{\mathrm B}T} - 1)$, over $\hbar$ "
+                   r"(non-resonant TOTAL width: fine for spectral overlap and cw $g^{(2)}$, wrong for resonant HOM)."),
+    ParamSpec("charge_state", "", "X", tex=r"q_{\mathrm{X}}", choices=("X", "X+", "X-"), tag="A", sweepable=False,
               source="user choice of the emitting charge state [A]",
-              help="Charge state of the emitter. X adds nothing; X+ / X- add the charged-exciton transition."),
-    ParamSpec("dipole", "", "in_plane", choices=("in_plane", "axial"), tag="A", sweepable=False,
+              help="Charge state of the emitter. X adds nothing; X+ and X- add the charged-exciton transition."),
+    ParamSpec("dipole", "", "in_plane", tex=r"\hat{\boldsymbol\mu}", choices=("in_plane", "axial"), tag="A", sweepable=False,
               source="user choice of the transition dipole orientation [A]",
               help="Transition dipole orientation: in_plane (planar dot, bright in-plane) or axial (along growth axis, e.g. nanowire)."),
 )
@@ -100,10 +109,10 @@ _ENUMS = (
 _BLINK = ParamSpec(
     "eta_blink", "1", 1.0, lo=0.5, hi=1.0, tag="A", group="main",
     source="assumed: no blinking / full on-fraction [A]",
-    help="Blinking duty factor (on-fraction of the time the dot is bright). Multiplies eta_rad and the collected "
-         "brightness (reported as eta_rad_eff); it does NOT change the lifetime. Examples: Uppu et al., Sci. Adv. "
-         "6, eabc8268 (2020) eta_rad 0.98 [V-from cards]; Wang et al., Phys. Rev. Lett. 122, 113602 (2019) 35 % "
-         "blinking loss [V-from cards] (on-fraction 0.65).")
+    help=r"Blinking duty factor $\eta_{\mathrm{blink}}$ (on-fraction of the time the dot is bright). Multiplies $\eta_{\mathrm{rad}}$ and the collected "
+         r"brightness (reported as $\eta_{\mathrm{rad}}^{\mathrm{eff}}$); it does NOT change the lifetime. Examples: Uppu et al., Sci. Adv. "
+         r"6, eabc8268 (2020) $\eta_{\mathrm{rad}}$ 0.98 [V-from cards]; Wang et al., Phys. Rev. Lett. 122, 113602 (2019) 35 % "
+         r"blinking loss [V-from cards] (on-fraction 0.65).", tex=r"\eta_{\mathrm{blink}}")
 
 # EmitterModel field -> contributing parameter names (for EmitterModel.inputs)
 _INPUT_FIELDS = {
@@ -166,7 +175,7 @@ def _spec_from_leaf(name: str, leaf: dict) -> ParamSpec:
     help_ += f" Source: {leaf['source']}"
     return ParamSpec(name, unit, float(default), lo=None if lo is None else float(lo),
                      hi=None if hi is None else float(hi), scale=scale, tag=leaf["tag"],
-                     source=leaf["source"], help=help_, group=group)
+                     source=leaf["source"], help=help_, group=group, tex=_TEX[name])
 
 
 # --------------------------------------------------------------------------

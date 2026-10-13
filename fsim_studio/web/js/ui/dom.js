@@ -1,4 +1,10 @@
 // Minimal DOM builder. h("div.cls#id", {attrs, on:{click}}, ...children)
+// A string child that holds `$...$` is typeset (ui/math.js richText); every other string stays a plain text node.
+import { richText, richPlain, autoMath } from "./math.js";
+
+const HAS_MATH = /\$/;
+const NO_AUTO = new Set(["CODE", "PRE", "OPTION", "TEXTAREA", "INPUT", "SCRIPT", "STYLE", "TITLE", "KBD"]);
+const PLAIN_ATTRS = new Set(["title", "aria-label", "placeholder", "alt", "aria-description"]);
 
 export function h(sel, attrs, ...children) {
   if (attrs == null || typeof attrs !== "object" || attrs instanceof Node || Array.isArray(attrs)) {
@@ -22,6 +28,7 @@ export function h(sel, attrs, ...children) {
     else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
     else if (k === "dataset") Object.assign(el.dataset, v);
     else if (k === "html") el.innerHTML = v;
+    else if (PLAIN_ATTRS.has(k) && typeof v === "string" && HAS_MATH.test(v)) el.setAttribute(k, richPlain(v));
     else if (k in el && typeof v !== "string" && !(el instanceof SVGElement)) el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
@@ -32,7 +39,9 @@ export function h(sel, attrs, ...children) {
 export function append(el, children) {
   for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
-    el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+    if (c instanceof Node) el.appendChild(c);
+    else if (typeof c === "string" && HAS_MATH.test(c)) el.appendChild(richText(c));
+    else el.appendChild((typeof c === "string" && !NO_AUTO.has(el.tagName) && autoMath(c)) || document.createTextNode(String(c)));
   }
   return el;
 }

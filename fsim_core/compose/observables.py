@@ -593,73 +593,127 @@ class _Obs(Observable):
         return ctx.d["_why"].get(key, ctx.d["_why"].get(self.id, ""))
 
 
+# display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the observable id
+_OBS_TEX = {
+    "lambda_nm": r"\lambda",
+    "F_P_eff": r"F_{\mathrm P}L",
+    "F_P_peak": r"F_{\mathrm P}",
+    "beta": r"\beta",
+    "beta_entered": r"\beta",
+    "eta_out": r"\eta_{\mathrm{out}}",
+    "eta_extract": r"\beta\,\eta_{\mathrm{out}}",
+    "T_NA": r"T_{\mathrm{NA}}",
+    "eta_pol": r"\eta_{\mathrm{pol}}",
+    "eta_prep": r"\eta_{\mathrm{prep}}",
+    "n_exc": r"n_{\mathrm{exc}}",
+    "eta_rad": r"\eta_{\mathrm{rad}}",
+    "eta_rad_eff": r"\eta_{\mathrm{rad}}^{\mathrm{eff}}",
+    "eta_blink": r"\eta_{\mathrm{blink}}",
+    "eta_prep_x_eta_rad": r"\eta_{\mathrm{prep}}\,\eta_{\mathrm{rad}}",
+    "P_X_end": r"P_X(t_{\mathrm{end}})",
+    "tau_XX_ps": r"\tau_{XX}",
+    "g2_XX": r"g^{(2)}_{XX}(0)",
+    "hom_XX": r"I_{\mathrm{HOM}}^{XX}",
+    "n_XX": r"n_{XX}",
+    "inversion": r"w",
+    "Z_phonon": r"Z(T)",
+    "Z_filt": r"Z_{\mathrm{filt}}",
+    "hom_zpl_fraction": r"q_{\mathrm{ZPL}}",
+    "gamma_star_ns": r"\gamma^{*}",
+    "Gamma_ns": r"\Gamma",
+    "n_ph": r"n_{\mathrm{ph}}",
+    "tau_ps": r"\tau",
+    "tau_1e_ps": r"\tau_{1/e}",
+    "tau_purcell_ps": r"\tau_{\mathrm P}",
+    "tau_EL_ps": r"\tau_{\mathrm{EL}}",
+    "g2_binned": r"g^{(2)}_{\mathrm{bin}}(0)",
+    "spectral_overlap": r"\varepsilon_{XX}",
+    "g2_irf": r"g^{(2)}_{\mathrm{IRF}}(0)",
+    "hom_I_gated": r"I_{\mathrm{HOM}}^{\mathrm{gate}}",
+    "linewidth_ueV": r"\hbar\Gamma_{\mathrm{tot}}",
+    "detuning_ueV": r"\delta_{\mathrm{EC}}",
+    "g2_0": r"g^{(2)}(0)",
+    "g2_raw": r"g^{(2)}_{\mathrm{raw}}(0)",
+    "hom_I": r"I_{\mathrm{HOM}}",
+    "hom_V": r"V_{\mathrm{HOM}}",
+    "hom_V_raw": r"V_{\mathrm{HOM}}^{\mathrm{raw}}",
+    "hom_V_corr": r"V_{\mathrm{HOM}}^{\mathrm{corr}}",
+    "B_first_lens": r"B_{\mathrm{lens}}",
+    "B_lens": r"B_{\mathrm{lens}}",
+    "B_fibre": r"B_{\mathrm{fibre}}",
+    "rate_detected_Hz": r"R_{\mathrm{det}}",
+    "B_first_lens_Hz": r"\dot B_{\mathrm{lens}}",
+    "B_fibre_Hz": r"\dot B_{\mathrm{fibre}}",
+}
+
+
 def _o(id_, label, unit, deps, conventions=("intrinsic",), passthrough_of=None, key="", by_conv=None):
     return register(_Obs(id=id_, label=label, unit=unit, deps=tuple(deps), conventions=tuple(conventions),
-                         passthrough_of=passthrough_of, key=key or id_, by_conv=by_conv))
+                         passthrough_of=passthrough_of, key=key or id_, by_conv=by_conv, tex=_OBS_TEX.get(id_)))
 
 
 _MS = ("material", "structure")
 _ALL = ("material", "structure", "drive")
 _CH = ("material", "structure", "drive", "setup", "material.eta_blink", "setup.coinc_window_ns", "setup.eps_int")
-_o("lambda_nm", "Emission wavelength", "nm", ("material.lambda_nm", "material.E_X_meV"),
+_o("lambda_nm", "Emission wavelength $\\lambda$", "nm", ("material.lambda_nm", "material.E_X_meV"),
    passthrough_of="material.lambda_nm")
-_o("F_P_eff", "Effective Purcell factor F_P L", "1", _MS)
-_o("F_P_peak", "Cavity-mode Purcell factor at zero detuning (structure.F_P)", "1", _MS, passthrough_of="structure.F_P")
-_o("beta", "Beta factor", "1", _MS, passthrough_of="structure.beta")
-_o("beta_entered", "Beta entered directly (structure.beta_direct, e.g. phc_waveguide)", "1",
+_o("F_P_eff", "Effective Purcell factor $F_{\\mathrm P}L$", "1", _MS)
+_o("F_P_peak", "Cavity-mode Purcell factor $F_{\\mathrm P}$ at zero detuning (structure.F_P)", "1", _MS, passthrough_of="structure.F_P")
+_o("beta", "Beta factor $\\beta$", "1", _MS, passthrough_of="structure.beta")
+_o("beta_entered", "Beta $\\beta$ entered directly (structure.beta_direct, e.g. phc_waveguide)", "1",
    ("structure.beta_direct",), passthrough_of="structure.beta_direct")
-_o("eta_out", "Extraction into the collected mode", "1", ("structure",))
-_o("eta_extract", "Extraction beta x eta_out", "1", _MS)
-_o("T_NA", "NA transmission (inside eta_out)", "1", ("setup.NA",))
-_o("eta_pol", "Polarisation factor", "1", ("setup.eta_pol", "structure"))
-_o("eta_prep", "State-preparation probability P(n >= 1)", "1", _ALL)
-_o("n_exc", "Expected excitation count per pulse (P_X(end) + photons emitted in the window; may exceed 1)", "1", _ALL)
-_o("eta_rad", "Radiative efficiency Gamma/(Gamma+k)", "1", _MS)
-_o("eta_rad_eff", "Effective radiative efficiency eta_blink x Gamma/(Gamma+k)", "1", _MS + ("material.eta_blink",))
-_o("eta_blink", "Blinking on-fraction (brightness factor, not lifetime)", "1", ("material.eta_blink",),
+_o("eta_out", "Extraction into the collected mode $\\eta_{\\mathrm{out}}$", "1", ("structure",))
+_o("eta_extract", "Extraction $\\beta\\,\\eta_{\\mathrm{out}}$", "1", _MS)
+_o("T_NA", "NA transmission $T_{\\mathrm{NA}}$ (inside $\\eta_{\\mathrm{out}}$)", "1", ("setup.NA",))
+_o("eta_pol", "Polarisation factor $\\eta_{\\mathrm{pol}}$", "1", ("setup.eta_pol", "structure"))
+_o("eta_prep", "State-preparation probability $P(n \\geq 1)$", "1", _ALL)
+_o("n_exc", "Expected excitation count per pulse ($P_X(t_{\\mathrm{end}})$ + photons emitted in the window; may exceed 1)", "1", _ALL)
+_o("eta_rad", "Radiative efficiency $\\eta_{\\mathrm{rad}} = \\Gamma/(\\Gamma + k)$", "1", _MS)
+_o("eta_rad_eff", "Effective radiative efficiency $\\eta_{\\mathrm{blink}}\\,\\Gamma/(\\Gamma + k)$", "1", _MS + ("material.eta_blink",))
+_o("eta_blink", "Blinking on-fraction $\\eta_{\\mathrm{blink}}$ (brightness factor, not lifetime)", "1", ("material.eta_blink",),
    passthrough_of="material.eta_blink")
-_o("eta_prep_x_eta_rad", "eta_prep x eta_rad", "1", _ALL)
-_o("P_X_end", "Population at the end of the pulse window (informational; includes decay during the window)", "1", _ALL)
-_o("tau_XX_ps", "XX lifetime 1e3/(gamma_XX + k_XX) read off the cascade Liouvillian (TPE)", "ps", _ALL)
-_o("g2_XX", "g2(0) of the XX-line photon stream (TPE)", "1", _ALL)
+_o("eta_prep_x_eta_rad", "$\\eta_{\\mathrm{prep}}\\,\\eta_{\\mathrm{rad}}$", "1", _ALL)
+_o("P_X_end", "Population $P_X(t_{\\mathrm{end}})$ at the end of the pulse window (informational; includes decay during the window)", "1", _ALL)
+_o("tau_XX_ps", "XX lifetime $\\tau_{XX} = 1/(\\Gamma_{XX} + k_{XX})$ read off the cascade Liouvillian (TPE)", "ps", _ALL)
+_o("g2_XX", "$g^{(2)}(0)$ of the XX-line photon stream (TPE)", "1", _ALL)
 _o("hom_XX", "HOM overlap of the XX-line photons, instantaneous preparation (TPE)", "1", _ALL + ("setup",))
 _o("n_XX", "XX-line photons per pulse (TPE)", "1", _ALL)
-_o("inversion", "Inversion after the pulse", "1", _ALL)
-_o("Z_phonon", "ZPL weight Z(T)", "1", ("material",))
-_o("Z_filt", "ZPL / cavity sideband filter factor", "1", ("material", "structure", "setup.zpl_filter"))
-_o("hom_zpl_fraction", "ZPL fraction q of the collected light (hom_I = I q^2)", "1", ("material", "structure", "setup.zpl_filter"))
-_o("gamma_star_ns", "Pure dephasing (repo convention)", "1/ns", ("material",))
-_o("Gamma_ns", "Radiative rate", "1/ns", _MS)
-_o("n_ph", "Photons per pulse", "1", _ALL)
-_o("tau_ps", "Lifetime (slowest Liouvillian decay eigenvalue when solver jc, else Purcell)", "ps", _ALL)
-_o("tau_1e_ps", "JC flux 1/e time after the peak (informational; = tau_ps for non-jc)", "ps", _ALL)
-_o("tau_purcell_ps", "Purcell lifetime 1e3/(Gamma+k)", "ps", _MS)
-_o("tau_EL_ps", "Electroluminescence decay time 1e3/(Gamma+k+k_off) of a gated diode (reported, never fed into Gamma0)", "ps",
+_o("inversion", "Inversion $w$ after the pulse", "1", _ALL)
+_o("Z_phonon", "ZPL weight $Z(T)$", "1", ("material",))
+_o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter"))
+_o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter"))
+_o("gamma_star_ns", "Pure dephasing $\\gamma^{*}$ (repo convention)", "1/ns", ("material",))
+_o("Gamma_ns", "Radiative rate $\\Gamma$", "1/ns", _MS)
+_o("n_ph", "Photons per pulse $n_{\\mathrm{ph}}$", "1", _ALL)
+_o("tau_ps", "Lifetime $\\tau$ (slowest Liouvillian decay eigenvalue when solver jc, else Purcell)", "ps", _ALL)
+_o("tau_1e_ps", "JC flux $1/e$ time $\\tau_{1/e}$ after the peak (informational; $= \\tau$ for non-jc)", "ps", _ALL)
+_o("tau_purcell_ps", "Purcell lifetime $\\tau_{\\mathrm P} = 1/(\\Gamma + k)$", "ps", _MS)
+_o("tau_EL_ps", "Electroluminescence decay time $\\tau_{\\mathrm{EL}} = 1/(\\Gamma + k + k_{\\mathrm{off}})$ of a gated diode (reported, never fed into $\\Gamma_0$)", "ps",
    _ALL)
-_o("g2_binned", "Central-bin g2 of the pulsed histogram (bin = pulse period; EL decay leaks neighbouring peaks, IRF adds more)",
+_o("g2_binned", "Central-bin $g^{(2)}$ of the pulsed histogram (bin = pulse period; EL decay leaks neighbouring peaks, IRF adds more)",
    "1", _ALL + ("setup",))
-_o("spectral_overlap", "X-XX spectral leakage eps = t_XX/t_X through the top-hat window (rho, g2 = 1 - rho^2 conventions)",
+_o("spectral_overlap", "X-XX spectral leakage $\\varepsilon = t_{XX}/t_X$ through the top-hat window ($\\rho$, $g^{(2)} = 1 - \\rho^2$ conventions)",
    "1", _MS + ("setup.filter_*", "setup.xx_*"), ("intrinsic", "rho", "g2"),
    key="spectral_overlap", by_conv={"intrinsic": "spectral_overlap", "rho": "rho_spectral", "g2": "g2_spectral"})
-_o("g2_irf", "g2(0) of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
-_o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), q^2 included", "1", _ALL + ("setup",))
-_o("linewidth_ueV", "Emitter linewidth hbar(Gamma+k+gamma*)", "ueV", _MS)
-_o("detuning_ueV", "Emitter minus cavity detuning", "ueV", _MS)
-_o("g2_0", "g2(0)", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),
+_o("g2_irf", "$g^{(2)}(0)$ of the cw dip seen through the detector IRF", "1", _ALL + ("setup",))
+_o("hom_I_gated", "HOM overlap inside a detection gate (Stark-gated source), $q^2$ included", "1", _ALL + ("setup",))
+_o("linewidth_ueV", "Emitter linewidth $\\hbar(\\Gamma + k + \\gamma^{*})$", "ueV", _MS)
+_o("detuning_ueV", "Emitter minus cavity detuning $\\delta_{\\mathrm{EC}}$", "ueV", _MS)
+_o("g2_0", "$g^{(2)}(0)$", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),
    by_conv={"intrinsic": "g2_0", "raw": "g2_raw", "bg_corrected": "g2_bgc"})
-_o("g2_raw", "g2(0) with laser leak and dark counts", "1", _CH, key="g2_raw")
-_o("hom_I", "HOM overlap I", "1", _ALL + ("setup",), ("intrinsic", "raw", "corrected"),
+_o("g2_raw", "$g^{(2)}(0)$ with laser leak and dark counts", "1", _CH, key="g2_raw")
+_o("hom_I", "HOM overlap $I_{\\mathrm{HOM}}$", "1", _ALL + ("setup",), ("intrinsic", "raw", "corrected"),
    by_conv={"intrinsic": "hom_I", "raw": "hom_V_raw", "corrected": "hom_V_corr"})
-_o("hom_V", "HOM visibility (raw|corrected)", "1", _CH, ("raw", "corrected"),
+_o("hom_V", "HOM visibility $V_{\\mathrm{HOM}}$ (raw|corrected)", "1", _CH, ("raw", "corrected"),
    by_conv={"raw": "hom_V_raw", "corrected": "hom_V_corr"})
 _o("hom_V_raw", "HOM visibility, raw", "1", _CH, key="hom_V_raw")
-_o("hom_V_corr", "HOM visibility, g2-corrected", "1", _CH, key="hom_V_corr")
-_o("B_first_lens", "First-lens brightness", "1", _CH, key="B_lens")
-_o("B_lens", "First-lens brightness (alias of B_first_lens)", "1", _CH, key="B_lens")
-_o("B_fibre", "Brightness into the fibre", "1", _CH)
-_o("rate_detected_Hz", "Detected count rate", "Hz", _CH)
-_o("B_first_lens_Hz", "Photon rate into the first lens (cw: flux x chain; pulsed: f_rep B_first_lens)", "Hz", _CH)
-_o("B_fibre_Hz", "Photon rate into the fibre (before eta_optics, eta_det)", "Hz", _CH)
+_o("hom_V_corr", "HOM visibility, $g^{(2)}$-corrected", "1", _CH, key="hom_V_corr")
+_o("B_first_lens", "First-lens brightness $B_{\\mathrm{lens}}$", "1", _CH, key="B_lens")
+_o("B_lens", "First-lens brightness $B_{\\mathrm{lens}}$ (alias of B_first_lens)", "1", _CH, key="B_lens")
+_o("B_fibre", "Brightness into the fibre $B_{\\mathrm{fibre}}$", "1", _CH)
+_o("rate_detected_Hz", "Detected count rate $R_{\\mathrm{det}}$", "Hz", _CH)
+_o("B_first_lens_Hz", "Photon rate $\\dot B_{\\mathrm{lens}}$ into the first lens (cw: flux x chain; pulsed: $f_{\\mathrm{rep}}B_{\\mathrm{lens}}$)", "Hz", _CH)
+_o("B_fibre_Hz", "Photon rate $\\dot B_{\\mathrm{fibre}}$ into the fibre (before $\\eta_{\\mathrm{optics}}$, $\\eta_{\\mathrm{det}}$)", "Hz", _CH)
 
 
 def get_observable(oid):

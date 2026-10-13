@@ -96,7 +96,7 @@ async function waitReady(page, sel, timeout = 45000) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const consoleErrors = [];
@@ -196,7 +196,7 @@ async function waitReady(page, sel, timeout = 45000) {
         await page.waitForTimeout(1200);
         const ax = await page.$eval(".ex-chart .chart-plot", (gd) => ({ top: gd.layout.yaxis.range?.[1], max: Math.max(...gd.data.flatMap((t) => (t.y || []).filter((v) => typeof v === "number"))) }));
         const above = await page.$eval(".ex-count", (e) => e.textContent);
-        check("H18: g2 axis extends to include data above 1 and reports it", ax.max > 1 && ax.top >= ax.max && /above g² = 1: axis extended/.test(above), `${JSON.stringify(ax)} · ${above.slice(0, 160)}`);
+        check("H18: g2 axis extends to include data above 1 and reports it", ax.max > 1 && ax.top >= ax.max && /above g.{0,40}= 1: axis extended/.test(above), `${JSON.stringify(ax)} · ${above.slice(0, 160)}`);
       }
       const tr = await traceAudit(page, ".res-main");
       check(`results ${id}: no dotted line; dashed lines >= 2.5px`, !tr.bad.length, tr.bad.slice(0, 4).join(","));
@@ -458,6 +458,25 @@ async function waitReady(page, sel, timeout = 45000) {
   }
 
   const relevant = consoleErrors.filter((t) => !/favicon/i.test(t));
+  // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+  {
+    const { assertPng } = require("./png_check.cjs");
+    const t0 = Date.now() - process.uptime() * 1000;
+    const badPng = [];
+    let nPng = 0;
+    for (const dir of [SHOTS]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".png") || f === "failure.png" || !/./.test(f)) continue;
+        const full = path.join(dir, f);
+        if (fs.statSync(full).mtimeMs < t0) continue;
+        nPng++;
+        const r = assertPng(full);
+        if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+      }
+    }
+    check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
+  }
   check("no console errors", relevant.length === 0, relevant.slice(0, 6).join(" || "));
   await browser.close();
 

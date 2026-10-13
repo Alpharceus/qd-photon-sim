@@ -6,6 +6,7 @@ import { h } from "./dom.js";
 import { icon } from "./icons.js";
 import { tagChip, normTag } from "./tagChip.js";
 import { fmt, unitText, isNum } from "./format.js";
+import { symbolNode, symbolText, richPlain } from "./math.js";
 
 const SLIDER_STEPS = 400;
 
@@ -24,7 +25,9 @@ export function fieldRow({ path, meta, value, ranged, envDefault, onChange, onRa
   const band = meta.band;
   const unit = unitText(meta.unit === "enum" ? "" : meta.unit);
   const id = `f-${path.replace(/\W/g, "-")}`;
-  const label = h("label.fr-label", { for: id }, meta.label || path.split(".").pop());
+  const leafName = path.split(".").pop();
+  const plainName = meta.label ? richPlain(meta.label) : symbolText({ name: leafName, tex: meta.tex });
+  const label = h("label.fr-label", { for: id, title: `${plainName} (${path})` }, meta.labelNode || (meta.label ? meta.label : symbolNode({ name: leafName, tex: meta.tex })));
   const pathEl = h("span.fr-path", path);
   const chip = tagChip(tag, { title: meta.source, onClick: () => onInspect?.(path) });
   const warn = h("p.fr-warn", { hidden: true, id: `${id}-warn` });
@@ -60,7 +63,7 @@ export function fieldRow({ path, meta, value, ranged, envDefault, onChange, onRa
       slider = h("input.fr-slider", {
         type: "range", min: band[0], max: band[1], step: niceStep(band),
         value: isNum(value) ? value : band[0],
-        "aria-label": `${meta.label || path} slider`,
+        "aria-label": `${plainName} slider`,
         on: {
           input: (e) => { const v = Number(e.target.value); num.value = String(Number(v.toPrecision(5))); checkBand(v); if (signature) onChange(Number(v.toPrecision(6)), { live: true }); },
           change: (e) => { const v = Number(Number(e.target.value).toPrecision(6)); onChange(v); },
@@ -72,8 +75,8 @@ export function fieldRow({ path, meta, value, ranged, envDefault, onChange, onRa
     // range (bracket) editor
     const lo0 = ranged?.[0] ?? envDefault?.[0] ?? (canSlide ? band[0] : value);
     const hi0 = ranged?.[1] ?? envDefault?.[1] ?? (canSlide ? band[1] : value);
-    const loIn = h("input.fr-num.fr-lo", { type: "number", step: "any", value: lo0, "aria-label": `${meta.label || path} range low` });
-    const hiIn = h("input.fr-num.fr-hi", { type: "number", step: "any", value: hi0, "aria-label": `${meta.label || path} range high` });
+    const loIn = h("input.fr-num.fr-lo", { type: "number", step: "any", value: lo0, "aria-label": `${plainName} range low` });
+    const hiIn = h("input.fr-num.fr-hi", { type: "number", step: "any", value: hi0, "aria-label": `${plainName} range high` });
     const span = h("div.bracket", { "aria-hidden": "true" }, h("span.bracket-fill"));
     const placeSpan = () => {
       if (!canSlide) { span.hidden = true; return; }
@@ -106,7 +109,7 @@ export function fieldRow({ path, meta, value, ranged, envDefault, onChange, onRa
     if (canRange) {
       rangeBtn = h("button.icon-btn.fr-rangebtn", {
         type: "button", "aria-pressed": "false",
-        title: "Run this input as a range (envelope)", "aria-label": `Range ${meta.label || path} for envelope runs`,
+        title: "Run this input as a range (envelope)", "aria-label": `Range ${plainName} for envelope runs`,
         on: {
           click: () => {
             const on = rangeBtn.getAttribute("aria-pressed") !== "true";

@@ -13,6 +13,35 @@ const path = require("path");
 const fs = require("fs");
 
 const ROOT = path.resolve(__dirname, "..");
+
+// devlib-r2-math: symbols are now KaTeX (HTML + a hidden MathML copy), so a raw textContent doubles them ("TcTc"). The
+// checks below were written against the old plain notation; this shim makes textContent report each typeset formula
+// once, as the ASCII notation its TeX source stands for (T_{\mathrm c} -> "T_c", g^{(2)}(0) -> "g^(2)(0)"). Test-only.
+const MATH_TEXT_SHIM = () => {
+  const d = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+  const G = { Delta: "Δ", Gamma: "Γ", Omega: "Ω", tau: "τ", eta: "η", gamma: "γ", lambda: "λ", sigma: "σ", rho: "ρ", varepsilon: "ε", alpha: "α", beta: "β", kappa: "κ", mu: "μ", delta: "δ", pi: "π", hbar: "ħ", times: "×", cdot: "·", theta: "θ", varphi: "φ", xi: "ξ" };
+  const asc = (t) => String(t)
+    .replace(/\\(?:mathrm|mathbf|text|operatorname|hat|boldsymbol)\s*\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:mathrm|mathbf)\s*([A-Za-z])/g, "$1")
+    .replace(/\\([A-Za-z]+)/g, (m, n) => G[n] ?? n)
+    .replace(/\\[,;: ]/g, " ")
+    .replace(/_\{([^{}]*)\}/g, "_$1").replace(/\^\{([^{}]*)\}/g, "^$1").replace(/[{}]/g, "");
+  const plain = (n) => {
+    if (n.nodeType === 3) return n.nodeValue;
+    if (n.nodeType === 1 && n.classList.contains("math")) return asc(n.dataset.tex || "");
+    let o = "";
+    for (const c of n.childNodes) o += plain(c);
+    return o;
+  };
+  Object.defineProperty(Node.prototype, "textContent", {
+    configurable: true,
+    set: d.set,
+    get() {
+      if ((this.nodeType !== 1 && this.nodeType !== 11) || !(this.classList?.contains("math") || this.querySelector?.(".math"))) return d.get.call(this);
+      return plain(this);
+    },
+  });
+};
 const { startStudioServer, requireTempUserCards } = require("./studio_server.cjs");
 let BASE = (process.argv[2] || "").replace(/\/$/, "");
 let OWN = null;          // the private server this script started (none when a URL was given)
@@ -110,6 +139,7 @@ async function b612Audit(page) {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
+  await context.addInitScript(MATH_TEXT_SHIM);
   const page = await context.newPage();
   const consoleErrors = [];
   page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
@@ -699,6 +729,7 @@ async function b612Audit(page) {
 
     // reduced motion: playback off, scrubbing still works
     const rctx = await browser.newContext({ viewport: VIEW, reducedMotion: "reduce" });
+    await rctx.addInitScript(MATH_TEXT_SHIM);
     const rp = await rctx.newPage();
     rp.on("pageerror", (e) => consoleErrors.push(`reduced pageerror: ${e.message}`));
     await rp.goto(`${BASE}/#/design/staged-device-design`, { waitUntil: "domcontentloaded" });
@@ -754,6 +785,25 @@ async function b612Audit(page) {
   }
 
   const relevant = consoleErrors.filter((t) => !/favicon/i.test(t));
+  // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+  {
+    const { assertPng } = require("./png_check.cjs");
+    const t0 = Date.now() - process.uptime() * 1000;
+    const badPng = [];
+    let nPng = 0;
+    for (const dir of [SHOTS, SHOTS_P2]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".png") || f === "failure.png" || !/./.test(f)) continue;
+        const full = path.join(dir, f);
+        if (fs.statSync(full).mtimeMs < t0) continue;
+        nPng++;
+        const r = assertPng(full);
+        if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+      }
+    }
+    check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
+  }
   check("no console errors", relevant.length === 0, relevant.slice(0, 5).join(" || "));
   await browser.close();
   if (OWN) OWN.stop();

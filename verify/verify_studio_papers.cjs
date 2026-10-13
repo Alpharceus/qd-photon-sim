@@ -39,7 +39,7 @@ async function getJSON(url) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -328,6 +328,25 @@ async function getJSON(url) {
       },
     });
 
+    // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+    {
+      const { assertPng } = require("./png_check.cjs");
+      const t0 = Date.now() - process.uptime() * 1000;
+      const badPng = [];
+      let nPng = 0;
+      for (const dir of [SHOTS]) {
+        if (!fs.existsSync(dir)) continue;
+        for (const f of fs.readdirSync(dir)) {
+          if (!f.endsWith(".png") || f === "failure.png" || !/^(papers|fx4|finish-papers)-/.test(f)) continue;
+          const full = path.join(dir, f);
+          if (fs.statSync(full).mtimeMs < t0) continue;
+          nPng++;
+          const r = assertPng(full);
+          if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+        }
+      }
+      check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
+    }
     check("no console errors", errors.length === 0, errors.slice(0, 3).join(" | ").slice(0, 300));
   } catch (e) {
     if (!/not mounted/.test(e.message)) check("verifier ran to completion", false, e.message);

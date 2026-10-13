@@ -12,6 +12,7 @@ import { fieldRow } from "./fieldRow.js";
 import { tagChip, normTag } from "./tagChip.js";
 import { isNum } from "./format.js";
 import { paramLabelNode } from "./readout.js";
+import { symbolText, richPlain } from "./math.js";
 import { displayUnit } from "./units.js";
 
 const TAGS = ["V", "DR", "E", "A"];
@@ -60,7 +61,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     const leaf = readLeaf(p, params[p.name]);
     const path = `${axis}.${p.name}`;
     const band = isNum(p.lo) && isNum(p.hi) ? [p.lo, p.hi] : null;
-    const meta = { label: p.name, unit: displayUnit(p.unit), tag: leaf.tag, source: leaf.source || p.source, band, choices: p.choices || undefined };
+    const meta = { label: symbolText(p), tex: p.tex, unit: displayUnit(p.unit), tag: leaf.tag, source: leaf.source || p.source, band, choices: p.choices || undefined };
     const shown = leaf.kind === "range" ? (isNum(p.default) ? p.default : leaf.range[0]) : leaf.value;
     const item = h("div.pf-item", { class: leaf.explicit ? "is-edited" : "", dataset: { param: p.name, tag: leaf.tag } });
 
@@ -109,7 +110,7 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     });
 
     // per-leaf tag selector (line form, never hue)
-    const sel = h("div.pf-tagsel", { role: "group", "aria-label": `${p.name} provenance tag` },
+    const sel = h("div.pf-tagsel", { role: "group", "aria-label": `${symbolText(p)} provenance tag` },
       TAGS.map((t) => {
         const b = tagChip(t, {
           size: "sm", title: `set the tag of this value to [${t}]`,
@@ -128,8 +129,8 @@ export function renderParamForm({ axis, entry, getParams, onEdit, onInspect }) {
     row.querySelector(".fr-tools")?.append(sel);
     // label: the registry id is a code name; show the symbol or plain words and keep the unit beside the value only
     const lab = row.querySelector(".fr-label");
-    if (lab) { lab.replaceChildren(paramLabelNode(p.name, p.unit)); lab.title = p.name; }
-    item.dataset.find = `${p.name} ${paramLabelNode(p.name, p.unit).textContent} ${p.help || ""}`.toLowerCase();
+    if (lab) { lab.replaceChildren(paramLabelNode(p)); lab.title = `${symbolText(p)} (registry id ${p.name})`; }
+    item.dataset.find = `${p.name} ${symbolText(p)} ${richPlain(p.help || "")}`.toLowerCase();
 
     const reset = h("button.btn-link.pf-reset", {
       type: "button", hidden: !leaf.explicit, title: `back to the registry default (${String(p.default)}) and its tag [${normTag(p.tag)}]`,

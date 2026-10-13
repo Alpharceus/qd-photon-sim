@@ -135,6 +135,7 @@ class Observable:
     deps: tuple = ()
     conventions: tuple = ("intrinsic",)
     passthrough_of: Optional[str] = None
+    tex: Optional[str] = None        # display symbol in KaTeX TeX (UI only)
 
     @property
     def kind(self) -> str:
@@ -242,9 +243,12 @@ def _entry_dict(e) -> dict:
     if axis == "solver":
         return {"axis": axis, "kind": e.kind, "label": e.label, "summary": e.summary}
     if axis == "observable":
-        return {"axis": axis, "kind": e.kind, "id": e.id, "label": e.label, "unit": e.unit,
-                "deps": list(e.deps), "conventions": list(e.conventions),
-                "passthrough_of": e.passthrough_of}
+        d = {"axis": axis, "kind": e.kind, "id": e.id, "label": e.label, "unit": e.unit,
+             "deps": list(e.deps), "conventions": list(e.conventions),
+             "passthrough_of": e.passthrough_of}
+        if e.tex is not None:
+            d["tex"] = e.tex
+        return d
     d = {"axis": axis, "kind": e.kind, "label": e.label, "summary": e.summary,
          "params": [_param_dict(p) for p in e.params], "refs": list(e.refs),
          "status": e.status, "provides": sorted(e.provides), "requires": sorted(e.requires),
@@ -286,45 +290,45 @@ LENS_FIBRE_DET = _LensFibreDet(
     summary="First-lens collection into single-mode fibre and a single-photon detector; "
             "every efficiency is an entered number.",
     params=(
-        ParamSpec("NA", "1", 0.65, lo=0.05, hi=1.0, tag="A", source=_SRC,
-                  help="Numerical aperture of the first collection lens."),
-        ParamSpec("eta_pol", "1", 1.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Polarisation-selection transmission (0.5 for a single linear analyser on unpolarised light)."),
-        ParamSpec("eta_optics", "1", 0.5, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Transmission of lenses, filters and mirrors between the first lens and the fibre."),
-        ParamSpec("eta_fibre", "1", 1.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Fibre-coupling efficiency."),
-        ParamSpec("eta_det", "1", 0.5, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Detector quantum efficiency."),
-        ParamSpec("laser_leak", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Residual laser light as a fraction of the signal rate; adds to raw g2(0)."),
-        ParamSpec("dark_cps", "1/s", 0.0, lo=0.0, hi=1e5, tag="A", source=_SRC,
-                  help="Detector dark counts per second; adds to raw g2(0). Pulsed drives count only the darks inside "
-                       "coinc_window_ns around each peak."),
-        ParamSpec("coinc_window_ns", "ns", 2.0, lo=0.01, hi=1000.0, tag="A", source=_SRC,
-                  help="Pulsed drives: histogram integration window around each coincidence peak; the dark background per "
-                       "pulse and detector is dark_cps x coinc_window_ns x 1e-9 (window capped at the pulse period). "
-                       "Ignored by continuous drives."),
-        ParamSpec("eps_int", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC,
-                  help="Interferometer imperfection (1 - fringe contrast of a perfect source) in the raw HOM visibility: "
-                       "V_raw = ((1 - g2) I - g2)(1 - eps_int)."),
-        ParamSpec("zpl_filter", "", False, tag="A", source=_SRC,
-                  help="Spectrally filter to the zero-phonon line (brightness x Z, HOM unity)."),
-        ParamSpec("irf_ps", "ps", 0.0, lo=0.0, hi=2000.0, tag="A", source=_SRC,
-                  help="Detector timing response (Gaussian FWHM); 0 = off. Feeds the IRF-convolved cw dip (g2_irf) and "
-                       "the IRF leak of the binned GHz histogram (g2_binned). A drive-level irf_ps (electrical drives) "
-                       "takes precedence when non-zero."),
-        ParamSpec("filter_width_meV", "meV", 0.0, lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
-                  help="Top-hat spectral window width for the X / XX leakage (spectral_overlap); 0 = no window "
-                       "(both lines fully collected)."),
-        ParamSpec("filter_offset_meV", "meV", 0.0, lo=-500.0, hi=500.0, tag="A", source=_SRC, group="advanced",
-                  help="Offset of the X line from the window centre (negative = window blue of X)."),
-        ParamSpec("xx_width_ratio", "1", 1.5, lo=0.1, hi=10.0, tag="E", group="advanced",
+        ParamSpec("NA", "1", 0.65, tex=r"\mathrm{NA}", lo=0.05, hi=1.0, tag="A", source=_SRC,
+                  help=r"Numerical aperture $\mathrm{NA}$ of the first collection lens."),
+        ParamSpec("eta_pol", "1", 1.0, tex=r"\eta_{\mathrm{pol}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Polarisation-selection transmission $\eta_{\mathrm{pol}}$ (0.5 for a single linear analyser on unpolarised light)."),
+        ParamSpec("eta_optics", "1", 0.5, tex=r"\eta_{\mathrm{optics}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Transmission $\eta_{\mathrm{optics}}$ of lenses, filters and mirrors between the first lens and the fibre."),
+        ParamSpec("eta_fibre", "1", 1.0, tex=r"\eta_{\mathrm{fibre}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Fibre-coupling efficiency $\eta_{\mathrm{fibre}}$."),
+        ParamSpec("eta_det", "1", 0.5, tex=r"\eta_{\mathrm{det}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Detector quantum efficiency $\eta_{\mathrm{det}}$."),
+        ParamSpec("laser_leak", "1", 0.0, tex=r"f_{\mathrm{leak}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Residual laser light $f_{\mathrm{leak}}$ as a fraction of the signal rate; adds to the raw $g^{(2)}(0)$."),
+        ParamSpec("dark_cps", "1/s", 0.0, tex=r"r_{\mathrm{dark}}", lo=0.0, hi=1e5, tag="A", source=_SRC,
+                  help=r"Detector dark counts per second $r_{\mathrm{dark}}$; adds to the raw $g^{(2)}(0)$. Pulsed drives count only the darks inside "
+                       r"$T_{\mathrm{coinc}}$ around each peak."),
+        ParamSpec("coinc_window_ns", "ns", 2.0, tex=r"T_{\mathrm{coinc}}", lo=0.01, hi=1000.0, tag="A", source=_SRC,
+                  help=r"Pulsed drives: histogram integration window $T_{\mathrm{coinc}}$ around each coincidence peak; the dark background per "
+                       r"pulse and detector is $r_{\mathrm{dark}}\,T_{\mathrm{coinc}}$ (window capped at the pulse period). "
+                       r"Ignored by continuous drives."),
+        ParamSpec("eps_int", "1", 0.0, tex=r"\varepsilon_{\mathrm{int}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Interferometer imperfection $\varepsilon_{\mathrm{int}}$ (1 - fringe contrast of a perfect source) in the raw HOM visibility: "
+                       r"$V_{\mathrm{raw}} = \left[(1 - g^{(2)})\,I - g^{(2)}\right](1 - \varepsilon_{\mathrm{int}})$."),
+        ParamSpec("zpl_filter", "", False, tex=r"\mathrm{ZPL\ filter}", tag="A", source=_SRC,
+                  help=r"Spectrally filter to the zero-phonon line (brightness $\times Z$, HOM unity)."),
+        ParamSpec("irf_ps", "ps", 0.0, tex=r"\tau_{\mathrm{IRF}}", lo=0.0, hi=2000.0, tag="A", source=_SRC,
+                  help=r"Detector timing response $\tau_{\mathrm{IRF}}$ (Gaussian FWHM); 0 = off. Feeds the IRF-convolved cw dip ($g^{(2)}_{\mathrm{IRF}}$) and "
+                       r"the IRF leak of the binned GHz histogram ($g^{(2)}_{\mathrm{bin}}$). A drive-level $\tau_{\mathrm{IRF}}$ (electrical drives) "
+                       r"takes precedence when non-zero."),
+        ParamSpec("filter_width_meV", "meV", 0.0, tex=r"w_{\mathrm{filt}}", lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
+                  help=r"Top-hat spectral window width $w_{\mathrm{filt}}$ for the X / XX leakage ($\varepsilon_{XX}$); 0 = no window "
+                       r"(both lines fully collected)."),
+        ParamSpec("filter_offset_meV", "meV", 0.0, tex=r"\delta_{\mathrm{filt}}", lo=-500.0, hi=500.0, tag="A", source=_SRC, group="advanced",
+                  help=r"Offset $\delta_{\mathrm{filt}}$ of the X line from the window centre (negative = window blue of X)."),
+        ParamSpec("xx_width_ratio", "1", 1.5, tex=r"w_{XX}/w_{X}", lo=0.1, hi=10.0, tag="E", group="advanced",
                   source="XX/X linewidth ratio ~1.5 (Tamariz et al. 2020: 80 vs 55 meV at 300 K) [E]",
-                  help="Width of the XX line as a multiple of the X linewidth hbar(Gamma + k + gamma*)."),
-        ParamSpec("xx_x_ratio", "1", 0.0, lo=0.0, hi=100.0, tag="A", source=_SRC, group="advanced",
-                  help="Unfiltered X-XX intensity ratio I_XX/I_X at the operating point (from the power exponents); "
-                       "0 = no XX light. Sets rho and g2 = 1 - rho^2 in the spectral_overlap observable."),
+                  help=r"Width of the XX line as a multiple of the X linewidth $\hbar(\Gamma + k + \gamma^{*})$."),
+        ParamSpec("xx_x_ratio", "1", 0.0, tex=r"I_{XX}/I_{X}", lo=0.0, hi=100.0, tag="A", source=_SRC, group="advanced",
+                  help=r"Unfiltered X-XX intensity ratio $I_{XX}/I_X$ at the operating point (from the power exponents); "
+                       r"0 = no XX light. Sets $\rho$ and $g^{(2)} = 1 - \rho^2$ in the $\varepsilon_{XX}$ observable."),
     ),
 )
 REGISTRY.register(LENS_FIBRE_DET)
