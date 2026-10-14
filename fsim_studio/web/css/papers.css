@@ -108,6 +108,13 @@
 .pp-item-id { display: block; overflow-wrap: anywhere; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; font-weight: 400; font-size: 11px; letter-spacing: 0; color: var(--muted); margin-top: 2px; }
 .pp-obsl .sym { white-space: normal; font-size: 1.05em; }
 .pp-item-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px; }
+.pp-opt { margin-top: 8px; padding: 8px 0 0; border-top: 1px dashed var(--line, var(--muted)); display: flex; flex-direction: column; gap: 5px; font-weight: 400; font-size: 12px; color: var(--ink-2); }
+.pp-opt-label { align-self: flex-start; height: auto; white-space: normal; line-height: 1.3; padding-block: 2px; }
+.pp-opt-sec { display: flex; flex-direction: column; gap: 1px; }
+.pp-opt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.pp-opt-list .pp-num { font-size: calc(12.5px * var(--k)); }
+.pp-open-opt { align-self: flex-start; margin-top: 3px; font-size: 12px; white-space: normal; text-align: left; }
+.pp-open-opt[disabled] { opacity: 0.5; cursor: not-allowed; }
 .pp-item-kind { font-weight: 400; font-size: 11.5px; color: var(--muted); }
 .pp-val { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pp-num { font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: calc(15px * var(--k)); color: var(--ink-1); }

@@ -288,7 +288,7 @@ function renderBoard() {
       h("div.bh-titleline",
         h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
         S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited")),
-      S.seed ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
+      S.seed ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
       h("ol.board-desc.board-steps", { "aria-label": "How to compose a device" },
         h("li", h("b.bs-n", "1"), "Start from an example"),
         h("li", h("b.bs-n", "2"), "Click a mount's kind to swap it, its body to edit values"),

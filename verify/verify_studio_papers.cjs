@@ -354,6 +354,42 @@ async function getJSON(url) {
       },
     });
 
+    // R2 SUPCMP: optimum items say what they are (label, window, argmax typeset through ui/math.js, solver) and open the optimum
+    for (const id of ["karli2022", "piccinini2025"]) {
+      const det = await getJSON(`/api/papers/${id}`);
+      const opts = (det.reproduce || []).filter((e) => e.mode === "optimum" || e.mode === "at_optimum");
+      if (!opts.length) { check(`optimum items ${id}: card has optimum entries`, false, "ledger lacks them"); continue; }
+      await page.goto(`${BASE}/#/papers/${id}`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector("#workspace .pp-reproduce", { timeout: 20000 });
+      await page.waitForSelector('#workspace[data-ready="1"]', { timeout: 30000 });
+      await page.locator("#pp-reproduce").click();
+      await page.waitForSelector('#workspace .pp-main[data-state="done"]', { timeout: 600000 });
+      const got = await page.evaluate((ids) => ids.map((iid) => {
+        const tr = document.querySelector(`.pp-table tbody tr[data-item="${iid}"]`);
+        const t = (sel) => tr?.querySelector(sel);
+        return {
+          id: iid,
+          label: t('[data-role="optimum-label"]')?.textContent.trim() || "",
+          win: [...(tr?.querySelectorAll('[data-role="window"] li') || [])].map((l) => ({ text: l.textContent, math: l.querySelectorAll(".math").length })),
+          am: [...(tr?.querySelectorAll('[data-role="argmax"] li') || [])].map((l) => ({ text: l.textContent, math: l.querySelectorAll(".math").length })),
+          solver: t('[data-role="solver"]')?.textContent || "",
+          btn: !!t('[data-role="open-optimum"]') && !t('[data-role="open-optimum"]').disabled,
+        };
+      }), opts.map((e) => e.item));
+      for (const e of opts) {
+        const g = got.find((x) => x.id === e.item);
+        const src = e.mode === "optimum" ? e : opts.find((x) => x.item === e.of);
+        const sv = src.optimum.solver;
+        const wantSolver = `${sv.phonons === true || sv.phonons === "on" ? "LA-phonon polaron" : "no phonons"}`;
+        const labelOK = e.mode === "optimum" ? g.label === "maximum over the paper's scan window" : /^at the maximum of/.test(g.label);
+        const winOK = g.win.length === src.optimum.scan.length && src.optimum.scan.every((sc, i) => g.win[i].text.includes(String(Math.abs(sc.window[0]))) && g.win[i].text.includes(String(Math.abs(sc.window[1]))) && g.win[i].math >= 1);
+        const amOK = g.am.length >= src.optimum.scan.length && g.am.every((a) => a.math >= 1 && /\d/.test(a.text.split("=")[1] || ""));
+        check(`optimum item ${id}/${e.item}: labelled, window, typeset argmax, solver options, Open optimum in Composer enabled`,
+          labelOK && winOK && amOK && g.solver.includes(wantSolver) && g.solver.startsWith("two-level") && g.btn, JSON.stringify(g).slice(0, 400));
+      }
+      await shot(`optimum-${id}`);
+    }
+
     // R2 FIN2: every paper's detail panel shows its device model (3D, lazy, one live WebGL view at a time)
     {
       const list = await getJSON("/api/papers");

@@ -100,6 +100,7 @@ root, outp = sys.argv[1], sys.argv[2]
 only = set(sys.argv[3].split(",")) if len(sys.argv) > 3 and sys.argv[3] else None
 sys.path.insert(0, root)
 from fsim_core.compose import engine
+from fsim_core.compose import optimum as O
 KEYS = ("g2_0", "hom_I", "B_lens", "tau_ps", "F_P_eff", "rate_detected_Hz")
 def f(x):
     try:
@@ -122,9 +123,21 @@ for fp in sorted(Path(root, "cards", "papers").glob("*.yaml")):
         card["valid"] = bool(sc["valid"])
     except Exception as e:
         card["error"] = type(e).__name__ + ": " + str(e)[:200]
+    store = {}
     for e in raw.get("reproduce") or []:
         item = e["item"]
         try:
+            if e.get("mode") == "optimum":                 # the optimum runner itself, in this separate process
+                res = O.optimise(spec, e["optimum"])
+                store[item] = res
+                card["items"][item] = {"kind": "optimum", "model": f(res["value"]), "argmax": res["argmax"]}
+                continue
+            if e.get("mode") == "at_optimum":              # the engine at the runner's argmax
+                src = store[e["of"]]
+                req = e["observable"] if e.get("convention", "intrinsic") == "intrinsic" else e["observable"] + ":" + e["convention"]
+                ctx = engine._run_point(src["entries"], src["values"], float(src["values"]["T_K"]), "auto")
+                card["items"][item] = {"kind": "at_optimum", "model": f(engine._value_of(ctx, req)), "argmax": src["argmax"]}
+                continue
             if e["class"] == "P":
                 kind, oid, conv = "predict", e["observable"], e.get("convention", "intrinsic")
             else:
@@ -150,6 +163,77 @@ for fp in sorted(Path(root, "cards", "papers").glob("*.yaml")):
     out[fp.stem] = card
 Path(outp).write_text(json.dumps(out), encoding="utf-8")
 `;
+
+// ---- independent evaluation AT the argmax the API reported (unrounded leaf values): the engine's own pulse-end occupation for an
+// optimum item, the requested observable for an at_optimum item, plus every engine scalar of the device with those leaves set.
+const ARGEVAL = String.raw`
+import sys, json, math, copy, warnings
+warnings.filterwarnings("ignore")
+import yaml
+from pathlib import Path
+root, inp, outp = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, root)
+from fsim_core.compose import engine as E
+from fsim_core.compose import optimum as O
+KEYS = ("g2_0", "hom_I", "B_lens", "tau_ps", "F_P_eff", "rate_detected_Hz")
+def f(x):
+    try:
+        x = float(x)
+    except Exception:
+        return None
+    return x if math.isfinite(x) else None
+req_all = json.loads(Path(inp).read_text(encoding="utf-8"))
+out = {}
+for cid, items in req_all.items():
+    raw = yaml.safe_load(Path(root, "cards", "papers", cid + ".yaml").read_text(encoding="utf-8"))
+    spec = {"schema": "fsim-composed/1", **raw["device"]}
+    ents = {e["item"]: e for e in raw.get("reproduce") or []}
+    entries = E._entries(E._as_spec(spec))
+    leaves = E._leaves(E._as_spec(spec), entries)
+    out[cid] = {}
+    for item, am in items.items():
+        e = ents[item]
+        src = e if e.get("mode") == "optimum" else ents[e["of"]]
+        o = src["optimum"]
+        vals = O._base_values(entries, leaves, o.get("overrides") or {})
+        vals.update({k: (v if isinstance(v, str) else float(v)) for k, v in am.items()})
+        rec = {}
+        try:
+            if e.get("mode") == "optimum":
+                rec["model"] = f(O._engine_px_end(entries, vals, O._onoff(o["solver"]["phonons"]) == "on", O._onoff(o["solver"]["radiative"]) == "on"))
+            else:
+                req = e["observable"] if e.get("convention", "intrinsic") == "intrinsic" else e["observable"] + ":" + e["convention"]
+                rec["model"] = f(E._value_of(E._run_point(entries, vals, float(vals["T_K"]), "auto"), req))
+            sp = copy.deepcopy(spec)                       # the device with the moved leaves set (what the Composer is opened with)
+            meta = {}                                      # provenance the entry declares for the leaves it moves (a leaf the card does not list)
+            for d in [*(o.get("derive") or []), *[sv for sv in o.get("scan") or [] if sv.get("path")]]:
+                meta[d["path"]] = {k: d[k] for k in ("unit", "tag", "where", "source") if d.get(k) is not None}
+            for pth, lfm in (o.get("overrides") or {}).items():
+                meta[pth] = {k: lfm[k] for k in ("unit", "tag", "where", "source") if lfm.get(k) is not None}
+            for path, v in am.items():
+                axis, _, name = path.partition(".")
+                lf = sp[axis]["params"].get(name) or meta.get(path, {})          # a registry-default leaf the card does not list
+                v = v if isinstance(v, str) else float(v)
+                sp[axis]["params"][name] = {**{k: x for k, x in lf.items() if k not in ("range", "scale", "choice")}, "value": v} if isinstance(lf, dict) else v
+            sc = E.evaluate_spec(sp)["scalars"]
+            rec["scalars"] = {k: f(sc.get(k)) for k in KEYS}
+        except Exception as ex:
+            rec["error"] = type(ex).__name__ + ": " + str(ex)[:200]
+        out[cid][item] = rec
+Path(outp).write_text(json.dumps(out), encoding="utf-8")
+`;
+
+function runArgEval(req) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fsim_argeval_"));
+  const script = path.join(tmp, "argeval.py"), inp = path.join(tmp, "in.json"), outp = path.join(tmp, "out.json");
+  fs.writeFileSync(script, ARGEVAL);
+  fs.writeFileSync(inp, JSON.stringify(req));
+  const r = spawnSync(process.env.PYTHON || "python", ["-I", script, ROOT, inp, outp], { cwd: tmp, env: { ...process.env, OMP_NUM_THREADS: "2", PYTHONPATH: "" }, encoding: "utf-8", maxBuffer: 1 << 26, timeout: 3600000 });
+  if (r.status !== 0 || !fs.existsSync(outp)) throw new Error(`argmax evaluation helper failed: ${(r.stderr || "").slice(-400)}`);
+  const data = JSON.parse(fs.readFileSync(outp, "utf-8"));
+  fs.rmSync(tmp, { recursive: true, force: true });
+  return data;
+}
 
 function runDirect() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fsim_direct_"));
@@ -181,6 +265,7 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
     console.log(`direct engine helper over ${onDisk.length} cards ...`);
     const direct = SKIP_CARDS ? {} : runDirect();
     const papersRes = {};
+    const optCards = {};                           // cards with optimum items: {card, items (API), direct (optimum runner)}
     for (const p of list) {
       const id = p.id;
       const post = await postJSON(`/api/papers/${id}/reproduce`, {});
@@ -190,7 +275,9 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
       papersRes[id] = snap.result;
       const d = direct[id] || { items: {} };
       const bad = [];
+      const nOpt = snap.result.items.filter((i) => i.mode).length;
       for (const it of snap.result.items) {
+        if (it.mode) continue;                       // optimum / at_optimum items: checked below against the optimum runner and the argmax
         const dd = d.items[it.id];
         if (!dd) { bad.push(`${it.id}: no direct value`); continue; }
         const apiModel = isNum(it.model) ? it.model : null;
@@ -198,8 +285,9 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
         if (apiModel === null && ["unavailable", "error"].includes(it.outcome)) continue;
         if (!relOK(apiModel, dd.model)) bad.push(`${it.id}: API ${apiModel} vs direct ${dd.model}`);
       }
-      check(`API model == direct engine run, every item of ${id} (${snap.result.items.length} items, 1e-9 rel)`, bad.length === 0, bad.join(" | "));
+      check(`API model == direct engine run, every single-point item of ${id} (${snap.result.items.length - nOpt} items, 1e-9 rel)`, bad.length === 0, bad.join(" | "));
       const card = await getJSON(`/api/papers/${id}`);
+      if (nOpt) optCards[id] = { card, items: snap.result.items.filter((i) => i.mode), direct: d };
       if ((card.series || []).length) {
         const ms = snap.result.model_series || [];
         const sbad = [];
@@ -210,6 +298,36 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
           else if (!(m.y || []).length || m.y.length !== s.points.length || !m.y.every(isNum)) sbad.push(`${s.id}: y not finite/complete`);
         }
         check(`model_series ${id}: every card series has a finite model curve, no error`, sbad.length === 0, sbad.join(" | "));
+      }
+    }
+
+    // ---- optimum items: API value == the optimum runner (separate process) == the engine at the API's own argmax; argmax inside the window
+    const argReq = {};
+    for (const [id, oc] of Object.entries(optCards)) {
+      argReq[id] = {};
+      for (const it of oc.items) if (isNum(it.model) && it.argmax_full) argReq[id][it.id] = it.argmax_full;
+    }
+    const argEval = Object.keys(argReq).length ? runArgEval(argReq) : {};
+    for (const [id, oc] of Object.entries(optCards)) {
+      const ents = Object.fromEntries(oc.card.reproduce.map((e) => [e.item, e]));
+      for (const it of oc.items) {
+        const e = ents[it.id];
+        const src = e.mode === "optimum" ? e : ents[e.of];
+        const bad = [];
+        const dd = oc.direct.items[it.id];
+        if (!relOK(isNum(it.model) ? it.model : null, dd?.model, 1e-6)) bad.push(`API ${it.model} vs optimum runner ${dd?.model}`);
+        const ae = argEval[id]?.[it.id];
+        if (!it.argmax_full) bad.push("the payload carries no argmax_full");
+        else if (!ae || ae.error) bad.push(`engine at the argmax failed: ${ae?.error}`);
+        else if (!relOK(it.model, ae.model, 1e-6)) bad.push(`API ${it.model} vs engine at the recorded argmax ${ae.model}`);
+        for (const sv of src.optimum.scan) {                       // the argmax lies inside the declared window
+          const [lo, hi] = sv.window;
+          const tol = 1e-5 * (hi - lo);                            // item.argmax is rounded to 5 decimals
+          const v = it.argmax?.[sv.name] ?? (sv.path ? it.argmax_full?.[sv.path] : undefined);
+          if (!isNum(v) || v < lo - tol || v > hi + tol) bad.push(`${sv.name}=${v} outside [${lo}, ${hi}]`);
+          if (sv.path && isNum(it.argmax_full?.[sv.path]) && (it.argmax_full[sv.path] < lo - 1e-9 || it.argmax_full[sv.path] > hi + 1e-9)) bad.push(`${sv.path}=${it.argmax_full[sv.path]} outside [${lo}, ${hi}]`);
+        }
+        check(`optimum item ${id}/${it.id} (${e.mode}): API value == optimum runner == engine at the argmax (1e-6 rel), argmax inside the window`, bad.length === 0, bad.join(" | "));
       }
     }
 
@@ -291,7 +409,7 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
         // (a) Composer scalars vs the Papers items on the same observable (intrinsic convention, scalar items only)
         const bad = [];
         for (const it of pr.items) {
-          if (!["scalar", "predict"].includes(it.kind) || it.convention !== "intrinsic" || !isNum(it.model)) continue;
+          if (it.mode || !["scalar", "predict"].includes(it.kind) || it.convention !== "intrinsic" || !isNum(it.model)) continue;   // an optimum item is not the card device's single point: see "Open optimum in Composer" below
           const key = it.observable === "B_first_lens" ? "B_lens" : it.observable;
           if (!(key in sc) || !isNum(sc[key])) continue;
           if (!relOK(sc[key], it.model)) bad.push(`${it.id} (${it.observable}): Composer ${sc[key]} vs Papers ${it.model}`);
@@ -302,6 +420,44 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
         check(`composer==papers ${id}: the Composer result equals the Papers result and the card device`, bad.length === 0, bad.join(" | "));
         const rb = await readoutsMatch(sc);
         check(`KPI readouts ${id} equal the API scalar through the page formatter`, rb.length === 0, rb.join(" | "));
+        // optimum items: "Open optimum in Composer" opens the device AT the argmax; the Composer's engine scalars there equal a direct
+        // evaluation of the device with the argmax leaves set; an at_optimum item's value is reproduced by the Composer's own readout
+        for (const it of (optCards[id]?.items || [])) {
+          try {
+            await page.goto(`${BASE}/#/papers/${id}`, { waitUntil: "domcontentloaded" });
+            await page.waitForSelector('#workspace[data-ready="1"]', { timeout: 30000 });
+            await page.waitForSelector(`#workspace tr[data-item="${it.id}"][data-state="run"]`, { timeout: 600000 });     // a cached result is applied automatically
+            const btn = page.locator(`#workspace tr[data-item="${it.id}"] [data-role="open-optimum"]`);
+            await btn.click();
+            await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 120000 });
+            await waitPlaque();
+            await page.waitForFunction(() => !/Checking|VALIDATING/.test(document.querySelector(".ws-compose .plaque")?.textContent || ""), null, { timeout: 60000 });
+            const spec = lastValidate.body?.spec || {};
+            const am = it.argmax_full || {};
+            const bad2 = [];
+            for (const [path, v] of Object.entries(am)) {
+              const [axis, ...rest] = path.split(".");
+              const lf = spec[axis]?.params?.[rest.join(".")];
+              const got = lf && typeof lf === "object" ? lf.value : lf;
+              if (typeof v === "string" ? got !== v : !relOK(got, v, 1e-9)) bad2.push(`${path}: Composer ${got} vs argmax ${v}`);
+            }
+            const note = await page.$eval(".compose-seed", (e) => e.dataset.item + "|" + e.textContent).catch(() => "");
+            if (!note.startsWith(`${it.id}|`)) bad2.push(`seed note missing or for another item: ${note.slice(0, 80)}`);
+            const run2 = await runInComposer();
+            if (run2.state !== "done" || !run2.result?.scalars) bad2.push(`RUN ${run2.state}`);
+            else {
+              const sc2 = run2.result.scalars;
+              const ae = argEval[id]?.[it.id];
+              if (ae?.scalars) for (const k of Object.keys(ae.scalars)) if (!relOK(sc2[k], ae.scalars[k], 1e-9)) bad2.push(`${k}: Composer ${sc2[k]} vs device at the argmax ${ae.scalars[k]}`);
+              if (it.mode === "at_optimum" && it.observable === "g2_0") {
+                if (!relOK(sc2.g2_0, it.model, 1e-6)) bad2.push(`Composer g2_0 ${sc2.g2_0} vs item value ${it.model}`);
+              }
+            }
+            check(`Open optimum in Composer ${id}/${it.id}: opens at the argmax (leaves equal, 1e-9 rel), the Composer scalars equal the device at the argmax${it.mode === "at_optimum" && it.observable === "g2_0" ? " and its g2(0) readout equals the item value (1e-6)" : ""}`, bad2.length === 0, bad2.join(" | "));
+          } catch (e) {
+            check(`Open optimum in Composer ${id}/${it.id}`, false, e.message.split("\n")[0]);
+          }
+        }
       } catch (e) {
         check(`Open in Composer + RUN ${id}`, false, e.message.split("\n")[0]);
       }

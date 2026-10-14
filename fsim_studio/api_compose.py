@@ -17,6 +17,8 @@ Routes (registered by register(app) from server.create_app):
   GET  /api/papers/<id>               card JSON + resolved device
   POST /api/papers/<id>/reproduce     job (reproduce_job), cache key = card sha256 + fsim_core hash
   GET  /api/papers/<id>/design        composed design at the central values ("Open in Composer")
+  POST /api/papers/<id>/design        {item, argmax_full}: the same design with the leaves of an optimum item set to the
+                                      item's argmax ("Open optimum in Composer"); argmax_full comes from the reproduce result
 
 Job functions (exact entries in jobs.ALLOWED_CALLS):
   fsim_studio.api_compose:series_job      fsim_studio.api_compose:reproduce_job
@@ -397,6 +399,90 @@ def central_design(paper_id: str, device: dict) -> dict:
             "paper": paper_id, "collapsed": collapsed, "note": CENTRAL_NOTE}
 
 
+def _optimum_leaf_paths(entry: dict) -> list:
+    """The device leaf paths an optimum entry moves (scan paths, derive targets, overrides)."""
+    o = entry.get("optimum") or {}
+    paths = [sv["path"] for sv in o.get("scan") or [] if sv.get("path")]
+    paths += [d["path"] for d in o.get("derive") or [] if d.get("path")]
+    paths += list((o.get("overrides") or {}).keys())
+    return list(dict.fromkeys(paths))
+
+
+def _optimum_source(paper, entry: dict):
+    """The optimum entry whose argmax `entry` reports (itself, or the `of` entry of an at_optimum item)."""
+    if entry.get("mode") == "optimum":
+        return entry
+    if entry.get("mode") == "at_optimum":
+        return next((e for e in _pget(paper, "reproduce", []) or [] if e.get("item") == entry.get("of") and e.get("mode") == "optimum"), None)
+    return None
+
+
+def _argmax_full(paper, entry: dict):
+    """{leaf path: unrounded value} at the argmax of the optimum behind `entry`, read from the optimum module's cache
+    (the search just ran in this process); None when unavailable."""
+    from fsim_core.compose import optimum as _opt
+    src = _optimum_source(paper, entry)
+    if src is None:
+        return None
+    key = (paper.id, src["item"], json.dumps(paper.device, sort_keys=True, default=str),
+           json.dumps(src.get("optimum") or {}, sort_keys=True, default=str))
+    res = _opt._CACHE.get(key)
+    if not res:
+        return None
+    vals = res["values"]
+    return _leaf_values(vals, src)
+
+
+def _leaf_values(vals: dict, src: dict) -> dict:
+    """The moved leaves of an optimum entry from a full value dict: numbers as floats, choice leaves (drive.shape) as text."""
+    return {p: (str(vals[p]) if isinstance(vals[p], str) else float(vals[p])) for p in _optimum_leaf_paths(src) if p in vals}
+
+
+def _optimum_leaf_meta(src: dict) -> dict:
+    """{leaf path: {unit, tag, where|source}} the optimum entry declares for the leaves it moves (scan, derive, overrides)."""
+    o = src.get("optimum") or {}
+    meta = {}
+    for d in [*(o.get("derive") or []), *(sv for sv in o.get("scan") or [] if sv.get("path"))]:
+        meta[d["path"]] = {k: d[k] for k in ("unit", "tag", "where", "source") if d.get(k) is not None}
+    for path, leaf in (o.get("overrides") or {}).items():
+        meta[path] = {k: leaf[k] for k in ("unit", "tag", "where", "source") if leaf.get(k) is not None}
+    return meta
+
+
+def optimum_design(paper_id: str, device: dict, argmax_full: dict, src: dict = None) -> dict:
+    """central_design with the optimum's moved leaves set to their argmax values (the leaf keeps its tag and where; a leaf the
+    card does not list, such as a registry default, is added with the provenance the optimum entry declares for it)."""
+    meta = _optimum_leaf_meta(src or {})
+    out = central_design(paper_id, device)
+    spec = out["design"]["composed"]
+    applied = []
+    for path, value in argmax_full.items():
+        axis, _, name = str(path).partition(".")
+        params = (spec.get(axis) or {}).get("params") if axis in ("material", "structure", "drive", "setup") else None
+        if not isinstance(params, dict):
+            raise ComposeError(f"argmax leaf {path!r} is not a leaf of this device", 400)
+        if name not in params:
+            if path not in meta:
+                raise ComposeError(f"argmax leaf {path!r} is not a leaf of this device", 400)
+            params[name] = dict(meta[path])
+        if isinstance(value, str):
+            val = value                                    # a choice leaf of the optimum's overrides (e.g. drive.shape)
+        elif isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            val = float(value)
+        else:
+            raise ComposeError(f"argmax leaf {path!r} must be a finite number or a choice name", 400)
+        leaf = params[name]
+        if isinstance(leaf, dict):
+            params[name] = {**{k: v for k, v in leaf.items() if k not in ("range", "scale", "choice")}, "value": val}
+        else:
+            params[name] = val
+        applied.append(path)
+    out["argmax_applied"] = applied
+    out["note"] = ("Leaves at the maximum over the paper's scan window: " + ", ".join(applied) + ". "
+                   "The Composer's solver and readouts are the engine's, not the optimum item's two-level / no-phonon pulse-end occupation.")
+    return out
+
+
 def list_examples() -> list:
     """[{name, label, summary, kinds, design}] for every cards/composed/*.yaml (sorted by file name)."""
     import yaml
@@ -468,8 +554,18 @@ def reproduce_job(paper_id, card_sha256=None, papers_dir=None):
         rep = report.to_dict()
     else:
         rep = report
+    items = rep.get("items") if isinstance(rep, dict) else None
+    if items:
+        by_id = {e.get("item"): e for e in paper.reproduce if e.get("mode")}
+        for it in items:
+            e = by_id.get(it.get("id"))
+            if e is not None:
+                try:
+                    it["argmax_full"] = _argmax_full(paper, e)
+                except Exception:  # noqa: BLE001 -- the display argmax is still there
+                    it["argmax_full"] = None
     return {"paper": paper_id, "card_sha256": _card_sha(path), "report": rep,
-            "items": rep.get("items") if isinstance(rep, dict) else None,
+            "items": items,
             "model_series": _model_series(paper, _pget(paper, "device"))}
 
 
@@ -646,6 +742,28 @@ def register(app):
     def paper_design(paper_id):
         paper, _path = _load_paper(paper_id)
         return _out(central_design(paper_id, _pget(paper, "device")))
+
+    @app.post("/api/papers/<paper_id>/design")
+    def paper_design_optimum(paper_id):
+        paper, _path = _load_paper(paper_id)
+        body = _body()
+        entry = next((e for e in _pget(paper, "reproduce", []) or [] if e.get("item") == body.get("item") and e.get("mode")), None)
+        if entry is None:
+            raise ComposeError("item must name an optimum / at_optimum ledger item of this card", 400)
+        src = _optimum_source(paper, entry)
+        argmax = body.get("argmax_full")
+        if src is None:
+            raise ComposeError("item has no optimum behind it", 400)
+        if argmax is None:                      # an older cached reproduce result carries no unrounded argmax: search again
+            from fsim_core.compose import optimum as _opt
+            res = _opt.optimise(paper.device, src["optimum"])
+            argmax = _leaf_values(res["values"], src)
+        if not isinstance(argmax, dict) or not argmax:
+            raise ComposeError("argmax_full must be an object of leaf values", 400)
+        extra = sorted(set(argmax) - set(_optimum_leaf_paths(src)))
+        if extra:
+            raise ComposeError(f"argmax_full carries leaves the optimum does not move: {extra}", 400)
+        return _out({**optimum_design(paper_id, _pget(paper, "device"), argmax, src), "item": entry["item"]})
 
 
 __all__ = ["register", "ComposeError", "display_hint", "series_job", "reproduce_job", "validate_payload",
