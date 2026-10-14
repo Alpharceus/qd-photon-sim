@@ -51,6 +51,8 @@ _TEX = {
     "eid_ps": r"\xi_{\mathrm{EID}}", "p_trion": r"p_{\mathrm{trion}}",
     "delta1_meV": r"\Delta_{1}", "delta2_meV": r"\Delta_{2}", "fwhm1_ps": r"\tau_{\mathrm{FWHM},1}", "fwhm2_ps": r"\tau_{\mathrm{FWHM},2}",
     "area1_pi": r"\Theta_{1}", "area2_pi": r"\Theta_{2}", "delta_meV": r"\delta", "asymmetry": r"a", "chirp_ps2": r"\varphi_{2}",
+    "slm_T1": r"T_{1}", "slm_T2": r"T_{2}", "slm_alpha_pi": r"\tilde{\alpha}", "slm_bb_fwhm_meV": r"\hbar\Delta\omega_{\mathrm{bb}}",
+    "slm_bb_centre_meV": r"\hbar(\omega_{\mathrm C}-\omega_{0})", "slm_mask_sigma_meV": r"\hbar\sigma", "slm_floor": r"t_{\mathrm{floor}}",
 }
 
 

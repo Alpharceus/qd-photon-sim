@@ -163,11 +163,11 @@ SUPER = PlannedDrive(
                 r"peak Rabi energy of pulse 1."),
         _P("fwhm1_ps", "ps", 2.58, lo=1.0, hi=15.0, tag="DR",
            source="Bracht et al. 2021 Table 1 row 2: field width sigma = 1.55 ps [V]; intensity FWHM = 2 sigma sqrt(ln 2) = 2.581 ps [DR]",
-           help=r"Intensity FWHM $	au_{\mathrm{FWHM},1}$ of pulse 1 ($=2\sigma\sqrt{\ln 2}$ for the field width $\sigma$ Bracht quotes). "
-                r"At fixed peak Rabi energy the Gaussian area scales as $	au_{\mathrm{FWHM}}$ ($\Theta = \Omega_{\mathrm{pk}}\sigma\sqrt{2\pi}$)."),
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},1}$ of pulse 1 ($=2\sigma\sqrt{\ln 2}$ for the field width $\sigma$ Bracht quotes). "
+                r"At fixed peak Rabi energy the Gaussian area scales as $\tau_{\mathrm{FWHM}}$ ($\Theta = \Omega_{\mathrm{pk}}\sigma\sqrt{2\pi}$)."),
         _P("fwhm2_ps", "ps", 2.58, lo=1.0, hi=15.0, tag="DR",
            source="Bracht et al. 2021 Table 1 row 2: sigma = 1.55 ps [V]; intensity FWHM 2.581 ps [DR]",
-           help=r"Intensity FWHM $	au_{\mathrm{FWHM},2}$ of pulse 2."),
+           help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
         _P("area1_pi", "pi", 13.06, lo=0.0, hi=60.0, tag="V",
            source="Bracht et al. 2021 Table 1 row 2: alpha1 = 13.06 pi (area = int Omega dt, H = Omega/2 sigma_x) [V] (r2-super)",
            help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$. SUPER needs large areas (the peak Rabi energy must reach the "
@@ -177,9 +177,9 @@ SUPER = PlannedDrive(
            source="Bracht et al. 2021 Table 1 row 2: alpha2 = 10.45 pi [V] (r2-super)",
            help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$ (see pulse 1)."),
         _P("slm_T1", "1", 0.5, lo=0.0, hi=1.0, tag="V", source=_SLM_SRC + ": T1 = 0.5 (pulse 1 fixed, Table II / Fig. 2)", group="advanced",
-           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_1$ of mask line 1 ($	ilde T_1 = \sqrt{T_1}$ on the field). slm_mask only."),
+           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_1$ of mask line 1 ($\tilde T_1 = \sqrt{T_1}$ on the field). slm_mask only."),
         _P("slm_T2", "1", 0.7, lo=0.0, hi=1.0, tag="V", source=_SLM_SRC + ": T2 is the y-axis of Fig. 2 (0 to 1)", group="advanced",
-           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_2$ of mask line 2 ($	ilde T_2 = \sqrt{T_2}$ on the field). slm_mask only."),
+           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_2$ of mask line 2 ($\tilde T_2 = \sqrt{T_2}$ on the field). slm_mask only."),
         _P("slm_alpha_pi", "pi", 470.0, lo=1.0, hi=5000.0, scale="log", tag="V", source=_SLM_SRC + ": integrated pulse area alpha~ = 470 pi", group="advanced",
            visible_if=_SLM_VIS, help=r"Integrated area $\tilde{\alpha}$ of the broadband spectrum (Eq. 2; $\int \tilde{\Omega}\,d\omega = \tilde{\alpha}$)."),
         _P("slm_bb_fwhm_meV", "meV", 17.0, lo=1.0, hi=100.0, tag="V", source=_SLM_SRC + ": spectral FWHM 17 meV", group="advanced",
