@@ -959,6 +959,9 @@ a.cplaque:hover .cp-go { color: var(--ink-1); transform: translateX(2px); }
 .coll-commit { font-family: var(--font-mono); }
 
 .ov-hero { position: sticky; top: 0; display: flex; flex-direction: column; background: var(--plate); border: 1px solid var(--rim); border-radius: var(--radius); box-shadow: var(--shadow-mount); min-height: 560px; height: calc(100vh - var(--ctx-h) - 110px); }
+/* FIN5: the viewer's control row wraps onto a second line instead of scrolling out of sight at the right edge */
+.ov-hero .v3-compact .v3-controls { height: auto; min-height: 34px; flex-wrap: wrap; overflow-x: hidden; row-gap: 0; }
+.ov-hero .v3-compact .v3-ctl-group { height: 33px; }
 .hero-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--rim); flex-wrap: wrap; }
 .hero-head h2 { margin: 0; color: var(--ink-1); }
 .hero-tabs { display: inline-flex; gap: 2px; flex-wrap: wrap; }
@@ -1283,7 +1286,9 @@ body.presenter { overflow: auto; background: var(--ground); }
   .res-head, .res-tabs { padding-left: 12px; padding-right: 12px; }
   .row-drawer { bottom: 58px; }
   .prov { grid-template-columns: minmax(0, 1fr); }
-  .story { grid-template-rows: auto minmax(0, 1fr) auto; overflow: auto; }
+  .story { grid-template-rows: auto auto auto; overflow: auto; }   /* FIN5: the scene row grows with its content (the page scrolls), so the proof never runs over the caveat */
+  .st-scene { min-height: auto; }
+  .st-body { flex: none; min-height: auto; }
   .st-top { flex-wrap: wrap; padding: 8px 12px; }
   .st-key-l, .st-story { display: none; }
   .st-scene { padding: 12px; }
@@ -1291,6 +1296,11 @@ body.presenter { overflow: auto; background: var(--ground); }
   .st-lede { font-size: 16px; }
   .st-body { grid-template-columns: minmax(0, 1fr); }
   .st-proof { min-height: 380px; }
+  /* FIN5: the proof layers stack in one grid cell (not absolute), so the proof grows with its chart and never runs over the caveat */
+  .st-proof { display: grid; }
+  .st-layer { position: relative; inset: auto; grid-area: 1 / 1; min-height: 380px; min-width: 0; }
+  .st-chart .chart-screen { min-height: 320px; }
+  .st-viewport { min-height: 320px; }
   .st-foot { flex-direction: column; align-items: stretch; padding: 8px 12px; }
   .st-rail { overflow-x: auto; }
   /* FIN3: nothing in Story/Present may run past the right edge at 390 px */

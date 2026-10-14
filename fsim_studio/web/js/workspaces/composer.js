@@ -787,6 +787,7 @@ function syncRunbar() {
   const n = pointsFor();
   renderHint();
   S.dom.eta.classList.toggle("is-incompatible", !!inc);
+  S.dom.eta.title = inc ? `INCOMPATIBLE: ${inc}` : "";   // the run bar clamps the line to two rows; the tooltip and the plaque carry the full reason
   S.dom.runBtn.dataset.incompatible = inc ? "true" : "false";
   S.dom.eta.textContent = !S.val ? "Validating"
     : inc ? `INCOMPATIBLE: ${inc}`

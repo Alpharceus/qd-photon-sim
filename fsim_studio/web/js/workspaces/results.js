@@ -246,14 +246,14 @@ function lineTable(title, lines, isVerdict) {
   let table;
   if (lines.length <= 2) {
     // transposed: one row per key, one column per line
-    table = h("div.table-wrap", h("table.data-table.vt-table.is-tx",
+    table = h("div.table-wrap", h("table.data-table.vt-table.is-tx", { "aria-label": "Verdict lines, one column per line" },
       h("thead", h("tr", h("th", { scope: "col" }, "field"), lines.map((v) => h("th", { scope: "col" }, `line ${v.line}`)))),
       h("tbody",
         h("tr", h("th", { scope: "row" }, isVerdict ? "word" : "kind"), lines.map((v) => h("td", isVerdict ? verdictBadge(v, { size: "sm" }) : humanValue(v.kind)))),
         keys.map((k) => h("tr", h("th", { scope: "row" }, keyHead(k)), lines.map((v) => cellOf(v, k)))),
         lines.some((v) => v.note) ? h("tr", h("th", { scope: "row" }, "note"), lines.map((v) => h("td", v.note || ""))) : null)));
   } else {
-    table = h("div.table-wrap.vt-wide", h("table.data-table.vt-table",
+    table = h("div.table-wrap.vt-wide", h("table.data-table.vt-table", { "aria-label": "Verdict lines, one row per line" },
       h("thead", h("tr", h("th", { scope: "col" }, "line"), h("th", { scope: "col" }, isVerdict ? "word" : "kind"), keys.map((k) => h("th", { scope: "col" }, keyHead(k))), lines.some((v) => v.note) ? h("th", { scope: "col" }, "note") : null)),
       h("tbody", lines.map((v) => h("tr",
         h("td.num", String(v.line)),

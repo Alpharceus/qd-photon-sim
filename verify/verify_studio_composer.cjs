@@ -815,7 +815,7 @@ async function waitRun(page, timeout = 120000) {
       for (const [w, hh] of [[1440, 900], [1280, 720]]) {
         await openComposer(w, hh);
         const vp = await page.$eval(".ws-compose .viewport-slot", (e) => { const r = e.getBoundingClientRect(); return { h: Math.round(r.height), w: Math.round(r.width) }; });
-        check(`FIN1 the Composer 3D viewport is >= 380 px tall at ${w}x${hh}`, vp.h >= 380, JSON.stringify(vp));
+        check(`FIN1/FIN5 the Composer 3D viewport is >= 340 px tall at ${w}x${hh} (row clamp(400px, 44vh, 560px) so the mounts stay above the run bar)`, vp.h >= 340, JSON.stringify(vp));
         const scrolls = await page.$eval(".ws-compose .board-table", (e) => ({ sh: e.scrollHeight, ch: e.clientHeight, oy: getComputedStyle(e).overflowY }));
         check(`FIN1 at ${w}x${hh} the column scrolls (overflow auto) rather than squeezing the viewport`, scrolls.oy === "auto" || scrolls.oy === "scroll", JSON.stringify(scrolls));
       }
@@ -953,6 +953,87 @@ async function waitRun(page, timeout = 120000) {
       check("FIN1 a stored run whose spec hash no longer matches the design is not shown", stale.state === "idle" && !stale.hash && stale.ro.every((x) => x === "empty"), JSON.stringify(stale));
     }
     check("screenshots written (dark + light, 1440x900 and 390x844)", ["dark", "light"].every((t) => [1440, 390].every((w) => fs.existsSync(path.join(SHOTS, `composer-${t}-${w}.png`)))));
+    // ---------------------------------------------------------------- R2 finish (FIN5): mounts above the run bar, no gap, opaque chip sheet
+    {
+      const sleep = (ms) => page.waitForTimeout(ms);
+      const open5 = async (w, hh, theme) => {
+        await page.setViewportSize({ width: w, height: hh });
+        await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+        await page.evaluate((t) => { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: t })); }, theme || "dark");
+        await page.reload({ waitUntil: "load" });
+        await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 90000 });
+        await sleep(900);
+      };
+      const pick5 = async (axis, kind) => {
+        await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
+        await page.waitForSelector(`.cp-entry[data-kind="${kind}"]`, { timeout: 15000 });
+        await sleep(300);
+        await page.click(`.cp-entry[data-kind="${kind}"]`);
+        await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, kind], { timeout: 10000 });
+        await sleep(500);
+      };
+      // the mount header and the first two fields of every mount sit above the run bar, with the column scrolled to the top
+      const mountsAboveRunbar = () => page.evaluate(() => {
+        const rb = document.querySelector(".ws-compose .runbar").getBoundingClientRect();
+        const bt = document.querySelector(".ws-compose .board-table");
+        const out = [];
+        for (const m of document.querySelectorAll(".ws-compose .mount")) {
+          const head = m.querySelector(".mount-head").getBoundingClientRect();
+          const mv = [...m.querySelectorAll(".mv")].slice(0, 2).map((e) => e.getBoundingClientRect());
+          out.push({ axis: m.dataset.axis, n: mv.length, headOk: head.top >= 48 && head.bottom <= rb.top, fieldsOk: mv.length === 2 && mv.every((r) => r.bottom <= rb.top - 1), lastBottom: Math.round(mv.length ? mv[mv.length - 1].bottom : head.bottom), runbarTop: Math.round(rb.top), scroll: bt.scrollTop });
+        }
+        return out;
+      });
+      await open5(1440, 900, "dark");
+      await page.evaluate(() => { document.querySelector(".ws-compose .board-table").scrollTop = 0; });
+      await sleep(200);
+      const mA = await mountsAboveRunbar();
+      check("FIN5 1440x900: every mount's header and first two fields are above the run bar (valid chain)", mA.length === 4 && mA.every((x) => x.headOk && x.fieldsOk), JSON.stringify(mA));
+      await page.screenshot({ path: path.join(SHOTS, "composer-fin5-dark-1440.png") });
+      // the incompatible chain (the one with the fallback plate) keeps its mount row too: not a 10 px sliver
+      await pick5("material", "cdse_znse");
+      await pick5("structure", "edge_ridge");
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.incompatible === "true", null, { timeout: 15000 }).catch(() => {});
+      await sleep(900);
+      await page.evaluate(() => { document.querySelector(".ws-compose .board-table").scrollTop = 0; });
+      const mB = await mountsAboveRunbar();
+      check("FIN5 1440x900: the incompatible chain keeps every mount header and first two fields above the run bar", mB.length === 4 && mB.every((x) => x.headOk && x.fieldsOk), JSON.stringify(mB));
+      const visH = await page.evaluate(() => { const rb = document.querySelector(".ws-compose .runbar").getBoundingClientRect(); const c = document.querySelector(".ws-compose .chain").getBoundingClientRect(); return Math.round(Math.min(rb.top, c.bottom) - c.top); });
+      check("FIN5 1440x900: the mount row shows at least 140 px above the run bar (was a 10 px sliver)", visH >= 140, `${visH}`);
+      await page.screenshot({ path: path.join(SHOTS, "composer-fin5-incompatible-dark-1440.png") });
+      // a tall window: spare height goes below the content, not into an empty band above the Temperature panel
+      await open5(1440, 900, "dark");
+      const h900 = await page.$eval(".ws-compose .temp-plate", (e) => Math.round(e.getBoundingClientRect().height));
+      await page.setViewportSize({ width: 1440, height: 1600 });
+      await sleep(900);
+      const tall = await page.evaluate(() => {
+        const t = document.querySelector(".ws-compose .temp-plate").getBoundingClientRect();
+        const kids = [...document.querySelector(".ws-compose .board-table").children].filter((e) => e !== document.querySelector(".ws-compose .temp-plate") && e.getBoundingClientRect().height > 0);
+        const above = Math.max(...kids.map((e) => e.getBoundingClientRect().bottom).filter((b) => b <= t.top + 1));
+        return { gap: Math.round(t.top - above), h: Math.round(t.height) };
+      });
+      check("FIN5 1440x1600 (finished-run view height): no empty gap above the Temperature panel (<= 40 px) and the panel keeps its height", tall.gap <= 40 && Math.abs(tall.h - h900) <= 2, JSON.stringify({ ...tall, h900 }));
+      await page.setViewportSize({ width: 1440, height: 900 });
+      // the chip-picker sheet is opaque in dark and light from the first frame (nothing of the scene or the mount labels shows through)
+      for (const theme of ["dark", "light"]) {
+        await open5(1440, 900, theme);
+        await page.click('.ws-compose .kind-chip[data-axis="drive"]');
+        await page.waitForSelector(".cp-pop .cp-entry", { timeout: 15000 });
+        await sleep(120);   // inside the old 160 ms fade
+        const op = await page.evaluate(() => {
+          const opaque = (c) => { if (!c || c === "transparent") return false; const m = c.match(/^rgba?\(([^)]*)\)$/); if (!m) return !/ \/ /.test(c); const p = m[1].split(/[ ,\/]+/).filter(Boolean); return p.length < 4 || Number(p[3]) === 1; };
+          const pop = document.querySelector(".cp-pop"), cs = getComputedStyle(pop);
+          const ent = [...pop.querySelectorAll(".cp-entry")];
+          return { opacity: Number(cs.opacity), anim: cs.animationName, bg: cs.backgroundColor, popOpaque: opaque(cs.backgroundColor), entriesOpaque: ent.every((e) => opaque(getComputedStyle(e).backgroundColor)), n: ent.length };
+        });
+        check(`FIN5 chip picker sheet is opaque in ${theme} (opacity 1, no fade, solid sheet and card backgrounds)`, op.opacity === 1 && op.anim === "none" && op.popOpaque && op.entriesOpaque && op.n > 3, JSON.stringify(op));
+        if (theme === "light") await page.screenshot({ path: path.join(SHOTS, "composer-fin5-picker-light-1440.png") });
+        await page.keyboard.press("Escape");
+        await sleep(200);
+      }
+    }
+
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
       const { assertPng } = require("./png_check.cjs");

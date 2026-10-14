@@ -137,10 +137,9 @@ def _pulse_inputs(shape, fwhm_ps):
 _PAPER_CONV = (r"Paper convention $\Delta = \omega_{\mathrm L} - \omega_X$, positive = laser BLUE of the dot; the plan "
                r"stores the repo $\mathrm{det}_X = -\Delta$ [DR].")
 _SRC_A = "assumed default; set to the experiment [A]"
-_REF_BRIEF = "physics brief 2.3 (.workers/devlib/p1-physics-brief.md)"
 
 # devlib-fx3b, both default OFF (= bit-identical): excitation-induced dephasing and a dark-trion branch of coherent pulses
-_SRC_FX3B = "devlib-fx3b engine extension [E]: class model, the coefficient is NOT taken from a paper"
+_SRC_FX3B = "Engine extension [E]: class model, the coefficient is NOT taken from a paper"
 _EID = _P("eid_ps", "ps", 0.0, lo=0.0, hi=1e3, tag="E", source=_SRC_FX3B, group="advanced",
           help=r"Excitation-induced dephasing: pure dephasing rate $\gamma_{\mathrm{EID}} = \xi_{\mathrm{EID}}\,|\Omega(t)|^2$ ($\Omega$ in rad/ps) "
                r"added to the pure-dephasing linewidth $\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}$ during the pulse (Koong-type HOM loss at large area). 0 = off. Runs on the polaron "
@@ -216,7 +215,7 @@ RESONANT_PULSE = PlannedDrive(
                 r"do not also enter it in the setup)."),
         _EID, _TRION,
     ),
-    refs=(_REF_BRIEF + ": strict resonant pi row; Rabi area theorem",),
+    refs=("Rabi area theorem (Scully and Zubairy, Quantum Optics, 1997)",),
     provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_resonant_pulse)
 
@@ -265,7 +264,7 @@ TPE = PlannedDrive(
            help="Pulse repetition rate."),
         _TRION,
     ),
-    refs=(_REF_BRIEF + ": TPE row", "Mueller et al., Phys. Rev. Lett. 2014 (cited in the brief)"),
+    refs=("Two-photon biexciton excitation: Mueller et al., Phys. Rev. Lett. 2014",),
     requires=frozenset({"XX"}), provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_tpe)
 
@@ -312,7 +311,7 @@ CW_RESONANT = PlannedDrive(
         _P("detuning_meV", "meV", 0.0, lo=-1.0, hi=1.0, tag="A", source=_SRC_A,
            help=_PAPER_CONV),
     ),
-    refs=(_REF_BRIEF + ": cw resonance fluorescence row (Loudon / Mollow forms)",),
+    refs=("Resonance fluorescence: Loudon, The Quantum Theory of Light; Mollow, Phys. Rev. 188, 1969",),
     provides=frozenset({"coherent_cw"}),
     observables=OBS_CW_RESONANT, planner=_plan_cw_resonant)
 
@@ -400,13 +399,13 @@ ABOVE_BAND = PlannedDrive(
     params=(
         _PUMP, _CW, _WIN,
         _P("tau_cap_ps", "ps", 30.0, lo=1.0, hi=300.0, scale="log", tag="E",
-           source="capture/relaxation jitter 10-100 ps class range [E], physics brief 2.3",
+           source="capture/relaxation jitter 10-100 ps class range [E]",
            help="Carrier capture / relaxation time (the HOM jitter)."),
         _FREP,
         _P("cap2", "", False, tag="A", source=_SRC_A, sweepable=False, group="advanced",
            help="Allow loading of the biexciton (capacity 2)."),
     ) + _REFILL,
-    refs=(_REF_BRIEF + ": above-band incoherent row",),
+    refs=("Above-band incoherent excitation: class model [E]",),
     provides=frozenset({"incoherent_pump"}),
     observables=OBS_INCOHERENT_PULSED, observables_cw=OBS_INCOHERENT_CW_VARIANT, planner=_plan_above_band)
 
@@ -417,7 +416,7 @@ P_SHELL = PlannedDrive(
     params=(
         _PUMP, _CW, _WIN,
         _P("tau_relax_ps", "ps", 10.0, lo=1.0, hi=100.0, scale="log", tag="E",
-           source="p->s relaxation 5-30 ps class range [E], physics brief 2.3",
+           source="p->s relaxation 5-30 ps class range [E]",
            help="p-shell to s-shell relaxation time (the HOM jitter)."),
         _FREP,
         _P("b_dark", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC_A, group="advanced",
@@ -431,7 +430,7 @@ P_SHELL = PlannedDrive(
            help=r"Arrhenius prefactor $k_0$. Escape X $\to$ R (delays/jitters the emission) and recapture G $\to$ R of "
                 r"thermally released carriers between pulses (uncorrelated extra photons: $g^{(2)}(T)$ grows)."),
     ),
-    refs=(_REF_BRIEF + ": p-shell / quasi-resonant row",),
+    refs=("p-shell quasi-resonant excitation: class model [E]",),
     provides=frozenset({"incoherent_pump"}),
     observables=OBS_INCOHERENT_PULSED, observables_cw=OBS_INCOHERENT_CW_VARIANT, planner=_plan_p_shell)
 
@@ -559,8 +558,10 @@ _ELEC_SUMMARY = ("generic electrical; use the RT-edge tier passthrough for the f
 _SRC_DM = "drive_mech.mech_from_card default"
 
 
-_SRC_P10E = "devlib-p10e electrical brief (.workers/devlib/p3-electrical-brief.md) [A]"
-_SRC_FX3B_EL = "devlib-fx3b: p3-electrical-brief.md 1.3 (cascade saturation) / 1.5 (background law) [A]"
+# Repo pointer: devlib-p10e electrical brief, .workers/devlib/p3-electrical-brief.md
+_SRC_P10E = "Electrical-drive class model [A]"
+# Repo pointer: p3-electrical-brief.md 1.3 (cascade saturation) / 1.5 (background law)
+_SRC_FX3B_EL = "Cascade-saturation and background-law class model [A]"
 
 
 def _electrical_shape_params():
@@ -571,7 +572,7 @@ def _electrical_shape_params():
            help=r"Time profile of the incoherent electrical pump $r(t)$ at fixed operating point $\mu = \int r\,\mathrm dt$: rect, "
                 r"rect + RC rise/tail (diode current through $R_{\mathrm s}C_{\mathrm j}$) or Gaussian (generator pulse). An RC tail "
                 r"LENGTHENS the effective window ($\tau_{\mathrm{eff}} \approx \tau_{\mathrm{on}} + 1.7\,t_{\mathrm r}$) and raises the re-excitation $g^{(2)}$."),
-        _P("t_rise_ps", "ps", 100.0, lo=0.0, hi=2000.0, tag="A", source="50 ohm x 2 pF class RC, brief 1.3 [E]; "
+        _P("t_rise_ps", "ps", 100.0, lo=0.0, hi=2000.0, tag="A", source="50 ohm x 2 pF class RC [E]; "
            "used only when the mechanism has no R and C of its own", group="advanced",
            visible_if={"pump_profile": ["rc"]},
            help=r"RC time constant $R_{\mathrm s}C_{\mathrm j}$ of the pump profile (the pulse tail $e^{-t/t_{\mathrm r}}$)."),
@@ -607,7 +608,7 @@ def _electrical_cascade_params():
     return [
         _P("cascade", "", False, tag="A", source=_SRC_FX3B_EL, sweepable=False, group="advanced",
            help=r"Allow loading of the biexciton (capacity 2, rate solver cascade G-X-XX). Strong pumping then PARKS the dot "
-                r"in XX and the pulsed $g^{(2)}$ saturates and falls (Sartison brief anchor: rect cascade 0.135 at $\mu = 4$, 0.049 at "
+                r"in XX and the pulsed $g^{(2)}$ saturates and falls (Sartison anchor: rect cascade 0.135 at $\mu = 4$, 0.049 at "
                 r"$\mu = 20$) instead of rising like the two-level pump."),
         _P("pump_ratio_xx", "1", 1.0, lo=0.0, hi=10.0, tag="A", source=_SRC_FX3B_EL, group="advanced",
            visible_if={"cascade": [True]},
@@ -693,7 +694,7 @@ ELECTRICAL_PULSED = PlannedDrive(
     kind="electrical_pulsed", label="Electrical, pulsed / cycled",
     summary=_ELEC_SUMMARY, status="ready",
     params=_electrical_params(MECH_PULSED, "M-3 pulsed", 1e-5, True),
-    refs=("fsim_core/drive_mech.py (F8-F9 mechanism roster)",),
+    refs=("Electrical-injection mechanism class models [A]",),
     provides=frozenset({"electrical_pulsed"}),
     observables=OBS_ELECTRICAL_PULSED, planner=_plan_electrical_pulsed)
 
@@ -701,7 +702,7 @@ ELECTRICAL_CW = PlannedDrive(
     kind="electrical_cw", label="Electrical, cw",
     summary=_ELEC_SUMMARY, status="ready",
     params=_electrical_params(MECH_CW, "M-1 poisson-rail", 0.05, False),
-    refs=("fsim_core/drive_mech.py (F8-F9 mechanism roster)",),
+    refs=("Electrical-injection mechanism class models [A]",),
     provides=frozenset({"electrical_cw"}),
     observables=OBS_ELECTRICAL_CW, planner=_plan_electrical_cw)
 
@@ -710,7 +711,7 @@ ELECTRICAL_CW = PlannedDrive(
 # stark_gated_resonant (devlib-p10e2): cw/periodic resonant laser, electrical Stark gate tunes the dot INTO resonance
 # ======================================================================
 _SRC_CAO = ("Cao et al., Nano Lett. 15, 2015 (electrically gated resonant emission): Rabi period 1.6 ns at 500 nW, "
-            "300 ps gate at 200 MHz [V per the devlib extraction]; class defaults otherwise [A]")
+            "300 ps gate at 200 MHz [V]; class defaults otherwise [A]")
 
 
 def _plan_stark_gated(self, vals, em, rt):
@@ -780,7 +781,7 @@ STARK_GATED_RESONANT = PlannedDrive(
            help=r"Standard deviation $\sigma_{\mathrm{jit}}$ of the relative timing jitter between the two photons' detection gates inside the HOM gate "
                 r"(Gaussian); the overlap falls monotonically with it."),
     ),
-    refs=("p3-electrical-brief.md 2.1 (Cao 2015 gated resonance), 2.2 (Bennett gate); polaron.PulseTrain det_profile",),
+    refs=("Cao et al., Nano Lett. 15, 2015 (gated resonance); Bennett et al. (gated emission)",),
     provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED | {"g2_binned", "hom_I_gated", "hom_gate_fraction", "spectral_overlap"}, planner=_plan_stark_gated)
 
@@ -788,7 +789,7 @@ STARK_GATED_RESONANT = PlannedDrive(
 # ======================================================================
 # needs_physics placeholders (full ParamSpecs so the UI can show them greyed)
 # ======================================================================
-_E_BRIEF = "physics brief 2.3 class range [E]"
+_E_BRIEF = "Class range [E]"
 
 
 def _placeholder(kind, label, summary, reason, params, refs, observables):

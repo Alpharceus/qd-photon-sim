@@ -76,7 +76,7 @@ const F = {
   regime: ["Regime"], model: ["Model"], complete: ["Complete"], evidence: ["Evidence"], conditional: ["Conditional"],
   g2_min: ["Minimum $g^{(2)}(0)$"], g2_median_eligible: ["Median $g^{(2)}(0)$, eligible rows"],
   diag_g2_min: ["Minimum $g^{(2)}(0)$, diagnostic"], diag_g2_median_diagnostic: ["Median $g^{(2)}(0)$, diagnostic"],
-  diag_g2_flux_max: ["$g^{(2)}(0)$ at the maximum flux, diagnostic"],
+  diag_g2_flux_max: ["Highest collected flux at the minimum diagnostic $g^{(2)}(0)$", "s⁻¹"],
   flux_max: ["Maximum collected flux", "s⁻¹"], flux_margin: ["Flux margin (maximum over floor)"],
   flux_floor: ["Flux floor", "s⁻¹"], flux_shortfall_deprecated: ["Flux shortfall (deprecated)"],
   flux_floor_excluded: ["Rows below the flux floor"],

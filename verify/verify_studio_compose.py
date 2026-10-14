@@ -109,6 +109,29 @@ def run_checks(tmp):
     check("1c second registry call is served from the per-hash cache (same object)",
           api_compose.registry_payload_cached() is api_compose.registry_payload_cached())
 
+    # 1d: every string the UI can render from the registry (label, summary, refs, source, help, notes) cites papers only
+    import re as _re
+    _bad_pat = _re.compile(r"\.py\b|\.md\b|\.yaml\b|\.workers|fsim_core[/.]|physics brief|\bbrief\b|devlib|cards/", _re.I)
+    _bad = []
+
+    def _walk(o, path):
+        if isinstance(o, str):
+            if _bad_pat.search(o):
+                _bad.append(f"{path}: {o[:70]}")
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                _walk(v, f"{path}/{k}")
+        elif isinstance(o, (list, tuple)):
+            for i, v in enumerate(o):
+                _walk(v, f"{path}[{i}]")
+    _walk(j(r), "")
+    check("1d registry payload strings cite papers only (no .py/.md/.yaml/.workers/fsim_core//physics brief/devlib/cards/)",
+          not _bad, "; ".join(_bad[:3]))
+    _short = [f"{ax}/{e['kind']}: {e['refs'][:3]}" for ax in ("materials", "structures", "drives", "setups") for e in j(r).get(ax, [])
+              if any(len(x) < 8 for x in e.get("refs", []))]
+    check("1e every registry refs entry is a whole citation string (a bare string where a tuple was meant would explode into characters)",
+          not _short, "; ".join(_short[:3]))
+
     # ------------------------------------------------------------ 2. validate
     r = post("/api/compose/validate", {"spec": SPEC})
     vd = validate_spec(SPEC)

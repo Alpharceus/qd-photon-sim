@@ -31,7 +31,7 @@ export async function mount(body, host) {
   const cV = chartCard({ title: "Junction voltage and injection efficiency against I", height: 300, build: () => buildV(st.sweep, st.pt, TG), table: () => tbl(st.sweep, ["I_uA", "V_j", "V_applied", "eta_inj"]), filename: () => "fsim-transport-voltage" });
   const cM = chartCard({ title: "Dot loading μ and background b_e against I", height: 300, build: () => buildMuB(st.sweep, st.pt, TG), table: () => tbl(st.sweep, ["I_uA", "mu", "b_e"]), filename: () => "fsim-transport-mu-be" });
   const cR = chartCard({ title: "Per-dot capture rate and junction power against I", height: 300, build: () => buildRP(st.sweep, st.pt, TG), table: () => tbl(st.sweep, ["I_uA", "r_dot", "r_captured", "r_matrix", "P_junction_W"]), filename: () => "fsim-transport-rate-power" });
-  const cD = chartCard({ title: "Depletion field and capacitance against V_j", height: 300, build: () => buildDep(st.dep, st.pt, TG), table: () => (st.dep ? { columns: [{ key: "V", label: "V_j (V)" }, { key: "F", label: "F (kV/cm)" }, { key: "C", label: "C_dep (pF)" }], rows: st.dep.V_j.map((V, i) => ({ V, F: st.dep.F_kVcm[i], C: st.dep.C_dep_pF[i] })) } : null), filename: () => "fsim-transport-depletion" });
+  const cD = chartCard({ title: "Depletion field and capacitance against V_j", height: 300, build: () => buildDep(st.dep, st.pt, TG), table: () => (st.dep ? { columns: [{ key: "V", label: "V_j (V)" }, { key: "F", label: "F (kV/cm)" }, { key: "C", label: "C_dep (fF)" }], rows: st.dep.V_j.map((V, i) => ({ V, F: st.dep.F_kVcm[i], C: st.dep.C_dep_pF[i] * 1e3 })) } : null), filename: () => "fsim-transport-depletion" });
   // ------------------------------------------------------------------ nitride panel
   const cE = chartCard({ title: "Exciton energy E_X against junction voltage V_j", height: 340, build: () => buildE(st, meta), table: () => stTable(st), filename: () => "fsim-nitride-stark-energy" });
   const cS = chartCard({ title: "Stark slope dE_X/dV against V_j", height: 340, build: () => buildS(st, meta), table: () => stTable(st), filename: () => "fsim-nitride-stark-slope" });
@@ -127,7 +127,7 @@ export async function mount(body, host) {
     R.V_app.update({ value: r.V_applied, unit: "V", tag: TG.V_j, caption: "V_j + I R_s", markChange: false });
     R.V_bi.update({ value: r.V_bi, unit: "V", tag: TG.V_bi, caption: r.flat_band ? "flat band: V_j has reached V_bi" : "abrupt depletion", markChange: false });
     R.F.update({ value: r.F_kVcm, unit: "kV/cm", tag: TG.F, caption: "uniform in the i-region", markChange: false });
-    R.C.update({ value: r.C_dep_pF, unit: "pF", tag: TG.C_dep, markChange: false });
+    R.C.update({ value: r.C_dep_pF * 1e3, unit: "fF", tag: TG.C_dep, markChange: false });
     R.eta.update({ value: r.eta_inj, tag: TG.eta_inj, caption: `thermionic leakage, valleys ${r.leak_valleys} (a LOWER bound on leakage)`, markChange: false });
     R.mu.update({ value: r.mu, tag: TG.mu, caption: r.saturated ? "dot saturated (r_dot > 1/τ_rad)" : "per-pulse loading", markChange: false });
     R.b_e.update({ value: r.b_e, tag: TG.b_e, caption: "background per X photon; excludes neighbour dots and the X filter", markChange: false });
@@ -238,12 +238,12 @@ function buildDep(dep, pt, TG) {
   const c = themeColors();
   const data = [
     { x: dep.V_j, y: dep.F_kVcm, type: "scatter", mode: "lines", name: "F (kV/cm)", line: { color: c.series[0], width: 2 }, hovertemplate: `F %{y:.2f} kV/cm [${TG.F}]<extra></extra>` },
-    { x: dep.V_j, y: dep.C_dep_pF, type: "scatter", mode: "lines", name: "C_dep (pF)", yaxis: "y2", line: { color: c.series[1], width: 2, dash: "dot" }, hovertemplate: `C %{y:.4e} pF [${TG.C_dep}]<extra></extra>` },
+    { x: dep.V_j, y: dep.C_dep_pF.map((c) => c * 1e3), type: "scatter", mode: "lines", name: "C_dep (fF)", yaxis: "y2", line: { color: c.series[1], width: 2, dash: "dot" }, hovertemplate: `C %{y:.4e} fF [${TG.C_dep}]<extra></extra>` },
   ];
   return { data, layout: baseLayout({ margin: { l: 58, r: 62, t: 30, b: 50 }, legend: LEG,
     xaxis: { ...baseLayout().xaxis, title: { text: "junction voltage V_j (V); flat band beyond V_bi", standoff: 6 } },
     yaxis: { ...baseLayout().yaxis, title: { text: "F (kV/cm)", standoff: 6 }, rangemode: "tozero" },
-    yaxis2: { overlaying: "y", side: "right", title: { text: "C_dep (pF)", standoff: 6 }, showgrid: false, zeroline: false, rangemode: "tozero", exponentformat: "power" },
+    yaxis2: { overlaying: "y", side: "right", title: { text: "C_dep (fF)", standoff: 6 }, showgrid: false, zeroline: false, rangemode: "tozero", exponentformat: "power" },
     shapes: [{ type: "line", xref: "x", yref: "paper", x0: dep.V_bi, x1: dep.V_bi, y0: 0, y1: 1, line: { color: c.ink2, width: 1, dash: "dash" } }, ...(pt ? [vline(pt.V_j, c)] : [])],
     annotations: [{ x: dep.V_bi, y: 1, yref: "paper", yanchor: "bottom", showarrow: false, text: `V_bi = ${fmt(dep.V_bi)} V [${TG.V_bi}]`, font: { size: 11, color: c.ink2 } }] }) };
 }

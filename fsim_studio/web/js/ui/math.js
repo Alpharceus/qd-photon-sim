@@ -321,7 +321,7 @@ const GREEK_NAMES = new Set(["alpha", "beta", "gamma", "delta", "zeta", "eta", "
 const GREEK_ALIAS = { eps: "varepsilon", epsilon: "varepsilon", vphi: "varphi" };
 // trailing unit tokens that the registry bakes into ids (fwhm_ps, lambda_nm, a_ac_ns_per_K, rho_kg_m3 ...)
 const UNIT_TOKENS = new Set(["nm", "um", "ps", "ns", "ueV", "meV", "eV", "MHz", "Hz", "GHz", "K", "nW", "uA", "ohm", "F", "pi", "ps2",
-  "s", "cps", "kg", "m", "per", "4K", "W", "V", "mA", "deg", "um2", "cm2", "m3", "pF", "pm"]);
+  "s", "cps", "kg", "m", "per", "4K", "W", "V", "mA", "deg", "um2", "cm2", "m3", "pF", "fF", "pm"]);
 // ids whose derivation is better written by hand (also the common scalars of the results tables)
 const OVERRIDES = {
   g2: "g^{(2)}", g2_0: "g^{(2)}(0)", g2_op: "g^{(2)}(0)", g2_raw: "g^{(2)}_{\\mathrm{raw}}(0)", g2_bgc: "g^{(2)}_{\\mathrm{bgc}}(0)",

@@ -810,6 +810,20 @@ async function b612Audit(page) {
     // FIN3: a shipped story does not greet the user with a stale-bake warning
     const staleBar = await m.$(".bake.is-stale");
     check("FIN3: Story slide 1 shows no stale-bake warning (the bake matches the sources)", !staleBar, staleBar ? (await staleBar.textContent()).slice(0, 80) : "");
+    // FIN5: at 390 the chart card never overlaps the CAVEAT box (each Story scene, first three)
+    for (const sceneNo of [1, 2, 3]) {
+      if (sceneNo > 1) { await m.goto(`${BASE}/#/story/rt-single-photons/${sceneNo}`, { waitUntil: "domcontentloaded" }); await m.waitForSelector(".story .st-title", { timeout: 30000 }); await m.waitForTimeout(1500); }
+      const ov5 = await m.evaluate(() => {
+        const cav = document.querySelector(".st-caveat"), proof = document.querySelector(".st-proof");
+        const vis = [...document.querySelectorAll(".st-proof .st-chart, .st-proof .st-viewport, .st-proof .st-split, .st-proof .board")].filter((e) => e.getBoundingClientRect().height > 0);
+        if (!cav || !proof) return { err: "missing caveat or proof" };
+        const c = cav.getBoundingClientRect(), p = proof.getBoundingClientRect();
+        const hit = vis.map((e) => e.getBoundingClientRect()).filter((r) => r.bottom > c.top + 1 && r.top < c.bottom - 1 && r.right > c.left && r.left < c.right);
+        return { overlap: hit.length, proofBottom: Math.round(p.bottom), caveatTop: Math.round(c.top), n: vis.length };
+      });
+      check(`FIN5 mobile 390px: Story scene ${sceneNo} proof visual does not overlap the CAVEAT box`, !ov5.err && ov5.overlap === 0 && ov5.proofBottom <= ov5.caveatTop + 1, JSON.stringify(ov5));
+      if (sceneNo === 1) await m.screenshot({ path: path.join(SHOTS, "story-mobile-fin5.png"), fullPage: true });
+    }
     // FIN3: an unknown route says so, with a way back; it never silently shows the Overview
     await m.goto(`${BASE}/#/nonexistent`, { waitUntil: "domcontentloaded" });
     await m.waitForSelector(".not-found", { timeout: 15000 }).catch(() => {});
@@ -823,6 +837,29 @@ async function b612Audit(page) {
     await m.waitForTimeout(1200);
     const ov = await m.evaluate(() => ({ sel: document.getElementById("card-picker")?.value, open: (document.getElementById("hero-open")?.getAttribute("href") || "").replace("#/design/", "") }));
     check("FIN3: Overview CARD selector and the device panel name the same card", !!ov.sel && `${ov.sel}` === ov.open, JSON.stringify(ov));
+    // FIN5: Overview at 1440x900: the viewer's control row wraps; no control or group overflows the viewer's right edge
+    {
+      const dctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+      const d = await dctx.newPage();
+      for (const theme of ["dark", "light"]) {
+        await d.goto(`${BASE}/#/overview`, { waitUntil: "domcontentloaded" });
+        await d.evaluate((t) => { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: t })); }, theme);
+        await d.reload({ waitUntil: "domcontentloaded" });
+        await d.waitForSelector(".hero-viewport .v3-controls .v3-ctl-group", { timeout: 60000 });
+        await d.waitForTimeout(1800);
+        const row = await d.evaluate(() => {
+          const bar = document.querySelector(".hero-viewport .v3-controls"), host = document.querySelector(".hero-viewport");
+          const br = bar.getBoundingClientRect(), hr = host.getBoundingClientRect();
+          const items = [...bar.querySelectorAll(".v3-ctl-group, .v3-btn, .v3-seg-btn, .v3-slider, .v3-ctl-label")].filter((e) => e.getClientRects().length);
+          const out = items.map((e) => ({ r: e.getBoundingClientRect(), t: (e.textContent || "").trim().slice(0, 14), clipped: e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== "visible" }))
+            .filter((x) => x.r.right > br.right + 0.5 || x.r.left < br.left - 0.5 || x.r.right > hr.right + 0.5 || x.clipped).map((x) => `${x.t}:${Math.round(x.r.right)}/${Math.round(br.right)}`);
+          return { n: items.length, over: out.slice(0, 5), barScrolls: bar.scrollWidth > bar.clientWidth + 1, barRight: Math.round(br.right), hostRight: Math.round(hr.right) };
+        });
+        check(`FIN5 Overview ${theme} 1440x900: no control in the viewer row overflows its container (the row wraps instead of scrolling)`, row.n > 3 && row.over.length === 0 && !row.barScrolls, JSON.stringify(row));
+        if (theme === "dark") await d.screenshot({ path: path.join(SHOTS, "overview-fin5-dark-1440.png") });
+      }
+      await dctx.close();
+    }
     await mctx.close();
   } catch (e) {
     check("script ran to completion", false, e.message.split("\n")[0]);

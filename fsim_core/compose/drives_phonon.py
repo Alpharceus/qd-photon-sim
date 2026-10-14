@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import math
 
-from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _EID, _GAUSS, _PAPER_CONV, _REF_BRIEF, _SRC_A, _TRION, PlannedDrive,
+from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _EID, _GAUSS, _PAPER_CONV, _SRC_A, _TRION, PlannedDrive,
                      _P, _dark_inputs, _getter, _nonneg, _positive, _pulse_inputs)
 from .. import qd_gf
 from .slm_pulse import SlmField
@@ -79,8 +79,8 @@ PHONON_ASSISTED = PlannedDrive(
            help="Pulse repetition rate."),
         _EID, _TRION,
     ),
-    refs=(_REF_BRIEF + ": LA-phonon-assisted row (Quilter et al., PRL 114, 137401 (2015); Thomas et al., "
-                       "PRL 126, 233601 (2021); Cosacchi et al. 2019 as cited there)",
+    refs=("LA-phonon-assisted excitation: Quilter et al., PRL 114, 137401 (2015); Thomas et al., "
+                       "PRL 126, 233601 (2021); Cosacchi et al. 2019",
           "Ramsay et al., PRL 104, 017402 (2010); Nazir & McCutcheon, J. Phys. Condens. Matter 28, 103002 (2016)"),
     status="ready", provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_phonon_assisted)
@@ -152,7 +152,7 @@ SUPER = PlannedDrive(
     params=(
         _SUPER_SHAPE,
         _P("delta1_meV", "meV", -5.0, lo=-12.0, hi=-1.0, tag="V",
-           source="Bracht et al., PRX Quantum 2, 040354 (2021), Table 1 row 2: Delta1 = -5.0 meV [V] (r2-super)",
+           source="Bracht et al., PRX Quantum 2, 040354 (2021), Table 1 row 2: Delta1 = -5.0 meV [V]",
            help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative). "
                 r"Default: Bracht et al. 2021 Table 1 row 2. Piccinini et al. 2025 use -3.5 / -7.5 meV, which is their XX-mediated "
                 r"F2 point; their two-level X point is -3.7 / -6.9 meV (Fig. 3) [V]."),
@@ -169,12 +169,12 @@ SUPER = PlannedDrive(
            source="Bracht et al. 2021 Table 1 row 2: sigma = 1.55 ps [V]; intensity FWHM 2.581 ps [DR]",
            help=r"Intensity FWHM $\tau_{\mathrm{FWHM},2}$ of pulse 2."),
         _P("area1_pi", "pi", 13.06, lo=0.0, hi=60.0, tag="V",
-           source="Bracht et al. 2021 Table 1 row 2: alpha1 = 13.06 pi (area = int Omega dt, H = Omega/2 sigma_x) [V] (r2-super)",
+           source="Bracht et al. 2021 Table 1 row 2: alpha1 = 13.06 pi (area = int Omega dt, H = Omega/2 sigma_x) [V]",
            help=r"Area $\Theta_1$ of pulse 1 in units of $\pi$. SUPER needs large areas (the peak Rabi energy must reach the "
                 r"detuning scale) and the inversion is a narrow resonance in both areas, about $0.5\pi$ wide: use Bracht Eq. 6 "
                 r"to set $\Delta_2$ and expect to tune the areas to that precision (Bracht et al., PRX Quantum 2, 040354 (2021))."),
         _P("area2_pi", "pi", 10.45, lo=0.0, hi=60.0, tag="V",
-           source="Bracht et al. 2021 Table 1 row 2: alpha2 = 10.45 pi [V] (r2-super)",
+           source="Bracht et al. 2021 Table 1 row 2: alpha2 = 10.45 pi [V]",
            help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$ (see pulse 1)."),
         _P("slm_T1", "1", 0.5, lo=0.0, hi=1.0, tag="V", source=_SLM_SRC + ": T1 = 0.5 (pulse 1 fixed, Table II / Fig. 2)", group="advanced",
            visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_1$ of mask line 1 ($\tilde T_1 = \sqrt{T_1}$ on the field). slm_mask only."),
@@ -194,7 +194,7 @@ SUPER = PlannedDrive(
            help="Pulse repetition rate."),
         _EID, _TRION,
     ),
-    refs=(_REF_BRIEF + ": SUPER row (Bracht et al., PRX Quantum 2, 040354 (2021) as cited there)",
+    refs=("SUPER excitation: Bracht et al., PRX Quantum 2, 040354 (2021)",
           "Piccinini et al., arXiv:2510.21428 (2025)"),
     status="ready", provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_super)
@@ -248,7 +248,7 @@ DICHROMATIC = PlannedDrive(
            help="Pulse repetition rate."),
         _EID, _TRION,
     ),
-    refs=(_REF_BRIEF + ": dichromatic row (Koong et al. 2021 as cited there)",),
+    refs=("Dichromatic excitation: Koong et al. 2021",),
     status="ready", provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_dichromatic)
 
@@ -315,9 +315,8 @@ ARP = PlannedDrive(
            help="Pulse repetition rate (mode-locked Ti:sapphire class)."),
         _EID, _TRION,
     ),
-    refs=(_REF_BRIEF + ": chirped-pulse notes",
-          "Wei et al., Phys. Rev. Lett. 113, 097401 (2014): positively chirped pulses robust, negatively "
-          "chirped degraded by acoustic-phonon emission (.workers/devlib/papers/raw/wei2014_arp)"),
+    refs=("Wei et al., Phys. Rev. Lett. 113, 097401 (2014): positively chirped pulses robust, negatively "
+          "chirped degraded by acoustic-phonon emission",),
     status="ready", provides=frozenset({"coherent_pulse"}),
     observables=OBS_COHERENT_PULSED, planner=_plan_arp)
 

@@ -219,6 +219,38 @@ async function numberTagAudit(page) {
       check("LIBSCENE: the index (10 thumbnails) held at most one live WebGL context at any time, and none remain",
         gl1.max <= 1 && gl1.live === 0 && gl1.created >= 10, JSON.stringify(gl1));
 
+      // FIN5: scroll the whole list at 1440x900 (every card passes through the viewport), wait (bounded) for the thumbnails to settle:
+      // afterwards EVERY card shows a rendered picture or a stated reason, and the page never held more than one live WebGL context.
+      {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.goto(`${BASE}/#/library`, { waitUntil: "domcontentloaded" });
+        await ready(page);
+        await page.evaluate(() => { window.__gl.max = 0; });
+        const nCards = await page.$$eval("a.lib-plaque", (as) => as.length);
+        for (let i = 0; i < nCards; i++) {
+          await page.evaluate((k) => document.querySelectorAll("a.lib-plaque")[k]?.scrollIntoView({ block: "center" }), i);
+          await page.waitForTimeout(120);
+        }
+        await page.waitForFunction(() => [...document.querySelectorAll("a.lib-plaque .lib-thumb")].every((t) => t.dataset.state !== "pending"), null, { timeout: 90000 }).catch(() => {});
+        const seen = [];
+        for (let i = 0; i < nCards; i++) {
+          await page.evaluate((k) => document.querySelectorAll("a.lib-plaque")[k]?.scrollIntoView({ block: "center" }), i);
+          await page.waitForTimeout(60);
+          seen.push(await page.evaluate((k) => {
+            const a = document.querySelectorAll("a.lib-plaque")[k], t = a.querySelector(".lib-thumb");
+            const img = t?.querySelector("img.lib-thumb-img, canvas"), why = (t?.querySelector(".lib-thumb-why")?.textContent || "").trim();
+            const r = (img || t?.querySelector(".lib-thumb-why"))?.getBoundingClientRect();
+            const vh = window.innerHeight;
+            return { id: a.dataset.card, state: t?.dataset.state, rendered: !!img && (img.tagName === "CANVAS" || (img.complete && img.naturalWidth > 0)),
+              why: why.length, inView: !!r && r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < vh };
+          }, i));
+        }
+        const glF = await page.evaluate(() => ({ max: window.__gl.max, live: window.__gl.list.filter((c) => c.canvas && c.canvas.isConnected && !c.isContextLost()).length }));
+        check("FIN5: after scrolling the whole Library list at 1440x900, every card shows a rendered thumbnail or a stated reason (none blank)",
+          nCards >= 10 && seen.every((x) => x.inView && ((x.state === "ready" && x.rendered) || (x.state === "reason" && x.why > 20))), seen.map((x) => `${x.id}:${x.state}`).join(" "));
+        check("FIN5: the Library list held at most one live WebGL context while its thumbnails rendered", glF.max <= 1, JSON.stringify(glF));
+      }
+
       const SH = path.join(ROOT, ".workers", "devlib", "libscene");
       fs.mkdirSync(SH, { recursive: true });
       const VPS = [["dark", 1440, 900], ["light", 1440, 900], ["dark", 390, 844]];
