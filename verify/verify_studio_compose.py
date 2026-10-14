@@ -111,7 +111,7 @@ def run_checks(tmp):
 
     # 1d: every string the UI can render from the registry (label, summary, refs, source, help, notes) cites papers only
     import re as _re
-    _bad_pat = _re.compile(r"\.py\b|\.md\b|\.yaml\b|\.workers|fsim_core[/.]|physics brief|\bbrief\b|devlib|cards/", _re.I)
+    _bad_pat = _re.compile(r"\.py\b|\.md\b|\.yaml\b|\.workers|fsim_core[/.]|physics brief|\bbrief\b|devlib|cards/|passthrough|drive_mech|tier passthrough", _re.I)
     _bad = []
 
     def _walk(o, path):

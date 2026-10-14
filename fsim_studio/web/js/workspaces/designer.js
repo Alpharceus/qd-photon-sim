@@ -1150,7 +1150,7 @@ function inspectKpi(key, spec) {
     .sort((a, b) => (normTag(b.tag) === tagT) - (normTag(a.tag) === tagT));
   const labelMap = { g2_op: "g²(0) at the operating point", flux: "Collected flux", flux_delivered: "Collected flux, delivered", brightness: "Brightness per pulse", T_c: "Ceiling temperature T_c", T_j_op: "Junction temperature T_j" };
   const valueText = spec ? (isNum(spec.lo) || isNum(spec.hi) ? `${fmtInterval(spec.lo, spec.hi)} ${spec.unit || ""}` : isNum(spec.value) ? `${fmt(spec.value)} ${spec.unit || ""}` : `n/a: ${spec.reason || ""}`) : "n/a";
-  S.ctx.inspector.number({ label: labelMap[key] || key, key: `${r.run_id} / ${key}`, valueText, tag: r.tag_chain, notes, source: r.mode === "envelope" ? r.scalars_source || "evaluate_envelope" : "fsim_core.device.evaluate scalars" });
+  S.ctx.inspector.number({ label: labelMap[key] || key, key: `${r.run_id} / ${key}`, valueText, tag: r.tag_chain, notes, source: r.mode === "envelope" ? r.scalars_source || "device model, envelope over the ranged inputs" : "device model, evaluated at the operating point" });
 }
 
 // ---------------------------------------------------------------- details drawer

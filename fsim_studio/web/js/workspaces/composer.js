@@ -43,6 +43,7 @@ const READOUTS = [
 ];
 const DEFAULT_OBS = ["g2_0", "hom_I", "B_first_lens"];
 const DEFAULT_EXAMPLE = "example-pillar-resonant";
+const TALL_MQ = "(min-width: 1101px) and (min-height: 1200px)";   // keep in step with the .hom-row rule in compose.css
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 let S = null;
@@ -58,6 +59,12 @@ export function mount(el, ctx) {
   };
   el.classList.add("ws-compose");
   S.disposers.push(ctx.state.on("theme", (m) => S?.scene?.setTheme?.(m)));
+  // tall desktop window: the HOM chart leaves the right column and spans both columns, so neither column keeps an empty band
+  if (window.matchMedia) {
+    const mq = window.matchMedia(TALL_MQ);
+    mq.addEventListener?.("change", placeHom);
+    S.disposers.push(() => mq.removeEventListener?.("change", placeHom));
+  }
   update(ctx.args);
 }
 
@@ -258,6 +265,15 @@ function renderSkeleton() {
     h("section.shelf", skeleton("plaque", { lines: 2 }), skeleton("readouts", { lines: 5 }), skeleton("chart", { lines: 0, height: 260 }))));
 }
 
+/** The HOM card sits in the shelf, or in the full-width row below both columns in a tall desktop window. */
+function placeHom() {
+  const hom = S?.charts?.hom?.el, row = S?.dom?.homRow;
+  if (!hom || !row) return;
+  const tall = !!window.matchMedia?.(TALL_MQ).matches;
+  if (tall && hom.parentNode !== row) row.append(hom);
+  else if (!tall && hom.parentNode === row) hom.parentNode.parentNode.querySelector(".shelf")?.insertBefore(hom, S.dom.notes);
+}
+
 function renderAll() {
   for (const c of Object.values(S.charts)) c.dispose();
   S.charts = {};
@@ -269,8 +285,10 @@ function renderAll() {
   clear(S.el);
   const board = renderBoard();
   const shelf = renderShelf();
-  S.el.append(h("div.composer", board, shelf));
+  S.dom.homRow = h("div.hom-row");
+  S.el.append(h("div.composer", board, shelf, S.dom.homRow));
   S.dom.board = board;
+  placeHom();
   S.ro = new ResizeObserver(() => drawBeam());
   S.ro.observe(S.dom.chain);
   renderMounts();
@@ -282,13 +300,20 @@ function renderAll() {
 }
 
 // ================================================================ BOARD
+/** The "from paper" notice stays only while at least one swappable mount still holds the paper's kind (an axis with a single registry kind, the setup, cannot be swapped, so it does not count). */
+function seedStillShown() {
+  if (!S.seed) return false;
+  const k = S.seed.design?.composed;
+  return !k || AXES.some((a) => (S.reg[a.reg] || []).length > 1 && k[a.key]?.kind === S.spec[a.key].kind);
+}
+
 function renderBoard() {
   const head = h("header.board-head",
     h("div.bh-titles",
       h("div.bh-titleline",
         h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
         S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited")),
-      S.seed ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
+      seedStillShown() ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
       h("ol.board-desc.board-steps", { "aria-label": "How to compose a device" },
         h("li", h("b.bs-n", "1"), "Start from an example"),
         h("li", h("b.bs-n", "2"), "Click a mount's kind to swap it, its body to edit values"),
@@ -556,6 +581,7 @@ function openPicker(a, anchor) {
       S.run = null; S.series = null; S.lastError = null; S.savedRun = null; S.runSpec = null;
       S.ser.path = null;
       setRunState("idle");
+      if (S.seed && !seedStillShown()) { S.seed = null; S.el.querySelector(".compose-seed")?.remove(); }
       renderMounts();
       if (S.openAxis === a.key) renderSheet();
       renderResults();
@@ -977,7 +1003,7 @@ function inspectKpi(key, last) {
       const r = S.val?.resolved?.[p];
       return { key: h("span", pathRich(p)), tag: r?.tag, note: r ? `${r.value ?? JSON.stringify(r.range ?? r.choice)}${r.unit && displayUnit(r.unit) ? ` ${displayUnit(r.unit)}` : ""}` : "" };
     }).filter((n) => n.tag),
-    source: s.solver ? `fsim_core.compose engine, solver ${s.solver}` : "fsim_core.compose engine",
+    source: s.solver ? `Composer engine, ${s.solver} solver` : "Composer engine",
   });
 }
 
@@ -1009,7 +1035,7 @@ function renderPlaque() {
       isNum(v.eta_s) ? h("span.plaque-kv", h("span.k", "estimate"), h("span.v", fmtSeconds(v.eta_s))) : null),
     reasons.length ? h("ul.plaque-issues", reasons.slice(0, 8).map((r) => h("li", { class: r.lvl }, icon(r.lvl === "error" ? "cross" : "warn", { size: 13 }), h("span.pi-k", r.k), h("span.pi-t", richText(displayNotation(r.t)))))) : null,
     notes.length ? h("ul.plaque-issues.pi-notes", notes.slice(0, 2).map((n) => h("li", icon("info", { size: 13 }), h("span.pi-t", richText(displayNotation(n)))))) : null,
-    h("p.plaque-source", ok ? "fsim_core.compose.validate_spec" : inc ? "Not a device: change the dot or the structure; RUN stays disabled until the pair fits" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
+    h("p.plaque-source", ok ? "Checked: every mount is valid and the dot and structure fit together" : inc ? "Not a device: change the dot or the structure; RUN stays disabled until the pair fits" : "Fix the listed fields or change the kind; RUN stays disabled until this is valid")));
 }
 
 /** The empty shelf says what fills it: RUN, and how long it takes. */
@@ -1223,7 +1249,11 @@ function buildHom() {
   const hs = homSeries();
   if (!hs) return null;
   S.charts.hom.setSub?.(hs.note);
-  return stacked([{ x: hs.x, y: hs.y, label: "$I_{\\mathrm{HOM}}$", unit: "", tag: hs.tag }], { xTitle: `photon separation $\\Delta t$ (${hs.x_unit || "ns"})`, xLog: true });
+  const out = stacked([{ x: hs.x, y: hs.y, label: "$I_{\\mathrm{HOM}}$", unit: "", tag: hs.tag }], { xTitle: `photon separation $\\Delta t$ (${hs.x_unit || "ns"})`, xLog: true });
+  // a visibility lives in 0..1: axis 0..1.05 so a 0.90 curve does not read as 1; extended only when the data rise above that
+  const ymax = Math.max(...hs.y.filter(isNum), 0);
+  out.layout.yaxis = { ...out.layout.yaxis, range: [0, ymax > 1.05 ? ymax * 1.05 : 1.05] };
+  return out;
 }
 function homTable() {
   const hs = homSeries();

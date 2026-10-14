@@ -245,7 +245,7 @@ function dataCommits(sc) {
     if (camp) out.set(camp.path, camp.commit);
   }
   const chips = [...out.entries()].map(([p, c]) => ({ k: "DATA", v: c || "n/a", t: p }));
-  if (live) chips.push({ k: "LIVE", v: `fsim_core ${String(S.health?.fsim_core_hash || "").slice(0, 7)}`, t: "live fsim_core.device.evaluate at bake time" });
+  if (live) chips.push({ k: "LIVE", v: `fsim_core ${String(S.health?.fsim_core_hash || "").slice(0, 7)}`, t: "live device-model evaluation at bake time" });
   return chips;
 }
 

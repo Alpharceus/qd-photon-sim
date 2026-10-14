@@ -272,8 +272,9 @@ check("electrical_pulsed M-4 SET/turnstile (cycled -> plan timing pulsed): inter
 check("electrical: a cw mechanism in the pulsed entry (and vice versa) is rejected",
       raises(ValueError, ep.plan, {"mechanism": "M-1 poisson-rail"}, EM, RT)[0]
       and raises(ValueError, ec.plan, {"mechanism": "M-3 pulsed"}, EM, RT)[0])
-check("electrical summaries carry the RT-edge passthrough label",
-      all("use the RT-edge tier passthrough for the full transport chain" in e.summary for e in (ep, ec)))
+check("electrical summaries say the full transport chain is the room-temperature edge-emitter tier's, in user-facing words",
+      all("full transport chain" in e.summary and "room-temperature edge-emitter tier" in e.summary
+          and not any(w in e.summary for w in ("passthrough", "drive_mech")) for e in (ep, ec)))
 check("every plan payload field in inputs is JSON-serialisable",
       all(json.dumps(p.inputs) for p in plans.values()))
 

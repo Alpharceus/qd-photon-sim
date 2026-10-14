@@ -48,4 +48,4 @@ scene:
   drive:
     kind: above_band
   note: >
-    Same device as cards/chatzarakis.yaml, drawn with the same scene: planar DBR microcavity (lambda spacer) around the (211)B InAs/GaAs dot, optically pumped (PL). The device-tier configuration has no cavity block (the slit windows carry the acceptance), so the DBR drawn is the paper's cavity as context only; pair counts are display assumptions [A].
+    Same device as cards/chatzarakis.yaml, drawn with the same scene: planar DBR microcavity (lambda spacer) around the (211)B InAs/GaAs dot, optically pumped (PL). The device-tier configuration has no cavity block (the slit windows carry the acceptance), so the DBR drawn is the paper's cavity as context only; pair counts are display assumptions [A]. The planar wafer piece is drawn as a square coupon broken laterally, so the stack can read as a square pillar; its lateral size and the stack proportions are display defaults [A], not device geometry.

@@ -1034,6 +1034,94 @@ async function waitRun(page, timeout = 120000) {
       }
     }
 
+    // ---------------------------------------------------------------- R2 finish (FIN6): tall-run layout, HOM axis, stale paper notice
+    {
+      const sleep = (ms) => page.waitForTimeout(ms);
+      const open6 = async (w, hh, theme, seed) => {
+        await page.setViewportSize({ width: w, height: hh });
+        await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+        await page.evaluate(([t, sd]) => {
+          localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: t }));
+          if (sd) sessionStorage.setItem("fsim-studio:compose-seed", JSON.stringify(sd)); else sessionStorage.removeItem("fsim-studio:compose-seed");
+        }, [theme || "dark", seed || null]);
+        await page.reload({ waitUntil: "load" });
+        await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+        await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 90000 });
+        await sleep(900);
+      };
+      const run6 = async () => {
+        await page.waitForFunction(() => !document.querySelector(".ws-compose .run-key")?.disabled, null, { timeout: 30000 });
+        await page.click(".ws-compose .run-key");
+        const stt = await waitRun(page);
+        await page.waitForFunction(() => document.querySelector('.ws-compose [data-chart="hom"] .chart-plot .main-svg'), null, { timeout: 30000 }).catch(() => {});
+        await sleep(1200);
+        return stt;
+      };
+      const bands = () => page.evaluate(() => {
+        const r = (e) => e.getBoundingClientRect();
+        const bt = document.querySelector(".ws-compose .board-table"), rb = document.querySelector(".ws-compose .runbar");
+        const tp = document.querySelector(".ws-compose .temp-plate");
+        const shelf = document.querySelector(".ws-compose .shelf");
+        const kids = [...shelf.children].filter((e) => r(e).height > 0);
+        const lastShelf = Math.max(...kids.map((e) => r(e).bottom));
+        const hom = document.querySelector('.ws-compose [data-chart="hom"]');
+        return { leftBand: Math.round(r(rb).top - r(tp).bottom), rightBand: Math.round(r(shelf).bottom - lastShelf),
+          homSpans: !!hom.closest(".hom-row") && r(hom).width > r(shelf).width * 1.5, homInShelf: !!hom.closest(".shelf"),
+          boardBottom: Math.round(r(document.querySelector(".ws-compose .board")).bottom) };
+      });
+      const homAxis = () => page.$eval('.ws-compose [data-chart="hom"] .chart-plot', (gd) => ({ range: gd.layout?.yaxis?.range, ymax: Math.max(...(gd.data?.[0]?.y || []).filter((v) => typeof v === "number")) }));
+      for (const theme of ["dark", "light"]) {
+        await open6(1440, 1600, theme);
+        const stt = await run6();
+        const b = await bands();
+        check(`FIN6 1440x1600 ${theme} after a real run: no empty band taller than 200 px in the left column (temperature plate to run bar) or the right column (below the last card)`, stt === "done" && b.leftBand <= 200 && b.rightBand <= 200 && b.rightBand >= 0, JSON.stringify(b));
+        check(`FIN6 1440x1600 ${theme}: the HOM chart spans both columns below the two-column area`, b.homSpans && !b.homInShelf, JSON.stringify(b));
+        if (theme === "dark") {
+          const ax = await homAxis();
+          check("FIN6 the HOM chart y axis is 0 to 1.05 when the data stay at or below 1 (0.90 does not read as 1)", ax.ymax <= 1.05 && ax.range && ax.range[0] === 0 && Math.abs(ax.range[1] - 1.05) < 1e-9, JSON.stringify(ax));
+        }
+        await page.screenshot({ path: path.join(SHOTS, `composer-fin6-run-${theme}-1440.png`) });
+      }
+      // below the tall breakpoint the HOM card goes back to the shelf
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await sleep(600);
+      const back = await bands().catch(() => ({}));
+      check("FIN6 1440x900: the HOM chart is back in the shelf (columns scroll on their own)", back.homInShelf === true && back.homSpans === false, JSON.stringify(back));
+      // phone
+      await open6(390, 844, "dark");
+      await run6();
+      const ph = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, inShelf: !!document.querySelector('.ws-compose .shelf [data-chart="hom"]') }));
+      check("FIN6 390: no horizontal scroll after a run and the HOM chart stays in the shelf", ph.sw <= 391 && ph.inShelf, JSON.stringify(ph));
+      await page.screenshot({ path: path.join(SHOTS, "composer-fin6-run-dark-390.png"), fullPage: true });
+      // stale "from paper" notice: stays while a mount still comes from the paper, goes once every mount has been swapped away
+      const exs = await (await fetch(`${BASE}/api/compose/examples`)).json();
+      const ex = exs.find((e) => e.name === "example-pillar-resonant") || exs[0];
+      const seed = { paper: "fin6-paper", item: "fin6-item", note: "ranged inputs collapsed to their central values", collapsed: [], design: { composed: ex.design.composed } };
+      await open6(1440, 900, "dark", seed);
+      const seedShown = () => page.$$eval(".ws-compose .compose-seed", (e) => e.length);
+      const n0 = await seedShown();
+      check("FIN6 a paper-seeded Composer shows the 'from paper' notice", n0 === 1, `${n0}`);
+      const pickNew = async (axis) => {
+        const cur = await page.$eval(`.ws-compose .kind-chip[data-axis="${axis}"]`, (e) => e.dataset.kind);
+        await page.click(`.ws-compose .kind-chip[data-axis="${axis}"]`);
+        await page.waitForSelector(".cp-pop .cp-entry", { timeout: 15000 });
+        await sleep(300);
+        const kind = await page.$$eval(".cp-pop .cp-entry", (els, c) => (els.find((e) => e.dataset.kind !== c && e.dataset.status !== "needs_physics") || {}).dataset?.kind, cur);
+        await page.click(`.cp-entry[data-kind="${kind}"]`);
+        await page.waitForFunction(([a, k]) => document.querySelector(`.ws-compose .kind-chip[data-axis="${a}"]`)?.dataset.kind === k, [axis, kind], { timeout: 10000 });
+        await sleep(500);
+      };
+      await pickNew("drive");
+      const n1 = await seedShown();
+      check("FIN6 the notice stays while two swappable mounts still come from the paper", n1 === 1, `${n1}`);
+      await pickNew("material");
+      check("FIN6 the notice stays while one swappable mount still comes from the paper", (await seedShown()) === 1);
+      await pickNew("structure");   // the setup axis has one registry kind: it cannot be swapped and does not count
+      const n2 = await seedShown();
+      check("FIN6 the notice is gone once every swappable mount (drive, dot material, structure) has been swapped away from the paper chain", n2 === 0, `${n2}`);
+      await page.screenshot({ path: path.join(SHOTS, "composer-fin6-seed-cleared-dark-1440.png") });
+    }
+
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
       const { assertPng } = require("./png_check.cjs");

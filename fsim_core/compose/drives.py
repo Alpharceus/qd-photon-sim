@@ -495,7 +495,7 @@ def _has(drive, name):
 def _plan_electrical(self, vals, em, rt, mech_choices, pulsed):
     iface, g = _build_interface(self, vals, mech_choices)
     inputs = {"mechanism": iface.mechanism, "feasible": bool(iface.feasible),
-              "note": "generic electrical; use the RT-edge tier passthrough for the full transport chain"}
+              "note": "generic electrical drive; the room-temperature edge-emitter tier models the full transport chain"}
     extra = {}
     if pulsed:
         f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
@@ -552,10 +552,10 @@ def _plan_electrical_cw(self, vals, em, rt):
     return _plan_electrical(self, vals, em, rt, MECH_CW, pulsed=False)
 
 
-_ELEC_SUMMARY = ("generic electrical; use the RT-edge tier passthrough for the full transport chain. "
-                 "Builds the drive_mech interface (pump Fano factor, loading, capture) for the chosen "
-                 "mechanism.")
-_SRC_DM = "drive_mech.mech_from_card default"
+_ELEC_SUMMARY = ("Generic electrical injection. The chosen injection mechanism sets the pump noise (Fano factor), "
+                 "how fully the dot is loaded and the carrier-capture efficiency; the full transport chain "
+                 "(wire, contacts, heat) is modelled only in the room-temperature edge-emitter tier.")
+_SRC_DM = "injection-mechanism default for the card [A]"
 
 
 # Repo pointer: devlib-p10e electrical brief, .workers/devlib/p3-electrical-brief.md
@@ -632,8 +632,8 @@ def _electrical_cw_params():
 
 def _electrical_params(choices, default_mech, eta_default, pulsed):
     ps = [
-        _P("mechanism", "", default_mech, choices=choices, tag="A", source="drive_mech.roster() names",
-           sweepable=False, help="Injection mechanism (drive_mech roster)."),
+        _P("mechanism", "", default_mech, choices=choices, tag="A", source="injection-mechanism roster [A]",
+           sweepable=False, help="Injection mechanism (sets pump noise, loading and capture)."),
     ]
     if not pulsed:
         # R2 F10b: mu is the cw operating point. Every pulsed mechanism ignores it (M-3 computes mu = eta I tau / e from the

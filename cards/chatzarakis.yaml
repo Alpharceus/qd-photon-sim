@@ -208,4 +208,4 @@ scene:
   drive:
     kind: above_band
   note: >
-    Closest registry class: planar DBR microcavity (the paper's device is a (211)B InAs/GaAs dot in a lambda-microcavity, optically pumped). Spacer = 1 lambda as drawn; the DBR design and pair counts are not in the card and are display assumptions [A]. The GaAs/AlAs SSL barriers and the <Al>=57% piezoelectric stack are not drawn.
+    Closest registry class: planar DBR microcavity (the paper's device is a (211)B InAs/GaAs dot in a lambda-microcavity, optically pumped). Spacer = 1 lambda as drawn; the DBR design and pair counts are not in the card and are display assumptions [A]. The GaAs/AlAs SSL barriers and the <Al>=57% piezoelectric stack are not drawn. The planar wafer piece is drawn as a square coupon broken laterally, so the stack can read as a square pillar; its lateral size and the stack proportions are display defaults [A], not device geometry.

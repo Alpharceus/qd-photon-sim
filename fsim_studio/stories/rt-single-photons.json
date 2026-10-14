@@ -1305,8 +1305,8 @@
           },
           "name": "shift230",
           "tag_declared": "DR",
-          "value": 0.07711644783341443,
-          "raw": "0.07711644783341443",
+          "value": 0.07711644783341376,
+          "raw": "0.07711644783341376",
           "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'thermal.T_hs': 230.0, 'quantum': {'enabled': True}}, T_grid=[230.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
@@ -1328,8 +1328,8 @@
           },
           "name": "shift300",
           "tag_declared": "DR",
-          "value": 0.18616179286716372,
-          "raw": "0.18616179286716372",
+          "value": 0.18616179286716206,
+          "raw": "0.18616179286716206",
           "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'quantum': {'enabled': True}}, T_grid=[300.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
@@ -2189,8 +2189,8 @@
       "notes": "The RT edge emitter {sc_rt.say} outright (VERDICT {sc_rt}). The planar cavity SET {sc_cav.say}: {sc_cav_hw} rows pass in hardware. The screened c-plane SET from the geometry/Stark study also {sc_geo.say}. The relaxed vertical nanowire SET {sc_nw.say} too, with {sc_nw_hw} rows hardware-qualified. No COMSOL result enters any number here."
     }
   ],
-  "baked_hash": "f0878c67135f822a40b9efd3304273746c95059c69392336b4715be4354c54d8",
-  "baked_fsim_core_hash": "0b408e28e040ed5cceac31bfa5cbc1ee3dc8e2cfec434ba607e89852c7b10b5c",
-  "baked_at": "2026-10-14T03:52:42+00:00",
+  "baked_hash": "28a84b94129b7d00efe54384f6622c68042cbfe0c46f1490d5705ca218d95e2d",
+  "baked_fsim_core_hash": "e722bf37aff3387bef4dfc6bb37dc5539ce4c077cfcfac9533eaddd21bee54e1",
+  "baked_at": "2026-10-14T06:12:10+00:00",
   "bake_errors": []
 }
