@@ -834,43 +834,94 @@ check("DF-e. 'repo gamma*' wording is gone: the EID help and the gamma_star_ns l
       "repo gamma" not in drives.RESONANT_PULSE.param("eid_ps").help and "Gamma_{\\mathrm{ph}}" in drives.RESONANT_PULSE.param("eid_ps").help
       and "pure-dephasing linewidth" in obs_gs.label.lower() and "repo convention" not in obs_gs.label)
 
-# ---- R2 SUPCMP: optimum items (fsim_core/compose/optimum.py) against the exciton-frame bare propagator above ----
+# ---- R2 SUPCMP: optimum items (fsim_core/compose/optimum.py) and the pulse-shaper pulse (slm_pulse.py) against an independent
+# dot-frame time-domain propagation of the paper's Sec. V B spectrum (FFT of broadband x field mask; Karli et al. 2022) ----
 from scipy.optimize import minimize                                                       # noqa: E402
 from fsim_core.compose import optimum as OPT                                              # noqa: E402
+HB = 0.6582119569
+
+
+def slm_px_independent(d1,d2,T1,T2,alpha_pi=470.0,fwhm=17.0,Ec=-8.4,sig=0.2,floor=0.05,dE=0.005,N=2**18):
+    """Dot-frame time-domain propagation of the Karli Sec. V B pulse pair via FFT (independent of slm_pulse.py)."""
+    E=(np.arange(N)-N//2)*dE                       # meV, relative to the dot
+    sE=fwhm/(2*math.sqrt(2*math.log(2)))   # meV: Eq. 2 integrates over ENERGY (Fable r2-karli-pulse-answer.md)
+    bb=alpha_pi*math.pi/(math.sqrt(2*math.pi)*sE)*np.exp(-0.5*((E-Ec)/sE)**2)
+    f=math.sqrt(T1)*np.exp(-0.5*((E-d1)/sig)**2)+math.sqrt(T2)*np.exp(-0.5*((E-d2)/sig)**2)
+    f=f+floor*((E>=min(d1,d2))&(E<=max(d1,d2)))
+    spec=bb*f
+    # Omega(t) = (1/2pi) int spec(w) e^{-iwt} dw, w = E/HB (rad/ps): ifft-type sum on t_k = k h/(N dE) (centred)
+    dw=dE/HB; dt=2*math.pi/(N*dw)
+    t=(np.arange(N)-N//2)*dt
+    # sum_j spec_j e^{-i E_j t_k /HB}; E_j=(j-N/2)dE, t_k=(k-N/2)dt -> phase = (j-N/2)(k-N/2)*2pi/N
+    jj=np.arange(N)-N//2
+    om=np.fft.fftshift(np.fft.fft(np.fft.ifftshift(spec)*1.0)) # e^{-2pi i j k/N} with shifted indices
+    om=om*dw/(2*math.pi)                              # rad/ps
+    # keep the central +-60 ps window
+    m=np.abs(t)<=60.0
+    om=om[m]; 
+    g,x=1+0j,0j
+    for o in om:
+        r=abs(o); c=math.cos(0.5*r*dt); s=math.sin(0.5*r*dt)/r if r>0 else 0.5*dt
+        g,x=c*g-1j*s*np.conj(o)*x, c*x-1j*s*o*g
+    return abs(x)**2
+
+
 _kar = PP.load_paper(ROOT / "cards" / "papers" / "karli2022.yaml")
 _ent = next(e for e in _kar.reproduce if e["item"] == "inversion_theory")
 _res = OPT.optimise(_kar.device, _ent["optimum"])
-_fw = 2 * math.sqrt(math.log(2)) * 0.6582119569 / 0.2                    # transform limit of the 0.2 meV mask: independent re-derivation
-_Pt = lambda T2: float(np.interp(T2, [0.0, 0.65, 1.0], [0.7, 10.9, 18.8]))
-
-
-def _kar_px(d2, T2):                                                      # swing-up area1 and sqrt(power) area2, re-derived here (not optimum.py)
-    a1 = math.sqrt((d2 + 4.9) ** 2 - 4.9 ** 2) / 0.6582119569 * _fw * math.sqrt(2 * math.pi) / (2 * math.sqrt(math.log(2))) / math.pi
-    return bare_px(a1, a1 * math.sqrt(_Pt(T2) / 15.5), _fw, _fw, -4.9, d2, dt=2e-3)
-
-
-_g = [(d2, T2, _kar_px(d2, T2)) for d2 in np.linspace(-11.0, -10.0, 11) for T2 in np.linspace(0.0, 1.0, 26)]
+_xa = _res["argmax"]
+_ind = lambda d2, T2: slm_px_independent(-4.9, d2, 0.5, T2)                                # paper values: Delta1 -4.9 meV, T1 0.5
+_g = [(d2, T2, _ind(d2, T2)) for d2 in np.linspace(-11.2, -9.2, 11) for T2 in np.linspace(0.0, 1.0, 21)]
 _d2b, _T2b, _vb = max(_g, key=lambda r: r[2])
-_r = minimize(lambda u: -_kar_px(-11.0 + min(max(u[0], 0.0), 1.0), min(max(u[1], 0.0), 1.0)), [(_d2b + 11.0), _T2b], method="Nelder-Mead",
-              options={"initial_simplex": [[_d2b + 11.0, _T2b], [min(_d2b + 11.05, 1.0), _T2b], [_d2b + 11.0, min(_T2b + 0.03, 1.0)]],
+_r = minimize(lambda u: -_ind(-11.2 + 2.0 * min(max(u[0], 0.0), 1.0), min(max(u[1], 0.0), 1.0)), [(_d2b + 11.2) / 2.0, _T2b], method="Nelder-Mead",
+              options={"initial_simplex": [[(_d2b + 11.2) / 2.0, _T2b], [min((_d2b + 11.2) / 2.0 + 0.03, 1.0), _T2b], [(_d2b + 11.2) / 2.0, min(_T2b + 0.03, 1.0)]],
                        "maxfev": 60, "xatol": 1e-4, "fatol": 1e-6})
 _v_ind = max(_vb, -float(_r.fun))
-check("SUPCMP A. karli2022 inversion_theory optimum (phonons off, decay off; engine propagation at the argmax) equals the maximum of an INDEPENDENT "
-      "exciton-frame bare_px scan + bounded refinement over the same (Delta2, T2) window within 0.01",
-      abs(_res["value"] - _v_ind) <= 0.01, f"optimum.py {_res['value']:.5f} at {_res['argmax']}, bare_px {_v_ind:.5f}")
-_xa = _res["argmax"]
-check("SUPCMP B. at the reported argmax the engine occupation equals bare_px (independent propagator) within 0.002, and the accelerator used by the grid "
+check("SUPCMP A. karli2022 inversion_theory optimum (slm_mask pulses, phonons off, decay off) equals the maximum of an INDEPENDENT dot-frame FFT "
+      "time-domain propagation scan + bounded refinement over the Fig 2b window within 0.01",
+      abs(_res["value"] - _v_ind) <= 0.01, f"optimum.py {_res['value']:.5f} at {_xa}, independent {_v_ind:.5f}")
+_vi = _ind(_xa["delta2"], _xa["T2"])
+check("SUPCMP B. at the reported argmax the engine occupation equals the independent time-domain propagation within 0.01, and the batched accelerator "
       "agrees with the engine propagation within 1e-6",
-      abs(_res["value"] - _kar_px(_xa["delta2"], _xa["T2"])) <= 0.002 and _res["info"]["fast_vs_engine_phonon_free"] <= 1e-6,
-      f"engine {_res['value']:.5f}, bare_px {_kar_px(_xa['delta2'], _xa['T2']):.5f}, accelerator diff {_res['info']['fast_vs_engine_phonon_free']:.1e}")
+      abs(_res["value"] - _vi) <= 0.01 and _res["info"]["fast_vs_engine_phonon_free"] <= 1e-6,
+      f"engine {_res['value']:.5f}, independent {_vi:.5f}, accelerator diff {_res['info']['fast_vs_engine_phonon_free']:.1e}")
+_d2s = np.linspace(-11.2, -9.2, 11)
+_p_T2zero = max(slm_px_independent(-4.9, d, 0.5, 0.0) for d in _d2s)
+_p_T1zero = max(slm_px_independent(-4.9, d, 0.0, T2) for d in _d2s for T2 in np.linspace(0.0, 1.0, 6))
+check("SUPCMP E. fingerprints of the paper's Fig. 2 (Fable r2-karli-pulse-answer.md): pulse 2 alone (T2 = 0) excites <= 0.03 and pulse 1 alone (T1 = 0) <= 0.01 "
+      "over the window, i.e. neither pulse alone does anything",
+      _p_T2zero <= 0.03 and _p_T1zero <= 0.01, f"max P(T2=0) {_p_T2zero:.4f}, max P(T1=0) {_p_T1zero:.4f}")
+_cut = [(T2, slm_px_independent(-4.9, -10.5, 0.5, T2)) for T2 in np.linspace(0.0, 1.0, 41)]
+_cmax = max(_cut, key=lambda r: r[1])
+_lo = [r for r in _cut if 0.55 <= r[0] <= 0.75]
+_cmin = min(_lo, key=lambda r: r[1])
+check("SUPCMP F. the window maximum is 0.98 +- 0.01 and the cut at Delta2 = -10.5 meV has its maximum about 0.48 near T2 = 0.2 and a minimum < 0.01 near T2 = 0.6-0.7 [paper Fig 2]",
+      abs(_res["value"] - 0.98) <= 0.01 and abs(_cmax[1] - 0.48) <= 0.05 and abs(_cmax[0] - 0.2) <= 0.1 and _cmin[1] < 0.01,
+      f"window max {_res['value']:.4f}; cut max {_cmax[1]:.3f} at T2 {_cmax[0]:.3f}; cut min {_cmin[1]:.4f} at T2 {_cmin[0]:.3f}")
+_sE = 17.0 / (2 * math.sqrt(2 * math.log(2)))
+_A1 = math.sqrt(0.5) * 470.0 * math.exp(-0.5 * ((-4.9 + 8.4) / _sE) ** 2) / (math.sqrt(2 * math.pi) * _sE)          # closed form, in pi
+from fsim_core.compose.slm_pulse import SlmField                                                                      # noqa: E402
+_A1_code = math.sqrt(0.5) * SlmField(-4.9, -10.6, 0.5, 0.5, 470 * math.pi, 17.0, -8.4, 0.2, 0.05).line_area_rad(1) / math.pi
+check("SUPCMP G. closed-form line area (Eq. 2 over energy in meV): line 1 at T1 = 0.5, Delta1 = -4.9 meV is 16.33 pi, equal in slm_pulse.py",
+      abs(_A1 - 16.33) < 0.01 and abs(_A1_code - _A1) < 1e-9, f"closed form {_A1:.4f} pi, code {_A1_code:.4f} pi")
 _stats = [e for e in _kar.reproduce if e["item"] == "inversion_8K_pred"]
 _sig = lambda o: ([(v["name"], v.get("path"), v["window"], v["n"]) for v in o["scan"]],      # numbers only (the provenance text differs)
-                  [(d["path"], d["rule"], d.get("table"), d.get("P1_uW"), d.get("from")) for d in o["derive"]],
+                  [(d["path"], d["rule"], d.get("table"), d.get("P1_uW"), d.get("from")) for d in (o.get("derive") or [])],
                   {k: v["value"] for k, v in o["overrides"].items()})
-check("SUPCMP C. the optimum search keeps within its window and the 8 K prediction uses the same scan as the theory item (only the phonon switch differs)",
-      -11.0 - 1e-9 <= _xa["delta2"] <= -10.0 + 1e-9 and 0.0 <= _xa["T2"] <= 1.0 and len(_stats) == 1
+check("SUPCMP C. the argmax lies inside the Fig 2b window and the 8 K prediction uses the same scan and pulse as the theory item (only the phonon switch differs)",
+      -11.2 - 1e-9 <= _xa["delta2"] <= -9.2 + 1e-9 and 0.0 <= _xa["T2"] <= 1.0 and len(_stats) == 1
       and _sig(_stats[0]["optimum"]) == _sig(_ent["optimum"])
       and _stats[0]["optimum"]["solver"]["phonons"] == "on" and _ent["optimum"]["solver"]["phonons"] == "off")
+# the default (non-slm) SUPER plan must be untouched by the pulse option: Gaussian shape has no slm_field, slm_mask has one
+_sd = R.get("drive", "super")
+_sp = engine._as_spec(_kar.device)
+_en = engine._entries(_sp)
+_vals = engine._central_values(engine._leaves(_sp, _en))
+_pl_gauss = engine._prepare(_en, _vals, 8.0)[4]
+_pl_slm = engine._prepare(_en, {**_vals, "drive.shape": "slm_mask"}, 8.0)[4]
+check("SUPCMP D. slm_mask is an extra SUPER pulse option: the default shape stays gauss with no slm_field in its plan, slm_mask carries the field",
+      _sd.param("shape").default == "gauss" and "slm_mask" in _sd.param("shape").choices
+      and "slm_field" not in _pl_gauss.inputs and "slm_field" in _pl_slm.inputs and _pl_gauss.inputs["shape"] == "gauss")
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")

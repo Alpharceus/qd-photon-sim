@@ -70,6 +70,7 @@ from .. import qd_gf
 from .. import resonant_source as rs
 from ..spectral import KB
 from .registry import Solver, register
+from .slm_pulse import SlmField
 from .types import SolverResult
 
 NAN = float("nan")
@@ -204,7 +205,7 @@ class PulseTrain:
     """Complex Rabi frequency Omega(t) in the frame of pulse 0: sum_k Omega_k(t) exp(-i[dw_k (t - tc_k)
     + kappa_k (t - tc_k)^2/2 + phi_k]); window W = 2 max_k(|t0_k| + half window), centred at W/2."""
 
-    def __init__(self, pulses, det_profile=None):
+    def __init__(self, pulses, det_profile=None, field=None):
         if not pulses:
             raise ValueError("PulseTrain needs at least one pulse")
         det0 = float(lb.mev_to_rate(pulses[0].detuning_meV))
@@ -238,6 +239,14 @@ class PulseTrain:
                 halfwin=0.5 * rs.pulse_window(p.shape, dur)))
         self.comps = tuple(comps)
         self.det0_ns = det0
+        # R2 SUPCMP: an explicit pulse-shaper field (Karli et al. 2022 Sec. V B, slm_pulse.py) replaces the Gaussian / rect
+        # envelopes in omega(); the pulses then only fix the frame, the window and the sweep bound. None = bit-identical.
+        self.field = SlmField(**field) if field else None
+        self._field_peak = self.field.peak_rad_ns() if self.field else 0.0
+
+    def amp_sum(self) -> float:
+        """Sum of the component peak amplitudes (rad/ns); the explicit field's peak |Omega(0)| when there is one."""
+        return self._field_peak if self.field else sum(abs(c.amp) for c in self.comps)
 
     def delta_t(self, t):
         """det_X(t) (1/ns) at the times t: constant det0 without a det_profile."""
@@ -261,6 +270,8 @@ class PulseTrain:
 
     def omega(self, t):
         t = np.asarray(t, dtype=float)
+        if self.field:
+            return self.field.omega(t - 0.5 * self.W)
         out = np.zeros(t.shape, dtype=complex)
         for c in self.comps:
             x = t - c.tc
@@ -276,7 +287,7 @@ class PulseTrain:
         """Upper bound on |H| (1/ns): |Delta| + sum |Omega_r| + max (beat + chirp sweep)."""
         sweep = max(abs(c.dw) + abs(c.kappa) * 0.5 * self.W for c in self.comps)
         dmax = abs(self.det0_ns) if self.det_profile is None else max(abs(self._det_off), abs(self._det_on))
-        return dmax + B * sum(abs(c.amp) for c in self.comps) + sweep
+        return dmax + B * self.amp_sum() + sweep
 
     def sigma_min(self) -> Optional[float]:
         s = [c.sigma_ns for c in self.comps if c.shape == "gauss" and c.area != 0.0]
@@ -510,7 +521,7 @@ class PolaronSolver(Solver):
             return False, "polaron: plan.inputs['T_K'] missing (the engine supplies the temperature)"
         if plan.det_profile is not None and len(plan.det_profile) != 4:
             return False, "polaron: det_profile must be (det_off_meV, det_on_meV, t_gate_ps, t_r_ps)"
-        W = PulseTrain(plan.pulses, plan.det_profile).W
+        W = PulseTrain(plan.pulses, plan.det_profile, plan.inputs.get("slm_field")).W
         if 1e3 / float(plan.f_rep_MHz) <= W:
             return False, "polaron: repetition period must exceed the pulse window"
         return True, ""
@@ -534,12 +545,12 @@ class PolaronSolver(Solver):
 
     def _setup(self, plan, em, rt):
         T = float(plan.inputs["T_K"])
-        train = PulseTrain(plan.pulses, plan.det_profile)
+        train = PulseTrain(plan.pulses, plan.det_profile, plan.inputs.get("slm_field"))
         pm = PhononModel(em.phonon, T)
         # R2 SUPER (Fable): non-adiabatic limit. When the bare peak Rabi energy hbar sum|Omega_k| exceeds NONADIABATIC_EC x E_c the
         # static sqrt(Z) renormalisation is unphysical (Bracht et al., PRX Quantum 2, 040354 (2021) exact path integral keeps
         # the bare area); drop it. Below the threshold (phonon_assisted, Quilter) the solver is bit-identical.
-        om_pk = lb.HBAR_MEV_NS * sum(abs(c.amp) for c in train.comps)
+        om_pk = lb.HBAR_MEV_NS * train.amp_sum()
         if pm.active and om_pk > NONADIABATIC_EC * pm.E_c_meV:
             pm = PhononModel(em.phonon, T, B_mode="none")
         tl = rs.TwoLevel(float(rt.Gamma_ns), k_ns=float(rt.k_nr_ns), gamma_star_ns=float(rt.gamma_star_ns),
@@ -561,7 +572,7 @@ class PolaronSolver(Solver):
         reasons = ["polaron P1: weak-coupling dressed-state rates (no full polaron master equation)"]
         if pm.active and pm.B_mode == "none":
             reasons.append(f"R2 SUPER: polaron B none in the non-adiabatic regime (Fable): hbar|Omega|_max "
-                           f"{lb.HBAR_MEV_NS * sum(abs(c.amp) for c in train.comps):.3g} meV > {NONADIABATIC_EC:g} E_c "
+                           f"{lb.HBAR_MEV_NS * train.amp_sum():.3g} meV > {NONADIABATIC_EC:g} E_c "
                            f"({pm.E_c_meV:.3g} meV), so the static sqrt(Z) = {pm.B_static:.3f} is not applied [DR]")
         if len({round(c.dw, 9) for c in train.comps}) > 1 and pm.active:
             reasons.append("multi-colour drive with phonons: instantaneous-basis rates for a rotating beat "
@@ -615,7 +626,7 @@ class PolaronSolver(Solver):
 
     def eta_seconds(self, plan, n_points):
         try:
-            train = PulseTrain(plan.pulses, plan.det_profile)
+            train = PulseTrain(plan.pulses, plan.det_profile, plan.inputs.get("slm_field"))
             n_f, _, _ = self._grids(train, 0.95)
         except Exception:                                          # noqa: BLE001
             n_f = 3000

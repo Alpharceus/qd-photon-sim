@@ -60,7 +60,9 @@ from .polaron import PolaronSolver
 MODES = ("optimum", "at_optimum")
 RULES = ("swing_up_area_gauss", "sqrt_power_ratio")
 _HBAR_MEV_PS = lb.HBAR_MEV_NS * 1e3          # meV ps
-_SHAPE_KEYS = ("drive.delta1_meV", "drive.delta2_meV", "drive.fwhm1_ps", "drive.fwhm2_ps", "drive.shape", "T_K")
+_SHAPE_KEYS = ("drive.delta1_meV", "drive.delta2_meV", "drive.fwhm1_ps", "drive.fwhm2_ps", "drive.shape", "T_K",
+               "drive.slm_alpha_pi", "drive.slm_bb_fwhm_meV", "drive.slm_bb_centre_meV", "drive.slm_mask_sigma_meV", "drive.slm_floor")
+_AMP_PATHS = ("drive.area1_pi", "drive.area2_pi", "drive.slm_T1", "drive.slm_T2")   # the paths that scale the field linearly
 ZOOM_LEVELS = 3
 ZOOM_N = 7
 NZ_SEEDS = 3
@@ -165,8 +167,8 @@ def validate_entry(w: str, e: dict, ids: dict, resolved: dict, P: list, order: l
     for path, leaf in (o.get("overrides") or {}).items():
         if path not in resolved:
             P.append(f"{w}: overrides {path!r} is not a device leaf path")
-        elif not (isinstance(leaf, dict) and _num(leaf.get("value"))):
-            P.append(f"{w}: overrides {path} needs a numeric value")
+        elif not (isinstance(leaf, dict) and (_num(leaf.get("value")) or _ne(leaf.get("value")))):
+            P.append(f"{w}: overrides {path} needs a numeric (or choice) value")
         else:
             leaf_ok(f"{w}: overrides {path}", leaf)
     scan = o.get("scan")
@@ -203,15 +205,15 @@ def validate_entry(w: str, e: dict, ids: dict, resolved: dict, P: list, order: l
                     and all(isinstance(r, list) and len(r) == 2 and all(_num(x) for x in r) for r in tab)):
                 P.append(f"{wd}: sqrt_power_ratio needs from (a scan name), ref (a leaf path), P1_uW > 0, table [[x, P_uW], ..]")
     free = {sv.get("path") for sv in scan if sv.get("path")} | {d.get("path") for d in (o.get("derive") or [])}
-    if "drive.area1_pi" not in free and "drive.area2_pi" not in free:
-        P.append(f"{w}: the scan must move at least one pulse area (drive.area1_pi / drive.area2_pi)")
+    if not (free & set(_AMP_PATHS)):
+        P.append(f"{w}: the scan must move at least one pulse amplitude (a pulse area, or the slm_T1 / slm_T2 transmission)")
 
 
 # ------------------------------------------------------------------ point construction
 def _base_values(entries, leaves, overrides: dict) -> dict:
     vals = E._central_values(leaves)
     for p, leaf in overrides.items():
-        vals[p] = float(leaf["value"])
+        vals[p] = float(leaf["value"]) if _num(leaf["value"]) else leaf["value"]
     return vals
 
 
@@ -279,13 +281,20 @@ def _fast_batch(entries, pts: list) -> np.ndarray:
     sol = PolaronSolver()
     for idx in groups.values():
         vmax = dict(pts[idx[0]])
-        vmax["drive.area1_pi"] = max(pts[i]["drive.area1_pi"] for i in idx)
-        vmax["drive.area2_pi"] = max(pts[i]["drive.area2_pi"] for i in idx)
+        for k in _AMP_PATHS:
+            vmax[k] = max(pts[i][k] for i in idx)
         em, setup, sr, rt, plan, v, reads = E._prepare(entries, vmax, float(vmax["T_K"]))
         pm, train, gen = sol._setup(plan, replace(em, phonon=None), rt)
         n_f, _, _ = sol._grids(train, 1.0)
-        dt, series, norms = _unit_series(train, n_f)
-        a = [np.array([pts[i][f"drive.area{k + 1}_pi"] for i in idx]) * math.pi / norms[k] for k in range(len(series))]
+        if train.field:                                  # pulse-shaper pair: Omega = sqrt(T1) F1 + sqrt(T2) F2 + F0
+            tm = 0.5 * (np.linspace(0.0, train.W, n_f + 1)[:-1] + np.linspace(0.0, train.W, n_f + 1)[1:])
+            series = list(train.field.series(tm - 0.5 * train.W))
+            dt = float(train.W / n_f)
+            a = [np.sqrt(np.array([pts[i]["drive.slm_T1"] for i in idx])), np.sqrt(np.array([pts[i]["drive.slm_T2"] for i in idx])),
+                 np.ones(len(idx))]
+        else:
+            dt, series, norms = _unit_series(train, n_f)
+            a = [np.array([pts[i][f"drive.area{k + 1}_pi"] for i in idx]) * math.pi / norms[k] for k in range(len(series))]
         delta = float(train.det0_ns)
         g = np.ones(len(idx), dtype=complex)
         x = np.zeros(len(idx), dtype=complex)
@@ -409,8 +418,9 @@ def optimise(paper_device: dict, o: dict) -> dict:
 
 def _fmt_argmax(res: dict) -> dict:
     out = {k: round(v, 5) for k, v in res["argmax"].items()}
+    slm = res["values"].get("drive.shape") == "slm_mask"           # the pulse-shaper pulses ignore the area leaves
     for k in ("drive.area1_pi", "drive.area2_pi", "drive.delta2_meV"):
-        if k in res["leaves"]:
+        if k in res["leaves"] and not (slm and k.startswith("drive.area")):
             out[k.split(".")[1]] = round(res["leaves"][k], 5)
     return out
 

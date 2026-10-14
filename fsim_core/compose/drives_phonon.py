@@ -35,6 +35,7 @@ import math
 from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _EID, _GAUSS, _PAPER_CONV, _REF_BRIEF, _SRC_A, _TRION, PlannedDrive,
                      _P, _dark_inputs, _getter, _nonneg, _positive, _pulse_inputs)
 from .. import qd_gf
+from .slm_pulse import SlmField
 from ..resonant_source import gaussian_sigma
 from .types import DrivePlan, Pulse
 
@@ -88,10 +89,37 @@ PHONON_ASSISTED = PlannedDrive(
 # ======================================================================
 # super
 # ======================================================================
+def _plan_super_slm(self, g, d1, d2, f_rep):
+    """R2 SUPCMP: the pulse-shaper pair of Karli et al. 2022 Sec. V B (slm_pulse.py): a broadband Gaussian spectrum times a
+    two-Gaussian field mask (with a floor between the peaks), inverse-transformed to Omega(t). The two Pulse entries only carry
+    the frame (pulse 1), the window (the transform-limited width of the mask) and an area estimate; the field is in
+    plan.inputs['slm_field'] (plain floats) and replaces the envelopes inside the polaron PulseTrain."""
+    sig_m = _positive("slm_mask_sigma_meV", g("slm_mask_sigma_meV"))
+    fld = {"d1_meV": d1, "d2_meV": d2, "T1": _nonneg("slm_T1", g("slm_T1")), "T2": _nonneg("slm_T2", g("slm_T2")),
+           "alpha_rad": _positive("slm_alpha_pi", g("slm_alpha_pi")) * math.pi,
+           "bb_fwhm_meV": _positive("slm_bb_fwhm_meV", g("slm_bb_fwhm_meV")), "bb_centre_meV": float(g("slm_bb_centre_meV")),
+           "mask_sigma_meV": sig_m, "floor": _nonneg("slm_floor", g("slm_floor"))}
+    if fld["T1"] > 1.0 or fld["T2"] > 1.0:
+        raise ValueError("slm_T1 / slm_T2 are intensity transmissions in [0, 1]")
+    sf = SlmField(**fld)
+    fw = SlmField.mask_fwhm_ps(sig_m)
+    p1 = Pulse(shape="gauss", fwhm_ps=fw, area_rad=math.sqrt(fld["T1"]) * sf.line_area_rad(1), detuning_meV=-d1)
+    p2 = Pulse(shape="gauss", fwhm_ps=fw, area_rad=math.sqrt(fld["T2"]) * sf.line_area_rad(2), detuning_meV=-d2)
+    inputs = {"shape": "slm_mask", "slm_field": fld, "Delta_paper_meV": d1, "Delta2_paper_meV": d2, "det_X_meV": -d1,
+              "detuning_convention": "repo det_X = -Delta_paper; frame of pulse 1, mask line 2 beats at (Delta2 - Delta1)/hbar",
+              "swing_up_splitting_meV": abs(d2 - d1), "mask_fwhm_ps": fw,
+              "pulse_model": "Karli et al. 2022 Sec. V B: broadband Gaussian x two-Gaussian field mask (+ floor), inverse FT"}
+    _dark_inputs(g, inputs)
+    return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(p1, p2),
+                     needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
+
+
 def _plan_super(self, vals, em, rt):
     g = _getter(self, vals)
     shape = g("shape")
     d1, d2 = float(g("delta1_meV")), float(g("delta2_meV"))
+    if shape == "slm_mask":
+        return _plan_super_slm(self, g, d1, d2, _positive("f_rep_MHz", g("f_rep_MHz")))
     w1, w2 = _positive("fwhm1_ps", g("fwhm1_ps")), _positive("fwhm2_ps", g("fwhm2_ps"))
     a1, a2 = _nonneg("area1_pi", g("area1_pi")), _nonneg("area2_pi", g("area2_pi"))
     f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
@@ -110,12 +138,19 @@ def _plan_super(self, vals, em, rt):
                      needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
 
 
+_SLM_SRC = "Karli et al., Nano Lett. 22, 6567 (2022) (arXiv:2203.00712v1), Sec. V B (Eqs. 2-3)"
+_SUPER_SHAPE = _P("shape", "", "gauss", choices=("gauss", "rect", "slm_mask"), tag="A", source=_SRC_A, sweepable=False,
+                  help="Pulse envelope. slm_mask: the pulse-shaper pair of Karli et al. 2022 Sec. V B (broadband Gaussian spectrum "
+                       "times a two-Gaussian field mask, inverse-transformed); then only delta1/delta2 and the slm_* "
+                       "parameters act (areas and widths follow from the spectrum).")
+_SLM_VIS = {"shape": ["slm_mask"]}
+
 SUPER = PlannedDrive(
     kind="super", label="SUPER (two-colour red-detuned swing-up)",
     summary="Two red-detuned pulses whose frequency difference swings the population up "
             "(swing-up of the quantum emitter population). " + _PHONON_NOTE,
     params=(
-        _GAUSS,
+        _SUPER_SHAPE,
         _P("delta1_meV", "meV", -5.0, lo=-12.0, hi=-1.0, tag="V",
            source="Bracht et al., PRX Quantum 2, 040354 (2021), Table 1 row 2: Delta1 = -5.0 meV [V] (r2-super)",
            help=r"Detuning $\Delta_1$ of pulse 1, paper convention $\Delta = \omega_{\mathrm L} - \omega_X$ (red = negative). "
@@ -141,6 +176,20 @@ SUPER = PlannedDrive(
         _P("area2_pi", "pi", 10.45, lo=0.0, hi=60.0, tag="V",
            source="Bracht et al. 2021 Table 1 row 2: alpha2 = 10.45 pi [V] (r2-super)",
            help=r"Area $\Theta_2$ of pulse 2 in units of $\pi$ (see pulse 1)."),
+        _P("slm_T1", "1", 0.5, lo=0.0, hi=1.0, tag="V", source=_SLM_SRC + ": T1 = 0.5 (pulse 1 fixed, Table II / Fig. 2)", group="advanced",
+           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_1$ of mask line 1 ($	ilde T_1 = \sqrt{T_1}$ on the field). slm_mask only."),
+        _P("slm_T2", "1", 0.7, lo=0.0, hi=1.0, tag="V", source=_SLM_SRC + ": T2 is the y-axis of Fig. 2 (0 to 1)", group="advanced",
+           visible_if=_SLM_VIS, help=r"INTENSITY transmission $T_2$ of mask line 2 ($	ilde T_2 = \sqrt{T_2}$ on the field). slm_mask only."),
+        _P("slm_alpha_pi", "pi", 470.0, lo=1.0, hi=5000.0, scale="log", tag="V", source=_SLM_SRC + ": integrated pulse area alpha~ = 470 pi", group="advanced",
+           visible_if=_SLM_VIS, help=r"Integrated area $\tilde{\alpha}$ of the broadband spectrum (Eq. 2; $\int \tilde{\Omega}\,d\omega = \tilde{\alpha}$)."),
+        _P("slm_bb_fwhm_meV", "meV", 17.0, lo=1.0, hi=100.0, tag="V", source=_SLM_SRC + ": spectral FWHM 17 meV", group="advanced",
+           visible_if=_SLM_VIS, help="Spectral FWHM of the broadband Gaussian (Eq. 2)."),
+        _P("slm_bb_centre_meV", "meV", -8.4, lo=-30.0, hi=10.0, tag="V", source=_SLM_SRC + ": centred at hbar(w_C - w0) = -8.4 meV", group="advanced",
+           visible_if=_SLM_VIS, help="Centre of the broadband spectrum relative to the dot (paper convention)."),
+        _P("slm_mask_sigma_meV", "meV", 0.2, lo=0.02, hi=2.0, tag="V", source=_SLM_SRC + ": hbar sigma = 0.2 meV for all calculations", group="advanced",
+           visible_if=_SLM_VIS, help=r"Width $\hbar\sigma$ of each Gaussian FIELD mask line (Eq. 3)."),
+        _P("slm_floor", "1", 0.05, lo=0.0, hi=1.0, tag="DR", source=_SLM_SRC + ": 'a transmission of 5% between the two peaks'; read as a field weight [DR]", group="advanced",
+           visible_if=_SLM_VIS, help="Mask floor between the two peak centres (non-zero SLM extinction), added to the field mask."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,
