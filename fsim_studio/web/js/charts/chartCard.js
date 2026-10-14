@@ -31,6 +31,7 @@ export function chartCard(opts) {
   const pngBtn = h("button.icon-btn.chart-tool", { type: "button", title: "Export PNG (2x)", "aria-label": `Export ${opts.title} as PNG`, on: { click: () => exportAs("png") } }, icon("download", { size: 18 }), h("span.tool-txt", "PNG"));
   const svgBtn = h("button.icon-btn.chart-tool", { type: "button", title: "Export SVG", "aria-label": `Export ${opts.title} as SVG`, on: { click: () => exportAs("svg") } }, h("span.tool-txt", "SVG"));
 
+  for (const b of [tableBtn, pngBtn, svgBtn]) b.dataset.tip = b.title;
   const root = h("section.chart-card", { "aria-label": opts.title },
     h("header.chart-head",
       h("div.chart-titles", h("div.chart-titleline", titleEl, tagSlot), subEl),
@@ -97,6 +98,10 @@ export function chartCard(opts) {
     plot.hidden = !hasData || showTable;
     tableHost.hidden = !hasData || !showTable;
     if (showTable && hasData) renderTable();
+    for (const b of [tableBtn, pngBtn, svgBtn]) {
+      b.disabled = !hasData;
+      b.title = hasData ? b.dataset.tip : "No data in this chart for this run";
+    }
     safeResize();
   }
 

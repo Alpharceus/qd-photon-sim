@@ -666,6 +666,7 @@ html[data-present] .beam { stroke-width: 6; }
 .chart-sub.pad { font-family: var(--font-ui); white-space: normal; }
 .chart-tools { display: flex; gap: 2px; flex: none; }
 .chart-tool { height: 28px; }
+.chart-tool:disabled { opacity: 0.5; cursor: not-allowed; }
 .tool-txt { font-family: var(--font-label); font-weight: 600; font-size: 11px; letter-spacing: var(--label-tracking); }
 .chart-screen { position: relative; height: var(--chart-h, 300px); margin: 0 8px 8px; background: var(--surface); border: 1px solid var(--grid); }
 .chart-plot { position: absolute; inset: 0; }
