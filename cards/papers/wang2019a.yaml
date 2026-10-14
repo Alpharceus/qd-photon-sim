@@ -15,7 +15,7 @@ meta:
     - "Mode splitting: 183 GHz in the main text (p.5) but 171 GHz in the Fig 2 caption; not used."
     - "Elliptical cross section 2.1 x 1.4 um is entered as the equal-area circle d = sqrt(2.1 x 1.4) = 1.71 um (the registry micropillar kind is circular); Q is the measured Q of M2 (5016), the mode the dot is resonant with. The registry kind has no elliptical or mode-polarisation physics: the polarisation selection enters only through pol_factor = 0.962 (3.8 % polarisation-only loss, text p.7)."
     - "Bottom DBR is 25.5 pairs (Fig 2 caption); the registry truncates fractional pair counts to 25 (dbr uses int)."
-    - "zpl_filter = true is an ASSUMPTION [A] (brief section 3, Iles-Smith 2017): the narrow cavity (kappa = E/Q ~ 0.27 meV, Q 5016) filters the phonon sideband, so I -> I_ZPL and the efficiency carries Z_filt; no etalon was used for the pillar."
+    - "zpl_filter = true is an ASSUMPTION [A] (Iles-Smith 2017): the narrow cavity (kappa = E/Q ~ 0.27 meV, Q 5016) filters the phonon sideband, so I -> I_ZPL and the efficiency carries Z_filt; no etalon was used for the pillar."
     - "Not modelled / not inputs: the paper's loss budget (sidewall scattering 22.8 %, mode leakage 5.3 %, IQE ~82 %, blinking) is NOT entered; the model derives eta_out from the DBR asymmetry. Pulse width is not in the text: range 1-10 ps [E], which must be << the 61 ps lifetime (supplement note 9). Laser leakage (the stated cause of g2 0.025) has no number in the paper and is not modelled."
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "Fig 2 caption (the dot is tuned into resonance with M2 at 4 K); bath cryostat lowest temperature 1.5 K (text p.6)"}
@@ -45,7 +45,7 @@ device:
     params:
       NA: {value: 0.65, unit: "1", tag: A, source: "objective NA of the confocal microscope is not in the read text; 0.65 is the NA used in the paper's EBG simulation (Supp Fig 7)"}
       eta_pol: {value: 0.962, unit: "1", tag: DR, where: "text p.7 3.8% polarisation loss"}
-      zpl_filter: {value: true, unit: "", tag: A, source: "narrow cavity filters the phonon sideband (Iles-Smith 2017, physics brief section 3); no etalon for the pillar"}
+      zpl_filter: {value: true, unit: "", tag: A, source: "narrow cavity filters the phonon sideband (Iles-Smith 2017); no etalon for the pillar"}
 reported:
   - {id: tau_pillar, observable: tau_ps, value: 61.0, err: 0.1, tag: V, where: "text p.7 / Fig 2f (radiative lifetime of the pillar-coupled dot, resonance fluorescence, SNSPD resolution 20 ps)"}
   - {id: eff_pillar, observable: B_first_lens, value: 0.60, err: 0.02, tag: V, where: "text p.8 (polarised single-photon efficiency at the first lens per pi pulse; loss-budget based, includes the 3.8 % polarisation loss)"}
@@ -56,13 +56,13 @@ reproduce:
   - item: tau_pillar
     class: M
     tol: {k_sigma: 2, rel: 0.1}
-    tol_reason: "paper 61.0 +/- 0.1 ps is far tighter than the model: F_P is computed from the measured Q and V (the cylinder/Gaussian mode-area class is 2-3x uncertain); 10 percent relative per brief section 6 for lifetimes"
+    tol_reason: "paper 61.0 +/- 0.1 ps is far tighter than the model: F_P is computed from the measured Q and V (the cylinder/Gaussian mode-area class is 2-3x uncertain); 10 percent relative for lifetimes"
     expect: fail
     reason: "model gap: F_P is computed from the measured Q = 5016 and the equal-area Gaussian mode volume (ideal F_P ~20.6 vs the measured 16.8 total ratio less one), giving ~48.7 ps against the measured 61.0 ps; the registry circular-pillar volume model and the ideal position/polarisation overlap overestimate the Purcell enhancement."
   - item: eff_pillar
     class: M
     tol: {k_sigma: 2, abs: 0.1}
-    tol_reason: "paper 0.60 +/- 0.02 (2 sigma = 0.04); brief section 6 allows +/- 0.1 for brightness because eta_out comes from the DBR asymmetry model and the NA is assumed"
+    tol_reason: "paper 0.60 +/- 0.02 (2 sigma = 0.04); the model-level tolerance allows +/- 0.1 for brightness because eta_out comes from the DBR asymmetry model and the NA is assumed"
     expect: fail
     reason: "model 0.72 vs 0.60 (0.10 tol): with the 3.8 % polarisation loss now in setup.eta_pol (FX1) the first-lens brightness is 0.72; the 0.12 overshoot is the DBR-asymmetry eta_out and the assumed NA 0.65, and the model F_P/beta is too high (see tau_pillar)."
   - item: g2_pillar
@@ -73,12 +73,12 @@ reproduce:
   - item: hom_raw_pillar
     class: M
     tol: {k_sigma: 2, abs: 0.05}
-    tol_reason: "paper 0.913 +/- 0.005; 0.05 absolute (brief section 6 for the corrected value is +/- 0.05) because gamma* is the registry class default and the model raw V uses g2_raw and eps_int = 0"
+    tol_reason: "paper 0.913 +/- 0.005; 0.05 absolute (the model-level tolerance for the corrected value is +/- 0.05) because gamma* is the registry class default and the model raw V uses g2_raw and eps_int = 0"
     expect: pass
   - item: hom_corr_pillar
     class: M
     tol: {k_sigma: 2, abs: 0.05}
-    tol_reason: "paper 0.975 +/- 0.006; 0.05 absolute per brief section 6, gamma* is the registry class default (no dephasing number in the paper); 13 ns delay, no spectral diffusion in the model"
+    tol_reason: "paper 0.975 +/- 0.006; 0.05 absolute, gamma* is the registry class default (no dephasing number in the paper); 13 ns delay, no spectral diffusion in the model"
     expect: pass
 fits: []
 history:

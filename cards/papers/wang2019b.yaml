@@ -53,13 +53,13 @@ reproduce:
   - item: tau_ebg
     class: M
     tol: {k_sigma: 2, rel: 0.1}
-    tol_reason: "paper 69.1 +/- 0.1 ps; 10 percent relative per brief section 6 for lifetimes, because F_P is the simulated design value (a lower bound of the real, imperfectly tuned dot) and tau_bare is the slab average"
+    tol_reason: "paper 69.1 +/- 0.1 ps; 10 percent relative for lifetimes, because F_P is the simulated design value (a lower bound of the real, imperfectly tuned dot) and tau_bare is the slab average"
     expect: fail
     reason: "expected, input choice not a model gap: the simulated design Purcell factor F_P = 20 (DR, Supp Fig 7) gives 51.9 ps against the measured 69.1 ps (ratio 15.7); the real dot is not perfectly tuned or placed."
   - item: eff_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.1}
-    tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute per brief section 6, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
+    tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
     expect: fail
     reason: "model 0.716 (envelope 0.69-0.74) vs 0.56 (0.10 tol): the design F_P = 20 overestimates beta for the real dot (see tau_ebg) and the DBR-asymmetry eta_out and assumed NA are not measured."
   - item: g2_ebg
@@ -71,7 +71,7 @@ reproduce:
   - item: hom_corr_13ns
     class: M
     tol: {k_sigma: 2, abs: 0.05}
-    tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute per brief section 6; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
+    tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
     expect: unavailable
     reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.951). The previous pass accepted 1.001 against 0.951 through abs 0.05, ten times the paper error"
   - item: hom_corr_2ns

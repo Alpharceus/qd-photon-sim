@@ -24,7 +24,7 @@ device:
     params:
       detuning_meV: {value: 0.83, unit: meV, tag: V, where: "text p.1 abstract and p.3 (optimal pump detuning +0.83 meV, blue; paper convention Delta = omega_L - omega_X)"}
       area_pi: {value: 8.46, unit: pi, tag: V, where: "text p.3 (pump area 8.46 pi, the setup limit; 7.24 pi used for the detuning scan)"}
-      fwhm_ps: {value: 11.88, unit: ps, tag: DR, where: "text p.2 (Gaussian pulses, 'FWHM of the electric field amplitude is 16.8 ps'); intensity FWHM = 16.8 / sqrt(2) = 11.9 ps (brief section 2, PITFALL 2), the registry convention"}
+      fwhm_ps: {value: 11.88, unit: ps, tag: DR, where: "text p.2 (Gaussian pulses, 'FWHM of the electric field amplitude is 16.8 ps'); intensity FWHM = 16.8 / sqrt(2) = 11.9 ps, the registry convention"}
       f_rep_MHz: {value: 76.2, unit: MHz, tag: V, where: "text p.2 (repetition rate 76.2 MHz)"}
   setup:
     kind: lens_fibre_det

@@ -75,7 +75,7 @@ reproduce:
   - item: g2_super_raw
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "brief section 6 level: g2 +/-0.02 at model level (the paper +/-0.001 is statistical only); the raw value integrates a full period against the Poisson peak, so it contains the re-excitation and the phonon-pumped background that the model computes"
+    tol_reason: "model-level tolerance: g2 +/-0.02 at model level (the paper +/-0.001 is statistical only); the raw value integrates a full period against the Poisson peak, so it contains the re-excitation and the phonon-pumped background that the model computes"
     expect: fail
     reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (each laser alone gives about a tenth of the SUPER intensity, text p.3) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
   - item: rate_raw_super

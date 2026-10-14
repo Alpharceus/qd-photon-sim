@@ -73,7 +73,7 @@ reproduce:
   - item: hom_X_raw
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.03 (0.06); the paper raw value includes the 0.95 interferometer mode overlap, now carried by setup.eps_int = 0.05 (review item 14)"
+    tol_reason: "2 sigma of the printed 0.03 (0.06); the paper raw value includes the 0.95 interferometer mode overlap, now carried by setup.eps_int = 0.05"
     expect: pass-envelope
     reason: "FX4: central model 0.264 vs 0.44 +/- 0.03 is far outside 2 sigma; 0.44 lies inside the envelope [0.183, 0.4455] only at its upper tip, so it is not a pass"
 fits:

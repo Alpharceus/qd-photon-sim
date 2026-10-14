@@ -35,7 +35,7 @@ device:
     kind: lens_fibre_det
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
-      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1 per brief section 5; resonant reference in cross-polarisation)"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
 
 reported:
   - {id: g2_res, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
@@ -47,12 +47,12 @@ reproduce:
   - item: g2_res
     class: M
     tol: {abs: 0.02}
-    tol_reason: "brief section 6 level +/-0.02 on g2; the paper's +/-0.002 is statistical only; F_P and NA are class ranges"
+    tol_reason: "model-level tolerance +/-0.02 on g2; the paper's +/-0.002 is statistical only; F_P and NA are class ranges"
     expect: pass
   - item: Ms_res
     class: M
     tol: {k_sigma: 2, abs: 0.05}
-    tol_reason: "brief section 6 level +/-0.05 on Ms (the paper's +/-0.001 is dominated by the model-level tolerance); gamma* is the registry class default"
+    tol_reason: "model-level tolerance +/-0.05 on Ms (the paper's +/-0.001 is dominated by the model-level tolerance); gamma* is the registry class default"
     expect: fail
     reason: "model 0.58 (envelope 0.39-0.66) vs 0.915: the intrinsic overlap Gamma/(Gamma+gamma*) with the unfiltered phonon factor and the F_P class range 2-10 (unstated) is far below the paper value; the paper filters/collects essentially ZPL photons and reports near-unity overlap; model gap plus an unknown F_P input."
 

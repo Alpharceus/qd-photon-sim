@@ -22,7 +22,7 @@ device:
       charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton X; trion under other detunings not carded)"}
   structure:
     kind: bulk_planar
-    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top (review item 4); pillar D 1.58 um (Fig 1 caption) is not modelled
+    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top; pillar D 1.58 um (Fig 1 caption) is not modelled
   drive:
     kind: super
     params:
@@ -56,7 +56,7 @@ reproduce:
   - item: g2_SUPER
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "brief section 6: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
+    tol_reason: "model-level tolerance: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
     expect: pass-envelope
     reason: "FX4: central model 0.789 misses 0.03 +/- 0.02 by far; the paper value lies inside the input envelope [0.0036, 26] only, which spans four orders of magnitude, so it is not a pass. R2 SUPCMP: at the areas that maximise the inversion (inversion_SUPER_opt) the raw model g2 is 0.0042 (g2_SUPER_at_opt), also outside 0.03 +/- 0.02, so evaluating at the optimum does not discriminate either"
   - item: inversion_SUPER_pred

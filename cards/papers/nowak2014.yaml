@@ -51,7 +51,7 @@ reproduce:
   - item: tau_X
     class: M
     tol: {k_sigma: 2, rel: 0.10}
-    tol_reason: "brief 6 lifetime window 10 % (the paper's 2 sigma is only 0.06 ns = 7 %); tau_ref is entered as the bare lifetime, so the test is the engine's Purcell factor from Q 1300 and the 4.1 um equivalent pillar; the paper's own theory (1.1) and measurement (0.8) differ by 30 % in F_P"
+    tol_reason: "model-level lifetime window 10 % (the paper's 2 sigma is only 0.06 ns = 7 %); tau_ref is entered as the bare lifetime, so the test is the engine's Purcell factor from Q 1300 and the 4.1 um equivalent pillar; the paper's own theory (1.1) and measurement (0.8) differ by 30 % in F_P"
     expect: fail
     reason: "model 715 ps vs 820 ps (105 ps off, tolerance 82 ps): the engine F_P = 1.03 (see F_P_theory) agrees with the paper's THEORY 1.1, not with the measured 0.8 (tau_ref 1.45 ns / 1.8 = 806 ps); a model-versus-measurement gap of the paper's own, not a missing input."
   - item: F_P_theory

@@ -20,7 +20,7 @@ device:
       charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton X; trion under other detunings not carded)"}
   structure:
     kind: bulk_planar
-    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top (review item 4); pillar D 1.58 um (Fig 1 caption) is not modelled
+    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top; pillar D 1.58 um (Fig 1 caption) is not modelled
   drive:
     kind: tpe
     params:

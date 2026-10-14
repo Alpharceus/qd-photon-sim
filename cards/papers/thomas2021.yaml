@@ -17,7 +17,7 @@ device:
       lambda_nm: {value: 924.82, unit: nm, tag: V, where: "text supplement (QD emission centred at 924.82 nm)"}
       charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton, device A3; charged exciton only for Fig 2 on Sample B, not carded)"}
       gamma_star_4K_ns: {value: 0.65, unit: "1/ns", tag: DR, where: "text p.4: resonant Ms = 0.915(1) (g2-corrected); inverted with I = Gamma/(Gamma + gamma*_repo), Gamma = (1 + F_P)/tau_bare at the MIDPOINT F_P = 6 of the unstated class range [2, 10] [E] and tau_bare 1.0 ns (registry class): Gamma = 7/ns, gamma*_repo = Gamma (1/0.915 - 1) = 0.65/ns. The F_P midpoint is an estimate, so the value inherits that uncertainty (F_P 2 -> 0.28, F_P 10 -> 1.02 /ns)"}
-      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured resonant coherence at the operating temperature (brief trap 3); the non-resonant a_ac slope would double count it"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured resonant coherence at the operating temperature; the non-resonant a_ac slope would double count it"}
   structure:
     kind: generic_cavity
     params:
@@ -28,7 +28,7 @@ device:
   drive:
     kind: phonon_assisted
     params:
-      detuning_meV: {value: 0.580, unit: meV, tag: DR, where: "text p.4 best-brightness point dlambda 0.4 nm at 924.82 nm: dE = 1340.6 meV x 0.4/924.82 = 0.580 meV (review item 5); paper convention Delta = omega_L - omega_X, blue positive"}
+      detuning_meV: {value: 0.580, unit: meV, tag: DR, where: "text p.4 best-brightness point dlambda 0.4 nm at 924.82 nm: dE = 1340.6 meV x 0.4/924.82 = 0.580 meV; paper convention Delta = omega_L - omega_X, blue positive"}
       area_pi: {range: [5.0, 20.0], unit: pi, tag: E, source: "absolute pulse area not stated: Fig 2 x-axis is relative intracavity area; class range from the registry phonon_assisted default [E]"}
       fwhm_ps: {value: 19.5, unit: ps, tag: V, where: "text p.4 (19.5 ps best-brightness point); convention (intensity vs field FWHM) not stated in the paper: taken as the pulse duration reported"}
       f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "text supplement (81 MHz repetition rate)"}
@@ -36,7 +36,7 @@ device:
     kind: lens_fibre_det
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
-      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1 per brief section 5; resonant reference in cross-polarisation)"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
 
 reported:
   - {id: g2_BFL, observable: g2_0, convention: raw, value: 0.046, err: 0.001, tag: DR, where: "text p.4 and abstract: P = 1 - g2(0) = 0.954 +/- 0.001 at dlambda 0.4 nm, tau 19.5 ps (g2 implied by purity)"}
@@ -60,19 +60,19 @@ reproduce:
   - item: g2_BFL
     class: M
     tol: {abs: 0.02}
-    tol_reason: "brief section 6: purity 0.954 with g2 +/-0.02 at model level; the paper's +/-0.001 is statistical only and is not used as the model tolerance"
+    tol_reason: "model-level tolerance: purity 0.954 with g2 +/-0.02 at model level; the paper's +/-0.001 is statistical only and is not used as the model tolerance"
     expect: fail
     reason: "model 0.18 (envelope 0.064-0.33 over F_P 2-10, area 5-20 pi) vs 0.046: the paper value sits below the whole envelope; re-excitation within the 19.5 ps pulse at the modelled areas is too high, and the absolute pulse area and Purcell factor are unstated inputs (E ranges)."
   - item: Ms_BFL
     class: C
     tol: {k_sigma: 2, abs: 0.05}
-    tol_reason: "brief section 6: I 0.909 +/-0.05 at model level (the paper's +/-0.004 is dominated by the model-level tolerance)"
+    tol_reason: "model-level tolerance: I 0.909 +/-0.05 at model level (the paper's +/-0.004 is dominated by the model-level tolerance)"
     expect: pass
     reason: "FX4: material.gamma_star_4K_ns (0.65 /ns) was inverted from the same paper's resonant Ms 0.915 (p.4), the same quantity at the same coherence, so Ms_BFL (0.909) is a calibration check, not an unfitted test; model 0.871 [0.782, 0.911]"
   - item: pQD_BFL
     class: M
     tol: {abs: 0.05}
-    tol_reason: "brief section 6 level +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
+    tol_reason: "model-level tolerance +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
     expect: fail
     reason: "model occupation 0.395 central (envelope 0.10-0.63) vs 0.77: the unknown absolute pulse area (5-20 pi class range) dominates the envelope; the central point is low and 0.77 lies above the envelope top 0.63."
 fits:

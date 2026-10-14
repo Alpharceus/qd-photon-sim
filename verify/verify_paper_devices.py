@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import copy
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -53,6 +54,41 @@ def null_value(observable: str):
     if observable.startswith("eta_"):
         return 1.0
     return None
+
+
+# Rendered paper text carries no pointer to an internal document (the Papers UI shows it; a user cannot follow "brief 6").
+# Rendered = every string of the /api/papers/<id> payload (meta, device, reported, series, reproduce, fits) except
+# meta.extraction (the repo path of the extraction record, never shown). history and YAML comments are not in the payload.
+POINTER_RE = re.compile(r"\bbrief\b|\.workers|devlib|\.py\b|\.md\b|fsim_core")
+
+
+def rendered_strings(paper):
+    """[(field path, string)] of the card text the Papers workspace / API payload can show."""
+    raw = paper.raw if isinstance(paper.raw, dict) else {}
+    out = []
+
+    def walk(v, path):
+        if isinstance(v, dict):
+            for k, x in v.items():
+                walk(x, path + [str(k)])
+        elif isinstance(v, (list, tuple)):
+            for i, x in enumerate(v):
+                walk(x, path + [str(i)])
+        elif isinstance(v, str):
+            out.append(("/".join(path), v))
+
+    for key in ("meta", "device", "reported", "series", "reproduce", "fits"):
+        v = raw.get(key)
+        if key == "meta" and isinstance(v, dict):
+            v = {k: x for k, x in v.items() if k != "extraction"}
+        walk(v, [key])
+    return out
+
+
+def pointer_leaks(papers):
+    """[(card id, field path, matched text)] for rendered strings that point at an internal document."""
+    return [(p.id, path, m.group(0)) for p in papers for path, txt in rendered_strings(p)
+            for m in [POINTER_RE.search(txt)] if m]
 
 
 def _num(v) -> str:
@@ -177,6 +213,12 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
     matched += int(not null_bad)
     print(f"{'PASS' if not null_bad else 'FAIL'} every M pass that the null model also passes is flagged weak"
           + (f"  ({len(null_bad)} unflagged: {', '.join(f'{a}/{b}' for a, b in null_bad)})" if null_bad else ""))
+    leaks = pointer_leaks(loaded)
+    n_rs = sum(len(rendered_strings(p)) for p in loaded)
+    total += 1
+    matched += int(not leaks)
+    print(f"{'PASS' if not leaks else 'FAIL'} no rendered paper-card string points at an internal document ({n_rs} strings checked)"
+          + "".join(f"\n    {a}: {b} -> {c!r}" for a, b, c in leaks))
     print(f"M discriminating passes: {m_pass - len(null_rows)}/{m_n} (M tests passing minus those the null model also passes; headline)")
     print(f"M tests (central within tolerance): {m_pass}/{m_n}")
     print(f"M pass-envelope (paper value inside the input envelope only, not a pass): {m_env}")
@@ -185,7 +227,7 @@ def run_cards(only=None, schema_only=False, jobs=1, directory=CARDS) -> int:
           f"envelope {r_tot['pass-envelope']}, fail {r_tot['fail']}, unavail {r_tot['unavailable']})")
     print("per-class item counts: " + ", ".join(f"{c}={c_tot[c]}" for c in PP.CLASSES))
     print(f"{matched}/{total} paper-device checks matched ledger")
-    return exit_code(reports, schema_ok=schema_fail == 0 and not null_bad)
+    return exit_code(reports, schema_ok=schema_fail == 0 and not null_bad and not leaks)
 
 
 # ------------------------------------------------------------------ self-test

@@ -16,9 +16,9 @@ device:
     kind: inas_gaas_sk
     params:
       lambda_nm: {value: 897.44, unit: nm, tag: V, where: "p.2 text (pulsed laser central wavelength; the emission wavelength is not stated separately)"}
-      tau_bare_ns: {value: 0.5878, unit: ns, tag: V, where: "p.2 text (587.8 ps decay at 28 K, >1 meV detuned; used as the bare-rate proxy per brief 6, it is NOT a bulk lifetime)"}
+      tau_bare_ns: {value: 0.5878, unit: ns, tag: V, where: "p.2 text (587.8 ps decay at 28 K, >1 meV detuned; used as the bare-rate proxy; it is NOT a bulk lifetime)"}
       gamma_star_4K_ns: {range: [0.0, 0.565], unit: "1/ns", tag: DR, where: "p.2 text: homogeneous width 1.91(7) GHz vs lifetime-limited 1.89 GHz, excess 0.02 GHz, upper end = +1 sigma (0.09 GHz) x 2 pi; gamma*_repo = 2 pi x excess width"}
-      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is taken at the operating temperature from the measured resonant linewidth (brief trap 3); the non-resonant a_ac slope would double count it"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is taken at the operating temperature from the measured resonant linewidth; the non-resonant a_ac slope would double count it"}
   structure:
     kind: micropillar
     params:
@@ -26,7 +26,7 @@ device:
       N_top: {value: 15, unit: "1", tag: V, where: "p.2 text / Fig 1 caption (15 upper DBR pairs)"}
       N_bot: {value: 25.5, unit: "1", tag: V, where: "p.2 text / Fig 1 caption (25.5 lower DBR pairs; the model truncates to 25)"}
       Q_measured: {value: 6124, unit: "1", tag: V, where: "p.2 text (quality factor measured to be 6124)"}
-      mode_area: {value: gaussian, unit: enum, tag: E, source: "mode volume is not given in the paper; Gaussian HE11 area (w0 = d/2.7) class default; the cylinder class is a vacuous upper-V envelope (review item 1)"}
+      mode_area: {value: gaussian, unit: enum, tag: E, source: "mode volume is not given in the paper; Gaussian HE11 area (w0 = d/2.7) class default; the cylinder class is a vacuous upper-V envelope"}
       r_factor: {value: 0.513, unit: "1", tag: A, source: "calibrated: F_P 6.3 / ideal 12.28 (engine F_P_peak at r=1)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "p.2 text (QD on cavity resonance at 7.8 K)"}
   drive:
@@ -47,7 +47,7 @@ device:
       eta_optics: {value: 0.6, unit: "1", tag: V, where: "p.2 text (optical path transmission ~60%)"}
       eta_fibre: {value: 0.72, unit: "1", tag: V, where: "p.2 text (single-mode fibre coupling ~72%)"}
       eta_det: {value: 0.33, unit: "1", tag: V, where: "p.2 text (detection efficiency ~33%)"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width, brief 3)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width)"}
 reported:
   - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text (fit of lifetime vs detuning, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
   - {id: tau_res, observable: tau_ps, value: 83.9, tag: V, where: "p.2 text / Fig 1c (7.8 K, on resonance)", note: "raw; detector time resolution ~63 ps; no error quoted"}
@@ -63,51 +63,51 @@ reproduce:
   - item: F_P_fit
     class: C
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the paper's own fit uncertainty 0.4 (so +/-0.8); structure.r_factor is calibrated to this number (review item 1), so agreement is by construction"
+    tol_reason: "2 sigma of the paper's own fit uncertainty 0.4 (so +/-0.8); structure.r_factor is calibrated to this number, so agreement is by construction"
     expect: pass
   - item: tau_res
     class: C
     tol: {rel: 0.10}
-    tol_reason: "brief 6 tolerance +/-10%; the paper quotes no error. Same calibrated r_factor as F_P_fit (tau_res = tau_bare/(1+F_P)), so a fitted item"
+    tol_reason: "model-level tolerance +/-10%; the paper quotes no error. Same calibrated r_factor as F_P_fit (tau_res = tau_bare/(1+F_P)), so a fitted item"
     expect: pass
   - item: extraction_first_lens
     class: M
     tol: {abs: 0.10}
-    tol_reason: "brief 6: +/-0.1 absolute on 0.66; the paper quotes no error and the chain factors (~33%, ~50%, ~60%, ~72%) are rounded. eta_out comes from the TMM mirror asymmetry and the Gaussian-NA model, not from the paper"
+    tol_reason: "model-level tolerance: +/-0.1 absolute on 0.66; the paper quotes no error and the chain factors (~33%, ~50%, ~60%, ~72%) are rounded. eta_out comes from the TMM mirror asymmetry and the Gaussian-NA model, not from the paper"
     expect: fail
     reason: "model 0.76 vs paper 0.66 (0.10 tol, 0.104 off): with r_factor calibrated to F_P 6.3 the beta is lower but the Gaussian-NA extraction overshoots; the paper's 0.66 is a back-corrected number with rounded chain factors."
   - item: eta_prep_96
     class: M
     tol: {abs: 0.05}
-    tol_reason: "the authors' estimate has no stated method or error; 5 percentage points is the size of phonon-induced loss for a ~3 ps pi pulse at ~8 K in the brief's InGaAs class, which the two-level pure-state model does not contain"
+    tol_reason: "the authors' estimate has no stated method or error; 5 percentage points is the size of phonon-induced loss for a ~3 ps pi pulse at ~8 K in the InGaAs class, which the two-level pure-state model does not contain"
     expect: pass
   - item: g2_raw
     class: M
     tol: {k_sigma: 2, abs: 0.005}
-    tol_reason: "brief 6 window 0.005-0.02 for re-excitation plus laser leak; paper 2 sigma is only 0.002, so the 0.005 absolute floor is used; the post-etalon laser leak (envelope 0-2.5%) adds 2 f_leak to the raw value"
+    tol_reason: "model-level window 0.005-0.02 for re-excitation plus laser leak; paper 2 sigma is only 0.002, so the 0.005 absolute floor is used; the post-etalon laser leak (envelope 0-2.5%) adds 2 f_leak to the raw value"
     expect: fail
     reason: "model 0.0255 vs 0.009: re-excitation in the F_P 6.3 pillar plus residual leak (envelope 0.016-0.039 does not reach 0.009); the paper's etalon-filtered leak and sub-ps timing are not fully modelled."
   - item: hom_raw_2p1ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "brief 6 +/-0.02; gamma* is entered from the measured linewidth (range), so this is near source-transcription, not an independent test of dephasing"
+    tol_reason: "model-level tolerance +/-0.02; gamma* is entered from the measured linewidth (range), so this is near source-transcription, not an independent test of dephasing"
     expect: pass-envelope
     reason: "FX4: central model 0.928 vs 0.964 +/- 0.003 misses the window (abs 0.02); 0.964 lies inside the gamma* envelope [0.882, 0.969] only at its tip, and gamma* is entered from the measured linewidth, so it is not a pass"
   - item: hom_corr_2p1ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "brief 6 +/-0.02 for the corrected value; compared with the model g2-corrected convention (V + g2)/(1 - g2); same near-ST caveat as the raw value"
+    tol_reason: "model-level tolerance +/-0.02 for the corrected value; compared with the model g2-corrected convention (V + g2)/(1 - g2); same near-ST caveat as the raw value"
     expect: pass
   - item: hom_raw_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "same tolerance as the 2.1 ns raw item (brief 6 +/-0.02)"
+    tol_reason: "same tolerance as the 2.1 ns raw item (model-level +/-0.02)"
     expect: pass-envelope
     reason: "FX4: central model 0.928 vs 0.959 +/- 0.003 misses the window (abs 0.02); 0.959 lies inside the gamma* envelope [0.882, 0.969] only, so it is not a pass"
   - item: hom_corr_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
-    tol_reason: "same tolerance as the 2.1 ns corrected item (brief 6 +/-0.02)"
+    tol_reason: "same tolerance as the 2.1 ns corrected item (model-level +/-0.02)"
     expect: pass
   - item: B_lens_pred
     class: P

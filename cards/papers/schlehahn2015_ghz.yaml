@@ -9,9 +9,9 @@ meta:
   read_level: V-full
   summary: "InGaAs QD microlens in a p-i-n diode, 10 K, cw 651 nm optical pump with the bias square-wave gated below the EL onset (tunnelling empties the dot at low bias): radiative lifetime 1.75 ns (TRPL), gated decay 270 ps, g2(0) 0.3 raw at 1 GHz (1 ns bins, ~300 ps HBT resolution)"
   notes:
-    - "GATED ESCAPE (brief 2.3, trap 4): the optical pump is cw; the electrical square wave only toggles tunnelling-out. The electrical_pulsed drive is used as the closest stand-in: the pump window is the high-bias half period (0.5 ns at 1 GHz) and the dark half carries the escape k_off. This is a CRUDE mapping of a cw pump gated by escape, not a validated model of that scheme."
+    - "GATED ESCAPE: the optical pump is cw; the electrical square wave only toggles tunnelling-out. The electrical_pulsed drive is used as the closest stand-in: the pump window is the high-bias half period (0.5 ns at 1 GHz) and the dark half carries the escape k_off. This is a CRUDE mapping of a cw pump gated by escape, not a validated model of that scheme."
     - "EL DECAY != RADIATIVE LIFETIME: 1.75 ns (TRPL at zero bias, no modulation) is the radiative lifetime and enters tau_bare_ns; the 270 ps decay of the gated emission is 1/(Gamma + k_off). k_off = 1/0.27 - 1/1.75 = 3.13/ns is DERIVED from these two paper numbers, so the 270 ps item is a calibration of drive.k_esc_off_ns; the gated decay is never used as the lifetime."
-    - "BINNED g2 (trap 6): 0.3 is the central-bin g2 of a 1 GHz histogram whose bin equals the period (1 ns), so neighbouring peaks (decay 3.7/ns) and the ~300 ps detector response leak into it; the engine observable is g2_binned (closed form g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} plus the IRF leak), not the peak-area g2. Its floor at g2_0 = 0 is already 0.16 (IRF-free), 0.2+ with the IRF."
+    - "BINNED g2: 0.3 is the central-bin g2 of a 1 GHz histogram whose bin equals the period (1 ns), so neighbouring peaks (decay 3.7/ns) and the ~300 ps detector response leak into it; the engine observable is g2_binned (closed form g2_0 (1 - e^{-gamma T/2}) + e^{-gamma T/2} plus the IRF leak), not the peak-area g2. Its floor at g2_0 = 0 is already 0.16 (IRF-free), 0.2+ with the IRF."
     - "PUMP: the optical pump power and the loading per period are not given, so mu is an E range and the g2 comparison is a prediction item only."
     - "NOT CARDED: optical pulse FWHM 2.13 ns (0.1 V) to 0.86 ns (1.1 V) at 82 MHz (the k_off(V) curve of the WKB tunnelling form: needs the field model); EL onset voltage; the max 3 GHz generator."
 device:
@@ -50,7 +50,7 @@ reproduce:
   - item: tau_EL_gated
     class: C
     tol: {rel: 0.05}
-    tol_reason: "calibration: k_esc_off_ns is derived from this decay and the lifetime, so 1/(Gamma + k_off) can only agree (brief 2.3); 5 % because no error is printed"
+    tol_reason: "calibration: k_esc_off_ns is derived from this decay and the lifetime, so 1/(Gamma + k_off) can only agree; 5 % because no error is printed"
     expect: pass
   - item: g2_binned_pred
     class: P

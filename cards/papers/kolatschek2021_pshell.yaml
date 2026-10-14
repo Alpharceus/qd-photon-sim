@@ -14,7 +14,7 @@ meta:
   notes:
     - "P-SHELL CHARGED LINE ONLY (see header). g2 0.0115 is a fit with a blinking envelope (blinking ~100 ns limits the rate to ~25 % of the unblinked case) normalised accordingly; the fitted values scatter 0.01-0.02 across pump powers (text p.5). The 40 K and 77 K points use a wider spectral window (0.1 nm instead of 0.04 nm)."
     - "Wavelength: the text gives only the p-shell (1207 nm) and that the line is blue of the cavity mode; entered as a range 1280-1301 nm [E]. Detuning from the mode: range 0-8 meV [E]. F_P: 12 (text p.3, DR)."
-    - "After review item 3 F_P is the paper value 12 (text p.3), eta_blink = 0.25 (blinking, V), so rate_4K is no longer a vacuous envelope pass: the model is ~2.6x high (9.3e5 vs 3.55e5). NOTE g2_4K passes with the abs 0.01 tolerance, which is weak against a model value of 0.002 (not changed; tolerances are never tuned)."
+    - "F_P is the paper value 12 (text p.3), eta_blink = 0.25 (blinking, V), so rate_4K is no longer a vacuous envelope pass: the model is ~2.6x high (9.3e5 vs 3.55e5). NOTE g2_4K passes with the abs 0.01 tolerance, which is weak against a model value of 0.002 (not changed; tolerances are never tuned)."
     - "The model has no temperature-dependent thermal escape to higher levels in this engine path, so the g2 vs T series is a test of whether the phonon/retention bookkeeping reproduces the rise from 0.0115 to 0.127; the paper gives no activation energy."
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "text p.5 (4 K; temperature increased to 40 K and 77 K for the series)"}

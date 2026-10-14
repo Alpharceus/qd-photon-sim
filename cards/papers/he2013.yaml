@@ -13,8 +13,8 @@ device:
     kind: ingaas_gaas
     params:
       lambda_nm: {value: 941.1, unit: nm, tag: V, where: "text p.2: s-shell resonant excitation at about 941.12 nm"}
-      tau_bare_ns: {value: 0.41, unit: ns, tag: DR, where: "text p.2 T1 (measured on this dot, includes the planar-cavity Purcell effect; used as the bare-rate input per review item 2)"}
-      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* entered from measured coherence; brief trap 3"}
+      tau_bare_ns: {value: 0.41, unit: ns, tag: DR, where: "text p.2 T1 (measured on this dot, includes the planar-cavity Purcell effect; used as the bare-rate input)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* entered from measured coherence"}
       gamma_star_4K_ns: {range: [0.0, 0.36], unit: 1/ns, tag: DR, where: "Supp CW T2/(2 T1) = 0.93(6): gamma*_repo = 2 x (1/T2 - 1/(2 T1)) = (1/T1)(1/0.87 - 1) = 0.36 /ns at the lower 1-sigma bound (0.93 - 0.06), 0 at T2 = 2 T1"}
   structure:
     kind: planar_dbr
@@ -56,7 +56,7 @@ reproduce:
   - item: tau_X
     class: C
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 20 ps; class C after review item 2 (tau_bare_ns is the measured 0.41 ns, so tau_X is a fitted/input item)"
+    tol_reason: "2 sigma of the printed 20 ps; class C (tau_bare_ns is the measured 0.41 ns, so tau_X is a fitted/input item)"
     expect: pass
   - item: g2_raw
     class: M
@@ -67,7 +67,7 @@ reproduce:
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.02 (0.04). Envelope over gamma* in [0, 0.36] /ns from the CW T2/(2T1) (review item 2); the Mach-Zehnder visibility 0.98 correction in the paper is not carried by the model, within the tolerance"
+    tol_reason: "2 sigma of the printed 0.02 (0.04). Envelope over gamma* in [0, 0.36] /ns from the CW T2/(2T1); the Mach-Zehnder visibility 0.98 correction in the paper is not carried by the model, within the tolerance"
     expect: pass
   - item: hom_raw
     class: M

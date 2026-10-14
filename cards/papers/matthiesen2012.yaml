@@ -32,7 +32,7 @@ device:
       NA: {value: 0.5, unit: "1", tag: V, where: "text p.2: 0.5 NA objective (effective NA raised by the super-SIL, handled in the structure)"}
       eta_pol: {value: 0.5, unit: "1", tag: A, source: "crossed polariser in collection on a linear dipole [A]; not tested here"}
 reported:
-  - {id: g2_0, note: "tautological for a two-level emitter (g2(0) = 0 at any Rabi frequency): not a ledger item after review item 13", observable: g2_0, convention: intrinsic, value: 0.01, err: 0.02, tag: V, where: "text p.5 / Fig 2d: g2(0) = 0.01 +/- 0.02 at Omega ~1.5 Gamma, after deconvolution from the detector instrument response (intrinsic convention)"}
+  - {id: g2_0, note: "tautological for a two-level emitter (g2(0) = 0 at any Rabi frequency): not a ledger item", observable: g2_0, convention: intrinsic, value: 0.01, err: 0.02, tag: V, where: "text p.5 / Fig 2d: g2(0) = 0.01 +/- 0.02 at Omega ~1.5 Gamma, after deconvolution from the detector instrument response (intrinsic convention)"}
   - {id: tau_T1, observable: tau_ps, value: 760.0, tag: V, where: "text p.5 / Supp fit parameters: T1 = 760 ps, fixed in the fits; no error stated"}
 reproduce:
   - item: tau_T1

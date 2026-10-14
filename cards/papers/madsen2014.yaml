@@ -62,7 +62,7 @@ reproduce:
   - item: tau_X_QD1
     class: M
     tol: {rel: 0.15}
-    tol_reason: "no error printed; 15 % is the brief 10 % lifetime tolerance widened for the bi-exponential (dark-state) decay and the unknown bulk lifetime; the cavity inputs are E envelopes"
+    tol_reason: "no error printed; 15 % is the model-level 10 % lifetime tolerance widened for the bi-exponential (dark-state) decay and the unknown bulk lifetime; the cavity inputs are E envelopes"
     expect: fail
     reason: "input envelope too narrow plus a model gap: model 56 ps (envelope 31-820 ps) vs 1610 ps. At Q = 300 the class F_P(0) is ~30 (V/(lambda/n)^3 = 0.7), so even the least-coupled corner (overlap 0.05, F_bg 0.3, detuned) keeps F_P L above ~1; the paper's QD1 is inhibited (effectively F_P L ~ 0, leaky rate < bulk), which needs an overlap of a few 1e-3 that the chosen E range did not reach. Recorded as observed (inputs not changed after the run); a lower overlap bound and the bulk lifetime of this sample would be needed for an informative test."
 fits: []

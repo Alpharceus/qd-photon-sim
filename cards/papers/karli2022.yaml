@@ -18,7 +18,7 @@ device:
       lambda_nm: {value: 798.66, unit: nm, tag: V, where: "text p.2-3 / Fig 2: neutral exciton X at 798.66 nm (extraction record)"}
       tau_bare_ns: {value: 0.1651, unit: ns, tag: V, where: "text p.4: monoexponential decay 165.1(6) ps, measured in the device (planar cavity); used as the effective bare lifetime, calibration"}
       E_b_meV: {value: 4.0, unit: meV, tag: V, where: "App. Sec V B / Fig 4: 3-level run with E_B(XX) = 4 meV (SUPER still works); two-level SUPER does not use it"}
-      gamma_star_4K_ns: {range: [0.0, 3.04], unit: "1/ns", tag: E, source: "no dephasing number in the paper (its model has none); registry droplet class range 0-2 ueV (brief 4)"}
+      gamma_star_4K_ns: {range: [0.0, 3.04], unit: "1/ns", tag: E, source: "no dephasing number in the paper (its model has none); registry droplet class range 0-2 ueV"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is an envelope at the quoted 8 K; no T slope measured"}
   structure:
     kind: bulk_planar
@@ -68,13 +68,13 @@ reproduce:
     tol: {abs: 0.03}
     tol_reason: "R2 SUPCMP (pulse-shaper model): the paper 97% is the maximum of its two-level, phonon-free, decay-free (von Neumann) occupation map over the Fig 2b window, so the item is the model maximum over Delta2 in [-11.2, -9.2] meV and T2 in [0, 1] with the paper's own pulse construction (broadband spectrum x two-Gaussian field mask, Sec V B), phonons and decay off, started from |G>. abs 0.03 = the stated '~97%' rounded to the percent; not tuned to the result"
     expect: pass
-    reason: "R2 Karli: Eq. (2) is in energy units (meV), Fable r2-karli-pulse-answer.md: alpha~ = 470 pi is the spectral integral over ENERGY in meV (Reiter/Axt units), so (1/2 pi) Int Omega~ f exp(-iEt/hbar) dE is hbar Omega(t) in meV; the rad/ps construction was short by 1/hbar = 1.519. With it the model maximum over the Fig 2b window is 0.988 at Delta2 = -11.2 meV (the window edge, not widened) and T2 = 0.78, against the paper 0.97 (within abs 0.03); line 1 is 16.33 pi at T1 = 0.5. The 5 % is a field weight between the two line centres; T~1 = sqrt(T1)"
+    reason: "R2 Karli: Eq. (2) is in energy units (meV): alpha~ = 470 pi is the spectral integral over ENERGY in meV (Reiter/Axt units), so (1/2 pi) Int Omega~ f exp(-iEt/hbar) dE is hbar Omega(t) in meV; the rad/ps construction was short by 1/hbar = 1.519. With it the model maximum over the Fig 2b window is 0.988 at Delta2 = -11.2 meV (the window edge, not widened) and T2 = 0.78, against the paper 0.97 (within abs 0.03); line 1 is 16.33 pi at T1 = 0.5. The 5 % is a field weight between the two line centres; T~1 = sqrt(T1)"
     optimum:
       observable: inversion
       reduction: max
       solver: {phonons: "off", radiative: "off"}
       overrides:
-        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option, slm_pulse.py)"}
+        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option)"}
         drive.slm_T1: {value: 0.5, unit: "1", tag: V, where: "Table II / text p.3: T1 = 0.5 fixed (15.5 uW); intensity transmission, the field mask carries sqrt(T1) (App. Sec V B)"}
       scan:
         - {name: delta2, path: drive.delta2_meV, window: [-11.2, -9.2], n: 21, unit: meV, tag: V, where: "Fig 2b theory map: the Delta2 axis spans about -11.2 to -9.2 meV (ticks -11, -10.5, -10, -9.5), read off the figure axis (orchestrator, PDF p.3); 21 points = 0.1 meV steps [DR]"}
@@ -89,7 +89,7 @@ reproduce:
       reduction: max
       solver: {phonons: "on", radiative: "off"}
       overrides:
-        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option, slm_pulse.py)"}
+        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option)"}
         drive.slm_T1: {value: 0.5, unit: "1", tag: V, where: "Table II / text p.3: T1 = 0.5 fixed (15.5 uW); intensity transmission, the field mask carries sqrt(T1) (App. Sec V B)"}
       scan:
         - {name: delta2, path: drive.delta2_meV, window: [-11.2, -9.2], n: 21, unit: meV, tag: V, where: "Fig 2b theory map: the Delta2 axis spans about -11.2 to -9.2 meV (ticks -11, -10.5, -10, -9.5), read off the figure axis (orchestrator, PDF p.3); 21 points = 0.1 meV steps [DR]"}

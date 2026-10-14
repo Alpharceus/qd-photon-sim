@@ -39,7 +39,7 @@ device:
     params:
       NA: {value: 0.75, unit: "1", tag: V, where: "Methods (raw text p.10): microscope objective NA 0.75"}
 reported:
-  - {id: extraction_raw, note: "same measurement as extraction_corrected (X-only raw vs charged-exciton-corrected); not a ledger item after review item 10", observable: B_first_lens, value: 0.30, tag: V, where: "text p.6 (RAW: X-only, 24 MHz / 76 MHz = 0.3 photons per pulse at the first lens, setup efficiency ~1 %, background subtracted; no error given)"}
+  - {id: extraction_raw, note: "same measurement as extraction_corrected (X-only raw vs charged-exciton-corrected); not a ledger item", observable: B_first_lens, value: 0.30, tag: V, where: "text p.6 (RAW: X-only, 24 MHz / 76 MHz = 0.3 photons per pulse at the first lens, setup efficiency ~1 %, background subtracted; no error given)"}
   - {id: extraction_corrected, observable: eta_extract, value: 0.42, tag: V, where: "text p.6 / abstract (CORRECTED for the ~1/4 of captures that form X-)"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.36, tag: V, where: "text p.6 / Fig 4c (RAW: filtered X line near saturation, Si APD)"}
   - {id: g2_corrected, observable: g2_0, value: 0.12, tag: V, where: "text p.6 / Fig 4c caption (CORRECTED for the finite APD time response; residual is nanowire-tail background)"}
@@ -48,7 +48,7 @@ reproduce:
   - item: extraction_corrected
     class: R
     tol: {abs: 0.05}
-    tol_reason: "no error printed; half the +/- 0.1 of brief section 6, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
+    tol_reason: "no error printed; half the +/- 0.1 of the model-level tolerance, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
     expect: pass
     reason: "FX4: the bottom-mirror R = 0.30 was chosen by the paper itself so that its own theory matches 42 percent, so the comparison is model against the paper's tuned theory (class R, not a test); model 0.378"
   - item: g2_raw

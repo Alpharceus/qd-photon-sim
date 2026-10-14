@@ -18,7 +18,7 @@ device:
       tau_bare_ns: {value: 0.408, unit: ns, tag: DR, where: "text p.3: lifetime-limited homogeneous linewidth 0.39(2) GHz, T1 = 1/(2 pi 0.39 GHz) = 0.408 ns (the lifetime itself is not printed); measured in the planar cavity, entered as the effective bare lifetime"}
       gamma_star_4K_ns: {value: 0.565, unit: "1/ns", tag: DR, where: "text p.3 / Fig 3b: Lorentzian homogeneous linewidth 0.48(5) GHz vs lifetime limit 0.39(2) GHz: excess 0.09 GHz, gamma*_repo = 2 pi 0.09e9 /s = 0.565 /ns (error band of the excess is +/-0.054 GHz, i.e. gamma* 0.04-1.0 /ns)"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured linewidth at the experiment temperature; no slope measured"}
-      alpha_ps2: {value: 0.022, unit: ps^2, tag: V, where: "Fig 2 caption: J(w) = alpha w^3 exp[-(w/w_c)^2] with alpha = 0.022 (printed 'ps^-2'; J(w) in 1/ps with w in 1/ps requires alpha in ps^2, Ramsay-class 0.027 ps^2, brief 2.2), pinned in place of the deformation-potential computation"}
+      alpha_ps2: {value: 0.022, unit: ps^2, tag: V, where: "Fig 2 caption: J(w) = alpha w^3 exp[-(w/w_c)^2] with alpha = 0.022 (printed 'ps^-2'; J(w) in 1/ps with w in 1/ps requires alpha in ps^2, Ramsay-class 0.027 ps^2), pinned in place of the deformation-potential computation"}
       l_xy_nm: {value: 3.613, unit: nm, tag: DR, where: "Fig 2 caption: w_c = 2 /ps; registry cutoff exp[-(E/E_c)^2] with E_c = hbar sqrt2 c_s/l gives l = sqrt2 c_s / w_c = 1.4142 * 5110 m/s / 2e12 /s = 3.613 nm (registry c_s = 5110 m/s)"}
       l_z_nm: {value: 3.613, unit: nm, tag: DR, where: "same cutoff as l_xy_nm (single confinement length)"}
   structure:

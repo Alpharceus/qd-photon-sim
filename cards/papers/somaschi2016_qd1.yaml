@@ -16,7 +16,7 @@ device:
     kind: ingaas_gaas
     params:
       tau_bare_ns: {value: 1.3, unit: ns, tag: V, where: "p.3 text (bulk exciton lifetime of 1.3 ns assumed for F_P)"}
-      gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "no pure-dephasing number in the main text; registry InGaAs class range 0-1 ueV (brief 4)"}
+      gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "no pure-dephasing number in the main text; registry InGaAs class range 0-1 ueV"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "T = 4 K equals the reference temperature; no slope measured"}
   structure:
     kind: generic_cavity
@@ -30,12 +30,12 @@ device:
     params:
       pump: {value: 2.45, unit: "1", tag: V, where: "text p.3 / Fig 2a caption (g2 at 2.45 P_sat)"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "extraction drive.pulse_width_ps: 3 ps non-resonant pulses; rectangular window of that length is an assumption [A]"}
-      tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps (brief 2.3)"}
+      tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps"}
       f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: E, source: "etalon filtering of the collected light is stated for the resonant HOM (p.4); assumed the same for QD1, and the 110 ueV pillar mode also filters the sideband (brief 3)"}
+      zpl_filter: {value: true, unit: "", tag: E, source: "etalon filtering of the collected light is stated for the resonant HOM (p.4); assumed the same for QD1, and the 110 ueV pillar mode also filters the sideband"}
 reported:
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.024, err: 0.007, tag: V, where: "text p.3 / Fig 2a caption (QD1 at 2.45 P_sat, 3 ps non-resonant)"}
   - {id: M_raw, observable: hom_I, convention: raw, value: 0.74, err: 0.07, tag: V, where: "text p.4 (M of QD1 non-resonant without g2 correction)"}

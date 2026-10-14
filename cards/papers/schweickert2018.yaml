@@ -16,7 +16,7 @@ device:
       E_b_meV: {value: 3.53, unit: meV, tag: DR, where: "text p.3: laser at 793.8 nm detuned 0.9 nm from the XX photon (~795 nm); laser - XX photon = E_b/2 = 1.77 meV => E_b = 3.53 meV (derivation ours; the paper does not print E_b)"}
       tau_bare_ns: {value: 0.21, unit: ns, tag: DR, where: "text p.3: X lifetime ~210 ps (approx), used as the effective bare lifetime in the bulk_planar structure (no Purcell factor in the paper); calibrated, see fits"}
       gamma_xx_ratio: {value: 1.68, unit: "1", tag: DR, where: "text p.3: T1(X)/T1(XX) = 210 ps / 125 ps = 1.68 (XX is not Purcell enhanced in the model, so this is Gamma_XX/Gamma_X)"}
-      gamma_star_4K_ns: {range: [0.0, 3.04], unit: 1/ns, tag: E, source: "pure dephasing is not reported; registry class range for the droplet GaAs dot (brief section 4); only the P-class HOM prediction depends on it"}
+      gamma_star_4K_ns: {range: [0.0, 3.04], unit: 1/ns, tag: E, source: "pure dephasing is not reported; registry class range for the droplet GaAs dot; only the P-class HOM prediction depends on it"}
   structure:
     kind: bulk_planar
     params:
@@ -37,7 +37,7 @@ device:
       coinc_window_ns: {value: 5.0, unit: ns, tag: V, where: "text p.3 (5 ns coincidence window, about 40x the XX lifetime)"}
       dark_cps: {range: [0.0056, 0.017], unit: 1/s, tag: V, where: "abstract / text p.2: SSPD dark count rates 0.0056 and 0.017 /s (two detectors; envelope over both)"}
 reported:
-  - {id: g2_XX_raw, note: "XX channel not modelled (the solver reports the X-line stream); not a ledger item after review item 11", observable: g2_0, convention: raw, value: 7.5e-5, err: 1.6e-5, tag: V, where: "abstract / text p.3 / Fig 3: XX-photon g2(0) raw, no background subtraction (21 coincidences vs 279171 per side peak). NOTE the paper photon is XX; the solver reports the X-line stream of the TPE cascade"}
+  - {id: g2_XX_raw, note: "XX channel not modelled (the solver reports the X-line stream); not a ledger item", observable: g2_0, convention: raw, value: 7.5e-5, err: 1.6e-5, tag: V, where: "abstract / text p.3 / Fig 3: XX-photon g2(0) raw, no background subtraction (21 coincidences vs 279171 per side peak). NOTE the paper photon is XX; the solver reports the X-line stream of the TPE cascade"}
   - {id: tau_X, observable: tau_ps, value: 210.0, tag: V, where: "text p.3: X lifetime ~210 ps (approx, accuracy limited by 20 ps jitter), no error given"}
 reproduce:
   - item: tau_X

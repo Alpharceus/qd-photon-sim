@@ -67,7 +67,7 @@ reproduce:
   - item: inversion_sim
     class: R
     tol: {abs: 0.10}
-    tol_reason: "brief section 6: inversion +/-0.05-0.1 for phonon-driven schemes; the paper 0.60 is its own exact path-integral number for rectangular spectral boxes (0.4 meV) while the model uses Gaussian pulses (0.5 meV) and a weak-coupling dressed-state phonon solver, so 0.1 absolute"
+    tol_reason: "model-level tolerance: inversion +/-0.05-0.1 for phonon-driven schemes; the paper 0.60 is its own exact path-integral number for rectangular spectral boxes (0.4 meV) while the model uses Gaussian pulses (0.5 meV) and a weak-coupling dressed-state phonon solver, so 0.1 absolute"
     expect: pass
     reason: "FX4: 0.60 is the paper's own path-integral simulation, so the comparison is model against the paper's simulation (class R, not a test); model 0.649 [Gaussian pulses vs the paper's rectangular spectral boxes]"
   - item: inversion_meas

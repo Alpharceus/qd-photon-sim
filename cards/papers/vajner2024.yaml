@@ -46,7 +46,7 @@ reported:
   - {id: g2_XX, observable: g2_XX, value: 0.005, err: 0.004, tag: V, where: "text p.8 (body): XX g2(0) = 0.005(4); the abstract prints 0.015(1) for XX", note: "raw fit as above; the model g2_XX has only the intrinsic convention (no background channel for the XX stream)"}
   - {id: Fprep_XX_rabi, observable: eta_prep, value: 0.82, err: 0.04, tag: V, where: "text p.6: preparation fidelity 82(4)% for XX from the exponentially damped Rabi fit extrapolated to zero power", note: "the damping (extra charges, trion formation) is removed by the extrapolation"}
   - {id: Fprep_XX_xcorr, observable: eta_prep, value: 0.81, err: 0.02, tag: V, where: "text p.8-9 / Fig 3b: 81(2)% at pi power from the XX-X cross-correlation, polarisation and blinking corrected"}
-  - {id: hom_XX_4ns, observable: hom_XX, value: 0.357, err: 0.03, tag: DR, where: "text p.10: V_4ns = 35(3)% raw area ratio; g2 correction (V + g2)/(1 - g2) with the XX g2 0.005 (p.8, brief 2.1) gives 0.357"}
+  - {id: hom_XX_4ns, observable: hom_XX, value: 0.357, err: 0.03, tag: DR, where: "text p.10: V_4ns = 35(3)% raw area ratio; g2 correction (V + g2)/(1 - g2) with the XX g2 0.005 (p.8) gives 0.357"}
   - {id: hom_XX_12p5ns, observable: hom_XX, value: 0.2965, err: 0.02, tag: DR, where: "text p.10: V_raw = 29(2)% over the full 12.5 ns window; same g2 correction (+0.0065)"}
   - {id: hom_XX_postsel, observable: hom_XX, value: 0.73, err: 0.06, tag: V, where: "text p.12: post-selected HOM 73(6)% (fit with central dip and blinking)", note: "not a ledger item: temporal post-selection is not modelled"}
 reproduce:
