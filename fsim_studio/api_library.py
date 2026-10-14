@@ -689,7 +689,7 @@ def _zhao_g2(card, doc):
              f"quiet = F_pump {ZHAO_F_QUIET} [E].")
     return _ov("zhao", "E", ["sde.QDLaserParams", "sde.find_threshold", "sde.g2_vs_pump"], label,
                series=[{"name": "simulated g2 against pump (SE)", "x": pumps, "y": y, "err": se, "mode": "markers"}],
-               params_source="QDLaserParams() defaults, seed 42",
+               params_source="the laser model's default parameters, random seed 42",
                readouts={"sigma": sig, "sigma_committed": sig_csv, "verdict": verdict,
                          "verdict_source": "out/zhao/zhao_fit_comparison.csv"})
 
