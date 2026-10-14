@@ -371,7 +371,7 @@ def polish_checks(c, app, jm, tmp, direct_h):
         check("N1 nanowire envelope run -> immediate 400 {kind: unsupported, message} (no job, no KeyError 'g2')",
               r.status_code == 400 and j.get("kind") == "unsupported" and "job_id" not in j
               and j.get("message") == jobs.NANOWIRE_ENVELOPE_UNSUPPORTED
-              and "g2_op/T_j" in j["message"] and "Results" in j["message"] and dt < 5.0,
+              and "operating-point curves" in j["message"] and "Results" in j["message"] and dt < 5.0,
               f"{r.status_code} {str(j)[:120]} in {dt:.2f} s")
         d_pl = DeviceDesign.load(str(ROOT / "cards" / "nitride-cavity-set-design.yaml"))
         exc = ValueError("evaluate_envelope: every sample in the ranged box violates the F8 loading domain "

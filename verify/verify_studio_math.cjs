@@ -40,6 +40,15 @@ const setTheme = (page, t) => page.evaluate((x) => { document.documentElement.da
 
 /** Ids of every registry parameter and observable (the snake_case names a user must never read as text). */
 let REG_IDS = new Set();
+/** Basenames of the repo's own Python modules and packages: a dotted path that starts with one is code, never UI copy (FIN7). */
+const REPO_MODS = (() => {
+  const out = new Set();
+  for (const d of ["fsim_core", "fsim_studio"]) {
+    out.add(d);
+    try { for (const e of fs.readdirSync(path.join(ROOT, d), { withFileTypes: true })) { if (e.isDirectory() && !/^(__|\.|web$|node_modules)/.test(e.name)) out.add(e.name); else if (e.name.endsWith(".py") && !e.name.startsWith("__")) out.add(e.name.slice(0, -3)); } } catch { /* tree absent */ }
+  }
+  return [...out].filter((m) => m.length >= 3);
+})();
 async function loadIds() {
   const reg = await (await fetch(`${BASE}/api/compose/registry`)).json();
   const ids = new Set();
@@ -50,8 +59,9 @@ async function loadIds() {
 
 /** Visible text nodes under `sel` (not the hidden MathML copy, not inputs/code) that show a raw `$`, a backslash, or a registry id. */
 async function rawText(page, sel) {
-  return page.evaluate(([s, idList]) => {
+  return page.evaluate(([s, idList, mods]) => {
     const ids = new Set(idList);
+    const modRe = new RegExp("^(?:" + mods.join("|") + ")$");
     const root = document.querySelector(s) || document.body;
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const bad = [];
@@ -62,14 +72,14 @@ async function rawText(page, sel) {
       const el = n.parentElement;
       if (!el || el.closest(".katex-mathml, script, style, code, pre, textarea, option, .id-v, svg")) continue;
       if (!el.getClientRects().length) continue;
-      // dotted code paths (fsim_core.compose.validate_spec, dbr.penetration_depth) are references, not parameter names
-      const t = v.replace(/[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+/g, " ");
+      // only non-code dotted text (e.g. "e.g.", "i.e.") is exempt here; a dotted path that starts with a repo module is code, and the FIN7 check owns it
+      const t = v.replace(/[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+/g, (m) => (modRe.test(m.split(".")[0]) ? m : " "));
       let hit = (t.match(/\$|\\/) || [])[0];
       if (!hit) for (const w2 of t.match(/\b[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+\b/g) || []) if (ids.has(w2)) { hit = w2; break; }
       if (hit) bad.push(`${hit} in "${v.trim().slice(0, 50)}"`);
     }
     return bad;
-  }, [sel, [...REG_IDS]]);
+  }, [sel, [...REG_IDS], REPO_MODS]);
 }
 
 async function waitRun(page, timeout = 120000) {
@@ -371,13 +381,20 @@ async function waitRun(page, timeout = 120000) {
       page = await newPage();
       const cards = await (await fetch(`${BASE}/api/cards`)).json();
       const camps = await (await fetch(`${BASE}/api/campaigns`)).json();
+      const libCards = await (await fetch(`${BASE}/api/params`)).json();
       const routes = ["#/overview", `#/design/${cards.find((c) => c.kind === "design").name}`, "#/compose", "#/papers", "#/compare",
         ...camps.filter((c) => c.kind === "campaign" || c.kind === "collection").flatMap((c) => ["verdict", "explore", "provenance"].map((t) => `#/results/${c.id}/${t}`)),
         ...["spectral", "cascade", "band", "va-fit", "cw-g2", "pulse-counting", "lindblad", "phonon", "transport", "laser"].map((t) => `#/explain/${t}`),
-        "#/story/rt-single-photons/1", "#/story/rt-single-photons/5", "#/library", "#/nonexistent"];
+        "#/story/rt-single-photons/1", "#/story/rt-single-photons/5", "#/library", ...libCards.map((c) => `#/library/${encodeURIComponent(c.name)}`), "#/nonexistent"];
       const PY = String.raw`\b\w+\.py\b`, DOC = "docstring";
       const SNAKE = String.raw`(?<![\w./\-])[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+(?![\w/\-])(?!\.[A-Za-z])`;
-      const bad = [];
+      const bad = [], bad7 = [];
+      // FIN7: no developer text in visible text, title attributes or aria-labels (<code> is scanned too; the allowlist below is empty on purpose)
+      const CODE7 = [String.raw`\bfsim_\w*`, String.raw`\.py\b`, String.raw`(?<![\w.])[A-Za-z_]\w*\(\)`, String.raw`(?<![\w.\-/])(?:${REPO_MODS.join("|")})\.[A-Za-z_]\w*`];
+      const ALLOW7 = [];
+      // The one structural allowlist: the Provenance tab quotes a campaign manifest verbatim (file names with their hashes, and the raw
+      // JSON). It is recorded data inside <code> / <pre>, not UI copy; nothing else is exempt.
+      const ALLOW_SEL7 = ".prov-hash code, pre.manifest-json";
       for (const r of routes) {
         await page.goto(`${BASE}/${r}`, { waitUntil: "domcontentloaded" });
         await page.waitForSelector("#workspace > *", { timeout: 30000 }).catch(() => {});
@@ -397,8 +414,28 @@ async function waitRun(page, timeout = 120000) {
           return out;
         }, [PY, DOC, SNAKE]);
         for (const h2 of hits) bad.push(`${r}: ${h2}`);
+        const hits7 = await page.evaluate(([pats, allow, allowSel]) => {
+          const res = pats.map((p) => new RegExp(p)), al = allow.map((p) => new RegExp(p));
+          const test = (v) => { for (const re of res) { const m = v.match(re); if (m && !al.some((a) => a.test(m[0]))) return m[0]; } return null; };
+          const out = [];
+          const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          let n;
+          while ((n = w.nextNode())) {
+            const v = n.nodeValue, el = n.parentElement;
+            if (!v || !v.trim() || !el || el.closest(".katex-mathml, script, style, textarea") || el.closest(allowSel) || !el.getClientRects().length) continue;
+            const m = test(v);
+            if (m) out.push(`${m} in "${v.trim().slice(0, 60)}"`);
+          }
+          for (const el of document.body.querySelectorAll("[title], [aria-label]")) {
+            for (const a of ["title", "aria-label"]) { const v = el.getAttribute(a); const m = v && test(v); if (m) out.push(`${m} in ${a}="${v.slice(0, 60)}"`); }
+          }
+          return out;
+        }, [CODE7, ALLOW7, ALLOW_SEL7]);
+        for (const h2 of hits7) bad7.push(`${r}: ${h2}`);
       }
       check(`FIN3: no x.py file name, "docstring" or snake_case identifier in the visible text of ${routes.length} routes (outside <code>)`, bad.length === 0, `${bad.length}: ${bad.slice(0, 4).join(" | ")}`);
+      if (bad7.length) console.log(`FIN7 hits (all ${bad7.length}):\n  ${[...new Set(bad7)].join("\n  ")}`);
+      check(`FIN7:no fsim_* module path, .py file, name() call or repo-module dotted path in the visible text, titles or aria-labels of ${routes.length} routes (<code> included)`, bad7.length === 0, `${bad7.length}: ${bad7.slice(0, 4).join(" | ")}`);
       await page.context().close();
     }
 

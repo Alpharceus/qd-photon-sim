@@ -201,7 +201,7 @@ export function buildRidge(spec, ctx) {
   }
   labels.add(root, [W / 2 + pad * 0.55, floorY + 0.02, -L * 0.42], `etch ${nice(g.etch_depth_nm, 4)} nm · floor ${nice(g.etch_floor_nm, 4)} nm < dot plane ${nice(dot.y_nm, 4)} nm`,
     { priority: 80, tag: 'A', sub: g.etch_through_dot ? 'etch removes dot layer; sidewalls not modelled' : 'etch stops above the dot layer' });
-  labels.add(root, [-X, H + 0.32, 0], `guided mode |E|² · wx ${nice(mode.wx_um)} µm · wy ${nice(mode.wy_um)} µm · n_eff ${nice(mode.n_eff, 4)}`, { priority: 90, tag: mode.tag, sub: 'waveguide.effective_index_ridge', anchor: 'left' });
+  labels.add(root, [-X, H + 0.32, 0], `guided mode |E|² · wx ${nice(mode.wx_um)} µm · wy ${nice(mode.wy_um)} µm · n_eff ${nice(mode.n_eff, 4)}`, { priority: 90, tag: mode.tag, sub: 'ridge-waveguide mode solve', anchor: 'left' });
   labels.add(root, [coneLen * Math.tan(th) * 0.72, yPeak + coneLen * Math.tan(th) * 0.72, coneLen], `collection NA ${nice(na.NA)} · ${nice(na.half_angle_deg, 3)}°`, { priority: 60, tag: na.tag });
   labels.add(root, [X, -subT * 0.6, -1.0], `${g.substrate.material} substrate`, { priority: 30, tag: 'A', sub: 'thickness not modelled' });
   labels.add(root, [-W / 2 - 0.1, H, zb1 - seg / 2], `back facet R ${nice(g.R_back)} · L = ${nice(g.L_um)} µm`, { priority: 55, tag: 'A', sub: `drawn true-scale for ${L} µm, then broken; length never compressed`, anchor: 'right' });

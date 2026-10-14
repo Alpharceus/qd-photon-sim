@@ -17,6 +17,28 @@ import { symbolFor } from "./math.js";
 export const IDENT_RE = /^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+$/;
 export const words = (s) => (typeof s === "string" && IDENT_RE.test(s) ? s.replace(/_/g, " ") : s);
 
+// ---------------------------------------------------------------- model names (FIN7)
+// The Python module behind a number, in words: the footers say "Model: emission line shape" and never name a module or function.
+const MODEL_NAMES = {
+  spectral: "emission line shape", loading: "carrier loading", integrator: "time-resolved g² integration",
+  cw_g2: "continuous-wave g² theory", pulse_counting: "pulsed photon counting", lindblad: "Lindblad master equation",
+  qd_gf: "phonon sideband model", transport: "diode injection model", nitride_transport: "nitride injection model",
+  nitride_stark: "quantum-confined Stark model", nitride_levels: "nitride dot levels", sde: "stochastic laser model",
+  studio_support: "high-pump limit", device: "device model", fitting: "g²(T) fit", waveguide: "waveguide mode solver",
+  nitride_cavity: "nitride cavity model", dot_levels: "dot energy levels", materials: "material data", thermal: "thermal model",
+};
+/** Plain words for the modules named by a list of call paths ("fsim_core.spectral.gamma_of_T" -> "emission line shape"); duplicates drop out. */
+export function modelNames(calls) {
+  const seen = [];
+  for (const c of calls || []) {
+    const seg = String(c).split("(")[0].split(".");
+    const mod = seg[0] === "fsim_core" ? seg[1] : seg[0];
+    const name = MODEL_NAMES[mod] || words(String(mod || "").replace(/-/g, "_")) || "model";
+    if (!seen.includes(name)) seen.push(name);
+  }
+  return seen.join(", ");
+}
+
 // ---------------------------------------------------------------- parameter-card names
 const CARD_TOKENS = { inp: "InP", gainp: "GaInP", gaasp: "GaAsP", gaas: "GaAs", ingan: "InGaN", gan: "GaN", qw: "QW", qcap: "QCAP",
   set: "SET", cw: "CW", rt: "RT", hom: "HOM", nm: "nm" };

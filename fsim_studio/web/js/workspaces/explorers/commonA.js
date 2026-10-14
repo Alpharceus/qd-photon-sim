@@ -6,6 +6,7 @@ import { icon } from "../../ui/icons.js";
 import { tagChip } from "../../ui/tagChip.js";
 import { createReadout } from "../../ui/readout.js";
 import { fmt } from "../../ui/format.js";
+import { modelNames } from "../../ui/labels.js";
 
 let controlsPromise = null;
 export function loadControls(api) {
@@ -91,12 +92,7 @@ export function qs(obj) {
   return p.toString();
 }
 
-/** The model calls behind a number, as code names ("a, b"): references, never prose. */
-export function callList(calls) {
-  return (calls || []).flatMap((c, i) => [i ? ", " : "", h("code.code-name", c)]);
-}
-
-/** One footer line listing the fsim_core calls and the parameter source. */
+/** One footer line naming the models behind a number (in words, never module or function names) and the parameter source. */
 export function sourceLine(r) {
-  return h("p.xp-src", icon("info", { size: 14 }), ` ${r.params_source ? `${r.params_source}. ` : ""}Calls: `, callList(r.calls), ".");
+  return h("p.xp-src", { dataset: { calls: (r.calls || []).join(" ") } }, icon("info", { size: 14 }), ` ${r.params_source ? `${r.params_source}. ` : ""}Model: ${modelNames(r.calls)}.`);
 }

@@ -353,7 +353,7 @@ async function b612Audit(page) {
     await page.waitForSelector('.runbar button[data-value="envelope"]', { timeout: 30000 });
     const envSeg = await page.$eval('.runbar button[data-value="envelope"]', (b) => ({ dis: b.disabled, title: b.title, sub: b.querySelector(".seg-sub")?.textContent || "" }));
     check("N1: nanowire card disables the Envelope segment with the backend's reason",
-      envSeg.dis && /not available for the nanowire tier/.test(envSeg.title) && /g2_op\/T_j/.test(envSeg.title) && /nanowire/.test(envSeg.sub), JSON.stringify(envSeg).slice(0, 160));
+      envSeg.dis && /not available for the nanowire tier/.test(envSeg.title) && /operating-point curves/.test(envSeg.title) && /nanowire/.test(envSeg.sub), JSON.stringify(envSeg).slice(0, 160));
     await page.click('.runbar button[data-value="full"]');
     await page.waitForTimeout(200);
     const etaTxt = await page.$eval(".run-eta", (e) => e.textContent);

@@ -309,8 +309,10 @@ def _r_live(src):
     T_grid = src.get("T_grid") or [float(d.thermal.T_hs)]
     scalars = evaluate(d, T_grid=T_grid)["scalars"]
     v = to_jsonable(scalars[src["scalar"]])
-    where = (f"live fsim_core.device.evaluate(cards/{src['card']}.yaml, mode={src.get('mode', 'point')}, "
-             f"overrides={src.get('overrides') or {}}, T_grid={T_grid})['scalars']['{src['scalar']}']")
+    n_ov = len(src.get("overrides") or {})
+    where = (f"live device-model run for the design card {src['card']} ({src.get('mode', 'point')} switch, "
+             f"heat-sink temperature {', '.join(f'{t:g}' for t in T_grid)} K, "
+             f"{n_ov} parameter override{'' if n_ov == 1 else 's'})")
     tag, tsrc = chain_of(scalars)
     extra = {"tag": tag, "tag_source": f"live run tag_chain ({tsrc})"}
     if len(T_grid) == 1:

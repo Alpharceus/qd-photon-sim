@@ -89,7 +89,7 @@ export function buildPlanarCavity(spec, ctx) {
       if (Ly.name.startsWith('H')) hi.setMatrixAt(ih++, M); else lo.setMatrixAt(il++, M);
     }
     const dbr = spec.overlays.dbr;
-    const info = { title: 'DBR diagnostic', tag: 'E', rows: [['pairs', dbr.pairs], ['d_H / d_L', `${nice(dbr.d_high_nm)} / ${nice(dbr.d_low_nm)} nm`], ['R at λ', nice(dbr.reflectance, 5)], ['stop band', `${dbr.stopband_nm.map((v) => nice(v, 4)).join(' - ')} nm`]], note: 'nitride_cavity.dbr_diagnostic: ideal lossless quarter-wave stack, free-space exit [E/A]' };
+    const info = { title: 'DBR diagnostic', tag: 'E', rows: [['pairs', dbr.pairs], ['d_H / d_L', `${nice(dbr.d_high_nm)} / ${nice(dbr.d_low_nm)} nm`], ['R at λ', nice(dbr.reflectance, 5)], ['stop band', `${dbr.stopband_nm.map((v) => nice(v, 4)).join(' - ')} nm`]], note: 'DBR diagnostic: ideal lossless quarter-wave stack, free-space exit [E/A]' };
     stage.addPickable(hi, info); stage.addPickable(lo, info);
     opticalG.add(hi, lo);
     const bottom = yy;

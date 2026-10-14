@@ -86,7 +86,7 @@ export function buildBandProfile(spec, ctx) {
     root.add(fatLine([[xs[0], eY, depth / 2], [xs[xs.length - 1], eY, depth / 2]], { color: eCol, width: 1, opacity: 0.55, dashed: true }));
     root.add(fatLine([[xs[0], hY, depth / 2], [xs[xs.length - 1], hY, depth / 2]], { color: hCol, width: 1, opacity: 0.55, dashed: true }));
     const sc = spec.scalars;
-    labels.add(root, [xs[xs.length - 1], cb[cb.length - 1] + 0.3, -depth / 2], 'conduction band edge', { tag: sc.field_kVcm.tag, anchor: 'left', sub: 'In(x)GaN dot / GaN, nitride_levels.z_profile' });
+    labels.add(root, [xs[xs.length - 1], cb[cb.length - 1] + 0.3, -depth / 2], 'conduction band edge', { tag: sc.field_kVcm.tag, anchor: 'left', sub: 'In(x)GaN dot / GaN, planar band-profile model' });
     labels.add(root, [xs[xs.length - 1], vb[vb.length - 1] - 0.3, -depth / 2], 'valence band edge', { tag: sc.field_kVcm.tag, anchor: 'left' });
     const iE = o.psi2_e.indexOf(Math.max(...o.psi2_e)), iH = o.psi2_h.indexOf(Math.max(...o.psi2_h));
     labels.add(root, [xs[iE], eY + amp + 0.2, depth / 2], `|ψe|² at E_e(z) ${nice(o.E_e_eV, 4)} eV`, { tag: sc.overlap_sq.tag, anchor: 'left' });

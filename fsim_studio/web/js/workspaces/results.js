@@ -651,7 +651,7 @@ async function rerunRow(row, card, host) {
           h("td.num", sro({ label: "csv", value: a, unit: u, tag: R.tagInfo?.tag, size: "sm" })),
           h("td.num", sro({ label: labels.length ? `live · ${labels[0]}` : "live", value: b, unit: u, tag, size: "sm", caption: b == null ? liveNanReason(s, key) : "" })),
           h("td.num.match", a === b ? h("span.m-ok", icon("check", { size: 14 }), "bit-identical") : isNum(a) && isNum(b) ? h("span.m-diff", `Δ ${fmt(b - a)}`) : "n/a"))))),
-      h("p.rd-note", `${r.result.run_id} · fsim_core.device.evaluate at T_hs = ${fmt(row.T_hs_K)} K with the row's grid values and model switches.`)));
+      h("p.rd-note", `${r.result.run_id} · the device model at a heat-sink temperature of ${fmt(row.T_hs_K)} K with the row's grid values and model switches.`)));
   } catch (e) {
     if (R?.drawer) clear(host).append(errorState({ title: "Live re-run failed", message: e.message }));
   }

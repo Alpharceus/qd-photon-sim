@@ -34,7 +34,7 @@ export function buildRidgeWaveguide(spec, ctx) {
     const active = !!Ly.is_dot;
     const role = active ? 'active' : (Ly.name.includes('cladding') ? 'cladding' : 'core');
     const mat = layerMaterial(role, { clip, emissive: active ? 0x8a5a12 : 0x000000, emissiveIntensity: active ? 0.9 : 0 });
-    const info = { title: Ly.name.replace(/_/g, ' '), tag: 'E', rows: [['material', Ly.material || 'n/a'], ['thickness', `${nice(Ly.t_nm, 4)} nm`], ['n at λ', nice(Ly.n, 4)]], note: 'waveguide.hkust_ridge_stack(λ), the stack of the mode solve [E]' };
+    const info = { title: Ly.name.replace(/_/g, ' '), tag: 'E', rows: [['material', Ly.material || 'n/a'], ['thickness', `${nice(Ly.t_nm, 4)} nm`], ['n at λ', nice(Ly.n, 4)]], note: 'ridge stack at the emission wavelength, the stack of the mode solve [E]' };
     const segs = [[-Lf / 2, Lf], [-(Lf + Lg) - Lb / 2, Lb]];
     for (const [zc, len] of segs) {
       const r = box(W, t, len, mat, [0, (y0 + y1) / 2, zc]);

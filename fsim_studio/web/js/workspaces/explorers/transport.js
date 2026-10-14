@@ -153,7 +153,7 @@ export async function mount(body, host) {
       R.Vt.update({ value: b.V_terminal, unit: "V", tag: TG.nitride, markChange: false });
       R.Fd.update({ value: b.diode_field_kVcm, unit: "kV/cm", tag: TG.nitride, caption: `abrupt depletion [DR], regime: ${b.depletion_regime}${b.flat_band ? " (flat band)" : ""}`, markChange: false });
       R.Fa.update({ value: b.applied_field_kVcm, unit: "kV/cm", tag: TG.nitride, caption: `polarity ${st.polarity > 0 ? "+1" : "-1"} · external ${fmt(N.ext.value)} kV/cm`, markChange: false });
-      R.mu.update({ value: r.mu, tag: TG.mu, caption: "nitride_transport.evaluate_injection", markChange: false });
+      R.mu.update({ value: r.mu, tag: TG.mu, caption: "nitride diode injection", markChange: false });
       R.b_e.update({ value: r.b_e, tag: TG.b_e, caption: "barrier-limited, doping dependence omitted [A]", markChange: false });
       const slot = body.querySelector('[data-role="nit-src"]');
       if (slot) clear(slot).append(sourceLine(meta.calls.slice(3), "Nitride diode: Zhang 2016 defaults [V source, E transfer]."));
@@ -165,7 +165,7 @@ export async function mount(body, host) {
     if (st.mode !== "nit") return;
     const mine = ++traceSeq;
     st.traces = {};
-    nNote.textContent = "Computing the Stark traces on the job pool (E_X from nitride_levels.levels at each bias, 0.2 V steps).";
+    nNote.textContent = "Computing the Stark traces on the job pool (exciton energy from the nitride dot levels at each bias, 0.2 V steps).";
     try {
       const resp = await api.postJSON("/api/explore/transport/stark", { orientation: st.orientation, polarity: st.polarity, T: N.T.value, ext: N.ext.value, screenings: meta.screenings });
       let done = 0;

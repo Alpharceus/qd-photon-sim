@@ -8,6 +8,7 @@
 // No physics in this file: sliders send inputs, the backend returns every number.
 
 import { h, clear, debounce } from "../ui/dom.js";
+import { modelNames } from "../ui/labels.js";
 import { icon } from "../ui/icons.js";
 import { tagChip } from "../ui/tagChip.js";
 import { segmented, switchToggle, dataTable, skeleton, errorState } from "../ui/controls.js";
@@ -184,7 +185,7 @@ function spectral(body) {
     chart.setTitle("Spectral window: X and XX through the filter", `T = ${fmt(r.T)} K · ${r.mode} · Δ_XX ${fmt(r.delta_xx)} meV · μ ${fmt(r.mu)}`);
     chart.setTag(t.chain);
     chart.render();
-    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Calls: `, ...r.calls.flatMap((c, i) => [i ? ", " : "", h("code.code-name", c)]), ".");
+    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Model: ${modelNames(r.calls)}.`);
   }, 70);
   go();
 }
@@ -209,7 +210,7 @@ function cascade(body) {
         slot),
       sceneNote),
     h("aside.xp-side.panel",
-      h("header.panel-head", h("h2.engrave", "Closed form · V-a card"), h("span.panel-note", "integrator.g2_of_T")),
+      h("header.panel-head", h("h2.engrave", "Closed form · V-a card"), h("span.panel-note", "closed-form integration")),
       h("div.xp-ctls", sT.row),
       formula, roEl, src)));
 
@@ -241,7 +242,7 @@ function cascade(body) {
     ro.g2dot.update({ value: r.g2_dot, tag: t.chain, caption: `μ = ${fmt(r.mu)}`, markChange: false });
     ro.p1.update({ value: r.P1, tag: t.chain, caption: "cap-2 Poisson loading", markChange: false });
     ro.p2.update({ value: r.P2, tag: t.chain, caption: "two-photon loading probability", markChange: false });
-    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Calls: `, ...r.calls.flatMap((c, i) => [i ? ", " : "", h("code.code-name", c)]), ".");
+    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Model: ${modelNames(r.calls)}.`);
   }, 70);
   loadScene();
   go();

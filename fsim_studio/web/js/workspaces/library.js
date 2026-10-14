@@ -13,7 +13,7 @@ import { tagChip, normTag, tagDash, tagWidth, TAG_MEANING } from "../ui/tagChip.
 import { skeleton, errorState, emptyState, toast } from "../ui/controls.js";
 import { fmt, unitText, isNum } from "../ui/format.js";
 import { richText, richPlain } from "../ui/math.js";
-import { fieldLabel, cardTitle } from "../ui/labels.js";
+import { fieldLabel, cardTitle, modelNames } from "../ui/labels.js";
 import { deviceThumbnail, mountDeviceModel } from "../viz3d/deviceModel.js";
 import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors, alpha } from "../charts/theme.js";
@@ -369,7 +369,7 @@ async function datasetCard(c, ds, host) {
       ovLine.dataset.overlay = "shown";
       const cls = st.ov.cls ? `${st.ov.cls.label}${st.ov.cls.code ? ` (${st.ov.cls.code})` : ""}` : "model";
       clear(ovLine).append(icon("chart", { size: 14 }), tagChip(st.ov.tag, { size: "sm", title: "overlay tag chain" }),
-        h("span", ` Overlay: ${cls}. ${st.ov.label || ""} Calls: ${(st.ov.calls || []).join(", ")}.${st.ov.params_source ? ` Parameters: ${st.ov.params_source}.` : ""}`));
+        h("span", ` Overlay: ${cls}. ${st.ov.label || ""} Model: ${modelNames(st.ov.calls)}.${st.ov.params_source ? ` Parameters: ${st.ov.params_source}.` : ""}`));
       chart.setTitle(dsLabel(ds.name), `${ds.n_rows} rows · data [${ds.tag}] · ${cls} overlay [${normTag(st.ov.tag) || "?"}]`);
     } catch (e) {
       st.ovErr = e.message;

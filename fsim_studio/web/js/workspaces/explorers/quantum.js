@@ -135,7 +135,7 @@ function build(def, r) {
     return {
       data: [
         { x: r.curves.tau, y: r.curves.g2_cw_g2, type: "scatter", mode: "lines", name: "rate equations", line: { color: c.series[0], width: w + 2, dash }, hovertemplate: `rate eq. %{y:.5f} [${tag}]<extra></extra>` },
-        { x: r.curves.tau, y: r.curves.g2_lindblad, type: "scatter", mode: "lines", name: "lindblad.g2_tau", line: { color: c.series[1], width: 1.5, dash: "solid" }, hovertemplate: `Lindblad %{y:.5f} [${tag}]<extra></extra>` },
+        { x: r.curves.tau, y: r.curves.g2_lindblad, type: "scatter", mode: "lines", name: "Lindblad master equation", line: { color: c.series[1], width: 1.5, dash: "solid" }, hovertemplate: `Lindblad %{y:.5f} [${tag}]<extra></extra>` },
       ],
       layout: baseLayout({ ...base, xaxis: { ...L.xaxis, title: { text: "τ (ns)", standoff: 6 } }, yaxis: { ...L.yaxis, title: { text: "g²(τ)", standoff: 6 }, rangemode: "tozero" } }),
     };

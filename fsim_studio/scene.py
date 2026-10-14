@@ -37,8 +37,8 @@ Variants
 --------
 device / edge_ridge (units um; origin: ridge centre x=0, stack bottom y=0,
   front facet z=0, propagation toward -z into the device):
-  stacks.optical  {label "optical stack (waveguide.py)", layers, total_nm}
-  stacks.thermal  {label "thermal stack (thermal.py)", layers, total_nm}
+  stacks.optical  {label "optical stack", layers, total_nm}
+  stacks.thermal  {label "thermal stack", layers, total_nm}
   geometry        ridge_width_nm, etch_depth_nm, etch_floor_nm (height of the
                   etched floor above the stack bottom), shoulder_nm (the mode
                   solver's lateral pad), L_um, front_len_um (true-scale drawn
@@ -374,8 +374,8 @@ def _edge_scene(d, name, T):
                           "break": {"after_um": front_len, "total_um": em.L_um}}}
     spec["layers"] = layers
     spec["stacks"] = {
-        "optical": {"label": "optical stack (waveguide.py)", "layers": layers, "total_nm": total},
-        "thermal": {"label": "thermal stack (thermal.py)", "layers": _thermal_layers(d),
+        "optical": {"label": "optical stack", "layers": layers, "total_nm": total},
+        "thermal": {"label": "thermal stack", "layers": _thermal_layers(d),
                     "total_nm": sum(L["t_nm"] for L in _thermal_layers(d))},
     }
     etch_floor = total - em.etch_depth_nm
@@ -400,7 +400,7 @@ def _edge_scene(d, name, T):
         "mode": {"nx": nx, "ny": ny, "x_um": [xg[0] / 1000.0, xg[-1] / 1000.0],
                  "y_um": [yg[0] / 1000.0, yg[-1] / 1000.0], "encoding": "u8-b64", "data": _b64_u8(I),
                  "wx_um": rm.wx_um, "wy_um": rm.wy_um, "n_eff": rm.n_eff, "tag": "DR",
-                 "label": "guided mode |E|^2 (waveguide.effective_index_ridge)"},
+                 "label": "guided mode |E|^2 (ridge-waveguide mode solve)"},
         "na_cone": {"NA": em.NA, "half_angle_deg": math.degrees(math.asin(min(em.NA, 1.0))),
                     "n_ambient": 1.0, "tag": etag("NA")},
         "emission": {"lambda_nm": lam, "false_colour": bool(lam > 700.0)},
@@ -529,17 +529,17 @@ def _planar_scene(d, name, T):
     for i in range(pairs):
         dbr_layers.append({"name": f"H{i+1}", "t_nm": dbr["d_high_nm"], "n": dbr["n_high"],
                            "material": "high-n dielectric", "tag": "E", "role": "mirror",
-                           "source": "nitride_cavity.dbr_diagnostic n_high [E/A]"})
+                           "source": "DBR diagnostic n_high [E/A]"})
         dbr_layers.append({"name": f"L{i+1}", "t_nm": dbr["d_low_nm"], "n": dbr["n_low"],
                            "material": "low-n dielectric", "tag": "E", "role": "mirror",
-                           "source": "nitride_cavity.dbr_diagnostic n_low [E/A]"})
+                           "source": "DBR diagnostic n_low [E/A]"})
     th = _thermal_layers(d)
     spec = _base("device", "planar_cavity", name, f"{name} - planar InGaN/GaN cavity", {"length": "um"}, f"T={T}")
     spec["axes"] = {k: {"label": k, "unit": "um", "scale": 1, "badge": None} for k in "xyz"}
     spec["layers"] = th
     spec["stacks"] = {
-        "thermal": {"label": "thermal stack (thermal.py)", "layers": th, "total_nm": sum(L["t_nm"] for L in th)},
-        "optical": {"label": "DBR diagnostic (nitride_cavity.dbr_diagnostic)", "layers": dbr_layers,
+        "thermal": {"label": "thermal stack", "layers": th, "total_nm": sum(L["t_nm"] for L in th)},
+        "optical": {"label": "DBR diagnostic", "layers": dbr_layers,
                     "total_nm": dbr["total_nm"]},
     }
     spec["geometry"] = {"mesa_diameter_um": d.thermal.mesa_diameter_um,
@@ -588,7 +588,7 @@ def _mesa_scene(d, name, T):
     spec = _base("device", "thermal_mesa", name, f"{name} - mesa (thermal stack)", {"length": "um"}, f"T={T}")
     spec["axes"] = {k: {"label": k, "unit": "um", "scale": 1, "badge": None} for k in "xyz"}
     spec["layers"] = th
-    spec["stacks"] = {"thermal": {"label": "thermal stack (thermal.py)", "layers": th,
+    spec["stacks"] = {"thermal": {"label": "thermal stack", "layers": th,
                                   "total_nm": sum(L["t_nm"] for L in th)}}
     spec["geometry"] = {"mesa_diameter_um": d.thermal.mesa_diameter_um,
                         "substrate": (d.thermal.substrate or {}).get("name", "substrate")}
@@ -620,7 +620,7 @@ def _band_nitride(d, name, T):
     if d.platform == "ingan_gan_planar":
         sc = fdev.evaluate(d, T_grid=[float(d.thermal.T_hs if T is None else T)])["scalars"]
         ext, Tj = float(sc["applied_field_kVcm"]), float(sc["T_j"])
-        src_note = "operating point of fsim_core.device.evaluate (applied_field_kVcm, T_j)"
+        src_note = "operating point of the device model (applied field $F$, junction temperature $T_{\\mathrm{j}}$)"
         calls.append("fsim_core.device.evaluate")
         chain = _chain_tag(d, sc)
     else:
@@ -629,8 +629,8 @@ def _band_nitride(d, name, T):
         # its overlap_sq, so no tilted-band view is drawn for it.
         row, _, _ = _nanowire_row(d, name, T)
         spec = _base("band", "unavailable", name, f"{name} - band profile", {"length": "nm", "energy": "eV"})
-        spec["labels"] = ["nanowire levels come from fsim_core.nitride_nanowire_levels; the planar "
-                          "nitride_levels.z_profile is a different model, so no band view is drawn"]
+        spec["labels"] = ["nanowire levels come from the barrier-clad nanowire model; the planar "
+                          "band-profile model is a different one, so no band view is drawn"]
         if row:
             spec["scalars"] = {"overlap_sq": _S(_num(row.get("overlap_sq")), "", _chain_tag(d), "overlap^2 (sweep row)"),
                                "field_kVcm": _S(_num(row.get("field_kVcm")), "kV/cm", _chain_tag(d), "field (sweep row)")}
@@ -906,7 +906,7 @@ def surface_compute(card, param="w", mode="envelope", progress=None, n_values=12
     spec["scalars"] = {"n_values": _S(len(values), "", chain, f"{param} values"),
                        "n_T": _S(len(Ts), "", chain, "T points")}
     spec["labels"] = ["two sheets (lo, hi), never one averaged surface",
-                      "g2 = 0.5 isoline is the T_c ridge; dots = evaluate_envelope T_c interval",
+                      "g2 = 0.5 isoline is the T_c ridge; dots = the T_c interval of the parameter envelope",
                       f"{param} grid is a display sweep choice ({len(values)} x {len(Ts)} T points)"]
     if _is_edge(d):
         spec["labels"].append("static (non-headline): card as written; reduced grid, envelope over "

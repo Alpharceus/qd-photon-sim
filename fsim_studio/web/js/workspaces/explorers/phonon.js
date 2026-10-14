@@ -152,7 +152,7 @@ export async function mount(body, host) {
     ro.S.update({ value: r.S_total, tag: t, caption: "int dE J/E² coth(E/2kT)", markChange: false });
     ro.sb.update({ value: r.sideband_fraction, tag: t, caption: "weight a ZPL-tuned narrow filter can never collect", markChange: false });
     ro.t_ibm.update({ value: r.point.t_ibm, tag: t, caption: `independent-boson transmission, δ = ${fmt(r.delta)} meV`, markChange: false });
-    ro.t_lor.update({ value: r.point.t_lorentz, tag: t, caption: "spectral.transmission (Lorentzian only)", markChange: false });
+    ro.t_lor.update({ value: r.point.t_lorentz, tag: t, caption: "transmission of the Lorentzian filter alone", markChange: false });
     ro.gap.update({ value: r.point.optimism_gap, tag: t, caption: "t_Lorentz-only - t_IBM", markChange: false });
     ro.t_pur.update({ value: r.point.t_purcell, tag: t, caption: `independent-boson transmission with Purcell, F_cav = ${fmt(r.F_cav)}`, markChange: false });
     ro.z_eff.update({ value: r.point.Z_eff, tag: t, caption: "redistributed ZPL fraction", markChange: false });

@@ -150,7 +150,7 @@ async function numberTagAudit(page) {
       check(`${card}: class chip shown (${EXPECT_CLASS[card]})`, cls && cls.code === EXPECT_CLASS[card] && cls.text.length > 3, JSON.stringify(cls));
       const ovTexts = await page.$$eval(".lib-ov[data-overlay='shown']", (els) => els.map((e) => e.textContent));
       check(`${card}: each overlay line carries its class label and its calls`,
-        ovTexts.length === ovShown.length && ovTexts.every((t) => /Overlay: .*\(([CMTP])\)\./.test(t) && /Calls: \S/.test(t)), ovTexts.map((t) => t.slice(0, 60)).join(" | "));
+        ovTexts.length === ovShown.length && ovTexts.every((t) => /Overlay: .*\(([CMTP])\)\./.test(t) && /Model: \S/.test(t)), ovTexts.map((t) => t.slice(0, 60)).join(" | "));
       if (card === "zhao") {
         const eb = await page.$eval(".lib-ds-card[data-dataset='g2_vs_pump'] .chart-plot", (e) => (e.data || []).some((t) => t.error_y && t.error_y.visible && t.error_y.array.length === 2)).catch(() => false);
         check("zhao: overlay points carry SE error bars", eb);

@@ -104,8 +104,32 @@ def main():
         check(f"identical to pre-refactor output: {key}", same,
               detail or hashlib.sha256(canon(b).encode()).hexdigest()[:10])
 
-    # The moved code now lives in fsim_core.scene_support and the Flask layer calls it.
+    # FIN7: the label / note / source / title strings a scene carries are shown to users, so none names a module,
+    # a .py file or a function call (the `calls` lists of the provenance block are data and are not text fields).
     import inspect
+    mods = {p.stem for p in (ROOT / "fsim_core").glob("*.py")} | {p.name for p in (ROOT / "fsim_core").iterdir() if p.is_dir()} \
+        | {p.stem for p in (ROOT / "fsim_studio").glob("*.py")}
+    dev = re.compile(r"\bfsim_\w*|\.py\b|(?<![\w.])[A-Za-z_]\w*\(\)|(?<![\w.\-/])(?:%s)\.[A-Za-z_]\w*"
+                     % "|".join(sorted(m for m in mods if len(m) >= 3 and not m.startswith("__"))))
+    text_keys = {"labels", "label", "notes", "note", "source", "title", "caption", "sub", "text", "reason"}
+    dev_hits = []
+
+    def walk(o, where, in_text=False):
+        if isinstance(o, str):
+            if in_text and dev.search(o):
+                dev_hits.append(f"{where}: {o[:70]}")
+        elif isinstance(o, dict):
+            for k, v in o.items():
+                walk(v, f"{where}/{k}", in_text or k in text_keys)
+        elif isinstance(o, list):
+            for i, v in enumerate(o):
+                walk(v, f"{where}[{i}]", in_text)
+    for key, spec_now in now.items():
+        walk(spec_now, key)
+    check(f"FIN7: no fsim_* path, .py file, name() call or repo-module dotted path in any scene label, note, source or title ({len(now)} cases)",
+          not dev_hits, "; ".join(dev_hits[:3]) + (f" (+{len(dev_hits) - 3} more)" if len(dev_hits) > 3 else ""))
+
+    # The moved code now lives in fsim_core.scene_support and the Flask layer calls it.
 
     from fsim_core import nitride_cavity, scene_support
     from fsim_studio import api_explain, scene

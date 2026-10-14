@@ -381,7 +381,7 @@ def transport_meta():
         "tags": {**transport_output_tags(), "inputs": "A", "nitride": "A", "E_X": "A", "slope": "A"},
         "tag_notes": {"inputs": "I, n_dot, aperture: qcap-staged.yaml [A]; w, dE_WL [E]",
                       "nitride": "NitrideDiode: Zhang 2016 defaults [V source, E transfer]",
-                      "E_X": "levels(): geometry and screening are [A]"},
+                      "E_X": "dot levels: geometry and screening are [A]"},
         "calls": ["fsim_core.transport.evaluate_injection", "fsim_core.transport.Diode.depletion",
                   "fsim_core.nitride_transport.evaluate_injection", "fsim_core.nitride_stark.resolve_bias",
                   "fsim_core.nitride_levels.levels", "fsim_core.nitride_stark.stark_derivatives"],

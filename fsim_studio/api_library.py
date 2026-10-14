@@ -164,7 +164,7 @@ def _load(name: str):
     try:
         return load_card(path), doc, "fsim_core.card.load_card"
     except (KeyError, ValueError, TypeError) as exc:
-        return None, doc, (f"read raw: fsim_core.card.load_card raises {type(exc).__name__}: {exc} "
+        return None, doc, (f"read raw: the card loader raises {type(exc).__name__}: {exc} "
                            "(datasets without a per-dataset source)")
 
 
@@ -625,7 +625,7 @@ def _reischle_rho(card, doc):
              f"points (0.53, 0.49) are temporal refilling, outside the spectral model.")
     return _ov("reischle", "DR", ["integrator.g2_from", "out/phase1/vc_rho_window.csv"], label,
                series=[{"name": "rho required by the 100 MHz point", "x": ws, "y": req, "mode": "lines"}],
-               params_source="out/phase1/vc_rho_window.csv (run_phase1.py); cards/reischle.yaml g2_vs_ERR, device 1 position 2, 100 MHz")
+               params_source="out/phase1/vc_rho_window.csv (phase 1 run); cards/reischle.yaml g2_vs_ERR, device 1 position 2, 100 MHz")
 
 
 def _reischle_oe(card, doc):

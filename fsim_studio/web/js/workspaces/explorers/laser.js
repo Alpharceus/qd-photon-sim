@@ -116,7 +116,7 @@ export async function mount(body, host) {
     if (cmp) ro.sigma.update({ value: cmp.sigma_ratio, unit: "σ", tag: TG.model, caption: `verdict ${cmp.verdict} (out/zhao/zhao_fit_comparison.csv); sim ${fmt(cmp.sim_g2)} vs published ${fmt(cmp.published_g2)}`, markChange: false });
     if (st.trace) {
       ro.tg2.update({ value: st.trace.g2_0, tag, caption: `single trace, burn-in ${fmt(st.trace.burnin_frac * 100)}% discarded; g²(0) is unchanged by collection loss`, markChange: false });
-      ro.fano.update({ value: st.trace.fano, tag, caption: `thinned by eta_ext = ${fmt(st.trace.eta_ext)}: ${fmt(st.trace.fano_ext)} (loading.f8b_thin_fano)`, markChange: false });
+      ro.fano.update({ value: st.trace.fano, tag, caption: `thinned by eta_ext = ${fmt(st.trace.eta_ext)}: ${fmt(st.trace.fano_ext)}`, markChange: false });
     }
     clear(src).append(sourceLine(meta.calls, "Tuned Tier-2 parameter set, all [E] except T [V]."));
     chartA.render(); chartC.render();

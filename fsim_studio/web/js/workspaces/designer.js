@@ -34,7 +34,7 @@ const ETA = { legacy: [0.001, 0.006], edge: [0.31, 20.0], planar: [0.001, 0.31],
 const POOL = 8;
 // Display T grids the backend runs for nitride cards when no grid is sent (jobs.NITRIDE_DISPLAY_GRID).
 const NITRIDE_GRID_N = { ingan_gan_planar: 31, ingan_gan_nanowire: 16 };
-const NANOWIRE_ENVELOPE_REASON = "Envelope runs are not available for the nanowire tier: its evaluate() returns g2_op/T_j curves, not the g2/Tj curves evaluate_envelope bands. Use the committed sweep in Results.";
+const NANOWIRE_ENVELOPE_REASON = "Envelope runs are not available for the nanowire tier: its model reports operating-point curves, not the full-range curves an envelope bands. Use the committed sweep in Results.";
 
 const BLOCKS = [
   { id: "drive", label: "Drive", prefixes: ["drive."], show: ["drive.V", "drive.I_uA", "drive.mu"] },
@@ -571,7 +571,7 @@ function renderSheet() {
   host.classList.add("is-open");
   host.append(h("section.sheet", { "aria-label": `${label} parameters` },
     h("header.sheet-head",
-      h("div", h("h2.engrave.sheet-title", label), h("p.sheet-sub", `${paths.length} fields from design_meta.META${nRanged ? `; ${nRanged} ranged for envelope runs` : ""}. Edits apply to the next run.`)),
+      h("div", h("h2.engrave.sheet-title", label), h("p.sheet-sub", `${paths.length} fields on this design card${nRanged ? `; ${nRanged} ranged for envelope runs` : ""}. Edits apply to the next run.`)),
       h("button.icon-btn", { type: "button", "aria-label": `Close ${label} sheet`, on: { click: () => { S.openBlock = null; refreshMounts(); renderSheet(); S.dom.mounts[b.id]?.querySelector(".mount")?.focus(); } } }, icon("close", { size: 18 }))),
     body));
   if (!reducedMotion()) host.querySelector(".sheet").classList.add("mount-in");
@@ -1189,7 +1189,7 @@ function renderDetails() {
         else if (typeof v === "object") text = Object.entries(v).map(([a, b]) => `${fieldLabel(a)} ${typeof b === "number" ? fmt(b) : humanValue(b)}`).join("; ");
         else text = typeof v === "number" ? `${fmt(v)}${unitOf(k) ? ` ${unitOf(k)}` : ""}` : humanValue(String(v), k);
         const band = r.scalar_bands?.[k];
-        return h("div.drow", h("dt", { title: k }, fieldLabel(k)), h("dd", band ? `${fmtInterval(band[0], band[1])}${unitOf(k) ? ` ${unitOf(k)}` : ""}` : text));
+        return h("div.drow", h("dt", { title: k.includes(".") ? undefined : k }, fieldLabel(k)), h("dd", band ? `${fmtInterval(band[0], band[1])}${unitOf(k) ? ` ${unitOf(k)}` : ""}` : text));
       }))));
   }
 }
@@ -1611,7 +1611,7 @@ function renderAnimSheet() {
       h("label.anim-field", h("span.engrave", "To"), A.dom.hi, h("span.fr-unit", unit)),
       h("label.anim-field", h("span.engrave", "Frames"), A.dom.n),
       A.meta?.tag === "A" ? h("span.label-chip.anim-slice", { title: "an assumed [A] input: each frame is one value of it, run one at a time" }, A_SLICE_NOTE) : null,
-      h("span.label-chip.anim-mode", { title: A.mode === "headline" ? "RT-edge headline switches, as the Headline run mode" : "point evaluate(), as the Point run mode" }, `${A.mode} model`),
+      h("span.label-chip.anim-mode", { title: A.mode === "headline" ? "RT-edge headline switches, as the Headline run mode" : "a single operating-point evaluation, as the Point run mode" }, `${A.mode} model`),
       h("div.anim-keys", A.dom.cancel, A.dom.go)),
     A.dom.eta,
     A.dom.status,

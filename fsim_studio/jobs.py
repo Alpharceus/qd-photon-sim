@@ -183,10 +183,10 @@ def f8_error(d, exc: Exception) -> dict:
 
 
 NITRIDE_ALL_DROPPED_MESSAGE = (
-    "Every envelope sample failed to evaluate. evaluate_envelope drops any sample that raises "
-    "ValueError and reports the whole box with F8-domain wording, but this card's dot loading "
-    "is resolved by the nitride transport model (drive.cycle_loading), not by drive.mu, so "
-    "narrowing drive.mu is not a remedy. Run a point at the box edges to see the actual error.")
+    "Every sample of the parameter envelope failed to evaluate. The envelope reports this as a dot-loading "
+    "(carrier occupation) domain error, but this card's dot loading comes from the nitride transport model, "
+    "not from the occupation parameter, so narrowing that parameter is not a remedy. Run a single point at "
+    "the edges of the ranges to see the actual error.")
 
 
 def classify_error(d, exc: Exception) -> dict:
@@ -222,8 +222,8 @@ def composed_T_K(composed: dict) -> float:
 
 
 NANOWIRE_ENVELOPE_UNSUPPORTED = (
-    "envelope runs are not available for the nanowire tier (its evaluate() returns g2_op/T_j "
-    "curves, not the g2/Tj curves evaluate_envelope bands); use the committed sweep in Results")
+    "envelope runs are not available for the nanowire tier (its model reports operating-point "
+    "curves, not the full-range curves an envelope bands); use the committed sweep in Results")
 
 
 # ------------------------------------------------- picklable worker functions
@@ -293,7 +293,7 @@ def envelope_result(d_orig, env: dict, mid_res, *, ranged, run_id, card, T_grid)
     out = {
         "curves": mid,
         "scalars": scalars,
-        "scalars_source": "mid-design point evaluate(): " + MID_LABEL,
+        "scalars_source": "device-model point at the middle of the design ranges: " + MID_LABEL,
         "tag_chain": tag,
         "tag_chain_source": tag_src,
         "provenance": scalars.get("provenance", {}),
