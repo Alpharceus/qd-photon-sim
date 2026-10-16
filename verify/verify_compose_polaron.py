@@ -923,6 +923,41 @@ check("SUPCMP D. slm_mask is an extra SUPER pulse option: the default shape stay
       _sd.param("shape").default == "gauss" and "slm_mask" in _sd.param("shape").choices
       and "slm_field" not in _pl_gauss.inputs and "slm_field" in _pl_slm.inputs and _pl_gauss.inputs["shape"] == "gauss")
 
+# ------------------------------------------------------------------ PULSEEND: pulse-end occupation as a public readout
+import copy as _copy                                                                                             # noqa: E402
+_pe_spec = _copy.deepcopy(_kar.device)
+_moved = ([sv["path"] for sv in _ent["optimum"]["scan"] if sv.get("path")] + [d["path"] for d in _ent["optimum"].get("derive") or []]
+          + list(_ent["optimum"]["overrides"]))
+for _p in _moved:                                                        # the reproduce argmax design: moved leaves at their argmax values
+    _ax, _, _nm = _p.partition(".")
+    _blk = _pe_spec[_ax]["params"]
+    _lf = _blk.get(_nm)
+    _meta = _ent["optimum"]["overrides"].get(_p) or next((d for d in _ent["optimum"].get("derive") or [] if d["path"] == _p), None)         or next(sv for sv in _ent["optimum"]["scan"] if sv.get("path") == _p)
+    _base = _lf if isinstance(_lf, dict) else {k: _meta[k] for k in ("unit", "tag", "where", "source") if _meta.get(k) is not None}
+    _blk[_nm] = {**{k: v for k, v in _base.items() if k not in ("range", "scale", "choice")}, "value": _res["values"][_p]}
+_pe_off = OPT.pulse_end_occupation(_pe_spec, phonons=False, radiative=False)
+check("PULSEEND A. pulse_end_occupation(phonons off, radiative off) at the karli2022 reproduce argmax equals the inversion_theory reproduce value (1e-6 relative)",
+      abs(_pe_off["value"] - _res["value"]) <= 1e-6 * abs(_res["value"]) and not _pe_off["phonons"] and not _pe_off["radiative"],
+      f"{_pe_off['value']:.6f} vs {_res['value']:.6f}")
+_pe_on = OPT.pulse_end_occupation(_pe_spec, phonons=True, radiative=False)
+_ent8 = next(e for e in _kar.reproduce if e["item"] == "inversion_8K_pred")
+_res8 = OPT.optimise(_kar.device, _ent8["optimum"])
+check("PULSEEND B. phonons on (decay off) at the same design differs from phonons off by no more than the card's inversion_8K_pred states (card: same value, 3 decimals), and does not exceed the 8 K optimum",
+      abs(_pe_on["value"] - _pe_off["value"]) <= 1e-3 and abs(_res8["value"] - _res["value"]) <= 1e-3 and _pe_on["value"] <= _res8["value"] + 1e-6,
+      f"on {_pe_on['value']:.6f}, off {_pe_off['value']:.6f}, inversion_8K_pred {_res8['value']:.6f}")
+_pe_dec = OPT.pulse_end_occupation(_pe_spec, phonons=True, radiative=True)
+check("PULSEEND C. switching the radiative decay on lowers the pulse-end occupation (decay during the pulse window)", _pe_dec["value"] < _pe_on["value"] - 0.01,
+      f"{_pe_dec['value']:.4f} < {_pe_on['value']:.4f}")
+_cw = _copy.deepcopy(_pe_spec)
+_cw["drive"] = {"kind": "cw_resonant", "params": {}}
+try:
+    OPT.pulse_end_occupation(_cw)
+    _cw_msg = None
+except ValueError as _e:
+    _cw_msg = str(_e)
+check("PULSEEND D. a CW drive raises ValueError with a user-facing physics reason (no code names)",
+      _cw_msg is not None and "pulsed" in _cw_msg and not any(t in _cw_msg for t in (".py", "polaron:", "_", "Solver")), str(_cw_msg)[:80])
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

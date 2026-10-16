@@ -1122,6 +1122,89 @@ async function waitRun(page, timeout = 120000) {
       await page.screenshot({ path: path.join(SHOTS, "composer-fin6-seed-cleared-dark-1440.png") });
     }
 
+    // ---------------------------------------------------------------- PULSEEND: pulse-end occupation panel
+    {
+      const PE = '.ws-compose [data-role="pulse-end"]';
+      const peState = () => page.$eval(PE, (e) => e.dataset.state).catch(() => null);
+      const peNum = () => page.$eval(`${PE} [data-role="pe-number"]`, (e) => e.textContent.trim()).catch(() => null);
+      const peCompute = async () => {
+        await page.click(`${PE} [data-role="pe-compute"]`);
+        await page.waitForFunction((sel) => { const e = document.querySelector(sel); return e && ["done", "error"].includes(e.dataset.state); }, PE, { timeout: 180000 });
+      };
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
+      await page.evaluate(() => { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: "dark" })); });
+      await page.reload({ waitUntil: "load" });
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+      const shown0 = await page.$eval(PE, (e) => !e.hidden && getComputedStyle(e).display !== "none").catch(() => false);
+      check("PULSEEND the pulse-end panel is shown for a pulsed drive (default stack), with both switches on and a Compute button",
+        shown0 && (await page.$$eval(`${PE} input[role="switch"]`, (els) => els.map((e) => e.checked))).join() === "true,true" && !!(await page.$(`${PE} [data-role="pe-compute"]`)));
+      await peCompute();
+      const n1 = await peNum();
+      const vis = await page.$eval(PE, (e) => ({ math: e.querySelectorAll(".pe-out .math").length, txt: e.textContent }));
+      check("PULSEEND Compute shows a 3-decimal number, typeset rho_XX through KaTeX, with the ground-state / end-of-window caption",
+        /^\d\.\d{3}$/.test(n1 || "") && vis.math >= 1 && /ground state/.test(vis.txt) && /end of the pulse window/.test(vis.txt) && /not the steady-state/.test(vis.txt), `${n1} math=${vis.math}`);
+      check("PULSEEND the visible text names no code path, file or function", !/\.py\b|\.yaml\b|fsim_core|api_compose|name\(\)|polaron/i.test(vis.txt), vis.txt.slice(0, 120));
+      await page.click(`${PE} [data-role="pe-phonons"]`);
+      check("PULSEEND toggling a switch after a compute marks the number stale", (await peState()) === "stale" && !!(await page.$(`${PE} [data-role="pe-stale"]`)), String(await peState()));
+      await peCompute();
+      const n2 = await peNum();
+      check("PULSEEND the switch is honoured: phonons off gives a fresh number and clears the stale mark", (await peState()) === "done" && n2 !== null && !(await page.$(`${PE} [data-role="pe-stale"]`)), `${n1} -> ${n2}`);
+      await page.click(`${PE} [data-role="pe-radiative"]`);
+      await peCompute();
+      const n3 = await peNum();
+      check("PULSEEND radiative decay off raises the pulse-end occupation (no decay during the window)", n3 !== null && parseFloat(n3) > parseFloat(n1), `${n1} -> ${n3}`);
+      for (const theme of ["dark", "light"]) {
+        for (const [w, hgt] of [[1440, 900], [390, 844]]) {
+          await page.setViewportSize({ width: w, height: hgt });
+          await page.evaluate((t) => { localStorage.setItem("fsim-studio:prefs", JSON.stringify({ theme: t })); }, theme);
+          await page.reload({ waitUntil: "load" });
+          await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+          await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+          await page.waitForSelector(PE, { state: "visible", timeout: 20000 });
+          await peCompute();
+          await page.$eval(PE, (e) => e.scrollIntoView({ block: "center" }));
+          await settle(page, 700);
+          const geo = await page.$eval(PE, (e) => { const r = e.getBoundingClientRect(); return { w: r.width, r: r.right, over: document.documentElement.scrollWidth > innerWidth + 1 }; });
+          check(`PULSEEND ${theme} ${w}: the panel fits the width, no horizontal page scroll`, geo.r <= w + 1 && !geo.over, JSON.stringify(geo));
+          await page.screenshot({ path: path.join(SHOTS, `composer-pulseend-${theme}-${w}.png`) });
+        }
+      }
+      // a CW drive hides the panel
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.click('.ws-compose .kind-chip[data-axis="drive"]');
+      await page.waitForSelector(".cp-entry", { timeout: 15000 });
+      await page.waitForFunction(() => !/Checking/.test(document.querySelector(".cp-note")?.textContent || ""), null, { timeout: 120000 });
+      const cwEntry = await page.$('.cp-entry[data-kind="cw_resonant"]:not([aria-disabled="true"]):not([data-incompatible="true"])');
+      if (cwEntry) {
+        await cwEntry.click();
+        await page.waitForFunction(() => document.querySelector('.ws-compose .kind-chip[data-axis="drive"]')?.dataset.kind === "cw_resonant", null, { timeout: 10000 });
+        await settle(page, 400);
+        check("PULSEEND the panel is hidden for a CW drive", (await page.$eval(PE, (e) => e.hidden)) === true);
+      } else check("PULSEEND the panel is hidden for a CW drive", false, "cw_resonant not selectable on the default stack");
+      // Papers -> "Open optimum in Composer" (karli2022 inversion_theory): switches preset from the item, number == the paper card's model value
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(`${BASE}/#/papers/karli2022`, { waitUntil: "domcontentloaded" });
+      await page.waitForSelector("#workspace .pp-reproduce", { timeout: 20000 });
+      await page.waitForSelector('#workspace[data-ready="1"]', { timeout: 30000 });
+      await page.locator("#pp-reproduce").click();
+      await page.waitForSelector('#workspace .pp-main[data-state="done"]', { timeout: 600000 });
+      const row = '.pp-table tbody tr[data-item="inversion_theory"]';
+      const modelTxt = await page.$eval(`${row} td.pp-model .pp-val .pp-num`, (e) => e.textContent.trim());
+      await page.click(`${row} [data-role="open-optimum"]`);
+      await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
+      await page.waitForSelector(`${PE} [data-role="pe-preset"]:not([hidden])`, { timeout: 30000 });
+      const sw = await page.$$eval(`${PE} input[role="switch"]`, (els) => els.map((e) => e.checked));
+      const presetTxt = await page.$eval(`${PE} [data-role="pe-preset"]`, (e) => e.textContent);
+      check("PULSEEND Open optimum in Composer (karli2022 inversion_theory) presets phonons off and radiative decay off and says so", sw.join() === "false,false" && /paper/i.test(presetTxt), `${sw.join()} | ${presetTxt}`);
+      await page.waitForFunction(() => document.querySelector(".ws-compose .plaque")?.dataset.status === "pass", null, { timeout: 60000 });
+      await peCompute();
+      const nOpt = await peNum();
+      check("PULSEEND that number equals the model value of the paper card shown in the Papers workspace to 3 decimals", nOpt !== null && Math.abs(parseFloat(nOpt) - parseFloat(modelTxt)) < 5e-4 + 1e-9, `composer ${nOpt}, papers ${modelTxt}`);
+      await page.screenshot({ path: path.join(SHOTS, "composer-pulseend-karli-optimum-dark-1440.png") });
+    }
+
     // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
     {
       const { assertPng } = require("./png_check.cjs");

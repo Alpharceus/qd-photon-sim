@@ -470,6 +470,39 @@ def run_checks(tmp):
           and validate_spec(fj["design"]["composed"])["ok"] is True, str(fk.status_code))
     check("10g that spec == tiers.fock_card_to_spec()", fj["design"]["composed"] == J(tiers_core.fock_card_to_spec()))
 
+    # ------------------------------------------------------------ 11. pulse-end occupation (PULSEEND)
+    from fsim_core.compose import optimum as _opt
+    _pe_spec = next(e for e in ex if e["name"] == "example-pillar-resonant")["design"]["composed"]
+    _pe_cw = json.loads(json.dumps(_pe_spec))
+    _pe_cw["drive"] = {"kind": "cw_resonant", "params": {}}
+    t0 = time.time()
+    r = post("/api/compose/pulse-end", {"spec": _pe_spec, "phonons": True, "radiative": True})
+    snap = wait_job(j(r)["job_id"], timeout=300) if r.status_code in (200, 202) else {"state": f"http {r.status_code}"}
+    _pe_dt = time.time() - t0
+    _pe_want = _opt.pulse_end_occupation(_pe_spec, True, True)["value"]
+    _pe_got = (snap.get("result") or {}).get("value")
+    check("11a POST /api/compose/pulse-end returns the value of optimum.pulse_end_occupation (same spec, phonons and decay on)",
+          snap["state"] == "done" and _pe_got is not None and abs(_pe_got - _pe_want) <= 1e-12,
+          f"route {_pe_got}, core {_pe_want}, {_pe_dt:.1f} s")
+    r = post("/api/compose/pulse-end", {"spec": _pe_spec, "phonons": True, "radiative": True})
+    check("11b the same request again is served from the cache (spec + switches)", r.status_code == 200 and j(r).get("cached") is True)
+    outs = {}
+    for ph, ra in ((False, True), (True, False), (False, False)):
+        r = post("/api/compose/pulse-end", {"spec": _pe_spec, "phonons": ph, "radiative": ra})
+        sn = wait_job(j(r)["job_id"], timeout=300) if r.status_code in (200, 202) else {"state": f"http {r.status_code}"}
+        outs[(ph, ra)] = (sn.get("result") or {}).get("value")
+    check("11c the switches are honoured: each combination equals the core function, switching decay off raises the occupation",
+          all(v is not None and abs(v - _opt.pulse_end_occupation(_pe_spec, *k)["value"]) <= 1e-12 for k, v in outs.items())
+          and outs[(False, False)] > _pe_got and outs[(True, False)] > _pe_got,
+          ", ".join(f"ph={int(k[0])} ra={int(k[1])}: {v:.4f}" for k, v in outs.items() if v is not None))
+    r = post("/api/compose/pulse-end", {"spec": _pe_cw, "phonons": True, "radiative": True})
+    check("11d a CW design -> 422 with the physics reason (no code names)",
+          r.status_code == 422 and "pulsed" in j(r).get("error", "") and not _bad_pat.search(j(r).get("error", "")), j(r).get("error", "")[:90])
+    check("11e non-boolean switches -> 400; invalid spec -> 400",
+          post("/api/compose/pulse-end", {"spec": _pe_spec, "phonons": "yes"}).status_code == 400
+          and post("/api/compose/pulse-end", {"spec": {"bad": 1}}).status_code == 400)
+    check("11f pulse_end_job is an exact ALLOWED_CALLS entry", "fsim_studio.api_compose:pulse_end_job" in jobs.ALLOWED_CALLS)
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -2189,8 +2189,8 @@
       "notes": "The RT edge emitter {sc_rt.say} outright (VERDICT {sc_rt}). The planar cavity SET {sc_cav.say}: {sc_cav_hw} rows pass in hardware. The screened c-plane SET from the geometry/Stark study also {sc_geo.say}. The relaxed vertical nanowire SET {sc_nw.say} too, with {sc_nw_hw} rows hardware-qualified. No COMSOL result enters any number here."
     }
   ],
-  "baked_hash": "e93b822bd7a50b8265e8e07e1d42bed8e7d1e75072ab557fec6226c381e43cc3",
-  "baked_fsim_core_hash": "e722bf37aff3387bef4dfc6bb37dc5539ce4c077cfcfac9533eaddd21bee54e1",
-  "baked_at": "2026-10-14T06:43:45+00:00",
+  "baked_hash": "77f3690a9062e4a3440f36cedd483be4d2019a9983ef97a56c6350fcbfd04cf5",
+  "baked_fsim_core_hash": "cf1ddd87aa08fb968ad5dce17121130137a0a4a1004a9020421178dc2966f085",
+  "baked_at": "2026-10-16T21:58:10+00:00",
   "bake_errors": []
 }

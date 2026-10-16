@@ -258,6 +258,36 @@ def _engine_px_end(entries, vals: dict, phonons: bool, radiative: bool) -> float
     return float(r[3].real)
 
 
+def pulse_end_check(spec, phonons: bool = True):
+    """Raise ValueError (user-facing physics wording) when `pulse_end_occupation` cannot read out this design; else return
+    (entries, vals). Cheap (builds the drive plan only), so a server can refuse before it queues the real computation."""
+    spec = E._as_spec(spec)
+    entries = E._entries(spec)
+    vals = E._central_values(E._leaves(spec, entries))
+    em, _setup, _sr, rt, plan, _v, _reads = E._prepare(entries, vals, float(vals["T_K"]))
+    if plan.family != "coherent" or plan.timing != "pulsed":
+        raise ValueError("The pulse-end occupation is defined for pulsed coherent drives only: this drive is not a "
+                         "pulse sequence that starts from the ground state, so there is no end-of-pulse state to read out.")
+    ok, why = PolaronSolver().supports(plan, em if phonons else replace(em, phonon=None), rt)
+    if not ok:
+        raise ValueError("The pulse-end occupation cannot be computed for this design: "
+                         + str(why).replace("polaron: ", "") + ".")
+    return entries, vals
+
+
+def pulse_end_occupation(spec, phonons: bool = True, radiative: bool = True) -> dict:
+    """rho_XX at the END of the pulse window, started from |G><G|, for a composed design (the paper-style readout of the
+    optimum items) with the LA-phonon polaron rates and the radiative / non-radiative decay switched on or off [DR].
+    Ranged leaves collapse to their central values, as everywhere in the Composer. The occupation is the engine's own
+    `_engine_px_end`; this function only turns a spec into its inputs. Raises ValueError (user-facing wording) when the
+    drive is not a pulsed coherent drive or the polaron solver does not cover the design."""
+    entries, vals = pulse_end_check(spec, phonons)
+    value = _engine_px_end(entries, vals, bool(phonons), bool(radiative))
+    return {"value": float(value), "phonons": bool(phonons), "radiative": bool(radiative), "T_K": float(vals["T_K"]),
+            "note": "Exciton occupation at the end of the pulse window, started from the ground state; "
+                    "not the steady-state (periodic) readout."}
+
+
 # ------------------------------------------------------------------ fast batched evaluator (phonon-free, lossless)
 def _unit_series(train, n_f: int):
     """(t_mid, [unit complex Rabi series per component for peak amplitude 1 rad/ns], [peak amp per rad of area])."""

@@ -9,6 +9,8 @@ Routes (registered by register(app) from server.create_app):
   POST /api/compose/validate          {spec} -> {ok, solver, regime, issues, resolved, eta_s}
   POST /api/compose/run               {spec, mode: point|tsweep, T_grid?, name?} -> same body as POST /api/run
   POST /api/compose/series            {spec, path, values[], observables[]} -> job (series_job), cached
+  POST /api/compose/pulse-end         {spec, phonons, radiative} -> job (pulse_end_job), cached: rho_XX at the end of the pulse window
+                                      from |G><G| (about 2 s with phonons, so a job; 422 with the physics reason for a CW or unsupported design)
   GET  /api/compose/examples          class-example composed designs from cards/composed/*.yaml
   GET  /api/compose/tier/fock         fsim_core.compose.tiers.fock_card_to_spec() as a composed design
   GET|POST /api/compose/scene         fsim_studio.scene_compose.describe(spec) (501 while the module is absent)
@@ -21,7 +23,7 @@ Routes (registered by register(app) from server.create_app):
                                       item's argmax ("Open optimum in Composer"); argmax_full comes from the reproduce result
 
 Job functions (exact entries in jobs.ALLOWED_CALLS):
-  fsim_studio.api_compose:series_job      fsim_studio.api_compose:reproduce_job
+  fsim_studio.api_compose:series_job      fsim_studio.api_compose:reproduce_job      fsim_studio.api_compose:pulse_end_job
 """
 from __future__ import annotations
 
@@ -45,6 +47,7 @@ PAPERS_DIR = CARDS / "papers"
 EXAMPLES_DIR = CARDS / "composed"
 SERIES_FN = "fsim_studio.api_compose:series_job"
 REPRODUCE_FN = "fsim_studio.api_compose:reproduce_job"
+PULSE_END_FN = "fsim_studio.api_compose:pulse_end_job"
 CENTRAL_NOTE = "ranged leaves replaced by their declared central value (lin midpoint, log geometric mean); not a prediction"
 
 SAVED_RUN_MAX_BYTES = 4_000_000
@@ -478,8 +481,13 @@ def optimum_design(paper_id: str, device: dict, argmax_full: dict, src: dict = N
             params[name] = val
         applied.append(path)
     out["argmax_applied"] = applied
-    out["note"] = ("Leaves at the maximum over the paper's scan window: " + ", ".join(applied) + ". "
-                   "The Composer's solver and readouts are the engine's, not the optimum item's two-level / no-phonon pulse-end occupation.")
+    def _shown(path):
+        axis, _, name = path.partition(".")
+        ps = _param_spec(axis, (spec.get(axis) or {}).get("kind"), name)
+        return f"${ps.tex}$" if ps is not None and getattr(ps, "tex", None) else name.replace("_", " ")
+    out["note"] = ("Set to the maximum over the paper's scan window: " + ", ".join(_shown(p) for p in applied) + ". "
+                   "The Composer's headline readouts are the engine's periodic fixed point; the paper's number is the occupation at the end of the pulse "
+                   "window from the ground state, which the Pulse-end occupation panel in Results computes (phonon and decay switches preset from the paper item).")
     return out
 
 
@@ -513,6 +521,11 @@ def series_job(spec, path, values, observables):
     from fsim_core.compose import engine
     res = engine.series(spec, path, [float(v) for v in values], list(observables))
     return {"series": res, "spec_path": path, "n": len(values)}
+
+
+def pulse_end_job(spec, phonons=True, radiative=True):
+    from fsim_core.compose import optimum
+    return optimum.pulse_end_occupation(spec, bool(phonons), bool(radiative))
 
 
 def _model_series(paper, spec) -> list:
@@ -654,6 +667,21 @@ def register(app):
                                    "observables": observables}, series_eta(spec, len(values)), "series")
         return _out(resp, 200 if resp.get("cached") else 202)
 
+    @app.post("/api/compose/pulse-end")
+    def compose_pulse_end():
+        from fsim_core.compose import optimum
+        body = _body()
+        spec, _res = _valid_spec(body)
+        ph, ra = body.get("phonons", True), body.get("radiative", True)
+        if not isinstance(ph, bool) or not isinstance(ra, bool):
+            raise ComposeError("phonons and radiative must be true or false")
+        try:
+            optimum.pulse_end_check(spec, ph)
+        except ValueError as exc:
+            raise ComposeError(str(exc), 422) from exc
+        resp = _submit(PULSE_END_FN, {"spec": spec, "phonons": ph, "radiative": ra}, 3.0, "pulse-end")
+        return _out(resp, 200 if resp.get("cached") else 202)
+
     def _scene(spec, display):
         try:
             mod = importlib.import_module("fsim_studio.scene_compose")
@@ -767,4 +795,4 @@ def register(app):
 
 
 __all__ = ["register", "ComposeError", "display_hint", "series_job", "reproduce_job", "validate_payload",
-           "registry_payload_cached", "central_design", "list_examples", "fock_design"]
+           "pulse_end_job", "registry_payload_cached", "central_design", "list_examples", "fock_design"]

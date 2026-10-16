@@ -286,11 +286,11 @@ def polish_checks(c, app, jm, tmp, direct_h):
         # named function of an api_explore_{a,b} module.
         allowed = getattr(jobs, "ALLOWED_CALLS", frozenset())
         b_entries = {f"fsim_studio.api_explore_b:{n}" for n in ("phonon_frames", "transport_sweep", "stark_trace", "sde_frame", "sde_li", "sde_trace")}
-        check("H16 job allowlist is exact: the scene entry plus named api_explore_{a,b} functions and the two api_compose jobs",
+        check("H16 job allowlist is exact: the scene entry plus named api_explore_{a,b} functions and the three api_compose jobs",
               isinstance(allowed, frozenset) and "fsim_studio.scene:surface_compute" in allowed and b_entries <= allowed
               and all(fn == "fsim_studio.scene:surface_compute" or re.fullmatch(r"fsim_studio\.api_explore_[ab]:[a-z_0-9]+", fn)
-                  or fn in ("fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job") for fn in allowed)
-              and {"fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job"} <= allowed
+                  or fn in ("fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job", "fsim_studio.api_compose:pulse_end_job") for fn in allowed)
+              and {"fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job", "fsim_studio.api_compose:pulse_end_job"} <= allowed
               and all(blocked) and w_blocked)
     blocks.append(('H16 exact job allowlist', _b9))
 

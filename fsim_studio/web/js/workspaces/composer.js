@@ -17,6 +17,7 @@ import { baseLayout, colors as themeColors } from "../charts/theme.js";
 import { renderParamForm, readLeaf } from "../ui/paramForm.js";
 import { openChipPicker } from "../ui/chipPicker.js";
 import { bandPanel } from "../ui/bandProfile.js";
+import { pulseEndPanel } from "../ui/pulseEnd.js";
 
 // Chain order and display names. The registry key is only a lookup into the payload.
 const AXES = [
@@ -77,6 +78,7 @@ export function unmount() {
   for (const c of Object.values(S.charts)) c.dispose();
   try { S.scene?.dispose?.(); } catch { /* gone */ }
   S.ro?.disconnect();
+  S.pe?.dispose();
   S.ctx.state.set({ run: null });
   S.el.classList.remove("ws-compose");
   S = null;
@@ -115,6 +117,7 @@ export async function update(args) {
     renderAll();
     if (S.runState === "saved") S.dom.runStatus.textContent = "Saved result loaded; RUN makes a fresh one";
     await revalidate();
+    presetPulseEnd();
     loadScene();
   } catch (e) {
     if (!S) return;
@@ -239,8 +242,35 @@ async function revalidate() {
   renderMounts();
   renderPlaque();
   syncRunbar();
+  syncPulseEnd();
   drawBeam();
   sceneSoon();
+}
+
+/** The pulse-end panel belongs to pulsed coherent drives (the registry says which drive provides coherent_pulse). */
+function syncPulseEnd() {
+  if (!S?.pe) return;
+  const d = (S.reg?.drives || []).find((x) => x.kind === S.spec?.drive?.kind);
+  S.pe.sync(!!d && (d.provides || []).includes("coherent_pulse"));
+}
+
+/** Opened by "Open optimum in Composer": set the panel's switches the way the paper's optimum item states its solver. */
+async function presetPulseEnd() {
+  const seed = S?.seed;
+  if (!seed?.paper || !seed.item) return;
+  try {
+    const known = await S.ctx.api.getJSON("/api/papers");                 // only a catalogued card is fetched (a hand-made seed names none)
+    if (!Array.isArray(known) || !known.some((x) => x.id === seed.paper)) return;
+    const paper = await S.ctx.api.getJSON(`/api/papers/${encodeURIComponent(seed.paper)}`);
+    const rows = paper.reproduce || [];
+    const e = rows.find((x) => x.item === seed.item);
+    const src = e?.mode === "optimum" ? e : rows.find((x) => x.item === e?.of && x.mode === "optimum");
+    const sv = src?.optimum?.solver;
+    if (!S || !sv || S.seed !== seed) return;
+    const on = (v) => !(v === false || v === "off");
+    const solver = { phonons: on(sv.phonons), radiative: on(sv.radiative) };
+    S.pe.preset(solver, `Switches preset from the paper's item: phonons ${solver.phonons ? "on" : "off"}, radiative decay ${solver.radiative ? "on" : "off"}.`);
+  } catch { /* the switches stay at their defaults */ }
 }
 
 const sceneSoon = debounce(() => loadScene(), 500);
@@ -281,6 +311,7 @@ function renderAll() {
   S.scene = null;
   S.sceneKey = null;
   S.ro?.disconnect();
+  S.pe?.dispose();
   S.dom = {};
   clear(S.el);
   const board = renderBoard();
@@ -313,7 +344,7 @@ function renderBoard() {
       h("div.bh-titleline",
         h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
         S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited")),
-      seedStillShown() ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), `from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`) : null,
+      seedStillShown() ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), richText(`from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`)) : null,
       h("ol.board-desc.board-steps", { "aria-label": "How to compose a device" },
         h("li", h("b.bs-n", "1"), "Start from an example"),
         h("li", h("b.bs-n", "2"), "Click a mount's kind to swap it, its body to edit values"),
@@ -952,11 +983,12 @@ function renderShelf() {
     build: () => buildHom(), table: () => homTable(), filename: () => `${S?.run?.run_id || "fsim"}-hom-dt`,
   });
   S.charts.hom.el.dataset.chart = "hom";
+  S.pe = pulseEndPanel({ api: S.ctx.api, getSpec: () => S.spec });
   S.dom.notes = h("details.drawer.notes-drawer", h("summary", h("span.engrave", "Model notes"), h("span.drawer-count")), h("div.drawer-body"));
   return h("section.shelf", { "aria-label": "Instrument shelf" },
     S.dom.plaqueHost,
     h("div.shelf-bar", S.dom.status, (S.exporter = exportButtons(exportArgs)).el),
-    S.dom.alert, S.dom.hint, S.dom.labels, S.dom.readouts,
+    S.dom.alert, S.dom.hint, S.dom.labels, S.dom.readouts, S.pe.el,
     S.charts.series.el, S.charts.tcurve.el, S.charts.hom.el, S.dom.notes);
 }
 
@@ -1080,6 +1112,7 @@ function renderResults() {
   }
   renderPlaque();
   renderHint();
+  syncPulseEnd();
   clear(S.dom.labels);
   const s = r?.scalars || {};
   const labels = r?.labels || [];

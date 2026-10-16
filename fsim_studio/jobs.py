@@ -42,7 +42,8 @@ ALLOWED_CALLS = ALLOWED_CALLS | frozenset({
     "fsim_studio.api_explore_b:sde_li", "fsim_studio.api_explore_b:sde_trace"})
 # devlib-p10 composed engine (api_compose.py): exact job functions, no wildcard.
 ALLOWED_CALLS = ALLOWED_CALLS | frozenset({
-    "fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job"})
+    "fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job",
+    "fsim_studio.api_compose:pulse_end_job"})
 MAX_T_POINTS = 400
 
 # Measured seconds per evaluate() on this machine (ideas/01-ux-architecture.md
