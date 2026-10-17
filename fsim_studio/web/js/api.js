@@ -221,3 +221,54 @@ export function awaitJob(jobId, hooks = {}) {
   });
   return { promise, close };
 }
+
+// ------------------------------------------------------------- composer (devlib-p11)
+// Python side: fsim_studio/api_compose.py (see fsim_studio/API.md, "Composer and Papers").
+// Every number still comes back from the server; the client only moves specs and results.
+
+/** GET /api/compose/registry once per page load: {materials, structures, drives, setups, solvers, observables, tiers, compat}. */
+export const composeRegistry = () => once("compose:registry", () => getJSON("/api/compose/registry"));
+/** POST /api/compose/validate {spec} -> {ok, solver, regime, issues, resolved, eta_s}. */
+export const composeValidate = (spec) => postJSON("/api/compose/validate", { spec });
+/** POST /api/compose/scene {spec} -> SceneSpec (501 while scene_compose is absent). */
+export const composeScene = (spec, display) => postJSON("/api/compose/scene", display ? { spec, display } : { spec });
+
+/**
+ * Submit to a compose endpoint that answers like POST /api/run ({job_id, cached, eta_s, run_id, result?})
+ * and follow the job over SSE. Same hooks and return shape as runJob().
+ */
+export function submitJob(url, body, hooks = {}) {
+  let cancelled = false;
+  let follower = null;
+  let jobId = null;
+  let deleted = false;
+  const sendDelete = () => {
+    if (deleted || !jobId) return;
+    deleted = true;
+    del(`/api/jobs/${jobId}`).catch(() => {});
+  };
+  const t0 = performance.now();
+  const promise = (async () => {
+    const resp = await postJSON(url, body);
+    jobId = resp.job_id;
+    if (cancelled) {
+      if (!resp.result) sendDelete();
+      throw new ApiError("Run cancelled", { body: { error: { kind: "cancelled" } } });
+    }
+    hooks.onSubmitted?.(resp);
+    if (resp.error) throw new ApiError(resp.error.message || "Run failed", { body: { error: resp.error } });
+    if (resp.result) return { ...resp, elapsed_s: (performance.now() - t0) / 1000 };
+    follower = awaitJob(jobId, hooks);
+    const result = await follower.promise;
+    return { ...resp, result, elapsed_s: (performance.now() - t0) / 1000 };
+  })();
+  return {
+    promise,
+    get jobId() { return jobId; },
+    cancel() { cancelled = true; follower?.close(); sendDelete(); },
+  };
+}
+/** POST /api/compose/run {spec, mode: point|tsweep, T_grid?, name?}. */
+export const composeRun = (body, hooks) => submitJob("/api/compose/run", body, hooks);
+/** POST /api/compose/series {spec, path, values[], observables[]}; the result is {series, spec_path, n}. */
+export const composeSeries = (body, hooks) => submitJob("/api/compose/series", body, hooks);

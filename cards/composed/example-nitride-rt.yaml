@@ -1,0 +1,51 @@
+# Nitride nanowire, 300 K: InGaN/GaN dot in a photonic nanowire, above-band pulsed pump at room temperature. Class example, not a reproduction.
+# Every leaf below carries a provenance tag and a source; unspecified parameters take the registry defaults.
+meta:
+  id: example-nitride-rt
+  role: composed-example
+  label: Nitride nanowire, 300 K
+  summary: InGaN/GaN dot in a photonic nanowire, above-band pulsed pump at room temperature. Class example, not a reproduction.
+  note: class example built from registry kinds; not a paper reproduction. Expected class range at 300 K - g2(0) 0.17 to 0.23 (Tamariz 2020, GaN/AlN; the drive's bg_frac carries the XX-line background), HOM ~ 0 (Gamma_ph >> Gamma at 300 K)
+design:
+  name: example-nitride-rt
+  platform: composed
+  composed:
+    schema: fsim-composed/1
+    solver: auto
+    T_K:
+      value: 300.0
+      unit: K
+      tag: A
+      source: room temperature operation
+    material:
+      kind: ingan_gan
+      params: {}
+    structure:
+      kind: photonic_nanowire
+      params:
+        d_nm:
+          value: 220.0
+          unit: nm
+          tag: E
+          source: nanowire diameter class value
+    drive:
+      kind: above_band
+      params:
+        cw:
+          value: false
+          unit: ''
+          tag: A
+          source: pulsed above-band pump
+        bg_frac:
+          value: 0.1224
+          unit: '1'
+          tag: DR
+          source: "R2 FIX-1a: at 300 K the XX line leaks into the X window as an uncorrelated background, which sets the measured purity floor (Tamariz et al., arXiv:2001.09805 (2020), GaN/AlN dots, 300 K: g2(0) = 0.23 +/- 0.05 averaged over dots, Eq. 4 g2 = 1 - rho^2 [V]); bg_frac = 1 - sqrt(1 - 0.23) = 0.1224 [DR]. Without it the model gives g2 = 3e-4, which no room-temperature nitride dot shows (the dot's own re-excitation is negligible at this pump); class value, not a fit to this device"
+    setup:
+      kind: lens_fibre_det
+      params:
+        NA:
+          value: 0.65
+          unit: '1'
+          tag: A
+          source: class collection NA

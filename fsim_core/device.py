@@ -57,10 +57,13 @@ from .nitride_stark import resolve_bias
 _ROOT = Path(__file__).resolve().parents[1]
 
 
-def class_proxy_params() -> dict:
+def class_proxy_params(lineshape: str = "lorentzian") -> dict:
     """Arsenide-class Gamma/retention parameters from the V-a joint fit [A as
-    proxy for unmeasured platforms]."""
-    p = json.loads((_ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+    proxy for unmeasured platforms].  lineshape="ibm" selects the opt-in
+    IBM-calibrated refit bundle (D1); the default is the legacy Lorentzian
+    bundle, bit-identical."""
+    from .fit_bundle import load_fit_params
+    p = load_fit_params(lineshape)["params"]
     return {k: p[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo", "r_xx",
                               "a_esc", "E_a", "b_p", "E_b", "b0", "beta")}
 
@@ -538,6 +541,9 @@ class DeviceDesign:
     # the operating point as NEW "quantum_*" scalars, tagged [DR]; no existing
     # key or verdict changes. See _quantum_diagnostics.
     quantum: dict = field(default_factory=dict)
+    # Composable-engine spec (platform "composed"); {} on every other platform
+    # and then never written by save(). See fsim_core/compose/spec.py.
+    composed: dict = field(default_factory=dict)
 
     # ---- YAML round-trip (same reproducibility rule as the cards)
     def save(self, path):
@@ -545,6 +551,15 @@ class DeviceDesign:
                         "note": "editable device description; evaluate with "
                                 "fsim_core.device.evaluate"},
                "design": asdict(self)}
+        if self.platform == "composed":
+            # Composed designs carry no legacy blocks (they are inert there).
+            doc["design"] = {"name": self.name, "platform": self.platform,
+                             "composed": doc["design"]["composed"],
+                             "provenance": doc["design"]["provenance"]}
+            Path(path).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+            return
+        if not doc["design"].get("composed"):
+            doc["design"].pop("composed", None)
         # The optional quantum block is written only when non-empty, so a
         # flag-off design saves exactly the pre-quantum-path text (load()
         # reads a missing block back as {}).
@@ -558,6 +573,8 @@ class DeviceDesign:
     @staticmethod
     def load(path) -> "DeviceDesign":
         d = yaml.safe_load(Path(path).read_text(encoding="utf-8"))["design"]
+        if d.get("platform", "legacy") == "composed":
+            return DeviceDesign._load_composed(d)
         # item 5 (pr-pkg1-fix2): PyYAML's YAML 1.1 float resolver does not
         # recognize an unsigned exponent (e.g. "3.0e8", vs. "3.0e+8") as a
         # float, so it reads back as a str -- a TypeError the first time
@@ -634,6 +651,27 @@ class DeviceDesign:
             provenance=dict(d.get("provenance", {})),
             quantum=dict(d.get("quantum", None) or {}),
         )
+
+    @staticmethod
+    def _load_composed(d: dict) -> "DeviceDesign":
+        """platform "composed": the legacy blocks do not exist; a YAML that
+        carries any of them is rejected rather than silently ignored."""
+        legacy = ("dot", "ret", "drive", "cavity", "filter", "aperture", "emission", "nitride")
+        present = [k for k in legacy if k in d]
+        if present:
+            raise ValueError(f"legacy block(s) {present} are inert on composed designs; "
+                             "remove them (the composed: block is the whole device)")
+        extra = set(d) - {"name", "platform", "composed", "provenance"}
+        if extra:
+            raise ValueError(f"unknown key(s) {sorted(extra)} in a composed design")
+        composed = d.get("composed")
+        if not composed or not isinstance(composed, dict):
+            raise ValueError("composed designs need a non-empty composed: mapping")
+        from .compose.spec import ComposedSpec  # local import: legacy paths never load compose
+        ComposedSpec.from_dict(composed)
+        return DeviceDesign(name=d.get("name", "my-device"), platform="composed",
+                            composed=copy.deepcopy(composed),
+                            provenance=dict(d.get("provenance", {})))
 
 
 def _coerce_optional_floats(mapping: dict, keys: tuple) -> dict:
@@ -1784,6 +1822,9 @@ def _evaluate_nitride(d: DeviceDesign, T_grid=None) -> dict:
 def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     """Run the full chain. Returns {'curves': {...}, 'scalars': {...}}."""
     d = design
+    if d.platform == "composed":
+        from .compose.engine import evaluate_composed
+        return evaluate_composed(d, T_grid)
     if d.platform == "ingan_gan_planar":
         return _evaluate_nitride(d, T_grid)
     if d.platform == "ingan_gan_nanowire":
@@ -1927,7 +1968,13 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
     # defaults to 0 -- duty_eff is exactly d.drive.duty (bit-identical).
     duty_eff = (d.drive.rep_rate_hz * tau_pulse_ns_val * 1e-9
                if (rep_explicit and not duty_explicit) else d.drive.duty)
-    proxy = class_proxy_params() if (d.dot.linewidth == "class" or d.ret.mode == "proxy") else {}
+    # D1 opt-in (devlib-r2-pha2): a NON-field attribute d.dot.fit_bundle = "ibm" selects the IBM-calibrated
+    # bundle AND feeds the IBM line the narrowed ZPL width (FWHM_IBM = Gamma(T)).  Default (attribute absent) =
+    # the legacy Lorentzian bundle with the full width as ZPL width: every existing result is bit-identical.
+    # Not a DotBlock field on purpose: design_meta/studio schemas stay untouched.
+    ibm_bundle = (getattr(d.dot, "fit_bundle", "lorentzian") == "ibm" and d.dot.lineshape == "ibm")
+    proxy = (class_proxy_params("ibm" if ibm_bundle else "lorentzian")
+             if (d.dot.linewidth == "class" or d.ret.mode == "proxy") else {})
     gp = ({k: proxy[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo")}
           if d.dot.linewidth == "class" else None)
     rp = ({k: (getattr(d.ret, k) or proxy[k]) for k in ("a_esc", "E_a", "b_p", "b0", "beta")}
@@ -2104,19 +2151,27 @@ def evaluate(design: DeviceDesign, T_grid=None) -> dict:
             # refinement that waits for data). ZPL widths carry the standing
             # Gamma(T) model unchanged (see qd_gf.effective_gamma_zpl note).
             pp = PhononParams(**d.dot.phonon)
+            if ibm_bundle:
+                # D1: the fitted Gamma is a TOTAL FWHM; the ZPL width is the root of FWHM_IBM(gz, T) = Gamma
+                # (r2-physics-a Q3; the Lorentzian branch below double counts the phonon broadening).
+                from .fitting import ibm_zpl_width
+                gam_x_zpl = ibm_zpl_width(pp, float(Tj), float(gam))
+                gam_xx_zpl = d.dot.r_xx * gam_x_zpl
+            else:
+                gam_x_zpl, gam_xx_zpl = gam, d.dot.r_xx * gam
             if wire:
                 # R2: Purcell funnels emission into the ZPL (Z_eff) and
                 # multiplies the radiative rate; X line only (the XX line's
                 # own Purcell overlap differs -- kept unenhanced, [E]).
                 t_x, _z_eff, rate_mult = ibm_purcell_transmission(
-                    dx_w, pp, Tj, gam, F_eff_op, w_meV=w, kappa_meV=kappa,
+                    dx_w, pp, Tj, gam_x_zpl, F_eff_op, w_meV=w, kappa_meV=kappa,
                     delta_c_meV=dx if held else None)
             else:
-                t_x = float(ibm_transmission(dx_w, pp, Tj, gam, w_meV=w,
+                t_x = float(ibm_transmission(dx_w, pp, Tj, gam_x_zpl, w_meV=w,
                                              kappa_meV=kappa,
                                              delta_c_meV=dx if held else None))
             t_xx = float(ibm_transmission(dx_w - d.dot.delta_xx, pp, Tj,
-                                          d.dot.r_xx * gam, w_meV=w,
+                                          gam_xx_zpl, w_meV=w,
                                           kappa_meV=kappa,
                                           delta_c_meV=(dx - d.dot.delta_xx)
                                           if held else None))

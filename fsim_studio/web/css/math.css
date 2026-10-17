@@ -1,0 +1,30 @@
+/* Typeset mathematics (devlib-r2-math): KaTeX output sized to the surrounding text, colour inherited.
+   KaTeX's own sheet sets .katex to 1.21em; here it is 1.06em so a symbol sits with the label, not above it. */
+.math { display: inline-block; max-width: 100%; text-transform: none; letter-spacing: 0; font-style: normal; font-weight: inherit; text-indent: 0; white-space: nowrap; vertical-align: baseline; }
+.math .katex { font-size: 1.06em; color: inherit; text-rendering: auto; }
+.math .katex-html { white-space: nowrap; }
+.math-display { display: block; text-align: center; margin: 0.4em 0; overflow-x: auto; overflow-y: hidden; }
+.math-display .katex { font-size: 1.12em; }
+.math-plain { font-family: var(--font-num); font-style: italic; }
+/* long formulas inside prose may wrap at the spaces KaTeX allows; plain inline math stays unbroken */
+.prose .math, .pf-help .math, .why-lede .math, .note .math { white-space: normal; }
+.math .katex-mathml { position: absolute; clip: rect(1px, 1px, 1px, 1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
+/* labels engraved in capitals must not capitalise or letter-space a symbol */
+.engrave .math, .ro-label .math, .sro-label .math, .fr-label .math, .mv-k .math, .cmp-table th .math { text-transform: none; letter-spacing: 0; }
+/* KPI tiles and the 3D plate use the display size */
+.ro-label .math .katex { font-size: 1.4em; line-height: 1; }
+.ro-label { line-height: 1.5; }
+.sro-label .math .katex { font-size: 1.3em; }
+.ro-caption .math .katex, .pf-help .math .katex, .why-lede .math .katex { font-size: 1.04em; }
+.fr-label .math .katex { font-size: 1.2em; }
+.mv-k .math .katex { font-size: 1.12em; }
+.fr-path { display: none; } /* the registry id / path sits in the label tooltip; rows show the symbol */
+.fr-unit .math, .ro-unit .math { color: inherit; }
+/* light and dark both inherit currentColor; make sure nothing paints a fixed colour */
+.katex, .katex * { border-color: currentColor; }
+.katex .mord, .katex .mop, .katex .mbin, .katex .mrel, .katex .minner { color: inherit; }
+.num-exp { font-size: 0.72em; line-height: 0; }
+/* KaTeX's hidden MathML twin is position:absolute. Without a positioned ancestor it escapes the overflow:hidden of an ellipsised
+   line (e.g. .pf-src, plaque notes) and, sitting where the clipped text would have run on, stretches the page's scrollWidth
+   (390 px phone: 622 with a parameter sheet open). Positioning the math span makes the clip apply to it. */
+.math { position: relative; }

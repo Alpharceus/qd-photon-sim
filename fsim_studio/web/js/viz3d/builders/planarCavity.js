@@ -37,7 +37,7 @@ export function buildPlanarCavity(spec, ctx) {
     const role = i === 0 ? 'core' : 'thermal';
     const m = disc(y, t, role, { opacity: isCavity ? (i === 0 ? 0.55 : 0.6) : (i === 0 ? 0.82 : 0.7) });
     if (i === 0 && isCavity) m.material.color.setHex(0x6f8fae);
-    stage.addPickable(m, { title: Ly.name, tag: Ly.tag, rows: [['thickness', `${nice(Ly.t_nm / 1000)} µm`], ['k300', `${Ly.k300} W/m/K`], ['stack', 'thermal (thermal.py)']], note: Ly.source || 'thermal.layers entry' });
+    stage.addPickable(m, { title: Ly.name, tag: Ly.tag, rows: [['thickness', `${nice(Ly.t_nm / 1000)} µm`], ['k300', `${Ly.k300} W/m/K`], ['stack', 'thermal stack']], note: Ly.source || 'thermal stack layer' });
     (i === 0 ? root : thermalG).add(m);
     yOf[i] = [y, y + t];
   });
@@ -55,7 +55,7 @@ export function buildPlanarCavity(spec, ctx) {
     new THREE.MeshPhysicalMaterial({ color: 0x3a3e45, metalness: 0.85, roughness: 0.38 }));
   hs.position.y = stackBot - subT - hsT / 2 - 0.02;
   root.add(hs);
-  labels.add(root, [subR * 1.3, stackBot - subT - hsT / 2, subR * 1.3], `heat sink \u00b7 T_hs ${spec.scalars?.T_hs?.value ?? ''} K`, { tag: spec.scalars?.T_hs?.tag || 'A', priority: 25, sub: 'thermal boundary of thermal.py' });
+  labels.add(root, [subR * 1.3, stackBot - subT - hsT / 2, subR * 1.3], `heat sink \u00b7 T_hs ${spec.scalars?.T_hs?.value ?? ''} K`, { tag: spec.scalars?.T_hs?.tag || 'A', priority: 25, sub: 'thermal boundary of the thermal stack' });
   stage.addPickable(sub, { title: `${g.substrate} substrate`, tag: 'A', rows: [['thickness', 'not modelled']] });
   root.add(sub);
   root.add(breakMark([-subR, stackBot - subT * 0.5, subR + 0.01], [subR, stackBot - subT * 0.5, subR + 0.01], 0.12, [0, 1, 0], 12));
@@ -89,7 +89,7 @@ export function buildPlanarCavity(spec, ctx) {
       if (Ly.name.startsWith('H')) hi.setMatrixAt(ih++, M); else lo.setMatrixAt(il++, M);
     }
     const dbr = spec.overlays.dbr;
-    const info = { title: 'DBR diagnostic', tag: 'E', rows: [['pairs', dbr.pairs], ['d_H / d_L', `${nice(dbr.d_high_nm)} / ${nice(dbr.d_low_nm)} nm`], ['R at λ', nice(dbr.reflectance, 5)], ['stop band', `${dbr.stopband_nm.map((v) => nice(v, 4)).join(' - ')} nm`]], note: 'nitride_cavity.dbr_diagnostic: ideal lossless quarter-wave stack, free-space exit [E/A]' };
+    const info = { title: 'DBR diagnostic', tag: 'E', rows: [['pairs', dbr.pairs], ['d_H / d_L', `${nice(dbr.d_high_nm)} / ${nice(dbr.d_low_nm)} nm`], ['R at λ', nice(dbr.reflectance, 5)], ['stop band', `${dbr.stopband_nm.map((v) => nice(v, 4)).join(' - ')} nm`]], note: 'DBR diagnostic: ideal lossless quarter-wave stack, free-space exit [E/A]' };
     stage.addPickable(hi, info); stage.addPickable(lo, info);
     opticalG.add(hi, lo);
     const bottom = yy;
@@ -97,7 +97,7 @@ export function buildPlanarCavity(spec, ctx) {
     labels.add(opticalG, [R + 0.1, (gaNBot + bottom) / 2, 0], `DBR diagnostic · ${dbr.pairs} pairs · ${nice(spec.stacks.optical.total_nm / 1000)} µm`, { tag: 'E', sub: `R ${nice(dbr.reflectance, 4)} at ${nice(lam, 4)} nm; replaces the 1 µm effective layer of the thermal model` });
     opticalG.visible = false;
     const gS = hud.group('stack');
-    hud.toggle(gS, [['thermal', 'thermal (thermal.py)'], ['optical', 'DBR (nitride_cavity.py)']], 'thermal', (v) => {
+    hud.toggle(gS, [['thermal', 'thermal stack'], ['optical', 'DBR stack']], 'thermal', (v) => {
       thermalG.visible = v === 'thermal'; opticalG.visible = v === 'optical';
       // the substrate moves below whichever stack is shown
       const bot = v === 'optical' ? bottom : stackBot;
@@ -139,7 +139,7 @@ export function buildPlanarCavity(spec, ctx) {
   // Annotations: thermal layers.
   th.forEach((Ly, i) => {
     const [y0, y1] = yOf[i];
-    labels.add(i === 0 ? root : thermalG, [R + 0.1, (y0 + y1) / 2 + (i === 0 ? 0 : 0), 0], `${Ly.name} · ${nice(Ly.t_nm / 1000)} µm`, { tag: Ly.tag, sub: 'thermal stack (thermal.py)' });
+    labels.add(i === 0 ? root : thermalG, [R + 0.1, (y0 + y1) / 2 + (i === 0 ? 0 : 0), 0], `${Ly.name} · ${nice(Ly.t_nm / 1000)} µm`, { tag: Ly.tag, sub: 'thermal stack' });
   });
   labels.add(root, [R, stackBot - subT * 0.5, 0.2], `${g.substrate} substrate`, { tag: 'A', sub: 'thickness not modelled' });
   labels.add(root, [0, gaNTop + 0.15, -R], `mesa Ø ${nice(mesaD)} µm`, { tag: 'A', anchor: 'center' });

@@ -264,6 +264,84 @@ def _():
         assert banned not in src, banned
 
 
+# ============================================================ output-flux counting statistics (devlib-rc1 / Z1)
+
+_OUT_CACHE = {}
+
+
+def _out_stats(F_pump):
+    """Quiet/normal output-flux Fano at the Zhao operating point (4 x I_th), cached so the
+    ordering check and the report check share one integration (runtime)."""
+    from fsim_core.sde import output_counting_stats
+    if F_pump not in _OUT_CACHE:
+        I_th = find_threshold(P, I_hi=8.0)
+        _OUT_CACHE[F_pump] = output_counting_stats(
+            P, 4.0 * I_th, [1.0, 3.0], n_runs=96, t_end=10.0e-9, dt=2.0e-13, seed=11, F_pump=F_pump)
+    return _OUT_CACHE[F_pump]
+
+
+@check("OUTPUT FLUX: output_counting_stats rides the identical SDE -- same seed gives the "
+       "bit-identical final photon number as _integrate, and the counted photons sum to the "
+       "loss channel (mean output rate = <S>/tau_p)")
+def _():
+    from fsim_core.sde import _integrate_output, output_counting_stats  # noqa: F401
+    I_th = find_threshold(P, I_hi=8.0)
+    a = _integrate(P, 4.0 * I_th, 0.5e-9, DT, n_runs=4, seed=9, F_pump=0.08, keep_series=True)
+    b = _integrate_output(P, 4.0 * I_th, 0.5e-9, DT, n_runs=4, seed=9, F_pump=0.08)
+    assert np.array_equal(a["S"][:, -1], b["S_final"]), (a["S"][:, -1], b["S_final"])
+    tail = b["d_loss"][:, b["n_burn"]:]
+    rate = tail.mean() / DT                      # photons / s
+    S_mean = a["S"][:, a["n_burn"]:].mean()
+    assert abs(rate * P.tau_p / S_mean - 1.0) < 0.02, (rate * P.tau_p, S_mean)
+
+
+@check("OUTPUT FLUX Poisson/coherent anchor (closed form the code did not produce): "
+       "independent-carrier limit (no stimulated emission, N_dots -> inf so no Pauli blocking, "
+       "F_pump=1) -> output Fano = 1 + 2*beta_sp*[1 - tau(1-exp(-T/tau))/T] (photon creation "
+       "is driven by the slow N_GS reservoir, tau=tau_GS_spon); small beta_sp -> F -> 1. "
+       "Pinned within 4 MC sigma + 0.01")
+def _():
+    import dataclasses
+    from fsim_core.sde import output_counting_stats
+    beta = 0.02
+    Q = dataclasses.replace(P, N_dots=1.0e9, beta_sp=beta)
+    # 40x I_ref so <S> ~ 50 >> 1 (the Gaussian SDE clip is harmless there)
+    r = output_counting_stats(Q, 40.0, [0.5, 1.0], n_runs=64, t_end=8.0e-9, dt=4.0e-13,
+                              seed=21, F_pump=1.0, disable_stim=True)
+    tau = Q.tau_GS_spon * 1e9                    # ns
+    for T, F, se in zip(r["windows_ns"], r["fano"], r["fano_se"]):
+        F_th = 1.0 + 2.0 * beta * (1.0 - tau * (1.0 - np.exp(-T / tau)) / T)
+        print(f"        T={T:.1f} ns  F={F:.4f} +- {se:.4f}   closed form {F_th:.4f}   (Poisson = 1)")
+        assert abs(F - F_th) < 4.0 * se + 0.01, (T, F, se, F_th)
+        assert abs(F - 1.0) < 4.0 * se + 2.0 * beta + 0.01, (T, F, se)
+
+
+@check("OUTPUT FLUX ordering: F_quiet(0.08) < F_normal(1) at long windows (1 and 3 ns) at 4 x I_th, "
+       ">= 3 sigma (combined MC SE) -- the quiet-pump effect the intracavity g2 cannot show")
+def _():
+    q = _out_stats(0.08)
+    n = _out_stats(1.0)
+    for T, Fq, sq, Fn, sn in zip(q["windows_ns"], q["fano"], q["fano_se"], n["fano"], n["fano_se"]):
+        z = (Fn - Fq) / np.hypot(sq, sn)
+        print(f"        T={T:.0f} ns  F_quiet={Fq:.3f}+-{sq:.3f}  F_normal={Fn:.3f}+-{sn:.3f}  z={z:.1f}")
+        assert Fq < Fn and z >= 3.0, (T, Fq, Fn, z)
+
+
+@check("OUTPUT FLUX report (NOT gated): quiet-pump squeezing at the Zhao operating point vs the "
+       "paper -- card 3.1 dB (disputed) vs paper_digests.md:231 0.9 +- 0.1 dB; model values printed")
+def _():
+    q = _out_stats(0.08)
+    n = _out_stats(1.0)
+    print("        paper: 0.9 +- 0.1 dB [digest, broadband photocurrent] vs 3.1 dB [card, disputed]")
+    for lbl, r in (("quiet F_pump=0.08 ", q), ("normal F_pump=1.0 ", n)):
+        for T, F, se, dB, dBse in zip(r["windows_ns"], r["fano"], r["fano_se"],
+                                      r["squeezing_dB"], r["squeezing_dB_se"]):
+            print(f"        {lbl} T={T:.0f} ns  Fano={F:.3f}+-{se:.3f}  squeezing={dB:+.2f}+-{dBse:.2f} dB  "
+                  f"(F_det at eta=0.2: {1 - 0.2 * (1 - F):.3f})")
+        print(f"        {lbl} g2_out(0) (single-step estimator)={r['g2_out0']:.4f}+-{r['g2_out0_se']:.4f}")
+    assert np.all(np.isfinite(q["fano"])) and np.all(np.isfinite(n["fano"]))
+
+
 def main():
     failed = 0
     for name, fn in CHECKS:

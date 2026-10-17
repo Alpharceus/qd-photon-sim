@@ -1,0 +1,103 @@
+# Vajner et al., arXiv:2306.08668v2 (published ACS Photonics 11, 339 (2024)): InAs/InP C-band dot in a Si-bonded mesa on an Al mirror, pulsed TPE of the XX-X cascade.
+# Numbers from .workers/devlib/papers/vajner2024.yaml (main text read; SI mostly not read; plots not read).
+# Abstract and body swap which transition has g2(0) 0.005 / 0.015; the body fit values (X 0.015(4), XX 0.005(4)) are used.
+# The lifetimes are entered as inputs (class C); F_prep, g2 and the HOM visibilities are the tested outputs.
+meta:
+  id: vajner2024
+  role: paper-device
+  cite: "D. A. Vajner, P. Holewa, E. Zieba-Ostoj, M. Wasiluk, M. von Helversen, A. Sakanas, A. Huck, K. Yvind, N. Gregersen, A. Musial, M. Syperek, E. Semenova, T. Heindel, On-Demand Generation of Indistinguishable Photons in the Telecom C-Band Using Quantum Dot Devices, arXiv:2306.08668v2 (2024); published ACS Photonics 11, 339 (2024) per survey"
+  arxiv: "2306.08668"
+  extraction: .workers/devlib/papers/vajner2024.yaml
+  read_level: V-full
+  summary: "InAs/InP SK dot (X/XX near 1530 nm, E_b 2.9 meV) in a 2 um mesa on an Al mirror (no Purcell, extraction ~10% at NA 0.7), 4 K, 10 ps TPE pi pulse at 80 MHz; X 1.21 ns, XX 0.34 ns, g2 X 0.015 / XX 0.005, XX HOM raw 0.29 (12.5 ns) / 0.35 (4 ns), F_prep 0.82"
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.5 / Methods p.14 (low-temperature micro-PL at 4 K)"}
+  material:
+    kind: inas_inp_cband
+    params:
+      lambda_nm: {value: 1530.0, unit: nm, tag: V, where: "text p.5 (XX-X cascade photons near 1530 nm)"}
+      tau_bare_ns: {value: 1.21, unit: ns, tag: V, where: "text p.7 (t1,X = 1.21(2) ns, mono-exponential TCSPC); mesa on a metal mirror has no Purcell claim, so the measured X lifetime is the effective bare lifetime"}
+      E_b_meV: {value: 2.9, unit: meV, tag: V, where: "text p.5 (XX binding energy 2.9(1) meV)"}
+      gamma_xx_ratio: {value: 3.56, unit: "1", tag: DR, where: "text p.7: Gamma_XX/Gamma_X = t1,X / t1,XX = 1.21 / 0.34 = 3.56"}
+      gamma_star_4K_ns: {range: [0.0, 71.4], unit: "1/ns", tag: DR, where: "text p.5 / SI 1.3: TPE linewidth UPPER bound 47(2) ueV FWHM for XX (spectrometer-limited): gamma*_repo = 47e-3 meV / 6.582e-4 meV ns = 71.4 /ns; 0 = lifetime-limited"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "T = 4 K equals the reference temperature; gamma* is entered as an envelope from the measured linewidth bound"}
+  structure:
+    kind: mesa_reflector
+    params:
+      eta_table: {value: "0.7:0.10", unit: "", tag: V, where: "text p.4: mesa on bottom Al mirror, photon extraction efficiency ~10% (from Ref 26, stated), collected with an NA 0.7 aspheric lens"}
+      rate_factor: {value: 1.0, unit: "1", tag: A, source: "no cavity and no Purcell claim (p.4); the measured lifetime already contains any mirror effect"}
+  drive:
+    kind: tpe
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "4f pulse shaper output (p.14); the shape is not given, Gaussian assumed"}
+      fwhm_ps: {value: 10.0, unit: ps, tag: V, where: "Methods p.14: stretched pulse duration of 10 ps FWHM (2.5 ps laser, 0.5 nm spectral width)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.6: all quantum-optics data at the TPE pi pulse, P_pi = 2.5 uW (maximum of the measured Rabi rotation)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: DR, where: "text p.5-6: two-photon-resonant excitation of XX (laser at half the XX energy, Fig 1c)"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "Methods p.14: 80 MHz repetition rate"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.7, unit: "1", tag: V, where: "text p.4 / Fig 1 caption: emission collected with an NA = 0.7 aspheric lens"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "Methods p.14: photons spectrally filtered by a tunable 0.4 nm (~210 ueV) fibre bandpass filter before the HBT / HOM interferometers"}
+reported:
+  - {id: tau_X, observable: tau_ps, value: 1210.0, err: 20.0, tag: V, where: "text p.7: t1,X = 1.21(2) ns"}
+  - {id: tau_XX, observable: tau_XX_ps, value: 340.0, err: 30.0, tag: V, where: "text p.7: t1,XX = 0.34(3) ns"}
+  - {id: g2_X, observable: g2_0, convention: raw, value: 0.015, err: 0.004, tag: V, where: "text p.8 (body): X g2(0) = 0.015(4); the abstract prints 0.005(1) for X: the two assignments are swapped", note: "fit with two-sided exponentials and blinking, no deconvolution, no background subtraction"}
+  - {id: g2_XX, observable: g2_XX, value: 0.005, err: 0.004, tag: V, where: "text p.8 (body): XX g2(0) = 0.005(4); the abstract prints 0.015(1) for XX", note: "raw fit as above; the model g2_XX has only the intrinsic convention (no background channel for the XX stream)"}
+  - {id: Fprep_XX_rabi, observable: eta_prep, value: 0.82, err: 0.04, tag: V, where: "text p.6: preparation fidelity 82(4)% for XX from the exponentially damped Rabi fit extrapolated to zero power", note: "the damping (extra charges, trion formation) is removed by the extrapolation"}
+  - {id: Fprep_XX_xcorr, observable: eta_prep, value: 0.81, err: 0.02, tag: V, where: "text p.8-9 / Fig 3b: 81(2)% at pi power from the XX-X cross-correlation, polarisation and blinking corrected"}
+  - {id: hom_XX_4ns, observable: hom_XX, value: 0.357, err: 0.03, tag: DR, where: "text p.10: V_4ns = 35(3)% raw area ratio; g2 correction (V + g2)/(1 - g2) with the XX g2 0.005 (p.8) gives 0.357"}
+  - {id: hom_XX_12p5ns, observable: hom_XX, value: 0.2965, err: 0.02, tag: DR, where: "text p.10: V_raw = 29(2)% over the full 12.5 ns window; same g2 correction (+0.0065)"}
+  - {id: hom_XX_postsel, observable: hom_XX, value: 0.73, err: 0.06, tag: V, where: "text p.12: post-selected HOM 73(6)% (fit with central dip and blinking)", note: "not a ledger item: temporal post-selection is not modelled"}
+reproduce:
+  - item: tau_X
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the measured X lifetime is entered as material.tau_bare_ns (no Purcell in a mesa on a mirror); 2 sigma of the printed 20 ps"
+    expect: pass
+  - item: tau_XX
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the XX/X rate ratio 3.56 is derived from the two printed lifetimes (material.gamma_xx_ratio), so the XX lifetime agrees by construction; 2 sigma of the printed 30 ps"
+    expect: pass
+  - item: g2_X
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "2 sigma of the printed 0.004 is 0.008; abs 0.01 floor because the abstract assigns 0.005 to the same line (opposite assignment), i.e. the printed value itself is uncertain at the 0.01 level"
+    expect: fail
+    reason: "model gap: the model X-line g2 is only the TPE re-excitation term (0.0006), 0.0144 below the paper 0.015, just outside the 0.014 tolerance; the paper fit includes blinking and unsubtracted background that the model does not carry (the abstract value 0.005 would pass)"
+  - item: g2_XX
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "2 sigma of the printed 0.004; abs 0.01 floor covers both the body (0.005) and the abstract (0.015) assignments; the model value is intrinsic (no background) while the paper fit is raw"
+    expect: pass
+  - item: Fprep_XX_rabi
+    class: M
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "2 sigma of the printed 0.04 (0.08); the model eta_prep is the TPE XX population at the end of the pulse; the measured fidelity is reduced by charge-induced quenching which the model does not contain"
+    expect: fail
+    reason: "model gap, as stated in tol_reason: the model gives 0.98 (envelope 0.96-1.0, residual loss is radiative decay and InP phonons during the 10 ps pulse) against 0.82; the paper attributes the damped Rabi envelope to excess charges forming trions at high power, which the engine has no channel for"
+  - item: Fprep_XX_xcorr
+    class: M
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "2 sigma of the printed 0.02 is 0.04; abs 0.05 floor for the same unmodelled charge noise as Fprep_XX_rabi (independent method, same quantity)"
+    expect: fail
+    reason: "same model gap as Fprep_XX_rabi: model 0.98 vs 0.81; the cross-correlation fidelity is lowered by charge-state and blinking effects the engine does not model, so two independent measurements agree with each other and not with the clean two-level-ladder population"
+  - item: hom_XX_pred
+    class: P
+    observable: hom_XX
+    convention: intrinsic
+    tol_reason: "reported XX HOM (raw 0.29 / 0.35 and g2-corrected 0.2965 / 0.357, see reported) is NOT tested: the paper gives only an UPPER bound on the linewidth (47 ueV, spectrometer-limited), so gamma* spans 0-71 /ns and the model overlap spans 0.04-0.78, an envelope that contains every reported value (a vacuous pass). Central model value 0.075 is stated for the record; both reported visibilities also include blinking and charge noise that the paper itself names as the limit"
+    expect: pass
+  - item: hom_X_pred
+    class: P
+    observable: hom_I
+    convention: intrinsic
+    tol_reason: "no reported X-photon HOM; the model X-photon overlap (cascade jitter Gamma_XX/(Gamma_XX+Gamma_X)) is stated for the record against the paper V_max_TPE ~ 0.78-0.80 (p.7)"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_X]}
+  - {param: material.gamma_xx_ratio, fitted_to: [tau_XX]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 88.0 ueV [V] (text p.5 (FSS of the X state 88(2) ueV); a beat, not used by the two-level engine) is no longer carried by the card"}

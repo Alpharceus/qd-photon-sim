@@ -12,6 +12,8 @@ import { icon } from "../ui/icons.js";
 import { tagChip } from "../ui/tagChip.js";
 import { segmented, switchToggle, dataTable, skeleton, emptyState, errorState, toast } from "../ui/controls.js";
 import { fmt, isNum } from "../ui/format.js";
+import { fieldLabel, humanValue, campaignTitle, words } from "../ui/labels.js";
+import { richPlain } from "../ui/math.js";
 import { verdictBadge, humanWord } from "../ui/verdictBadge.js";
 import { sro, campaignTag, lightbox } from "../ui/figure.js";
 import { chartCard } from "../charts/chartCard.js";
@@ -161,7 +163,7 @@ function renderList() {
   clear(R.dom.list).append(...groups.filter(([, l]) => l.length).map(([label, l]) => h("div.rl-group",
     h("h2.engrave.rl-h", label),
     h("ul.rl-items", l.map((c) => h("li", h("a.rl-item", { href: `#/results/${c.id}`, dataset: { id: c.id } },
-      h("span.rl-id", c.id),
+      h("span.rl-id", { title: c.path || `out/${c.id}` }, campaignTitle(c.id, c.title)),
       c.status_word ? h("span.rl-word", { dataset: { status: c.status_word } }, c.status_word === "mixed" ? "mixed" : humanWord(c.status_word).toLowerCase()) : null,
       c.stale ? h("span.stale-dot", { title: c.stale_note || "pre-audit" }, "pre-audit") : null)))))));
 }
@@ -176,10 +178,10 @@ function renderHead(camp) {
   const meta = R.list.find((c) => c.id === R.id) || {};
   clear(R.dom.head).append(
     h("div.rh-titles",
-      h("h1.ws-title", R.id),
+      h("h1.ws-title", { title: `out/${R.id}` }, campaignTitle(R.id, meta.title)),
       h("p.ws-sub", camp?.md ? `out/${camp.md}` : meta.path || "")),
     h("div.rh-meta",
-      meta.status_word && meta.status_word !== "mixed" ? verdictBadge(meta.status_word) : meta.status_word === "mixed" ? h("span.chip", `mixed: ${Object.entries(meta.status_words || {}).map(([w, n]) => `${n} ${w}`).join(", ")}`) : h("span.chip", meta.kind === "legacy" ? "legacy F-series" : "no verdict lines"),
+      meta.status_word && meta.status_word !== "mixed" ? verdictBadge(meta.status_word) : meta.status_word === "mixed" ? h("span.chip", `mixed: ${Object.entries(meta.status_words || {}).map(([w, n]) => `${n} ${words(w)}`).join(", ")}`) : h("span.chip", meta.kind === "legacy" ? "legacy F-series" : "no verdict lines"),
       R.tagInfo?.tag ? h("span.rh-tag", tagChip(R.tagInfo.tag, { title: R.tagInfo.note }), h("span.rh-tag-t", "rows' widest tag")) : null,
       h("span.id-chip.is-static", { title: meta.commit_source || "" }, h("span.id-k", "DATA"), h("span.id-v", meta.commit || "n/a")),
       h("span.chip", `generated ${String(meta.generated || "").slice(0, 10)}`),
@@ -220,10 +222,10 @@ function renderVerdict() {
   const best = c.best || [];
   const body = R.dom.body;
   if (!vs.length && !best.length) {
-    body.append(h("div.panel", emptyState({ title: "No VERDICT lines here", body: `${R.id} is a ${c.manifest && Object.keys(c.manifest).length ? "campaign" : "collection"} without parsed VERDICT or BEST lines. Its CSVs open in Explore and its figures in Figures.`, iconName: "info" })));
+    body.append(h("div.panel", emptyState({ title: "No VERDICT lines here", body: `${campaignTitle(R.id, c.title)} is a ${c.manifest && Object.keys(c.manifest).length ? "campaign" : "collection"} without parsed VERDICT or BEST lines. Its CSVs open in Explore and its figures in Figures.`, iconName: "info" })));
     return;
   }
-  body.append(h("p.res-note", icon("info", { size: 16 }), `Parsed verbatim from out/${c.md || R.id}. Values are the printed text; nothing here is recomputed. Each count keeps the denominator the line prints.`));
+  body.append(h("p.res-note", icon("info", { size: 16 }), `Parsed from out/${c.md || R.id}. Values are the printed numbers rounded to 4 significant figures (hover a value for the printed text); nothing here is recomputed. Each count keeps the denominator the line prints.`));
   if (vs.length) body.append(lineTable("VERDICT lines", vs, true));
   if (best.length) body.append(lineTable("BEST lines", best, false));
   body.append(h("details.drawer.raw-lines", h("summary", h("span.engrave", "Raw lines"), h("span.drawer-count", `${vs.length + best.length} lines`)),
@@ -234,22 +236,29 @@ function lineTable(title, lines, isVerdict) {
   const keys = [];
   for (const v of lines) for (const k of Object.keys(v.fields || {})) if (!keys.includes(k)) keys.push(k);
   const tag = R.tagInfo?.tag;
+  // a printed field value: shown to 4 significant figures / as words; the printed text is the tooltip
+  const cellOf = (v, k, extra = "") => {
+    const raw = v.fields?.[k];
+    const shown = humanValue(raw, k);
+    return h("td", { class: `${/^[-+\d.e/:,]+$/i.test(String(raw ?? "")) ? "num" : ""} ${extra}`.trim(), title: raw != null && String(raw) !== shown ? `printed: ${raw}` : null }, shown);
+  };
+  const keyHead = (k) => h("span.vt-key", { title: k }, fieldLabel(k));
   let table;
   if (lines.length <= 2) {
     // transposed: one row per key, one column per line
-    table = h("div.table-wrap", h("table.data-table.vt-table.is-tx",
+    table = h("div.table-wrap", h("table.data-table.vt-table.is-tx", { "aria-label": "Verdict lines, one column per line" },
       h("thead", h("tr", h("th", { scope: "col" }, "field"), lines.map((v) => h("th", { scope: "col" }, `line ${v.line}`)))),
       h("tbody",
-        h("tr", h("th", { scope: "row" }, isVerdict ? "word" : "kind"), lines.map((v) => h("td", isVerdict ? verdictBadge(v, { size: "sm" }) : v.kind))),
-        keys.map((k) => h("tr", h("th", { scope: "row" }, k), lines.map((v) => h("td", v.fields?.[k] ?? "")))),
+        h("tr", h("th", { scope: "row" }, isVerdict ? "word" : "kind"), lines.map((v) => h("td", isVerdict ? verdictBadge(v, { size: "sm" }) : humanValue(v.kind)))),
+        keys.map((k) => h("tr", h("th", { scope: "row" }, keyHead(k)), lines.map((v) => cellOf(v, k)))),
         lines.some((v) => v.note) ? h("tr", h("th", { scope: "row" }, "note"), lines.map((v) => h("td", v.note || ""))) : null)));
   } else {
-    table = h("div.table-wrap.vt-wide", h("table.data-table.vt-table",
-      h("thead", h("tr", h("th", { scope: "col" }, "line"), h("th", { scope: "col" }, isVerdict ? "word" : "kind"), keys.map((k) => h("th", { scope: "col" }, k)), lines.some((v) => v.note) ? h("th", { scope: "col" }, "note") : null)),
+    table = h("div.table-wrap.vt-wide", h("table.data-table.vt-table", { "aria-label": "Verdict lines, one row per line" },
+      h("thead", h("tr", h("th", { scope: "col" }, "line"), h("th", { scope: "col" }, isVerdict ? "word" : "kind"), keys.map((k) => h("th", { scope: "col" }, keyHead(k))), lines.some((v) => v.note) ? h("th", { scope: "col" }, "note") : null)),
       h("tbody", lines.map((v) => h("tr",
         h("td.num", String(v.line)),
-        h("td", isVerdict ? verdictBadge(v, { size: "sm" }) : v.kind),
-        keys.map((k) => h("td", { class: /^[-+\d.e/:,]+$/i.test(String(v.fields?.[k] ?? "")) ? "num" : "" }, v.fields?.[k] ?? "")),
+        h("td", isVerdict ? verdictBadge(v, { size: "sm" }) : humanValue(v.kind)),
+        keys.map((k) => cellOf(v, k)),
         lines.some((x) => x.note) ? h("td", v.note || "") : null)))));
   }
   return h("section.panel.vt-panel",
@@ -430,7 +439,7 @@ function renderTools() {
     },
     allowNone ? h("option", { value: "" }, "none") : null,
     key === "y" && Array.isArray(ex.y) ? h("option", { value: "__pair", selected: true }, "commanded + delivered (paired)") : null,
-    options.map((c) => h("option", { value: c, selected: !Array.isArray(ex[key]) && ex[key] === c }, colLabel(c, { nanowire: ex.cfg.nanowire })))));
+    options.map((c) => h("option", { value: c, selected: !Array.isArray(ex[key]) && ex[key] === c }, richPlain(colLabel(c, { nanowire: ex.cfg.nanowire }))))));
   const logs = h("div.ex-logs",
     switchToggle({ label: "log x", checked: !!ex.logX, onChange: (v) => { ex.logX = v; redraw(); } }),
     switchToggle({ label: "log y", checked: !!ex.logY, onChange: (v) => { ex.logY = v; redraw(); } }));
@@ -507,14 +516,14 @@ async function redraw() {
   if (st.nan) parts.push(h("span.ex-nan", { title: [...st.reasons.entries()].map(([r, n]) => `${n} × ${r}`).join("\n") }, ` · ${st.nan} n/a: ${[...st.reasons.keys()][0] || "value missing"}${st.reasons.size > 1 ? ` (+${st.reasons.size - 1} more reasons)` : ""}`));
   if (st.nonpos) parts.push(` · ${st.nonpos} at ≤ 0 hidden by the log axis`);
   if (st.above1) parts.push(h("span.ex-above", ` · ${st.above1} above g² = 1: axis extended to ${fmt(st.yTop)}${st.offcanvas ? `, ${st.offcanvas} still off-canvas (hidden)` : ", none hidden"}`));
-  if (ex.gates && isNum(ex.gates.floor)) parts.push(h("span.ex-floor-src", { dataset: { origin: ex.gates.floorOrigin } }, ` · flux floor ${fmt(ex.gates.floor)} s⁻¹ from ${ex.gates.floorSource || "unknown source"}`));
-  if (!ex.gates) parts.push(h("span.ex-nogate", ` · gates unavailable (${R.ctx.api.gatesProblem?.() || "GET /api/gates failed"}): no ceiling, floor or gate box drawn`));
+  if (ex.gates && isNum(ex.gates.floor)) parts.push(h("span.ex-floor-src", { dataset: { origin: ex.gates.floorOrigin } }, ` · flux floor ${fmt(ex.gates.floor)} s⁻¹ from `, h("code.src-cite", ex.gates.floorSource || "unknown source")));
+  if (!ex.gates) parts.push(h("span.ex-nogate", " · gates unavailable (", h("code.src-cite", R.ctx.api.gatesProblem?.() || "GET /api/gates failed"), "): no ceiling, floor or gate box drawn"));
   if (grey.length) parts.push(h("span.ex-grey", ` · ${grey.length} other-model rows greyed (never gate)`));
   if (st.droppedFacets > 0) parts.push(` · facet shows the first 4 of ${st.facetValues.length} values`);
   clear(R.dom.ex.count).append(...parts);
   const ys = [].concat(ex.y || []);
   R.charts.ex.setTitle(`${ys.map((y) => colLabel(y, { nanowire: ex.cfg.nanowire })).join(" and ")} against ${colLabel(ex.x, { nanowire: ex.cfg.nanowire })}`,
-    `${R.camp.primary_csv}${ex.cfg.headline ? (ex.sensitivity ? " · headline coloured, other models greyed" : " · headline model only") : ""}${ex.facet ? ` · facet ${ex.facet}` : ""}`);
+    `${R.camp.primary_csv}${ex.cfg.headline ? (ex.sensitivity ? " · headline coloured, other models greyed" : " · headline model only") : ""}${ex.facet ? ` · facet ${colLabel(ex.facet)}` : ""}`);
   R.charts.ex.setTag(R.tagInfo?.tag);
   R.charts.ex.setEmpty(emptyState({ title: "No rows match", body: "Every row is filtered out. Clear a filter on the left.", iconName: "table" }));
   await R.charts.ex.render();
@@ -542,7 +551,7 @@ function tableRows() {
   if (!ex?.view) return null;
   const ys = [].concat(ex.y || []);
   const cols = [ex.cfg.id, ex.x, ...ys, ex.color, ex.facet, ex.cfg.valid].filter((c, i, a) => c && a.indexOf(c) === i);
-  return { caption: `${ex.view.length} rows (filters applied)`, columns: cols.map((c) => ({ key: c, label: c })), rows: ex.view.slice(0, 2000) };
+  return { caption: `${ex.view.length} rows (filters applied)`, columns: cols.map((c) => ({ key: c, label: richPlain(colLabel(c, { nanowire: ex.cfg.nanowire })) })), rows: ex.view.slice(0, 2000) };
 }
 
 function renderRowTable() {
@@ -559,7 +568,7 @@ function renderRowTable() {
       on: { click: () => openRow(o), keydown: (e) => { if (e.key === "Enter") openRow(o); } },
     }, cols.map((c) => {
       const v = o[c];
-      return h("td", { class: typeof v === "number" ? "num" : "" }, v == null ? h("span.nan", "n/a") : typeof v === "number" ? fmt(v) : String(v).slice(0, 60));
+      return h("td", { class: typeof v === "number" ? "num" : "" }, v == null ? h("span.nan", "n/a") : typeof v === "number" ? fmt(v) : humanValue(String(v).slice(0, 60), c));
     })))));
   clear(host).append(h("div.panel.ex-tablepanel", h("div.table-wrap", table)));
 }
@@ -571,7 +580,7 @@ async function openRow(o) {
   const ex = R.ex;
   const cfg = ex.cfg;
   const keyCols = (cfg.key || []).filter((k) => o[k] !== undefined);
-  const idText = keyCols.map((k) => `${k}=${o[k]}`).join(" · ") || `row ${o.__v}`;
+  const idText = keyCols.map((k) => `${richPlain(colLabel(k))} ${o[k]}`).join(" · ") || `row ${o.__v}`;
   const body = h("div.rd-body", skeleton("block", { lines: 6 }));
   const live = h("div.rd-live");
   const actions = h("div.rd-actions");
@@ -604,12 +613,12 @@ async function openRow(o) {
       on: { click: () => { R.ctx.state.set({ rerunSeed: { card, campaign: R.id, row: full, at: Date.now() } }); closeDrawer(); R.ctx.navigate(`#/design/${card}`); } },
     }, "Open card in Designer", icon("chevronRight", { size: 16 })) : null);
   if (cfg.rerun !== "rt_edge") {
-    live.append(h("p.rd-note", icon("info", { size: 14 }), "Live re-run is wired for rt_edge rows only: their grid maps one-to-one onto card fields (scripts/run_rt_edge.py). This campaign's runner applies geometry presets the Studio does not replicate, so no live value is shown rather than an unmatched one."));
+    live.append(h("p.rd-note", icon("info", { size: 14 }), "Live re-run is wired for RT edge emitter rows only: their grid maps one-to-one onto card fields. This campaign's runner applies geometry presets the Studio does not replicate, so no live value is shown rather than an unmatched one."));
   }
   const tag = R.tagInfo?.tag;
   clear(body).append(h("dl.rd-dl", Object.entries(full).filter(([k]) => !k.startsWith("__")).map(([k, v]) => h("div.drow",
-    h("dt", k),
-    h("dd", v == null ? h("span.nan", full[`${k}__nan_reason`] || "n/a in the CSV") : typeof v === "number" ? fmt(v) : String(v))))),
+    h("dt", { title: k }, colLabel(k)),
+    h("dd", v == null ? h("span.nan", full[`${k}__nan_reason`] || "n/a in the CSV") : typeof v === "number" ? fmt(v) : humanValue(String(v), k))))),
   h("p.rd-foot", "Values from ", h("code", R.camp.primary_csv), " (rounded for display; hover the chart for full precision). Row tag ", tag ? tagChip(tag, { size: "sm" }) : "none recorded", "."));
 }
 
@@ -642,7 +651,7 @@ async function rerunRow(row, card, host) {
           h("td.num", sro({ label: "csv", value: a, unit: u, tag: R.tagInfo?.tag, size: "sm" })),
           h("td.num", sro({ label: labels.length ? `live · ${labels[0]}` : "live", value: b, unit: u, tag, size: "sm", caption: b == null ? liveNanReason(s, key) : "" })),
           h("td.num.match", a === b ? h("span.m-ok", icon("check", { size: 14 }), "bit-identical") : isNum(a) && isNum(b) ? h("span.m-diff", `Δ ${fmt(b - a)}`) : "n/a"))))),
-      h("p.rd-note", `${r.result.run_id} · fsim_core.device.evaluate at T_hs = ${fmt(row.T_hs_K)} K with the row's grid values and model switches.`)));
+      h("p.rd-note", `${r.result.run_id} · the device model at a heat-sink temperature of ${fmt(row.T_hs_K)} K with the row's grid values and model switches.`)));
   } catch (e) {
     if (R?.drawer) clear(host).append(errorState({ title: "Live re-run failed", message: e.message }));
   }
@@ -687,7 +696,7 @@ async function render3D() {
     const cands = (R.camp.columns || []).filter((c) => c.role === "input" && c.kind === "number").map((c) => c.name);
     const mk = (axis) => h("label.ex-sel", h("span.ctx-k", `${axis} axis`), h("select.fr-select", {
       on: { change: (e) => { L[axis] = e.target.value; load(); } },
-    }, cands.map((c) => h("option", { value: c, selected: L[axis] === c }, colLabel(c)))));
+    }, cands.map((c) => h("option", { value: c, selected: L[axis] === c }, richPlain(colLabel(c))))));
     clear(pickers).append(...[mk("x"), mk("y"), mk("z"),
       R.id === "rt_edge" ? switchToggle({ label: "headline model only", checked: L.headline, onChange: (v) => { L.headline = v; load(); } }) : null,
       latBanner(spec.overlays?.banner)].filter(Boolean));
@@ -723,7 +732,7 @@ function renderFigures() {
     h("p.res-note", icon("info", { size: 16 }), `${items.length} committed figure${items.length === 1 ? "" : "s"} from out/${R.id}. These are the files as committed (matplotlib); the Explore tab redraws the data.`),
     h("div.fig-grid", items.map((it, i) => h("button.fig-tile", { type: "button", on: { click: () => lightbox(items, i) }, "aria-label": `Open ${it.caption}` },
       h("span.fig-img", h("img", { src: it.src, alt: it.caption, loading: "lazy" })),
-      h("span.fig-cap", it.caption.split("/").pop())))));
+      h("span.fig-cap", { title: it.caption }, words(it.caption.split("/").pop().replace(/\.[a-z0-9]+$/i, "")))))));
 }
 
 // ================================================================ PROVENANCE
@@ -741,17 +750,17 @@ function renderProvenance() {
     kv("Data commit", h("span", h("code", meta.commit || "n/a"), ` (${meta.commit_source || "unknown source"})`)),
     commit ? kv("Generation commit", h("code", commit)) : null,
     kv("Generated", String(meta.generated || m.generated_utc || "n/a")),
-    ...runtimeKeys.map((k) => kv(k, isNum(m[k]) ? `${fmt(m[k])} s` : String(m[k]))),
-    ...dirtyKeys.map((k) => kv(k, m[k] === true ? h("span.dirty-flag", icon("warn", { size: 14 }), "true: generated from a dirty worktree") : String(m[k]))),
-    m.complete != null ? kv("complete", String(m.complete)) : null,
-    m.quick != null ? kv("quick", String(m.quick)) : null,
-    m.versions || m.runtime_versions ? kv("versions", Object.entries(m.versions || m.runtime_versions).map(([a, b]) => `${a} ${b}`).join(" · ")) : null,
+    ...runtimeKeys.map((k) => kv(fieldLabel(k), isNum(m[k]) ? `${fmt(m[k])} s` : String(m[k]))),
+    ...dirtyKeys.map((k) => kv(fieldLabel(k), m[k] === true ? h("span.dirty-flag", icon("warn", { size: 14 }), "true: generated from a dirty worktree") : String(m[k]))),
+    m.complete != null ? kv("Complete", humanValue(m.complete)) : null,
+    m.quick != null ? kv("Quick run", humanValue(m.quick)) : null,
+    m.versions || m.runtime_versions ? kv("Versions", Object.entries(m.versions || m.runtime_versions).map(([a, b]) => `${a} ${b}`).join(" · ")) : null,
     meta.stale ? kv("Status", h("span.stale-badge", icon("warn", { size: 14 }), meta.stale_note || "pre-audit")) : null);
   body.append(h("div.prov",
     h("section.panel.prov-main", h("header.panel-head", h("h2.engrave", "Manifest")), Object.keys(m).length ? h("div.pad", facts) : h("div.pad", facts, h("p.res-note", "No manifest.json in this folder: the commit is the last git commit touching it."))),
-    ...hashKeys.map((k) => h("section.panel.prov-hash", h("header.panel-head", h("h2.engrave", k), h("span.panel-note", "as recorded in manifest.json; the Studio does not re-hash files")),
-      h("div.table-wrap", dataTable({ columns: [{ key: "f", label: "file" }, { key: "v", label: "sha256" }], rows: Object.entries(m[k]).map(([f, v]) => ({ f, v: h("code.hash", typeof v === "string" ? v : JSON.stringify(v)) })) })))),
-    h("details.drawer", h("summary", h("span.engrave", "Full manifest.json"), h("span.drawer-count", `${Object.keys(m).length} keys`)),
+    ...hashKeys.map((k) => h("section.panel.prov-hash", h("header.panel-head", h("h2.engrave", { title: k }, fieldLabel(k)), h("span.panel-note", "as recorded in the manifest; the Studio does not re-hash files")),
+      h("div.table-wrap", dataTable({ columns: [{ key: "f", label: "file" }, { key: "v", label: "sha256" }], rows: Object.entries(m[k]).map(([f, v]) => ({ f: h("code.src-cite", f), v: h("code.hash", typeof v === "string" ? v : JSON.stringify(v)) })) })))),
+    h("details.drawer", h("summary", h("span.engrave", "Full manifest"), h("span.drawer-count", `${Object.keys(m).length} keys`)),
       h("div.drawer-body", h("pre.raw-line.manifest-json", JSON.stringify(m, null, 2).slice(0, 60000))))));
 }
 

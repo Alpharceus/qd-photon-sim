@@ -1,0 +1,98 @@
+meta:
+  id: piccinini2025
+  role: paper-device
+  cite: "C. Piccinini et al., Exciton and biexciton preparation via coherent swing-up excitation in a GaAs quantum dot embedded in a micropillar cavity, arXiv:2510.21428v2 (2025); journal not yet known"
+  arxiv: "2510.21428v2"
+  extraction: .workers/devlib/papers/piccinini2025.yaml
+  read_level: V-full
+  notes:
+    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans model g2 0.0036 to 90; the central value is 6.8 (R2 SUPER, polaron B none). The paper inversion and g2 need the absolute areas, which are not derivable. Read it as a vacuous envelope pass, not agreement."
+  summary: "GaAs/AlGaAs droplet QD (neutral X at 783.38 nm, XX binding 4.0 meV) in a low-Q micropillar (D 1.58 um), SUPER red-detuned pulses (-3.5, -7.5 meV), T 4 K: inversion ~95 percent, g2(0) 0.03"
+
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text experimental setup (closed-cycle cryostat at T = 4 K)"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 783.38, unit: nm, tag: V, where: "text p.1-2 and Fig 1a (neutral exciton X at 783.38 nm)"}
+      tau_bare_ns: {value: 0.2, unit: ns, tag: V, where: "abstract (decay time ~200 ps) and Methods (identical emission rate Gamma = (200 ps)^-1 for all transitions)"}
+      E_b_meV: {value: 4.0, unit: meV, tag: V, where: "text p.2 (biexciton at 785.38 nm, binding energy approx 4.0 meV)"}
+      gamma_xx_ratio: {value: 1.0, unit: "1", tag: V, where: "Methods (identical emission rate for all transitions, so Gamma_XX = Gamma_X)"}
+      gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: A, source: "Methods: the four-level master equation has no dephasing term (only radiative Lindblad terms); 0 is the paper's model, not a measured value"}
+      charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton X; trion under other detunings not carded)"}
+  structure:
+    kind: bulk_planar
+    params: {}   # the 200 ps decay is measured IN the pillar (abstract), so no Purcell factor is applied on top; pillar D 1.58 um (Fig 1 caption) is not modelled
+  drive:
+    kind: super
+    params:
+      delta1_meV: {value: -3.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta1 = -3.5 meV); paper convention Delta = omega_L - omega_X, red = negative; R2 note: -3.7 meV is the two-level X point of Fig 3 (F1), see delta2"}
+      delta2_meV: {value: -7.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta2 = -7.5 meV); paper convention; R2 note: -7.5 meV is the XX-mediated resonance (Fig 3, F2); the two-level X resonance is delta2 = -6.9 meV with delta1 = -3.7 meV"}
+      shape: {value: rect, unit: "", tag: DR, where: "Methods Eq 4-5: square pulses with smooth corners (r = 10) centred at Delta_j"}
+      fwhm1_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 0.923 h/(pi dE) = 2.53 ps"}
+      fwhm2_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 2.53 ps (same laser, text p.2)"}
+      area1_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper: only powers (P1 = 30 uW, P2/P1 = 1.3) are given, and the power-to-area mapping (DBR transmission, ref 27) was not extracted; registry range [E]"}
+      area2_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper (see area1_pi); registry range [E]"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text Methods (80 MHz pulsed laser, 150 fs pulses)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.82, unit: "1", tag: V, where: "text p.1-2 setup (objective NA = 0.82; Methods gives 0.81)"}
+
+reported:
+  - {id: g2_SUPER, observable: g2_0, convention: raw, value: 0.03, err: 0.01, tag: V, where: "text p.2 and abstract: g2(0) = 0.03 +/- 0.01 for SUPER (same area-of-zero-peak method as TPE, raw)"}
+  - {id: inversion_SUPER, observable: inversion, convention: intrinsic, value: 0.95, tag: V, where: "abstract (near-unity exciton inversion, approx 95 percent); the main text does not say how it is derived, and it is stated relative to the maximum TPE population, not absolute"}
+  - {id: tau_decay, observable: tau_ps, convention: intrinsic, value: 200.0, tag: V, where: "abstract (monoexponential decay approx 200 ps); used as the input tau_bare_ns, so not a test item"}
+  - {id: g2_TPE, observable: g2_0, convention: raw, value: 0.009, err: 0.002, tag: V, where: "text p.2 (TPE reference, same method); TPE is not a carded drive"}
+
+series: []
+
+reproduce:
+  - item: tau_decay
+    class: C
+    tol: {rel: 0.05}
+    tol_reason: "the 200 ps decay is the input tau_bare_ns (measured in the pillar), so it agrees by construction; 5 % numerical floor"
+    expect: pass
+  - item: g2_SUPER
+    class: M
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "model-level tolerance: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
+    expect: pass-envelope
+    reason: "FX4: central model 0.789 misses 0.03 +/- 0.02 by far; the paper value lies inside the input envelope [0.0036, 26] only, which spans four orders of magnitude, so it is not a pass. R2 SUPCMP: at the areas that maximise the inversion (inversion_SUPER_opt) the raw model g2 is 0.0042 (g2_SUPER_at_opt), also outside 0.03 +/- 0.02, so evaluating at the optimum does not discriminate either"
+  - item: inversion_SUPER_pred
+    class: P
+    observable: inversion
+    convention: intrinsic
+    tol_reason: "no comparison: the pulse areas are not derivable (Eq 6 needs the DBR field ratio F_j of ref 27, absent), so the 95 % inversion cannot be tested; the model inversion over the area envelope is recorded only"
+    expect: pass
+  - item: inversion_SUPER_opt
+    class: P
+    mode: optimum
+    tol_reason: "R2 SUPCMP, no pass/fail: the model maximum of the exciton occupation over both pulse areas (0-20 pi) at the card's detunings and 2.53 ps rect pulses, two-level X with the card's 4 K phonon setting and decay. The paper's ~95 % (abstract) is stated RELATIVE to the maximum TPE population and its derivation is not in the main text, while the model number is an absolute occupation, so a tolerance test (abs 0.05 around 0.95) would compare two different quantities; class M is therefore not defensible and the item is P. The 0.95 is quoted for context in the card history only"
+    expect: pass
+    optimum:
+      observable: inversion
+      reduction: max
+      solver: {phonons: "on", radiative: "on"}
+      scan:
+        - {name: area1, path: drive.area1_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "absolute pulse areas are not printed (Eq 6 needs the DBR field ratio F_j of ref 27); registry range 0-20 pi, the same envelope as the drive leaf"}
+        - {name: area2, path: drive.area2_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "as area1"}
+  - item: g2_SUPER_at_opt
+    class: P
+    mode: at_optimum
+    of: inversion_SUPER_opt
+    observable: g2_0
+    convention: raw
+    tol_reason: "R2 SUPCMP, no comparison: the raw g2(0) the engine gives at the areas that maximise the inversion (inversion_SUPER_opt). The paper value 0.03 +/- 0.01 (g2_SUPER) is NOT compared here: the maximising areas are a model optimum, not a paper input, so this is context for g2_SUPER, not a test"
+    expect: pass
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
+
+history:
+  - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: structure -> bulk_planar (200 ps measured in pillar, no Purcell on top); tau_decay -> class C + fit on tau_bare_ns; fwhm1/2_ps -> 2.53 ps DR with rect shape (Methods Eq 4-5, 0.923 lambda^2/(pi c t_p)); area1/2_pi stay E ranges (Eq 6 needs the DBR field ratio F_j from ref 27, not given)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_SUPER expect pass -> pass-envelope: the paper value is inside the input envelope [0.0036, 26] only (central 0.789); an envelope of that width cannot discriminate, so it is no longer counted as a pass"}
+  - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_SUPER central 0.79 -> 6.8 (envelope [0.0036, 90], still pass-envelope), inversion_SUPER_pred 0.09 -> 0.028 (P item still passes); delta2 -7.5 meV noted as the XX-mediated F2 point; no expect or tolerance changed"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 12.0 ueV [V] (Fig 1 caption (FSS approx 12 ueV)) is no longer carried by the card"}
+  - {date: 2026-10-13, by: "sonnet supercmp", reason: "R2 SUPCMP like-for-like SUPER comparison: new optimum items inversion_SUPER_opt (P: max over area1, area2 in 0-20 pi; kept P, not M, because the paper 95 % is relative to the TPE maximum while the model number is absolute) and g2_SUPER_at_opt (P: raw g2 at the maximising areas); no existing expect or tolerance changed", note: "R2 SUPCMP result: model maximum occupation 0.9958 (two-level, 4 K phonons, decay on) at area1 7.89 pi, area2 13.95 pi (several near-degenerate islands of 0.9954-0.9958, e.g. 13.06/5.45 pi and 18.76/7.67 pi); the paper ~95 % (relative to the TPE maximum) is not compared. Raw g2 at those maximising areas is 0.0034-0.0042 (0.00425 at the reported argmax) against the paper 0.03 +/- 0.01: g2_SUPER stays pass-envelope"}

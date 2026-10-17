@@ -31,6 +31,8 @@ const P = {
   minus: '<path d="M6 12h12"/>',
   retry: '<path d="M19 12a7 7 0 1 1-2.1-5"/><path d="M19 4.5V8h-3.5"/>',
   folder: '<path d="M3.5 6.5h6l2 2h9v10h-17z"/>',
+  compose: '<rect x="3.5" y="3.5" width="7" height="7" rx="1"/><rect x="13.5" y="3.5" width="7" height="7" rx="1"/><rect x="3.5" y="13.5" width="7" height="7" rx="1"/><path d="M17 13.5v7M13.5 17h7"/>',
+  papers: '<path d="M6.5 3.5h8l4 4v13h-12z"/><path d="M14.5 3.5v4h4"/><path d="M9.5 12h6M9.5 15.5h6"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
 };
 

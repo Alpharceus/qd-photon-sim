@@ -76,7 +76,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -98,7 +98,13 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     }
     return { error: "timeout" };
   }, url);
-  const caveat = (id) => page.$eval(`.xb-caveat[data-caveat="${id}"]`, (e) => e.textContent).catch(() => "");
+  // the caveat text is typeset (R2: g2, I_th, Gamma_zpl render as KaTeX, whose textContent is MathML + glyphs); each typeset span keeps
+  // the string the backend sent in data-src, so the pinned wording is compared on that source text
+  const caveat = (id) => page.$eval(`.xb-caveat[data-caveat="${id}"]`, (e) => {
+    const c = e.cloneNode(true);
+    for (const m of c.querySelectorAll(".math[data-src]")) m.replaceWith(m.dataset.src);
+    return c.textContent;
+  }).catch(() => "");
 
   try {
     // ------------------------------------------------------------ tabs
@@ -112,7 +118,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     const framesOk = await until(page, () => /T frames ready/.test(document.querySelector('[data-role="frames"]')?.textContent || ""), null, 120000);
     check("phonon: T frames computed on the job pool (one batch)", framesOk, await page.$eval('[data-role="frames"]', (e) => e.textContent));
     const pc = await caveat("caveat");
-    check("phonon: pinned caveat verbatim and not-brightness note", pc.includes("Independent-boson model, bulk LA deformation potential only, no LO or piezo term (:191-197) [E]. Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening (:436-443). Lengths are wavefunction extents, not dot sizes (:127-134).") && pc.includes("not brightness"), pc.slice(0, 80));
+    check("phonon: pinned caveat verbatim and not-brightness note", pc.includes("Independent-boson model, bulk LA deformation potential only, no LO or piezo term [E]. Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening. Lengths are wavefunction extents, not dot sizes.") && pc.includes("not brightness"), pc.slice(0, 80));
     let ph = await live("/api/explore/phonon/live?T=100&l_xy=4.5&l_z=1.5&gamma_zpl=0.5&w=2&kappa=1&F_cav=1&delta=0");
     await setSlider(page, "T", 5); // index 5 = 100 K
     await page.waitForTimeout(400);
@@ -148,7 +154,7 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     await page.goto(`${BASE}/#/explain/transport`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('.xb-caveat[data-caveat="transport"]', { timeout: 30000 });
     const tc = await caveat("transport");
-    check("transport: pinned InP caveat verbatim (LOWER bound on leakage, mu ~ 6000)", tc.includes("leak_valleys='G' is a LOWER bound on leakage (docstring item 5, 'GX' moves 50x per 0.1 eV)") && tc.includes("1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into one dot (item 6)."), tc.slice(0, 60));
+    check("transport: pinned InP caveat verbatim (LOWER bound on leakage, mu ~ 6000)", tc.includes("leakage through the G valley only is a LOWER bound on leakage (including the X valley moves it 50x per 0.1 eV)") && tc.includes("1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into one dot.") && !/docstring|transport\.py|item [0-9]/.test(tc), tc.slice(0, 60));
     check("transport: four InP charts render (sweep ran as a job)", await until(page, () => [...document.querySelectorAll('.xb-panel[data-panel="inp"] .chart-plot .main-svg')].length >= 4, null, 90000));
     const pt = await api("/api/explore/transport/point?preset=red&I_uA=1&T=230&n_dot=2000000000&aperture=1&tau_pulse=0.1&w=2&dE_WL=100&tau_rad=1");
     await page.waitForTimeout(600);
@@ -172,9 +178,9 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     const traceOk = await until(page, () => /traces ready \(one point/.test(document.querySelector('[data-role="stark-status"]')?.textContent || ""), null, 120000);
     check("transport: three Stark traces computed as jobs", traceOk, await page.$eval('[data-role="stark-status"]', (e) => e.textContent));
     const nc = await caveat("nitride");
-    check("transport: pinned nitride caveat verbatim", nc.includes("barrier-limited, doping dependence omitted [A]; screening fixed along a trace; m- and a-plane coincide by construction (out/nitride_geometry_stark/results.md:328); Zhang is 10 K, x=0.15, another device (results.md:129)"), nc.slice(0, 60));
+    check("transport: pinned nitride caveat verbatim", nc.includes("barrier-limited, doping dependence omitted [A]; screening fixed along a trace; m- and a-plane coincide by construction (see the nitride geometry and Stark report); Zhang is 10 K, x=0.15, another device (same report)"), nc.slice(0, 60));
     const nch = await charts(page);
-    const eC = nch.find((c) => /E_X/.test(c.title)), sC = nch.find((c) => /slope/i.test(c.title));
+    const eC = nch.find((c) => /Exciton energy/.test(c.title)), sC = nch.find((c) => /slope/i.test(c.title));
     check("transport: E_X chart has 3 screening series + the Zhang guide; slope chart has 3 series", eC && eC.traces.length === 4 && eC.traces.some((t) => /Zhang/.test(t.name) && /guide only/.test(t.name)) && sC && sC.traces.length === 3, JSON.stringify(eC?.traces.map((t) => t.name)));
     const guideTxt = await page.$$eval(".xb-panel[data-panel='nit'] .chart-plot", (ps) => ps.map((p) => (p.layout?.annotations || []).map((x) => x.text).join(" ")).join(" "));
     check("transport: Zhang line is labelled guide only (10 K, x = 0.15, another device); no compatibility verdict anywhere on the page", /guide only/.test(guideTxt) && /another device/.test(guideTxt) && !/compatib/i.test(await page.$eval(".xp-body", (e) => e.textContent)));
@@ -197,12 +203,14 @@ const charts = (page) => page.evaluate(() => [...document.querySelectorAll(".xp-
     await page.goto(`${BASE}/#/explain/laser`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('.xb-caveat[data-caveat="zhao"]', { timeout: 30000 });
     const lc = await caveat("zhao");
-    check("laser: pinned Zhao caveat verbatim (quiet pump does NOT reproduce: 5.8 sigma, FAIL)", lc.includes("Langevin model of Zhao's QD LASER (thousands of dots, lasing mode), not a single-photon source; g2 ~ 1 is correct physics. Normal pump reproduces 1.0224+-0.003 to 1.7 sigma; quiet pump does NOT: 1.017 vs 0.982, 5.8 sigma (out/zhao/zhao_fit_comparison.csv, verdict FAIL both rows).") && /Axis is I\/I_th, not amperes/.test(lc), lc.slice(0, 60));
+    check("laser: pinned Zhao caveat verbatim (quiet pump does NOT reproduce: 5.8 sigma, FAIL)", lc.includes("Langevin model of Zhao's QD LASER (thousands of dots, lasing mode), not a single-photon source; g2 ~ 1 is correct physics. Normal pump reproduces 1.0224+-0.003 to 1.7 sigma; quiet pump does NOT: 1.017 vs 0.982, 5.8 sigma (out/zhao/zhao_fit_comparison.csv, verdict FAIL both rows).") && /Axis is I\/I_th, not amperes/.test(lc)
+      // devlib-r2-pha2 (20dd150): the honest state is that these are intracavity g2 values, Zhao's observable is the output noise spectrum, and the dB value is unavailable
+      && lc.includes("INTRACAVITY photon-number g2") && lc.includes("OUTPUT photon-flux noise spectrum") && lc.includes("The paper's squeezing in dB is unavailable") && lc.includes("N_dots is not retuned"), lc.slice(0, 60));
     const framesDone = await until(page, () => /frames ready/.test(document.querySelector('[data-role="frames"]')?.textContent || ""), null, 180000);
     check("laser: 14 seeded frames computed on the pool", framesDone, await page.$eval('[data-role="frames"]', (e) => e.textContent));
     await page.waitForTimeout(600);
     const lch = await charts(page);
-    const g2c = lch.find((c) => /g²\(0\)/.test(c.title));
+    const g2c = lch.find((c) => /against pump: normal and quiet drive/.test(c.title)); // the title's g2(0) is typeset (R2), so match the plain words
     const simTraces = g2c ? g2c.traces.filter((t) => /^simulation/.test(t.name)) : [];
     check("laser: g2 chart shows normal and quiet simulation, both Zhao card points and the committed run, markers only (no curve through the quiet point)",
       g2c && simTraces.length === 2 && g2c.traces.every((t) => t.mode === "markers") && g2c.traces.filter((t) => /Zhao card/.test(t.name)).length === 2 && g2c.traces.filter((t) => /committed fit run/.test(t.name)).length === 2, JSON.stringify(g2c?.traces.map((t) => `${t.name}:${t.mode}`)));

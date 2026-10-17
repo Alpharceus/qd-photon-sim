@@ -82,6 +82,46 @@ INJECTION_PRESETS = {
 }
 
 
+# ---- confinement-level (dot_levels) faithful literature systems. NEW registry
+# (devlib-rc2): the DOT_PRESETS above carry device-tier fragments (delta_xx,
+# gamma_scale, r_xx); these carry the material/geometry inputs that
+# fsim_core.dot_levels.DotSystem needs. Kept here, not in
+# dot_levels.class_presets(), so the existing class_presets keys (and the
+# regressions that pin them) are untouched.
+LEVEL_PRESETS = {
+    "laferriere-inasp-0.68": {
+        # Laferriere et al., Nano Lett. 23, 962 (2023): InAs_xP_1-x dot-in-a-rod
+        # (x ~ 0.68, thickness td ~ 3 nm) inside an InAs_yP_1-y rod (y ~ 0.5)
+        # inside an InP nanowire core of diameter D_c ~ 20 nm
+        # (_goal/paper_digests.md Paper 5; p2-rootcause.md section 5).
+        "dot_x_as": 0.68,        # [V] Laferriere 2023 (x ~ 0.68)
+        "height_nm": 3.0,        # [V] Laferriere 2023 (td ~ 3 nm)
+        "radius_nm": 10.0,       # [DR] D_c/2 = 10 nm is the UPPER limit on the dot radius; true lateral size unpublished
+        "matrix_x_as": 0.5,      # [V] Laferriere 2023 (rod y ~ 0.5): the AXIAL neighbour of the dot
+        "radial_barrier": "InP", # [V] Laferriere 2023 (InP core/shell): the RADIAL neighbour; the separable disk
+                                 # cannot hold both, so the matrix is bracketed between the rod and InP [A]
+        "substrate": "InP",      # [V] InP nanowire core
+        "note": "faithful composition; axial rod vs radial InP bracketed (rod-to-InP matrix swap)",
+    },
+}
+
+
+def level_system(key: str = "laferriere-inasp-0.68", T: float = 300.0, matrix: str = "rod"):
+    """Build the dot_levels.DotSystem for LEVEL_PRESETS[key]. matrix='rod' uses the
+    InAs_yP_1-y rod as the layer around the dot, matrix='inp' uses InP (the two ends
+    of the bracket, see LEVEL_PRESETS). Lazy import keeps this module headless."""
+    from . import dot_levels as D
+    from . import materials as M
+    p = LEVEL_PRESETS[key]
+    if matrix not in ("rod", "inp"):
+        raise ValueError(f"matrix must be 'rod' or 'inp', got {matrix!r}")
+    InP = M.binary("InP")
+    mat = M.InAsP(p["matrix_x_as"]) if matrix == "rod" else InP
+    return D.DotSystem(M.InAsP(p["dot_x_as"]), mat, InP, InP, T,
+                       D.DotGeometry(p["height_nm"], p["radius_nm"]),
+                       name=f"{key} ({matrix})")
+
+
 def apply_dot_preset(design: DeviceDesign, key: str) -> DeviceDesign:
     p = DOT_PRESETS[key]
     b = DotBlock()

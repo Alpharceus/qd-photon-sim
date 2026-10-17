@@ -1,0 +1,93 @@
+# Somaschi et al., Nat. Photonics 10, 340 (2016): electrically tuned InGaAs dot in a micropillar, strictly resonant 15 ps pulses.
+# Numbers from .workers/devlib/papers/somaschi2016.yaml (arXiv main text read; supplement pages are images, NOT read).
+# ONE device: resonant QD3 (g2 0.0028, M 0.9956/0.989, brightness 0.154, F_P 9.8, FSS 15 ueV). The non-resonant QD1 data
+# (F_P 7.6, 150 ps, beta 0.88, eta_out 0.70, g2 0.024, M 0.78, brightness 0.65) belong to a different dot and drive and are not in this card.
+# Not items: beta (0.88 = F/(1+F) of the entered F_P), lifetime 150 ps (defines F_P 7.6) and beta x eta_out 0.63 are guaranteed by inputs.
+meta:
+  id: somaschi2016
+  role: paper-device
+  cite: "N. Somaschi, V. Giesz, L. De Santis, J. C. Loredo, ... P. Senellart, Near-optimal single-photon sources in the solid state, Nature Photonics 10, 340-345 (2016)"
+  doi: "10.1038/nphoton.2016.23"
+  arxiv: "1510.06499"
+  extraction: ".workers/devlib/papers/somaschi2016.yaml"
+  read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Somaschi et al., Nat. Photonics 10, 340 (2016): electrically contacted micropillar [V] (main text; .workers/devlib/papers/somaschi2016.yaml); drawn with [A] display defaults
+  summary: "InGaAs dot QD3 in an electrically tuned micropillar (F_P 9.8, Q ~12000), 15 ps resonant cross-polarised pulses, 4 K; paper: g2 0.0028, M 0.989 raw / 0.9956 corrected, brightness 0.154"
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "p.3 text (devices studied at 4 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      tau_bare_ns: {value: 1.3, unit: ns, tag: V, where: "p.3 text (bulk exciton lifetime of 1.3 ns assumed for F_P)"}
+      gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "no pure-dephasing number in the main text; registry InGaAs class range 0-1 ueV"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "T = 4 K equals the reference temperature; no slope measured"}
+  structure:
+    kind: generic_cavity
+    params:
+      F_P: {value: 9.8, unit: "1", tag: V, where: "p.5 text (Purcell factor F_P = 9.8 quoted for the resonant device)"}
+      Q: {value: 12000, unit: "1", tag: E, source: "Q ~ 12000 is stated for QD1 and QD2 (p.3); QD3 is on the same sample design but its Q is not stated"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "F_P is quoted at cavity resonance; the dot is Stark-tuned onto the mode by bias (p.3)"}
+      eta_out: {value: 0.70, unit: "1", tag: E, source: "kappa_top/kappa = 0.70 measured for QD1 by reflectivity (p.3); QD3 not stated (beta x eta_out ~ 0.63 for QD3, p.5, consistent)"}
+  drive:
+    kind: resonant_pulse
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "'shaped laser pulses' of 15 ps (p.4); the shape is not given"}
+      fwhm_ps: {value: 15.0, unit: ps, tag: V, where: "p.4 text (temporal width of 15 ps; taken as intensity FWHM, the paper does not say)"}
+      area_pi: {value: 0.866, unit: pi, tag: DR, where: "p.5 Fig 3 caption: g2 measured at 0.75 P_pi; area = sqrt(0.75) pi = 0.866 pi assuming power proportional to area squared. Brightness is quoted near the pi pulse (p.5), so it is compared at 0.866 pi (inversion 0.95)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "p.4 text (strictly resonant excitation)"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
+      cross_pol: {value: true, unit: "", tag: V, where: "p.4 text (V excitation, H collection, extinction ~1e5)"}
+      laser_leak: {range: [0.0, 0.003], unit: "1", tag: DR, where: "p.4 few % x etalon/pulse bandwidth"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      zpl_filter: {value: true, unit: "", tag: V, where: "p.4 text (10 ueV / 7 pm etalon filter on the collected light; the 110 ueV pillar mode also filters the sideband)"}
+reported:
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.0028, err: 0.0012, tag: V, where: "p.4 text / p.5 Fig 3b caption / abstract (QD3 at 0.75 P_pi)", note: "measured value after the etalon, no correction stated"}
+  - {id: M_raw, observable: hom_I, convention: raw, value: 0.989, err: 0.004, tag: V, where: "p.4 text (same-polarisation HOM, 3 ns delay, without g2 correction)"}
+  - {id: M_corr, observable: hom_I, convention: corrected, value: 0.9956, err: 0.0045, tag: V, where: "p.4 text / abstract (corrected for g2(0))"}
+  - {id: brightness_res, observable: B_first_lens, value: 0.154, err: 0.015, tag: V, where: "abstract (p.5 text prints 0.16 +/- 0.02)", note: "polarised photons per pulse at the first lens in cross-polarised detection, setup-calibrated; includes the polarisation-rotation loss p_X = 0.23 that the paper computes (p.5)"}
+series: []
+reproduce:
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "paper 2 sigma is only 0.0024; widened to 0.005 absolute because the post-etalon laser leak (envelope 0-3%) adds 2 f_leak to the raw g2 and is unquoted. The model is a two-level system without the V-excitation / H-collection FSS geometry that suppresses re-excitation"
+    expect: fail
+    reason: "model gap: the two-level engine gives g2 0.038 (envelope 0.035-0.041 after the laser-leak range was narrowed to [0, 0.003]) because a 15 ps pulse is long against the 121 ps Purcell lifetime (Gamma tau_p ~ 0.12) and allows re-excitation; the measured 0.0028 uses V excitation / H collection through the FSS-rotated exciton, which the model lacks. Laser leak does not explain it (it only raises g2)."
+  - item: M_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "values are near unity; 1% absolute (paper 2 sigma 0.008); gamma* is an envelope 0-1 ueV because the paper gives none, so this is a prediction with the class range, not a transcription"
+    expect: fail
+    reason: "model gap: engine overlap 0.77 (envelope 0.65-0.90) is far below 0.989 because the pulsed-HOM definition includes photons emitted during the 15 ps pulse (Gamma tau_p ~ 0.12) and the gamma* class range up to 1 ueV; the paper source is effectively transform-limited (M ~ 1) with a polarisation-selected excitation path the two-level model does not represent."
+  - item: M_corr
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "same near-unity 1% absolute (paper 2 sigma 0.009); compared with the model g2-only corrected convention, the same correction the paper applies"
+    expect: pass-envelope
+    reason: "FX4: central model 0.920 vs 0.9956 +/- 0.0045 is far outside the window; 0.9956 lies inside the envelope [0.848, 0.999] only at the top of the gamma* 0-1 ueV range, so it is not a pass (same gap as M_raw: emission during the long pulse)"
+  - item: brightness_res
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the paper's 0.015 (+/-0.03). Written before the run: a two-level model with F_P 9.8, eta_out 0.70 and no polarisation-geometry loss is expected to give about 0.6, not 0.15, because the paper attributes the low value to p_X = 0.23 (FSS rotation vs strong Purcell, p.5), which is not modelled and was deliberately NOT entered as an input"
+    expect: fail
+    reason: "model gap, as predicted in tol_reason: the two-level model gives 0.54 against 0.154. The paper attributes the factor ~4 to p_X = 0.23 (V excitation at 45 degrees to the dot axes, FSS 15 ueV vs strong Purcell, p.5), which is not modelled; entering p_X would be fitting, so it is left out."
+  - item: eta_prep_pred
+    class: P
+    observable: eta_prep
+    expect: pass
+    tol_reason: "no reported value for the resonant device; the paper's p_X = 0.23 is a theory value for the H-emitting exciton, not comparable to the two-level inversion"
+  - item: tau_pred
+    class: P
+    observable: tau_ps
+    expect: pass
+    tol_reason: "no reported lifetime for QD3; the paper's 150 ps belongs to non-resonant QD1 (F_P 7.6)"
+fits: []
+history:
+  - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription; expects recorded from the engine state at the time of the run", reason: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 12: laser_leak range [0, 0.03] E -> [0, 0.003] DR (p.4 few percent times etalon/pulse bandwidth)"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation V_corr = I/(1-g2) (uncapped, can exceed 1): M_corr fail -> pass (model 0.89 [0.82,0.97] -> 0.920 [0.848,1.004]; envelope-driven, weak)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: M_corr expect pass -> pass-envelope (central 0.920; paper value only at the top of the gamma* envelope [0.848, 0.999])"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 15.0 ueV [V] (p.5 text (FSS of 15 ueV used for QD3; 10-15 ueV on p.4); a beat, not used by the two-level engine) is no longer carried by the card"}

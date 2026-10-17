@@ -480,10 +480,14 @@ def evolve(L, rho0, times, *, method="expm"):
     return [unvec(V[:, k], n) for k in range(times.size)]
 
 
-def evolve_td(L0, L1, envelope, rho0, t_grid):
+def evolve_td(L0, L1, envelope, rho0, t_grid, *, L2=None, envelope2=None):
     """Time-dependent L(t) = L0 + envelope(t) L1 (e.g. L1 = hamiltonian_super
     of a drive term), piecewise constant on the intervals of t_grid with the
     envelope sampled at each interval midpoint; exact expm per interval.
+    Optional second envelope (devlib-p10e, Stark-gated detuning): with
+    L2 / envelope2 given, L(t) = L0 + envelope(t) L1 + envelope2(t) L2, e.g.
+    L2 = hamiltonian_super(|X><X|) and envelope2 = det_X(t). Default
+    (L2 = None) is the original single-envelope path, bit-identical.
     Returns the list of rho at every t_grid point (t_grid[0] -> rho0)."""
     rho0 = np.asarray(rho0, dtype=complex)
     n = rho0.shape[0]
@@ -493,7 +497,10 @@ def evolve_td(L0, L1, envelope, rho0, t_grid):
     for t0, t1 in zip(t_grid[:-1], t_grid[1:]):
         dt = t1 - t0
         f = envelope(0.5 * (t0 + t1))
-        v = expm((np.asarray(L0) + f * np.asarray(L1)) * dt) @ v
+        Lt = np.asarray(L0) + f * np.asarray(L1)
+        if L2 is not None:
+            Lt = Lt + envelope2(0.5 * (t0 + t1)) * np.asarray(L2)
+        v = expm(Lt * dt) @ v
         out.append(unvec(v.copy(), n))
     return out
 
@@ -607,13 +614,73 @@ def _periodic_fixed_point(Phi, v0):
     return v, False
 
 
+def _pulsed_counting_profile(profile, L_off, J, dim, tau_dark_ns, gate_ns, rho_start, return_states):
+    """pulsed_counting with a piecewise-constant on-window `profile` = [(dt_ns, L_k), ...] followed by the dark
+    window (L_off, tau_dark_ns): same hierarchy, windows split at the counting gate (devlib-p10e)."""
+    steps = [(float(dt), np.asarray(Lk)) for dt, Lk in profile]
+    L_off = np.asarray(L_off)
+    tau_on = sum(dt for dt, _ in steps)
+    period = tau_on + tau_dark_ns
+    gate = period if gate_ns is None else min(gate_ns, period)
+    N = dim * dim
+    Phi = np.eye(N, dtype=complex)
+    cache = {}
+    for dt, Lk in steps:
+        key = (id(Lk), dt)
+        if key not in cache:
+            cache[key] = expm(Lk * dt)
+        Phi = cache[key] @ Phi
+    Phi = expm(L_off * tau_dark_ns) @ Phi
+    if rho_start is None:
+        rho_start = np.zeros((dim, dim), dtype=complex)
+        rho_start[0, 0] = 1.0
+    v_ss, conv = _periodic_fixed_point(Phi, vec(rho_start))
+    Z = np.zeros((N, N), dtype=complex)
+    V = np.zeros(3 * N, dtype=complex)
+    V[:N] = v_ss
+    states = [unvec(v_ss, dim)]
+    windows = []                                   # (L, J-or-Z, dt), in time order, split at the gate
+    t = 0.0
+    for dt, Lk in steps + [(tau_dark_ns, L_off)]:
+        n_count = min(max(gate - t, 0.0), dt)
+        if n_count > 0:
+            windows.append((Lk, J, n_count))
+        if dt - n_count > 0:
+            windows.append((Lk, Z, dt - n_count))
+        t += dt
+    acache = {}
+    for Lw, Jw, dt in windows:
+        key = (id(Lw), id(Jw), dt)
+        if key not in acache:
+            acache[key] = expm(_augmented(np.asarray(Lw), Jw) * dt)
+        V = acache[key] @ V
+        states.append(unvec(V[:N], dim))
+    tr = trace_row(dim)
+    m1 = (tr @ V[N:2 * N]).real
+    m2 = (tr @ V[2 * N:]).real
+    out = {"g2": float(m2 / m1 ** 2) if m1 > 1e-300 else float("nan"),
+           "mean_counts": float(m1), "rho_period": unvec(V[:N], dim),
+           "converged": bool(conv)}
+    if return_states:
+        out["states"] = states
+    return out
+
+
 def pulsed_counting(L_on, L_off, J, dim, tau_on_ns, tau_dark_ns, *, gate_ns=None,
-                    rho_start=None, return_states=False):
+                    rho_start=None, return_states=False, profile=None):
     """Per-period factorial moments of the counted stream under a rectangular
     on/off modulation of the Liouvillian (pulse_counting hierarchy, L in place
     of M). Counting runs for 0 <= t < gate_ns from the start of the on window
     (None = whole period). Returns dict(g2, mean_counts, rho_period,
-    converged[, states])."""
+    converged[, states]).
+
+    profile (devlib-p10e, default None = the rectangular path above, bit-
+    identical): a piecewise-constant SHAPED pump window [(dt_ns, L_k), ...],
+    e.g. L_k = L_off + r_k D[pump] on the cell-averaged pump rate r_k of a
+    r(t) profile. It replaces (L_on, tau_on_ns) (both ignored); the dark
+    window (L_off, tau_dark_ns) follows the profile."""
+    if profile is not None:
+        return _pulsed_counting_profile(profile, L_off, J, dim, tau_dark_ns, gate_ns, rho_start, return_states)
     period = tau_on_ns + tau_dark_ns
     gate = period if gate_ns is None else min(gate_ns, period)
     N = dim * dim

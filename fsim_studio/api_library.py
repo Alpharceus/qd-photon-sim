@@ -164,7 +164,7 @@ def _load(name: str):
     try:
         return load_card(path), doc, "fsim_core.card.load_card"
     except (KeyError, ValueError, TypeError) as exc:
-        return None, doc, (f"read raw: fsim_core.card.load_card raises {type(exc).__name__}: {exc} "
+        return None, doc, (f"read raw: the card loader raises {type(exc).__name__}: {exc} "
                            "(datasets without a per-dataset source)")
 
 
@@ -330,6 +330,7 @@ def _summary(name: str, card, doc, loader: str) -> dict:
         "dataset_tag_counts": tag_counts(dsets),
         "loader": loader, "design": DERIVED_DESIGN.get(base_of(name)),
         "has_device_block": isinstance(doc.get("device"), dict),
+        "has_scene": isinstance(doc.get("scene"), dict),
         "device_tag_counts": tag_counts([r for r in _device_block(name, doc) if r.get("tag") in TAGS]),
         "n_device_fields": sum(1 for r in _device_block(name, doc) if r.get("tag") in TAGS),
     }
@@ -449,7 +450,7 @@ def _chatz_g2(card, doc):
     g2 = [g2_of_T(T, p).g2 for T in Ts]
     tc_fit = solve_Tc(p)
     tc_fix = solve_Tc(dict(fit.params, w=3.0, dx=-0.7))
-    label = (f"calibration, not held out (V_A_TOL {V_A_TOL}, fitting.py:44): the model is fitted to these points, "
+    label = (f"calibration, not held out (tolerance {V_A_TOL}): the model is fitted to these points, "
              f"so it passes near them by construction. Published windows (w, dx) interpolated per point [E]; "
              f"the 78 K point is an upper bound. T_c = {tc_fit:.1f} K with the fit windows ({tc_fix:.1f} K at fixed "
              f"w = 3 meV, dx = -0.7 meV) lies beyond the data range and is not drawn.")
@@ -619,12 +620,12 @@ def _reischle_rho(card, doc):
     win = sorted(_read_csv(VC_RHO_WINDOW_CSV), key=lambda r: float(r["w_meV"]))
     ws = [float(r["w_meV"]) for r in win]
     req = [float(r["rho_required"]) for r in win]
-    label = (f"trion: eps = 0 structurally, so g2 = 1 - rho^2 (integrator.g2_from at eps = 0). The line is the rho the "
+    label = (f"trion: eps = 0 structurally, so g2 = 1 - rho^2. The line is the rho the "
              f"100 MHz point (g2 = {base['g2']}) requires, read from out/phase1/vc_rho_window.csv; the 200/500 MHz "
              f"points (0.53, 0.49) are temporal refilling, outside the spectral model.")
     return _ov("reischle", "DR", ["integrator.g2_from", "out/phase1/vc_rho_window.csv"], label,
                series=[{"name": "rho required by the 100 MHz point", "x": ws, "y": req, "mode": "lines"}],
-               params_source="out/phase1/vc_rho_window.csv (run_phase1.py); cards/reischle.yaml g2_vs_ERR, device 1 position 2, 100 MHz")
+               params_source="out/phase1/vc_rho_window.csv (phase 1 run); cards/reischle.yaml g2_vs_ERR, device 1 position 2, 100 MHz")
 
 
 def _reischle_oe(card, doc):
@@ -642,16 +643,16 @@ def _reischle_oe(card, doc):
         v = [float(intrinsic_from_raw(r["g2_raw"], td, IRF_OE2008_PS, "exponential")) for td in tds]
         lo.append(min(v))
         hi.append(max(v))
-    label = ("trion: eps = 0 structurally, g2 = 1 - rho^2. Markers: F2 inversion g2_s = (g2_b - (1 - rho^2))/rho^2 "
-             "of the published g2_b with the published rho (matches g2_corr to 0.011). Band: cw_g2.intrinsic_from_raw "
-             f"of the raw g2 through the {IRF_OE2008_PS:.0f} ps exponential IRF for dip recovery tau_d "
+    label = ("trion: eps = 0 structurally, g2 = 1 - rho^2. Markers: the published background-limited g2 inverted with the published rho, "
+             "g2 = (g2 measured - (1 - rho^2))/rho^2 (matches the published corrected g2 to 0.011). Band: the intrinsic g2 recovered "
+             f"from the raw g2 through the {IRF_OE2008_PS:.0f} ps exponential IRF for dip recovery tau_d "
              f"{min(implied):.2f}-{max(implied):.2f} ns, the values the published raw/intrinsic pairs imply "
              f"(anchor {implied[0]:.2f} ns for raw 0.41 -> 0.15 [DR]; tau_d itself is not printed). Each point "
              "recovers its published g2_b at its own implied tau_d by construction.")
     return _ov("reischle", "DR", ["cw_g2.intrinsic_from_raw (cw_g2.deconvolve_dip)", "studio_support.inverted_background_g2",
                                   "studio_support.implied_dip_recovery_time"], label,
-               series=[{"name": "g2_s (F2 inversion of g2_b)", "x": Ts, "y": g2s, "mode": "markers"}],
-               bands=[{"name": "IRF deconvolution of g2_raw (implied tau_d range)", "x": Ts, "lo": lo, "hi": hi}],
+               series=[{"name": "inverted g2 (published background-limited value)", "x": Ts, "y": g2s, "mode": "markers"}],
+               bands=[{"name": "IRF deconvolution of the raw g2 (implied tau_d range)", "x": Ts, "lo": lo, "hi": hi}],
                params_source="cards/reischle.yaml g2_oe2008; IRF 500 ps exponential [V]; tau_d implied [DR]",
                readouts={"tau_d_implied_ns": implied})
 
@@ -687,8 +688,8 @@ def _zhao_g2(card, doc):
              f"through the quiet point. Axis is I/I_th (I/I_th = 4, {ZHAO_N_RUNS} runs, {ZHAO_T_END * 1e9:g} ns); "
              f"quiet = F_pump {ZHAO_F_QUIET} [E].")
     return _ov("zhao", "E", ["sde.QDLaserParams", "sde.find_threshold", "sde.g2_vs_pump"], label,
-               series=[{"name": "sde.g2_vs_pump (SE)", "x": pumps, "y": y, "err": se, "mode": "markers"}],
-               params_source="QDLaserParams() defaults, seed 42",
+               series=[{"name": "simulated g2 against pump (SE)", "x": pumps, "y": y, "err": se, "mode": "markers"}],
+               params_source="the laser model's default parameters, random seed 42",
                readouts={"sigma": sig, "sigma_committed": sig_csv, "verdict": verdict,
                          "verdict_source": "out/zhao/zhao_fit_comparison.csv"})
 
@@ -841,6 +842,32 @@ def save_params(name: str, body: dict) -> dict:
     return {"name": name, "base": base, "path": rel}
 
 
+# ------------------------------------------------------------------ 3D scene of a parameter card (display only)
+def scene_block(name: str):
+    """The card's `scene:` block when `name` is a parameter card that carries one, else None (no error)."""
+    if not NAME_RE.match(name or "") or name.endswith(".yaml"):
+        return None
+    path = _path(name)
+    if not path.is_file():
+        return None
+    try:
+        doc = _raw(path)
+    except (OSError, yaml.YAMLError):
+        return None
+    block = doc.get("scene") if _is_param_doc(doc) else None
+    return block if isinstance(block, dict) else None
+
+
+def device_scene(name: str) -> dict:
+    """GET /api/scene/device?card=<parameter card>: the composed 3D descriptor of the card's scene block
+    (fsim_studio.scene_compose.describe_card), with the card's note and the tag summary in its HUD labels."""
+    block = scene_block(name)
+    if block is None:
+        raise LibraryError(422, f"card {name!r} has no scene block: it holds a paper's published parameters, not a device design")
+    from . import scene_compose
+    return scene_compose.describe_card(name, block)
+
+
 # ------------------------------------------------------------------ routes
 def register(app):
     def _out(obj, status=200):
@@ -861,6 +888,17 @@ def register(app):
     @app.get("/api/params/<name>/overlay/<dataset>")
     def params_overlay(name, dataset):
         return _out(overlay(name, dataset))
+
+    # GET /api/scene/device is registered by server.py for design cards (fsim_studio.scene). A parameter card that
+    # carries a `scene:` block is answered here; every other request goes to that original view unchanged.
+    orig_scene_device = app.view_functions.get("scene_device")
+    if orig_scene_device is not None:
+        def scene_device_param():
+            name = request.args.get("card")
+            if scene_block(name) is not None:
+                return _out(device_scene(name))
+            return orig_scene_device()
+        app.view_functions["scene_device"] = scene_device_param
 
     @app.put("/api/params/<name>")
     def params_put(name):

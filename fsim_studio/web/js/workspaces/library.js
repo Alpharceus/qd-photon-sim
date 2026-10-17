@@ -12,6 +12,9 @@ import { icon } from "../ui/icons.js";
 import { tagChip, normTag, tagDash, tagWidth, TAG_MEANING } from "../ui/tagChip.js";
 import { skeleton, errorState, emptyState, toast } from "../ui/controls.js";
 import { fmt, unitText, isNum } from "../ui/format.js";
+import { richText, richPlain } from "../ui/math.js";
+import { fieldLabel, cardTitle, modelNames } from "../ui/labels.js";
+import { deviceThumbnail, mountDeviceModel } from "../viz3d/deviceModel.js";
 import { chartCard } from "../charts/chartCard.js";
 import { baseLayout, colors as themeColors, alpha } from "../charts/theme.js";
 
@@ -20,7 +23,16 @@ const SYMBOLS = ["circle", "square", "diamond", "triangle-up", "pentagon", "star
 
 let L = null;
 
+// css/library.css (plaque thumbnails, the card-page model) is loaded with the workspace, like papers.css
+function ensureCss() {
+  const href = new URL("../../css/library.css", import.meta.url).href;
+  if (![...document.querySelectorAll('link[rel="stylesheet"]')].some((l) => l.href === href)) {
+    document.head.append(h("link", { rel: "stylesheet", href }));
+  }
+}
+
 export function mount(el, ctx) {
+  ensureCss();
   L = { el, ctx, key: null, charts: [], seq: 0, editing: false };
   el.classList.add("ws-library");
   update(ctx.args);
@@ -34,6 +46,7 @@ export function unmount() {
 }
 
 function dispose() {
+  if (L.model) { try { L.model.dispose(); } catch { /* */ } L.model = null; }
   for (const c of L.charts) { try { c.dispose(); } catch { /* */ } }
   L.charts = [];
 }
@@ -112,6 +125,7 @@ async function indexPage() {
   clear(body).append(...ordered.map(({ paper, cards }) => h("section.lib-group", { "aria-label": paper.label },
     h("header.lib-group-head", h("h2.engrave", paper.label), h("span.lib-cite", paper.cite)),
     h("div.lib-plaques", cards.map(plaque)))));
+  body.querySelectorAll("a.lib-plaque").forEach(fillThumb);
   L.el.dataset.ready = "1";
 }
 
@@ -119,14 +133,33 @@ function legend() {
   return h("div.ov-legend.lib-legend", TAGS.map((t) => h("span.lib-leg", tagChip(t, { size: "sm" }), h("span.ov-legend-txt", TAG_MEANING[t]))));
 }
 
+// The card's device model as a static picture of the composed 3D scene (one offscreen context at a time).  Every parameter
+// card carries a display-only `scene:` block (GET /api/scene/device?card=, fsim_studio/scene_compose.py describe_card); a
+// card whose block is absent states why there is no model: a literature parameter card carries a paper's published
+// numbers, not a device geometry.
+const NO_MODEL = "No 3D model: this card holds a paper's published parameters, not a device design.";
+function fillThumb(a) {
+  const slot = a.querySelector(".lib-thumb");
+  if (!slot || !L) return;
+  const name = a.dataset.card;
+  const noModel = (why) => { slot.replaceChildren(h("p.lib-thumb-why", why)); slot.dataset.state = "reason"; };
+  deviceThumbnail({ card: name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") }).then((url) => {
+    if (!slot.isConnected) return;
+    if (!url) { noModel(NO_MODEL); return; }
+    slot.append(h("img.lib-thumb-img", { src: url, alt: `${cardTitle(name)}: device model`, width: 480, height: 300, loading: "lazy" }));
+    slot.dataset.state = "ready";
+  }).catch((e) => { if (slot.isConnected) noModel(`3D model unavailable: ${e?.message || "the scene could not be built"}`); });
+}
+
 function plaque(c) {
   if (c.error) {
-    return h("div.cplaque.is-missing.lib-plaque", h("div.cp-top", h("h3.cp-title", c.name)), h("p.cp-sub", c.error));
+    return h("div.cplaque.is-missing.lib-plaque", h("div.cp-top", h("h3.cp-title", { title: c.name }, cardTitle(c.name))), h("p.cp-sub", c.error));
   }
   return h("a.cplaque.lib-plaque", { href: `#/library/${encodeURIComponent(c.name)}`, dataset: { card: c.name } },
     h("div.cp-top",
-      h("div", h("h3.cp-title", c.name), h("p.cp-sub", c.role || "")),
+      h("div", h("h3.cp-title", { title: c.name }, cardTitle(c.name)), h("p.cp-sub", c.role || "")),
       h("span.cp-go", icon("chevronRight", { size: 18 }))),
+    h("div.lib-thumb", { dataset: { role: "device-thumb", state: "pending" } }),
     c.device ? h("p.lib-device", c.device) : null,
     h("div.lib-plaque-row",
       ...(c.n_params || !c.n_device_fields
@@ -136,9 +169,14 @@ function plaque(c) {
       c.edited ? h("span.chip.chip-dirty", "edited copy") : null),
     c.datasets.length
       ? h("ul.lib-ds-list", c.datasets.map((d) => h("li.lib-ds", tagChip(d.tag, { size: "sm", title: `dataset ${d.name}` }),
-        h("span.lib-ds-name", d.name), h("span.lib-ds-n", h("span.lib-num", String(d.n_rows)), " rows"))))
+        h("span.lib-ds-name", { title: d.name }, richText(fieldLabel(d.name))), h("span.lib-ds-n", h("span.lib-num", String(d.n_rows)), " rows"))))
       : h("p.lib-none", "no datasets: parameters only"));
 }
+
+// Human names for the machine ids: cardTitle() (ui/labels.js) and, for a dataset "g2_vs_T", "g2(0) against temperature".
+// The id stays in a tooltip / data attribute.
+export { cardTitle };
+const dsLabel = (name) => richPlain(fieldLabel(name));
 
 // ---------------------------------------------------------------- card page
 async function cardPage(name) {
@@ -163,14 +201,15 @@ async function cardPage(name) {
     h("header.ws-head.lib-head",
       h("div.lib-titles",
         h("a.lib-back", { href: "#/library" }, icon("chevronRight", { size: 16, cls: "flip" }), "Library"),
-        h("div.lib-titleline", h("h1.ws-title", c.name), clsChip(c.cls), c.edited ? h("span.chip.chip-dirty", "edited copy") : null),
+        h("div.lib-titleline", h("h1.ws-title", { title: c.name }, cardTitle(c.name)), clsChip(c.cls), c.edited ? h("span.chip.chip-dirty", "edited copy") : null),
         c.paper ? h("p.ws-sub", h("strong", c.paper.label), ` · ${c.paper.cite}`) : null),
       actions),
     h("dl.lib-meta",
       metaRow("Device", c.device), metaRow("Role", c.role), metaRow("Source", c.source),
       c.cls?.reason ? metaRow("Class", c.cls.reason) : null,
       c.loader && !c.loader.startsWith("fsim_core") ? metaRow("Loader", c.loader) : null),
-    c.meta?.note ? h("p.lib-note", c.meta.note) : null);
+    c.meta?.note ? h("p.lib-note", c.meta.note) : null,
+    modelPanel(c));
 
   const hasData = c.datasets.length > 0;
   const left = h("div.lib-col");
@@ -186,6 +225,16 @@ async function cardPage(name) {
   await Promise.allSettled(pending);
   if (!L || seq !== L.seq) return;
   L.el.dataset.ready = "1";
+}
+
+// The live 3D model of the card's scene block (one WebGL context; the index thumbnails use short-lived offscreen ones).
+function modelPanel(c) {
+  if (!c.has_scene) return h("p.lib-thumb-why.lib-model-none", { dataset: { role: "device-model-none" } }, NO_MODEL);
+  const view = h("div.lib-model", { dataset: { role: "device-model", state: "pending" }, "aria-label": `${cardTitle(c.name)}: device model, 3D` });
+  L.model = mountDeviceModel(view, { card: c.name }, { api: L.ctx.api, theme: L.ctx.state.get("theme") });
+  return h("section.panel.lib-model-panel", { "aria-label": "Device model" },
+    h("header.panel-head", h("h2.engrave", "Device model"), h("span.panel-note", "display only: the closest registry class, every number tagged")),
+    view);
 }
 
 function metaRow(k, v) {
@@ -267,7 +316,8 @@ async function save(c, target, btn) {
   btn.setAttribute("aria-busy", "true");
   try {
     const r = await L.ctx.api.putJSON(`/api/params/${encodeURIComponent(target)}`, { params: rows });
-    toast(`Saved ${r.path}`, { kind: "ok" });
+    const tt = toast(`Saved ${cardTitle(target)}`, { kind: "ok" });
+    if (tt && r.path) tt.title = r.path;   // the file path is a tooltip, never the message
     if (L.ctx.args?.[0] === target || L.key === target) reload();
     else L.ctx.navigate(`#/library/${encodeURIComponent(target)}`);
   } catch (e) {
@@ -300,7 +350,7 @@ async function datasetCard(c, ds, host) {
   const ovStatus = c.overlays?.[ds.name] || { available: false };
   const st = { ov: null, ovErr: null };
   const chart = chartCard({
-    title: ds.name.replace(/_/g, " "), height: 300,
+    title: dsLabel(ds.name), height: 300,
     build: () => buildDataset(ds, st.ov),
     table: () => ({ caption: ds.excluded?.length ? `${ds.n_rows} rows (+${ds.excluded.length} excluded)` : `${ds.n_rows} rows`, columns: ds.columns.map((k) => ({ key: k, label: k })), rows: [...ds.rows, ...(ds.excluded || []).map((r) => ({ ...r, mechanism: r.mechanism || "excluded" }))] }),
     filename: () => `fsim-${c.name}-${ds.name}`,
@@ -312,15 +362,15 @@ async function datasetCard(c, ds, host) {
     h("p.lib-ds-src", tagChip(ds.tag, { size: "sm", title: "dataset tag" }), h("span", ds.source), ds.source_note ? h("em", ` (${ds.source_note})`) : null),
     ovLine);
   host.append(wrap);
-  chart.setTitle(ds.name.replace(/_/g, " "), `${ds.n_rows} rows · data [${ds.tag}]${ovStatus.available ? "" : " · no model overlay"}`);
+  chart.setTitle(dsLabel(ds.name), `${ds.n_rows} rows · data [${ds.tag}]${ovStatus.available ? "" : " · no model overlay"}`);
   if (ovStatus.available) {
     try {
       st.ov = await L.ctx.api.getJSON(`/api/params/${encodeURIComponent(c.name)}/overlay/${encodeURIComponent(ds.name)}`);
       ovLine.dataset.overlay = "shown";
       const cls = st.ov.cls ? `${st.ov.cls.label}${st.ov.cls.code ? ` (${st.ov.cls.code})` : ""}` : "model";
       clear(ovLine).append(icon("chart", { size: 14 }), tagChip(st.ov.tag, { size: "sm", title: "overlay tag chain" }),
-        h("span", ` Overlay: ${cls}. ${st.ov.label || ""} Calls: ${(st.ov.calls || []).join(", ")}.${st.ov.params_source ? ` Parameters: ${st.ov.params_source}.` : ""}`));
-      chart.setTitle(ds.name.replace(/_/g, " "), `${ds.n_rows} rows · data [${ds.tag}] · ${cls} overlay [${normTag(st.ov.tag) || "?"}]`);
+        h("span", ` Overlay: ${cls}. ${st.ov.label || ""} Model: ${modelNames(st.ov.calls)}.${st.ov.params_source ? ` Parameters: ${st.ov.params_source}.` : ""}`));
+      chart.setTitle(dsLabel(ds.name), `${ds.n_rows} rows · data [${ds.tag}] · ${cls} overlay [${normTag(st.ov.tag) || "?"}]`);
     } catch (e) {
       st.ovErr = e.message;
       ovLine.dataset.overlay = "error";

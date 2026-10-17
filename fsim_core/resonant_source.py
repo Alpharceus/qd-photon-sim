@@ -1013,25 +1013,33 @@ def source_rates(src):
                   (Grange et al., PRL 114, 193601 (2015); Iles-Smith et al.,
                   Nat. Photonics 11, 521 (2017)).
 
-    The Purcell overlap L uses the SAME line FWHM that the dephasing implies,
-    hbar (Gamma + gamma*), self-consistently (finding 8): L = T(w(L)),
-    T = spectral.cavity_transmission(detuning, w, kappa) and
-      enhanced: w = hbar m Gamma_0 (1 + F_P L),
-      dot:      w = hbar Gamma_0 (m + F_P L),
-    solved by Brent's method on L in (0, 1] (the root is unique: T decreases
-    in w and w increases in L) [DR]."""
+    The Purcell overlap L uses the DOT line width, hbar (Gamma_bg + gamma*)
+    with Gamma_bg = Gamma_0 (the decay into everything except the cavity mode,
+    k_nr = 0 in this source) and NO Purcell channel [DR; compose review
+    finding 2]: adiabatic elimination of the cavity gives the cavity-channel
+    rate 4 g^2/(kappa + gamma_d) x Lorentzian(Delta; kappa + gamma_d) with
+    gamma_d = Gamma_bg + k_nr + gamma*, so L = T(w_dot),
+    T = spectral.cavity_transmission(detuning, w_dot, kappa):
+      dot:      gamma* = (m - 1) Gamma_0 does not depend on L, so
+                w_dot = hbar m Gamma_0 and L is closed form;
+      enhanced: gamma* = (m - 1) Gamma = (m - 1) Gamma_0 (1 + F_P L) by
+                definition of the mode, so w_dot = hbar Gamma_0
+                (m + (m - 1) F_P L) and L is the root of L = T(w_dot(L)),
+                found by Brent's method on (0, 1] (unique: T decreases in w
+                and w increases in L) [DR].
+    (Before this fix the width was the Purcell-broadened hbar (Gamma + gamma*),
+    which over-broadens the line the cavity filter sees: Tomm-class L 0.89
+    instead of 0.987.)"""
     from scipy.optimize import brentq
     h = lb.HBAR_MEV_NS * 1e3                         # ueV * ns
     m, G0, F = src.hom_width_multiple, src.gamma0_ns, src.F_P
-    b = m * F if src.dephasing_mode == "enhanced" else F
-
-    def width(L):
-        return h * G0 * (m + b * L)
-
-    def resid(L):
-        return float(cavity_transmission(src.cav_detune_ueV, width(L), src.kappa_ueV)) - L
-
-    L = float(brentq(resid, 0.0, 1.0, xtol=1e-15, rtol=8.9e-16))
+    if src.dephasing_mode == "dot":
+        L = float(cavity_transmission(src.cav_detune_ueV, h * G0 * m, src.kappa_ueV))
+    else:
+        def resid(L):
+            w = h * G0 * (m + (m - 1.0) * F * L)
+            return float(cavity_transmission(src.cav_detune_ueV, w, src.kappa_ueV)) - L
+        L = float(brentq(resid, 0.0, 1.0, xtol=1e-15, rtol=8.9e-16))
     Gamma = G0 * (1.0 + F * L)
     ref = Gamma if src.dephasing_mode == "enhanced" else G0
     return {"Gamma": Gamma, "gamma_star": (m - 1.0) * ref, "L": L, "Gamma0": G0}

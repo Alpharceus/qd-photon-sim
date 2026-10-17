@@ -1,0 +1,74 @@
+{
+  "params": {
+    "delta_xx": 5.9,
+    "E_b": 35.0,
+    "mu": 0.33,
+    "gamma0": 0.11959472686319657,
+    "a_ac": 5.5355951030397607e-17,
+    "b_lo": 10.599274825991397,
+    "a_esc": 366574.2703930559,
+    "E_a": 226.99840032054442,
+    "b_p": 26.442147001327566,
+    "b0": 0.005914492493411916,
+    "beta": 0.015525165975425368,
+    "r_xx": 0.7154549695788062,
+    "E_lo": 17.8866446429726
+  },
+  "lineshape": "ibm",
+  "tag_chain": "[A]",
+  "passed_pm0.03": false,
+  "cost": 39.4064380441867,
+  "model_g2": {
+    "78": 0.023752628778809015,
+    "120": 0.07278853949596675,
+    "150": 0.13261496750998725,
+    "170": 0.18258406216121204,
+    "210": 0.31850767061578056,
+    "230": 0.4224235295993618
+  },
+  "residuals": {
+    "78": 0.0037526287788090147,
+    "120": -0.027211460504033252,
+    "150": -0.017385032490012747,
+    "170": 0.002584062161212042,
+    "210": 0.03850767061578053,
+    "230": 0.062423529599361816
+  },
+  "gamma_zpl_meV": {
+    "78": 0.6287657584073664,
+    "120": 1.3943352644350728,
+    "150": 2.352285949707602,
+    "170": 3.151413281065929,
+    "210": 4.947713383797385,
+    "230": 5.897973293481511
+  },
+  "weights": {
+    "upper_bound_err_divisor": 3.0,
+    "note": "[A] the published 78 K inequality g2 < 0.02 is penalised with err/3 (one-sided), not +-err (r2-physics-a Q3); all other blocks and priors identical to the Lorentzian fit"
+  },
+  "aux": {
+    "gamma_worst_relerr": 0.3604819304729944,
+    "tau_worst_relerr": 0.19519410853144337
+  },
+  "ibm": {
+    "phonon": {
+      "l_xy_nm": 4.5,
+      "l_z_nm": 2.0,
+      "alpha_ps2": 0.027
+    },
+    "fwhm_root_bracketed": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "spline_vs_exact_max_abs_dg2": 0.00015379728569586693
+  },
+  "V_A_TOL": 0.03,
+  "notes": [
+    "Tc_K not computed: integrator.solve_Tc is the Lorentzian eps path (Tc is a Lorentzian-bundle quantity)"
+  ],
+  "source": "scripts/fit_ibm_bundle.py -> fitting.fit_phase0(lineshape='ibm'); class (C) calibration"
+}

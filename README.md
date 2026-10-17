@@ -86,6 +86,42 @@ Two points about the data:
   a policy for this repository's evidence ledger, not a general scientific
   requirement.
 
+## Validation record
+
+The same five classes applied to every script in `verify/`; each script is
+named exactly once. Where a script also carries a few checks of another class,
+its main class is listed here and the exception is stated in its docstring.
+
+- **(N) numerical verification** — one method checked against another, or
+  against closed forms and bit-for-bit against the module it wraps, with no
+  external data: `gate_d1.py`, `gate_d2.py`, `gate_d3.py`, `gate_spec.py`, `gate_v11_gui.py`, `run_all.py`, `verify4.py`, `verify_compose_drives.py`, `verify_compose_electrical.py`, `verify_compose_engine.py`, `verify_compose_equivalence.py`, `verify_compose_materials.py`, `verify_compose_matrix.py`, `verify_compose_polaron.py`, `verify_compose_spec.py`, `verify_compose_structures.py`, `verify_cw_g2.py`, `verify_dbr.py`, `verify_designer_rt.py`, `verify_deterministic_cycle_counting.py`, `verify_device_rt.py`, `verify_dot_levels.py`, `verify_drive.py`, `verify_fsim.py`, `verify_gf.py`, `verify_injector_vectorized.py`, `verify_island_strain.py`, `verify_lindblad.py`, `verify_loading.py`, `verify_nitride_cavity.py`, `verify_nitride_device.py`, `verify_nitride_geometry.py`, `verify_nitride_geometry_device.py`, `verify_nitride_geometry_sweep.py`, `verify_nitride_levels.py`, `verify_nitride_nanowire_device.py`, `verify_nitride_nanowire_injector.py`, `verify_nitride_nanowire_levels.py`, `verify_nitride_nanowire_photonics.py`, `verify_nitride_nanowire_surface.py`, `verify_nitride_nanowire_sweep.py`, `verify_nitride_nanowire_transport.py`, `verify_nitride_orientation.py`, `verify_nitride_stark.py`, `verify_nitride_sweep.py`, `verify_nitride_transport.py`, `verify_nitride_z_profile.py`, `verify_param_tex.py`, `verify_presentation.py`, `verify_presentation2.py`, `verify_pulse_counting.py`, `verify_resonant_source.py`, `verify_rt_edge_sweep.py`, `verify_scene_compose.py`, `verify_scene_support.py`, `verify_sde.py`, `verify_spec_rt.py`, `verify_studio_api.py`, `verify_studio_compose.py`, `verify_studio_explain.py`, `verify_studio_explore_a.py`, `verify_studio_explore_b.py`, `verify_studio_library.py`, `verify_studio_support.py`, `verify_theme.py`, `verify_waveguide.py`, `verify_zhao_spectrum.py`.
+- **(T) source transcription** — numbers, formulas or ledger structure checked
+  against the paper or the contract that states them:
+  `audit_physics.py` (transcription of the physics constants and formulas against the papers);
+  `verify_card_loader.py` (literature card loader against the legacy loader and card contents);
+  `verify_citations.py` (offline check of both citation ledgers);
+  `verify_comsol_anchors.py` (COMSOL anchor intake harness (file set, schema and units of delivered folders));
+  `verify_materials.py` (material parameters against the cited papers);
+  `verify_nitride_materials.py` (nitride material parameters against the cited papers);
+  `verify_nitride_cards.py` (nitride literature cards against the contract and ledger);
+  `verify_nitride_geometry_cards.py` (nitride geometry cards against the contract and ledger);
+  `verify_nitride_nanowire_cards.py` (nanowire cards against the contract and ledger);
+  `verify_nitride_nanowire_contract.py` (nanowire contract document against the live modules and specs);
+  `verify_rt_edge_cards.py` (rt-edge design cards against the contract and ledger);
+  `verify_rt_edge_contract.py` (evidence-ledger structure validator (schema, sources, headings, this record));
+  `verify_rt_edge_papers.py` (rt-edge anchors against the source papers);
+  `verify_transport.py` (transport formulas against closed forms and cited values).
+- **(C) parameter calibration** — free parameters fitted to data and evaluated
+  on that same data, not held-out validation:
+  `_phase0_fit.py` (clone-safe recomputation of the V-a joint fit used by the verifiers);
+  `verify_ibm_bundle.py` (opt-in IBM-calibrated V-a fit bundle, evaluated on the data it was fit to);
+  `verify_reproduce_cards.py` (production model against the expectation ledger of published measurements (calibration, unfitted and held-out rows are labelled in the ledger)).
+- **(M) model-vs-data comparison, unfitted** — a previously fixed model checked
+  against published data it was not fitted to:
+  `verify_paper_devices.py` (paper-device gate, composed engine at each paper's device against the expectation ledger).
+- **(P) held-out prediction** — currently empty: no check is made against data
+  withheld from fitting and range selection.
+
 ## Installation
 
 ```

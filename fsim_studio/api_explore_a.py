@@ -29,33 +29,34 @@ import warnings
 import numpy as np
 from flask import Response, request
 
-from . import OUT
+from fsim_core.fit_bundle import fit_params_path, fit_params_source
+
 from .serialize import dumps
 from .tags import widest
 
-FIT_JSON = OUT / "phase0" / "fit_params.json"
+FIT_JSON = fit_params_path()
 FIT_KEYS = ("a_esc", "E_a", "b_p", "E_b")
 WIRE_MAX = 2001          # curve points sent to the browser (display decimation only)
 
 # ------------------------------------------------------------------ pinned caveats (brief 1(d), 2(d), 6)
 CAVEAT_CW = (
-    "CW dc model, rate equations, incoherent pump only; not valid for resonant (Rabi) drive "
-    "(cw_g2.py:18-23). g2_raw is what a 500 ps HBT measures, g2_dot is what the dot does; the "
-    "designer's pulsed peak-area g2 is a different observable (cw_g2.py:439-502).")
+    "CW dc model, rate equations, incoherent pump only; not valid for resonant (Rabi) drive. "
+    "The raw g2 is what a 500 ps HBT measures, the dot g2 is what the dot does; the "
+    "designer's pulsed peak-area g2 is a different observable.")
 CAVEAT_CW_BUNCH = (
-    "g2_dot(0) > 1 is cascade bunching of the leaked XX partner, not a model failure.")
+    "A dot g2(0) above 1 is cascade bunching of the leaked XX partner, not a model failure.")
 CAVEAT_PULSED = (
-    "Rectangular pump [A]; incoherent capture, not a pi-pulse (:101-106). g2 is normalised to the "
-    "long-delay peak, not the adjacent one (audit D2, :79-99); g2_adj is the adjacent-normalised "
-    "value. The static f1b curve is exact only for an instantaneous pulse; the gap is the "
+    "Rectangular pump [A]; incoherent capture, not a pi-pulse. g2 is normalised to the "
+    "long-delay peak, not the adjacent one; the adjacent-normalised value is shown as g2 adj. "
+    "The static closed-form curve is exact only for an instantaneous pulse; the gap is the "
     "re-excitation the headline model sees.")
 CAVEAT_PULSED_EXTRA = (
-    "Background is not in this module (:122-146): the explorer shows dot-only g2, rho is a "
-    "device.py addition. Deshpande 1.3 ns is [V abstract-only].")
-CAVEAT_LINDBLAD = "Markovian baths, Lorentzian ZPL; sidebands are the separate qd_gf layer (lindblad.py:91-92)."
+    "Background is not in this model: the explorer shows dot-only g2, and rho is a "
+    "device-level addition. Deshpande 1.3 ns is [V abstract-only].")
+CAVEAT_LINDBLAD = "Markovian baths, Lorentzian ZPL; sidebands are a separate layer (the phonon-sideband model)."
 CAVEAT_LINDBLAD_EXTRA = (
-    "This is the quantum cross-check: it covers what the rate modules refuse (coherent Rabi drive, "
-    "cw_g2.py:18-23, pulse_counting.py:101-106), HOM indistinguishability and the cascaded filter.")
+    "This is the quantum cross-check: it covers what the rate models refuse (coherent Rabi drive), "
+    "HOM indistinguishability and the cascaded filter.")
 
 
 class ExploreAError(Exception):
@@ -75,17 +76,17 @@ def _c(id_, label, lo, hi, default, unit="", tag="A", scale="lin", step=None, no
 
 
 _T_CTL = _c("T", "Escape temperature T", 4.0, 350.0, 230.0, "K", "DR", "lin", 1.0,
-            "feeds escape_rates_from_retention with the V-a fit [DR]; off = no escape")
+            "uses the retention escape rates of the V-a fit [DR]; off = no escape")
 
 CONTROLS = {
     "cw_g2": [
-        _c("r", "Pump rate r", 1e-3, 100.0, 0.5, "1/ns", "A", "log", note="brief 1(b) default 0.5 [A]"),
+        _c("r", "Pump rate r", 1e-3, 100.0, 0.5, "1/ns", "A", "log", note="default 0.5 [A]"),
         _c("gamma_X", "Radiative rate gamma_X", 0.2, 5.0, 1.0, "1/ns", "E", "lin", 0.05,
-           "Deshpande tau 1.3 +- 0.3 ns [E] (pulse_counting.py:368-370); gamma_XX = 2 gamma_X [DR]"),
+           "Deshpande tau 1.3 +- 0.3 ns [E]; gamma_XX = 2 gamma_X [DR]"),
         _c("eps", "Leakage eps = t_XX / t_X", 0.0, 1.0, 0.1, "", "A", "lin", 0.005, "t_X = 1"),
         _c("rho", "Signal fraction rho", 0.5, 1.0, 0.9, "", "A", "lin", 0.005),
         _c("irf_fwhm_ps", "IRF FWHM", 0.0, 1000.0, 500.0, "ps", "V", "lin", 5.0,
-           "Reischle 2008 exponential IRF (cw_g2.py:57-61)"),
+           "Reischle 2008 exponential IRF"),
         _c("pump_ratio", "Pump ratio p (X to XX)", 0.0, 1.0, 1.0, "", "A", "lin", 0.01),
         _c("tau_max", "Display range tau_max", 0.5, 20.0, 10.0, "ns", "A", "lin", 0.5),
         _T_CTL,
@@ -94,13 +95,13 @@ CONTROLS = {
         _c("r", "Pump rate r (readouts)", 0.01, 1e4, 10.0, "1/ns", "A", "log",
            note="Plot A sweeps r; the readouts are at this r"),
         _c("tau_on", "Pulse length tau_on", 0.01, 2.0, 0.1, "ns", "A", "log",
-           note="RT cards drive.diode.tau_pulse_ns 0.1 [A]"),
+           note="RT-edge cards use a 0.1 ns pulse [A]"),
         _c("period", "Period", 1.0, 50.0, 12.5, "ns", "A", "lin", 0.5, "12.5 ns [A]"),
         _c("gamma_X", "Radiative rate gamma_X", 0.2, 5.0, 1.0, "1/ns", "E", "lin", 0.05),
         _c("eps", "Leakage eps = t_XX / t_X", 0.0, 1.0, 0.1, "", "A", "lin", 0.005),
         _c("pump_ratio", "Pump ratio p (X to XX)", 0.0, 1.0, 1.0, "", "A", "lin", 0.01),
         _c("eta_load", "Deterministic load eta_load", 0.0, 1.0, 1.0, "", "A", "lin", 0.01,
-           "pulse_counting.py:318-321 [A]"),
+           "assumed [A]"),
         _T_CTL,
     ],
     "lindblad": {
@@ -113,19 +114,19 @@ CONTROLS = {
             _T_CTL,
         ],
         "rabi": [
-            _c("omega", "Rabi frequency Omega", 0.1, 20.0, 3.0, "1/ns", "A", "lin", 0.1, "verify (b3): Omega 3, gamma 1"),
+            _c("omega", "Rabi frequency Omega", 0.1, 20.0, 3.0, "1/ns", "A", "lin", 0.1, "default Omega 3, gamma 1 (the closed-form check point)"),
             _c("gamma", "Decay rate gamma_1", 0.2, 5.0, 1.0, "1/ns", "A", "lin", 0.05),
             _c("deph", "Pure dephasing c", 0.0, 5.0, 0.0, "1/ns", "A", "lin", 0.05, "gamma_2 = gamma_1/2 + c/2"),
             _c("tau_max", "Display range tau_max", 1.0, 20.0, 8.0, "ns", "A", "lin", 0.5),
         ],
         "hom": [
             _c("gamma", "Decay rate gamma", 0.2, 5.0, 1.0, "1/ns", "A", "lin", 0.05),
-            _c("gstar", "Pure dephasing gamma*", 0.0, 50.0, 10.0, "1/ns", "A", "lin", 0.1, "verify (d1): gamma* = 10"),
+            _c("gstar", "Pure dephasing gamma*", 0.0, 50.0, 10.0, "1/ns", "A", "lin", 0.1, "default gamma* = 10 (the closed-form check point)"),
         ],
         "filter": [
             _c("r", "Pump rate r", 1e-3, 100.0, 0.5, "1/ns", "A", "log"),
             _c("gamma_X", "Radiative rate gamma_X", 0.2, 5.0, 1.0, "1/ns", "E", "lin", 0.05),
-            _c("L", "Line FWHM L", 0.1, 100.0, 2.0, "1/ns", "A", "log", note="angular, 1/ns (lindblad.mev_to_rate)"),
+            _c("L", "Line FWHM L", 0.1, 100.0, 2.0, "1/ns", "A", "log", note="angular rate, 1/ns"),
             _c("w", "Filter FWHM w", 0.05, 100.0, 2.0, "1/ns", "A", "log"),
             _T_CTL,
         ],
@@ -174,7 +175,7 @@ def _fit():
     p = d.get("params", {})
     missing = [k for k in FIT_KEYS if p.get(k) is None]
     if missing:
-        raise ExploreAError(f"fit bundle out/phase0/fit_params.json lacks {missing}", missing=missing)
+        raise ExploreAError(f"fit bundle {fit_params_source()} lacks {missing}", missing=missing)
     return {k: float(p[k]) for k in FIT_KEYS}
 
 
@@ -252,9 +253,9 @@ def cw_g2_explore(r, gamma_X, eps, rho, irf_fwhm_ps, irf_shape, pump_ratio, T, t
     P = cw_g2.steady_state(r, gamma_X, gamma_XX, k_X, k_XX, pump_ratio)
     balance = float(np.max(np.abs(M @ P)))
     checks = [
-        {"id": "closed_vs_matrix", "label": "g2_cw_zero vs g2_cw(0)", "value": abs(rep["g2_dot0"] - g2_matrix0),
+        {"id": "closed_vs_matrix", "label": "Closed-form g2(0) against the matrix solution at tau = 0", "value": abs(rep["g2_dot0"] - g2_matrix0),
          "tol": 1e-10, "tag": "DR"},
-        {"id": "detailed_balance", "label": "|generator @ steady_state|", "value": balance, "tol": 1e-12, "tag": "DR"},
+        {"id": "detailed_balance", "label": "Residual of the steady-state balance (largest entry)", "value": balance, "tol": 1e-12, "tag": "DR"},
     ]
     for c in checks:
         c["ok"] = bool(c["value"] <= c["tol"])
@@ -293,7 +294,7 @@ def cw_g2_explore(r, gamma_X, eps, rho, irf_fwhm_ps, irf_shape, pump_ratio, T, t
                   "fsim_core.cw_g2.g2_cw_zero", "fsim_core.cw_g2.g2_cw_zero_low_pump",
                   "fsim_core.cw_g2.g2_cw", "fsim_core.cw_g2.steady_state",
                   "fsim_core.studio_support.g2_cw_high_pump_limit"],
-        "params_source": ("escape rates: out/phase0/fit_params.json V-a fit [DR]" if T is not None
+        "params_source": (f"escape rates: {fit_params_source()} V-a fit [DR]" if T is not None
                           else "no thermal escape (k_X = k_XX = 0)"),
     }
 
@@ -373,7 +374,7 @@ def pulsed_explore(r, tau_on, period, gamma_X, eps, pump_ratio, T, gate_mode, et
         "elapsed_ms": ms, "point_ms": ms_point,
         "calls": ["fsim_core.cw_g2.escape_rates_from_retention", "fsim_core.pulse_counting.pulse_g2",
                   "fsim_core.pulse_counting.deterministic_cycle_g2", "fsim_core.loading.f1b_g2"],
-        "params_source": ("escape rates: out/phase0/fit_params.json V-a fit [DR]" if T is not None
+        "params_source": (f"escape rates: {fit_params_source()} V-a fit [DR]" if T is not None
                           else "no thermal escape (k_X = k_XX = 0)"),
     }
 

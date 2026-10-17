@@ -245,7 +245,7 @@ function dataCommits(sc) {
     if (camp) out.set(camp.path, camp.commit);
   }
   const chips = [...out.entries()].map(([p, c]) => ({ k: "DATA", v: c || "n/a", t: p }));
-  if (live) chips.push({ k: "LIVE", v: `fsim_core ${String(S.health?.fsim_core_hash || "").slice(0, 7)}`, t: "live fsim_core.device.evaluate at bake time" });
+  if (live) chips.push({ k: "LIVE", v: `device model ${String(S.health?.fsim_core_hash || "").slice(0, 7)}`, t: "live device-model evaluation at bake time" });
   return chips;
 }
 
@@ -452,7 +452,7 @@ async function renderVisual(sc, layer, seq) {
   } else if (v.kind === "chart" && preset === "hom_vs_T") {
     const pick = (re) => nums.map((n) => ({ m: /at (\d+) K/.exec(n.label), n })).filter((x) => x.m && re.test(x.n.label)).map(({ m, n }) => ({ x: Number(m[1]), y: n.value, tag: n.tag }));
     const panels = [{ name: "HOM indistinguishability M", yTitle: "M", points: pick(/HOM/i) }, { name: "Filtered CW g²(0) shift (corr)", yTitle: "Δg²(0)", points: pick(/filtered CW/i) }];
-    const c = chartIn(layer, { title: "Lindblad diagnostics at two heatsink temperatures", subtitle: "live fsim_core at bake time · markers only: two temperatures are not a curve",
+    const c = chartIn(layer, { title: "Lindblad diagnostics at two heatsink temperatures", subtitle: "live device-model run at bake time · markers only: two temperatures are not a curve",
       build: () => buildDots(panels), table: () => ({ columns: [{ key: "q", label: "quantity" }, { key: "x", label: "T_hs (K)" }, { key: "y", label: "value" }], rows: panels.flatMap((p) => p.points.map((q) => ({ q: p.name, ...q }))) }) });
     c.setTag("DR");
     L.append(c.el); await c.render();

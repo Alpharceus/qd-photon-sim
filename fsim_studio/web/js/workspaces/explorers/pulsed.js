@@ -43,17 +43,17 @@ export async function mount(body, host) {
   const thermalSw = switchToggle({ label: "thermal escape at T (V-a fit)", checked: false, onChange: (v) => { st.thermal = v; S.T.disable(!v); go(); } });
   const { el: roEl, ro } = readoutGroup([
     ["g2", "g² (long-delay norm.)"], ["g2_adj", "g²_adj (adjacent norm.)"], ["mean_counts", "mean counts / period"],
-    ["adj_factor", "adjacent peak factor"], ["f1b", "f1b_g2(μ = r τ_on, ε)"],
+    ["adj_factor", "adjacent peak factor"], ["f1b", "instantaneous-pulse g²(0) at μ = r τ_on"],
     ["d_g2", "deterministic g²"], ["d_mean", "deterministic mean counts"], ["d_block", "blocked-load probability"], ["d_pair", "one-pair valid"]]);
   const srcBox = h("div");
 
   body.append(h("div.xp-split",
     h("div.xp-main", caveat.el, chartA.el, chartB.el, chartC.el,
-      h("p.xp-cap", "Plot A: the dashed instantaneous-pulse curve is the static f1b model; the gap to the solid pulsed g² is re-excitation during the pulse. The 0.5 line is the acceptance gate from /api/gates.")),
+      h("p.xp-cap", "Plot A: the dashed instantaneous-pulse curve is the static closed-form model; the gap to the solid pulsed g² is re-excitation during the pulse. The 0.5 line is the acceptance gate from /api/gates.")),
     h("aside.xp-side.panel",
       h("header.panel-head", h("h2.engrave", "Inputs"), status),
       h("div.xp-ctls", S.r.row, S.tau_on.row, S.period.row, S.gamma_X.row, S.eps.row, S.pump_ratio.row, S.eta_load.row,
-        h("div.xs-row", h("span.xs-label", "Counting gate ", tagChip("A", { size: "sm", title: "pulse_counting.py:118-120 [A]" })), gateSeg.el),
+        h("div.xs-row", h("span.xs-label", "Counting gate ", tagChip("A", { size: "sm", title: "assumed [A]" })), gateSeg.el),
         h("div.xs-row", thermalSw), S.T.row),
       roEl, srcBox)));
 
@@ -96,7 +96,7 @@ function buildA(r) {
   const data = [
     { x: v.r, y: v.g2, type: "scatter", mode: "lines", name: "g² (pulsed, finite pulse)", line: { color: c.series[0], width: w, dash }, connectgaps: false, hovertemplate: `g² %{y:.4f} [${tag}]<extra></extra>` },
     { x: v.r, y: v.g2_adj, type: "scatter", mode: "lines", name: "g²_adj", line: { color: c.series[1], width: 1.5, dash: "solid" }, connectgaps: false, hovertemplate: `g²_adj %{y:.4f} [${tag}]<extra></extra>` },
-    { x: v.r, y: v.f1b_g2, type: "scatter", mode: "lines", name: "f1b_g2(μ = r τ_on): instantaneous-pulse approximation", line: { color: c.series[2], width: tagWidth(r.tags.f1b), dash: tagDash(r.tags.f1b) }, hovertemplate: `f1b %{y:.4f} [${r.tags.f1b}]<extra></extra>` },
+    { x: v.r, y: v.f1b_g2, type: "scatter", mode: "lines", name: "instantaneous-pulse approximation, μ = r τ_on", line: { color: c.series[2], width: tagWidth(r.tags.f1b), dash: tagDash(r.tags.f1b) }, hovertemplate: `f1b %{y:.4f} [${r.tags.f1b}]<extra></extra>` },
     { x: [r.inputs.r], y: [r.point.g2], type: "scatter", mode: "markers", name: "this r", marker: { color: c.beam, size: 9, symbol: "diamond" }, hoverinfo: "skip" },
   ];
   const shapes = [], annotations = [];
@@ -157,7 +157,7 @@ function buildC(r) {
 function tableA(r) {
   if (!r) return null;
   const v = r.vs_r;
-  return { columns: [{ key: "r", label: "r (1/ns)" }, { key: "g2", label: "g²" }, { key: "adj", label: "g²_adj" }, { key: "f", label: "f1b_g2" }, { key: "m", label: "⟨m⟩" }],
+  return { columns: [{ key: "r", label: "r (1/ns)" }, { key: "g2", label: "g²" }, { key: "adj", label: "g²_adj" }, { key: "f", label: "instantaneous-pulse g²" }, { key: "m", label: "⟨m⟩" }],
     rows: v.r.map((x, i) => ({ r: x, g2: v.g2[i], adj: v.g2_adj[i], f: v.f1b_g2[i], m: v.mean_counts[i] })) };
 }
 function tableB(r) {

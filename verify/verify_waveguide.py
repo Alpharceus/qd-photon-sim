@@ -73,7 +73,7 @@ ck(n0==0, 'NA zero'); ck(n1>.99, 'NA one'); ck(0<nmid<n1, 'NA monotonic')
 w0, lam0, na0 = 1.5, 770.0, 0.1
 eta_gaussian = na_collection(w0, w0, lam0, na0)
 ck(abs(eta_gaussian - 0.527) < 0.01 * 0.527,
-   'round-cone Gaussian NA=0.1 gives published review anchor 0.527')
+   'round-cone Gaussian NA=0.1 gives internal review number 0.527 (regression)')
 xg = (np.arange(4096) - 2048) * 0.025
 fg = np.exp(-xg**2 / w0**2)  # amplitude: I=exp(-2 x^2/w0^2)
 eta_gaussian_numeric = na_collection_numeric(fg, fg, 0.025, 0.025, lam0, na0)

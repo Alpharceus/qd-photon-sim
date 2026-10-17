@@ -119,3 +119,22 @@ data:
       - {w_meV: 6.0,  rho_lo: 0.816, rho_hi: 0.902}
       - {w_meV: 8.0,  rho_lo: 0.780, rho_hi: 0.881}
       - {w_meV: 10.0, rho_lo: 0.745, rho_hi: 0.859}
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  T_K: {value: 40.0, unit: K, tag: DR, where: "card params.T_device1: ~40 K for Device 1 (drive heating)"}
+  material:
+    kind: inp_gainp_red
+    params:
+      lambda_nm: {value: 674.0, unit: nm, tag: DR, where: "card params.E_line 1.8396 eV (digitized Fig. 2(b)); lambda = 1239.842 / 1.8396 eV = 674.0 nm"}
+  structure:
+    kind: planar_dbr
+    params:
+      N_top: {value: 4, unit: "1", tag: A, where: "display assumption: the card says low-Q AlGaAs DBR cavity but gives no pair counts; few pairs drawn"}
+      N_bot: {value: 8, unit: "1", tag: A, where: "display assumption: the card says low-Q AlGaAs DBR cavity but gives no pair counts; few pairs drawn"}
+  geometry:
+    lateral_um: {value: 20.0, unit: um, tag: V, where: "card meta.device: ~20 um contact aperture (width drawn = the aperture)"}
+  drive:
+    kind: electrical_pulsed
+  note: >
+    Closest registry class: planar DBR microcavity (low-Q AlGaAs DBR cavity around an InP/GaInP QD p-i-n LED, pulsed electrical excitation). The drawn lateral width is the ~20 um contact aperture [V]; pair counts are display assumptions [A]. The p-i-n junction and contacts are not drawn in the cavity.

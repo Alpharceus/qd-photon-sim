@@ -18,16 +18,38 @@ import { tagChip, normTag } from "./ui/tagChip.js";
 import { toast, popover, closePopover } from "./ui/controls.js";
 import { initInspector, inspectField, inspectNumber, closeInspector, isInspectorOpen } from "./ui/inspector.js";
 import { setChartTheme, loadTemplate, rerenderCharts } from "./charts/theme.js";
+import { comingSoon } from "./ui/comingSoon.js";
 
 const WORKSPACES = [
   { id: "overview", label: "Overview", icon: "overview", load: () => import("./workspaces/overview.js") },
   { id: "design", label: "Designer", icon: "design", load: () => import("./workspaces/designer.js") },
+  { id: "compose", label: "Composer", icon: "compose", load: () => import("./workspaces/composer.js") },
+  { id: "papers", label: "Papers", icon: "papers", load: loadPapers },
   { id: "compare", label: "Compare", icon: "compare", load: () => import("./workspaces/compare.js") },
   { id: "results", label: "Results", icon: "results", load: () => import("./workspaces/results.js") },
   { id: "explain", label: "Explain", icon: "explain", load: () => import("./workspaces/explain.js") },
   { id: "story", label: "Story", icon: "story", load: () => import("./workspaces/story.js") },
   { id: "library", label: "Library", icon: "library", load: () => import("./workspaces/library.js") },
 ];
+
+const railIcon = (name) => icon(name, { size: 22 });
+
+// Papers is another coder's module (workspaces/papers.js + css/papers.css). Until it ships the
+// route shows the coming-soon plate; once it loads, its stylesheet is attached on demand.
+async function loadPapers() {
+  try {
+    const mod = await import("./workspaces/papers.js");
+    return mod;
+  } catch (e) {
+    console.warn("papers workspace not available yet", e?.message);
+    return {
+      mount(el) {
+        comingSoon(el, { iconName: "library", title: "Papers", body: "The paper-device library lands with the next build step. Reproduce published devices and open them in the Composer.", action: { href: "#/compose", label: "Open the Composer" } });
+      },
+      unmount() {},
+    };
+  }
+}
 
 // Fixed, ranked platform roster (DIRECTION: the roster is finite and ranked).
 export const PLATFORMS = [
@@ -116,7 +138,7 @@ function buildContextBar() {
   const picker = h("select.card-picker#card-picker", {
     "aria-label": "Design card",
     // Literature (parameter) cards route to the Library page, design cards to the Designer.
-    on: { change: (e) => { const v = e.target.value; ctx.navigate(v.startsWith("lib:") ? `#/library/${v.slice(4)}` : `#/design/${v}`); } },
+    on: { change: (e) => { const v = e.target.value; ctx.navigate(v.startsWith("lib:") ? `#/library/${v.slice(4)}` : v.startsWith("cmp:") ? `#/compose/${v.slice(4)}` : `#/design/${v}`); } },
   });
 
   const runChip = h("button.id-chip#run-chip", {
@@ -154,23 +176,31 @@ function buildContextBar() {
 
 function syncContextBar() {
   const card = state.get("card");
-  const plat = platformOf(card);
+  const rt = state.get("route") || {};
+  const onCompose = rt.ws === "compose" || rt.ws === "papers";
+  const plat = onCompose ? null : platformOf(card);
   for (const t of els.ctx.querySelectorAll(".roster-tab")) {
     const on = plat && t.dataset.platform === plat.id;
     t.setAttribute("aria-selected", on ? "true" : "false");
     t.tabIndex = 0;
   }
+  // The Composer and Papers own their device / paper (named in the workspace itself): the Designer's
+  // card selector is out of place there, and it collided with the run chip at 1440 px.
+  const ctxCard = els.ctx.querySelector(".ctx-card");
+  if (ctxCard) ctxCard.hidden = onCompose;
   const picker = document.getElementById("card-picker");
   if (picker) {
     clear(picker);
-    const list = cards.filter((c) => c.kind === "design" && (!plat || plat.match(c)));
+    const list = cards.filter((c) => c.kind === "design" && c.platform !== "composed" && (!plat || plat.match(c)));
     const r = state.get("route") || {};
     const libCard = r.ws === "library" ? (r.args?.[0] || "") : null;
     if (libCard === "") picker.append(h("option", { value: "", disabled: true, selected: true, hidden: true }, "Literature card"));
-    picker.append(h("optgroup", { label: "Design" }, list.map((c) => h("option", { value: c.name, selected: libCard === null && c.name === card }, c.name.replace(/-design$/, "")))));
+    picker.append(h("optgroup", { label: "Design" }, list.map((c) => h("option", { value: c.name, selected: libCard === null && !onCompose && c.name === card }, c.name.replace(/-design$/, "")))));
+    const cmp = cards.filter((c) => c.kind === "design" && c.platform === "composed");
+    if (cmp.length) picker.append(h("optgroup", { label: "Composed" }, cmp.map((c) => h("option", { value: `cmp:${c.name}`, selected: r.ws === "compose" && r.args?.[0] === c.name }, c.name))));
     const lit = cards.filter((c) => c.kind === "param");
     if (lit.length) picker.append(h("optgroup", { label: "Literature" }, lit.map((c) => h("option", { value: `lib:${c.name}`, selected: libCard === c.name }, c.name))));
-    picker.disabled = !list.length && !lit.length;
+    picker.disabled = !list.length && !lit.length && !cmp.length;
     // studio-p2a: an unsaved preset design is not a card; the picker says so
     if (card === UNSAVED_CARD && state.get("draft")) picker.prepend(h("option", { value: "", disabled: true, selected: true }, "unsaved design"));
   }
@@ -197,6 +227,7 @@ function syncRunChips() {
   const runChip = document.getElementById("run-chip");
   if (runChip) {
     runChip.querySelector(".id-v").textContent = run?.run_id || "—";
+    runChip.title = run?.run_id ? `Run ${run.run_id}; click to copy` : "Run catalog ID; click to copy";
     runChip.setAttribute("aria-label", run?.run_id ? `Run ID ${run.run_id}; click to copy` : "Run ID: none yet");
     runChip.disabled = !run?.run_id;
   }
@@ -232,7 +263,7 @@ function buildRail() {
   els.rail.append(
     h("ul.rail-list", WORKSPACES.map((w) => h("li",
       h("a.rail-item", { href: `#/${w.id}`, dataset: { ws: w.id }, "aria-label": w.label },
-        icon(w.icon, { size: 22 }), h("span.rail-label", w.label))))));
+        railIcon(w.icon), h("span.rail-label", w.label))))));
 }
 
 function syncRail(ws) {
@@ -265,7 +296,13 @@ async function route() {
     }
   }
   const r = parseHash();
-  let ws = WORKSPACES.find((w) => w.id === r.ws) ? r.ws : "overview";
+  // a saved composed card belongs to the Composer, not the Designer
+  if (r.ws === "design" && r.args[0] && cards.some((c) => c.name === r.args[0] && c.platform === "composed")) {
+    history.replaceState(null, "", `#/compose/${r.args[0]}`);
+    return route();
+  }
+  if (!WORKSPACES.some((w) => w.id === r.ws)) { showNotFound(r); return; }
+  let ws = r.ws;
   let args = r.args;
   if (!location.hash || location.hash === "#" || location.hash === "#/") history.replaceState(null, "", "#/overview");
   if (ws === "design") {
@@ -303,6 +340,28 @@ async function route() {
     console.error(e);
     els.main.append(h("div.error-state", { role: "alert" }, h("p.err-title", `The ${def.label} workspace failed to load.`), h("p.err-msg", e.message)));
   }
+}
+
+// ------------------------------------------------------------------ unknown route
+// An address that names no workspace says so (with the way back); it never shows the Overview under a wrong URL.
+function showNotFound(r) {
+  lastHash = location.hash;
+  try { current.mod?.unmount?.(); } catch (e) { console.warn(e); }
+  closeInspector();
+  state.set({ route: { ws: "notfound", args: r.args } });
+  syncRail(null);
+  syncContextBar();
+  document.title = "Page not found · FSIM Studio";
+  clear(els.main);
+  els.main.dataset.ws = "notfound";
+  current = { ws: "notfound", mod: null };
+  els.main.append(h("section.not-found", { "aria-labelledby": "nf-h" },
+    h("div.nf-plate",
+      icon("warn", { size: 28 }),
+      h("h1.ws-title#nf-h", "Page not found"),
+      h("p.nf-msg", "There is no page at ", h("code", location.hash || "#/"), ". The address may be mistyped or from an older version of the Studio."),
+      h("a.btn.btn-outline.nf-home", { href: "#/overview" }, icon("overview", { size: 16 }), "Back to the Overview"),
+      h("ul.nf-links", { "aria-label": "Workspaces" }, WORKSPACES.map((w) => h("li", h("a.btn.btn-quiet", { href: `#/${w.id}` }, w.label)))))));
 }
 
 // ------------------------------------------------------------------ offline banner

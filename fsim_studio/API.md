@@ -574,3 +574,66 @@ the exact job functions are in `jobs.ALLOWED_CALLS` (`fsim_studio.api_explore_b:
 - `POST /api/explore/sde/li` -> job `{I, S, rho_ES, rho_GS, residual, I_th}`; `POST /api/explore/sde/trace` body `{I, F_pump, t_end, seed}` -> job
   (decimated `t_ns`, `S`, `n_burn`, `burn_t_ns`, `g2_0`, `g2_0_ext`, `fano`, `fano_ext`).
 - `disable_stim`, `beta_sp`, `N_dots`, `E_a_*`, `eps_gain` and `params` in any body -> 400 (tuned Tier-2 parameters and the verify-only estimator control are not exposed).
+
+## Composer and Papers (fsim_studio/api_compose.py, devlib-p10)
+
+Python/HTTP side of `fsim_core.compose`; no physics here. Errors follow the global convention (400 bad input
+with `issues` where a spec fails `validate_spec`, 404 unknown paper, 422 paper card fails to load, 501 optional
+module missing). Every POST needs `X-FSIM-Studio: 1`. A *spec* is a `fsim-composed/1` object.
+
+### GET /api/compose/registry
+`registry_payload()` with `tiers` = `fsim_core.compose.tiers.tiers_payload()` (empty list if tiers.py is absent).
+Memoised per `fsim_core_hash()`.
+
+### POST /api/compose/validate   body `{spec}`
+`{ok, solver, regime, issues: [{level, path, message}], resolved: {path: {value|range|choice, unit, tag}}, eta_s}`
+= `validate_spec(spec)` plus `eta_s` = `engine.estimate(spec, 1)` (null when invalid or no solver can run it, in
+which case the reason is appended to `issues`). `regime` is `"unknown"` here (known only after a run: read
+`scalars.regime`).
+
+### POST /api/compose/run   body `{spec, mode: "point"|"tsweep", T_grid?, name?}`
+Validates, then `jobs.submit_run` with a `platform: "composed"` design: the same body as `POST /api/run`
+(`{job_id, cached, eta_s, run_id, result?}`; `result` = curves, scalars, labels, tag_chain, provenance,
+`series`, run_id, T_grid). Inline only when `spec.solver == "rate"` and the engine estimate is under 1 s; otherwise
+a job. `tsweep` needs `T_grid` (list or `{lo, hi, n}`), at most 31 points. Invalid spec -> 400 `{error, issues}`.
+
+### POST /api/run (existing) with `design: {platform: "composed", composed: {...}}`
+Point mode only; `T_grid` omitted -> `[T_K]`; `envelope` -> 400 `{kind: "unsupported", error: "envelope not
+supported for composed designs in v1"}`; `headline` -> 400; an invalid spec -> 400. ETA = `engine.estimate`.
+
+### POST /api/compose/series   body `{spec, path, values[], observables[]}`
+`path` is a leaf path of the validated spec (`T_K` or `<axis>.<param>`, 1..200 finite values, 1..16 observable
+requests `id` or `id:convention`). Job `fsim_studio.api_compose:series_job`; 202 `{job_id, cached: false, eta_s,
+run_id}` or 200 `{cached: true, eta_s: 0, result}` on a cache hit (key = spec, path, values, observables, core
+hash). Result `{series: {path, unit, x, y: {request: [..]}, tag: {request: tag}, failed: [idx]}, spec_path, n}`.
+Progress over `GET /api/jobs/<id>/events`.
+
+### GET /api/compose/examples
+`[{name, label, summary, kinds: {material, structure, drive, setup}, design: {name, platform: "composed", composed}}]`
+from `cards/composed/*.yaml` (class examples built from registry kinds, not paper reproductions), sorted by file name.
+
+### GET /api/compose/tier/fock
+`{design: {name: "fock-source-4K", platform: "composed", composed}, tier: "fock", note}`: the 4 K Fock source card
+through `fsim_core.compose.tiers.fock_card_to_spec()`. 501 if that function is absent.
+
+### GET /api/compose/scene?spec=<json>[&display=<json>]  and  POST /api/compose/scene `{spec, display?}`
+`fsim_studio.scene_compose.describe(spec, display)`; 501 while that module is absent.
+
+### GET /api/papers
+`[{id, cite, read_level, summary, kinds: {material, structure, drive}, classes: {C, M, T, P}, n_items,
+last_outcome}]` from `fsim_core.compose.papers.list_papers`. `last_outcome` is read from the cache for this exact
+card bytes + core hash: `{cached, n_items, n_match, all_match}` or null.
+
+### GET /api/papers/<id>
+The summary plus `meta, device, resolved` (validate_spec resolved leaves), `reported, series, reproduce, fits,
+inputs_from_paper` (sorted leaf paths taken from the paper) and `card_sha256`. 404 unknown id (ids starting with `_`
+are not served), 422 when the card fails its schema (`problems`).
+
+### POST /api/papers/<id>/reproduce
+Job `fsim_studio.api_compose:reproduce_job`, cache key = card file sha256 + core hash. Result `{paper,
+card_sha256, report (ReproduceReport as JSON), items, model_series: [{id, path, request, x, y, tag, ...}]}`
+(model series = `engine.series` at the central value of every other leaf).
+
+### GET /api/papers/<id>/design
+`{design: {name, platform: "composed", composed}, paper, collapsed: [paths], note}`: the paper device with every
+ranged or choice leaf replaced by its central value ("Open in Composer"). Saving it uses `PUT /api/cards/<slug>`.

@@ -3,6 +3,8 @@
 // legend and banner slots.  Every readout carries its provenance chip; a
 // value without a tag is not rendered.
 import { tagChip, esc } from './labels.js';
+import { richText } from '../../ui/math.js';
+import { sceneTitle } from '../../ui/labels.js';
 
 export function fmtNum(v, unit = '') {
   if (v === null || v === undefined || (typeof v === 'number' && !Number.isFinite(v))) return 'n/a';
@@ -34,7 +36,9 @@ export class Hud {
     root.appendChild(h);
     this.el = h;
     const head = el('div', 'v3-head');
-    head.appendChild(el('div', 'v3-title', esc(spec.title || spec.kind)));
+    const title = el('div', 'v3-title');
+    title.replaceChildren(richText(sceneTitle(spec)));
+    head.appendChild(title);
     const id = el('div', 'v3-catalog');
     id.textContent = spec.catalog_id || '';
     head.appendChild(id);
@@ -65,7 +69,8 @@ export class Hud {
       const row = el('div', 'v3-readout');
       row.dataset.key = k;
       const lab = el('span', 'v3-readout-label');
-      lab.textContent = s.label || k;
+      lab.append(richText(s.label || k));
+      lab.title = String(s.label || k).replace(/_/g, " ");
       const val = el('span', 'v3-readout-value');
       val.textContent = fmtNum(s.value, s.unit);
       if (s.note && (s.value === null || s.value === undefined)) val.title = s.note;
@@ -116,7 +121,7 @@ export class Hud {
     this.notes.innerHTML = '';
     for (const b of badges) {
       const e = el('div', 'v3-badge');
-      e.textContent = b;
+      e.replaceChildren(richText(b));
       this.notes.appendChild(e);
     }
     if (!lines || !lines.length) return;
@@ -127,7 +132,7 @@ export class Hud {
     d.appendChild(sm);
     for (const line of lines) {
       const e = el('div', 'v3-note');
-      e.textContent = line;
+      e.replaceChildren(richText(line));
       d.appendChild(e);
     }
     this.notes.appendChild(d);
@@ -150,7 +155,7 @@ export class Hud {
       const n = el('span', 'v3-key-num');
       n.textContent = String(o.userData.pin);
       const t = el('span', 'v3-key-text');
-      t.textContent = o.userData.text;
+      t.replaceChildren(richText(o.userData.text));
       li.append(n, t);
       if (o.userData.tag) li.appendChild(tagChip(o.userData.tag));
       list.appendChild(li);
@@ -172,7 +177,7 @@ export class Hud {
 
   addBadge(text) {
     const e = el('div', 'v3-badge');
-    e.textContent = text;
+    e.replaceChildren(richText(text));
     this.notes.prepend(e);
     return e;
   }
@@ -227,7 +232,7 @@ export class Hud {
       b.type = 'button';
       // "optical (waveguide.py)": the parenthetical drops on tiny viewports
       // (full text stays in the tooltip).
-      const m = /^(.*?)\s+(\(.*\))$/.exec(text);
+      const m = /^(.*?)\s+(\(.*\)|stack)$/.exec(text);
       if (m) {
         b.innerHTML = `${esc(m[1])}<span class="v3-seg-sub">&nbsp;${esc(m[2])}</span>`;
         b.title = text;
@@ -260,15 +265,17 @@ export class Hud {
     if (!info) { this.tip.style.display = 'none'; return; }
     this.tip.innerHTML = '';
     const t = el('div', 'v3-tip-title');
-    t.textContent = info.title || '';
+    t.replaceChildren(richText(info.title || ''));
     if (info.tag) t.appendChild(tagChip(info.tag));
     this.tip.appendChild(t);
     for (const [k, v] of info.rows || []) {
       const r = el('div', 'v3-tip-row');
-      r.innerHTML = `<span>${esc(k)}</span><span>${esc(v)}</span>`;
+      r.append(el('span'), el('span'));
+      r.children[0].replaceChildren(richText(String(k)));
+      r.children[1].replaceChildren(richText(String(v)));
       this.tip.appendChild(r);
     }
-    if (info.note) this.tip.appendChild(el('div', 'v3-tip-note', esc(info.note)));
+    if (info.note) { const nt = el('div', 'v3-tip-note'); nt.replaceChildren(richText(String(info.note))); this.tip.appendChild(nt); }
     this.tip.style.display = 'block';
     const W = this.root.clientWidth;
     const tw = 300;

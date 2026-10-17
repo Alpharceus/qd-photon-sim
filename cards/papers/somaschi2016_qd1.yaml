@@ -1,0 +1,71 @@
+# Somaschi et al., Nat. Photonics 10, 340 (2016): the NON-RESONANT (above-band, 3 ps) QD1 data, sibling of somaschi2016 (resonant QD3).
+# Numbers from .workers/devlib/papers/somaschi2016.yaml (arXiv main text). Review-list optional sibling card.
+meta:
+  id: somaschi2016_qd1
+  role: paper-device
+  cite: "N. Somaschi, V. Giesz, L. De Santis, J. C. Loredo, ... P. Senellart, Near-optimal single-photon sources in the solid state, Nature Photonics 10, 340-345 (2016)"
+  doi: "10.1038/nphoton.2016.23"
+  arxiv: "1510.06499"
+  extraction: ".workers/devlib/papers/somaschi2016.yaml"
+  read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Somaschi et al., Nat. Photonics 10, 340 (2016): electrically contacted micropillar [V] (main text; .workers/devlib/papers/somaschi2016.yaml); drawn with [A] display defaults
+  summary: "InGaAs dot QD1 in an electrically tuned micropillar (F_P 7.6, Q ~12000, eta_out 0.70), 3 ps above-band pump at 2.45 P_sat, 4 K; paper: g2 0.024, M 0.74 raw / 0.78 corrected, brightness 0.65"
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "p.3 text (devices studied at 4 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      tau_bare_ns: {value: 1.3, unit: ns, tag: V, where: "p.3 text (bulk exciton lifetime of 1.3 ns assumed for F_P)"}
+      gamma_star_4K_ns: {range: [0.0, 1.5192674479961275], unit: "1/ns", tag: E, source: "no pure-dephasing number in the main text; registry InGaAs class range 0-1 ueV"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "T = 4 K equals the reference temperature; no slope measured"}
+  structure:
+    kind: generic_cavity
+    params:
+      F_P: {value: 7.6, unit: "1", tag: V, where: "p.3 text (Purcell factor 7.6 for QD1: 1.3 ns / 150 ps minus 1)"}
+      Q: {value: 12000, unit: "1", tag: V, where: "p.3 text (Q ~ 12000 for QD1 and QD2)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "dot bias-tuned onto the cavity (p.3, bias -0.6 V)"}
+      eta_out: {value: 0.70, unit: "1", tag: V, where: "p.3 text (kappa_top/kappa = 0.70 for QD1 from reflectivity)"}
+  drive:
+    kind: above_band
+    params:
+      pump: {value: 2.45, unit: "1", tag: V, where: "text p.3 / Fig 2a caption (g2 at 2.45 P_sat)"}
+      window_ps: {value: 3.0, unit: ps, tag: V, where: "extraction drive.pulse_width_ps: 3 ps non-resonant pulses; rectangular window of that length is an assumption [A]"}
+      tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      zpl_filter: {value: true, unit: "", tag: E, source: "etalon filtering of the collected light is stated for the resonant HOM (p.4); assumed the same for QD1, and the 110 ueV pillar mode also filters the sideband"}
+reported:
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.024, err: 0.007, tag: V, where: "text p.3 / Fig 2a caption (QD1 at 2.45 P_sat, 3 ps non-resonant)"}
+  - {id: M_raw, observable: hom_I, convention: raw, value: 0.74, err: 0.07, tag: V, where: "text p.4 (M of QD1 non-resonant without g2 correction)"}
+  - {id: M_corr, observable: hom_I, convention: corrected, value: 0.78, err: 0.07, tag: V, where: "text p.4 (corrected for g2(0) = 0.024)"}
+  - {id: B_first_lens, observable: B_first_lens, value: 0.65, err: 0.07, tag: V, where: "text p.3 (first-lens brightness, unpolarised, setup-efficiency corrected, max power)"}
+series: []
+reproduce:
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "paper 2 sigma is 0.014; 0.01 absolute floor; re-excitation within the 3 ps pump window at 2.45 P_sat is the only source in the model"
+    expect: fail
+    reason: "model gap: the 3 ps pump window gives almost no re-excitation (model 4.6e-4, envelope 1.5e-4-1.4e-3) while the paper's 0.024 comes from slow capture/relaxation refilling with the pump still on and background, which the rectangular-window model does not represent."
+  - item: M_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.07 (0.14); gamma* and the capture time are envelopes (class ranges) because the paper gives neither"
+    expect: pass
+  - item: M_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.07 (0.14); same envelopes as M_raw; model g2-only corrected convention matches the paper correction"
+    expect: pass
+  - item: B_first_lens
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.07 (0.14); brightness is beta x eta_out x saturation of the pump (0.88 x 0.70 x ~0.91 expected)"
+    expect: fail
+    reason: "model 0.503 vs 0.65 (0.14 tol, 0.147 off): beta x eta_out with F_P 7.6 and the engine's pump saturation 1 - exp(-2.45) = 0.91 gives 0.50; the paper's 0.65 assumes p_X = 1 and beta 0.88 (0.62 for beta x eta_out), i.e. the engine's beta at F_P 7.6 or the first-lens factor is lower than the paper's."
+fits: []
+history:
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}

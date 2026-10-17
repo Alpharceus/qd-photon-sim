@@ -224,10 +224,10 @@ def _part(mz,mxy,r,L,T):
   tot+=add
   if m>8 and add<max(tot,1)*1e-10:return base*tot,True
  return base*tot,False
-def rates(lv,T_K,*,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,channel='min',k_nr_ns=0.):
- bad=list(lv.invalid_reasons);v=(T_K,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,k_nr_ns)
+def rates(lv,T_K,*,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,channel='min',k_nr_ns=0.,k_nr_XX_ns=0.):
+ bad=list(lv.invalid_reasons);v=(T_K,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,k_nr_ns,k_nr_XX_ns)
  if not lv.valid:bad.append('levels are invalid')
- if any(not isinstance(x,(int,float)) or not math.isfinite(x) for x in v) or min(v[:4])<=0 or k_nr_ns<0:bad.append('invalid rate request')
+ if any(not isinstance(x,(int,float)) or not math.isfinite(x) for x in v) or min(v[:4])<=0 or k_nr_ns<0 or k_nr_XX_ns<0:bad.append('invalid rate request')
  if channel not in ('min','electron','hole'):bad.append('unknown channel')
  if bad:return dict(gamma_X0_ns=float('nan'),gamma_XX0_ns=float('nan'),k_X_ns=float('nan'),k_XX_ns=float('nan'),E_a_meV=float('nan'),escape_prefactor_ns=float('nan'),tau_cap_ps_used=float('nan'),reservoir_state_count_e=float('nan'),reservoir_state_count_h=float('nan'),valid=False,invalid_reasons=tuple(bad),provenance='[A] invalid rate request')
  # [A fix L3] reservoir_length_nm is a PER-SIDE GaN reservoir extent (e.g.
@@ -243,7 +243,8 @@ def rates(lv,T_K,*,tau_rad0_ns,tau_cap_ps,reservoir_length_nm,channel='min',k_nr
  # [fix L] k_nr_ns is intrinsic occupied-dot loss, not a thermal escape
  # attempt: only the escape term doubles for XX (two independent carriers
  # each attempting thermal escape), so k_XX_ns=2*k_escape+k_nr_XX with
- # k_nr_XX=k_nr_ns (there is no separate k_nr_XX_ns parameter in this
- # frozen signature for the caller to override).
- k_escape=pref*math.exp(-ea/1000/(KB_EV*T_K));kx=k_escape+k_nr_ns;kxx=2*k_escape+k_nr_ns
+ # k_nr_XX=k_nr_ns. r2-physics-b Q3c adds the OPT-IN XX-only loss
+ # k_nr_XX_ns (default 0 => unchanged): k_XX = 2*k_escape + k_nr_ns +
+ # k_nr_XX_ns [A], never tuned on a measurement.
+ k_escape=pref*math.exp(-ea/1000/(KB_EV*T_K));kx=k_escape+k_nr_ns;kxx=2*k_escape+k_nr_ns+k_nr_XX_ns
  return dict(gamma_X0_ns=gx,gamma_XX0_ns=2*gx,k_X_ns=kx,k_XX_ns=kxx,E_a_meV=ea,escape_prefactor_ns=pref,tau_cap_ps_used=tau_cap_ps,reservoir_state_count_e=ne,reservoir_state_count_h=nh,valid=True,invalid_reasons=(),provenance='[DR] nondegenerate cylindrical reservoir, spin/angular states, L_total=2*reservoir_length_nm (both flanking GaN reservoirs, fix L3); [A] XX=2X thermal-escape doubling, occupied-dot k_nr_ns NOT doubled (k_XX_ns=2*k_escape+k_nr_ns)')

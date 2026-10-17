@@ -32,13 +32,13 @@ export async function mount(body, host) {
   Object.assign(host.charts, { lA: chartA, lB: chartB, lC: chartC });
   for (const c of [chartA, chartB, chartC]) c.setTag(TG.result);
 
-  const caveat = caveatBox([meta.caveat, meta.axis_note], { id: "zhao" });
+  const caveat = caveatBox([meta.caveat, meta.observable_note, meta.axis_note], { id: "zhao" });
   const status = h("p.xp-status", { "aria-live": "polite" });
   const note = h("p.xb-note", { dataset: { role: "frames" } });
 
   const P = "xb-ls";
   const S = {
-    I: stepper(P, { id: "I", label: "Pump I/I_th (selects a frame)", values: meta.I_grid, index: Math.max(0, meta.I_grid.indexOf(DEF.I)), tag: TG.model, note: "Axis is I/I_th, not amperes (sde.py:196-203)", onInput: () => select() }),
+    I: stepper(P, { id: "I", label: "Pump I/I_th (selects a frame)", values: meta.I_grid, index: Math.max(0, meta.I_grid.indexOf(DEF.I)), tag: TG.model, note: "Axis is I/I_th, not amperes", onInput: () => select() }),
     n_runs: ctl(P, { id: "n_runs", label: "Runs per frame", min: D.n_runs[0], max: D.n_runs[1], step: 1, default: DEF.n_runs, tag: "A", note: "more runs: smaller SE, longer job" }, () => dirty()),
     t_end: ctl(P, { id: "t_end", label: "Run length t_end", min: D.t_end[0] * 1e9, max: D.t_end[1] * 1e9, step: 0.5, default: DEF.t_end * 1e9, unit: "ns", tag: "A", note: "first 10% is discarded as SDE transient (BURNIN_FRAC)" }, () => dirty()),
   };
@@ -53,7 +53,7 @@ export async function mount(body, host) {
 
   body.append(h("div.xp-split",
     h("div.xp-main", caveat.el, chartB.el, h("div.xb-grid2", chartA.el, chartC.el),
-      h("p.xp-cap", "Each marker is one seeded run batch with its standard error; the hollow diamonds are the committed fit run (out/zhao). The Zhao card points are drawn at I/I_th = 4 with their error bars and are not connected to the simulation. The quiet pump is expected to sit below the normal pump in sign only; the model does not reach the published magnitude.")),
+      h("p.xp-cap", "Each marker is one seeded run batch with its standard error; the hollow diamonds are the committed fit run (out/zhao). The Zhao card points are drawn at I/I_th = 4 with their error bars and are not connected to the simulation. The quiet pump is expected to sit below the normal pump in sign only; the model does not reach the published magnitude. These are intracavity g² values; Zhao measured the output noise spectrum (see the caveat above).")),
     h("aside.xp-side.panel", h("header.panel-head", h("h2.engrave", "Inputs"), status),
       h("div.xp-ctls", S.I.row, h("div.xs-row", h("span.xs-label", "Series in the readouts ", tagChip(TG.model, { size: "sm" })), fSeg.el), S.n_runs.row, S.t_end.row,
         h("div.xs-row", h("label.xs-label", { for: "xb-ls-seed" }, "Seed ", tagChip("A", { size: "sm" })), h("div.xs-ctl", Object.assign(seed, { id: "xb-ls-seed" }))),
@@ -108,7 +108,7 @@ export async function mount(body, host) {
     if (st.li) {
       const k = st.li.I.indexOf(I);
       ro.Ith.update({ value: st.li.I_th, tag, caption: "find_threshold: linear-fit extrapolation of the L-I curve", markChange: false });
-      ro.Sss.update({ value: k >= 0 ? st.li.S[k] : null, tag, reason: "not on the L-I grid", caption: k >= 0 ? `steady_state residual ${fmt(st.li.residual[k])}` : "", markChange: false });
+      ro.Sss.update({ value: k >= 0 ? st.li.S[k] : null, tag, reason: "not on the L-I grid", caption: k >= 0 ? `steady-state residual ${fmt(st.li.residual[k])}` : "", markChange: false });
     }
     const cp = card.card_points.find((p) => p.pump === (st.F === 1 ? "normal" : "quiet"));
     if (cp) ro.card.update({ value: cp.g2, tag: card.card_tag, caption: `± ${fmt(cp.err)} · ${cp.pump} pump · cards/zhao.yaml`, markChange: false });
@@ -116,7 +116,7 @@ export async function mount(body, host) {
     if (cmp) ro.sigma.update({ value: cmp.sigma_ratio, unit: "σ", tag: TG.model, caption: `verdict ${cmp.verdict} (out/zhao/zhao_fit_comparison.csv); sim ${fmt(cmp.sim_g2)} vs published ${fmt(cmp.published_g2)}`, markChange: false });
     if (st.trace) {
       ro.tg2.update({ value: st.trace.g2_0, tag, caption: `single trace, burn-in ${fmt(st.trace.burnin_frac * 100)}% discarded; g²(0) is unchanged by collection loss`, markChange: false });
-      ro.fano.update({ value: st.trace.fano, tag, caption: `thinned by eta_ext = ${fmt(st.trace.eta_ext)}: ${fmt(st.trace.fano_ext)} (loading.f8b_thin_fano)`, markChange: false });
+      ro.fano.update({ value: st.trace.fano, tag, caption: `thinned by eta_ext = ${fmt(st.trace.eta_ext)}: ${fmt(st.trace.fano_ext)}`, markChange: false });
     }
     clear(src).append(sourceLine(meta.calls, "Tuned Tier-2 parameter set, all [E] except T [V]."));
     chartA.render(); chartC.render();

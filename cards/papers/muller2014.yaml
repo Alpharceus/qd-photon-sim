@@ -1,0 +1,85 @@
+meta:
+  id: muller2014
+  role: paper-device
+  cite: "M. Muller, S. Bounouar, K. D. Jons, M. Glassl, P. Michler, On-demand generation of indistinguishable polarization-entangled photon pairs, Nature Photonics 8, 224-228 (2014)"
+  arxiv: "1308.4257"
+  extraction: .workers/devlib/papers/muller2014.yaml
+  read_level: V-full
+  summary: "In(Ga)As/GaAs dot (X 1.4212 eV, E_b 2.3 meV) in a planar lambda-cavity on a 15-pair DBR, 4 K, 21.4 ps TPE pi pulse at 76 MHz; X-line g2 raw 0.022 / dark-corrected 0.004, X HOM raw 0.44 / corrected 0.71, X lifetime 400 ps"
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "Methods (helium-flow cryostat at 4 K)"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 872.4, unit: nm, tag: DR, where: "text p.1: X line 1.4212 eV; 1239.842/1.4212 = 872.4 nm (conversion ours)"}
+      E_b_meV: {value: 2.3, unit: meV, tag: V, where: "text p.1: X 1.4212 eV, XX 1.4189 eV"}
+      tau_bare_ns: {value: 0.4, unit: ns, tag: DR, where: "Supp sec 3: X lifetime T1 = 400(20) ps, used as the effective bare lifetime in the bulk_planar structure (no Purcell factor in the paper); calibrated, see fits"}
+      gamma_xx_ratio: {value: 1.818, unit: "1", tag: DR, where: "Supp sec 3: T1(X)/T1(XX) = 400 ps / 220 ps = 1.818 (XX is not Purcell enhanced in the model, so this is Gamma_XX/Gamma_X)"}
+      gamma_star_4K_ns: {range: [0.0, 3.1], unit: 1/ns, tag: E, source: "lower end lifetime-limited (0); upper end DR from Supp sec 5 X coherence time 357 ps (TPE, Gaussian g1 fit): 1/T2* = 1/357 - 1/(2*400) = 1.55 /ns, gamma*_repo = 2/T2* = 3.1 /ns. The Gaussian coherence-time convention makes the conversion approximate, so the paper value is an envelope bound, not a point input"}
+  structure:
+    kind: bulk_planar
+    params:
+      mirror: {value: true, unit: "", tag: V, where: "Methods: bottom DBR of 15 AlAs/GaAs pairs under the 260 nm lambda-cavity (modelled as a back mirror, no Purcell effect)"}
+  drive:
+    kind: tpe
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "Supp sec 1: time-bandwidth product 0.492 vs Gaussian limit 0.441; Gaussian assumed"}
+      fwhm_ps: {value: 21.4, unit: ps, tag: V, where: "Supp sec 1 (95 ueV spectral FWHM, time-bandwidth 0.492 => 21.4 ps intensity FWHM)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.2 / Fig 3: pi-pulse TPE (first XX maximum)"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.1: laser resonant with the virtual two-photon state (half the XX total energy)"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "Methods: repetition rate 76 MHz"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.4, unit: "1", tag: E, source: "extraction lists NA 0.4 for the objective coupling into the MZI (Supp Fig 4), not necessarily the sample collection NA; assumed"}
+      eta_optics: {value: 0.010696, unit: "1", tag: DR, where: "calibrated (fits): Supp sec 2 per-APD rate 2500-3000 cts/s, midpoint 2750; rate_detected_Hz = 128553 at the default eta_optics 0.5, so eta_optics = 0.5 x 2750/128553"}
+      eps_int: {value: 0.05, unit: "1", tag: V, where: "text/Supp: interferometer mode overlap 0.95 +/- 0.01, so eps_int = 0.05"}
+      coinc_window_ns: {value: 2.0, unit: ns, tag: E, source: "tau_c not printed; engine default window around each peak"}
+      dark_cps: {value: 250.0, unit: 1/s, tag: V, where: "Supp sec 2: APD dark count rate n_dc = 250 cts/s"}
+reported:
+  - {id: g2_X_raw, observable: g2_0, convention: raw, value: 0.0220, err: 0.0177, tag: V, where: "Supp sec 2 eq 1; Fig 2 caption (X line, pi-pulse TPE, raw)"}
+  - {id: g2_X_darkcorr, observable: g2_0, convention: intrinsic, value: 0.0037, err: 0.018, tag: V, where: "Supp sec 2 eq 3 (value); Fig 2 caption (error 0.018). APD dark-count corrected; the abstract 'g2 < 0.004' is this one, NOT the raw value"}
+  - {id: hom_X_raw, observable: hom_V, convention: raw, value: 0.44, err: 0.03, tag: V, where: "text p.3: raw two-photon interference visibility of X photons (central peak vs cross-polarised, 4 ns delay)"}
+  - {id: hom_X_corr, observable: hom_V, convention: corrected, value: 0.71, err: 0.04, tag: V, where: "text p.3 / Fig 5 caption: X indistinguishability from side-peak area ratios, corrected for dark counts and setup imperfection (mode overlap 0.95); the model 'corrected' removes only g2"}
+  - {id: tau_X, observable: tau_ps, value: 400.0, err: 20.0, tag: V, where: "Supp sec 3: X lifetime T1, 3-level fit convolved with the 50 ps APD response"}
+  - {id: rate_det_X, observable: rate_detected_Hz, value: 2750.0, err: 250.0, tag: V, where: "Supp sec 2: n_s1 = n_s2 = 2500-3000 cts/s per APD"}
+reproduce:
+  - item: tau_X
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: tau_bare_ns is set to this lifetime (no Purcell factor in the paper); 2 sigma of the printed 20 ps"
+    expect: pass
+  - item: rate_det_X
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the absolute collection chain is not in the paper, so setup.eta_optics is set once so the model detected rate equals the paper per-APD rate; it makes the dark-count term in g2:raw use the correct signal rate"
+    expect: pass
+  - item: g2_X_darkcorr
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "2 sigma of the printed 0.018 is 0.036, much wider than the value; abs 0.005 is only a floor. The model intrinsic X-line g2 is compared with the dark-corrected measurement"
+    expect: pass
+  - item: g2_X_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.0177. The raw value includes 250 cts/s dark counts, entered as setup.dark_cps; the model dark-count term uses the signal rate fixed by the C item rate_det_X"
+    expect: pass
+  - item: hom_X_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.04 (0.08). Envelope over gamma* in [0, 3.1] /ns. The model X photon carries the XX-to-X cascade jitter factor Gamma_XX/(Gamma_XX+Gamma_X) from tpe_cascade_hom"
+    expect: fail
+    reason: "model gap: the model X-photon overlap is at most ~0.49 (envelope 0.22-0.49 over gamma* in [0, 3.1]); even at gamma* = 0 it is capped by the cascade jitter factor Gamma_XX/(Gamma_XX+Gamma_X) = 0.645 times the unfiltered phonon factor Z^2 ~ 0.79 (zpl_filter False because the extraction does not say the X line was filtered). Paper 0.71 is above the cascade bound; either the X photons were ZPL-filtered or the instantaneous-XX-decay jitter model overstates the loss."
+  - item: hom_X_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.03 (0.06); the paper raw value includes the 0.95 interferometer mode overlap, now carried by setup.eps_int = 0.05"
+    expect: pass-envelope
+    reason: "FX4: central model 0.264 vs 0.44 +/- 0.03 is far outside 2 sigma; 0.44 lies inside the envelope [0.183, 0.4455] only at its upper tip, so it is not a pass"
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_X]}
+  - {param: setup.eta_optics, fitted_to: [rate_det_X]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 14: setup.eps_int 0.05 V (mode overlap 0.95+-0.01); setup.coinc_window_ns 2.0 ns tag E (tau_c not printed); g2_X_raw and hom_X_raw expect fail -> pass per engine fx2a (4ef6528); reasons rewritten"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_X_raw expect pass -> pass-envelope (central 0.264 vs 0.44; paper value only at the envelope tip 0.4455)"}

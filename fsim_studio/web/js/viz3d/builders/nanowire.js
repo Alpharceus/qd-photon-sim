@@ -21,7 +21,7 @@ export function buildNanowire(spec, ctx) {
   const rc = nm(g.core_radius_nm);
   const segDisp = horizontal ? 140 : 380;   // drawn length of the unmodelled doped segments (nm)
   const lam = spec.overlays.emission.lambda_nm;
-  const { rgb, falseColour } = lambdaToRGB(lam);
+  const { rgb, falseColour, colourNote, colourSuffix } = lambdaToRGB(lam);
   const L = spec.layers;
   const tOf = (Ly) => (Ly.t_nm == null ? segDisp : Ly.t_nm);
   const total = L.reduce((a, Ly) => a + tOf(Ly), 0);
@@ -113,7 +113,7 @@ export function buildNanowire(spec, ctx) {
     const mid = acc + t / 2;
     acc += t;
     if (Ly.role === 'active') {
-      labels.add(root, horizontal ? [0, -rc - 0.6, rc] : [-side, discY, 0], `InGaN disc · h ${nice(Ly.t_nm)} nm · r ${nice(g.dot.radius_nm)} nm`, { tag: Ly.tag, anchor: horizontal ? 'left' : 'right', sub: `λ ${nice(lam, 4)} nm${falseColour ? ' (NIR, false colour)' : ''}` });
+      labels.add(root, horizontal ? [0, -rc - 0.6, rc] : [-side, discY, 0], `InGaN disc · h ${nice(Ly.t_nm)} nm · r ${nice(g.dot.radius_nm)} nm`, { tag: Ly.tag, anchor: horizontal ? 'left' : 'right', sub: `λ ${nice(lam, 4)} nm${colourSuffix}` });
       continue;
     }
     if (Ly.t_nm == null) {
@@ -147,15 +147,16 @@ export function buildNanowire(spec, ctx) {
   hud.button(gView, 'magnifier', () => mag.set(!mag.visible), { title: 'toggle the disc magnifier' });
 
   const R = rc * 7;
+  const H = nm(total);                       // drawn wire length (world units): the 'Wire' view backs off to show wire and floor
   const bookmarks = horizontal
     ? [
-      { name: 'Wire', pos: [R * 0.9, R * 0.7, R * 1.6], target: [0, 0, 0], cut: rc * 6, mag: false },
+      { name: 'Wire', pos: [H * 0.45, H * 0.35, H * 0.95], target: [0, -H * 0.05, 0], cut: rc * 6, mag: false },
       { name: 'Side cut-away', pos: [0.1, 0.3, R * 1.8], target: [0, 0, 0], cut: 0, mag: false },
       { name: 'Top / cone', pos: [R * 0.3, R * 2.2, R * 0.6], target: [0, rc, 0], cut: rc * 6, mag: false },
       { name: 'Disc magnifier', pos: [R * 0.4, R * 0.3, R * 0.9], target: [0, 0, 0], cut: rc * 6, mag: true },
     ]
     : [
-      { name: 'Wire', pos: [R * 1.6, R * 0.6, R * 2.2], target: [0, discY + 2, 0], cut: rc * 1.3, mag: false },
+      { name: 'Wire', pos: [H * 1.1, H * 0.2, H * 1.7], target: [0, -H * 0.3, 0], cut: rc * 1.3, mag: false },
       { name: 'Side cut-away', pos: [R * 2.4, discY + 1.5, 0.2], target: [0, discY, 0], cut: 0, mag: false },
       { name: 'Top / cone', pos: [R * 0.8, yTop + R * 2.2, R * 0.9], target: [0, yTop, 0], cut: rc * 1.3, mag: false },
       { name: 'Disc magnifier', pos: [R * 0.7, discY + 1.2, R * 1.1], target: [0, discY, 0], cut: rc * 1.3, mag: true },
@@ -168,6 +169,10 @@ export function buildNanowire(spec, ctx) {
     cut: horizontal ? { min: -rc * 6, max: rc * 6 } : { min: -rc * 1.3, max: rc * 1.3 },
     magnifier: mag,
     unitToUm: 1, worldPerUm: S,
+    floorBounds: horizontal
+      ? { min: [-H / 2, -rc - nm(g.oxide_thickness_nm || 100) * 1.8, -rc * 5], max: [H / 2, rc, rc * 5] }
+      : { min: [-rc, -H / 2, -rc], max: [rc, H / 2, rc] },
+    floorSpanFromHeight: horizontal ? 0 : 0.9,      // a thin wire: size the breadboard from its height so the floor reads like the other devices'
     readoutKeys: ['g2_op', 'flux_commanded', 'flux_delivered', 'beta_HE11', 'V_number', 'lambda_nm', 'eta_collection_X', 'T_hs'],
   };
 }

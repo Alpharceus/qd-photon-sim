@@ -33,3 +33,19 @@ data:
       - {T: 170.0, g2: 0.18, err: 0.02, w: 4.74, dx: -1.65}
       - {T: 210.0, g2: 0.28, err: 0.03, w: 6.69, dx: -2.82}
       - {T: 230.0, g2: 0.36, err: 0.03, w: 7.66, dx: -3.41}
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 931.3, unit: nm, tag: DR, where: "cards/chatzarakis.yaml params.delta_xx source: Fig. 4 78 K panel, X line 1.3313 eV; lambda = 1239.842 / 1.3313 eV = 931.3 nm"}
+  structure:
+    kind: planar_dbr
+    params:
+      N_top: {value: 12, unit: "1", tag: A, where: "display assumption: the DBR design of the microcavity is not in the card; pairs drawn only"}
+      N_bot: {value: 16, unit: "1", tag: A, where: "display assumption: the DBR design of the microcavity is not in the card; pairs drawn only"}
+  drive:
+    kind: above_band
+  note: >
+    Same device as cards/chatzarakis.yaml, drawn with the same scene: planar DBR microcavity (lambda spacer) around the (211)B InAs/GaAs dot, optically pumped (PL). The device-tier configuration has no cavity block (the slit windows carry the acceptance), so the DBR drawn is the paper's cavity as context only; pair counts are display assumptions [A]. The planar wafer piece is drawn as a square coupon broken laterally, so the stack can read as a square pillar; its lateral size and the stack proportions are display defaults [A], not device geometry.

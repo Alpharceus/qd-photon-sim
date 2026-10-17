@@ -4,6 +4,7 @@ import { h, clear } from "./dom.js";
 import { icon } from "./icons.js";
 import { tagChip, TAG_MEANING, normTag } from "./tagChip.js";
 import { fmt, unitText, isNum } from "./format.js";
+import { tex, symbolNode } from "./math.js";
 
 let host = null;
 let lastFocus = null;
@@ -44,7 +45,7 @@ export function inspectField({ path, meta, value, inBand }, { quiet = false } = 
   if (!host || (quiet && host.hidden)) return;
   const unit = unitText(meta?.unit === "enum" ? "" : meta?.unit);
   const band = meta?.band;
-  frame(meta?.label || path, path,
+  frame(meta?.tex ? tex(meta.tex) : meta?.label ? meta.label : symbolNode({ name: String(path).split(".").pop() }), path,
     tagBlock(meta?.tag, meta?.source),
     h("dl.insp-dl",
       row("Value", value === null ? "auto (resolved by the model)" : `${typeof value === "number" ? fmt(value) : String(value)}${unit ? ` ${unit}` : ""}`),
@@ -52,7 +53,7 @@ export function inspectField({ path, meta, value, inBand }, { quiet = false } = 
       row("Known-physical band", Array.isArray(band) && isNum(band[0]) ? `${fmt(band[0])} – ${fmt(band[1])}${unit ? ` ${unit}` : ""}` : "none recorded"),
       row("Band check", inBand == null ? "not applicable" : inBand ? "inside band" : "outside band: result is conditional"),
       row("Source", meta?.source || "no source recorded")),
-    h("p.insp-foot", "From fsim_core.design_meta.META. Bands warn only; they never clamp a value."));
+    h("p.insp-foot", "From the design-limits table. Bands warn only; they never clamp a value."));
   open(quiet);
 }
 
@@ -61,7 +62,7 @@ export function inspectNumber({ label, key, valueText, tag, notes = [], source }
   if (!host) return;
   frame(label, key,
     tagBlock(tag, "Widest tag in the run's tag chain; the number is only as strong as its weakest input."),
-    h("dl.insp-dl", row("Value", valueText), row("Source", source || "fsim_core.device.evaluate scalars")),
+    h("dl.insp-dl", row("Value", valueText), row("Source", source || "device model, evaluated at the operating point")),
     notes.length ? h("div.insp-notes", h("h3.insp-h3", "Provenance entries"),
       h("ul", notes.map((n) => h("li", tagChip(n.tag), h("span.insp-note-k", n.key), h("span.insp-note-v", n.note || ""))))) : null);
   open(false);

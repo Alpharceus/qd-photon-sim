@@ -1,0 +1,70 @@
+# Bennett, Patel, Shields et al., arXiv:0803.3700 (2008): "Indistinguishable photons from a diode" (EARLY PREPRINT of Patel et al., Nat. Photon. 4, 632 (2010)).
+# Numbers from .workers/devlib/papers/bennett2008_diode.yaml and the raw text (page = arXiv v1 page). Model not tuned.
+meta:
+  id: bennett2008_diode
+  role: paper-device
+  cite: "A. J. Bennett, R. B. Patel, A. J. Shields, K. Cooper, P. Atkinson, C. A. Nicoll, D. A. Ritchie, Indistinguishable photons from a diode, arXiv:0803.3700 (2008). NOTE: this is the 2008 preprint of what was published as R. B. Patel et al., Nature Photonics 4, 632 (2010) (journal ref taken from the Cao 2015 reference list); numbers may differ from the published 2010 text and only the preprint was read"
+  arxiv: "0803.3700"
+  extraction: ".workers/devlib/papers/bennett2008_diode.yaml"
+  read_level: V-full
+  summary: "InGaAs X- dot (1.31495 eV, T1 800 ps, T2* 62 ps) in a planar-microcavity p-i-n diode, 4 K, 300 ps injection pulse then a Stark step into a 31 ps collection window, 505 MHz: HOM visibility 60 +/- 4 % raw / 64 +/- 4 % dark-count corrected vs 3.75 % at dc bias, g2(0) 0.03 +/- 0.01"
+  notes:
+    - "PREPRINT: the card transcribes the arXiv:0803.3700 preprint (Patel 2010 is the published version); numbers (g2 0.03, visibility 60/64 %) are those of the preprint."
+    - "THREE CONVENTIONS: visibility 60 +/- 4 % is RAW (includes detector dark counts); 64 +/- 4 % is dark-count corrected and equals the squared wave-function overlap for balanced beam splitters (text p.4); 3.75 % = T2/2T1 is the theory value for continuous emission at fixed bias. The engine overlap hom_I_gated is the corrected quantity, so it is compared with 64 %; the raw visibility is reported only (the engine raw HOM visibility uses the UNGATED overlap, and the dark count rate is not given)."
+    - "GATE vs JITTER (mapping ambiguity): the preprint states that the collected range of emission times is 31 ps (p.2) and that a Gaussian timing jitter of width 31 ps with a 60 ps 1/e coherence time fits the dip (p.4-5). These are the SAME physical window described twice (the paper model has no separate gate), so the card enters ONE Gaussian gate of 31 ps INTENSITY FWHM (hom_gate_shape gauss) and no extra jitter; entering both would double count. The Gaussian reading follows the paper; the width convention (FWHM vs sigma) is not stated and remains the dominant model uncertainty (a 31 ps top-hat gives 0.736, a 31 ps Gaussian FWHM 0.656)."
+    - "GATE START: for a gate that opens after the emission onset the memoryless exponential decay makes the overlap independent of the gate position (full-line Gaussian result I = erfcx(gamma* sigma_g) = 0.656, independent of Gamma and of the position; verified in verify_compose_electrical 11a). The Gaussian gate is centred at 50 ps after the excitation ([A]; any centre >= 30 ps gives 0.656-0.663). The engine gate jitter (hom_jitter_ps, monotone in sigma) is left at 0 for the double-counting reason above."
+    - "T2*: T1 = 800 ps (the paper calls it the radiative lifetime) and T2* = 62 ps (1/T2 = 1/2T1 + 1/T2*, text p.5) are entered (gamma*_repo = 2/T2* = 32.3/ns, conversion ours). T2* is derived from the fitted 60 ps coherence time, so it is only partly independent of the dip."
+    - "NOT CARDED: g2(0) = 0.03 +/- 0.01 inside the 31 ps window (the engine gate_ps counts from the pump onset, not a Stark window; the preprint attributes the 0.03 to background; the model estimate is 1.5 % background); HOM peak areas 48 / 19 %; the Stark coefficient (not in the text)."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.3 (diode cooled to 4 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 942.9, unit: nm, tag: DR, where: "text p.3 (X- at 1.31495 eV): 1239.842 / 1.31495, conversion ours"}
+      tau_bare_ns: {value: 0.8, unit: ns, tag: V, where: "text p.5 (radiative lifetime T1 = 800 ps)"}
+      gamma_star_4K_ns: {value: 32.26, unit: 1/ns, tag: DR, where: "text p.5 (T2* = 62 ps from 1/T2 = 1/2T1 + 1/T2*): gamma*_repo = 2/T2* = 2/0.062 ns, factor 2 and conversion ours"}
+      a_ac_ns_per_K: {value: 0.0, unit: 1/ns/K, tag: A, source: "dephasing entered from the measured coherence at 4 K; no temperature scan in the paper"}
+  structure:
+    kind: bulk_planar
+    params:
+      mirror: {value: true, unit: "", tag: V, where: "text p.3 (2 top / 12 bottom Bragg periods around a lambda spacer; the cavity raises the collection and has no measurable effect on the emission rate, so no Purcell factor is entered)"}
+  drive:
+    kind: electrical_pulsed
+    params:
+      mechanism: {value: "M-3 pulsed", unit: "", tag: A, source: "pulsed injection followed by a Stark-step collection window"}
+      tau_on_ns: {value: 0.3, unit: ns, tag: V, where: "text p.3 (nominally 300 ps positive pulse injects the carriers)"}
+      I_uA: {value: 0.000267, unit: uA, tag: E, source: "effective current into the dot for mu = eta_capture I tau / e ~ 0.5 over 300 ps; the injection level is not stated (does not enter the gated overlap, which is a single-photon quantity)"}
+      eta_capture: {value: 1.0, unit: "1", tag: A, source: "no injection efficiency is given and it does not enter the gated overlap; eta_capture = 1 with the effective current in I_uA"}
+      f_rep_MHz: {value: 505.0, unit: MHz, tag: DR, where: "text p.4 (source repetition period 1.98 ns): 1e3/1.98, conversion ours"}
+      hom_gate_ps: {value: 31.0, unit: ps, tag: V, where: "text p.2 (selected energies reduce the range of emission times to 31 ps)"}
+      hom_gate_shape: {value: gauss, unit: "", tag: DR, where: "text p.4-5 (Gaussian timing jitter of width 31 ps fits the dip): the collected window is Gaussian, not a top-hat"}
+      hom_gate_start_ps: {value: 50.0, unit: ps, tag: A, source: "Gaussian gate centre after the excitation; see meta.notes (GATE START): the result is position independent beyond ~30 ps"}
+      hom_jitter_ps: {value: 0.0, unit: ps, tag: A, source: "no extra jitter: the fitted 31 ps Gaussian jitter is the same window as hom_gate_ps (see meta.notes GATE vs JITTER)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.5, unit: "1", tag: V, where: "text p.3 (microscope objective NA = 0.5)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "text p.3 (monochromator filters the photons in energy before the interferometer)"}
+reported:
+  - {id: hom_dc_reference, observable: hom_I, convention: intrinsic, value: 0.0375, tag: V, where: "text p.5 (visibility under fixed bias T2/2T1 = 3.75 %)", note: "theory value from T1 and T2*; no error printed"}
+  - {id: hom_corr_gated, observable: hom_I_gated, value: 0.64, err: 0.04, tag: V, where: "text p.4 (visibility 64 +/- 4 % after subtracting detector dark counts = squared wave-function overlap)", note: "dark-count corrected"}
+  - {id: hom_raw_gated, observable: hom_V, convention: raw, value: 0.60, err: 0.04, tag: V, where: "text p.4 / abstract (visibility 60 +/- 4 % in the raw data)", note: "raw, includes dark counts; reported only"}
+  - {id: g2_gated, observable: g2_0, convention: raw, value: 0.03, err: 0.01, tag: V, where: "text p.3 / Fig 3a (g2(0) = 0.03 +/- 0.01 in the selected window)", note: "raw; attributed to background, not carded"}
+series: []
+reproduce:
+  - item: hom_dc_reference
+    class: R
+    tol: {abs: 0.002}
+    tol_reason: "3.75 % is the textbook T2/2T1 evaluated from T1 and T2* of the same paper, so only the engine convention (gamma*_repo = 2/T2*, Lindblad overlap Gamma/(Gamma + gamma*)) is tested, not an independent measurement; 0.002 absolute (about 5 % of the value, three significant digits quoted)"
+    expect: pass
+    reason: "FX4: 3.75 percent is the textbook T2/2T1 evaluated from the same paper's T1 and T2*, i.e. the paper's theory value (gamma* is entered from T2*), so the item only checks the engine convention (class R, not a test). Class T is not possible: hom_I is not a passthrough of an input; model 0.0373"
+  - item: hom_corr_gated
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 4 % (0.08). No free input: T1 and T2* are entered, the 31 ps Gaussian window (FWHM) is the paper own statement and no jitter is added (single window, see meta.notes); the expected model band is 0.55-0.75 with the window shape as the one assumption"
+    expect: pass
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "engine FX3b gated HOM (Gaussian gate, gate-displacement jitter)", note: "the gate is now a Gaussian window (drive.hom_gate_shape gauss, FWHM 31 ps centred at 50 ps) instead of a top-hat: hom_corr_gated model 0.736 -> 0.656 (closed form erfcx(gamma* sigma_g)), paper 0.64 +/- 0.04, expect fail -> pass; hom_dc_reference unchanged. Also removed the false 'M-3 multiplies eta_capture twice' wording of the I_uA source (eta_capture stays 1; no number moves)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_dc_reference class M -> R (theory value from the T1 and T2* that are inputs; convention check only); expect unchanged (pass)"}

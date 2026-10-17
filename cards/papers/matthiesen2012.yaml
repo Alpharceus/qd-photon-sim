@@ -1,0 +1,53 @@
+meta:
+  id: matthiesen2012
+  role: paper-device
+  cite: "C. Matthiesen, A. N. Vamivakas, M. Atature, Subnatural linewidth single photons from a quantum dot, Phys. Rev. Lett. 108, 093602 (2012)"
+  doi: "10.1103/PhysRevLett.108.093602"
+  arxiv: "1109.3412"
+  extraction: .workers/devlib/papers/matthiesen2012.yaml
+  read_level: V-full
+  summary: "Self-assembled InAs/GaAs dot (960-980 nm band) on a DBR with a super-SIL, 4.2 K, cw resonance fluorescence at Omega ~1.5 Gamma (Heitler/Mollow regime), T1 760 ps, g2(0) = 0.01(2) after deconvolution, coherent-line coherence time 22 ns at Omega ~0.22 Gamma"
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "extraction device.T_K (confocal microscope at 4.2 K); main text p.2 / Supp"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {range: [960.0, 980.0], unit: nm, tag: V, where: "Supp: sample DBR enhances reflection at 960-980 nm; the exact line is not stated"}
+      tau_bare_ns: {value: 0.76, unit: ns, tag: DR, where: "text p.5 / Supp fit parameters: transition lifetime T1 = 760 ps, used as the effective bare lifetime in the bulk_planar structure (no Purcell factor in the paper); calibrated, see fits"}
+      gamma_star_4K_ns: {range: [0.0, 0.144], unit: 1/ns, tag: DR, where: "Supp: fitted T2 = 1.52 +/- 0.15 ns at Omega ~0.22 Gamma, i.e. at the 2 T1 limit; the 1-sigma lower bound T2 = 1.37 ns gives 1/T2* = 1/1.37 - 1/1.52 = 0.072 /ns, gamma*_repo = 2/T2* = 0.144 /ns; upper end of the dephasing envelope, lower end 0"}
+  structure:
+    kind: bulk_planar
+    params:
+      mirror: {value: true, unit: "", tag: V, where: "Supp: 20-layer GaAs/AlGaAs DBR under the dot (about 2x collection); modelled as a back mirror, no Purcell effect"}
+      sil: {value: weierstrass, unit: enum, tag: A, source: "extraction says zirconia super-solid immersion lens; a super-SIL is taken as a Weierstrass sphere [A]"}
+      n_s: {range: [1.9, 2.2], unit: "1", tag: E, source: "zirconia refractive index is not in the extraction; class range. Affects only collection, not the tested items"}
+  drive:
+    kind: cw_resonant
+    params:
+      omega_ueV: {value: 1.299, unit: ueV, tag: DR, where: "text p.5 / Fig 2d: Omega ~1.5 Gamma for the g2 measurement; Gamma = 1/T1 = 1.316 /ns, hbar Omega = 0.6582 ueV ns x 1.5 x 1.316 /ns = 1.299 ueV"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.3: laser resonant with the transition"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.5, unit: "1", tag: V, where: "text p.2: 0.5 NA objective (effective NA raised by the super-SIL, handled in the structure)"}
+      eta_pol: {value: 0.5, unit: "1", tag: A, source: "crossed polariser in collection on a linear dipole [A]; not tested here"}
+reported:
+  - {id: g2_0, note: "tautological for a two-level emitter (g2(0) = 0 at any Rabi frequency): not a ledger item", observable: g2_0, convention: intrinsic, value: 0.01, err: 0.02, tag: V, where: "text p.5 / Fig 2d: g2(0) = 0.01 +/- 0.02 at Omega ~1.5 Gamma, after deconvolution from the detector instrument response (intrinsic convention)"}
+  - {id: tau_T1, observable: tau_ps, value: 760.0, tag: V, where: "text p.5 / Supp fit parameters: T1 = 760 ps, fixed in the fits; no error stated"}
+reproduce:
+  - item: tau_T1
+    class: C
+    tol: {rel: 0.02}
+    tol_reason: "calibration: tau_bare_ns is set to the fitted lifetime (no Purcell factor in the paper); no stated error so 2% is a numerical floor"
+    expect: pass
+  - item: inversion_prediction
+    class: P
+    observable: inversion
+    convention: intrinsic
+    expect: pass
+    tol_reason: "no reported value; the steady-state excited population at Omega = 1.5 Gamma is stated, not compared"
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_T1]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 13: g2_0 removed from reproduce (tautological for a two-level emitter; kept in reported with a note)"}

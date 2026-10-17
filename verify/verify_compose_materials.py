@@ -1,0 +1,332 @@
+"""Checks for the material registry of the composable engine (fsim_core/compose/materials.py, P2).
+
+Covers registration and the JSON payload, the provenance schema of data/materials.yaml, anchors the
+code did not produce (qd_gf.PhononParams defaults, E_X = hc/lambda, Z(4 K) class range, Mueller E_b,
+hbar conversions, Schweickert XX ratio) and finite EmitterModel output at 4, 40 and 300 K.
+
+Run: python verify/verify_compose_materials.py   (exit code 0 iff all pass)
+"""
+from __future__ import annotations
+
+import json
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from fsim_core import cavity, linewidth, presets, qd_gf                  # noqa: E402
+from fsim_core.compose import materials as M                             # noqa: E402
+from fsim_core.compose import registry as R                              # noqa: E402
+from fsim_core.compose import spec as S                                  # noqa: E402
+from fsim_core.compose.types import EmitterModel                         # noqa: E402
+
+RESULTS = []
+
+
+def check(name, ok, detail=""):
+    RESULTS.append(bool(ok))
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail and not ok else ""))
+
+
+KINDS = ["inas_gaas_sk", "ingaas_gaas", "gaas_algaas_droplet", "inas_inp_cband",
+         "inas_ingaas_metamorphic_cband", "inp_gainp_red", "ingan_gan", "gan_aln", "cdse_znse",
+         "cspbbr3_colloidal"]
+REQUIRED = ["lambda_nm", "tau_bare_ns", "E_b_meV", "gamma_xx_ratio", "gamma_star_4K_ns",
+            "a_ac_ns_per_K", "alpha_ps2", "D_c_eV", "D_v_eV", "rho_kg_m3", "c_LA_m_s", "l_xy_nm", "l_z_nm",
+            "n_host", "E_LO_meV", "k_nr_ns", "sigma_sd_ueV", "tau_sd_ns", "charge_state", "dipole"]
+HBAR_MEV_NS = 6.582119569e-4          # independent CODATA value (meV ns)
+HC_MEV_NM = 1239841.98                # hc in meV nm (spec value)
+
+# 1. registration and payload ------------------------------------------------------------------
+kinds = R.kinds("material")
+check("all 10 material kinds registered on import", all(k in kinds for k in KINDS), str(kinds))
+payload = R.registry_payload()
+try:
+    js = json.dumps(payload)
+    ok_json = True
+except (TypeError, ValueError) as e:
+    ok_json, js = False, str(e)
+check("registry_payload() is JSON-serialisable", ok_json, js[:80])
+mats = {m["kind"]: m for m in payload["materials"]}
+check("payload lists every material with all required params",
+      all(k in mats and all(n in [p["name"] for p in mats[k]["params"]] for n in REQUIRED) for k in KINDS))
+check("every param carries unit/tag/source/help and a default inside its band",
+      all(p["tag"] in ("V", "DR", "E", "A") and p["source"] and p["help"] and p["unit"] is not None
+          and (p["lo"] is None or p["hi"] is None or p["lo"] <= p["default"] <= p["hi"]
+               or p["choices"] is not None)
+          for m in mats.values() for p in m["params"]))
+check("alpha_ps2, D_c, l_xy, l_z, sigma_sd, tau_sd are advanced; lambda_nm is main",
+      all({p["name"]: p["group"] for p in m["params"]}[n] == "advanced"
+          for m in mats.values() for n in ("alpha_ps2", "D_c_eV", "l_xy_nm", "l_z_nm", "sigma_sd_ueV", "tau_sd_ns"))
+      and all({p["name"]: p["group"] for p in m["params"]}["lambda_nm"] == "main" for m in mats.values()))
+check("class-only entries are labelled [E] class-only, not anchored in the summary",
+      all("class-only, not anchored" in mats[k]["summary"] for k in
+          ("cdse_znse", "cspbbr3_colloidal", "ingan_gan", "gan_aln", "inas_ingaas_metamorphic_cband")))
+
+# 2. yaml provenance schema --------------------------------------------------------------------
+data = yaml.safe_load(open(M.DATA_PATH, encoding="utf-8"))
+leaf_kinds = ("value", "value_from", "range", "range_from")
+bad = []
+n_leaves = 0
+
+
+def walk(prefix, d):
+    global n_leaves
+    n_leaves += 1
+    present = [k for k in leaf_kinds if k in d]
+    ok = (len(present) == 1 and isinstance(d.get("unit"), str) and d["unit"] != ""
+          and d.get("tag") in ("V", "DR", "E", "A") and isinstance(d.get("source"), str) and d["source"].strip())
+    if "value" in d:
+        ok = ok and isinstance(d["value"], (int, float)) and math.isfinite(d["value"])
+    if "range" in d:
+        ok = ok and len(d["range"]) == 2 and d["range"][0] <= d["range"][1] and all(math.isfinite(x) for x in d["range"])
+    if "range_from" in d:
+        ok = ok and len(d["range_from"]) == 2
+    if "convert" in d:
+        ok = ok and d["convert"] in M._CONVERT
+    if not ok:
+        bad.append(prefix)
+
+
+for name, leaf in data["_shared"].items():
+    walk(f"_shared.{name}", leaf)
+for kind, m in data["materials"].items():
+    for name, leaf in m["params"].items():
+        walk(f"{kind}.{name}", leaf)
+check("every number in materials.yaml has unit, tag in V/DR/E/A and a non-empty source",
+      not bad and n_leaves > 100, f"bad leaves: {bad[:6]} of {n_leaves}")
+check("every material in the yaml defines exactly the known yaml params",
+      all(set(m["params"]) == set(M._PARAMS) for m in data["materials"].values()))
+
+# 3. anchors the code did not produce ------------------------------------------------------------
+std = qd_gf.PhononParams()
+for k in ("inp_gainp_red", "inas_inp_cband"):
+    em = R.get("material", k).build({}, 4.0)
+    ph = em.phonon
+    same = (ph.D_e_eV == std.D_e_eV and ph.D_h_eV == std.D_h_eV and ph.rho_m_kg_m3 == std.rho_m_kg_m3
+            and ph.c_s_m_s == std.c_s_m_s)
+    check(f"{k}: InP phonon constants equal qd_gf.PhononParams defaults exactly", same)
+em = R.get("material", "inp_gainp_red").build({}, 4.0)
+check("inp_gainp_red: phonon card (alpha, cutoff geometry) == PhononParams() default, bit for bit",
+      em.phonon == std and qd_gf.coupling_alpha_ps2(em.phonon) == qd_gf.coupling_alpha_ps2(std)
+      and float(qd_gf.spectral_density(1.3, em.phonon)) == float(qd_gf.spectral_density(1.3, std)))
+inp = R.get("material", "inp_gainp_red")
+check("inp_gainp_red: gamma*(4 K), a_ac, E_LO, E_b band come from linewidth/presets (not copied)",
+      abs(inp.param("gamma_star_4K_ns").default - 0.25 / HBAR_MEV_NS) < 1e-6
+      and abs(inp.param("a_ac_ns_per_K").default - 2.0e-3 / HBAR_MEV_NS) < 1e-6
+      and inp.param("E_LO_meV").default == 43.0
+      and (inp.param("E_b_meV").lo, inp.param("E_b_meV").hi) == (3.5, 8.0)
+      and abs(inp.param("gamma_star_4K_ns").default - linewidth.LinewidthParams().gamma0 / HBAR_MEV_NS) < 1e-9
+      and presets.DOT_PRESETS["chatzarakis-class"]["delta_xx"] == 5.9
+      and inp.param("E_b_meV").lo <= 5.9 <= inp.param("E_b_meV").hi)
+
+for k in ("inas_gaas_sk", "ingaas_gaas", "gaas_algaas_droplet"):
+    e = R.get("material", k)
+    em = e.build({}, 4.0)
+    gaas_consts = (em.phonon.D_e_eV, em.phonon.D_h_eV, em.phonon.rho_m_kg_m3, em.phonon.c_s_m_s) == (-14.6, -4.8, 5370.0, 5110.0)
+    Z = qd_gf.zpl_weight(em.phonon, 4.0)
+    check(f"{k}: GaAs constants (-14.6, -4.8, 5370, 5110) and Z(4 K) = {Z:.3f} in 0.85-0.97 "
+          "(Thomas 2021 / Uppu ZPL 0.95 class [V])", gaas_consts and 0.85 <= Z <= 0.97, f"Z={Z}")
+# explicit constants through the pure qd_gf API (independent of the registry build path)
+Zc = qd_gf.zpl_weight(qd_gf.PhononParams(D_e_eV=-14.6, D_h_eV=-4.8, rho_m_kg_m3=5370.0, c_s_m_s=5110.0,
+                                         l_xy_nm=4.0, l_z_nm=1.5), 4.0)
+check("Z(4 K) from qd_gf.zpl_weight with explicit GaAs constants, l = (4, 1.5) nm, in 0.85-0.97",
+      0.85 <= Zc <= 0.97, f"Z={Zc}")
+
+worst = 0.0
+for k in KINDS:
+    e = R.get("material", k)
+    for lam in (e.param("lambda_nm").default, 310.0, 1310.0, 1550.0):
+        em = e.build({"lambda_nm": lam}, 4.0)
+        worst = max(worst, abs(em.E_X_meV - HC_MEV_NM / lam))
+check("E_X(lambda) = 1239841.98 / lambda_nm meV to 1e-9 for every kind", worst < 1e-9, f"{worst}")
+check("inas_inp_cband O-band (1310 nm) E_X = 946.4 meV",
+      abs(R.get("material", "inas_inp_cband").build({"lambda_nm": 1310.0}, 4.0).E_X_meV - 946.45) < 0.01)
+
+mu = R.get("material", "inas_gaas_sk")
+check("Mueller E_b = 2.3 meV [V] lies in the inas_gaas_sk range and is reproduced when overridden",
+      mu.param("E_b_meV").lo <= 2.3 <= mu.param("E_b_meV").hi
+      and mu.build({"E_b_meV": 2.3}, 4.0).delta_xx_meV == -2.3)  # EmitterModel: negative = bound
+check("Somaschi tau_bulk = 1.3 ns [V] lies in the inas_gaas_sk tau range and gives Gamma0 = 1/1.3",
+      mu.param("tau_bare_ns").lo <= 1.3 <= mu.param("tau_bare_ns").hi
+      and abs(mu.build({"tau_bare_ns": 1.3}, 4.0).gamma0_ns - 1.0 / 1.3) < 1e-12)
+dr = R.get("material", "gaas_algaas_droplet")
+check("droplet: default X tau / Schweickert XX 0.125 ns [V] = gamma_xx_ratio; E_b range contains Piccinini 4.0",
+      abs(dr.param("tau_bare_ns").default / 0.125 - dr.param("gamma_xx_ratio").default) < 1e-9
+      and dr.param("E_b_meV").lo <= 4.0 <= dr.param("E_b_meV").hi)
+
+for k in KINDS:
+    e = R.get("material", k)
+    g4 = e.param("gamma_star_4K_ns").default
+    a = e.param("a_ac_ns_per_K").default
+    ok4 = e.build({}, 4.0).gamma_star_ns == g4
+    ok40 = abs(e.build({}, 40.0).gamma_star_ns - (g4 + a * 36.0)) < 1e-9
+    ok300 = abs(e.build({}, 300.0).gamma_star_ns - (g4 + a * 296.0)) < 1e-9
+    check(f"{k}: gamma*(4 K) equals the param; linear T model at 40 and 300 K", ok4 and ok40 and ok300)
+check("gamma* is clipped at 0",
+      mu.build({"gamma_star_4K_ns": 0.0, "a_ac_ns_per_K": 1.0}, 1.0).gamma_star_ns == 0.0)
+check("1 ueV excess linewidth = 1.5193 / ns (gamma* = W / hbar)",
+      abs(mu.param("gamma_star_4K_ns").hi - 1.0e-3 / HBAR_MEV_NS) < 1e-9
+      and abs(mu.param("gamma_star_4K_ns").hi - 1.5193) < 1e-4)
+check("alpha_ps2 override pins alpha (0.027 ps^2 Ramsay-class)",
+      qd_gf.coupling_alpha_ps2(mu.build({"alpha_ps2": 0.027}, 4.0).phonon) == 0.027
+      and qd_gf.coupling_alpha_ps2(mu.build({}, 4.0).phonon) > 0.0)
+h = 1.0e-3
+numeric = (cavity.varshni_shift(300.0 + h) - cavity.varshni_shift(300.0 - h)) / (2 * h) * 1e3
+check("dE/dT of GaAs-class kinds at 300 K matches a numeric derivative of cavity.varshni_shift",
+      abs(mu.build({}, 300.0).dEdT_meV_K - numeric) < 1e-6, f"{mu.build({}, 300.0).dEdT_meV_K} vs {numeric}")
+check("charge_state X+ adds the charged transition; default has {X, XX}",
+      mu.build({}, 4.0).transitions == frozenset({"X", "XX"})
+      and mu.build({"charge_state": "X+"}, 4.0).transitions == frozenset({"X", "XX", "X+"}))
+
+check("every material provides X, XX, X+ and X- (tpe drive requires XX)",
+      all(R.get("material", k).provides == frozenset({"X", "XX", "X+", "X-"}) for k in KINDS))
+
+# validate_spec accepts a material block with a tagged override leaf ------------------------------
+vs = S.validate_spec({"schema": S.SCHEMA, "T_K": 4.2,
+                      "material": {"kind": "inas_gaas_sk", "params": {
+                          "E_b_meV": {"value": 2.3, "unit": "meV", "tag": "V", "source": "Mueller, Nat. Photon. 8, 224 (2014)"},
+                          "tau_bare_ns": {"range": [0.8, 1.3], "unit": "ns", "tag": "E", "source": "class"}}},
+                      "structure": {"kind": "x"}, "drive": {"kind": "x"}, "setup": {"kind": "lens_fibre_det"}})
+mat_issues = [i for i in vs["issues"] if i["path"].startswith("material")]
+check("validate_spec: a material block with tagged leaves has no material issues",
+      not mat_issues and "material.E_b_meV" in vs["resolved"], str(mat_issues))
+
+# 4. build() finite at 4, 40, 300 K ---------------------------------------------------------------
+fin_ok = True
+msg = ""
+for k in KINDS:
+    for T in (4.0, 40.0, 300.0):
+        em = R.get("material", k).build({}, T)
+        nums = [em.E_X_meV, em.lambda_nm, em.n_host, em.gamma0_ns, em.k_nr_ns, em.gamma_star_ns, em.delta_xx_meV,
+                em.gamma_xx_ratio, em.fss_ueV, em.dEdT_meV_K, em.sigma_sd_ueV, em.tau_sd_ns]
+        z = qd_gf.zpl_weight(em.phonon, T)
+        if not (isinstance(em, EmitterModel) and all(math.isfinite(x) for x in nums) and em.gamma0_ns > 0
+                and em.gamma_star_ns >= 0 and 0.0 < z <= 1.0 and isinstance(em.transitions, frozenset)):
+            fin_ok, msg = False, f"{k} @ {T} K"
+check("build() at 4, 40, 300 K returns a finite EmitterModel for every kind", fin_ok, msg)
+check("EmitterModel.inputs maps fields to material.<param> paths",
+      all(v.startswith("material.") for v in mu.build({}, 4.0).inputs.values()) and "E_X_meV" in mu.build({}, 4.0).inputs)
+
+# 5. devlib-fx2a: eta_blink (blinking on-fraction)
+_pb = [R.get("material", k).param("eta_blink") for k in KINDS]
+check("eta_blink: default 1.0 [A], range 0.5-1.0, unit 1, with help citing Uppu 2020 and Wang 2019, on every kind",
+      all(p.default == 1.0 and p.lo == 0.5 and p.hi == 1.0 and p.unit == "1" and p.tag == "A" and "Uppu" in p.help and "Wang" in p.help
+          for p in _pb))
+_a, _b = mu.build({}, 4.0), mu.build({"eta_blink": 0.65}, 4.0)
+check("eta_blink never changes the lifetime-controlling EmitterModel (gamma0, k_nr, gamma*) - it is a brightness factor only",
+      (_a.gamma0_ns, _a.k_nr_ns, _a.gamma_star_ns) == (_b.gamma0_ns, _b.k_nr_ns, _b.gamma_star_ns))
+
+# devlib-r2-fix1b: the repo gamma* is the pure-dephasing LINEWIDTH Gamma_ph = 2 gamma_ph (Scully-Zubairy gamma_ph = coherence
+# decay rate); values are unchanged, only the wording / symbol moved
+_gs = R.get("material", sorted(R.kinds("material"))[0]).param("gamma_star_4K_ns")
+_all_help = " ".join(p_.help for k_ in R.kinds("material") for p_ in R.get("material", k_).params)
+check("gamma*(4 K) is presented as the pure-dephasing linewidth Gamma_ph = 2 gamma_ph (symbol and help), no 'repo gamma' wording left",
+      _gs.tex == r"\Gamma_{\mathrm{ph}}(4\,\mathrm K)" and r"\Gamma_{\mathrm{ph}} = 2\gamma_{\mathrm{ph}}" in _gs.help
+      and "repo gamma" not in _all_help.lower() and "repo convention" not in _all_help.lower())
+
+# devlib-r2-band: literature band offsets (display-only), payload block per material -----------------------------------
+_payload = {m_["kind"]: m_ for m_ in R.registry_payload()["materials"]}
+_bands = {k: _payload[k].get("band") for k in KINDS}
+
+
+def _leaves(b):
+    """Every tagged leaf of a band block: (path, leaf)."""
+    out = [("Eg_barrier", b["Eg_barrier"])]
+    for vn, v in b["variants"].items():
+        out += [(f"{vn}.{q}", leaf) for q, leaf in v.items()]
+    out += [(f"masses.{q}", leaf) for q, leaf in b["masses"].items()]
+    return out
+
+
+check("band block: all 10 materials expose a band block in the registry payload (display-only)",
+      all(isinstance(b, dict) for b in _bands.values()) and set(_bands) == set(KINDS))
+_complete = True
+_why = ""
+for k_, b_ in _bands.items():
+    try:
+        v0 = b_["variants"]["unstr"]
+        ok_ = (all(q in v0 for q in ("Eg_dot", "dE_c", "dE_v")) and b_["dot"] and b_["barrier"] and b_["type"]
+               and set(b_["flags"]) == {"polar", "type2_risk", "hard_wall"} and b_["sources"]
+               and set(b_["masses"]) == {"m_e", "m_h"} and b_["note"])
+    except (KeyError, TypeError):
+        ok_ = False
+    if not ok_:
+        _complete, _why = False, k_
+check("band block: every material has dot / barrier / type / flags / masses / sources and a complete unstrained triple",
+      _complete, _why)
+_lf = [(k_, p_, l_) for k_, b_ in _bands.items() for p_, l_ in _leaves(b_)]
+check("band block: every number carries a tag in V/DR/E/A, a unit and a non-empty `where`",
+      all(l_.get("tag") in ("V", "DR", "E", "A") and l_.get("unit") and str(l_.get("where", "")).strip() and isinstance(l_.get("value"), (int, float))
+          for _, _, l_ in _lf), str([(k_, p_) for k_, p_, l_ in _lf if l_.get("tag") not in ("V", "DR", "E", "A")]))
+check("band block: every [V] value carries a boolean `checked`; checked: true only on [V] leaves and then with a non-empty checked_against; no other tag has `checked`",
+      all((isinstance(l_.get("checked"), bool) if l_["tag"] == "V" else "checked" not in l_)
+          and (l_.get("checked") is not True or str(l_.get("checked_against", "")).strip()) for _, _, l_ in _lf))
+_true = sorted((k_, p_) for k_, p_, l_ in _lf if l_.get("checked") is True)
+check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves, the WZ98 CdSe/ZnSe dE_v, the Madelung ZnSe gap and the Pryor InP/GaInP dE_v and the 4 VM03 leaves (GaN/AlN gaps, AlN/GaN dE_v, InGaN barrier), the Grundmann 1995 in-dot dE_c the Yang 2017 CsPbBr3 gap and the Shan 1994 zb CdSe gap are checked: true; the CsPbBr3 masses stay false (Protesescu SI absent)",
+      _true == sorted([("gaas_algaas_droplet", "unstr.Eg_dot"), ("inas_gaas_sk", "Eg_barrier"), ("inas_gaas_sk", "unstr.Eg_dot"),
+                       ("inas_ingaas_metamorphic_cband", "unstr.Eg_dot"), ("inas_inp_cband", "Eg_barrier"), ("inas_inp_cband", "unstr.Eg_dot"),
+                       ("ingaas_gaas", "Eg_barrier"), ("inp_gainp_red", "unstr.Eg_dot"), ("inp_gainp_red", "unstr.dE_v"), ("cdse_znse", "unstr.dE_v"),
+                       ("cdse_znse", "Eg_barrier"), ("gan_aln", "Eg_barrier"), ("gan_aln", "unstr.Eg_dot"), ("gan_aln", "unstr.dE_v"),
+                       ("ingan_gan", "Eg_barrier"), ("inas_gaas_sk", "indot.dE_c"), ("cspbbr3_colloidal", "unstr.Eg_dot"), ("cdse_znse", "unstr.Eg_dot")])
+      and all(l_["checked"] is False for k_, p_, l_ in _lf if k_ == "cspbbr3_colloidal" and p_.startswith("masses")), str(_true))
+_cd = _bands["cdse_znse"]["variants"]["unstr"]
+_ip = _bands["inp_gainp_red"]["variants"]["strained"]
+check("band block 2026-10-13 corrections: CdSe/ZnSe dE_v 130 [V] / dE_c 924 [DR] (Woerz 1996 and Shan 1994, superseding WZ98 70 / 990), CsPbBr3 E_g 2.342 / barrier 5.842, InP/GaInP strained 1.48 / 437 / 90 (D2, Pryor -45 meV unstrained)",
+      (_cd["dE_v"]["value"], _cd["dE_v"]["tag"], _cd["dE_c"]["value"], _cd["dE_c"]["tag"]) == (130, "V", 924, "DR")
+      and (_bands["cspbbr3_colloidal"]["variants"]["unstr"]["Eg_dot"]["value"], _bands["cspbbr3_colloidal"]["Eg_barrier"]["value"]) == (2.342, 5.842)
+      and (_ip["Eg_dot"]["value"], _ip["dE_c"]["value"], _ip["dE_v"]["value"]) == (1.48, 437, 90))
+_iu = _bands["inp_gainp_red"]["variants"]["unstr"]
+_ind = _bands["inas_gaas_sk"]["variants"]["indot"]
+_yy = _bands["cspbbr3_colloidal"]["variants"]["unstr"]["Eg_dot"]
+check("band block 2026-10-13 second batch: InAs/GaAs in-dot dE_c 450 [V, checked, Grundmann 1995 p. 11977]; in-dot E_g 0.85 and dE_v 220 stay [E] (not in Grundmann or Stier); CsPbBr3 gap 2.342 [V, checked, Yang Table 1]; CsPbBr3 masses 0.15/0.14 unchanged; CdSe/ZnSe dE_v 130 [V, Woerz 1996 direct PES] with WZ98 and Katnani as supporting, E_g,dot 1.766 [V, Shan 1994]; Paul 2017 cap In0.247Ga0.753As [V, checked] with re-derived offsets 1.158 / 654 / 87 (strained 0.507 / 420 / 231)",
+      (_ind["dE_c"]["value"], _ind["dE_c"]["tag"], _ind["dE_c"]["checked"]) == (450, "V", True) and "Grundmann" in _ind["dE_c"]["checked_against"]
+      and (_ind["Eg_dot"]["tag"], _ind["dE_v"]["tag"]) == ("E", "E")
+      and (_yy["value"], _yy["tag"], _yy["checked"]) == (2.342, "V", True) and "Yang" in _yy["checked_against"]
+      and (_bands["cspbbr3_colloidal"]["masses"]["m_e"]["value"], _bands["cspbbr3_colloidal"]["masses"]["m_h"]["value"]) == (0.15, 0.14)
+      and _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["value"] == 130 and "Woerz" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["checked_against"] and "Katnani" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["where"] and "Wei and Zunger" in _bands["cdse_znse"]["variants"]["unstr"]["dE_v"]["where"]
+      and (_bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["value"], _bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["tag"], _bands["cdse_znse"]["variants"]["unstr"]["Eg_dot"]["checked"]) == (1.766, "V", True)
+      and any("Katnani" in x_ for x_ in _bands["cdse_znse"]["sources"])
+      and (_bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["value"], _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["tag"], _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["checked"]) == (0.247, "V", True)
+      and "Paul" in _bands["inas_ingaas_metamorphic_cband"]["barrier_x"]["checked_against"]
+      and _bands["inas_ingaas_metamorphic_cband"]["Eg_barrier"]["value"] == 1.158
+      and tuple(_bands["inas_ingaas_metamorphic_cband"]["variants"]["unstr"][q_]["value"] for q_ in ("dE_c", "dE_v")) == (654, 87)
+      and tuple(_bands["inas_ingaas_metamorphic_cband"]["variants"]["strained"][q_]["value"] for q_ in ("Eg_dot", "dE_c", "dE_v")) == (0.507, 420, 231))
+check("band block D2: InP/GaInP unstrained dE_v -45 meV [V, checked, Pryor 1997 Sec. IV], dE_c 628 [DR], barrier gap stays 2.007; type_2 flag kept; sources note V01 +168 superseded",
+      (_iu["dE_v"]["value"], _iu["dE_v"]["tag"], _iu["dE_v"]["checked"], _iu["dE_c"]["value"]) == (-45, "V", True, 628)
+      and "Pryor" in _iu["dE_v"]["checked_against"] and _bands["inp_gainp_red"]["Eg_barrier"]["value"] == 2.007
+      and _bands["inp_gainp_red"]["flags"]["type2_risk"] is True
+      and any("superseded" in x_ and "+168" in x_ for x_ in _bands["inp_gainp_red"]["sources"]))
+_closed, _bad = 0, []
+for k_, b_ in _bands.items():
+    for vn_, v_ in b_["variants"].items():
+        if all(q in v_ for q in ("Eg_dot", "dE_c", "dE_v")):
+            _closed += 1
+            gap = v_["Eg_dot"]["value"] * 1000.0 + v_["dE_c"]["value"] + v_["dE_v"]["value"]      # meV
+            diff = round(abs(gap - b_["Eg_barrier"]["value"] * 1000.0), 3)                         # rounded: float hygiene only
+            if diff > 5.0:
+                _bad.append((k_, vn_, diff))
+check(f"band block: dE_c + dE_v + E_g,dot = E_g,barrier within 5 meV for each of the {_closed} closed variants", _closed == 16 and not _bad, str(_bad))
+check("band block: flags follow the answer (polar: gan_aln, ingan_gan; type2_risk: inp_gainp_red; hard_wall: cspbbr3_colloidal)",
+      {k_ for k_, b_ in _bands.items() if b_["flags"]["polar"]} == {"gan_aln", "ingan_gan"}
+      and {k_ for k_, b_ in _bands.items() if b_["flags"]["type2_risk"]} == {"inp_gainp_red"}
+      and {k_ for k_, b_ in _bands.items() if b_["flags"]["hard_wall"]} == {"cspbbr3_colloidal"})
+check("band block: transcription anchors of the answer (GaAs/AlGaAs 1.519 + 0.279 + 0.175 = 1.973; InAs/GaAs in-dot 0.85 / 450 / 220; GaN/AlN dE_v 850 [V], VM03 Table IV)",
+      _bands["gaas_algaas_droplet"]["variants"]["unstr"]["dE_c"]["value"] == 279
+      and _bands["inas_gaas_sk"]["variants"]["indot"]["Eg_dot"]["value"] == 0.85
+      and (_bands["inas_gaas_sk"]["variants"]["indot"]["dE_c"]["value"], _bands["inas_gaas_sk"]["variants"]["indot"]["dE_v"]["value"]) == (450, 220)
+      and _bands["gan_aln"]["variants"]["unstr"]["dE_v"]["tag"] == "V")
+_ga = _bands["gan_aln"]
+check("band block 2026-10-13 corrections (user PDFs): GaN/AlN dE_v 850 [V] (VM03 Table IV, was 800), dE_c 1890 [DR] (was 1940), gaps 3.51 / 6.25, ZnSe 2.82, InGaN 2.74 / 670 / 100 unchanged",
+      (_ga["variants"]["unstr"]["dE_v"]["value"], _ga["variants"]["unstr"]["dE_c"]["value"], _ga["variants"]["unstr"]["Eg_dot"]["value"], _ga["Eg_barrier"]["value"]) == (850, 1890, 3.51, 6.25)
+      and _bands["cdse_znse"]["Eg_barrier"]["value"] == 2.82
+      and tuple(_bands["ingan_gan"]["variants"]["unstr"][q]["value"] for q in ("Eg_dot", "dE_c", "dE_v")) == (2.74, 670, 100))
+
+n, total = sum(RESULTS), len(RESULTS)
+print(f"{n}/{total} compose materials checks passed")
+sys.exit(0 if n == total else 1)

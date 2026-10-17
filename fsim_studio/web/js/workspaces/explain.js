@@ -8,6 +8,7 @@
 // No physics in this file: sliders send inputs, the backend returns every number.
 
 import { h, clear, debounce } from "../ui/dom.js";
+import { modelNames } from "../ui/labels.js";
 import { icon } from "../ui/icons.js";
 import { tagChip } from "../ui/tagChip.js";
 import { segmented, switchToggle, dataTable, skeleton, errorState } from "../ui/controls.js";
@@ -137,8 +138,8 @@ function spectral(body) {
   const sT = slider({ id: "xs-T", label: "Temperature T", min: 4, max: 320, step: 1, value: st.T, unit: "K", onInput: (v) => { st.T = v; go(); } });
   const sW = slider({ id: "xs-w", label: "Filter width w", min: 0.1, max: 15, step: 0.1, value: st.w, unit: "meV", onInput: (v) => { st.w = v; go(); } });
   const sDx = slider({ id: "xs-dx", label: "X offset from window centre dx", min: -6, max: 6, step: 0.1, value: st.dx, unit: "meV", onInput: (v) => { st.dx = v; go(); } });
-  const sMu = slider({ id: "xs-mu", label: "Mean loading μ (F1b)", min: 0, max: 5, step: 0.05, value: 0.33, unit: "", onInput: (v) => { st.mu = v; go(); } });
-  const pubSw = switchToggle({ label: "published window at this T (card g2_vs_T dataset)", checked: true, onChange: (v) => { st.pub = v; syncPub(); go(); } });
+  const sMu = slider({ id: "xs-mu", label: "Mean loading μ", min: 0, max: 5, step: 0.05, value: 0.33, unit: "", onInput: (v) => { st.mu = v; go(); } });
+  const pubSw = switchToggle({ label: "published window at this T (from the card's g²(T) data)", checked: true, onChange: (v) => { st.pub = v; syncPub(); go(); } });
   const elBox = h("div.xp-el", { hidden: true });
   const dg = h("input.fr-num", { type: "number", min: 0, max: 20, step: 0.5, value: st.dg_inj, "aria-label": "dGamma_inj (meV)", on: { change: (e) => { st.dg_inj = Number(e.target.value); go(); } } });
   const ir = h("input.fr-num", { type: "number", min: 0, max: 20, step: 0.5, value: st.I_ratio, "aria-label": "I / I_ref", on: { change: (e) => { st.I_ratio = Number(e.target.value); go(); } } });
@@ -176,15 +177,15 @@ function spectral(body) {
     status.textContent = "";
     const t = r.tags || {};
     ro.gamma.update({ value: r.gamma, unit: "meV", tag: t.linewidth, qualifier: r.mode, caption: `PL ${fmt(r.gamma_pl)} · EL ${fmt(r.gamma_el)} meV`, markChange: false });
-    ro.ratio.update({ value: r.gamma_ratio, unit: "×", tag: t.linewidth, caption: r.mode === "EL" ? "injection broadening, F5′ (loading.gamma_eff)" : "PL: no injection broadening", markChange: false });
-    ro.eps.update({ value: r.eps, tag: t.chain, caption: "F1, spectral.epsilon", markChange: false });
-    ro.g2dot.update({ value: r.g2_dot, tag: t.chain, caption: r.g2_dot_formula, markChange: false });
+    ro.ratio.update({ value: r.gamma_ratio, unit: "×", tag: t.linewidth, caption: r.mode === "EL" ? "injection broadening of the electroluminescence line" : "PL: no injection broadening", markChange: false });
+    ro.eps.update({ value: r.eps, tag: t.chain, caption: "XX leakage from the window overlap", markChange: false });
+    ro.g2dot.update({ value: r.g2_dot, tag: t.chain, caption: r.g2_dot_formula.startsWith("F1b") ? "g²(0) from the loading-corrected closed form of μ and ε" : "g²(0) = ε at μ = 0", markChange: false });
     ro.tx.update({ value: r.t_x, tag: t.chain, caption: "X transmission through the window", markChange: false });
     ro.window.update({ value: r.w, unit: "meV", tag: t.window, caption: `dx ${fmt(r.dx)} meV · ${r.published_window ? "published window, interpolated from the card" : "manual window [A]"}`, markChange: false });
     chart.setTitle("Spectral window: X and XX through the filter", `T = ${fmt(r.T)} K · ${r.mode} · Δ_XX ${fmt(r.delta_xx)} meV · μ ${fmt(r.mu)}`);
     chart.setTag(t.chain);
     chart.render();
-    clear(src).append(icon("info", { size: 14 }), ` ${r.params_source}. Calls: ${r.calls.join(", ")}.`);
+    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Model: ${modelNames(r.calls)}.`);
   }, 70);
   go();
 }
@@ -200,7 +201,7 @@ function cascade(body) {
   }, c.replace(/-design$/, ""))));
   const sT = slider({ id: "xc-T", label: "Temperature for the rates", min: 4, max: 320, step: 1, value: st.T, unit: "K", onInput: (v) => { st.T = v; go(); } });
   const formula = h("div.formula", { role: "math", "aria-live": "polite" });
-  const { el: roEl, ro } = readoutGroup([["g2", "g²(0)"], ["rho", "ρ (signal fraction)"], ["eps", "ε (XX leakage)"], ["g2dot", "g²₀ = F1b(μ, ε)"], ["p1", "P₁ (one exciton)"], ["p2", "P₂ (two or more)"]]);
+  const { el: roEl, ro } = readoutGroup([["g2", "g²(0)"], ["rho", "ρ (signal fraction)"], ["eps", "ε (XX leakage)"], ["g2dot", "g²₀(μ, ε), loading-corrected"], ["p1", "P₁ (one exciton)"], ["p2", "P₂ (two or more)"]]);
   const src = h("p.xp-src");
   body.append(h("div.xp-split",
     h("div.xp-main",
@@ -209,7 +210,7 @@ function cascade(body) {
         slot),
       sceneNote),
     h("aside.xp-side.panel",
-      h("header.panel-head", h("h2.engrave", "Closed form · V-a card"), h("span.panel-note", "integrator.g2_of_T")),
+      h("header.panel-head", h("h2.engrave", "Closed form · V-a card"), h("span.panel-note", "closed-form integration")),
       h("div.xp-ctls", sT.row),
       formula, roEl, src)));
 
@@ -234,14 +235,14 @@ function cascade(body) {
     clear(formula).append(
       h("p.f-line", h("span.f-sym", "g²(0)"), " = 1 − ", h("span.f-sym", "ρ²"), " (1 − ", h("span.f-sym", "g²₀"), ")"),
       h("p.f-line.f-num", "= 1 − ", h("span.f-v", fmt(r.rho2)), " × (1 − ", h("span.f-v", fmt(r.g2_dot)), ") = ", h("span.f-res", fmt(r.g2)), tagChip(t.chain, { title: "tag chain of the V-a fit" })),
-      h("p.f-note", `At μ → 0 the cascade gives g²₀ = ε, so g²(0) = 1 − ρ²(1 − ε). Here μ = ${fmt(r.mu)} (F1b).`));
+      h("p.f-note", `At μ → 0 the cascade gives g²₀ = ε, so g²(0) = 1 − ρ²(1 − ε). Here μ = ${fmt(r.mu)}.`));
     ro.g2.update({ value: r.g2, tag: t.chain, caption: `at T = ${fmt(r.T)} K`, markChange: false });
     ro.rho.update({ value: r.rho, tag: t.chain, caption: `ρ² = ${fmt(r.rho2)}`, markChange: false });
     ro.eps.update({ value: r.eps, tag: t.chain, caption: `window w ${fmt(r.w)}, dx ${fmt(r.dx)} meV (published)`, markChange: false });
     ro.g2dot.update({ value: r.g2_dot, tag: t.chain, caption: `μ = ${fmt(r.mu)}`, markChange: false });
     ro.p1.update({ value: r.P1, tag: t.chain, caption: "cap-2 Poisson loading", markChange: false });
-    ro.p2.update({ value: r.P2, tag: t.chain, caption: "loading.loading_probs", markChange: false });
-    clear(src).append(icon("info", { size: 14 }), ` ${r.params_source}. Calls: ${r.calls.join(", ")}.`);
+    ro.p2.update({ value: r.P2, tag: t.chain, caption: "two-photon loading probability", markChange: false });
+    clear(src).append(icon("info", { size: 14 }), ` ${String(r.params_source).replace(/ g2_vs_T$/, " (its g²(T) data)")}. Model: ${modelNames(r.calls)}.`);
   }, 70);
   loadScene();
   go();
@@ -250,7 +251,7 @@ function cascade(body) {
 // ================================================================ band
 function band(body) {
   const grid = h("div.xp-bands");
-  body.append(grid, h("p.xp-cap", "Band edges and levels come from fsim_core.nitride_levels and dot_levels. The nitride panel shows the built-in polarization field tilting the band, pulling the electron and hole apart (|ψ|² overlap is the readout). dot_levels returns no wavefunctions for InP, so none are drawn."));
+  body.append(grid, h("p.xp-cap", "Band edges and levels come from the nitride and dot level solvers. The nitride panel shows the built-in polarization field tilting the band, pulling the electron and hole apart (|ψ|² overlap is the readout). The level solver returns no wavefunctions for InP, so none are drawn."));
   for (const b of BAND_CARDS) {
     const slot = h("div.xp-viewport.is-band", { role: "region", "aria-label": `Band profile, ${b.label}` });
     const notes = h("ul.lat-notes");
@@ -279,7 +280,7 @@ async function vaFit(body) {
   });
   X.charts.va = chart;
   const { el: roEl, ro } = readoutGroup([["tc", "T_c (fit)"], ["cost", "Fit cost"]]);
-  const passed = sro({ label: "passed ±0.03 (every point)", value: va.passed, tag, note: "fit_params.json passed_pm0.03", caption: "fit_params.json passed_pm0.03", size: "lg" });
+  const passed = sro({ label: "passed ±0.03 (every point)", value: va.passed, tag, note: "pass flag stored in the fit bundle", caption: "stored in the fit bundle", size: "lg" });
   clear(body).append(h("div.xp-split",
     h("div.xp-main",
       h("p.calib-label", icon("warn", { size: 16 }), h("strong", va.label), " · digitized data · no held-out (P) prediction exists yet · the 78 K point is an upper bound (▽)"),

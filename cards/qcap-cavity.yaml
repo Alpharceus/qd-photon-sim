@@ -52,3 +52,19 @@ params:
     unit: "1"
     tag: A
     source: "cavity collection/rate boost on the signal (Chatzarakis-class ~10x observed)"
+
+# --- display-only 3D scene (Library model; no solver reads this block; tags V/DR/E/A + where on every number) ---
+scene:
+  material:
+    kind: inp_gainp_red
+    params:
+      lambda_nm: {value: 659.5, unit: nm, tag: A, where: "card params.E_X0 1.88 eV (tag A, design assumption); lambda = 1239.842 / 1.88 eV = 659.5 nm"}
+  structure:
+    kind: generic_cavity
+    params:
+      F_P: {range: [5.0, 20.0], unit: "1", tag: A, where: "card params.F_P range [5, 20] (tag A)"}
+      kappa_ueV: {range: [300.0, 3000.0], unit: ueV, tag: A, where: "card params.kappa range [0.3, 3.0] meV (tag A) = [300, 3000] ueV"}
+  drive:
+    kind: electrical_cw
+  note: >
+    Closest registry class: generic (lumped) cavity. The card is a requirement envelope for a cavity that does not exist yet (kappa, F_P from MEEP/COMSOL later), so there is no geometry to draw: the scene is the lumped-cavity schematic with the card's F_P and kappa ranges (central values shown). Mirror gap and plate size are NOT model quantities.

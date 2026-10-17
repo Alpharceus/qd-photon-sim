@@ -54,7 +54,8 @@ def main():
         assert code == 200, (url, code, d)
         return d
 
-    fit = json.loads((ROOT / "out/phase0/fit_params.json").read_text(encoding="utf-8"))["params"]
+    from fsim_core.fit_bundle import load_fit_params
+    fit = load_fit_params()["params"]
     try:
         # ================================================================ controls / tags
         code, ctl = get("/api/explore/a/controls")
@@ -155,7 +156,7 @@ def main():
               dS["stiff"] is True and len(dS["curves"]["tau"]) <= ea.WIRE_MAX and dS["decimated"] is True and 0.0 in dS["curves"]["tau"])
         # tags, caveat, gates, validation
         check("cw_g2: pinned caveat text is exact", d["caveat"] == ea.CAVEAT_CW and "not valid for resonant (Rabi) drive" in d["caveat"]
-              and "g2_raw is what a 500 ps HBT measures" in d["caveat"])
+              and "raw g2 is what a 500 ps HBT measures" in d["caveat"] and ".py" not in d["caveat"])
         check("cw_g2: every readout has a tag (V/DR/E/A)", all(d["tags"][k] in ("V", "DR", "E", "A") for k in ("g2_dot0", "g2_meas0", "g2_raw0", "tau_dip", "A_dip", "g2_intrinsic_from_raw")))
         check("cw_g2: the 0.5 line is the /api/gates value, not typed", d["gate_g2"]["value"] == campaigns.gates()["g2_ceiling"]["value"])
         codes = [get(u)[0] for u in ("/api/explore/cw_g2?r=1000", "/api/explore/cw_g2?irf_shape=box", "/api/explore/cw_g2?eps=-0.1", "/api/explore/cw_g2?T=1", "/api/explore/cw_g2?r=abc")]
@@ -220,7 +221,7 @@ def main():
         ptT = pc.pulse_g2(10.0, 1.0, 2.0, kX, kXX, 1.0, 0.1, 0.1, 12.4, 1.0, split=True, adjacent=True)
         check("pulse_counting: T = 230 K point equals direct pulse_g2 with the same escape rates", pT["point"]["g2"] == ptT["g2"] and pT["k_X"] == kX)
         check("pulse_counting: pinned caveat text is exact and the background note is present",
-              p["caveat"] == ea.CAVEAT_PULSED and "g2 is normalised to the long-delay peak" in p["caveat"] and "rho is a device.py addition" in p["caveat_extra"])
+              p["caveat"] == ea.CAVEAT_PULSED and "g2 is normalised to the long-delay peak" in p["caveat"] and "rho is a device-level addition" in p["caveat_extra"] and ".py" not in p["caveat"] + p["caveat_extra"])
         check("pulse_counting: gate line is the /api/gates value", p["gate_g2"]["value"] == campaigns.gates()["g2_ceiling"]["value"])
         codes = [get(u)[0] for u in ("/api/explore/pulse_counting?period=0.05&tau_on=0.1", "/api/explore/pulse_counting?gate=maybe",
                                      "/api/explore/pulse_counting?tau_on=5", "/api/explore/pulse_counting?eta_load=2")]

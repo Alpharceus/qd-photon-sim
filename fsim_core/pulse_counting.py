@@ -243,9 +243,82 @@ def _propagate_period(M_on, M_off, J, p0, tau_on_ns, tau_dark_ns, gate_ns=None):
     return v[0:3], v[3:6], v[6:9]
 
 
+def _propagate_profile(Ms, dts, M_off, J, p0, tau_dark_ns, gate_ns):
+    """_propagate_period for a piecewise-constant shaped pump window (devlib-p10e): steps (M_k, dt_k) then the
+    dark window (M_off, tau_dark_ns); counting operator J active for 0 <= t < gate_ns from the window start
+    (None = the whole period). Returns (p_period, m1, m2)."""
+    period = float(sum(dts)) + tau_dark_ns
+    gate = period if gate_ns is None else min(gate_ns, period)
+    Z = np.zeros((3, 3))
+    v = np.zeros(9)
+    v[0:3] = p0
+    cache = {}
+    t = 0.0
+    for M, dt in list(zip(Ms, dts)) + [(M_off, tau_dark_ns)]:
+        n_count = min(max(gate - t, 0.0), dt)
+        for Jw, d in ((J, n_count), (Z, dt - n_count)):
+            if d > 0:
+                key = (id(M), id(Jw), d)
+                if key not in cache:
+                    cache[key] = expm(_augmented(M, Jw) * d)
+                v = cache[key] @ v
+        t += dt
+    return v[0:3], v[3:6], v[6:9]
+
+
+def _pulse_g2_profile(r_profile, gamma_X_ns, gamma_XX_ns, t_X, t_XX, tau_dark_ns, k_dark, pump_ratio, split,
+                      gate_ns, adjacent):
+    steps = [(float(dt), float(r), float(kx), float(kxx)) for dt, r, kx, kxx in r_profile]
+    dts = [s[0] for s in steps]
+    cache = {}
+    Ms = []
+    for dt, r, kx, kxx in steps:
+        key = (r, kx, kxx)
+        if key not in cache:
+            cache[key] = cw_g2.generator(r, gamma_X_ns, gamma_XX_ns, kx, kxx, pump_ratio)
+        Ms.append(cache[key])
+    M_off = cw_g2.generator(0.0, gamma_X_ns, gamma_XX_ns, k_dark[0], k_dark[1], pump_ratio)
+    Phi = np.eye(3)
+    ecache = {}
+    for M, dt in zip(Ms, dts):
+        key = (id(M), dt)
+        if key not in ecache:
+            ecache[key] = expm(M * dt)
+        Phi = ecache[key] @ Phi
+    Phi = expm(M_off * tau_dark_ns) @ Phi
+    p_ss = np.array([1.0, 0.0, 0.0])
+    converged = False
+    for _ in range(_MAX_ITER):
+        p_next = Phi @ p_ss
+        if np.max(np.abs(p_next - p_ss)) < _TOL:
+            p_ss = p_next
+            converged = True
+            break
+        p_ss = p_next
+    J = np.zeros((3, 3))
+    J[0, 1] = t_X * gamma_X_ns
+    J[1, 2] = t_XX * gamma_XX_ns
+    p_period, m1, m2 = _propagate_profile(Ms, dts, M_off, J, p_ss, tau_dark_ns, gate_ns)
+    mean_counts = float(np.sum(m1))
+    if mean_counts < 1e-300:
+        result = {"g2": float("nan"), "mean_counts": mean_counts, "p_period": p_period, "converged": False}
+    else:
+        result = {"g2": float(np.sum(m2) / mean_counts**2), "mean_counts": mean_counts,
+                  "p_period": p_period, "converged": bool(converged)}
+    if split:
+        J_X = np.zeros((3, 3)); J_X[0, 1] = J[0, 1]
+        _, m1_x, _ = _propagate_profile(Ms, dts, M_off, J_X, p_ss, tau_dark_ns, gate_ns)
+        result["mean_counts_x"] = float(np.sum(m1_x))
+        result["mean_counts_xx"] = mean_counts - result["mean_counts_x"]
+    if adjacent:
+        _, m1_next, _ = _propagate_profile(Ms, dts, M_off, J, m1, tau_dark_ns, gate_ns)
+        result.update(_adjacent_fields(float(np.sum(m2)), mean_counts, float(np.sum(m1_next))))
+    return result
+
+
 def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
             tau_on_ns, tau_dark_ns, pump_ratio=1.0, split=False,
-            gate_ns=None, adjacent=False) -> dict:
+            gate_ns=None, adjacent=False, r_profile=None, k_dark=None) -> dict:
     """Per-pulse-period g2 and mean detected counts of the filtered X/XX
     cascade under a rectangular pump of duration tau_on_ns at rate r_ns,
     followed by a dark window of duration tau_dark_ns (see module
@@ -266,7 +339,18 @@ def pulse_g2(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, t_X, t_XX,
     <m_n m_(n+1)>/<m>^2 and "g2_adj" = <m(m-1)>/<m_n m_(n+1)> [DR]; the
     default (adjacent=False) returns exactly the pre-existing keys and
     values. Valid for incoherent pumping only (module docstring, "Validity
-    guard"); r_ns is not a coherent Rabi drive."""
+    guard"); r_ns is not a coherent Rabi drive.
+
+    r_profile (devlib-p10e, default None = the rectangular path, bit-identical): a SHAPED pump window as
+    piecewise-constant steps [(dt_ns, r_k, k_X_k, k_XX_k), ...] (r_k = the cell-averaged pump rate of r(t),
+    so mu = sum r_k dt_k is the operating point; k_*_k = photonless escape during the step, e.g. the on-window
+    bias state). It replaces (r_ns, k_X, k_XX, tau_on_ns) (ignored). k_dark = (k_X, k_XX) is the escape in the
+    dark window that follows (default: the k_X, k_XX arguments); tau_dark_ns is the dark window AFTER the
+    profile. The counting gate is measured from the start of the profile."""
+    if r_profile is not None:
+        return _pulse_g2_profile(r_profile, gamma_X_ns, gamma_XX_ns, t_X, t_XX, tau_dark_ns,
+                                 (k_X, k_XX) if k_dark is None else tuple(k_dark), pump_ratio, split,
+                                 gate_ns, adjacent)
     M_on = cw_g2.generator(r_ns, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     M_off = cw_g2.generator(0.0, gamma_X_ns, gamma_XX_ns, k_X, k_XX, pump_ratio)
     p_ss, converged = _periodic_steady_state(M_on, M_off, tau_on_ns, tau_dark_ns)

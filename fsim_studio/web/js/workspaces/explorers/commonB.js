@@ -6,6 +6,7 @@ import { icon } from "../../ui/icons.js";
 import { tagChip } from "../../ui/tagChip.js";
 import { createReadout } from "../../ui/readout.js";
 import { fmt } from "../../ui/format.js";
+import { modelNames } from "../../ui/labels.js";
 
 /** Slider with a tag chip and an optional log mapping. spec: {id,label,min,max,step?,default,unit?,tag,note?,scale?} */
 export function ctl(prefix, spec, onInput) {
@@ -82,7 +83,7 @@ export function jobResult(api, resp, hooks) {
 }
 
 export function sourceLine(calls, extra = "") {
-  return h("p.xp-src", icon("info", { size: 14 }), ` ${extra}${extra ? " " : ""}Calls: ${(calls || []).join(", ")}.`);
+  return h("p.xp-src", { dataset: { calls: (calls || []).join(" ") } }, icon("info", { size: 14 }), ` ${extra}${extra ? " " : ""}Model: ${modelNames(calls)}.`);
 }
 
 /** Run fn after ms of quiet, dropping superseded calls. Returns {run(), cancel()}. */

@@ -81,6 +81,10 @@ class Card:
     params: dict[str, Param]
     datasets: dict[str, DataSet] = field(default_factory=dict)
     path: Optional[Path] = None
+    # Optional display-only 3D scene block (material/structure/drive kinds + tagged geometry numbers) read by
+    # fsim_studio.scene_compose.describe_card. No solver reads it; excluded from equality so a card that gains a scene
+    # block still equals the same card without one.
+    scene: Optional[dict] = field(default=None, compare=False)
 
     def __getitem__(self, key: str) -> Param:
         return self.params[key]
@@ -125,7 +129,11 @@ def load_card(path: str | Path) -> Card:
             name=n, tag=Tag[raw["tag"]], source=str(src),
             columns=cols, rows=rows,
         )
+    scene = doc.get("scene")
+    if scene is not None and not isinstance(scene, dict):
+        raise ValueError(f"{path.name}: scene must be a mapping (material/structure/drive/geometry/note), "
+                         f"got {type(scene).__name__}")
     return Card(
         name=doc["meta"]["name"], meta=doc["meta"],
-        params=params, datasets=datasets, path=path,
+        params=params, datasets=datasets, path=path, scene=scene,
     )

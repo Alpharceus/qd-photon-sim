@@ -1,0 +1,78 @@
+# Wijitpatima et al., arXiv:2406.08057v1 (2024): electrically contacted CBG (eCBG2, mazy ridge) with a deterministically placed
+# InGaAs QD (X- line at 912.44 nm), non-resonant 865 nm ps excitation at 80 MHz, 4 K, bias 1.3 V. Optical drive only; the
+# p-i-n bias is charge control and Stark tuning and is not modelled. Brightness (PEE at saturation) is in wijitpatima2024_pee.
+meta:
+  id: wijitpatima2024
+  role: paper-device
+  cite: "S. Wijitpatima, N. Auler, P. Mudi, T. Funk, A. Barua, B. Shrestha, I. Limame, S. Rodt, D. Reuter, S. Reitzenstein, Bright electrically contacted circular Bragg grating resonators with deterministically integrated quantum dots, arXiv:2406.08057v1 (12 Jun 2024)"
+  doi: null
+  arxiv: "2406.08057"
+  extraction: .workers/devlib/papers/wijitpatima2024.yaml
+  read_level: V-full
+  summary: "InGaAs X- (912.44 nm) in an electrically contacted CBG (no Purcell), 865 nm ps pump at 4 uW (70 % of saturation), 4 K: tau 0.78-0.89 ns, g2 1.2 %, HOM raw 25.8 % (4 ns), PEE 30.4 % at saturation (sibling card)"
+  notes:
+    - "Structure: the CBG is optimised for extraction without Purcell gain (lifetime 'non-enhanced', text p.21). Carded as cbg with F_P 0 and table_mode total (engine FX3a): the table is the total first-lens efficiency of all emission and F_P only sets the rate. The table entry is the paper's FEM PEE of the fabricated geometry (Table 3, 31.93 % for eCBG2). (Before FX3a it was mesa_reflector because cbg capped extraction at F_P/(1+F_P).)"
+    - "Pump: 4 uW corresponds to 70 percent of the saturation emission intensity (text p.20); with the engine brightness 1 - exp(-P/P_sat) this is pump = -ln(0.3) = 1.204 (DR). Capture time, pulse window and refilling of the 865 nm wetting-layer excitation are not stated and stay at class defaults, so the model g2 and lifetime are unconstrained by them."
+    - "Lifetime: 0.78 ns at 1 uW (20 percent of saturation, least re-excitation) is taken as the bare lifetime [DR]; the 0.89 ns at 4 uW is the ledger item and tests whether re-excitation lengthens the decay."
+    - "HOM: the paper gives a resolution-limited linewidth (16.6 ueV, an upper bound) but no coherence time, and the raw visibility 25.8 percent (4 ns separation) is set by spectral diffusion from etched-surface charge noise. gamma* is therefore fitted to V_raw (class C). The fitted gamma* is checked against the linewidth bound: hbar (Gamma + gamma*) <= 16.6 ueV requires gamma* <= 23.9 /ns."
+    - "The post-selected visibility (92.8 percent) and post-selected g2 (0.5 percent) use a narrower coincidence window than the model histograms and are kept in reported only."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.19-20 and Methods (closed-cycle cryostat, 4 K)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 912.44, unit: nm, tag: V, where: "text p.18-19: X- emission line at 912.44 nm of eCBG2 (below the class lower bound 920 nm, a UI warning only)"}
+      tau_bare_ns: {value: 0.78, unit: ns, tag: DR, where: "text p.20 / Fig 6a: 0.78 ns at 1 uW (20 percent of saturation), the lowest-power lifetime; the CBG gives no Purcell enhancement (p.21 'non-enhanced recombination lifetime')"}
+      charge_state: {value: "X-", unit: "", tag: V, where: "text p.18-19: X- (912.44 nm) analysed"}
+      gamma_star_4K_ns: {value: 2.51, unit: "1/ns", tag: A, source: "fitted to the raw HOM visibility V_raw (item hom_V_raw, class C); linewidth only bounded (resolution-limited 16.6 ueV)"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 0.0, unit: "1", tag: DR, where: "text p.21: 'non-enhanced recombination lifetime' (the CBG gives no Purcell gain); additional rate ratio 0"}
+      table_mode: {value: total, unit: enum, tag: E, source: "the paper PEE is the total extraction of all emission (grating far-field redistribution), FX3a table_mode total"}
+      eta_table: {value: "0.81:0.3193", unit: "", tag: V, where: "Table 3 (p.16): simulated PEE 31.93 percent of eCBG2 at NA 0.81, two perpendicular in-plane dipoles at 912.7 nm"}
+  drive:
+    kind: above_band
+    params:
+      pump: {value: 1.204, unit: "1", tag: DR, where: "text p.20: 4 uW = about 70 percent of the saturation emission intensity; pump = -ln(1 - 0.7) for brightness 1 - exp(-P/P_sat)"}
+      f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.19 / Methods (pulsed 80 MHz ps-mode Ti:sapphire)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.81, unit: "1", tag: V, where: "Methods p.23: cold aspheric objective NA 0.81"}
+      eta_pol: {value: 1.0, unit: "1", tag: A, source: "the HOM/HBT path polarisation handling is not stated for the PEE; the PEE is quoted as total, so no extra loss is applied"}
+      eta_optics: {value: 0.073, unit: "1", tag: DR, where: "text p.16: uPL setup efficiency (7.3 +/- 0.8) percent measured with a cw laser at the QD wavelength"}
+      eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside the 7.3 percent setup efficiency"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "inside the 7.3 percent setup efficiency"}
+reported:
+  - {id: tau_1uW, observable: tau_ps, value: 780.0, err: 10.0, tag: V, where: "text p.20 / Fig 6a: 0.78 ns at 1 uW (fit error < 0.01 ns); used as the input tau_bare_ns, record only"}
+  - {id: tau_2uW, observable: tau_ps, value: 830.0, err: 10.0, tag: V, where: "text p.20 / Fig 6a: 0.83 ns at 2 uW (40 percent of saturation); other pump level, record only"}
+  - {id: tau_4uW, observable: tau_ps, value: 890.0, err: 10.0, tag: V, where: "text p.20 / Fig 6a: 0.89 ns at 4 uW (70 percent of saturation)"}
+  - {id: g2_4uW, observable: g2_0, convention: raw, value: 0.012, err: 0.002, tag: V, where: "text p.20 / Fig 6b: g2(0) (1.2 +/- 0.2) percent from the area under the fitted profile, 4 uW, 1.3 V"}
+  - {id: g2_ps_4uW, observable: g2_0, convention: raw, value: 0.005, err: 0.003, tag: V, where: "text p.20: post-selected g2(0) (0.5 +/- 0.3) percent; narrower window than the model histogram, record only"}
+  - {id: hom_V_raw, observable: hom_V, convention: raw, value: 0.258, err: 0.021, tag: V, where: "text p.21 / Fig 7: non-post-selected HOM visibility (25.8 +/- 2.1) percent, pulses 4 ns apart, non-resonant excitation"}
+  - {id: hom_V_post, observable: hom_V, convention: raw, value: 0.928, err: 0.048, tag: V, where: "text p.21 / Fig 7 and abstract: post-selected visibility (92.8 +/- 4.8) percent; time-gated, record only"}
+series: []
+reproduce:
+  - item: tau_4uW
+    class: M
+    tol: {k_sigma: 2, abs: 0.03}
+    tol_reason: "paper fit error is below 0.01 ns; 0.03 ns (4 percent) is the model-level lifetime tolerance, since the 0.78 ns input and this value differ by only 14 percent and the test is whether re-excitation lengthens the decay by that much"
+    expect: fail
+    reason: "model 780 ps (the bare lifetime, no pump dependence) vs 890 ps: the above_band path has no mechanism that lengthens the measured decay with power at the default capture time and zero refilling (p_refill, tau_cap unstated, not entered); the paper attributes the 0.78 -> 0.89 ns lengthening to re-excitation and charge dynamics. Model gap plus missing inputs."
+  - item: g2_4uW
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "fit-area value 1.2 +/- 0.2 percent; 0.005 absolute (40 percent of the value) as the model-level purity tolerance, capture time and refilling of the non-resonant pump being unstated inputs"
+    expect: fail
+    reason: "model 6e-4 vs 0.012: with p_refill 0 and the class-default capture time the non-resonant path gives almost no re-excitation, whereas the paper g2 comes from carrier recapture (p.20); the recapture parameters are unstated inputs, not entered."
+  - item: hom_V_raw
+    class: C
+    tol: {abs: 0.01}
+    tol_reason: "gamma* is fitted to this raw visibility (no coherence time in the paper); agreement within 0.01 is the fit residual, not a test"
+    expect: pass
+fits:
+  - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_raw]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total works for F_P 0, so mesa_reflector workaround replaced by cbg F_P 0 + the same FEM table"}

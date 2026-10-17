@@ -1,0 +1,72 @@
+# Madsen et al., Phys. Rev. B 90, 155303 (2014): InGaAs QD1 coupled to the low-Q (Q ~300) M3 mode of an L3 photonic-crystal cavity.
+# Numbers from .workers/devlib/papers/madsen2014.yaml and the raw text (page = arXiv v2 page). Model not tuned.
+meta:
+  id: madsen2014
+  role: paper-device
+  cite: "K. H. Madsen, S. Ates, J. Liu, A. Javadi, S. M. Albrecht, I. Yeo, S. Stobbe, P. Lodahl, Efficient out-coupling of high-purity single photons from a coherent quantum dot in a photonic-crystal cavity, Phys. Rev. B 90, 155303 (2014)"
+  arxiv: "1402.6967"
+  extraction: ".workers/devlib/papers/madsen2014.yaml"
+  read_level: V-full
+  summary: "InGaAs QD1 in an L3 photonic-crystal cavity (low-Q M3 mode, Q ~300), ~5 K, 3 ps pulses at 76 MHz via the M6 mode (phonon-mediated), NA 0.6: first-lens efficiency 44.3 +/- 2.1 % (relative to a bulk QD), g2(0) 4 +/- 5 % at 2.1 P_sat, T1 1.61 ns"
+  notes:
+    - "DRIVE: the paper excites through the M6 cavity mode by two-LO-phonon (and LA-phonon) absorption, which the registry has no kind for; the above_band drive (incoherent capture, p_X = 1 - exp(-P/P_sat)) is used as the closest incoherent-pulse proxy [A]. The pump P/P_sat = 2.1 is the paper's g2 point (Fig 1e,f)."
+    - "EFFICIENCY IS RELATIVE: eta_X = 44.3 % comes from Eq. 1, C_sat = eta_setup eta alpha eps Gamma_l / 2, with the QD in the PC divided by a bulk QD (56-fold count rate) assuming alpha eps equal in both. The paper itself bounds the true value of the other dot QD2 to 19.2-23.4 % (direct counts), a factor 2.9 lower; the 44.3 % is therefore a loose number (eps_X 59-72 %, alpha_X <= 1.092 from Appendices B and C)."
+    - "HOM NOT IN THE LEDGER: V_LO = 13 +/- 2 % (5 K, 0.88 P_sat) and V_LA = 19 +/- 4 % (4.8 K, 0.10 P_sat) are the visibilities from which the paper extracts hbar gamma_dp = 1.33 / 0.85 ueV (Table II, T*2 = 0.49 / 0.77 ns). Feeding those pure-dephasing rates into the model and then comparing V would be a transcription of the same relation V = gamma / (gamma + 2 gamma_dp) (p.8), so the dephasing is left at the InGaAs class value and V is reported only."
+    - "POSITION: QD1 sits at a position with broadband high collection and low Purcell factor (FEM position 3, Fig 4, p.5); its spatial overlap, detuning from M3 and the leaky-mode inhibition are not given in the text, so they are E envelopes."
+device:
+  T_K: {value: 5.0, unit: K, tag: V, where: "Fig 6 caption p.8 (HOM at 5 K under LO-phonon excitation, 4.8 K under LA); the temperature of the Fig 1 measurements is not stated"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {range: [898.0, 908.0], unit: nm, tag: E, source: "QD1 wavelength not printed; Fig 1b-c spectrum axis labels 1.380-1.365 eV (898-908 nm) near the M3 mode (text-layer axis labels)"}
+  structure:
+    kind: phc_cavity
+    params:
+      Q: {value: 300.0, unit: "1", tag: V, where: "Fig 3 caption p.5 (Purcell factors follow a Lorentzian corresponding to Q = 300, typical for the M3 mode)"}
+      spatial_overlap: {range: [0.05, 1.0], unit: "1", tag: E, source: "dot position in the cavity not given; QD1 shows low Purcell factor / inhibition (p.3), so a low overlap is possible; envelope"}
+      detuning_ueV: {range: [-2000.0, 2000.0], unit: ueV, tag: E, source: "QD1 detuning from M3 not printed (Fig 3a,b show many dots); registry maximum range"}
+      eta_out: {range: [0.3, 0.8], unit: "1", tag: E, source: "cavity-mode collection efficiency at NA 0.6 only in Fig 4d-e (FEM, position 3), not in the text layer; class range"}
+      F_bg: {range: [0.3, 1.0], unit: "1", tag: E, source: "decay of QD1 'slightly inhibited' vs bulk by the 2D photonic band gap (text p.3); bulk rate not printed; class envelope"}
+  drive:
+    kind: above_band
+    params:
+      pump: {value: 2.1, unit: "1", tag: V, where: "text p.3 (g2(0) = (4 +/- 5) % at 2.1 times the saturation power); the incoherent proxy drive, see notes"}
+      window_ps: {value: 3.0, unit: ps, tag: V, where: "Appendix A Setup 1 p.9 (Ti:sapphire, 3 ps pulse duration); rectangular window assumed [A]"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "Appendix A Setup 1 p.9 (76 MHz repetition rate)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: V, where: "text p.2 and Appendix A Setup 1 (microscope objective NA = 0.6)"}
+      coinc_window_ns: {value: 2.0, unit: ns, tag: V, where: "text p.3 (g2(0) from all counts in a 2 ns window around zero delay)"}
+reported:
+  - {id: eta_X_QD1, observable: eta_extract, value: 0.443, err: 0.021, tag: V, where: "text p.2-3 / abstract / Fig 1d caption (first-lens collection efficiency of QD1 X line)", note: "relative to a bulk QD with alpha eps assumed equal; the dot QD2 measured directly gives 15.1 +/- 2.0 % (19.2-23.4 % after bounds)"}
+  - {id: g2_2p1Psat, observable: g2_0, convention: raw, value: 0.04, err: 0.05, tag: V, where: "text p.3 (g2(0) = (4 +/- 5) % at 2.1 P_sat; integrate 2 ns around zero over the mean peak area in a 300 ns window)", note: "raw; the other points (3 +/- 4) % at 0.4 and (16 +/- 10) % at 21 P_sat are not carded (pump fixed at 2.1)"}
+  - {id: tau_X_QD1, observable: tau_ps, value: 1610.0, tag: V, where: "Table II p.8 (T1 = 1/gamma = 1.61 ns of the X line used in the HOM analysis; fast decay rate 0.62 /ns, slow 0.24 /ns, p.3)", note: "no error printed; bi-exponential decay (dark-state mixing), the fast rate 0.62 /ns = 1/1.61 ns is used as the radiative lifetime"}
+  - {id: V_LO, observable: hom_V, convention: corrected, value: 0.13, err: 0.02, tag: V, where: "text p.8 (V_LO = (13 +/- 2) % under LO-phonon-mediated excitation, 5 K, 0.88 P_sat)", note: "reported only; the paper's pure-dephasing time follows from this number (see notes)"}
+  - {id: V_LA, observable: hom_V, convention: corrected, value: 0.19, err: 0.04, tag: V, where: "text p.8 (V_LA = (19 +/- 4) % under LA-phonon-mediated excitation, 4.8 K, 0.10 P_sat)", note: "reported only"}
+series: []
+reproduce:
+  - item: eta_X_QD1
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 2.1 % (4.2 %); the printed error is statistical only and the value assumes alpha eps equal to the bulk QD, so the agreement is loose; the envelope over the unstated cavity inputs (overlap, detuning, eta_out, F_bg) is wide, so a pass is a weak test"
+    expect: pass-envelope
+    reason: "FX4: central model 0.530 vs 0.443 +/- 0.021 misses the 2 sigma window; 0.443 lies inside the envelope [0.145, 0.787] only (spatial_overlap 0.05-1 [E], nothing in the paper narrows it), so it is not a pass"
+  - item: g2_2p1Psat
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 5 % (10 %); the paper's value is a raw number with large error bars, so this only checks that the model emitter is clearly antibunched at 2.1 P_sat (a weak test: model intrinsic g2 ~1e-4)"
+    expect: pass
+    weak: true
+    weak_reason: "tol 2 sigma of the printed 0.05 accepts any g2 below 0.14 while the model g2 is ~1e-3: the test only shows the emitter is clearly antibunched, it cannot discriminate"
+  - item: tau_X_QD1
+    class: M
+    tol: {rel: 0.15}
+    tol_reason: "no error printed; 15 % is the model-level 10 % lifetime tolerance widened for the bi-exponential (dark-state) decay and the unknown bulk lifetime; the cavity inputs are E envelopes"
+    expect: fail
+    reason: "input envelope too narrow plus a model gap: model 56 ps (envelope 31-820 ps) vs 1610 ps. At Q = 300 the class F_P(0) is ~30 (V/(lambda/n)^3 = 0.7), so even the least-coupled corner (overlap 0.05, F_bg 0.3, detuned) keeps F_P L above ~1; the paper's QD1 is inhibited (effectively F_P L ~ 0, leaky rate < bulk), which needs an overlap of a few 1e-3 that the chosen E range did not reach. Recorded as observed (inputs not changed after the run); a lower overlap bound and the bulk lifetime of this sample would be needed for an informative test."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: eta_X_QD1 envelope wide (spatial_overlap 0.05-1); paper states no dot position so the range is unchanged and the pass is recorded as weak (note only, no tol or input change)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: eta_X_QD1 expect pass -> pass-envelope (paper value inside the envelope [0.145, 0.787] only, central 0.530 misses 0.443 +/- 0.042); g2_2p1Psat flagged weak (tol accepts any g2 < 0.14)"}

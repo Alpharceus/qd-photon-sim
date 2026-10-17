@@ -86,7 +86,7 @@ export function buildBandProfile(spec, ctx) {
     root.add(fatLine([[xs[0], eY, depth / 2], [xs[xs.length - 1], eY, depth / 2]], { color: eCol, width: 1, opacity: 0.55, dashed: true }));
     root.add(fatLine([[xs[0], hY, depth / 2], [xs[xs.length - 1], hY, depth / 2]], { color: hCol, width: 1, opacity: 0.55, dashed: true }));
     const sc = spec.scalars;
-    labels.add(root, [xs[xs.length - 1], cb[cb.length - 1] + 0.3, -depth / 2], 'conduction band edge', { tag: sc.field_kVcm.tag, anchor: 'left', sub: 'In(x)GaN dot / GaN, nitride_levels.z_profile' });
+    labels.add(root, [xs[xs.length - 1], cb[cb.length - 1] + 0.3, -depth / 2], 'conduction band edge', { tag: sc.field_kVcm.tag, anchor: 'left', sub: 'In(x)GaN dot / GaN, planar band-profile model' });
     labels.add(root, [xs[xs.length - 1], vb[vb.length - 1] - 0.3, -depth / 2], 'valence band edge', { tag: sc.field_kVcm.tag, anchor: 'left' });
     const iE = o.psi2_e.indexOf(Math.max(...o.psi2_e)), iH = o.psi2_h.indexOf(Math.max(...o.psi2_h));
     labels.add(root, [xs[iE], eY + amp + 0.2, depth / 2], `|ψe|² at E_e(z) ${nice(o.E_e_eV, 4)} eV`, { tag: sc.overlap_sq.tag, anchor: 'left' });
@@ -128,8 +128,11 @@ export function buildBandProfile(spec, ctx) {
     const sc = spec.scalars;
     labels.add(root, [X(dot.z_nm[0]), eY + 0.3, depth / 2], `E_e ${nice(sc.E_e.value, 4)} meV`, { tag: sc.E_e.tag, anchor: 'right' });
     labels.add(root, [X(dot.z_nm[1]), hY - 0.3, depth / 2], `E_h ${nice(sc.E_h.value, 4)} meV`, { tag: sc.E_h.tag, anchor: 'left' });
+    // The outermost (barrier) label starts at its region's inner edge and runs right: centred, its long text ran left over the
+    // energy axis and sat on the 2 eV tick label.
     for (const r of [regs[1], regs[0]]) {
-      labels.add(root, [(X(r.z_nm[0]) + X(r.z_nm[1])) / 2, Y(r.cb_eV) + 0.5, -depth / 2], r.name, { tag: 'DR', anchor: 'center', kind: 'note' });
+      const first = r === regs[0];
+      labels.add(root, [first ? X(r.z_nm[0]) + 0.3 : (X(r.z_nm[0]) + X(r.z_nm[1])) / 2, Y(r.cb_eV) + 0.5, -depth / 2], r.name, { tag: 'DR', anchor: first ? 'left' : 'center', kind: 'note' });
     }
     labels.add(root, [0, yTop + 0.25, depth / 2], `${dot.name} · ${nice(dot.z_nm[1] - dot.z_nm[0])} nm`, { tag: sc.height_nm.tag, anchor: 'center', sub: 'true thickness on the z axis' });
   }

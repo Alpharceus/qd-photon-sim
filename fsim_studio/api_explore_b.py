@@ -33,31 +33,39 @@ import math
 
 import numpy as np
 
+from fsim_core.fit_bundle import fit_params_path
+
 from . import CARDS, OUT
 from .tags import widest
 
 # ----------------------------------------------------------------- pinned caveats (verbatim from the brief)
 PHONON_CAVEAT = (
-    "Independent-boson model, bulk LA deformation potential only, no LO or piezo term (:191-197) [E]. "
-    "Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening "
-    "(:436-443). Lengths are wavefunction extents, not dot sizes (:127-134).")
-PHONON_NOT_BRIGHTNESS = ("The ZPL-weight panel is not brightness (retention and collection missing, "
-                         "README \"Model scope\").")
+    "Independent-boson model, bulk LA deformation potential only, no LO or piezo term [E]. "
+    "Gamma_zpl is phenomenological; the fitted a_ac T term partly double-counts acoustic broadening. "
+    "Lengths are wavefunction extents, not dot sizes.")
+PHONON_NOT_BRIGHTNESS = ("The ZPL-weight panel is not brightness (retention and collection are missing from this model).")
 TRANSPORT_CAVEAT = (
-    "Compact p-i-n [E/A]: Boltzmann statistics, abrupt depletion, SRH n=2; leak_valleys='G' is a LOWER "
-    "bound on leakage (docstring item 5, 'GX' moves 50x per 0.1 eV); b_e excludes neighbour dots (F5) "
-    "and the X filter (transport.py:1-30). 1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into "
-    "one dot (item 6).")
+    "Compact p-i-n [E/A]: Boltzmann statistics, abrupt depletion, SRH n=2; leakage through the G valley only is a "
+    "LOWER bound on leakage (including the X valley moves it 50x per 0.1 eV); the electron blocking factor b_e "
+    "excludes neighbour dots and the X filter. 1 uA, 1 ns, one dot gives mu ~ 6000; cap-2 needs ~80 pA into "
+    "one dot.")
 NITRIDE_CAVEAT = (
     "barrier-limited, doping dependence omitted [A]; screening fixed along a trace; m- and a-plane "
-    "coincide by construction (out/nitride_geometry_stark/results.md:328); Zhang is 10 K, x=0.15, "
-    "another device (results.md:129)")
+    "coincide by construction (see the nitride geometry and Stark report); Zhang is 10 K, x=0.15, "
+    "another device (same report)")
 SDE_CAVEAT = (
     "Langevin model of Zhao's QD LASER (thousands of dots, lasing mode), not a single-photon source; "
     "g2 ~ 1 is correct physics. Normal pump reproduces 1.0224+-0.003 to 1.7 sigma; quiet pump does NOT: "
     "1.017 vs 0.982, 5.8 sigma (out/zhao/zhao_fit_comparison.csv, verdict FAIL both rows). Mechanism "
-    "and 12 tuning experiments: sde.py:59-91; Supplement parameters unavailable (sde.py:15-23).")
-SDE_AXIS_NOTE = "Axis is I/I_th, not amperes (sde.py:196-203). No curve is drawn through the quiet point."
+    "and 12 tuning experiments are recorded with the model; Supplement parameters are unavailable.")
+SDE_OBSERVABLE_NOTE = (
+    "These g2 values are the INTRACAVITY photon-number g2, which is not squeezed for any pump regulation, so the quiet-pump "
+    "FAIL is partly an observable mismatch: Zhao measured the broadband OUTPUT photon-flux noise spectrum, and the paper's "
+    "g2 is derived from that noise with the Supplementary Material's <S>, which is not available. The output spectrum is "
+    "estimated separately (the model's output noise spectrum, not drawn here; its check gives a lowest-decade "
+    "Fano factor of 1.15 quiet vs 2.24 normal, short of the Yamamoto asymptote). The paper's squeezing in dB is unavailable (card 3.1 dB "
+    "against 0.9 dB in the paper digest: unresolved source conflict), and N_dots is not retuned on either observable.")
+SDE_AXIS_NOTE = "Axis is I/I_th, not amperes. No curve is drawn through the quiet point."
 
 
 class ExploreError(Exception):
@@ -112,7 +120,7 @@ PHONON_DOMAIN = {"T": (1.0, 300.0), "l_xy": (2.0, 8.0), "l_z": (1.0, 4.0), "alph
 PHONON_DEFAULTS = {"T": 100.0, "l_xy": 4.5, "l_z": 1.5, "alpha": None, "gamma_zpl": 0.5, "w": 2.0,
                    "kappa": None, "kappa_on": 1.0, "F_cav": 1.0, "delta": 0.0}
 # V-a fit (out/phase0/fit_params.json [DR]) feeds effective_gamma_zpl
-FIT_JSON = OUT / "phase0" / "fit_params.json"
+FIT_JSON = fit_params_path()
 PHONON_T_FRAMES = (4.0, 20.0, 40.0, 60.0, 80.0, 100.0, 130.0, 160.0, 200.0, 230.0, 260.0, 300.0)
 OMEGA_GRID = np.linspace(-25.0, 25.0, 5001)   # photon energy relative to the ZPL, blue positive
 DELTA_GRID = np.linspace(-12.0, 12.0, 49)     # line offset from the filter centre
@@ -193,8 +201,8 @@ def _phonon_meta(qd_gf, P):
         "tags": {"geometry": "A", "alpha": "DR", "material": "DR", "model": "E", "gamma_fit": "DR",
                  "filter": "A", "cavity": "A", "result": None},
         "tag_notes": {"geometry": "l_xy 4.5, l_z 1.5 nm: [DR] class-proxy, [A] until AFM/TEM",
-                      "alpha": "0.0181 ps^2 from InP-class constants [DR]; Ramsay 0.027 [DR] (cards/chatzarakis2023.yaml:21)",
-                      "filter": "w, kappa: qcap-cavity.yaml:35-39 [A]",
+                      "alpha": "0.0181 ps^2 from InP-class constants [DR]; Ramsay 0.027 [DR] (cards/chatzarakis2023.yaml)",
+                      "filter": "w, kappa: qcap-cavity.yaml [A]",
                       "result": "widest tag of the inputs (geometry [A])"},
         "calls": ["fsim_core.qd_gf.huang_rhys", "fsim_core.qd_gf.zpl_weight", "fsim_core.qd_gf.ibm_spectrum",
                   "fsim_core.qd_gf.ibm_transmission", "fsim_core.qd_gf.ibm_purcell_transmission",
@@ -371,9 +379,9 @@ def transport_meta():
         "zhang": {"slope_meV_per_V": -10.0, "label": "Zhang 2016, -10 meV/V: labelled guide only, non-gating",
                   "tag": "V"},
         "tags": {**transport_output_tags(), "inputs": "A", "nitride": "A", "E_X": "A", "slope": "A"},
-        "tag_notes": {"inputs": "I, n_dot, aperture: qcap-staged.yaml:54-57, 73-77 [A]; w, dE_WL [E] (transport docstring item 7)",
+        "tag_notes": {"inputs": "I, n_dot, aperture: qcap-staged.yaml [A]; w, dE_WL [E]",
                       "nitride": "NitrideDiode: Zhang 2016 defaults [V source, E transfer]",
-                      "E_X": "levels(): geometry and screening are [A]"},
+                      "E_X": "dot levels: geometry and screening are [A]"},
         "calls": ["fsim_core.transport.evaluate_injection", "fsim_core.transport.Diode.depletion",
                   "fsim_core.nitride_transport.evaluate_injection", "fsim_core.nitride_stark.resolve_bias",
                   "fsim_core.nitride_levels.levels", "fsim_core.nitride_stark.stark_derivatives"],
@@ -451,10 +459,10 @@ def sde_meta():
     return {
         "domain": {k: list(v) for k, v in SDE_DOMAIN.items()}, "dt": SDE_DT, "I_grid": list(SDE_I_GRID),
         "F_pumps": list(SDE_F_PUMPS), "defaults": {"I": 4.0, "n_runs": 8, "t_end": 1e-9, "seed": 1, "F_pump": 1.0},
-        "caveat": SDE_CAVEAT, "axis_note": SDE_AXIS_NOTE, "burnin_frac": 0.1,
+        "caveat": SDE_CAVEAT, "observable_note": SDE_OBSERVABLE_NOTE, "axis_note": SDE_AXIS_NOTE, "burnin_frac": 0.1,
         "tags": {"model": "E", "card": "V", "temperature": "V", "result": "E"},
-        "tag_notes": {"model": "N_dots, E_a_ES, tau_p, I_ref, F_pump: all [E] (sde.py:137, 159, 172, 196, 205); T 300 K [V]",
-                      "card": "cards/zhao.yaml:34-35 [V]"},
+        "tag_notes": {"model": "dot number, escape activation energy, photon lifetime, reference current and pump factor: all [E]; T 300 K [V]",
+                      "card": "cards/zhao.yaml [V]"},
         "calls": ["fsim_core.sde.steady_state", "fsim_core.sde.find_threshold", "fsim_core.sde.g2_vs_pump",
                   "fsim_core.sde.simulate"],
     }

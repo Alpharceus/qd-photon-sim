@@ -126,7 +126,8 @@ has_va = card.name == "chatzarakis" and "g2_vs_T" in card.datasets
 
 # fitted parameterization: session fit > saved bundle > range midpoints (exploration)
 fit = st.session_state.get(f"fit_{card.name}")
-fit_json = ROOT / "out" / "phase0" / "fit_params.json"
+from fsim_core.fit_bundle import fit_params_path
+fit_json = fit_params_path()
 if fit is not None:
     p_model, p_src = dict(fit.params), "session fit"
 elif has_va and fit_json.exists():

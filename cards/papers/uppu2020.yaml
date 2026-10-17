@@ -1,0 +1,100 @@
+# Uppu et al., Sci. Adv. 6, eabc8268 (2020): InAs QD in a GaAs photonic-crystal waveguide, pi-pulse resonant.
+# Written from .workers/devlib/papers/uppu2020.yaml (arXiv v1 text); the model is never tuned to the paper.
+meta:
+  id: uppu2020
+  role: paper-device
+  cite: "R. Uppu, F. T. Pedersen, Y. Wang, C. T. Olesen, C. Papon, X. Zhou, L. Midolo, S. Scholz, A. D. Wieck, A. Ludwig, P. Lodahl, Scalable integrated single-photon source, Science Advances 6, eabc8268 (2020)"
+  doi: 10.1126/sciadv.abc8268
+  arxiv: "2003.08919"
+  extraction: .workers/devlib/papers/uppu2020.yaml
+  read_level: V-full
+  summary: "InAs/GaAs dot in a PhC waveguide (beta 0.92), 1.6 K, 20 ps pi pulse at 145 MHz, 3 GHz etalon; gamma 2.89/ns, ZPL 0.95, eta_S 0.84, g2 0.015 raw, HOM 0.96 corrected / 0.93 raw"
+  notes:
+    - "UNRESOLVED PAPER DISCREPANCY: text p.2 lists the best-coupled-dipole factor as >98% (0.92 x 0.95 x 0.98 x 0.98 = 0.84) while App D.2 gives eta_Y = 80% for the excitation polarisation used. With 0.80 the product is 0.69, not 0.84. The card carries setup.eta_pol as the RANGE [0.80, 0.98] (moved from structure.pol_factor, inert under FX1) so the envelope shows both; the eta_S pass is only possible at the 0.98 end."
+    - "eta_S is the on-chip (waveguide) efficiency, so eta_coupler = eta_prop = 1 here (A); the grating/fibre chain (50 %, 59 %, 28 % chip-to-fibre) is NOT modelled and not tested."
+    - "beta 0.92 is an INPUT (beta_direct). The registry has no beta leaf, so it cannot be a class T item; it is recorded in `reported` and left out of the ledger."
+    - "xi < 0.007 (laser background/QD signal, g2 = 2 xi - xi^2) is entered as a laser_leak range [0, 0.007]: it is an upper bound, and the paper's g2 0.015 is mostly this leak, so the g2 item partly agrees by construction."
+    - "The 800 MHz CW linewidth contains 1-10 ms slow drift that the paper says is irrelevant to ns HOM; it is NOT used for gamma*. The material class default gamma* is used (no pure-dephasing number in the paper)."
+    - "20 ps is taken as the intensity FWHM of a Gaussian [A: the paper only says 'pulse width of 20 ps']."
+device:
+  T_K: {value: 1.6, unit: K, tag: V, where: "text p.3 / App D.1 (sample cooled to 1.6 K)"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 947.4, unit: nm, tag: V, where: "App D.2 / Fig 8 (resonant laser 947.4 nm)"}
+  structure:
+    kind: phc_waveguide
+    params:
+      beta_direct: {value: 0.92, unit: "1", tag: V, where: "text p.2, App D.2 (beta 0.92 +/- 0.02 from lifetime vs bulk)"}
+      F_bg: {value: 0.2427, unit: "1", tag: A, source: "calibrated so Gamma_tot = 2.89/ns at beta 0.92: F_bg = (1-beta) x 2.89/ns x tau_bare(1.05 ns, registry class default [E]); the bulk lifetime is not stated in the paper"}
+      eta_coupler: {value: 1.0, unit: "1", tag: A, source: "eta_S is defined in the waveguide, before the grating (paper: grating 50 %, to-fibre 59 %); set to 1 so B_first_lens is the on-chip efficiency"}
+      eta_prop: {value: 1.0, unit: "1", tag: A, source: "as eta_coupler: on-chip definition of eta_S (paper: 96 % over 10 um is a separate factor)"}
+  drive:
+    kind: resonant_pulse
+    params:
+      fwhm_ps: {value: 20.0, unit: ps, tag: V, where: "Fig 2 caption / text p.3 (20 ps pulses); intensity-FWHM Gaussian is an assumption [A]"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.3 (pi-pulse excitation)"}
+      f_rep_MHz: {value: 145.0, unit: MHz, tag: DR, where: "App D.2 (repetition rate 145 MHz; 122 MHz / 0.84)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      eta_pol: {range: [0.80, 0.98], unit: "1", tag: V, where: "text p.2 (>98%) / App D.2 (80%)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "App D.1 (3 GHz etalon removes the phonon sideband)"}
+      laser_leak: {range: [0.0, 0.007], unit: "1", tag: V, where: "text p.3 (single-photon impurity xi < 0.007, upper bound)"}
+reported:
+  - {id: gamma_rate, observable: Gamma_ns, value: 2.89, tag: V, where: "Fig 2c caption, text p.3 (radiative decay rate of the well-coupled dipole, 1/ns)"}
+  - {id: beta_paper, observable: beta, value: 0.92, err: 0.02, tag: V, where: "text p.2, App D.2"}
+  - {id: eta_zpl, observable: Z_phonon, value: 0.95, err: 0.01, tag: V, where: "App D.2 / Fig 8 (Gaussian fit of the sideband at 3 nW, 1.24 V)"}
+  - {id: eta_rad, observable: eta_rad, value: 0.98, tag: V, where: "App D.2 (blinking dark-state model of weak bunching)"}
+  - {id: eta_S, observable: B_first_lens, value: 0.84, err: 0.04, tag: V, where: "text p.2 / App D.2 (source efficiency, product of measured factors)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.015, err: 0.005, tag: V, where: "text p.3 (pi pulse; g2(0) = 2 xi - xi^2)"}
+  - {id: hom_corr, observable: hom_I, convention: corrected, value: 0.96, err: 0.02, tag: V, where: "text p.4 (corrected for g2, BS R=0.476/T=0.524 and classical visibility 0.995, Eq C2)"}
+  - {id: hom_raw, observable: hom_I, convention: raw, value: 0.93, err: 0.02, tag: V, where: "text p.4 (directly recorded, BS- and alignment-limited only)"}
+reproduce:
+  - item: gamma_rate
+    class: C
+    tol: {rel: 0.02}
+    tol_reason: "calibration: F_bg was set from this rate and beta, so only arithmetic can differ; the paper gives 3 digits and no error, so 2 percent"
+    expect: pass
+  - item: eta_zpl
+    class: M
+    tol: {k_sigma: 2, abs: 0.03}
+    tol_reason: "paper 0.95 +/- 0.01 (2 sigma = 0.02); widened to 0.03 absolute because the InAs/GaAs polaron constants are [E] class values, not Uppu's dot"
+    expect: fail
+    reason: "model gap: the registry InAs/GaAs polaron constants (class [E], alpha/l_xy defaults) give Z(1.6 K) = 0.909 against the measured 0.95; this is a phonon-constant mismatch, not a missing input."
+  - item: eta_rad
+    class: M
+    tol: {rel: 0.01}
+    tol_reason: "paper gives 0.98 without an error (two digits, 1 percent); the model has k_nr = 0 so eta_rad = 1; the paper's value comes from a blinking dark-state model, not from a nonradiative rate"
+    expect: fail
+    reason: "model gap, by construction: k_nr = 0 gives eta_rad = 1; the paper's 0.98 is a blinking (dark-state) duty factor that this device model does not represent."
+  - item: eta_S
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 0.84 +/- 0.04 (2 sigma = 0.08); the setup.eta_pol range [0.80, 0.98] is the paper's own unresolved discrepancy, so a pass inside the envelope means only the 0.98 end reproduces it"
+    expect: fail
+    reason: "diagnosed: with the model Z = 0.909 (paper 0.95) and setup.eta_pol in [0.80, 0.98] the envelope is [0.68, 0.83], just below the paper 0.84 (central 0.753); the shortfall is the Z mismatch, and at eta_pol 0.80 the product is 0.69 (the paper's own 80 % vs >98 % discrepancy is unresolved). Under FX1 structure.pol_factor is inert with beta_direct, so the dipole share lives in setup.eta_pol."
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "paper 0.015 +/- 0.005 (2 sigma = 0.01); partly input-determined by the laser_leak range, which is the paper's own xi bound"
+    expect: fail
+    reason: "model gap: pi-pulse re-excitation alone (laser leak 0) gives about 0.024 for Gamma tau_p = 0.058 at 20 ps FWHM, plus 2 xi up to 0.014; the paper attributes its 0.015 to laser background alone. The 20 ps intensity-FWHM convention is an assumption and moves this."
+  - item: hom_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 0.96 +/- 0.02 (2 sigma = 0.04); gamma* is the material class default (paper gives no pure dephasing), so this is an unfitted comparison"
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1. The paper's 0.96 also divides out the beam-splitter imbalance R 0.476 / T 0.524 and the classical visibility 0.995 (Eq. C2), which the model's g2-only corrected convention does not apply; hom_raw (model 0.939 vs 0.93) still agrees"
+  - item: hom_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper 0.93 +/- 0.02 (2 sigma = 0.04); the model raw V uses g2_raw and eps_int = 0, so the paper's extra alignment/BS losses are not in the model"
+    expect: pass
+fits:
+  - {param: structure.F_bg, fitted_to: [gamma_rate]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr expect fail -> unavailable (V_corr > 1 is now invalid, NaN)"}

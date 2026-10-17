@@ -328,9 +328,213 @@ def main():
     after = sorted(p.name for p in (ROOT / "cards").glob("*.yaml"))
     check("the repository's cards/ was not written", before == after)
 
+    # R2 FIN2: the Saved toast shows a short name (the file path is a tooltip), titles are human names, not ids
+    js = (ROOT / "fsim_studio/web/js/workspaces/library.js").read_text(encoding="utf-8")
+    import re as _re
+    saved = _re.findall(r"toast\(`Saved ([^`]*)`", js)
+    check("library.js: the Saved toast prints the card's short name, never the absolute path",
+          len(saved) == 1 and "r.path" not in saved[0] and "${cardTitle(target)}" in saved[0], str(saved))
+    check("library.js: the file path goes in the toast's tooltip (title attribute)", _re.search(r"\.title\s*=\s*r\.path", js) is not None)
+    check("library.js: card titles go through cardTitle() (plaque, error plaque, page title), the id stays in a tooltip",
+          js.count("cardTitle(c.name)") >= 3 and 'h("h3.cp-title", c.name)' not in js and 'h("h1.ws-title", c.name)' not in js)
+    check("library.js: dataset names are typeset labels (ui/labels.js fieldLabel), not ds.name.replace/raw text",
+          "fieldLabel(d.name)" in js and 'ds.name.replace(/_/g, " ")' not in js and 'h("span.lib-ds-name", d.name)' not in js)
+    check("library.js: the device-model thumbnail slot exists and is lazy (viz3d/deviceModel.js)", "deviceThumbnail(" in js and "lib-thumb" in js)
+
+    scene_checks(c)
+
     n_pass = sum(ok for _, ok, _ in CHECKS)
     print(f"\n{n_pass}/{len(CHECKS)} studio library checks passed")
     return 0 if n_pass == len(CHECKS) else 1
+
+
+def _count_tags(block):
+    """Independent tag count of a raw scene block (walks the YAML itself, not scene_compose)."""
+    cnt = {t: 0 for t in ("V", "DR", "E", "A")}
+    stack = [block]
+    while stack:
+        o = stack.pop()
+        if isinstance(o, dict):
+            if "tag" in o and any(k in o for k in ("value", "range", "choice")):
+                cnt[o["tag"]] += 1
+            else:
+                stack.extend(o.values())
+    return cnt
+
+
+def scene_checks(c):
+    """LIBSCENE: every parameter card has a display-only scene block that /api/scene/device renders as a composed 3D scene."""
+    import copy
+    import re
+    from fsim_core.card import load_card
+    from fsim_studio import api_library, scene_compose
+
+    HC = 1239.842
+    raws = {n: yaml.safe_load((ROOT / "cards" / f"{n}.yaml").read_text(encoding="utf-8")) for n in CARDS}
+    check("LIBSCENE: every one of the 10 parameter cards has a scene: block",
+          all(isinstance(raws[n].get("scene"), dict) for n in CARDS), ",".join(n for n in CARDS if not isinstance(raws[n].get("scene"), dict)))
+    lst = {x["name"]: x for x in (c.get("/api/params").get_json() or [])}
+    check("LIBSCENE: GET /api/params reports has_scene for the 10 cards", all(lst.get(n, {}).get("has_scene") is True for n in CARDS))
+    bad = {}
+    for n in CARDS:
+        blk = raws[n].get("scene") or {}
+        probs = []
+        for pth, leaf in scene_compose.scene_leaves(blk):
+            if not isinstance(leaf, dict) or leaf.get("tag") not in ("V", "DR", "E", "A"):
+                probs.append(f"{pth}: tag")
+            if not isinstance(leaf, dict) or not str(leaf.get("where", "")).strip():
+                probs.append(f"{pth}: where")
+        probs += scene_compose.scene_problems(blk)
+        if probs:
+            bad[n] = probs[:3]
+    check("LIBSCENE: every scene number has a tag in V/DR/E/A and a `where`; kinds and params exist in the registry; note present",
+          not bad, str(bad))
+    check("LIBSCENE: every scene carries at least 2 tagged numbers (nothing is drawn from untagged defaults alone)",
+          all(sum(_count_tags(raws[n]["scene"]).values()) >= 2 for n in CARDS),
+          str({n: sum(_count_tags(raws[n]["scene"]).values()) for n in CARDS}))
+    descs = {}
+    for n in CARDS:
+        r = c.get(f"/api/scene/device?card={n}")
+        d = r.get_json() or {}
+        descs[n] = d
+        blk = raws[n]["scene"]
+        ok = (r.status_code == 200 and d.get("schema") == "fsim.scene/1" and d.get("kind") == "device"
+              and not d.get("fallback") and d.get("builder") not in (None, "fallback2d") and d.get("card") == "composed"
+              and d.get("param_card") == n and bool(d.get("layers") or d.get("geometry")))
+        check(f"LIBSCENE {n}: GET /api/scene/device?card= is 200 with a drawable composed descriptor", ok,
+              f"{r.status_code} {d.get('variant')} {d.get('reason', '')}")
+        if not ok:
+            continue
+        note = " ".join(str(blk["note"]).split())
+        cs = d.get("card_scene") or {}
+        check(f"LIBSCENE {n}: structure/material/drive kinds are the card's; the HUD carries the card note and the tag summary",
+              d["structure_kind"] == blk["structure"]["kind"] and d["material_kind"] == blk["material"]["kind"]
+              and d["drive"]["kind"] == blk["drive"]["kind"] and cs.get("note") == note and note in d["labels"][0]
+              and cs.get("tag_counts") == _count_tags(blk) and "scene numbers taken from the card" in d["labels"][1],
+              f"counts {cs.get('tag_counts')} vs {_count_tags(blk)}")
+        gs = d["geometry_src"]
+        mism = []
+        for k, v in blk["structure"].get("params", {}).items():
+            e = gs.get(k, {})
+            # a registry input is listed as itself; generic_cavity's kappa is listed as the structure response it yields
+            if e.get("tag") != v["tag"] or e.get("kind") not in ("registry", "derived") or e.get("display_default"):
+                mism.append(k)
+        for k, v in (blk.get("geometry") or {}).items():
+            e = gs.get(k, {}) or gs.get({"slab_d_um": "d_um", "slab_h_um": "h_um"}.get(k, k), {})
+            if e.get("tag") != v["tag"] or e.get("display_default") is not False:
+                mism.append(k)
+        check(f"LIBSCENE {n}: each card-sourced geometry number reaches the scene with the card's own tag and is not a display default",
+              not mism, str(mism))
+        derived = [k for k, v in gs.items() if v.get("kind") == "derived" and v.get("tag") == "V"]
+        check(f"LIBSCENE {n}: no derived number is tagged V (a derived number is no stronger than its inputs)", not derived, str(derived))
+
+    # independent numbers, recomputed here from the card's own values
+    from fsim_core.compose import registry
+    registry.ensure_loaded()
+    dflt = {p.name: p.default for p in registry.get("structure", "planar_dbr").params}
+    for n in ("chatzarakis", "chatzarakis2023", "qcap-piezo-variant", "reischle"):
+        d = descs.get(n) or {}
+        if d.get("fallback") or not d:
+            check(f"LIBSCENE {n}: planar DBR stack thickness equals N x (lambda/4n_h + lambda/4n_l) from the card's numbers", False, "no descriptor")
+            continue
+        blk = raws[n]["scene"]
+        lam = blk["material"]["params"]["lambda_nm"]["value"]
+        pr = blk["structure"]["params"]
+        nh = pr.get("n_high", {}).get("value", dflt["n_high"])
+        nl = pr.get("n_low", {}).get("value", dflt["n_low"])
+        per = lam / 4 / nh + lam / 4 / nl
+        top, bot = pr["N_top"]["value"] * per, pr["N_bot"]["value"] * per
+        lay = {l["name"].split(" (")[0]: l["t_nm"] for l in d["layers"]}
+        check(f"LIBSCENE {n}: planar DBR stack thickness equals N x (lambda/4n_h + lambda/4n_l) from the card's numbers",
+              abs(lay["top DBR"] - top) < 1e-6 * top and abs(lay["bottom DBR"] - bot) < 1e-6 * bot,
+              f"{lay['top DBR']:.2f}/{top:.2f} {lay['bottom DBR']:.2f}/{bot:.2f}")
+    rc = load_card(ROOT / "cards" / "reischle.yaml")
+    lam = raws["reischle"]["scene"]["material"]["params"]["lambda_nm"]["value"]
+    check("LIBSCENE reischle: lambda = 1239.842 nm eV / E_line (card params.E_line) to 0.05 nm",
+          abs(lam - HC / rc["E_line"].value) < 0.05, f"{lam} vs {HC / rc['E_line'].value:.3f}")
+    m = re.search(r"X ([0-9.]+) eV", raws["chatzarakis"]["params"]["delta_xx"]["source"])
+    e_x = float(m.group(1)) if m else float("nan")
+    lams = [raws[n]["scene"]["material"]["params"]["lambda_nm"]["value"] for n in ("chatzarakis", "chatzarakis2023", "qcap-piezo-variant")]
+    check("LIBSCENE chatzarakis: lambda = 1239.842 nm eV / 1.3313 eV (Fig. 4 X line read from the card's delta_xx source) to 0.05 nm, same in the 2023 and piezo cards",
+          m is not None and all(abs(v - HC / e_x) < 0.05 for v in lams), f"{lams} vs {HC / e_x:.3f}")
+    qc = load_card(ROOT / "cards" / "qcap-cavity.yaml")
+    lq = [raws[n]["scene"]["material"]["params"]["lambda_nm"]["value"] for n in ("qcap-cavity", "qcap-staged")]
+    check("LIBSCENE qcap: lambda = 1239.842 nm eV / E_X0 (card params.E_X0, tag A) to 0.05 nm in both QCAP red cards, tagged A",
+          all(abs(v - HC / qc["E_X0"].value) < 0.05 for v in lq)
+          and all(raws[n]["scene"]["material"]["params"]["lambda_nm"]["tag"] == "A" for n in ("qcap-cavity", "qcap-staged")), str(lq))
+    cav = raws["qcap-cavity"]["scene"]["structure"]["params"]
+    g = (descs.get("qcap-cavity") or {}).get("geometry", {})
+    check("LIBSCENE qcap-cavity: F_P and kappa ranges equal the card's params.F_P / params.kappa (meV -> ueV), drawn inside them",
+          tuple(cav["F_P"]["range"]) == tuple(qc["F_P"].range) and tuple(cav["kappa_ueV"]["range"]) == tuple(1000.0 * x for x in qc["kappa"].range)
+          and cav["F_P"]["range"][0] <= g.get("F_P", -1) <= cav["F_P"]["range"][1]
+          and cav["kappa_ueV"]["range"][0] <= g.get("kappa_ueV", -1) <= cav["kappa_ueV"]["range"][1], str(g.get("F_P")))
+    st = load_card(ROOT / "cards" / "qcap-staged.yaml")
+    gg = raws["qcap-staged"]["scene"]["geometry"]
+    ds = descs.get("qcap-staged") or {}
+    gsrc = ds.get("geometry_src") or {}
+    check("LIBSCENE qcap-staged: slab width/height are the card's params.mesa_diameter range and params.epi_thickness (not display defaults)",
+          tuple(gg["slab_d_um"]["range"]) == tuple(st["mesa_diameter"].range) and gg["slab_h_um"]["value"] == st["epi_thickness"].value
+          and ds.get("geometry", {}).get("h_um") == st["epi_thickness"].value
+          and gsrc.get("d_um", {}).get("range") == list(st["mesa_diameter"].range) and gsrc.get("d_um", {}).get("kind") == "card"
+          and "d_um" not in ds.get("display_defaults", []) and "h_um" not in ds.get("display_defaults", []),
+          str((ds.get("geometry", {}).get("d_um"), gsrc.get("d_um"))))
+    rd = descs.get("reischle") or {}
+    check("LIBSCENE reischle: the planar width drawn is the ~20 um contact aperture of the card's device line, tagged V",
+          "20 um contact aperture" in str(rc.meta["device"]) and rd.get("geometry", {}).get("lateral_um") == 20.0
+          and rd.get("geometry_src", {}).get("lateral_um", {}).get("tag") == "V")
+    lf = descs.get("laferriere") or {}
+    vnum = 3.141592653589793 * 200.0 / 1310.0 * (3.2 ** 2 - 1) ** 0.5
+    check("LIBSCENE laferriere: wire diameter is the [A] display assumption (200 nm); HE11 V number = pi d/lambda sqrt(n^2 - 1) = %.3f" % vnum,
+          lf.get("geometry", {}).get("d_nm") == 200.0 and lf.get("geometry_src", {}).get("d_nm", {}).get("tag") == "A"
+          and abs(lf.get("geometry", {}).get("V_number", 0) - vnum) < 0.01, str(lf.get("geometry", {}).get("V_number")))
+
+    # display-only: the card loader reads the block but no solver module does
+    users = []
+    pat = re.compile(r"""\[['"]scene['"]\]|\.get\(['"]scene['"]|\.scene\b""")
+    for f in (ROOT / "fsim_core").rglob("*.py"):
+        if f.name != "card.py" and pat.search(f.read_text(encoding="utf-8")):
+            users.append(f.name)
+    check("LIBSCENE: display only -- no fsim_core module besides card.py reads a card's scene block", not users, str(users))
+    check("LIBSCENE: fsim_core.card.load_card exposes the scene mapping on all 10 cards",
+          all(isinstance(load_card(ROOT / "cards" / f"{n}.yaml").scene, dict) for n in CARDS))
+
+    # negative tests: a broken block is refused, never silently drawn
+    good = raws["zhao"]["scene"]
+    neg = {}
+    b = copy.deepcopy(good); b["structure"]["params"]["L_um"]["tag"] = "X"; neg["bad tag"] = b
+    b = copy.deepcopy(good); del b["structure"]["params"]["L_um"]["where"]; neg["no where"] = b
+    b = copy.deepcopy(good); b["structure"]["kind"] = "no_such_structure"; neg["unknown kind"] = b
+    b = copy.deepcopy(good); b["structure"]["params"]["no_such_param"] = {"value": 1.0, "unit": "1", "tag": "A", "where": "x"}; neg["unknown param"] = b
+    b = copy.deepcopy(good); del b["note"]; neg["no note"] = b
+    b = copy.deepcopy(good); b["geometry"] = {"mesa_d_um": {"value": 3.0, "unit": "um", "tag": "A", "where": "x"}}; neg["unused geometry key"] = b
+    b = copy.deepcopy(good); b["structure"]["params"]["L_um"]["unit"] = "m"; neg["wrong unit"] = b
+    bad_ok = {k: (scene_compose.describe_card("t", v).get("fallback") is True) for k, v in neg.items()}
+    check("LIBSCENE: a scene block with a bad tag / missing where / unknown kind / unknown param / no note / unused geometry key / wrong unit gives the fallback, never a drawing",
+          all(bad_ok.values()), str(bad_ok))
+
+    # the stated-reason path survives for a parameter card whose scene block is absent
+    tmp = Path(tempfile.mkdtemp(prefix="libscene_"))
+    old_dir = api_library.CARDS_DIR
+    try:
+        shutil.copytree(ROOT / "cards", tmp / "cards", ignore=shutil.ignore_patterns("composed", "papers", "studio"))
+        doc = yaml.safe_load((tmp / "cards" / "zhao.yaml").read_text(encoding="utf-8"))
+        doc.pop("scene")
+        (tmp / "cards" / "zhao.yaml").write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+        api_library.CARDS_DIR = tmp / "cards"
+        r = c.get("/api/scene/device?card=zhao")
+        j = r.get_json(silent=True) or {}
+        check("LIBSCENE: a parameter card without a scene block is not drawn (4xx with a stated error, not 200)",
+              400 <= r.status_code < 500 and bool(j.get("error")), f"{r.status_code} {j.get('error')}")
+        check("LIBSCENE: has_scene is false for it in GET /api/params/zhao", c.get("/api/params/zhao").get_json().get("has_scene") is False)
+    finally:
+        api_library.CARDS_DIR = old_dir
+        shutil.rmtree(tmp, ignore_errors=True)
+    js = (ROOT / "fsim_studio/web/js/workspaces/library.js").read_text(encoding="utf-8")
+    dm = (ROOT / "fsim_studio/web/js/viz3d/deviceModel.js").read_text(encoding="utf-8")
+    check("LIBSCENE: library.js draws the thumbnail and the detail model from {card: name}; the no-model reason stays for cards without a scene",
+          "deviceThumbnail({ card: name }" in js and "mountDeviceModel(view, { card: c.name }" in js and "NO_MODEL" in js and "has_scene" in js)
+    check("LIBSCENE: deviceModel.js resolves {card} through /api/scene/device?card= and treats a 4xx as 'no scene'",
+          "/api/scene/device?card=" in dm and "[400, 404, 422]" in dm)
 
 
 def direct_overlays():

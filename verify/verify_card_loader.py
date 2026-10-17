@@ -107,6 +107,35 @@ def main():
     check("per-dataset source is kept when present, falls back to meta.source when absent",
           c.datasets["a"].source == "OWN" and c.datasets["b"].source == "META" and c.params == {})
 
+    # LIBSCENE: the optional display-only `scene:` block
+    scene_cards = [n for n in loaded if isinstance(yaml.safe_load((ROOT / "cards" / f"{n}.yaml").read_text(encoding="utf-8")).get("scene"), dict)]
+    check("scene: the 10 Library parameter cards expose their scene block on Card.scene (a mapping equal to the YAML)",
+          len(scene_cards) == 10 and all(loaded[n].scene == yaml.safe_load((ROOT / "cards" / f"{n}.yaml").read_text(encoding="utf-8"))["scene"]
+                                         for n in scene_cards), ",".join(sorted(scene_cards)))
+    check("scene: a card without a scene block loads with scene None",
+          all(loaded[n].scene is None for n in loaded if n not in scene_cards))
+    stripped = []
+    for n in scene_cards:
+        raw = yaml.safe_load((ROOT / "cards" / f"{n}.yaml").read_text(encoding="utf-8"))
+        raw.pop("scene")
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / f"{n}.yaml"
+            f.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            c0 = load_card(f)
+        stripped.append(c0.scene is None and c0.meta == loaded[n].meta and c0.params == loaded[n].params
+                        and c0.datasets == loaded[n].datasets)
+    check("scene: display only -- the card with and without its scene block has identical meta, params and datasets (10/10)",
+          len(stripped) == 10 and all(stripped), str(sum(stripped)))
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / "t.yaml"
+        f.write_text(yaml.safe_dump({"meta": {"name": "t", "source": "M"}, "scene": ["not", "a", "mapping"]}), encoding="utf-8")
+        try:
+            load_card(f)
+            rejected = False
+        except ValueError:
+            rejected = True
+    check("scene: a scene that is not a mapping is rejected with ValueError", rejected)
+
     n_pass = sum(ok for _, ok, _ in CHECKS)
     print(f"\n{n_pass}/{len(CHECKS)} card loader checks passed")
     return 0 if n_pass == len(CHECKS) else 1

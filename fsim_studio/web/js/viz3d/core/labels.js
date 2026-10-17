@@ -2,6 +2,7 @@
 // Tags are graded by LINE FORM, never hue: [V] solid, [DR] solid + inset
 // rule, [E] outline, [A] dashed outline.
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { richText } from '../../ui/math.js';
 
 export const MAX_LABELS = 30;
 const TAGS = { V: 'v', DR: 'dr', E: 'e', A: 'a' };
@@ -45,13 +46,13 @@ export class Labels {
     }
     const main = document.createElement('span');
     main.className = 'v3-label-text';
-    main.textContent = text;
+    main.appendChild(richText(text));
     plate.appendChild(main);
     if (tag) plate.appendChild(tagChip(tag));
     if (sub) {
       const s = document.createElement('span');
       s.className = 'v3-label-sub';
-      s.textContent = sub;
+      s.appendChild(richText(sub));
       plate.appendChild(s);
     }
     wrap.appendChild(plate);

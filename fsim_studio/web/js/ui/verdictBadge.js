@@ -3,6 +3,7 @@
 // never alone (icon + word), and an optical pass that fails hardware is always a split badge.
 import { h } from "./dom.js";
 import { icon } from "./icons.js";
+import { humanValue } from "./labels.js";
 
 export const SPLIT_WORD = "pass_hardware_infeasible";
 
@@ -49,7 +50,7 @@ export function lineScope(v) {
   if (f.strain_bound) bits.push(`${f.strain_bound}${f.bound_role ? ` (${f.bound_role.replace(/_/g, " ")})` : ""}`);
   if (f.rep_rate_hz) bits.push(`${Number(f.rep_rate_hz) / 1e6} MHz`);
   if (f.screening) bits.push(`screening ${f.screening.replace(/_/g, " ")}`);
-  if (!bits.length && f.model) bits.push(f.model);
+  if (!bits.length && f.model) bits.push(humanValue(f.model, "model"));
   return bits.join(" · ");
 }
 

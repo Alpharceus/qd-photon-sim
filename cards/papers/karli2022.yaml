@@ -1,0 +1,105 @@
+# Karli et al., arXiv:2203.00712v1 (published Nano Lett. 22, 6567 (2022)): first experimental SUPER (red-detuned two-pulse swing-up) excitation of a GaAs/AlGaAs droplet dot.
+# Numbers from .workers/devlib/papers/karli2022.yaml (main text and appendix read; Table II powers used for the pulse-2 area; plots not read).
+# Absolute pulse areas are not printed: area1 follows from the paper swing-up (Rabi) condition and the printed detunings, area2 from the Table II power ratio (see the leaves).
+# The pulse-pair counts (Fig 2) are detector counts, not populations, so no series is carded.
+meta:
+  id: karli2022
+  role: paper-device
+  cite: "Y. Karli, F. Kappe, V. Remesh, T. K. Bracht, J. Muenzberg, S. Covre da Silva, T. Seidelmann, V. M. Axt, A. Rastelli, D. E. Reiter, G. Weihs, SUPER Scheme in Action: Experimental Demonstration of Red-detuned Excitation of a Quantum Dot, arXiv:2203.00712v1 (2022); published Nano Lett. 22, 6567 (2022) per survey"
+  arxiv: "2203.00712"
+  extraction: .workers/devlib/papers/karli2022.yaml
+  read_level: V-full
+  summary: "GaAs/AlGaAs droplet dot (X at 798.66 nm) in a weak planar lambda-cavity, 8 K, SUPER pulses Delta1 -4.9 / Delta2 -10.6 meV (~7 ps, 76 MHz, NA 0.77); decay 165.1 ps, g2 raw 0.19(3) / background-corrected 0.02(6), theory inversion ~97%"
+device:
+  T_K: {value: 8.0, unit: K, tag: V, where: "Fig 1 caption (quantum dot held at 8 K)"}
+  material:
+    kind: gaas_algaas_droplet
+    params:
+      lambda_nm: {value: 798.66, unit: nm, tag: V, where: "text p.2-3 / Fig 2: neutral exciton X at 798.66 nm (extraction record)"}
+      tau_bare_ns: {value: 0.1651, unit: ns, tag: V, where: "text p.4: monoexponential decay 165.1(6) ps, measured in the device (planar cavity); used as the effective bare lifetime, calibration"}
+      E_b_meV: {value: 4.0, unit: meV, tag: V, where: "App. Sec V B / Fig 4: 3-level run with E_B(XX) = 4 meV (SUPER still works); two-level SUPER does not use it"}
+      gamma_star_4K_ns: {range: [0.0, 3.04], unit: "1/ns", tag: E, source: "no dephasing number in the paper (its model has none); registry droplet class range 0-2 ueV"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is an envelope at the quoted 8 K; no T slope measured"}
+  structure:
+    kind: bulk_planar
+    params: {}   # the 165.1 ps decay is measured in the weak planar cavity (9/2 DBR pairs), so no extra Purcell factor is applied on top
+  drive:
+    kind: super
+    params:
+      shape: {value: gauss, unit: "", tag: V, where: "text p.1-2 Sec II A: Gaussian-shaped excitation pulses (two Gaussian SLM masks, sigma 0.2 meV, App. Eq. 3)"}
+      delta1_meV: {value: -4.9, unit: meV, tag: V, where: "text p.2-3 / Table II: Delta1 = -4.9 meV; paper convention Delta = hbar(omega_i - omega_0), red = negative"}
+      delta2_meV: {value: -10.6, unit: meV, tag: V, where: "text p.3-4 / Table II: Delta2 = -10.6 meV, paper convention"}
+      fwhm1_ps: {value: 7.0, unit: ps, tag: DR, where: "App. Sec V A: calculated temporal duration of the detuned pulse pair ~7 ps; taken as the intensity FWHM of each pulse (the 0.2 meV Gaussian masks alone would give 5.5 ps)"}
+      fwhm2_ps: {value: 7.0, unit: ps, tag: DR, where: "App. Sec V A: ~7 ps for both pulses (same mask width, same shaper)"}
+      area1_pi: {value: 14.84, unit: pi, tag: DR, where: "derived: swing-up condition |Delta2 - Delta1| = hbar Omega_Rabi,1 = sqrt((hbar Omega_1)^2 + Delta1^2) (text p.2) gives hbar Omega_1 = sqrt(5.7^2 - 4.9^2) = 2.912 meV peak; Gaussian area = Omega_pk * s0 * sqrt(2 pi) with s0 = fwhm/(2 sqrt(ln 2)), i.e. Omega_pk * fwhm * 1.5051 = 4.424/ps * 7 ps * 1.5051 = 14.8 pi"}
+      area2_pi: {value: 12.35, unit: pi, tag: DR, where: "derived: pulse area scales as sqrt(power) at equal widths; Table II at operating point T1 = 0.5 (15.5 uW) and T2 = 0.64 (interpolated 10.7 uW between 0.7 uW at T2 = 0 and 10.9 uW at T2 = 0.65): area2 = 14.84 pi * sqrt(10.74/15.5) = 12.35 pi"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.1 Sec II B: Ti:sapphire 76 MHz repetition rate (extraction record)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.77, unit: "1", tag: V, where: "text p.2: cold aspheric lens NA = 0.77"}
+      laser_leak: {value: 0.0989, unit: "1", tag: DR, where: "text p.4 / App. Sec V C: background-to-signal ratio from rho = 0.91(1) (signal / total counts): (1 - rho)/rho = 0.0989; enters raw g2 as 2 f_leak, so the raw g2 is guaranteed by it (class C)"}
+reported:
+  - {id: tau_decay, observable: tau_ps, value: 165.1, err: 0.6, tag: V, where: "text p.4: exponential fit 165.1(6) ps (SNSPD, 20 ps resolution)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.19, err: 0.03, tag: V, where: "text p.4 / Table I: g2_meas(0) = 0.19(3), fit a + b exp(-|t|/c) normalised to a, 100 ps bins"}
+  - {id: g2_corr, observable: g2_0, convention: intrinsic, value: 0.02, err: 0.06, tag: V, where: "text p.4 / Table I: background-corrected g2(0) = 1 + (g2_meas - 1)/rho^2 = 0.02(6), rho = 0.91(1)"}
+  - {id: g2_post, observable: g2_0, convention: intrinsic, value: 0.073, err: 0.003, tag: V, where: "text p.4 / Table I: peak-area ratio 0.073(3), meaningful only with on/off post-selection", note: "not a ledger item: post-selected method, different definition"}
+  - {id: g2_res_samedot, observable: g2_0, convention: intrinsic, value: 0.016, err: 0.001, tag: V, where: "text p.4 / Table I: resonant excitation of the same dot (ref 46)", note: "not a ledger item: different drive"}
+  - {id: inversion_theory, observable: inversion, convention: intrinsic, value: 0.97, tag: V, where: "text p.4: maximum exciton occupation about 97% in the considered parameter window (two-level model, no phonons)", note: "paper theory, maximised over (Delta2, T2); a theory-vs-model check, not a measurement"}
+reproduce:
+  - item: tau_decay
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "calibration: the measured in-device decay is entered as material.tau_bare_ns (weak planar cavity, no extra Purcell); 2 sigma of the printed 0.6 ps"
+    expect: pass
+  - item: g2_raw
+    class: C
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "calibration: setup.laser_leak is derived from the printed background fraction rho = 0.91, which is exactly what raises the raw g2 to 0.19; 2 sigma of the printed 0.03 is 0.06, abs 0.02 numerical floor"
+    expect: pass
+  - item: g2_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.06 (0.12). The paper uncertainty is large (the correction divides by rho^2), so a pass is weak evidence; the model intrinsic re-excitation g2 of red-detuned SUPER pulses is expected to be close to 0"
+    expect: pass
+  - item: inversion_theory
+    class: M
+    mode: optimum
+    tol: {abs: 0.03}
+    tol_reason: "R2 SUPCMP (pulse-shaper model): the paper 97% is the maximum of its two-level, phonon-free, decay-free (von Neumann) occupation map over the Fig 2b window, so the item is the model maximum over Delta2 in [-11.2, -9.2] meV and T2 in [0, 1] with the paper's own pulse construction (broadband spectrum x two-Gaussian field mask, Sec V B), phonons and decay off, started from |G>. abs 0.03 = the stated '~97%' rounded to the percent; not tuned to the result"
+    expect: pass
+    reason: "R2 Karli: Eq. (2) is in energy units (meV): alpha~ = 470 pi is the spectral integral over ENERGY in meV (Reiter/Axt units), so (1/2 pi) Int Omega~ f exp(-iEt/hbar) dE is hbar Omega(t) in meV; the rad/ps construction was short by 1/hbar = 1.519. With it the model maximum over the Fig 2b window is 0.988 at Delta2 = -11.2 meV (the window edge, not widened) and T2 = 0.78, against the paper 0.97 (within abs 0.03); line 1 is 16.33 pi at T1 = 0.5. The 5 % is a field weight between the two line centres; T~1 = sqrt(T1)"
+    optimum:
+      observable: inversion
+      reduction: max
+      solver: {phonons: "off", radiative: "off"}
+      overrides:
+        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option)"}
+        drive.slm_T1: {value: 0.5, unit: "1", tag: V, where: "Table II / text p.3: T1 = 0.5 fixed (15.5 uW); intensity transmission, the field mask carries sqrt(T1) (App. Sec V B)"}
+      scan:
+        - {name: delta2, path: drive.delta2_meV, window: [-11.2, -9.2], n: 21, unit: meV, tag: V, where: "Fig 2b theory map: the Delta2 axis spans about -11.2 to -9.2 meV (ticks -11, -10.5, -10, -9.5), read off the figure axis (orchestrator, PDF p.3); 21 points = 0.1 meV steps [DR]"}
+        - {name: T2, path: drive.slm_T2, window: [0.0, 1.0], n: 100, unit: "1", tag: V, where: "Fig 2b: T2 (norm) axis from 0 to 1 (intensity transmission, T2 = (T~2)^2, App. Sec V B); 100 T2 values in the map (text p.3-4)"}
+  - item: inversion_8K_pred
+    class: P
+    mode: optimum
+    tol_reason: "R2 SUPCMP prediction, no comparison: the same maximum over the same Fig 2b window with the same pulse-shaper pulses WITH the 8 K LA-phonon polaron solver (decay still off, so only the phonons differ from inversion_theory). The paper model ignores phonons ('shown negligible in refs 43, 55', App. Sec V B)"
+    expect: pass
+    optimum:
+      observable: inversion
+      reduction: max
+      solver: {phonons: "on", radiative: "off"}
+      overrides:
+        drive.shape: {value: slm_mask, tag: V, where: "App. Sec V B Eqs. 2-3: the paper builds the pulses from ONE broadband Gaussian spectrum (FWHM 17 meV, centred -8.4 meV, integrated area 470 pi) times a two-Gaussian FIELD mask (hbar sigma 0.2 meV, 5 % between the peaks), inverse Fourier transformed (slm_mask pulse option)"}
+        drive.slm_T1: {value: 0.5, unit: "1", tag: V, where: "Table II / text p.3: T1 = 0.5 fixed (15.5 uW); intensity transmission, the field mask carries sqrt(T1) (App. Sec V B)"}
+      scan:
+        - {name: delta2, path: drive.delta2_meV, window: [-11.2, -9.2], n: 21, unit: meV, tag: V, where: "Fig 2b theory map: the Delta2 axis spans about -11.2 to -9.2 meV (ticks -11, -10.5, -10, -9.5), read off the figure axis (orchestrator, PDF p.3); 21 points = 0.1 meV steps [DR]"}
+        - {name: T2, path: drive.slm_T2, window: [0.0, 1.0], n: 100, unit: "1", tag: V, where: "Fig 2b: T2 (norm) axis from 0 to 1 (intensity transmission, T2 = (T~2)^2, App. Sec V B); 100 T2 values in the map (text p.3-4)"}
+fits:
+  - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
+  - {param: setup.laser_leak, fitted_to: [g2_raw]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
+  - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_raw 0.185 -> 0.183, g2_corr 0.0154 -> 0.0135, inversion_theory 0.27 -> 0.33 (still fails vs 0.97); all verdicts unchanged; no expect or tolerance changed"}
+  - {date: 2026-10-13, by: "sonnet supercmp", reason: "R2 SUPCMP like-for-like SUPER comparison: inversion_theory is now an optimum item (max over the quoted Delta2 x T2 window, two-level, phonons and decay off, 5.48 ps transform-limited Gaussians of the 0.2 meV masks) instead of one 8 K point: 0.27/0.33 -> 0.643 (still fails vs 0.97, tolerance now abs 0.03 per the new definition); new P item inversion_8K_pred (same optimum with the 8 K polaron solver: 0.643); the argmax is on the Delta2 = -11.0 boundary and the optimum reaches 1.0 only for Delta2 near -12 meV (see the reason)", note: "no other expect or tolerance changed"}
+  - {date: 2026-10-13, by: "sonnet supercmp-2", reason: "R2 SUPCMP follow-up: inversion_theory and inversion_8K_pred now use the paper's pulse-shaper construction (new SUPER shape option slm_mask: broadband Gaussian spectrum x two-Gaussian field mask, inverse FFT; Sec V B, PDF read) over the Fig 2b window (Delta2 -11.2 to -9.2 meV, T2 0 to 1): 0.643 (two-Gaussian pulses, Delta2 -11 to -10) -> 0.276, still fails vs 0.97; 8 K prediction identical 0.276; argmax Delta2 -11.13 meV, T2 = 1.0 (edge); the result is convention-sensitive (see the reason), not a verdict on the two-level swing-up", note: "expect stays fail; tolerance abs 0.03 unchanged from the first SUPCMP definition; no other item touched"}
+  - {date: 2026-10-13, by: "sonnet supercmp-3", reason: "R2 Karli: Eq. (2) is in energy units (meV), Fable r2-karli-pulse-answer.md", note: "slm_pulse.py normalises the broadband spectrum with sigma in meV (x 1/hbar = 1.519 on the field); inversion_theory 0.276 -> 0.988 (argmax Delta2 -11.2 meV window edge, T2 0.78), expect fail -> pass vs 0.97 within 0.03; inversion_8K_pred 0.276 -> 0.988; no tolerance changed"}

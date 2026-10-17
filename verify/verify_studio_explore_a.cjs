@@ -74,7 +74,7 @@ async function chartReady(page, n = 1) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -93,8 +93,16 @@ async function chartReady(page, n = 1) {
     // ------------------------------------------------------------ cw_g2
     check("cw-g2: both charts render", await chartReady(page, 2));
     check("cw-g2: readouts have values", await until(page, () => document.querySelectorAll('.xp-body .readout[data-state="value"]').length >= 6));
-    const capt = await page.$eval('.xa-caveat[data-caveat="caveat"]', (e) => e.textContent).catch(() => "");
-    check("cw-g2: pinned caveat visible (Rabi drive, 500 ps HBT)", capt.includes("not valid for resonant (Rabi) drive") && capt.includes("g2_raw is what a 500 ps HBT measures"), capt.slice(0, 60));
+    // the caveat text is typeset (R2): g2_raw renders as a KaTeX g^(2)_raw(0), whose textContent is MathML + glyphs. Each typeset
+    // span keeps the string the backend sent in data-src, so the pinned wording is compared on that source text
+    const capt = await page.$eval('.xa-caveat[data-caveat="caveat"]', (e) => {
+      const c = e.cloneNode(true);
+      for (const m of c.querySelectorAll(".math[data-src]")) m.replaceWith(m.dataset.src);
+      return c.textContent;
+    }).catch(() => "");
+    const captMath = await page.$$eval('.xa-caveat[data-caveat="caveat"] .math[data-src="g2"]', (els) => els.map((e) => !!e.querySelector(".katex .msupsub")));
+    check("cw-g2: pinned caveat visible (Rabi drive, 500 ps HBT)",
+      capt.includes("not valid for resonant (Rabi) drive") && capt.includes("raw g2 is what a 500 ps HBT measures") && captMath.length >= 1 && captMath.every(Boolean), capt.slice(0, 260));
     const g0 = await readoutText(page, "g2_dot0");
     check("cw-g2: g2_dot(0) default reads 0.1474 with a tag chip", g0 && g0.value === "0.1474" && !!g0.tag, JSON.stringify(g0));
     const audit1 = await tagAudit(page);
@@ -120,7 +128,7 @@ async function chartReady(page, n = 1) {
     check("pulse-counting: readouts have values", await until(page, () => document.querySelectorAll('.xp-body .readout[data-state="value"]').length >= 8));
     const capp = await page.$eval('.xa-caveat[data-caveat="caveat"]', (e) => e.textContent).catch(() => "");
     check("pulse-counting: pinned caveat visible (rectangular pump, long-delay peak, f1b gap, no background)",
-      capp.includes("Rectangular pump [A]") && capp.includes("g2_adj is the adjacent-normalised") && capp.includes("re-excitation") && capp.includes("rho is a device.py addition"), capp.slice(0, 60));
+      capp.includes("Rectangular pump [A]") && capp.includes("adjacent-normalised value is shown as g2 adj") && capp.includes("re-excitation") && capp.includes("rho is a device-level addition") && !/\.py|docstring/.test(capp), capp.slice(0, 60));
     const gp = await readoutText(page, "g2");
     check("pulse-counting: g2 default reads a number with a tag chip", gp && gp.state === "value" && !!gp.tag, JSON.stringify(gp));
     const audit2 = await tagAudit(page);
@@ -145,8 +153,19 @@ async function chartReady(page, n = 1) {
     const capl = await page.$eval('.xa-caveat[data-caveat="caveat"]', (e) => e.textContent).catch(() => "");
     check("lindblad: pinned caveat visible (Markovian baths, Lorentzian ZPL)", capl.includes("Markovian baths, Lorentzian ZPL"), capl.slice(0, 60));
     const md = await readoutText(page, "max_rel_diff");
+    // R2: numbers are plain DOM "m × 10<sup>e</sup>" (math.js autoMath), so textContent holds "2.535 × 10-15"; the exponent must
+    // sit in a real <sup> element that is raised and smaller, and the "agrees" qualifier is the readout caption
+    const mdx = await page.$eval('.readout[data-readout="max_rel_diff"]', (e) => {
+      const sup = e.querySelector(".ro-value sup.num-exp");
+      const cs = sup ? getComputedStyle(sup) : null;
+      const base = getComputedStyle(e.querySelector(".ro-value"));
+      return { sup: sup ? sup.textContent : null, raised: cs ? cs.verticalAlign === "super" : false,
+        smaller: cs ? parseFloat(cs.fontSize) < parseFloat(base.fontSize) : false, caption: e.querySelector(".ro-caption")?.textContent || "" };
+    });
+    const mm = md && /^(\d(?:\.\d+)?) × 10-?(\d+)$/.exec((md.value || "").replace(/\s+/g, " ").trim());
+    const mdVal = mm ? Number(mm[1]) * Math.pow(10, -Number(mm[2])) : NaN;
     check("lindblad incoherent: the agreement readout is below 1e-10 and says agrees",
-      md && md.state === "value" && /×10⁻[¹²³⁴⁵⁶⁷⁸⁹][⁰¹²³⁴⁵⁶⁷⁸⁹]/.test(md.value) && (await page.$eval('.readout[data-readout="max_rel_diff"] .ro-caption', (e) => e.textContent)).includes("agrees"), JSON.stringify(md));
+      md && md.state === "value" && mdVal < 1e-10 && mdx.sup && /^-\d+$/.test(mdx.sup) && mdx.raised && mdx.smaller && mdx.caption.includes("agrees"), JSON.stringify({ md, mdx }));
     const st1 = await page.$eval(".xp-body .xa-check", (e) => e.textContent);
     check("lindblad incoherent: state check line is shown and physical", st1.includes("physical") && !st1.includes("NOT physical"), st1.slice(0, 80));
     const a3 = await tagAudit(page);

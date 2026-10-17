@@ -8,6 +8,7 @@ import { glowMaterial, fatLine, nice } from './common.js';
 import { lambdaToRGB, rgbCss } from '../core/colormap.js';
 import { tagChip } from '../core/labels.js';
 import { fmtNum } from '../core/hud.js';
+import { richText } from '../../ui/math.js';
 import { exaggerate } from '../core/scale.js';
 
 function mulberry32(a) {
@@ -88,7 +89,8 @@ export function buildCascade(spec, ctx) {
   const big = document.createElement('div');
   big.className = 'v3-bigread';
   const g2 = spec.scalars.g2_op;
-  big.innerHTML = '<div class="v3-bigread-label">g2(0), evaluated g2_op</div><div class="v3-bigread-value"></div><div class="v3-note">never counted from the animation</div><div class="v3-speed"></div>';
+  big.innerHTML = '<div class="v3-bigread-label"></div><div class="v3-bigread-value"></div><div class="v3-note">never counted from the animation</div><div class="v3-speed"></div>';
+  big.querySelector('.v3-bigread-label').append(richText('$g^{(2)}(0)$ at the operating point, evaluated'));
   big.querySelector('.v3-bigread-value').append(document.createTextNode(fmtNum(g2.value)), tagChip(g2.tag));
   hud.el.appendChild(big);
   const speedEl = big.querySelector('.v3-speed');

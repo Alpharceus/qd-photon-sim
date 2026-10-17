@@ -52,12 +52,13 @@ export function solidBox(root) {
   return box;
 }
 
-export function addFloor(stage, root) {
-  const box = solidBox(root);
+export function addFloor(stage, root, { spanFromHeight = 0, bounds = null } = {}) {
+  // `bounds` {min:[x,y,z], max:[x,y,z]}: a builder whose layers are all see-through (no depth-writing mesh) states its own extent
+  const box = bounds ? new THREE.Box3(new THREE.Vector3(...bounds.min), new THREE.Vector3(...bounds.max)) : solidBox(root);
   if (box.isEmpty()) return null;
   const size = new THREE.Vector3(); box.getSize(size);
   const c = new THREE.Vector3(); box.getCenter(c);
-  const span = Math.max(size.x, size.z, 1e-6);
+  const span = Math.max(size.x, size.z, size.y * spanFromHeight, 1e-6);
   const gap = Math.max(size.y * 0.55, span * 0.12);
   const y0 = box.min.y - gap;
   const group = new THREE.Group();

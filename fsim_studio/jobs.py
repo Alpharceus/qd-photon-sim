@@ -40,6 +40,10 @@ ALLOWED_CALLS = ALLOWED_CALLS | frozenset({
     "fsim_studio.api_explore_b:phonon_frames", "fsim_studio.api_explore_b:transport_sweep",
     "fsim_studio.api_explore_b:stark_trace", "fsim_studio.api_explore_b:sde_frame",
     "fsim_studio.api_explore_b:sde_li", "fsim_studio.api_explore_b:sde_trace"})
+# devlib-p10 composed engine (api_compose.py): exact job functions, no wildcard.
+ALLOWED_CALLS = ALLOWED_CALLS | frozenset({
+    "fsim_studio.api_compose:series_job", "fsim_studio.api_compose:reproduce_job",
+    "fsim_studio.api_compose:pulse_end_job"})
 MAX_T_POINTS = 400
 
 # Measured seconds per evaluate() on this machine (ideas/01-ux-architecture.md
@@ -55,8 +59,12 @@ ETA_TABLE = {
     "edge": (0.31, 20.0),
     "planar": (0.001, 0.31),
     "nanowire": (1.0, 295.0),  # re-measured 2026-10-08 after the vectorized injector (1 pt 1.0 s, 120 pt 295 s)
+    # composed (devlib-p10): fallback only; submit_run uses fsim_core.compose.engine.estimate when it can
+    "composed": (0.05, 6.0),
 }
 INLINE_MAX_T = 200
+# composed designs run inline only on the rate solver and when the engine's own estimate is below this
+COMPOSED_INLINE_MAX_ETA_S = 1.0
 DEFAULT_N_T = 120
 SLOW_CLASSES = ("edge", "nanowire")
 
@@ -66,6 +74,8 @@ TERMINAL = ("done", "error", "cancelled")
 # ----------------------------------------------------------- pure helpers
 
 def platform_class(d) -> str:
+    if d.platform == "composed":
+        return "composed"
     if d.platform == "ingan_gan_nanowire":
         return "nanowire"
     if d.platform == "ingan_gan_planar":
@@ -131,6 +141,11 @@ def labels_for(d_orig, mode: str, scalars: dict) -> list:
     floor test is fsim_core.scene_support.is_background_floor."""
     from fsim_core.scene_support import is_background_floor
     labels = []
+    if getattr(d_orig, "platform", "") == "composed":
+        # composed designs have no legacy drive/emission blocks; only the range caveat applies
+        if scalars.get("range_note"):
+            labels.append(MID_LABEL)
+        return labels
     if mode == "headline":
         labels.append(HEADLINE_LABEL)
     else:
@@ -169,10 +184,10 @@ def f8_error(d, exc: Exception) -> dict:
 
 
 NITRIDE_ALL_DROPPED_MESSAGE = (
-    "Every envelope sample failed to evaluate. evaluate_envelope drops any sample that raises "
-    "ValueError and reports the whole box with F8-domain wording, but this card's dot loading "
-    "is resolved by the nitride transport model (drive.cycle_loading), not by drive.mu, so "
-    "narrowing drive.mu is not a remedy. Run a point at the box edges to see the actual error.")
+    "Every sample of the parameter envelope failed to evaluate. The envelope reports this as a dot-loading "
+    "(carrier occupation) domain error, but this card's dot loading comes from the nitride transport model, "
+    "not from the occupation parameter, so narrowing that parameter is not a remedy. Run a single point at "
+    "the edges of the ranges to see the actual error.")
 
 
 def classify_error(d, exc: Exception) -> dict:
@@ -196,9 +211,20 @@ class UnsupportedRun(ValueError):
         self.payload = {"kind": "unsupported", "message": message}
 
 
+COMPOSED_ENVELOPE_UNSUPPORTED = "envelope not supported for composed designs in v1"
+COMPOSED_HEADLINE_UNSUPPORTED = "headline mode is a legacy RT-edge switch; composed designs run in point mode only"
+
+
+def composed_T_K(composed: dict) -> float:
+    """Operating temperature of a composed spec dict (its T_K leaf at the declared central value)."""
+    from fsim_core.compose.params import central, resolve_leaf
+    from fsim_core.compose.spec import T_K_SPEC
+    return float(central(resolve_leaf(composed["T_K"], T_K_SPEC, "T_K")))
+
+
 NANOWIRE_ENVELOPE_UNSUPPORTED = (
-    "envelope runs are not available for the nanowire tier (its evaluate() returns g2_op/T_j "
-    "curves, not the g2/Tj curves evaluate_envelope bands); use the committed sweep in Results")
+    "envelope runs are not available for the nanowire tier (its model reports operating-point "
+    "curves, not the full-range curves an envelope bands); use the committed sweep in Results")
 
 
 # ------------------------------------------------- picklable worker functions
@@ -250,6 +276,8 @@ def point_result(d_orig, res: dict, *, mode, run_id, card, T_grid, partial=False
         "platform": d_orig.platform,
         "T_grid": T_grid,
     }
+    if res.get("series"):  # composed engine: hom_vs_dt etc.
+        out["series"] = res["series"]
     if partial:
         out["partial"] = True
     return to_jsonable(out)
@@ -266,7 +294,7 @@ def envelope_result(d_orig, env: dict, mid_res, *, ranged, run_id, card, T_grid)
     out = {
         "curves": mid,
         "scalars": scalars,
-        "scalars_source": "mid-design point evaluate(): " + MID_LABEL,
+        "scalars_source": "device-model point at the middle of the design ranges: " + MID_LABEL,
         "tag_chain": tag,
         "tag_chain_source": tag_src,
         "provenance": scalars.get("provenance", {}),
@@ -375,7 +403,10 @@ class Job:
 
 class JobManager:
     def __init__(self, max_workers: int | None = None):
-        self.max_workers = max_workers or max(1, (os.cpu_count() or 1) - 2)
+        # Half the logical cores by default (a full-core pool drives the CPU to its thermal limit on long sweeps);
+        # FSIM_STUDIO_WORKERS overrides (the verifiers' private servers use 2).
+        env = os.environ.get("FSIM_STUDIO_WORKERS", "").strip()
+        self.max_workers = max_workers or (int(env) if env.isdigit() and int(env) > 0 else max(1, (os.cpu_count() or 2) // 2))
         self._pool = None
         self._pool_lock = threading.Lock()
         self.jobs: dict[str, Job] = {}
@@ -436,7 +467,20 @@ class JobManager:
             # N1: evaluate_envelope needs g2/Tj curves; refuse immediately instead of
             # failing with KeyError 'g2' after minutes of sampling.
             raise UnsupportedRun(NANOWIRE_ENVELOPE_UNSUPPORTED)
+        composed = getattr(design, "platform", "legacy") == "composed"
+        if composed and mode == "envelope":
+            raise UnsupportedRun(COMPOSED_ENVELOPE_UNSUPPORTED)
+        if composed and mode == "headline":
+            raise UnsupportedRun(COMPOSED_HEADLINE_UNSUPPORTED)
+        if composed:
+            from fsim_core.compose import validate_spec
+            vres = validate_spec(design.composed)
+            if not vres["ok"]:
+                raise ValueError("invalid composed spec: " + "; ".join(
+                    f"{i['path'] or '(spec)'}: {i['message']}" for i in vres["issues"] if i["level"] == "error"))
         T_grid = resolve_T_grid(body.get("T_grid"))
+        if T_grid is None and composed:
+            T_grid = [composed_T_K(design.composed)]
         if T_grid is None and getattr(design, "platform", "legacy") in NITRIDE_DISPLAY_GRID:
             # nitride evaluate() defaults to the single T_hs point; the Designer's "full curve"
             # asks for no grid, so give it an explicit display grid (a sampling choice, not physics).
@@ -461,6 +505,12 @@ class JobManager:
                 n_samples *= len(v)
             n_eval = n_samples + 1 + sum(n_samples // len(v) for v in ranged.values()) + 1
             eta = eval_seconds(cls, n_T) * (n_eval / self.max_workers + 2)
+        elif composed:
+            try:
+                from fsim_core.compose import engine as compose_engine
+                eta = float(compose_engine.estimate(design.composed, n_T))
+            except Exception:  # noqa: BLE001 -- the run reports the real error; the ETA is only advisory
+                eta = eval_seconds(cls, n_T)
         else:
             eta = eval_seconds(cls, n_T)
             if cls in SLOW_CLASSES and n_T > 1:
@@ -479,7 +529,9 @@ class JobManager:
         record_base = {"key": key, "run_id": run_id, "card": card, "mode": mode,
                        "design": design_to_dict(design), "ranged": ranged, "T_grid": T_grid}
 
-        if mode == "point" and cls == "legacy" and n_T <= INLINE_MAX_T:
+        inline_composed = (composed and design.composed.get("solver") == "rate"
+                           and eta < COMPOSED_INLINE_MAX_ETA_S)
+        if mode == "point" and (cls == "legacy" or inline_composed) and n_T <= INLINE_MAX_T:
             job = self._register(Job(mode, eta, key, run_id))
             from fsim_core.device import evaluate
             try:

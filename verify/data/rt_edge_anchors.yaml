@@ -346,7 +346,8 @@ anchors:
     locator: "Eq. (2) guided-mode Purcell factor and the energy-normalised effective-area definition that follows it (equation number as cited in fsim_core/waveguide.py; not re-read against the PDF in this pass)"
     tag: DR
     status: verified
-    verification: "derived: closed-form evaluation of the Lecamp 2007 formula on the solved HKUST ridge mode, reproduced by the independent audit script .workers/review/audit-scripts/photonics_waveguide_checks.py (A_P 0.2534 um^2, F 0.04251, beta 0.04078) and pinned in verify/verify_waveguide.py."
+    evidence_class: derived-regression  # devlib-vf1 M2: the code's own output; NOT independent literature evidence
+    verification: "derived: derived-regression (the 0.0408 is this repo's own output, not a published beta; counts only under the single-source [DR] exemption). Closed-form evaluation of the Lecamp 2007 formula on the solved HKUST ridge mode, reproduced by the independent audit script .workers/review/audit-scripts/photonics_waveguide_checks.py (A_P 0.2534 um^2, F 0.04251, beta 0.04078) and pinned in verify/verify_waveguide.py."
 
 # Shared verifier envelopes (spec audit-edge-cards-label, additional task 2,
 # 2026-09-23). NOT evidence anchors: no claim, no DOI, never scored by

@@ -1,10 +1,12 @@
 """Physics audit: known parameters in -> known results out.
 
-Unlike verify_fsim.py (internal second methods), every item here checks the
-implementation against an EXTERNAL known number: the foundation doc's published
-check values, the F7 table, published Varshni shifts, the Reischle
-background-corrected values, and closed-loop extractions using measured (not
-fitted) linewidths. Discrepancies are FLAGGED, not hidden.
+Unlike verify_fsim.py (internal second methods), items here check the
+implementation against known numbers. Provenance differs per item: items 1 and 3
+are INTERNAL-DOC regressions (foundation doc check values / F7 table, written by
+this project, not external literature); items 5-7 use published numbers (Reischle
+background-corrected values, Chatzarakis digitized X energies, Laferriere
+wavelengths); items 8-9 use fitted inputs (V-a [DR]) plus measured linewidths;
+item 10's R_th class range is [A] uncited. Discrepancies are FLAGGED, not hidden.
 
 Run: python verify/audit_physics.py
 """
@@ -19,10 +21,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from fsim_core.cavity import VARSHNI, varshni_shift
 from fsim_core.integrator import retention
 from fsim_core.loading import aperture_g2, f1b_g2, loading_probs
+from fsim_core.studio_support import inverted_background_g2
 from fsim_core.spectral import epsilon, epsilon_narrow_filter, tophat_transmission
 
 ROOT = Path(__file__).resolve().parents[1]
-FITP = json.loads((ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+sys.path.insert(0, str(ROOT / "verify"))
+from _phase0_fit import phase0_params  # noqa: E402
+
+FITP = phase0_params()  # in-memory V-a fit (clone-safe), asserted == committed snapshot
 
 results = []
 
@@ -37,7 +43,8 @@ def item(name, computed, known, tol, unit="", note=""):
     return ok
 
 
-print("== 1. Foundation F1b check triplet (Delta=5.4, Gamma=6.5, w_half=Gamma/2) ==")
+print("== 1. Foundation F1b check triplet (Delta=5.4, Gamma=6.5, w_half=Gamma/2) "
+      "[internal-doc regression (foundation doc)] ==")
 # foundation convention: half-width w; our code: full width -> w_full = Gamma
 eps = epsilon(5.4, 6.5, 6.5, w=6.5).eps
 item("epsilon at the foundation check point", eps, 0.3993, 0.002)
@@ -51,7 +58,8 @@ t_xx_doc = (1 / np.pi) * (np.arctan(2 * (D + wh) / G) - np.arctan(2 * (D - wh) /
 item("t_X doc form vs code", tophat_transmission(0.0, G, 2 * wh), t_x_doc, 1e-12)
 item("t_XX doc form vs code", tophat_transmission(D, G, 2 * wh), t_xx_doc, 1e-12)
 
-print("\n== 3. F7 requirement table (Gamma(300K) = 6.5-7 meV [V]) ==")
+print("\n== 3. F7 requirement table (Gamma(300K) = 6.5-7 meV [V]) "
+      "[internal-doc regression (F7 table)] ==")
 for D, elo_known, ehi_known in ((1.8, 0.77, 0.79), (5.4, 0.27, 0.30), (8.0, 0.14, 0.16),
                                 (30.0, 0.0, 0.02)):
     e65 = epsilon_narrow_filter(D, 6.5, 6.5)
@@ -74,7 +82,7 @@ item("two equal emitters g2 (OE2008's quoted 0.5 threshold)",
 
 print("\n== 5. Reischle OE2008: F2 inversion vs the paper's published corrections ==")
 for dot, g2b, rho, known in (("B/4K", 0.15, 0.94, 0.04), ("C/80K", 0.25, 0.88, 0.03)):
-    g2s = (g2b - (1 - rho**2)) / rho**2
+    g2s = inverted_background_g2(g2b, rho)  # production F2 inversion (studio_support)
     item(f"dot {dot} background-corrected g2", g2s, known, 0.011,
          note="paper's Eq.(1) == F2 law")
 
@@ -99,8 +107,9 @@ dE_pred = -float(varshni_shift(300.0, "InP") - varshni_shift(4.0, "InP"))
 item("4->300 K redshift", dE_pred * 1e3, dE_meas * 1e3, 8.0, unit=" meV",
      note="InAsP dot in InP nanowire vs bulk-InP Varshni; 7% class agreement")
 
-print("\n== 8. Chatzarakis 78 K bound from MEASURED inputs (no fit parameters) ==")
-# Gamma_X(78)=1.06 [S2 digitized], r_xx from S2 ratio ~0.72 at 78: 0.67/1.06
+print("\n== 8. Chatzarakis 78 K bound from fitted inputs (V-a [DR]) ==")
+# Gamma_X(78)=1.06 [S2 digitized], r_xx from S2 ratio ~0.72 at 78: 0.67/1.06;
+# mu=0.33 and r_xx~0.72 are V-a FITTED values [DR], not measurements.
 e78 = epsilon(5.9, 1.06, 0.67, w=1.40, dx=-0.37).eps
 g2_78 = float(f1b_g2(0.33, e78))
 print(f"        eps(78 K) = {e78:.4f} -> g2_dot(mu=0.33) = {g2_78:.4f}")
@@ -134,7 +143,7 @@ print("\n== 10. Thermal magnitude vs VCSEL literature ==")
 # oxide-aperture VCSEL class: R_th ~ 1-3 K/mW for ~8 um aperture on GaAs
 from fsim_core.thermal import Stack, stack_rth
 R = stack_rth(4e-6, Stack(layers=[], k_sub300=55.0), 300.0)
-item("bare-disk R_th, 8 um aperture on GaAs", R / 1000.0, 2.0, 1.5, unit=" K/mW",
+item("bare-disk R_th, 8 um aperture on GaAs [A] uncited class range", R / 1000.0, 2.0, 1.5, unit=" K/mW",
      note="published VCSEL thermal resistances ~1-3 K/mW; spreading term dominates")
 
 print("\n== 11. Mode-tracking magnitude vs the papers' remarks ==")

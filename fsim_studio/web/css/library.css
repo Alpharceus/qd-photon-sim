@@ -1,0 +1,18 @@
+
+/* R2: device-model thumbnail on a card (a static picture of the composed 3D scene; hidden while pending / when the card has no composed design) */
+.lib-thumb { margin: 0 0 8px; border: 1px solid var(--rim, rgba(128,128,128,.3)); border-radius: 2px; background: #0b0d10; overflow: hidden; aspect-ratio: 8 / 5; }
+/* a thumbnail that is still rendering says so (the jobs run one at a time): a card never shows an empty gap */
+.lib-thumb[data-state="pending"] { display: grid; place-items: center; color: var(--muted, #9a9890); font-size: var(--fs-cap, 12px); }
+.lib-thumb[data-state="pending"]::before { content: "Rendering the device model"; }
+.lib-thumb[data-state="reason"] { aspect-ratio: auto; background: transparent; border-style: dashed; }
+.lib-thumb-why { margin: 0; padding: 8px 10px; color: var(--ink-2); font-size: var(--fs-cap, 12px); line-height: 1.4; }
+.lib-thumb-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* LIBSCENE: the live 3D model of the card's scene block on the card page (one WebGL view, loaded lazily) */
+.lib-model-panel { margin: 0 0 16px; }
+.lib-model { margin: 0; min-height: clamp(280px, 40vh, 460px); border: 1px solid var(--rim, rgba(128,128,128,.3)); border-radius: 2px; background: #0b0d10; position: relative; overflow: hidden; }
+.lib-model .dm-view { position: absolute; inset: 0; }
+.lib-model[data-state="pending"]::after { content: "Loading the device model"; position: absolute; inset: 0; display: grid; place-items: center; color: #8d8b84; font: 12px/1.3 var(--font-ui, system-ui); }
+.lib-model .dm-note { margin: 0; padding: 40px 16px; text-align: center; color: #b8b7ae; font: 13px/1.4 var(--font-ui, system-ui); }
+.lib-model-none { margin: 0 0 12px; }
+@media (max-width: 760px) { .lib-model { min-height: 300px; } }

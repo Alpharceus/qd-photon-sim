@@ -51,7 +51,7 @@ export function buildRidge(spec, ctx) {
     const mat = layerMaterial(Ly.role, { clip, emissive: active ? 0x8a5a12 : 0x000000, emissiveIntensity: active ? 0.9 : 0 });
     const info = {
       title: Ly.name, tag: Ly.tag,
-      rows: [['material', Ly.material], ['thickness', `${nice(Ly.t_nm, 4)} nm`], ['n at λ', Ly.n?.toFixed(4)], ['stack', 'optical (waveguide.py)']],
+      rows: [['material', Ly.material], ['thickness', `${nice(Ly.t_nm, 4)} nm`], ['n at λ', Ly.n?.toFixed(4)], ['stack', 'optical stack']],
       note: Ly.source,
     };
     const r = box(W, t, L, mat, [0, (y0 + y1) / 2, -L / 2]);
@@ -78,13 +78,13 @@ export function buildRidge(spec, ctx) {
   root.add(sub);
   root.add(breakMark([-X, -subT, 0.01], [X, -subT, 0.01], 0.07, [0, 1, 0], 9));
 
-  // --- thermal stack (thermal.py): drawn in place of the optical stack on toggle
+  // --- thermal stack: drawn in place of the optical stack on toggle
   let ty = 0;
   for (const Ly of spec.stacks.thermal.layers) {
     const t = um(Ly.t_nm);
     const m = box(W, t, L, layerMaterial('thermal', { clip, opacity: 0.55 }), [0, ty + t / 2, -L / 2]);
     m.material.color.setHex(ty === 0 ? 0x7a8792 : 0x98a1aa);
-    stage.addPickable(m, { title: Ly.name, tag: Ly.tag, rows: [['thickness', `${nice(Ly.t_nm, 4)} nm`], ['k300', `${Ly.k300} W/m/K`], ['stack', 'thermal (thermal.py)']], note: 'thermal.layers entry; listed order' });
+    stage.addPickable(m, { title: Ly.name, tag: Ly.tag, rows: [['thickness', `${nice(Ly.t_nm, 4)} nm`], ['k300', `${Ly.k300} W/m/K`], ['stack', 'thermal stack']], note: 'thermal stack layer, listed order' });
     thermal.add(m);
     ty += t;
   }
@@ -201,7 +201,7 @@ export function buildRidge(spec, ctx) {
   }
   labels.add(root, [W / 2 + pad * 0.55, floorY + 0.02, -L * 0.42], `etch ${nice(g.etch_depth_nm, 4)} nm · floor ${nice(g.etch_floor_nm, 4)} nm < dot plane ${nice(dot.y_nm, 4)} nm`,
     { priority: 80, tag: 'A', sub: g.etch_through_dot ? 'etch removes dot layer; sidewalls not modelled' : 'etch stops above the dot layer' });
-  labels.add(root, [-X, H + 0.32, 0], `guided mode |E|² · wx ${nice(mode.wx_um)} µm · wy ${nice(mode.wy_um)} µm · n_eff ${nice(mode.n_eff, 4)}`, { priority: 90, tag: mode.tag, sub: 'waveguide.effective_index_ridge', anchor: 'left' });
+  labels.add(root, [-X, H + 0.32, 0], `guided mode |E|² · wx ${nice(mode.wx_um)} µm · wy ${nice(mode.wy_um)} µm · n_eff ${nice(mode.n_eff, 4)}`, { priority: 90, tag: mode.tag, sub: 'ridge-waveguide mode solve', anchor: 'left' });
   labels.add(root, [coneLen * Math.tan(th) * 0.72, yPeak + coneLen * Math.tan(th) * 0.72, coneLen], `collection NA ${nice(na.NA)} · ${nice(na.half_angle_deg, 3)}°`, { priority: 60, tag: na.tag });
   labels.add(root, [X, -subT * 0.6, -1.0], `${g.substrate.material} substrate`, { priority: 30, tag: 'A', sub: 'thickness not modelled' });
   labels.add(root, [-W / 2 - 0.1, H, zb1 - seg / 2], `back facet R ${nice(g.R_back)} · L = ${nice(g.L_um)} µm`, { priority: 55, tag: 'A', sub: `drawn true-scale for ${L} µm, then broken; length never compressed`, anchor: 'right' });
@@ -212,7 +212,7 @@ export function buildRidge(spec, ctx) {
 
   // --- controls
   const gStack = hud.group('stack');
-  hud.toggle(gStack, [['optical', 'optical (waveguide.py)'], ['thermal', 'thermal (thermal.py)']], 'optical', (v) => {
+  hud.toggle(gStack, [['optical', 'optical stack'], ['thermal', 'thermal stack']], 'optical', (v) => {
     optical.visible = v === 'optical'; thermal.visible = v === 'thermal';
     facet.visible = env.visible = v === 'optical';
     stage.requestRender();

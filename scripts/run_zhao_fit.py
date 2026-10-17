@@ -22,6 +22,10 @@ behind each one):
     defaults (see fsim_core/sde.py), not separately re-tuned -- varying them
     inside their stated bands did not change the qualitative finding below.
 
+NOTE (devlib-r2-pha2): the g2 above is the INTRACAVITY observable.  What Zhao measures is the output photon-flux noise
+SPECTRUM, now estimated by fsim_core.sde.output_noise_spectrum (F(f), F_det, dB; verify/verify_zhao_spectrum.py).  This
+script's calibration is unchanged and N_dots is NOT retuned on either observable.
+
 HONEST RESULT (do not be misled by a PASS on the normal-pump row): the
 "normal" (F_pump=1) pump-noise baseline reproduces cards/zhao.yaml's
 1.0224 +- 0.003 point closely (this module's deterministic threshold physics

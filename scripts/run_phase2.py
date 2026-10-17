@@ -113,7 +113,8 @@ def run_cavity_design():
     mat = "GaAs" if card["varshni_material"].fixed == 0 else "InP"
 
     # class-proxy Gamma(T): the chatzarakis joint-fit parameterization [A]
-    fitp = json.loads((ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+    from fsim_core.fit_bundle import load_fit_params
+    fitp = load_fit_params()["params"]
     gpar = {k: fitp[k] for k in ("gamma0", "a_ac", "b_lo", "E_lo")}
 
     Ts = np.linspace(10, 300, 200)

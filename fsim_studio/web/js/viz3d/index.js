@@ -15,6 +15,43 @@ import WebGL from 'three/addons/capabilities/WebGL.js';
 import { Stage, BLOOM_LAYER } from './core/stage.js';
 import { Hud } from './core/hud.js';
 import { Labels } from './core/labels.js';
+
+// ---- readout labels: the scene sends code names ("F P", "lambda nm", "V lambda3"); the plate shows notation.
+const GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eta: 'η', theta: 'θ', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', rho: 'ρ', sigma: 'σ', tau: 'τ', chi: 'χ', phi: 'φ', omega: 'ω', pi: 'π' };
+import { displayUnit } from '../ui/units.js';
+import { tex, richText } from '../ui/math.js';
+import { fieldLabel, knownField } from '../ui/labels.js';
+const unitKey = (u) => String(u || '').toLowerCase().replace(/µ/g, 'u').replace(/[^a-z0-9]/g, '');
+function texNode(src) { return tex(src, { cls: 'sym' }); }
+function readoutLabel(key, unit) {
+  if (key === 'V_lambda3') return texNode('V/(\\lambda/n)^{3}');
+  const words = String(key).split('_').filter(Boolean);
+  if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) words.pop();
+  const base = words[0] || String(key);
+  const g = (w) => (GREEK[w] ? `\\${w}` : w === 'g2' ? 'g^{(2)}' : w);
+  if (words.length === 1) {
+    if (GREEK[base] || base.length <= 2) return texNode(g(base));
+    return null;                                      // a plain word: keep the engraved caps
+  }
+  if (base.length > 2 && !GREEK[base]) return null;   // "waist um" -> plain "WAIST"
+  return texNode(`${g(base)}_{${words.slice(1).map((w) => (GREEK[w] ? g(w) : `\\mathrm{${w}}`)).join('\\,')}}`);
+}
+function symbolizeReadouts(root) {
+  for (const row of root.querySelectorAll('.v3-readout')) {
+    const unitEl = row.querySelector('.v3-readout-unit');
+    const unit = unitEl?.textContent || '';
+    const lab = row.querySelector('.v3-readout-label');
+    const key = row.dataset.key;
+    const node = knownField(key) ? richText(fieldLabel(key)) : readoutLabel(key, unit);
+    if (lab && node) lab.replaceChildren(node);
+    else if (lab) {
+      // plain word: drop the unit token that the unit column already shows
+      const words = lab.textContent.split(' ');
+      if (words.length > 1 && unit && unitKey(words[words.length - 1]) === unitKey(unit)) lab.textContent = words.slice(0, -1).join(' ');
+    }
+    if (unitEl) unitEl.textContent = displayUnit(unit);
+  }
+}
 import { axesBadges } from './core/scale.js';
 import { ScaleBar } from './core/scale.js';
 import { updateLineResolution } from './builders/common.js';
@@ -25,9 +62,20 @@ import { buildBandProfile } from './builders/bandProfile.js';
 import { buildCascade } from './builders/cascade.js';
 import { buildSurface } from './builders/surface.js';
 import { buildLattice } from './builders/lattice.js';
+import { buildMicropillar } from './builders/micropillar.js';
+import { buildOpenCavity } from './builders/openCavity.js';
+import { buildBullseye } from './builders/bullseye.js';
+import { buildPhcWaveguide } from './builders/phcWaveguide.js';
+import { buildPhcCavity } from './builders/phcCavity.js';
+import { buildMesa } from './builders/mesa.js';
+import { buildPhotonicNanowire } from './builders/photonicNanowire.js';
+import { buildPlanarDbr } from './builders/planarDbr.js';
+import { buildRidgeWaveguide } from './builders/ridgeWaveguide.js';
+import { buildLumpedCavity } from './builders/lumpedCavity.js';
 import { renderFallback } from './fallback2d.js';
 import * as THREE from 'three';
 import { addFloor, solidBox } from './builders/floor.js';
+import { addDrive } from './builders/drive.js';
 
 const KINDS = ['device', 'band', 'cascade', 'surface', 'lattice'];
 
@@ -41,11 +89,21 @@ function injectCss() {
   document.head.appendChild(link);
 }
 
+const COMPOSED = {
+  micropillar: buildMicropillar, open_cavity: buildOpenCavity, bullseye: buildBullseye,
+  phc_waveguide: buildPhcWaveguide, phc_cavity: buildPhcCavity, mesa: buildMesa,
+  photonic_nanowire: buildPhotonicNanowire, planar_dbr: buildPlanarDbr, nitride_cavity: buildPlanarDbr,
+  ridge_waveguide: buildRidgeWaveguide, lumped_cavity: buildLumpedCavity,
+};
+
 function pickBuilder(kind, spec) {
   if (kind === 'device') {
     if (spec.variant === 'edge_ridge') return buildRidge;
     if (spec.variant?.startsWith('nanowire')) return buildNanowire;
     if (spec.variant === 'planar_cavity' || spec.variant === 'thermal_mesa') return buildPlanarCavity;
+    // composed devices (fsim_studio/scene_compose.py); anything else -> null -> the 2D message
+    const composed = COMPOSED[spec.variant];
+    if (composed && spec.card === 'composed' && spec.geometry) return composed;
   }
   if (kind === 'band' && (spec.variant === 'nitride' || spec.variant === 'inp')) return buildBandProfile;
   if (kind === 'cascade' && spec.overlays?.t_ns) return buildCascade;
@@ -168,11 +226,17 @@ export function mountScene(el, kind, spec, opts = {}) {
     // tiny viewports fit the default view to it.
     const devBox = kind === 'device' ? solidBox(built.root) : null;
     if (kind === 'device' && !built.noFloor) {
-      const fl = addFloor(stage, built.root);
+      const fl = addFloor(stage, built.root, { spanFromHeight: built.floorSpanFromHeight || 0, bounds: built.floorBounds || null });
       if (fl) built.extraNotes = [...(built.extraNotes || []), fl.note];
+    }
+    // drive layer of a composed device (pump beams, contacts, gate): after the floor so it never moves it
+    let drive = null;
+    if (kind === 'device' && s.card === 'composed' && s.drive) {
+      try { drive = addDrive(s, { stage, labels, devBox, anchor: stage.dotAnchor }); } catch (err) { console.warn('drive layer skipped', err); }
     }
     stage.contextLost = () => useFallback(current, 'WebGL context lost');
     hud.setReadouts(s.scalars, built.readoutKeys);
+    symbolizeReadouts(hud.readouts);
     // Compact (< ~1000 x 500): callouts become numbered pins keyed in a
     // list, the readout plate shows 4 rows + "+N more", and every control
     // group merges into one bar under the canvas.  Narrow (< 560 wide): the
@@ -184,7 +248,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     const compact = () => { const r = rect0(); return r.width < 1000 || r.height < 500; };
     const narrow = () => rect0().width < 560;
     const tiny = () => { const r = rect0(); return r.width < 480 || r.height < 300; };
-    hud.setNotes([...(s.labels || []), ...(built.extraNotes || [])], [...badges], { open: !compact() });
+    hud.setNotes([...(s.labels || []), ...(built.extraNotes || [])], [...badges], { open: false });
     const pins = labels.pinned();
     hud.setKey(pins);
     stage.afterCss = () => {
@@ -264,6 +328,7 @@ export function mountScene(el, kind, spec, opts = {}) {
       el.classList.toggle('v3-compact', c);
       el.classList.toggle('v3-narrow', n);
       el.classList.toggle('v3-tiny', t);
+      el.classList.toggle('v3-short', t && rect0().height < 300);
       el.classList.toggle('v3-has-bar', c && hud.controls.children.length > 0);
       el.classList.toggle('v3-keep-legend', !!built.keepLegend);
       hud.setRowLimit(t ? 2 : 4);
@@ -342,7 +407,7 @@ export function mountScene(el, kind, spec, opts = {}) {
     };
     el.addEventListener('keydown', onKey);
 
-    state = { stage, hud, labels, built, scalebar, onKey, goBookmark, devBox };
+    state = { stage, hud, labels, built, scalebar, onKey, goBookmark, devBox, drive };
     el.dataset.mode = 'webgl';
     stage.render();
     requestAnimationFrame(() => {
@@ -391,6 +456,17 @@ export function mountScene(el, kind, spec, opts = {}) {
       return { n: t.length, ratio: t.length ? t.reduce((x, y) => x + (y.base ? y.m[y.k] / y.base : 1), 0) / t.length : null };
     },
     _info() { return state?.built?.testInfo ? state.built.testInfo() : null; },
+    // drive layer: counts and the screen position (px in the view) of the lit probe points (pulse / beam / current path)
+    _drive() {
+      if (!state?.drive) return null;
+      const cam = state.stage.camera, r = state.stage.wrap.getBoundingClientRect(), er = el.getBoundingClientRect();
+      cam.updateMatrixWorld(true);
+      const pts = state.drive.probes.map((p) => {
+        const q = p.clone().project(cam);
+        return { x: r.left - er.left + (q.x + 1) / 2 * r.width, y: r.top - er.top + (1 - q.y) / 2 * r.height, front: q.z < 1 };
+      });
+      return { ...state.drive.info, probes: pts, view: { x: er.left, y: er.top, w: er.width, h: er.height } };
+    },
     // projected device box (solid meshes, floor excluded) as a fraction of
     // the canvas area, clipped to the canvas
     _deviceCover() {

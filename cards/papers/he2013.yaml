@@ -1,0 +1,82 @@
+meta:
+  id: he2013
+  role: paper-device
+  cite: "Y.-M. He, Y. He, Y.-J. Wei, D. Wu, M. Atature, C. Schneider, S. Hofling, M. Kamp, C.-Y. Lu, J.-W. Pan, On-demand semiconductor single-photon source with near-unity indistinguishability, Nature Nanotechnology 8, 213-217 (2013)"
+  doi: "10.1038/nnano.2012.262"
+  arxiv: "1303.4058"
+  extraction: .workers/devlib/papers/he2013.yaml
+  read_level: V-full
+  summary: "InGaAs/GaAs neutral-exciton dot (941 nm) in a planar Al0.9Ga0.1As/GaAs lambda-microcavity (Q ~200, 24/5 DBR pairs, not a micropillar), 4.2 K, 3 ps cross-polarised resonant pi pulse at ~82 MHz; T1 0.41 ns, g2 raw 0.012, HOM raw 0.91 / corrected 0.97, 230 kcts/s detected"
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "Methods: cryogen-free bath cryostat at 4.2 K"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 941.1, unit: nm, tag: V, where: "text p.2: s-shell resonant excitation at about 941.12 nm"}
+      tau_bare_ns: {value: 0.41, unit: ns, tag: DR, where: "text p.2 T1 (measured on this dot, includes the planar-cavity Purcell effect; used as the bare-rate input)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* entered from measured coherence"}
+      gamma_star_4K_ns: {range: [0.0, 0.36], unit: 1/ns, tag: DR, where: "Supp CW T2/(2 T1) = 0.93(6): gamma*_repo = 2 x (1/T2 - 1/(2 T1)) = (1/T1)(1/0.87 - 1) = 0.36 /ns at the lower 1-sigma bound (0.93 - 0.06), 0 at T2 = 2 T1"}
+  structure:
+    kind: planar_dbr
+    params:
+      N_top: {value: 5, unit: "1", tag: V, where: "text p.2 / Methods: top DBR 5 pairs of Al0.9Ga0.1As/GaAs lambda/4"}
+      N_bot: {value: 24, unit: "1", tag: V, where: "text p.2 / Methods: bottom DBR 24 pairs of Al0.9Ga0.1As/GaAs lambda/4"}
+      beta0: {value: 0.06736, unit: "1", tag: DR, where: "calibrated (fits): text p.2 detected 230000 cts/s with the stated chain (82 MHz, polariser 0.5, BS 0.95, fibre 0.45, detector 0.22); rate_detected_Hz is linear in beta0 (204800 Hz at beta0 = 0.05998 after the review-item-2 input fix) so beta0 = 0.05998 x 230000/204800. Close to the paper first-lens estimate of ~6% before the polariser"}
+  drive:
+    kind: resonant_pulse
+    params:
+      shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated in the extraction; Gaussian assumed"}
+      fwhm_ps: {value: 3.0, unit: ps, tag: V, where: "text p.2: 3 ps pulses (Ti:sapphire)"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.2 / Fig 1: pi pulse at the first Rabi maximum"}
+      detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.2: resonant s-shell excitation"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: V, where: "text p.2 / Supp: ~82 MHz (12.2 ns period; 12.5 ns quoted in places)"}
+      cross_pol: {value: true, unit: "", tag: V, where: "text p.2: cross-polarised excitation/detection, suppression > 1e6"}
+      laser_leak: {range: [0.0, 0.003], unit: "1", tag: V, where: "abstract / text p.2: laser background fraction at the pi pulse < 0.003 (S/B 357 with the 20 GHz etalon, 20 without)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.68, unit: "1", tag: V, where: "text p.2: confocal aspheric objective NA 0.68"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "text p.2 / Fig 3a 20 GHz etalon"}
+      eta_pol: {value: 0.5, unit: "1", tag: V, where: "text p.2 collection chain: polariser 50%"}
+      eta_optics: {value: 0.95, unit: "1", tag: V, where: "text p.2 collection chain: beam splitter 95%"}
+      eta_fibre: {value: 0.45, unit: "1", tag: V, where: "text p.2 collection chain: fibre coupling 45%"}
+      eta_det: {value: 0.22, unit: "1", tag: V, where: "text p.2 collection chain: detector efficiency 22%"}
+reported:
+  - {id: tau_X, observable: tau_ps, value: 410.0, err: 20.0, tag: V, where: "text p.2 / Fig S3: spontaneous-emission lifetime T1 printed '0.41(2) ps', a unit typo for ns (QD2 measured 390(10) ps in the Supp)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.012, err: 0.002, tag: V, where: "text p.2 / Fig 1b caption: zero peak over the mean of six adjacent peaks, raw, at the pi pulse"}
+  - {id: hom_raw, observable: hom_V, convention: raw, value: 0.91, err: 0.02, tag: V, where: "text p.3: raw HOM visibility, pi pulse, 2 ns delay (bunching probability 95.4%)"}
+  - {id: hom_corr, observable: hom_V, convention: corrected, value: 0.97, err: 0.02, tag: V, where: "text p.3 / abstract: corrected for g2(0) = 0.012, R/T = 1.01 and Mach-Zehnder visibility 0.98; the model corrected value removes g2 only"}
+  - {id: rate_det, observable: rate_detected_Hz, value: 230000.0, tag: V, where: "text p.2: detected counts at the pi pulse, detector efficiency 22%, ~82 MHz (overall collection 1.3%, first lens ~6%); no error stated"}
+reproduce:
+  - item: rate_det
+    class: C
+    tol: {rel: 0.02}
+    tol_reason: "calibration: structure.beta0 (collected cavity-cone fraction, not computable in the 1-D planar model) is set once so the detected rate equals the paper count rate; 2% numerical floor"
+    expect: pass
+  - item: tau_X
+    class: C
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 20 ps; class C (tau_bare_ns is the measured 0.41 ns, so tau_X is a fitted/input item)"
+    expect: pass
+  - item: g2_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.002 (0.004). Model raw g2 = intrinsic re-excitation g2 + ~2 x laser_leak (envelope 0 to 0.003 as stated)"
+    expect: fail
+    reason: "the model raw g2 spans 0.0032-0.0092 (envelope) against 0.012(2): the paper value sits just above the whole envelope; the stated laser background (< 0.003) and 3 ps re-excitation do not account for all of it (unstated detector background or excitation-induced channels)."
+  - item: hom_corr
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.02 (0.04). Envelope over gamma* in [0, 0.36] /ns from the CW T2/(2T1); the Mach-Zehnder visibility 0.98 correction in the paper is not carried by the model, within the tolerance"
+    expect: pass
+  - item: hom_raw
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.02 (0.04). The model raw value uses g2_raw (leak envelope) and no interferometer loss, so it is expected high by up to the 0.98 MZ visibility"
+    expect: pass
+fits:
+  - {param: structure.beta0, fitted_to: [rate_det]}
+  - {param: material.tau_bare_ns, fitted_to: [tau_X]}
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 2: setup.zpl_filter true (20 GHz etalon); a_ac 0 (gamma* from measured coherence); tau_bare_ns 0.41 DR; tau_X -> class C + fit; beta0 recomputed 0.05998 -> 0.06736 so rate_det = 230000; gamma_star range [0,0.36] from CW T2/2T1; expects re-recorded: tau_X fail -> pass (class C), hom_corr and hom_raw fail -> pass (envelope covers paper), g2_raw stays fail, rate_det pass"}

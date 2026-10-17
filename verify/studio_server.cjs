@@ -40,7 +40,8 @@ async function waitHealth(base, ms) {
 async function startStudioServer(root, port = 8791) {
   const userCards = fs.mkdtempSync(path.join(os.tmpdir(), "fsim_studio_user_cards_"));
   const cache = fs.mkdtempSync(path.join(os.tmpdir(), "fsim_studio_cache_"));
-  const env = { ...process.env, FSIM_STUDIO_USER_CARDS: userCards, FSIM_STUDIO_CACHE: cache, MSYS_NO_PATHCONV: "1" };
+  const env = { ...process.env, FSIM_STUDIO_USER_CARDS: userCards, FSIM_STUDIO_CACHE: cache, MSYS_NO_PATHCONV: "1",
+    FSIM_STUDIO_WORKERS: process.env.FSIM_STUDIO_WORKERS || "2", OMP_NUM_THREADS: "2" };
   const child = spawn(process.env.PYTHON || "python", ["-m", "fsim_studio", "--no-window", "--port", String(port)], { cwd: root, env, stdio: "ignore", windowsHide: true });
   const base = `http://127.0.0.1:${port}`;
   const stop = () => {

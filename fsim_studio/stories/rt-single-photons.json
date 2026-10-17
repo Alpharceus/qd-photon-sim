@@ -798,7 +798,7 @@
           "tag_declared": "A",
           "value": 0.9816951150623668,
           "raw": "0.9816951150623668",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['g2_op']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 230 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -824,7 +824,7 @@
           "tag_declared": "A",
           "value": 1109.286182291714,
           "raw": "1109.286182291714",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['collected_flux_pulsed_s']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 230 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -838,8 +838,8 @@
           },
           "name": "commit",
           "tag_declared": "V",
-          "value": "5beb620",
-          "raw": "5beb620",
+          "value": "deb733a",
+          "raw": "deb733a",
           "resolved_from": "out/rt_edge (git log (last commit touching the folder))",
           "tag": "V",
           "tag_source": "declared in the story (the source prints no tag)"
@@ -911,7 +911,7 @@
           "tag_declared": "A",
           "value": 740.8288224361773,
           "raw": "740.8288224361773",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_k_X']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 230 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -937,7 +937,7 @@
           "tag_declared": "A",
           "value": 5338.044767803697,
           "raw": "5338.044767803697",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 300.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[300.0])['scalars']['finite_pulse_k_X']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 300 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 300.0
@@ -963,7 +963,7 @@
           "tag_declared": "A",
           "value": 1.0,
           "raw": "1.0",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_gamma_X_ns']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 230 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -989,7 +989,7 @@
           "tag_declared": "A",
           "value": 0.9747229561804862,
           "raw": "0.9747229561804862",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 230.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[230.0])['scalars']['finite_pulse_g2_dot']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 230 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -1015,7 +1015,7 @@
           "tag_declared": "A",
           "value": 0.9967717111859693,
           "raw": "0.9967717111859693",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=headline, overrides={'dot.delta_xx': 8.0, 'dot.gamma300': 6.0, 'thermal.T_hs': 300.0, 'emission.NA': 0.8, 'emission.R_back': 0.95, 'emission.L_um': 250.0}, T_grid=[300.0])['scalars']['finite_pulse_g2_dot']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (headline switch, heat-sink temperature 300 K, 6 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 300.0
@@ -1260,7 +1260,7 @@
           "tag_declared": "DR",
           "value": 0.07118154405554632,
           "raw": "0.07118154405554632",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'thermal.T_hs': 230.0, 'quantum': {'enabled': True}}, T_grid=[230.0])['scalars']['quantum_hom_indistinguishability']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (point switch, heat-sink temperature 230 K, 2 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -1283,7 +1283,7 @@
           "tag_declared": "DR",
           "value": 0.29285191727854204,
           "raw": "0.29285191727854204",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'quantum': {'enabled': True}}, T_grid=[300.0])['scalars']['quantum_hom_indistinguishability']",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (point switch, heat-sink temperature 300 K, 1 parameter override)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 300.0
@@ -1305,9 +1305,9 @@
           },
           "name": "shift230",
           "tag_declared": "DR",
-          "value": 0.07711644783341443,
-          "raw": "0.07711644783341443",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'thermal.T_hs': 230.0, 'quantum': {'enabled': True}}, T_grid=[230.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
+          "value": 0.07711644783341376,
+          "raw": "0.07711644783341376",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (point switch, heat-sink temperature 230 K, 2 parameter overrides)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 230.0
@@ -1328,9 +1328,9 @@
           },
           "name": "shift300",
           "tag_declared": "DR",
-          "value": 0.18616179286716372,
-          "raw": "0.18616179286716372",
-          "resolved_from": "live fsim_core.device.evaluate(cards/edge-inp-gainp-design.yaml, mode=point, overrides={'quantum': {'enabled': True}}, T_grid=[300.0])['scalars']['quantum_g2_cw0_filter_shift_corr']",
+          "value": 0.18616179286716206,
+          "raw": "0.18616179286716206",
+          "resolved_from": "live device-model run for the design card edge-inp-gainp-design (point switch, heat-sink temperature 300 K, 1 parameter override)",
           "tag": "A",
           "tag_source": "live run tag_chain (fsim_core tag_chain)",
           "at_T": 300.0
@@ -2189,8 +2189,8 @@
       "notes": "The RT edge emitter {sc_rt.say} outright (VERDICT {sc_rt}). The planar cavity SET {sc_cav.say}: {sc_cav_hw} rows pass in hardware. The screened c-plane SET from the geometry/Stark study also {sc_geo.say}. The relaxed vertical nanowire SET {sc_nw.say} too, with {sc_nw_hw} rows hardware-qualified. No COMSOL result enters any number here."
     }
   ],
-  "baked_hash": "9cf79db269c05ddd4a4aacf3e0f00e6060901ccbc527b65b9229c0ce098aab29",
-  "baked_fsim_core_hash": "875a40716a9b630e4dbd46dfd3b163d75b11eab93d3982a04fd0ef025f86c2a7",
-  "baked_at": "2026-10-08T09:25:45+00:00",
+  "baked_hash": "77f3690a9062e4a3440f36cedd483be4d2019a9983ef97a56c6350fcbfd04cf5",
+  "baked_fsim_core_hash": "cf1ddd87aa08fb968ad5dce17121130137a0a4a1004a9020421178dc2966f085",
+  "baked_at": "2026-10-16T21:58:10+00:00",
   "bake_errors": []
 }

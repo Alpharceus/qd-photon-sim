@@ -30,6 +30,7 @@ from fsim_core.cw_g2 import (
     intrinsic_from_raw,
     irf_width,
     propagate,
+    rates_fast_exchange,
     raw_g2_0,
     steady_state,
 )
@@ -279,10 +280,10 @@ _STIFF_PARAMS = dict(r_ns=10.0, gX=1.0, gXX=2.0, kX=1e3, kXX=1e3, t_X=1.0, t_XX=
        "cw_report completes in < 2 s")
 def _():
     p = _STIFF_PARAMS
-    t0 = time.perf_counter()
+    t0 = time.process_time()   # CPU time: wall time fails when the thermal guard throttles
     rep = cw_report(p["r_ns"], p["gX"], p["gXX"], p["kX"], p["kXX"], p["t_X"], p["t_XX"],
                     p["rho"], irf_fwhm_ps=100.0, tau_max_ns=10.0)
-    elapsed = time.perf_counter() - t0
+    elapsed = time.process_time() - t0
     RESULTS["i_elapsed"] = elapsed
     RESULTS["i_g2_dot0"] = rep["g2_dot0"]
     assert elapsed < 2.0, elapsed
@@ -359,6 +360,76 @@ def _():
 @check("finding 8e: f1b_g2 large-mu limit at eps=0.2: f(1e4,0.2) -> 2/(1+eps)^2")
 def _():
     assert abs(f1b_g2(1e4, 0.2) / 0.2 - 2 / 1.2 ** 2) < 1e-6
+
+
+# ------------------------------------------------ devlib-r2-pha2: fast exchange (Reischle) and XX-selective loss (LAF)
+
+@check("r2-pha2 Q4: rates_fast_exchange: Gamma_eff + k_eff = D_eff and S = Gamma_eff/D_eff (identities)")
+def _():
+    for S, D in ((0.094, 0.8333), (0.5, 2.0), (1.0, 0.3)):
+        G, k = rates_fast_exchange(1.0, S, D)
+        assert abs(G + k - D) < 1e-14 and abs(G / (G + k) - S) < 1e-14
+
+
+@check("r2-pha2 Q4: fast exchange -> perfect sink in the limit D_eff = Gamma + k_sink (k_eff = Gamma(1/S - 1))")
+def _():
+    kX, _ = escape_rates_from_retention(1.0, 6.87, 0.0, 0.0, 35.0, 220.0)   # esc = a_esc exp(0) = 6.87
+    S = 1.0 / (1.0 + 6.87)
+    G, k = rates_fast_exchange(1.0, S, 1.0 + kX)
+    assert abs(G - 1.0) < 1e-12 and abs(k - kX) < 1e-12
+
+
+@check("r2-pha2 Q4: Reischle raw g2(0) on the fast-exchange dip vs the closed form 1 - A tau_d/(tau_d + tau_i) "
+       "(A 0.75, tau_i 0.5 ns; closed 0.500/0.429 at tau_d 1.0/1.6 ns), within 0.03 (cascade dip is not a pure exponential)")
+def _():
+    S, eps, rho = 0.094, 0.0175, 0.88
+    for tau_c, closed in ((1.0, 1.0 - 0.75 * 1.0 / 1.5), (1.6, 1.0 - 0.75 * 1.6 / 2.1)):
+        D = 1.0 / (tau_c * 1.2)
+        G, k = rates_fast_exchange(1.0, S, D)
+        rep = cw_report(0.2 * D, G, 2 * G, k, 2 * k, 1.0, eps, rho, 693.0, tau_max_ns=10.0, irf_shape="exponential")
+        assert abs(rep["g2_raw0"] - closed) < 0.03, (tau_c, rep["g2_raw0"], closed)
+        assert abs(rep["tau_dip"] - tau_c) < 0.15 * tau_c, (tau_c, rep["tau_dip"])
+
+
+@check("r2-pha2 Q4: sink mapping at the same S gives a ~10x too fast dip (the registered failure), fast exchange does not")
+def _():
+    S, eps, rho = 0.094, 0.0175, 0.88
+    kX = 1.0 * (1.0 / S - 1.0)
+    sink = cw_report(0.01, 1.0, 2.0, kX, 2 * kX, 1.0, eps, rho, 693.0, tau_max_ns=10.0, irf_shape="exponential")
+    D = 1.0 / 1.2
+    G, k = rates_fast_exchange(1.0, S, D)
+    fx = cw_report(0.2 * D, G, 2 * G, k, 2 * k, 1.0, eps, rho, 693.0, tau_max_ns=10.0, irf_shape="exponential")
+    assert sink["g2_raw0"] > 0.8 and 0.35 < fx["g2_raw0"] < 0.55
+    assert fx["tau_dip"] > 5 * sink["tau_dip"]
+
+
+@check("r2-pha2 Q5: xx_escape_Eb_meV default 0 is bit-identical to the previous (k_X, k_XX)")
+def _():
+    a = escape_rates_from_retention(1.0, 3.0e5, 220.0, 25.0, 35.0, 200.0)
+    b = escape_rates_from_retention(1.0, 3.0e5, 220.0, 25.0, 35.0, 200.0, xx_escape_Eb_meV=0.0)
+    assert a == b and a[1] == 2.0 * a[0]
+
+
+@check("r2-pha2 Q5: S_XX/S_X = (1 + k/G)/(1 + (k/G) e^{Eb/kT}) = 0.85 at k/G 6.87, Eb 3.5 meV, 220 K; e^{Eb/kT} 1.08/1.20/1.34")
+def _():
+    kT = 8.617333262e-5 * 220.0 * 1000.0   # meV (kB = 8.617333262e-5 eV/K)
+    for Eb, ref in ((1.5, 1.08), (3.5, 1.20), (5.5, 1.34)):
+        assert abs(np.exp(Eb / kT) - ref) < 0.005, (Eb, np.exp(Eb / kT))
+    kX, kXX = escape_rates_from_retention(1.0, 6.87, 0.0, 0.0, 35.0, 220.0, xx_escape_Eb_meV=3.5)
+    SX = 1.0 / (1.0 + kX)
+    SXX = 2.0 / (2.0 + kXX)
+    assert abs(kXX / (2.0 * kX) - np.exp(3.5 / kT)) < 1e-12          # k_XX = 2 k_X e^{Eb/kT}
+    assert abs(SXX / SX - 0.85) < 0.005, SXX / SX
+    assert abs(SXX / SX - (1 + 6.87) / (1 + 6.87 * np.exp(3.5 / kT))) < 1e-12
+
+
+@check("r2-pha2 Q5: low-pump g2_dot(0) -> eps S_XX/S_X with the XX-selective loss (closed-form limit, 1e-3)")
+def _():
+    kX, kXX = escape_rates_from_retention(1.0, 6.87, 0.0, 0.0, 35.0, 220.0, xx_escape_Eb_meV=3.5)
+    eps = 0.34
+    g = float(g2_cw_zero(1e-4, 1.0, 2.0, eps, kX, kXX))
+    SX, SXX = 1.0 / (1.0 + kX), 2.0 / (2.0 + kXX)
+    assert abs(g - eps * SXX / SX) < 1e-3 * eps, (g, eps * SXX / SX)
 
 
 def main():

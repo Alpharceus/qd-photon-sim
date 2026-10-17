@@ -1,0 +1,71 @@
+# PhC waveguide, on-chip: InAs/GaAs dot in a slow-light photonic-crystal waveguide, resonant pulse, on-chip coupler. Class example, not a reproduction.
+# Every leaf below carries a provenance tag and a source; unspecified parameters take the registry defaults.
+meta:
+  id: example-waveguide-chip
+  role: composed-example
+  label: PhC waveguide, on-chip
+  summary: InAs/GaAs dot in a slow-light photonic-crystal waveguide, resonant pulse, on-chip coupler. Class example, not a reproduction.
+  note: class example built from registry kinds; not a paper reproduction
+design:
+  name: example-waveguide-chip
+  platform: composed
+  composed:
+    schema: fsim-composed/1
+    solver: auto
+    T_K:
+      value: 4.2
+      unit: K
+      tag: A
+      source: operating temperature of the class example
+    material:
+      kind: inas_gaas_sk
+      params: {}
+    structure:
+      kind: phc_waveguide
+      params:
+        n_g:
+          value: 5.0
+          unit: '1'
+          tag: E
+          source: slow-light group index class value
+        A_eff_um2:
+          value: 0.03
+          unit: um2
+          tag: E
+          source: effective mode area class value
+        eta_coupler:
+          value: 0.7
+          unit: '1'
+          tag: E
+          source: on-chip grating or edge coupler class value
+        eta_prop:
+          value: 0.95
+          unit: '1'
+          tag: E
+          source: propagation to the coupler class value
+    drive:
+      kind: resonant_pulse
+      params:
+        shape:
+          value: gauss
+          unit: ''
+          tag: A
+          source: class example, not a paper reproduction
+        fwhm_ps:
+          value: 10.0
+          unit: ps
+          tag: A
+          source: 10 ps intensity FWHM, class value
+        area_pi:
+          value: 1.0
+          unit: pi
+          tag: A
+          source: pi pulse
+    setup:
+      kind: lens_fibre_det
+      params:
+        NA:
+          value: 0.65
+          unit: '1'
+          tag: A
+          source: collection NA of the coupler imaging optics, class value

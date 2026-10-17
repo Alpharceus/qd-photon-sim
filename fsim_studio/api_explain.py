@@ -27,11 +27,13 @@ import json
 import numpy as np
 from flask import Response, request
 
+from fsim_core.fit_bundle import fit_params_path
+
 from . import CARDS, OUT
 from .serialize import dumps
 
 CARD_PATH = CARDS / "chatzarakis.yaml"
-FIT_JSON = OUT / "phase0" / "fit_params.json"
+FIT_JSON = fit_params_path()
 FIT_POINTS = OUT / "phase0" / "fit_data_points.csv"
 FIT_CURVE = OUT / "phase0" / "fit_model_curve.csv"
 

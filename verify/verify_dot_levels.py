@@ -231,21 +231,23 @@ def _register_known_deviations():
         "d-i-a: In0.5Ga0.5As 3 nm x R 12 nm / GaAs (Chatzarakis geometry, no SSL)",
         f"E_X = {L.E_X_eV:.3f} eV", "1.30 eV (Chatzarakis et al., PRA 20, 034011 (2023), macro-PL QD band, <Al> = 0 reference)",
         f"{(1.30 - L.E_X_eV) * 1e3:+.0f} meV",
-        "no piezoelectric field (this (211)B-grown class has a strong built-in piezoelectric field along "
-        "growth, explicitly omitted, module docstring limitation); dot-to-dot size/composition spread "
+        "dot level ~85 meV too deep (E_WL is fine): the dot carries the biaxial-FILM shear inside a 3D island "
+        "(r2-physics-b: ONE cause; strain_model='island'/'sphere' bracket 1.253-1.317 eV contains 1.30); the "
+        "omitted piezoelectric field is NOT the cause (it would red-shift E_X further); dot-to-dot spread "
         "(single dots in the same paper range 1.283-1.44 eV)")
     deviation(
         "d-i-b: same dot, WL escape dE_pair_WL (0.8 nm WL, no SSL)",
         f"dE_pair_WL = {L.dE_pair_WL:.0f} meV", "110 +/- 10 meV (Chatzarakis et al., no-SSL Delta_E = E_WL - E_QD)",
-        f"{L.dE_pair_WL - 110:+.0f} meV", "same piezoelectric-field omission as d-i-a, plus the fixed 10 meV 2D-QW WL "
-        "exciton binding assumption")
+        f"{L.dE_pair_WL - 110:+.0f} meV", "the SAME single miss as d-i-a (dE_pair_WL = E_WL - E_X; E_WL is fine, the dot level is too deep), "
+        "plus the fixed 10 meV 2D-QW WL exciton binding assumption")
     Lc = lv("InGaAs0.5/AlGaAs0.57/AlGaAs0.57 on GaAs")
     deviation(
         "d-i-c: same dot, WL embedded directly in bulk Al0.57Ga0.43As (0 nm GaAs spacer)",
         f"dE_pair_WL = {Lc.dE_pair_WL:.0f} meV", "240 +/- 20 meV (Chatzarakis et al., SSL sample, <Al> = 65%, Delta_E)",
         f"{Lc.dE_pair_WL - 240:+.0f} meV", "this is the ZERO-spacer idealised limit (matrix = barrier = "
         "Al0.57Ga0.43As, no intervening GaAs), an extreme end-member of the real digital-SSL structure, not a "
-        "fit to it; see also d-i-d, whose finite-spacer scan under-predicts the same SSL-induced shift")
+        "fit to it, so this comparison is ill-posed; the sample itself (0.86 nm GaAs, Al0.65) is compared "
+        "in verify_reproduce_cards dl_ssl_shift_faithful")
     d2 = None
     for d in (2.0,):
         S = P["InGaAs0.5/GaAs/AlGaAs0.57 on GaAs"]()
@@ -255,9 +257,9 @@ def _register_known_deviations():
         "d-i-d: SSL-induced increase of dE_pair_WL at a 2 nm GaAs spacer",
         f"+{d2:.0f} meV", "+130 meV (Chatzarakis et al., SSL 240 meV minus no-SSL 110 meV, "
         "each +/- 10-20 meV)", f"{d2 - 130:+.0f} meV",
-        "treating the digital short-period (GaAs/AlAs) superlattice barrier as a uniform bulk Al0.57Ga0.43As "
-        "alloy at an effective distance underestimates the confinement of the true periodic structure, whose "
-        "local band profile briefly reaches the full AlAs barrier height each period")
+        "INPUT ERROR, not a model miss: this check uses an [A] 2 nm GaAs spacer and Al0.57, while the paper's "
+        "240 meV sample is <Al> = 65 % = GaAs 0.86 nm / AlAs 1.6 nm; with those inputs the shift is "
+        "131.6 meV vs 130 +/- 22 (verify_reproduce_cards dl_ssl_shift_faithful)")
     Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
     deviation(
         "d-ii-a: InP 3 nm x R 10 nm [A, dot size not measured] / Ga0.51In0.49P, Pryor VBO",
@@ -265,21 +267,22 @@ def _register_known_deviations():
         "lines) / ~1.84-1.95 eV (Reischle et al., APL 97, 143513 (2010), single-dot lines) -- both single-dot, "
         "not ensemble; dot size not reported in either paper",
         f"{(1.815 - Lr.E_X_eV) * 1e3:+.0f} to {(1.95 - Lr.E_X_eV) * 1e3:+.0f} meV",
-        "combines Pryor's isolated, measured unstrained VBO (-45 meV) with this module's own Vurgaftman bulk "
-        "gaps and linear deformation-potential strain (module docstring limitation (iii)), compounded by the "
-        "same large-mismatch/no-k.p-mixing limitation as HKUST/Gu and the [A] dot size")
+        "the -45 meV override is KEPT (Pryor: InP VB BELOW GaInP, [V]); r2-physics-b settled that it is not a "
+        "transcription error (it gives the strain-only hole barrier ~91 meV, Bommer E_a(X) = 96 +/- 7 meV). "
+        "The miss is the film shear in a 3D island (strain_model='island' lifts E_X by ~70 meV) plus an "
+        "UNPUBLISHED dot size (h 1.5 nm / R 6 nm gives 1.862 eV, h 2 / R 5 gives 1.817 eV, both in range; "
+        "h 2 / R 8 island bracket 1.784-1.830 eV), so this is a size unknown plus one strain cause, not a solver miss")
     deviation(
         "d-ii-b: same dot, dot-matrix conduction band offset V_e",
         f"V_e = {Lr.V_e:.0f} meV", "~250 meV (240 meV DLTS) (Pryor, Pistol, Samuelson, PRB 56, 10404 (1997), "
         "6-band k.p, strained)", f"{Lr.V_e - 250:+.0f} meV (model 1.7x Pryor's value)",
-        "same combination limitation as d-ii-a: Pryor's own strained CBO comes from a 6-band k.p calculation "
-        "using Pryor's own bulk gaps and strain treatment, not separable from the single -45 meV VBO number "
-        "reused here; investigated for a dot_levels.py coding defect (double-counted strain, wrong reference "
-        "material) and none was found -- _with_vbo/materials.strain_shifts apply the override and the strain "
-        "shift exactly as the module docstring specifies (rigid shift preserving each material's own gap); "
-        "the escape energy dE_e_matrix (251 meV) coincidentally lands near Pryor's 250 meV despite V_e itself "
-        "missing by 186 meV, which is why the previous check (testing dE_e_matrix under this V_e's label) is "
-        "removed rather than kept as a passing but mislabelled comparison")
+        "V_e = E_g(GaInP) - E_g(InP) - a_c tr(eps) - VBO = 0.385 eV - VBO (V01 inputs, 5 K); tr(eps) is "
+        "shape-invariant, so V_e is identical for film, island and sphere (check h5) and no strain state "
+        "reaches 250 meV; that needs Pryor's own bulk inputs / 6-band k.p. The -45 meV sign is [V] and is "
+        "kept (strain-only hole barrier ~91 meV); the model-solid +168 meV gives V_e = 222 meV only because "
+        "the wrong VBO sign cancels a_c tr(eps) (coincidence; its 304 meV hole barrier contradicts "
+        "Pryor/Bommer). The escape energy dE_e_matrix (251 meV) lands near 250 meV by a separate coincidence "
+        "and is not tested under the V_e label")
     Lt = lv("InAs/InP/InP")
     deviation(
         "d-iii: InAs 2.5 nm x R 15 nm / InP telecom dot, 300 K",
@@ -287,7 +290,9 @@ def _register_known_deviations():
         "0.887-0.953 eV (1301-1398 nm) (Laferriere et al., Nano Lett. 23, 962 (2023), single-dot, 4-300 K); "
         "typical InAs/InP telecom dot range 0.80-0.95 eV (1.3-1.55 um) [E]",
         f"{(0.80 - Lt.E_X_eV) * 1e3:.0f} meV below the typical-range lower edge",
-        "this preset is a pure InAs dot directly in InP; Laferriere's actual device is an InAs0.68P0.32 "
+        "this preset is a pure InAs dot directly in InP (range is a 4-300 K union; measured 0.887 eV at 300 K; "
+        "the faithful InAs0.68P0.32 preset brackets it at 0.815-0.947 eV, verify_reproduce_cards "
+        "dl_laf_EX_faithful_bracket); Laferriere's actual device is an InAs0.68P0.32 "
         "dot-in-a-rod inside an InAs0.5P0.5 rod inside the InP core -- the graded InAsP composition has a "
         "larger gap than pure InAs, so the real device is less confined (blue-shifted) than this simplified "
         "preset, in the observed direction")
@@ -299,9 +304,10 @@ def _register_known_deviations():
         f"{Lg4.E_X_eV:.3f} eV ({Lg4.lambda_nm:.0f} nm)",
         "750-755 nm = 1.643-1.653 eV (Gu et al., Opt. Express 33, 23732 (2025), ensemble QD PL/lasing)",
         f"{(1.643 - Lg.E_X_eV) * 1e3:+.0f} to {(1.653 - Lg.E_X_eV) * 1e3:+.0f} meV",
-        "large-mismatch (5.0-5.3%) 3D-island relaxation this coherent single-band disk does not fit (module "
-        "docstring limitation (i)), compounded by unknown alloy ordering and the fact that the paper's line is "
-        "an ensemble, type-I/II-mixed observable, not a single dot of this exact geometry")
+        "large-mismatch (5.0-5.3%) 3D island: the film shear is the main cause (strain_model='island' closes "
+        "~75 of ~160 meV, residual ~85 meV), compounded by unknown alloy ordering/composition and the fact "
+        "that the paper's line is an ensemble, type-I/II-mixed observable (the hole is unbound once the "
+        "shear relaxes: V_h < 0, type II, which Gu also report), not a single dot of this exact geometry")
 
 
 _register_known_deviations()
@@ -376,6 +382,91 @@ def _():
     for name in P:
         L = lv(name)
         assert (L.type == "I") == (L.V_e > 0 and L.V_h > 0), name
+
+
+# ------------------------------------------------------------ (h) island strain (r2-physics-b)
+
+def _island(name, model, **kw):
+    from dataclasses import replace
+    S = P[name](**kw)
+    return D.levels(replace(S, geometry=replace(S.geometry, strain_model=model)))
+
+
+@check("h1: Eshelby shear factor: s(0+) = 1, s(1-) = 0, s(0.25) = 0.555 +/- 0.002, s(0.5) = 0.291 +/- 0.002 "
+       "(anchors from the closed form of the r2-physics-b probe, nu-independent)")
+def _():
+    assert abs(M.eshelby_shear_factor(1e-9) - 1.0) < 1e-4, M.eshelby_shear_factor(1e-9)
+    assert abs(M.eshelby_shear_factor(1.0 - 1e-9)) < 1e-6, M.eshelby_shear_factor(1.0 - 1e-9)
+    assert abs(M.eshelby_shear_factor(0.25) - 0.555) <= 0.002, M.eshelby_shear_factor(0.25)
+    assert abs(M.eshelby_shear_factor(0.5) - 0.291) <= 0.002, M.eshelby_shear_factor(0.5)
+
+
+@check("h2: strain_model='film' (explicit or default) == the raw materials.offsets film numbers bit-for-bit, "
+       "and strain_shifts(shear_factor=1.0) == strain_shifts() exactly")
+def _():
+    from dataclasses import replace
+    for name in P:
+        S = P[name]()
+        a = D.levels(S)
+        b = D.levels(replace(S, geometry=replace(S.geometry, strain_model="film")))
+        assert a.E_X_eV == b.E_X_eV and a.V_h == b.V_h and a.V_e == b.V_e and a.dE_pair_WL == b.dE_pair_WL, name
+        dot = D._with_vbo(S.dot, S.matrix, S.vbo_override_eV.get("dot-matrix"), +1.0)
+        om = M.offsets(dot, S.matrix, S.substrate, S.T)
+        assert 1e3 * om.dE_c == a.V_e and om.well.Eg_hh == a.Eg_dot_strained_eV, name
+    w = M.strain_shifts(M.binary("InP"), M.binary("GaAs"), 5.0)
+    w1 = M.strain_shifts(M.binary("InP"), M.binary("GaAs"), 5.0, shear_factor=1.0)
+    assert w == w1
+
+
+@check("h3: legacy film E_X values recorded before the strain_model change (eV): "
+       "Chatzarakis 1.199, Reischle 1.686, Gu 1.484, telecom 0.768 (+/- 0.6 meV)")
+def _():
+    for name, ref in (("InGaAs0.5/GaAs/GaAs on GaAs", 1.199), ("InP/GaInP/AlGaInP0.55 on GaAs", 1.686),
+                      ("InAs/InP/InP", 0.768)):
+        assert abs(lv(name).E_X_eV - ref) < 6e-4, (name, lv(name).E_X_eV)
+    assert abs(lv("InP/GaAs0.65P0.35/AlGaAs0.4 on GaAs", height_nm=5.5).E_X_eV - 1.484) < 6e-4
+
+
+@check("h4: E_X(film) < E_X(island) for every preset, and E_X(island) <= E_X(sphere) wherever the hole stays "
+       "bound in the sphere limit (otherwise the sphere gains a type-II hole and may sit just below the island)")
+def _():
+    bad = []
+    for name in P:
+        f, sph = D.levels_bracket(P[name]())
+        i = _island(name, "island")
+        if not f.E_X_eV < i.E_X_eV:
+            bad.append((name, "film>=island"))
+        if sph.hole_bound and not i.E_X_eV <= sph.E_X_eV + 1e-9:
+            bad.append((name, "island>sphere"))
+    assert not bad, bad
+
+
+@check("h5: V_e identical for film / island / sphere to 1e-9 meV (tr(eps) is shape-invariant)")
+def _():
+    for name in P:
+        f, s_ = D.levels_bracket(P[name]())
+        i = _island(name, "island")
+        assert abs(f.V_e - i.V_e) < 1e-9 and abs(f.V_e - s_.V_e) < 1e-9, name
+
+
+@check("h6: WL stays a film: E_WL identical across the three models; dE_pair_WL = E_WL(film) - E_X(model)")
+def _():
+    for name in P:
+        f, s_ = D.levels_bracket(P[name]())
+        i = _island(name, "island")
+        assert f.E_WL_eV == i.E_WL_eV == s_.E_WL_eV, name
+        assert abs(i.dE_pair_WL - (f.E_WL_eV - i.E_X_eV) * 1e3) < 1e-9, name
+
+
+@check("h7: Pryor V_e is the VBO-driven 0.385 eV - VBO of the module docstring: V_e(-45 meV) = 430, "
+       "V_e(+168 meV) = 217 meV (analytic V01 inputs 2.007 - 1.424 + 6.0*0.0329 = 0.385 eV, +/- 8 meV)")
+def _():
+    from dataclasses import replace
+    Lr = lv("InP/GaInP/AlGaInP0.55 on GaAs")
+    assert abs(Lr.V_e - (385.0 + 45.0)) < 8.0, Lr.V_e
+    S = P["InP/GaInP/AlGaInP0.55 on GaAs"]()
+    ms = S.dot.p["vbo"] - S.matrix.p["vbo"]
+    assert abs(D.levels(replace(S, vbo_override_eV={"dot-matrix": ms})).V_e - (385.0 - 1e3 * ms)) < 8.0
 
 
 # ------------------------------------------------------------------ report + main

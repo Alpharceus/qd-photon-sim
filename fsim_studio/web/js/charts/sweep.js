@@ -7,6 +7,7 @@ import { baseLayout, colors as themeColors, alpha } from "./theme.js";
 import { tagDash, tagWidth } from "../ui/tagChip.js";
 import { g2Top } from "./g2T.js";
 import { fmt, isNum } from "../ui/format.js";
+import { fieldLabel, fieldUnit, words } from "../ui/labels.js";
 
 // Display names for sweep columns (labels only).
 const LABELS = {
@@ -26,7 +27,9 @@ const LABELS = {
 /** Axis label for a column; nanowire flux is never a bare "flux". */
 export function colLabel(c, { nanowire = false } = {}) {
   if (nanowire && c === "collected_flux_pulsed_s") return "Collected flux, commanded (s⁻¹)";
-  return LABELS[c] || c;
+  if (LABELS[c]) return LABELS[c];
+  const u = fieldUnit(c);
+  return u ? `${fieldLabel(c)} (${u})` : fieldLabel(c);
 }
 export const isG2 = (c) => /(^|_)g2(_|$)/.test(String(c)) && !/valid|reason|tag/.test(c);
 export const isFlux = (c) => /flux/.test(String(c)) && !/margin|excluded|reason/.test(c);
@@ -41,7 +44,7 @@ function distinct(rows, key) {
   }).map(([k, v]) => ({ key: k, value: v }));
 }
 
-const shortV = (v) => (typeof v === "number" ? fmt(v) : v == null ? "n/a" : String(v));
+const shortV = (v) => (typeof v === "number" ? fmt(v) : v == null ? "n/a" : words(String(v)));
 
 /**
  * opts: {rows: [obj], x, y | y: [colA, colB] (paired series), color?, facet?, logX?, logY?,
@@ -148,7 +151,7 @@ export function buildSweepScatter(opts) {
       } else if (colorCats) {
         colorCats.forEach((cat, ci) => {
           const sub = good.filter((r) => (r[opts.color] == null ? "n/a" : String(r[opts.color])) === cat);
-          const name = `${colLabel(opts.color)} ${cat}`;
+          const name = `${colLabel(opts.color)} ${words(String(cat))}`;
           pushPts(sub, ycol, { kind: "valid", color: c.series[ci] }, name, legendOnce(name), name);
         });
       } else if (colorNumeric) {
@@ -173,7 +176,7 @@ export function buildSweepScatter(opts) {
     };
     if (opts.facet) {
       annotations.push({ xref: "paper", yref: "paper", x: (dom[0] + dom[1]) / 2, y: 1.0, yanchor: "bottom", yshift: 4,
-        text: `${colLabel(opts.facet)}: ${f.key}`, showarrow: false, font: { size: 12, color: c.ink2 } });
+        text: `${colLabel(opts.facet)}: ${words(String(f.key))}`, showarrow: false, font: { size: 12, color: c.ink2 } });
     }
     // references per panel
     const refs = opts.refs || {};

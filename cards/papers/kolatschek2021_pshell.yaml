@@ -1,0 +1,95 @@
+# Kolatschek et al., Nano Lett. 2021: O-band InGaAs QD in a flip-chip circular Bragg grating -- P-SHELL CHARGED LINE ONLY.
+# The charged transition (no FSS) whose p-shell is at 1207 nm: g2 0.0115 at 4 K saturation, 0.026 at 40 K, 0.127 at 77 K;
+# 355 kcps at 4 K, 262 kcps at 40 K, 191 kcps at 77 K. Not mixed with line 1 (kolatschek2021_line1.yaml) or line 2
+# (kolatschek2021.yaml). The line's wavelength and its detuning from the cavity mode are NOT given (only 'blue-shifted').
+meta:
+  id: kolatschek2021_pshell
+  role: paper-device
+  cite: "S. Kolatschek, C. Nawrath, S. Bauer, J. Huang, J. Fischer, R. Sittig, M. Jetter, S. L. Portalupi, P. Michler, Bright Purcell enhanced single-photon source in the telecom O-band based on a quantum dot in a circular Bragg grating, Nano Letters (2021), arXiv:2107.03316 (volume/page not in the arXiv text)"
+  doi: 10.1021/acs.nanolett.1c02647
+  arxiv: "2107.03316"
+  extraction: .workers/devlib/papers/kolatschek2021.yaml
+  read_level: V-full
+  summary: "InGaAs/GaAs O-band charged dot (p-shell at 1207 nm) in a flip-chip CBG, 4/40/77 K, p-shell pulsed pump at 76 MHz; g2 0.0115 (4 K), 0.026 (40 K), 0.127 (77 K), 355 kcps at 4 K"
+  notes:
+    - "P-SHELL CHARGED LINE ONLY (see header). g2 0.0115 is a fit with a blinking envelope (blinking ~100 ns limits the rate to ~25 % of the unblinked case) normalised accordingly; the fitted values scatter 0.01-0.02 across pump powers (text p.5). The 40 K and 77 K points use a wider spectral window (0.1 nm instead of 0.04 nm)."
+    - "Wavelength: the text gives only the p-shell (1207 nm) and that the line is blue of the cavity mode; entered as a range 1280-1301 nm [E]. Detuning from the mode: range 0-8 meV [E]. F_P: 12 (text p.3, DR)."
+    - "F_P is the paper value 12 (text p.3), eta_blink = 0.25 (blinking, V), so rate_4K is no longer a vacuous envelope pass: the model is ~2.6x high (9.3e5 vs 3.55e5). NOTE g2_4K passes with the abs 0.01 tolerance, which is weak against a model value of 0.002 (not changed; tolerances are never tuned)."
+    - "The model has no temperature-dependent thermal escape to higher levels in this engine path, so the g2 vs T series is a test of whether the phonon/retention bookkeeping reproduces the rise from 0.0115 to 0.127; the paper gives no activation energy."
+device:
+  T_K: {value: 4.0, unit: K, tag: V, where: "text p.5 (4 K; temperature increased to 40 K and 77 K for the series)"}
+  material:
+    kind: inas_ingaas_metamorphic_cband
+    params:
+      lambda_nm: {range: [1280.0, 1301.0], unit: nm, tag: E, source: "text p.5: line is 'blue-shifted with respect to the cavity mode' (mode ~1302 nm from the line-1 shift); wavelength not stated"}
+      eta_blink: {value: 0.25, unit: "1", tag: V, where: "text ~l.348-355 blinking limits rate to ~25%"}
+      charge_state: {value: "X-", unit: "", tag: DR, where: "text p.5 (no fine structure splitting observed, hinting strongly at a charged transition); X- vs X+ is not stated, X- chosen [A]"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3"}
+      Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
+      detuning_ueV: {range: [0.0, 8000.0], unit: ueV, tag: E, source: "line is blue of the mode by an unstated amount; 0 to 8 meV (line 1 is 6.6 meV) as an envelope"}
+      eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8)"}
+  drive:
+    kind: p_shell
+    params:
+      pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; 'saturation' is quoted (Fig 4b), so P/P_sat >= 2"}
+      window_ps: {value: 3.0, unit: ps, tag: A, source: "pulse width of the 1207 nm p-shell laser is not stated in the read text; the 3 ps of the above-band laser is reused"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz; same laser system assumed for the p-shell scheme)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
+      eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused for this line"}
+      eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
+reported:
+  - {id: g2_4K, observable: g2_0, convention: raw, value: 0.0115, err: 0.0002, tag: V, where: "text p.5 / Fig 4 caption (4 K, saturation; fit with blinking envelope; fitted values 0.01-0.02 across powers)"}
+  - {id: rate_4K, observable: rate_detected_Hz, value: 355000.0, tag: V, where: "text p.5 / Fig 4b (detector count rate at saturation, 4 K; ~25 % of the unblinked rate; no error given)"}
+series:
+  - id: g2_vs_T
+    x: {path: T_K, unit: K}
+    y: {observable: g2_0, convention: raw}
+    tag: V
+    where: "text p.5-6 / Fig 5 (g2 at saturation: 0.0115 at 4 K, 0.026 +/- 0.001 at 40 K, 0.127 +/- 0.004 at 77 K; numbers printed in the text, not digitised)"
+    digitized: false
+    points: [[4.0, 0.0115, 0.0002], [40.0, 0.026, 0.001], [77.0, 0.127, 0.004]]
+  - id: rate_vs_T
+    x: {path: T_K, unit: K}
+    y: {observable: rate_detected_Hz}
+    tag: V
+    where: "text p.5 (355 kcps at 4 K, 262 kcps at 40 K, 191 kcps at 77 K detector count rates; numbers printed in the text, not digitised)"
+    digitized: false
+    points: [[4.0, 355000.0], [40.0, 262000.0], [77.0, 191000.0]]
+reproduce:
+  - item: g2_4K
+    class: M
+    tol: {k_sigma: 2, abs: 0.01}
+    tol_reason: "paper 0.0115 +/- 0.0002 is a fit value whose own scatter across pump powers is 0.01-0.02, so 0.01 absolute; the p-shell scheme has no re-excitation, so the model should give a small g2 with no background or fit envelope"
+    expect: pass
+    weak: true
+    weak_reason: "model g2 0.0019 is 6x below the paper 0.0115; abs 0.01 tolerance (plus the fit scatter 0.01-0.02) makes any g2 < 0.02 pass, so the test cannot discriminate"
+  - item: rate_4K
+    class: M
+    tol: {rel: 0.5}
+    tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
+    expect: fail
+    reason: "model 9.3e5 (envelope 7.7e5-9.7e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
+  - item: g2_vs_T
+    class: M
+    tol: {metric: rms_rel, max: 0.5}
+    tol_reason: "three text-printed points spanning 0.0115 to 0.127 (a factor 11); rms relative deviation 0.5 means the model must track the rise within about 50 percent, which a temperature-independent g2 cannot"
+    expect: fail
+    reason: "model gap: the model g2 is essentially temperature independent (~1e-3 to 2e-3, rms_rel 0.92 against 0.0115/0.026/0.127); the paper's rise with T is thermal escape and spectral-window/background effects not in the p_shell path."
+  - item: rate_vs_T
+    class: M
+    tol: {metric: rms_rel, max: 0.5}
+    tol_reason: "three text-printed rates spanning a factor 1.9; rms relative deviation 0.5 is the same loose band as the rate_4K item (6.4 % setup efficiency measured on line 1, unknown pump saturation), written before the run"
+    expect: fail
+    reason: "model gap: rms_rel 1.68; the model rate does not follow the paper's roughly 2x fall from 4 to 77 K (thermal escape / red-shifted line leaving the window), which the p_shell path does not contain, and the absolute scale is already 2.4x high at 4 K."
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
+  - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}

@@ -182,7 +182,7 @@ def main():
         # ================================================================ transport (brief section 4)
         tm = c.get("/api/explore/transport/meta").get_json()
         check("transport meta: InP and nitride caveats pinned verbatim; Zhang is a labelled guide, non-gating",
-              tm["caveat"] == eb.TRANSPORT_CAVEAT and "leak_valleys='G' is a LOWER bound on leakage" in tm["caveat"]
+              tm["caveat"] == eb.TRANSPORT_CAVEAT and "leakage through the G valley only is a LOWER bound on leakage" in tm["caveat"] and "docstring" not in tm["caveat"] and ".py" not in tm["caveat"]
               and tm["nitride_caveat"] == eb.NITRIDE_CAVEAT and "Zhang is 10 K, x=0.15, another device" in tm["nitride_caveat"]
               and tm["zhang"]["slope_meV_per_V"] == -10.0 and "guide only" in tm["zhang"]["label"])
         q = "I_uA=1&T=230&n_dot=2e9&aperture=1&tau_pulse=0.1&w=2&dE_WL=100&tau_rad=1"

@@ -1,0 +1,61 @@
+# Telecom C-band, bullseye: InAs/InP C-band dot in a circular Bragg grating, p-shell excitation. Class example, not a reproduction.
+# Every leaf below carries a provenance tag and a source; unspecified parameters take the registry defaults.
+meta:
+  id: example-telecom-cbg
+  role: composed-example
+  label: Telecom C-band, bullseye
+  summary: InAs/InP C-band dot in a circular Bragg grating, p-shell excitation. Class example, not a reproduction.
+  note: class example built from registry kinds; not a paper reproduction
+design:
+  name: example-telecom-cbg
+  platform: composed
+  composed:
+    schema: fsim-composed/1
+    solver: auto
+    T_K:
+      value: 4.2
+      unit: K
+      tag: A
+      source: operating temperature of the class example
+    material:
+      kind: inas_inp_cband
+      params: {}
+    structure:
+      kind: cbg
+      params:
+        F_P:
+          value: 10.0
+          unit: '1'
+          tag: A
+          source: class Purcell factor of a bullseye (Wang 2019 F_P 11.3, Kolatschek ~ 4 for other devices)
+        Q:
+          value: 150.0
+          unit: '1'
+          tag: E
+          source: broadband bullseye Q class value
+        eta_table:
+          value: 0.7:0.6
+          unit: ''
+          tag: A
+          source: first-lens efficiency versus NA, class table
+    drive:
+      kind: p_shell
+      params:
+        cw:
+          value: false
+          unit: ''
+          tag: A
+          source: pulsed p-shell excitation
+        window_ps:
+          value: 10.0
+          unit: ps
+          tag: A
+          source: excitation window class value
+    setup:
+      kind: lens_fibre_det
+      params:
+        NA:
+          value: 0.7
+          unit: '1'
+          tag: A
+          source: class collection NA

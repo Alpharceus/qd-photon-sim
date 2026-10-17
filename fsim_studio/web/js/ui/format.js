@@ -1,10 +1,9 @@
+import { displayUnit } from "./units.js";
 // Display formatting only (rounding for the screen; the server sends full precision).
-
-const UNIT_MAP = { "1": "", uA: "µA", um: "µm", um2: "µm²", cm2: "cm⁻²", "1/cm2": "cm⁻²", s: "s", "/s": "s⁻¹", meV: "meV", K: "K" };
 
 export function unitText(u) {
   if (u == null) return "";
-  return UNIT_MAP[u] ?? String(u).replace(/\^-1/g, "⁻¹").replace(/\^-2/g, "⁻²").replace(/\^-3/g, "⁻³").replace(/\^2/g, "²").replace(/\^3/g, "³");
+  return displayUnit(u);
 }
 
 export function isNum(v) { return typeof v === "number" && Number.isFinite(v); }

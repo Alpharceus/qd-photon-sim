@@ -109,7 +109,7 @@
 .v3-seg { display: inline-flex; gap: 2px; }
 .v3-seg-btn[aria-pressed="true"] { border-color: var(--v3-ink2); box-shadow: inset 0 -2px 0 var(--v3-beam); }
 .v3-slider { display: inline-flex; align-items: center; gap: 6px; }
-.v3-slider input { width: 150px; accent-color: var(--v3-beam); }
+.v3-slider input { width: 150px; accent-color: var(--v3-ink); }
 .v3-btn[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--v3-beam); border-color: var(--v3-ink2); }
 
 /* ---- legend (right, below readouts) */
@@ -164,7 +164,7 @@
 /* ---- CSS2D labels: engraved plates with a leader rule */
 .v3-label { pointer-events: none; white-space: nowrap; }
 .v3-label-plate {
-  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; max-width: 380px; padding: 3px 7px;
+  display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; width: fit-content; max-width: 380px; padding: 3px 7px;
   background: rgba(11, 13, 16, 0.78); border: 1px solid var(--v3-rim); border-radius: 2px; position: relative;
 }
 .v3-anchor-left .v3-label-plate { margin-left: 18px; }
@@ -236,6 +236,9 @@
   background: var(--v3-plate); border: 1px solid var(--v3-rim); border-radius: 2px; width: fit-content;
 }
 .v3-notes-chip::-webkit-details-marker { display: none; }
+.v3-notes-chip { align-items: center; gap: 7px; }
+.v3-notes-chip::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-1px); transition: transform 160ms; }
+.v3-notes-box[open] > .v3-notes-chip::after { transform: rotate(225deg) translate(-1px, 0); }
 .v3-notes-box[open] > .v3-notes-chip { color: var(--v3-ink); border-color: var(--v3-rim-hi); }
 .v3-more-btn {
   grid-column: 1 / -1; justify-self: start; appearance: none; background: none; border: 0; padding: 2px 0; cursor: pointer;
@@ -310,7 +313,7 @@
 .v3-narrow .v3-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v3-narrow .v3-catalog { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .v3-narrow .v3-readouts { max-width: calc(100vw - 24px); padding: 5px 8px; row-gap: 1px; column-gap: 6px; }
-.v3-narrow .v3-readout-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; }
+.v3-narrow .v3-readout-label { max-width: 150px; white-space: normal; overflow-wrap: anywhere; line-height: 1.1; font-size: 9.5px; }   /* wraps: a label is never cut */
 .v3-narrow .v3-readout-value { font-size: 11.5px; }
 .v3-narrow .v3-banner { max-width: calc(100% - 24px); top: auto; bottom: 46px; }
 .v3-narrow .v3-notes { flex-direction: row; flex-wrap: wrap-reverse; align-items: flex-end; max-width: calc(100% - 24px); gap: 4px 6px; }
@@ -336,7 +339,8 @@
 .v3-tiny .v3-title { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 10.5px; }
 .v3-tiny .v3-right { max-width: calc(60% - 14px); }
 .v3-tiny .v3-readouts { max-width: 100%; box-sizing: border-box; }
-.v3-tiny .v3-readout-label { max-width: 110px; }
+.v3-tiny .v3-readout-label { max-width: 130px; white-space: normal; overflow-wrap: anywhere; line-height: 1.1; }   /* a phone-portrait plate wraps a long label */
+.v3-tiny.v3-short .v3-readout-label { max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }   /* a short viewport keeps two single-line rows; the full label is the tooltip */
 .v3-tiny .v3-readout-unit { min-width: 0; }
 .v3-tiny .v3-readouts { column-gap: 5px; }
 /* the device's emitting end faces bottom-left in the authored views: the
@@ -347,3 +351,10 @@
 .v3-tiny .v3-more-btn { grid-column: 5; grid-row: 1 / span 2; align-self: center; justify-self: end; width: 26px; padding: 0 0 0 3px;
   white-space: normal; text-align: center; line-height: 1.15; font-size: 9.5px; border-left: 1px solid var(--v3-rim); }
 .v3-tiny.v3-readouts-open .v3-more-btn { grid-row: auto; grid-column: 1 / -1; width: auto; border-left: 0; justify-self: start; }
+
+/* physics symbols are notation, never engraved caps */
+.v3-root .sym { text-transform: none; letter-spacing: 0; font-family: var(--v3-num); white-space: nowrap; }
+.v3-root .sym sub, .v3-root .sym sup { font-size: 0.75em; line-height: 0; }
+
+/* R2: an opened tiny plate has four columns again (the fifth held the side "+N more" button), so rows stay aligned */
+.v3-tiny.v3-readouts-open .v3-readouts { grid-template-columns: minmax(0, 1fr) auto auto auto; }

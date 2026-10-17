@@ -18,13 +18,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from fsim_core.card import load_card
+from fsim_core.fit_bundle import load_fit_params
 from fsim_core.integrator import retention
 from fsim_core.loading import aperture_g2, f1b_g2, n_window_competitors
 from fsim_core.spectral import epsilon, gamma_of_T
 from fsim_core.thermal import Layer, Stack, t_junction
 from fsim_viz.figures import phase3_packet_figure
 
-FITP = json.loads((ROOT / "out" / "phase0" / "fit_params.json").read_text())["params"]
+FITP = load_fit_params()["params"]
 
 
 def gamma_class(T, scale=1.0, anchor300=None):

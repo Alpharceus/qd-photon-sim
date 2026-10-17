@@ -96,7 +96,7 @@ async function waitReady(page, sel, timeout = 45000) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const { chromium } = loadPlaywright();
-  const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
+  const browser = await chromium.launch({ args: ["--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist"] });
   const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const consoleErrors = [];
@@ -196,7 +196,32 @@ async function waitReady(page, sel, timeout = 45000) {
         await page.waitForTimeout(1200);
         const ax = await page.$eval(".ex-chart .chart-plot", (gd) => ({ top: gd.layout.yaxis.range?.[1], max: Math.max(...gd.data.flatMap((t) => (t.y || []).filter((v) => typeof v === "number"))) }));
         const above = await page.$eval(".ex-count", (e) => e.textContent);
-        check("H18: g2 axis extends to include data above 1 and reports it", ax.max > 1 && ax.top >= ax.max && /above g² = 1: axis extended/.test(above), `${JSON.stringify(ax)} · ${above.slice(0, 160)}`);
+        check("H18: g2 axis extends to include data above 1 and reports it", ax.max > 1 && ax.top >= ax.max && /above g.{0,40}= 1: axis extended/.test(above), `${JSON.stringify(ax)} · ${above.slice(0, 160)}`);
+        // FIN3: every chart's PNG and SVG export downloads a valid file
+        for (const [fmt, sig] of [["PNG", (b) => b.length > 2000 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))], ["SVG", (b) => b.length > 500 && /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/.test(b.toString("utf8", 0, 300)) && b.toString("utf8").includes("</svg>")]]) {
+          try {
+            const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.click(`.ex-chart .chart-tool[aria-label$="as ${fmt}"]`)]);
+            const fp = await dl.path();
+            const buf = fs.readFileSync(fp);
+            check(`FIN3: chart ${fmt} export downloads a valid ${fmt} (${dl.suggestedFilename()})`, sig(buf) && dl.suggestedFilename().toLowerCase().endsWith(fmt.toLowerCase()), `${buf.length} bytes`);
+          } catch (e) { check(`FIN3: chart ${fmt} export downloads a valid file`, false, e.message.split(String.fromCharCode(10))[0]); }
+        }
+        // FIN3: the HOM-vs-separation curve is the same quantity as the I_HOM tile (curve at the smallest separation == tile within 1e-3)
+        {
+          const ex = await (await fetch(`${BASE}/api/compose/examples`)).json();
+          const spec = ex.find((e) => e.name === "example-pillar-resonant").design.composed;
+          const r = await (await fetch(`${BASE}/api/compose/run`, { method: "POST", headers: { "Content-Type": "application/json", "X-FSIM-Studio": "1" }, body: JSON.stringify({ spec, mode: "point" }) })).json();
+          let res = r.result || null;
+          for (let i = 0; !res && i < 120; i++) {
+            await new Promise((ok) => setTimeout(ok, 500));
+            const j = await (await fetch(`${BASE}/api/jobs/${r.job_id}`)).json();
+            if (j.result) res = j.result;
+            else if (j.state === "error" || j.status === "error") break;
+          }
+          res = res || {};
+          const tile = res.scalars?.hom_I, y0 = res.series?.hom_vs_dt?.y?.[0];
+          check("FIN3: HOM-vs-separation curve at the smallest separation equals the I_HOM tile within 1e-3 (same convention)", Number.isFinite(tile) && Number.isFinite(y0) && Math.abs(tile - y0) <= 1e-3, `tile ${tile} curve ${y0}`);
+        }
       }
       const tr = await traceAudit(page, ".res-main");
       check(`results ${id}: no dotted line; dashed lines >= 2.5px`, !tr.bad.length, tr.bad.slice(0, 4).join(","));
@@ -451,6 +476,28 @@ async function waitReady(page, sel, timeout = 45000) {
     await m.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await m.waitForTimeout(600);
     await m.screenshot({ path: path.join(SHOTS, "overview-mobile-end.png") });
+    // fix2 (R2 finding): the page must be exactly 390 wide on EVERY route (the Designer was 440: a long label chip),
+    // and the Designer's 3D viewport must not be blank on the phone.
+    const routeIds = await page.$$eval(".rail-item", (els) => els.map((e) => e.dataset.ws));
+    const wide = [];
+    for (const r of [...new Set(routeIds)].filter(Boolean)) {
+      await m.goto(`${BASE}/#/${r}`, { waitUntil: "domcontentloaded" });
+      await m.waitForTimeout(3500);
+      const sw = await m.evaluate(() => document.documentElement.scrollWidth);
+      if (sw !== 390) wide.push(`${r}:${sw}`);
+    }
+    check(`phone 390: scrollWidth == 390 on every route (${routeIds.length} routes)`, routeIds.length >= 8 && wide.length === 0, wide.join(","));
+    await m.goto(`${BASE}/#/design`, { waitUntil: "domcontentloaded" });
+    await m.waitForSelector(".viewport-slot[data-ready='1']", { timeout: 60000 });
+    await m.waitForTimeout(2500);
+    const vpFile = path.join(SHOTS, "designer-mobile-viewport.png");
+    await (await m.$(".viewport-slot")).screenshot({ path: vpFile });
+    const vpStat = require("./png_check.cjs").assertPng(vpFile);
+    const vpBox = await m.$eval(".viewport-slot", (e) => { const b = e.getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height), e.dataset.mode]; });
+    check("phone 390: the Designer's 3D viewport is drawn (non-blank, sized, WebGL)", vpStat.ok && vpBox[0] >= 300 && vpBox[1] >= 150, `${vpStat.reason || "ok"} ${JSON.stringify(vpBox)}`);
+    // the nanowire scene is staged like the others: its builder states the extent the enclosure floor is sized from
+    const nwSrc = fs.readFileSync(path.join(ROOT, "fsim_studio", "web", "js", "viz3d", "builders", "nanowire.js"), "utf8");
+    check("nanowire staging: the builder passes floorBounds so the breadboard floor is built (it was an empty box)", /floorBounds:/.test(nwSrc));
     await mctx.close();
   } catch (e) {
     check("script ran to completion", false, e.message.split("\n")[0]);
@@ -458,6 +505,25 @@ async function waitReady(page, sel, timeout = 45000) {
   }
 
   const relevant = consoleErrors.filter((t) => !/favicon/i.test(t));
+  // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+  {
+    const { assertPng } = require("./png_check.cjs");
+    const t0 = Date.now() - process.uptime() * 1000;
+    const badPng = [];
+    let nPng = 0;
+    for (const dir of [SHOTS]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".png") || f === "failure.png" || !/./.test(f)) continue;
+        const full = path.join(dir, f);
+        if (fs.statSync(full).mtimeMs < t0) continue;
+        nPng++;
+        const r = assertPng(full);
+        if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+      }
+    }
+    check(`screenshots of this run are non-blank (${nPng} PNGs)`, nPng > 0 && badPng.length === 0, badPng.join(" | "));
+  }
   check("no console errors", relevant.length === 0, relevant.slice(0, 6).join(" || "));
   await browser.close();
 

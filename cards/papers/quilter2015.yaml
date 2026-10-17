@@ -1,0 +1,50 @@
+meta:
+  id: quilter2015
+  role: paper-device
+  cite: "J. H. Quilter, A. J. Brash, F. Liu, M. Glassl, A. M. Barth, V. M. Axt, A. J. Ramsay, M. S. Skolnick, A. M. Fox, Phonon-assisted population inversion of a single InGaAs/GaAs quantum dot by pulsed laser excitation, Phys. Rev. Lett. 114, 137401 (2015)"
+  arxiv: "1409.0913v3"
+  extraction: .workers/devlib/papers/quilter2015.yaml
+  read_level: V-full
+  summary: "InGaAs/GaAs QD (neutral X) in a bulk Schottky photocurrent device, 4.2 K bath, LA-phonon-assisted pulses at +0.83 meV (blue, paper convention), 16.8 ps field FWHM, 8.46 pi: exciton population max 0.67 +/- 0.06"
+
+device:
+  T_K: {value: 4.2, unit: K, tag: V, where: "text p.1 (sample held at 4.2 K in a helium bath cryostat; authors suspect 6-7 K from laser heating, not used)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 953.7, unit: nm, tag: DR, where: "text p.1 (single QD peaks at energies close to 1.3 eV; converted 1239.84 / 1.30 = 953.7 nm, consistent with the extraction's about 954 nm)"}
+      tau_bare_ns: {range: [0.8, 1.2], unit: ns, tag: E, source: "exciton radiative lifetime not stated in Quilter; registry ingaas_gaas class range [E], envelope only"}
+      E_b_meV: {value: 1.96, unit: meV, tag: V, where: "text p.3 / Fig 2 caption (2X biexciton peak at -1.96 meV from the X transition)"}
+      charge_state: {value: "X", tag: V, where: "text p.1 (neutral exciton X; two-level treatment)"}
+  structure:
+    kind: bulk_planar
+    params: {}
+  drive:
+    kind: phonon_assisted
+    params:
+      detuning_meV: {value: 0.83, unit: meV, tag: V, where: "text p.1 abstract and p.3 (optimal pump detuning +0.83 meV, blue; paper convention Delta = omega_L - omega_X)"}
+      area_pi: {value: 8.46, unit: pi, tag: V, where: "text p.3 (pump area 8.46 pi, the setup limit; 7.24 pi used for the detuning scan)"}
+      fwhm_ps: {value: 11.88, unit: ps, tag: DR, where: "text p.2 (Gaussian pulses, 'FWHM of the electric field amplitude is 16.8 ps'); intensity FWHM = 16.8 / sqrt(2) = 11.9 ps, the registry convention"}
+      f_rep_MHz: {value: 76.2, unit: MHz, tag: V, where: "text p.2 (repetition rate 76.2 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params: {}
+
+reported:
+  - {id: CX_max, observable: inversion, convention: intrinsic, value: 0.67, err: 0.06, tag: V, where: "abstract and text p.3: maximum exciton population 0.67 +/- 0.06 at +0.83 meV, pump area 8.46 pi; photocurrent-calibrated and tunnelling-corrected (not a direct emission measurement)"}
+
+series: []
+
+reproduce:
+  - item: CX_max
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "paper's +/-0.06 at 2 sigma (0.12 absolute); the photocurrent calibration and tunnelling correction are not modelled, so the tolerance is not tightened"
+    expect: pass
+
+fits: []
+
+history:
+  - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9 polaron solver: CX_max expect unavailable -> pass (model 0.644 [0.636, 0.650] vs 0.67 +- 0.06)"}
+  - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 13.0 ueV [V] (text p.1 (fine-structure splitting 0.013 meV = 13 ueV)) is no longer carried by the card"}

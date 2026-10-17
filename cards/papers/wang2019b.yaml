@@ -1,0 +1,87 @@
+# Wang et al., Nat. Photon. 13, 770 (2019): polarised micropillar and elliptical Bragg grating. TWO DEVICES, two cards.
+# This file: the ELLIPTICAL BRAGG GRATING / bullseye on SiO2 + gold (b). The micropillar is wang2019a.yaml.
+meta:
+  id: wang2019b
+  role: paper-device
+  cite: "H. Wang, Y.-M. He, T. H. Chung, H. Hu, Y. Yu, S. Chen, X. Ding, ... C.-Y. Lu, J.-W. Pan, Towards optimal single-photon sources from polarized microcavities, Nature Photonics 13, 770-775 (2019)"
+  doi: 10.1038/s41566-019-0494-3
+  arxiv: "1907.06818"
+  extraction: .workers/devlib/papers/wang2019.yaml
+  read_level: V-full
+  summary: "charged InGaAs/GaAs dot in an elliptical Bragg grating on SiO2 + gold (B2 mode, Q ~ 155 from the text), ~4 K, 76 MHz pi pulse, 5 GHz etalon for HOM; lifetime 69.1 ps, efficiency 0.56, g2 0.009, HOM 0.951 (13 ns) / 0.973 (2 ns) corrected"
+  notes:
+    - "SLAB LIFETIME TYPO: the main text prints the slab lifetime as '1.09 us' (p.7); 69.1 ps x 15.7 = 1.085 ns and the Fig 2 caption inset says ~1.1 ns, so it is entered as 1.09 ns."
+    - "MISSING INPUT: the EBG extraction efficiency at NA 0.65 is only in Supp Fig 7 (a figure, not read). The cbg eta_table is entered as the single point 0.65 -> 0.8 [A], the same class value used for the Kolatschek CBG cards (simulated >80 % for an ideal CBG on a mirror); the paper says only 'near unity' for the mirror-backed bullseye in general. The brightness item therefore leans on this assumption."
+    - "F_P = 20 is the paper's simulated design value ('Purcell factor of >20 in a few nm', Supp Fig 7) used as a lower bound for the ideally tuned device; the measured lifetime ratio 15.7 is NOT used as an input so that the lifetime is an unfitted test. Q = 155 is derived: B2 linewidth = 2.8 THz / 1.3 = 2.15 THz at ~334 THz (897 nm)."
+    - "Etalon: HOM and purity were measured through a 5 GHz etalon (cuts counts ~30 %), so zpl_filter = true. The 0.56 efficiency is the loss-budget value WITHOUT the etalon, so the model B_first_lens carries an extra Z_filt (~0.9) the paper's 0.56 does not: a known convention offset of order 10 %."
+    - "The EBG wavelength and temperature are not given for this dot: 897.04 nm (pillar M2) is reused [A] and T is a range 1.5-4 K [E]. Blinking (35 % loss in the paper's budget), the 62.5 nm distance to the etched surface and the polarisation degree of this device are not modelled/not given. The 2 ns and 13 ns HOM values differ in the paper (spectral diffusion); the model has none (sigma_sd 0), so both items see the same model value."
+device:
+  T_K: {range: [1.5, 4.0], unit: K, tag: E, source: "temperature of the bullseye measurement is not given; bath cryostat lowest temperature 1.5 K (text p.6) and 4 K used for the pillar"}
+  material:
+    kind: inas_gaas_sk
+    params:
+      lambda_nm: {value: 897.04, unit: nm, tag: A, source: "wavelength of the EBG dot is not stated; the pillar M2 mode wavelength (text p.5, same wafer) is reused"}
+      tau_bare_ns: {value: 1.09, unit: ns, tag: V, where: "text p.7 (average lifetime of more than 20 slab dots; PRINTED '1.09 us', a typo for ns: Fig 2 caption inset ~1.1 ns, and 69.1 ps x 15.7 = 1.085 ns)"}
+      charge_state: {value: "X-", unit: "", tag: DR, where: "text p.5 (single-electron charged quantum dot, two-level system); X- chosen for the electron-charged transition"}
+  structure:
+    kind: cbg
+    params:
+      F_P: {value: 20.0, unit: "1", tag: DR, where: "text p.6 (simulated design value: Purcell factor >20 over a few nm, Supp Fig 7; simulated lower bound)"}
+      Q: {value: 155.0, unit: "1", tag: DR, where: "text p.6 (mode splitting 2.8 THz is 1.3 times the linewidth of B2, i.e. 2.15 THz at ~334 THz; the dot is resonant with B2, Fig 2 caption)"}
+      detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "Fig 2 caption (the investigated quantum dot is resonant with B2)"}
+      eta_table: {value: "0.65:0.8", unit: "", tag: A, source: "extraction at NA 0.65 is only in Supp Fig 7 (figure, not read); class value for a mirror-backed CBG (simulated >80 %, Kolatschek 2021) entered as a single table point"}
+      leak: {value: 0.0, unit: "1", tag: A, source: "leaky-channel fraction of the EBG not given in the read text"}
+  drive:
+    kind: resonant_pulse
+    params:
+      fwhm_ps: {value: 3.0, unit: ps, tag: E, source: "not stated; same-group ~3 ps"}
+      area_pi: {value: 1.0, unit: pi, tag: V, where: "text p.7 / Supp Fig 9 (pi pulse of 1.7 nW)"}
+      f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.7 (pumping repetition rate 76 MHz)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {value: 0.65, unit: "1", tag: V, where: "Supp Fig 7 caption (extraction simulated with an objective of NA = 0.65)"}
+      eta_pol: {range: [0.962, 1.0], unit: "1", tag: E, source: "polarisation degree of the EBG device is not given; the pillar's 0.962 (text p.7) is the lower end"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "text p.8 (5 GHz etalon filters out the phonon sideband for the HOM/purity measurement; it cuts the counts by ~30 %)"}
+reported:
+  - {id: tau_ebg, observable: tau_ps, value: 69.1, err: 0.1, tag: V, where: "text p.7 / Fig 2f (radiative lifetime of the EBG-coupled dot, resonance fluorescence)"}
+  - {id: eff_ebg, observable: B_first_lens, value: 0.56, err: 0.02, tag: V, where: "text p.8 (polarised single-photon efficiency at the first lens, loss-budget based, WITHOUT the etalon; main loss blinking 35 %)"}
+  - {id: g2_ebg, observable: g2_0, convention: raw, value: 0.009, err: 0.001, tag: V, where: "Supp Fig 10 caption (g2(0) = 0.009(1); purity 0.991(3) in the main text p.8; measured through the 5 GHz etalon)"}
+  - {id: hom_corr_13ns, observable: hom_I, convention: corrected, value: 0.951, err: 0.005, tag: V, where: "text p.8 (corrected indistinguishability, 13 ns delay, 5 GHz etalon)"}
+  - {id: hom_corr_2ns, observable: hom_I, convention: corrected, value: 0.973, err: 0.005, tag: V, where: "Supp Fig 10c caption (2 ns delay, 97.3 %); abstract 0.973(5)"}
+reproduce:
+  - item: tau_ebg
+    class: M
+    tol: {k_sigma: 2, rel: 0.1}
+    tol_reason: "paper 69.1 +/- 0.1 ps; 10 percent relative for lifetimes, because F_P is the simulated design value (a lower bound of the real, imperfectly tuned dot) and tau_bare is the slab average"
+    expect: fail
+    reason: "expected, input choice not a model gap: the simulated design Purcell factor F_P = 20 (DR, Supp Fig 7) gives 51.9 ps against the measured 69.1 ps (ratio 15.7); the real dot is not perfectly tuned or placed."
+  - item: eff_ebg
+    class: M
+    tol: {k_sigma: 2, abs: 0.1}
+    tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
+    expect: fail
+    reason: "model 0.716 (envelope 0.69-0.74) vs 0.56 (0.10 tol): the design F_P = 20 overestimates beta for the real dot (see tau_ebg) and the DBR-asymmetry eta_out and assumed NA are not measured."
+  - item: g2_ebg
+    class: M
+    tol: {k_sigma: 2, abs: 0.005}
+    tol_reason: "paper 0.009 +/- 0.001 (2 sigma = 0.002); 0.005 absolute for a model with zero laser leak (the paper gives no leak number) and only intrinsic re-excitation"
+    expect: fail
+    reason: "model 0.0239 vs 0.009 (0.005 floor): intrinsic re-excitation for the now-explicit 3 ps pulse (E) at F_P 20 exceeds the paper's value, which has little laser leak; the 3 ps width is not stated in the paper."
+  - item: hom_corr_13ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.951). The previous pass accepted 1.001 against 0.951 through abs 0.05, ten times the paper error"
+  - item: hom_corr_2ns
+    class: M
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "paper 0.973 +/- 0.005; 0.05 absolute as for 13 ns; the model has no delay dependence, so the same model value is compared with the 2 ns paper number"
+    expect: unavailable
+    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.973). The previous pass accepted 1.001 against 0.973 through abs 0.05, ten times the paper error"
+fits: []
+history:
+  - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}

@@ -497,8 +497,9 @@ def _():
 def _():
     import json
     from fsim_core.spectral import epsilon as _eps
-    fp = json.loads((Path(__file__).resolve().parents[1] / "out" / "phase0" /
-                     "fit_params.json").read_text())["params"]
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _phase0_fit import phase0_params
+    fp = phase0_params()  # in-memory V-a fit (clone-safe)
     dxx = 5.9   # cards/chatzarakis.yaml delta_xx [DR]
     pp = PhononParams(alpha_ps2=0.027, c_s_m_s=4780.0, l_xy_nm=4.5, l_z_nm=2.0)
     pts = [(78.0, 1.40, -0.37), (120.0, 3.19, -0.70), (150.0, 4.12, -1.27),

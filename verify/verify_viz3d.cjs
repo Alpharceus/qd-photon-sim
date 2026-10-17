@@ -38,7 +38,7 @@ function check(ok, name, detail = '') {
 
 (async () => {
   fs.mkdirSync(OUTDIR, { recursive: true });
-  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  const browser = await chromium.launch({ args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'] });
   const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1 });
   for (const id of SCENES) {
     const page = await ctx.newPage();
@@ -59,7 +59,7 @@ function check(ok, name, detail = '') {
       check(st.mode === 'webgl', `${id}: WebGL mode`, `mode=${st.mode}`);
       await page.waitForTimeout(id === 'cascade' ? 2600 : 900);
       const s = await page.evaluate(() => document.getElementById('view').__viz3d._sample());
-      check(s && s.lit > s.samples * 0.04 && s.distinct >= 8, `${id}: canvas not blank`,
+      check(s && s.lit > s.samples * 0.03 /* GPU (d3d11) render of the sparse cascade lights ~4.0% */ && s.distinct >= 8, `${id}: canvas not blank`,
         s ? `lit ${s.lit}/${s.samples}, distinct colours ${s.distinct}` : 'no sample');
       const b = await page.evaluate(() => document.getElementById('view').__viz3d._stats());
       check(b && b.calls < MAX_CALLS && b.triangles < MAX_TRIS, `${id}: budget`, b ? `${b.calls} draw calls, ${b.triangles} triangles` : 'no stats');
@@ -252,6 +252,25 @@ function check(ok, name, detail = '') {
   const fb = await page.evaluate(() => ({ mode: document.getElementById('view').dataset.mode, rects: document.querySelectorAll('#view svg rect').length }));
   check(fb.mode === 'fallback' && fb.rects >= 5 && errors.length === 0, 'fallback: SVG cross-section from the same spec', `mode=${fb.mode}, rects=${fb.rects}`);
   await page.screenshot({ path: path.join(OUTDIR, 'fallback-device-edge.png') });
+  // R2 audit 14: every screenshot THIS run wrote must be a real image (pixel variance, colour share), not just exist
+  {
+    const { assertPng } = require("./png_check.cjs");
+    const t0 = Date.now() - process.uptime() * 1000;
+    const badPng = [];
+    let nPng = 0;
+    for (const dir of [OUTDIR]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".png") || f === "failure.png" || !/./.test(f)) continue;
+        const full = path.join(dir, f);
+        if (fs.statSync(full).mtimeMs < t0) continue;
+        nPng++;
+        const r = assertPng(full);
+        if (!r.ok) badPng.push(`${f}: ${r.reason}`);
+      }
+    }
+    check(nPng > 0 && badPng.length === 0, `screenshots of this run are non-blank (${nPng} PNGs)`, badPng.join(" | "));
+  }
   await browser.close();
   const n = results.filter(Boolean).length;
   console.log(`${n}/${results.length} viz3d checks passed`);

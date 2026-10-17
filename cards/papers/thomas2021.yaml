@@ -1,0 +1,87 @@
+meta:
+  id: thomas2021
+  role: paper-device
+  cite: "S. E. Thomas, M. Billard, N. Coste, S. C. Wein, Priya, H. Ollivier, O. Krebs, L. Tazairt, A. Harouri, A. Lemaitre, I. Sagnes, C. Anton, L. Lanco, N. Somaschi, J. C. Loredo, P. Senellart, Bright Polarized Single-Photon Source Based on a Linear Dipole, Phys. Rev. Lett. 126, 233601 (2021)"
+  doi: "10.1103/PhysRevLett.126.233601"
+  arxiv: "2007.04330v4"
+  extraction: .workers/devlib/papers/thomas2021.yaml
+  read_level: V-full
+  display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Thomas et al., Phys. Rev. Lett. 126, 233601 (2021): electrically contacted micropillar [V] (.workers/devlib/papers/thomas2021.yaml); drawn with [A] display defaults
+  summary: "InGaAs QD (neutral X, linear dipole) in an electrically contacted micropillar, Q ~4000 (Sample A), LA-phonon-assisted blue-detuned ~17 ps pulses, T ~8 K: BFL 0.50, g2(0) 0.046, Ms 0.909"
+
+device:
+  T_K: {value: 8.0, unit: K, tag: V, where: "text p.2 (device description: cooled to around 8 K for Sample A, 7 K for Sample B)"}
+  material:
+    kind: ingaas_gaas
+    params:
+      lambda_nm: {value: 924.82, unit: nm, tag: V, where: "text supplement (QD emission centred at 924.82 nm)"}
+      charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton, device A3; charged exciton only for Fig 2 on Sample B, not carded)"}
+      gamma_star_4K_ns: {value: 0.65, unit: "1/ns", tag: DR, where: "text p.4: resonant Ms = 0.915(1) (g2-corrected); inverted with I = Gamma/(Gamma + gamma*_repo), Gamma = (1 + F_P)/tau_bare at the MIDPOINT F_P = 6 of the unstated class range [2, 10] [E] and tau_bare 1.0 ns (registry class): Gamma = 7/ns, gamma*_repo = Gamma (1/0.915 - 1) = 0.65/ns. The F_P midpoint is an estimate, so the value inherits that uncertainty (F_P 2 -> 0.28, F_P 10 -> 1.02 /ns)"}
+      a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured resonant coherence at the operating temperature; the non-resonant a_ac slope would double count it"}
+  structure:
+    kind: generic_cavity
+    params:
+      kappa_ueV: {value: 300.0, unit: ueV, tag: V, where: "text p.1-2 (Sample A cavity linewidth ~300 ueV)"}
+      Q: {value: 4000.0, unit: "1", tag: V, where: "text p.1-2 (quality factor of around 4,000 for Sample A)"}
+      eta_out: {value: 0.65, unit: "1", tag: V, where: "text p.4 (extraction efficiency eta_ext ~0.65)"}
+      F_P: {range: [2.0, 10.0], unit: "1", tag: E, source: "Purcell factor not stated in the paper (extraction model_inputs_missing); class range for a Q~4000 pillar [E], envelope only"}
+  drive:
+    kind: phonon_assisted
+    params:
+      detuning_meV: {value: 0.580, unit: meV, tag: DR, where: "text p.4 best-brightness point dlambda 0.4 nm at 924.82 nm: dE = 1340.6 meV x 0.4/924.82 = 0.580 meV; paper convention Delta = omega_L - omega_X, blue positive"}
+      area_pi: {range: [5.0, 20.0], unit: pi, tag: E, source: "absolute pulse area not stated: Fig 2 x-axis is relative intracavity area; class range from the registry phonon_assisted default [E]"}
+      fwhm_ps: {value: 19.5, unit: ps, tag: V, where: "text p.4 (19.5 ps best-brightness point); convention (intensity vs field FWHM) not stated in the paper: taken as the pulse duration reported"}
+      f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "text supplement (81 MHz repetition rate)"}
+  setup:
+    kind: lens_fibre_det
+    params:
+      NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
+
+reported:
+  - {id: g2_BFL, observable: g2_0, convention: raw, value: 0.046, err: 0.001, tag: DR, where: "text p.4 and abstract: P = 1 - g2(0) = 0.954 +/- 0.001 at dlambda 0.4 nm, tau 19.5 ps (g2 implied by purity)"}
+  - {id: Ms_BFL, observable: hom_I, convention: corrected, value: 0.909, err: 0.004, tag: V, where: "text p.4 and abstract: Ms = 0.909 +/- 0.004 at the same point; g2-corrected via Ms = (V+g2)/(1-g2)"}
+  - {id: BFL_best, observable: B_first_lens, convention: intrinsic, value: 0.50, err: 0.01, tag: V, where: "text p.4 and abstract: first-lens brightness 0.50 +/- 0.01 (setup-calibrated), dlambda 0.4 nm, tau 19.5 ps"}
+  - {id: pQD_BFL, observable: inversion, convention: intrinsic, value: 0.77, tag: DR, where: "0.50/0.65 text p.4 (BFL 0.50 divided by the paper's eta_ext 0.65 = occupation probability at the best-brightness point)"}
+  - {id: BFL_expected_max, observable: B_first_lens, convention: intrinsic, value: 0.55, tag: DR, where: "text p.4: eta_ext x p_QD = 0.65 x 0.85 (paper's own ceiling, not a measurement)"}
+  - {id: g2_13ps_085nm, observable: g2_0, convention: raw, value: 0.030, err: 0.002, tag: V, where: "text p.3 (0.85 nm, 13 ps, LA-assisted at max brightness; Fig 3b)"}
+  - {id: g2_13ps_resonant, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
+  - {id: hom_V_13ps_085nm, observable: hom_V, convention: raw, value: 0.851, err: 0.002, tag: V, where: "text p.4 (raw HOM visibility, 0.85 nm, 13 ps, max brightness)"}
+  - {id: Ms_13ps_085nm, observable: hom_I, convention: corrected, value: 0.911, err: 0.003, tag: V, where: "text p.4 (g2-corrected, 0.85 nm, 13 ps)"}
+  - {id: Ms_resonant, observable: hom_I, convention: corrected, value: 0.915, err: 0.001, tag: V, where: "text p.4 (g2-corrected, resonant excitation)"}
+  - {id: g2_etalon, observable: g2_0, convention: raw, value: 0.011, err: 0.001, tag: V, where: "text p.4 (10 pm etalon filter, 0.6 nm, 20.5 ps); filter not in the device"}
+  - {id: Ms_etalon, observable: hom_I, convention: corrected, value: 0.948, err: 0.001, tag: V, where: "text p.4 (10 pm etalon filter, 0.6 nm, 20.5 ps, g2-corrected)"}
+  - {id: count_rate_BFL, observable: rate_detected_Hz, convention: intrinsic, value: 6000000.0, tag: V, where: "text p.4 (6 MHz detected at BFL 0.50; 69% SNSPD, 81 MHz rep, transmission 17%)"}
+  - {id: inversion_rel, observable: inversion, convention: intrinsic, value: 0.85, err: 0.01, tag: V, where: "text p.3 / Fig 2 (charged exciton, sample B, 17 ps): occupation relative to resonant max, NOT absolute; no relative convention is registered, so not in the ledger"}
+
+series: []
+
+reproduce:
+  - item: g2_BFL
+    class: M
+    tol: {abs: 0.02}
+    tol_reason: "model-level tolerance: purity 0.954 with g2 +/-0.02 at model level; the paper's +/-0.001 is statistical only and is not used as the model tolerance"
+    expect: fail
+    reason: "model 0.18 (envelope 0.064-0.33 over F_P 2-10, area 5-20 pi) vs 0.046: the paper value sits below the whole envelope; re-excitation within the 19.5 ps pulse at the modelled areas is too high, and the absolute pulse area and Purcell factor are unstated inputs (E ranges)."
+  - item: Ms_BFL
+    class: C
+    tol: {k_sigma: 2, abs: 0.05}
+    tol_reason: "model-level tolerance: I 0.909 +/-0.05 at model level (the paper's +/-0.004 is dominated by the model-level tolerance)"
+    expect: pass
+    reason: "FX4: material.gamma_star_4K_ns (0.65 /ns) was inverted from the same paper's resonant Ms 0.915 (p.4), the same quantity at the same coherence, so Ms_BFL (0.909) is a calibration check, not an unfitted test; model 0.871 [0.782, 0.911]"
+  - item: pQD_BFL
+    class: M
+    tol: {abs: 0.05}
+    tol_reason: "model-level tolerance +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
+    expect: fail
+    reason: "model occupation 0.395 central (envelope 0.10-0.63) vs 0.77: the unknown absolute pulse area (5-20 pi class range) dominates the envelope; the central point is low and 0.77 lies above the envelope top 0.63."
+fits:
+  - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
+
+history:
+  - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 5: detuning_meV -> 0.580 DR (1340.6 x 0.4/924.82); fwhm_ps -> 19.5 V; BFL_best removed from reproduce (eta_ext 0.65 already contains beta; kept in reported); added pQD_BFL (inversion 0.77 = 0.50/0.65, DR, M, abs 0.05)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: phonon_assisted is now available; g2_BFL, Ms_BFL, pQD_BFL expect unavailable -> fail (real outcomes: model 0.18 / 0.49 / 0.395 vs 0.046 / 0.909 / 0.77)"}
+  - {date: 2026-10-12, by: "sonnet card-fix", reason: "card input: gamma* entered (FX2b diagnosis)", note: "material.gamma_star_4K_ns 0.65 /ns DR (from resonant Ms 0.915 at F_P midpoint 6, tau_bare 1.0 ns) and a_ac_ns_per_K 0 A; first run with the input: g2_BFL fail (0.184), Ms_BFL fail (0.49 -> 0.711, envelope 0.60-0.756), pQD_BFL fail (0.395), expects unchanged. Final re-run at the end of the session (a concurrent engine change had landed in the HOM path): Ms_BFL model 0.871 (envelope 0.782-0.911, paper 0.909 inside) -> expect fail -> pass; g2_BFL (0.184) and pQD_BFL (0.395) still fail. Note gamma* 0.65 was itself derived from the resonant Ms 0.915 at F_P = 6, so the Ms_BFL pass is a transfer from the resonant to the phonon-assisted drive, not an independent dephasing test"}
+  - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: Ms_BFL class M -> C with fits (material.gamma_star_4K_ns was derived from the resonant Ms 0.915 of the same paper); expect unchanged (pass)"}
+  - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
