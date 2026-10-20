@@ -266,6 +266,9 @@ def quaternary_from_ternaries(terns: list, weights: list, label: str) -> Materia
 def GaInP(x_ga: float = 0.51) -> Material:
     """Ga_x In_1-x P (x = 0.51 lattice-matched to GaAs at 300 K, V01)."""
     m = ternary("GaP", "InP", x_ga, f"Ga{x_ga:.2f}In{1 - x_ga:.2f}P")
+    # r3 [V] Forrest et al., PRB 58, 15355 (1998): dEg(S) = 498 S^2 meV (dEg(1) = 498 +- 27 meV); measured order
+    # parameter S = 0.28-0.52 gives 40-135 meV; the old "~0.1 eV" corresponds to S ~ 0.45 [DR]. Wei & Zunger,
+    # APL 64, 757 (1994) is theory (LAPW). Text below unchanged (comment-only edit, string is a legacy value).
     m.ordering_note = ("disordered-alloy gap; CuPt-ordered GaInP is up to ~0.1 eV "
                        "lower (V01 Sec. V.C) -- MOVPE on 6-10 deg off (100) suppresses ordering")
     return m

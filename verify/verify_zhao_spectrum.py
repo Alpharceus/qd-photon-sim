@@ -9,9 +9,11 @@ What is checked, against numbers the code did not produce:
   * the Yamamoto-Machida-Nilsson asymptote [E]: closed-form values 0.31 (-5.1 dB) at 4 I_th, F_pump 0.08, eta_q 1, and
     1.0 for a Poisson pump; the deterministic eta_q of the model (diagnostic, reported, not a pin);
   * qualitative physics: pump regulation lowers the low-frequency output noise (quiet < normal, > 3 sigma).
-NOT checked (and NOT registered as a pass): the paper's measured squeezing (3.1 dB card vs 0.9 +- 0.1 dB digest: the
-conflict cannot be resolved from the workspace sources, ledger `unavailable:` zhao_squeezing_dB) and Zhao's g2 values
-(zhao_normal / zhao_quiet stay expect-fail in the ledger).
+NOT checked here (compared in the reproduce ledger instead): the paper's measured squeezing. Resolved in devlib-r3-papers
+(Fable r3-bommer-zhao-answer.md Q2): the RAW detector value is -0.9 dB (repo sign) at 8 GHz, band 3-12 GHz, with
+eta_total = 0.219 (SI Table S3); the loss bound is 10 log10(1 - T) = -1.07 dB; the published 3.1 dB "at the facet" inverts
+SI Eq. S3 on the wrong ratio (consistent facet value -8.4 dB [DR]) and is not a target. Ledger item zhao_squeezing_dB_det
+(expect fail: model F ~ 17 in 3-12 GHz) and Zhao's g2 values (zhao_normal / zhao_quiet stay expect-fail).
 
 Sequential, OMP_NUM_THREADS-friendly (two SDE runs, ~1 min).  Exit 0 iff all pass; "N/N zhao_spectrum checks passed".
 """
@@ -121,8 +123,9 @@ for label, F_pump in (("normal", 1.0), ("quiet", 0.08)):
     o = out[label]
     print(f"  DIAGNOSTIC {label}: model lowest-decade F {o['F_band']:.2f} (F_low {o['F_low']:.2f}) vs Yamamoto asymptote "
           f"{asym:.3f} ({10 * np.log10(asym):+.2f} dB); excess low-frequency noise = RO / partition noise (not a pin)")
-print("  DIAGNOSTIC card conflict: 0.9 dB -> F_det 0.813 -> eta_total = 0.187/(1 - F(0)); the paper value is UNAVAILABLE "
-      "(3.1 vs 0.9 dB unresolved), so no pass/fail is registered.")
+print("  DIAGNOSTIC Zhao paper value resolved: raw -0.9 dB at the detector (F_det 0.813), eta_total 0.219 [V, SI Table S3], "
+      "loss bound 10 log10(1 - T) = -1.07 dB; implied facet F = 0.145 (-8.4 dB [DR]); the published 3.1 dB is not a target. "
+      "Pass/fail lives in the reproduce ledger (zhao_squeezing_dB_det).")
 
 n = len(RESULTS)
 print(f"{sum(RESULTS)}/{n} zhao_spectrum checks passed")

@@ -259,6 +259,24 @@ def ev_zhao():
     return out
 
 
+ZHAO_ETA_TOTAL = 0.219   # [V] Zhao et al., PRResearch 6, L032021 (2024), SI Table S3: product of the seven detection factors
+
+
+def ev_zhao_spectrum():
+    """r3 (r3-bommer-zhao-answer.md Q2): QUIET-pump output-flux noise spectrum, RAW comparison at the detector.
+    Run settings fixed by the answer: 8 runs x 20 ns, seg 2 ns, 10 ps bins, seed 7, I = 4 I_th, F_pump 0.08 [E].
+    squeezing_dB = 10 log10[1 - eta (1 - F_band(3-12 GHz))] with eta = 0.219 [V]; F_lo = F over the 0.5-1 GHz bins."""
+    import numpy as np
+    from fsim_core.sde import QDLaserParams, find_threshold, output_noise_spectrum
+    params = QDLaserParams()
+    o = output_noise_spectrum(params, 4.0 * find_threshold(params), f_band_Hz=(3.0e9, 12.0e9), n_runs=8, t_end=20.0e-9,
+                              bin_ps=10.0, seed=7, F_pump=0.08, eta_det=ZHAO_ETA_TOTAL, seg_ns=2.0)
+    f = o["f_Hz"]
+    lo = (f >= 0.49e9) & (f <= 1.01e9)
+    return {"squeezing_dB": float(o["squeezing_dB"]), "squeezing_dB__se": float(o["squeezing_dB_se"]),
+            "F_band_3_12GHz": float(o["F_band"]), "F_lo_0p5_1GHz": float(np.mean(o["F"][lo]))}
+
+
 SSL_GAAS_NM = 0.86  # [DR] <Al> = y/(x+y) = 16/(x+16) = 0.65 -> x = 8.6 A (Chatzarakis 2023 SSL sample)
 
 
@@ -303,6 +321,7 @@ def ev_dot_levels():
             "gu_EX_film_eV": float(Lg_f.E_X_eV), "gu_EX_sphere_eV": float(Lg_s.E_X_eV),
             "reischle_EX_film_eV": float(Lr_f.E_X_eV), "reischle_EX_sphere_eV": float(Lr_s.E_X_eV),
             "bommer_Vh_meV": float(Lb.V_h),
+            "bommer_dEh_matrix_meV": float(Lb.dE_h_matrix),   # r3: single-hole ESCAPE energy (film, 5 K) vs Bommer Ea(X)
             "ssl_shift_faithful_meV": float(shift_f), "pryor_Ve_modelsolid_meV": float(Lms.V_e),
             "laf_faithful_lo_eV": float(min(e_rod, e_inp)), "laf_faithful_hi_eV": float(max(e_rod, e_inp)),"chatz_EX_eV": float(L.E_X_eV), "chatz_dEWL_meV": float(L.dE_pair_WL),
             "ssl0_dEWL_meV": float(Lc.dE_pair_WL), "ssl_shift_meV": float(shift),
@@ -425,7 +444,7 @@ def ev_nanowire():
 
 EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_va_ibm": ev_chatz_va_ibm, "chatz_dev_ibm": ev_chatz_dev_ibm,
               "chatz_dev_ibm_lor": ev_chatz_dev_ibm_lor, "laf_mid": ev_laf_mid,
-              "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "dot_levels": ev_dot_levels,
+              "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "zhao_spec": ev_zhao_spectrum, "dot_levels": ev_dot_levels,
               "nitride": ev_nitride, "nanowire": ev_nanowire}
 
 

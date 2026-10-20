@@ -39,7 +39,7 @@
 meta:
   ledger_version: 2
   written: "2026-10-12"
-  revised: "2026-10-12 (devlib-r2-pha2: IBM-calibrated refit va_ibm_*/dev_ibm_* re-pointed, Reischle fast-exchange bracket, LAF identifiability, Zhao unavailable-dB; devlib-rc2: faithful inputs, corrected reasons; devlib-r2-physb: island-strain brackets, Pryor relabel, Desh2013/Zhang2013 nanowire/pillar items, Desh2014 XX diagnostics)"
+  revised: "2026-10-19 (devlib-r3-papers: Bommer re-map to dE_h_matrix, Zhao raw dB registered); 2026-10-12 (devlib-r2-pha2: IBM-calibrated refit va_ibm_*/dev_ibm_* re-pointed, Reischle fast-exchange bracket, LAF identifiability, Zhao unavailable-dB; devlib-rc2: faithful inputs, corrected reasons; devlib-r2-physb: island-strain brackets, Pryor relabel, Desh2013/Zhang2013 nanowire/pillar items, Desh2014 XX diagnostics)"
   model_head: "rt-edge-emitter @ deb733a (working tree)"
   runtime_budget_s: 180
 
@@ -187,7 +187,28 @@ items:
     tol: {kind: combined_sigma, k: 1.0}
     tol_reason: "same criterion as the normal row"
     expect: fail
-    reason: "OBSERVABLE MISMATCH (p2-rootcause 6a; devlib-r2-pha2 r2-physics-a Q6): g2 here comes from the INTRACAVITY photon-number variance, which is not squeezed (g2 > 1 for every F_pump). The paper derives its g2 from the MEASURED broadband noise through its own Var(S) = (g2 - 1)<S>^2 + <S> with the Supplementary Material's <S>, so it is not reproducible without the SM; do not retune N_dots. The pump regulation appears in the OUTPUT photon-flux noise spectrum, now estimated by sde.output_noise_spectrum (verify_zhao_spectrum.py: lowest-decade F 1.15 quiet vs 2.24 normal; Yamamoto asymptote 0.36 not reached because of excess RO/partition noise); the paper's dB value is unavailable (see `unavailable:`)"
+    reason: "OBSERVABLE MISMATCH (p2-rootcause 6a; devlib-r2-pha2 r2-physics-a Q6): g2 here comes from the INTRACAVITY photon-number variance, which is not squeezed (g2 > 1 for every F_pump). The paper derives its g2 from the MEASURED broadband noise through its own Var(S) = (g2 - 1)<S>^2 + <S> with the Supplementary Material's <S>, so it is not reproducible without the SM; do not retune N_dots. The pump regulation appears in the OUTPUT photon-flux noise spectrum, now estimated by sde.output_noise_spectrum (verify_zhao_spectrum.py: lowest-decade F 1.15 quiet vs 2.24 normal; Yamamoto asymptote 0.36 not reached because of excess RO/partition noise); the paper's dB value is resolved in devlib-r3-papers: zhao_squeezing_dB_det"
+
+  # devlib-r3-papers (2026-10-19, Fable r3-bommer-zhao-answer.md Q2): the paper value is RESOLVED. Raw comparison at the
+  # detector (option A): model 10 log10[1 - 0.219 (1 - F_band(3-12 GHz))] vs the measured -0.9 dB (largest reduction at
+  # 8 GHz, repo sign: negative = squeezing). Run settings from the answer: 8 runs x 20 ns, seg 2 ns, 10 ps bins, seed 7, I = 4 I_th.
+  - id: zhao_squeezing_dB_det
+    class: U
+    desc: "Zhao raw broadband squeezing at the detector (dB, repo sign): sde.output_noise_spectrum(quiet pump, f_band 3-12 GHz, eta_det 0.219) vs measured -0.9 dB"
+    source: zhao_spec.squeezing_dB
+    paper: {value: -0.9, err: 0.13, tag: DR, where: "Zhao et al., PRResearch 6, L032021 (2024), main p. 2-3: 'the largest noise reduction is 0.9 dB at 8 GHz', band 3-12 GHz, 40 mA = 4.4 I_th, 293 K, RBW 200 kHz; err = hypot(0.1 [V, arXiv:2309.09703v1 only], 0.08 SQL stability [V, v1 Fig. 2b]); eta_det = 0.219 [V, SI Table S3]"}
+    tol: {kind: combined_sigma, k: 1.0}
+    tol_reason: "criterion of the neighbouring Zhao rows: |diff| <= hypot(model SE, paper err); the comparison is made at the detector, NOT at the facet (the facet value has a ~60 % error, and the published 3.1 dB is inconsistent with the paper's own loss model)"
+    expect: fail
+    reason: "model excess noise F ~ 17 in the 3-12 GHz band (+6.6 dB at the detector) vs measured -0.9 dB; parameters are [E], not Table S1; RO not suppressed at 4 I_th"
+  - id: zhao_lowf_Fband_pin
+    class: KD
+    desc: "regression pin: QUIET-pump output Fano F over the 0.5-1 GHz bins (same run as zhao_squeezing_dB_det); guards the low-frequency pump-regulation ordering"
+    source: zhao_spec.F_lo_0p5_1GHz
+    paper: {pin: 1.47, pin_note: "observed 2026-10-19 (8 runs x 20 ns, seg 2 ns, seed 7); r3 answer quotes F(0.5 GHz) = 1.1 quiet vs 2.3 normal"}
+    tol: {kind: regression, value: 0.15}
+    tol_reason: "drift guard only: deterministic seed; 0.15 ~ 10 %"
+    expect: pass
 
   # ------------------------------------------------------------------ 6. Known deviations (KD)
   # 6a dot_levels physical comparisons (production fsim_core.dot_levels, same calls as verify_dot_levels.py).
@@ -267,15 +288,25 @@ items:
     tol_reason: "same bracket logic; the lowest reported line is used (the most favourable anchor)"
     expect: fail
     reason: "dot size is unpublished: the preset's 3 nm x R10 [A] dot is too large (bracket 1.686-1.751 eV, ~60 meV below 1.815); a h 2 nm x R 8 nm dot gives a bracket 1.784-1.830 eV that holds 1.815-1.83, so this is a size unknown, not a strain failure. The preset is not edited"
+  # devlib-r3-papers (2026-10-19, Fable r3-bommer-zhao-answer.md Q1): RE-MAPPED. Bommer's 96 +- 7 meV is a single-dot X
+  # Arrhenius activation energy (escape from the occupied level), i.e. like-for-like with the single-hole ESCAPE energy
+  # dE_h_matrix = V_h - E_h, not with the band offset V_h. The id is kept (history) with a `flips` record below.
   - id: dl_bommer_Vh_hole_barrier
     class: H
-    desc: "hole side of the Pryor -45 meV override: bommer-preset dot->matrix hole depth V_h (meV, film, 5 K) vs Bommer E_a(X)"
+    desc: "single-hole escape energy dE_h_matrix (meV, film, 5 K) of the bommer preset vs Bommer Ea(X)"
+    source: dot_levels.bommer_dEh_matrix_meV
+    paper: {value: 96.0, err: 7.0, tag: V, where: "Bommer et al., JAP 110, 063108 (2011), DOI 10.1063/1.3633218, Fig. 2(a): single-dot X Arrhenius activation energy; carrier not identified"}
+    tol: {kind: abs, value: 12.0}
+    tol_reason: "[E] 12 meV = hypot(7, ~10): the paper's +-7 meV combined with a ~10 meV dot-size term (the dot size is unpublished and the preset's 3 nm x R 10 nm is [A]; dE_h_matrix moves a few meV per nm of height)"
+    expect: pass
+  - id: dl_bommer_Vh_pin
+    class: KD
+    desc: "regression pin: bommer-preset hole band offset V_h (meV, film, 5 K); guards the hole side of the Pryor -45 meV override + model-solid Al step"
     source: dot_levels.bommer_Vh_meV
-    paper: {value: 96.0, err: 7.0, tag: V, where: "Bommer et al. 2011 (digest, _goal/materials_factcheck.md:258): E_a(X) = 96 +- 7 meV in InP/(Al0.2Ga0.8)InP"}
-    tol: {kind: abs, value: 30.0}
-    tol_reason: "[E] +-30 meV: an activation energy is not a band offset (exciton binding ~25 meV, both carriers enter)"
-    expect: fail
-    reason: "the bommer preset (Pryor VBO transferred through the model-solid GaInP -> (Al0.2Ga0.8)InP step) gives V_h = 138 meV, +42 meV from 96 (outside the registered 66-126 window); the 91 meV quoted in the brief is the Reischle (GaInP matrix) preset. Registered fail and kept as the anchor, as prescribed; the Al step's model-solid VBO (~+47 meV) is the likely excess"
+    paper: {pin: 138.1, pin_note: "observed 2026-10-19 at the r3 audit (r3-bommer-zhao-answer.md Q1 table, model-solid Al step 47.9 meV); NOT compared with Bommer (an activation energy is not a band offset)"}
+    tol: {kind: regression, value: 2.0}
+    tol_reason: "drift guard only, 2 meV"
+    expect: pass
 
   # 6b nitride planar (production fsim_core.nitride_levels, same calls as verify_nitride_levels.py N6)
   - {id: kd_nit_desh2013_lambda_pin, class: KD, desc: "regression pin: planar Deshpande-2013 geometry lambda (nm)", source: nitride.desh2013_lambda_nm, paper: {pin: 498.0, pin_note: "audit-recorded 498 nm (p0-verifiability.md)"}, tol: {kind: regression, value: 1.0}, tol_reason: "drift guard only, 1 nm", expect: pass}
@@ -394,13 +425,8 @@ items:
   - {id: kd_nw_claudon_eta_pin, class: KD, desc: "regression pin: Claudon-matched eta_collection_X", source: nanowire.claudon_eta, paper: {pin: 0.82, pin_note: "audit-recorded 0.82 (p0-verifiability.md)"}, tol: {kind: regression, value: 0.01}, tol_reason: "drift guard only, 0.01", expect: pass}
 
 # Quantities the workspace cannot decide; registered so the gap is visible and gated (non-empty reason required), NEVER
-# counted as a pass.  (devlib-r2-pha2)
-unavailable:
-  - id: zhao_squeezing_dB
-    class: U
-    desc: "Zhao broadband amplitude squeezing (dB) vs the output-noise-spectrum estimator sde.output_noise_spectrum"
-    source: zhao.squeezing_dB
-    reason: "paper value UNRESOLVED: cards/zhao.yaml carries 3.1 dB [E, disputed] while _goal/paper_digests.md:231 (full text of the arXiv:2309.09703v1 PDF) records 0.9 +- 0.1 dB (6.7 %, near 8 GHz, band 3-12 GHz) and 6.7 % is itself 0.3 dB, not 0.9 dB; no Zhao PDF or digest exists under .workers/devlib/papers, so the conflict cannot be settled from the workspace sources (r2-physics-a Q6: register as unavailable). The estimator is verified in verify_zhao_spectrum.py; a dB pass/fail waits on the published number"
+# counted as a pass.  (devlib-r2-pha2)  EMPTY since devlib-r3-papers: zhao_squeezing_dB was resolved (zhao_squeezing_dB_det).
+unavailable: []
 
 # Every expect that was flipped after the first run is listed here by the verifier's author.
 flips:
@@ -415,3 +441,5 @@ flips:
   # keeps the 106 ns number through the new nitride.zhang2013_tau_ns_300K key).
   # devlib-rc2 (2026-10-12): NO flips. All 17 new/relabelled expectations matched on the first run (registered before it);
   # no tolerance was changed. Observed: reischle_dc r_set = floor 0.01/ns (r_dip = -9.6/ns: model k_X 9.6/ns vs measured ~1 ns dip).
+  # devlib-r3-papers (2026-10-19):
+  - {id: dl_bommer_Vh_hole_barrier, from: fail, to: pass, why: "definitional re-map, not a tolerance change on the old comparison: an Arrhenius activation energy is an escape energy from the occupied level, not a band offset; the old 42 meV gap equals the hole zero-point energy 47.5 meV (138.1 - 90.6). Source now dE_h_matrix 90.6 vs 96 +- 7, tol 12 meV [E] written before the run (Fable r3-bommer-zhao-answer.md Q1 (d))"}

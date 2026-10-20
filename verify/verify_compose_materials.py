@@ -268,13 +268,14 @@ check("band block: every [V] value carries a boolean `checked`; checked: true on
       all((isinstance(l_.get("checked"), bool) if l_["tag"] == "V" else "checked" not in l_)
           and (l_.get("checked") is not True or str(l_.get("checked_against", "")).strip()) for _, _, l_ in _lf))
 _true = sorted((k_, p_) for k_, p_, l_ in _lf if l_.get("checked") is True)
-check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves, the WZ98 CdSe/ZnSe dE_v, the Madelung ZnSe gap and the Pryor InP/GaInP dE_v and the 4 VM03 leaves (GaN/AlN gaps, AlN/GaN dE_v, InGaN barrier), the Grundmann 1995 in-dot dE_c the Yang 2017 CsPbBr3 gap and the Shan 1994 zb CdSe gap are checked: true; the CsPbBr3 masses stay false (Protesescu SI absent)",
+check("band block 2026-10-13 fact-check: exactly the 8 V01 gap leaves, the WZ98 CdSe/ZnSe dE_v, the Madelung ZnSe gap and the Pryor InP/GaInP dE_v and the 4 VM03 leaves (GaN/AlN gaps, AlN/GaN dE_v, InGaN barrier), the Grundmann 1995 in-dot dE_c the Yang 2017 CsPbBr3 gap and the Shan 1994 zb CdSe gap are checked: true; the CsPbBr3 masses 0.15/0.14 are checked: true (Protesescu SI Table S2 p. S8, r3 2026-10-19)",
       _true == sorted([("gaas_algaas_droplet", "unstr.Eg_dot"), ("inas_gaas_sk", "Eg_barrier"), ("inas_gaas_sk", "unstr.Eg_dot"),
                        ("inas_ingaas_metamorphic_cband", "unstr.Eg_dot"), ("inas_inp_cband", "Eg_barrier"), ("inas_inp_cband", "unstr.Eg_dot"),
                        ("ingaas_gaas", "Eg_barrier"), ("inp_gainp_red", "unstr.Eg_dot"), ("inp_gainp_red", "unstr.dE_v"), ("cdse_znse", "unstr.dE_v"),
                        ("cdse_znse", "Eg_barrier"), ("gan_aln", "Eg_barrier"), ("gan_aln", "unstr.Eg_dot"), ("gan_aln", "unstr.dE_v"),
-                       ("ingan_gan", "Eg_barrier"), ("inas_gaas_sk", "indot.dE_c"), ("cspbbr3_colloidal", "unstr.Eg_dot"), ("cdse_znse", "unstr.Eg_dot")])
-      and all(l_["checked"] is False for k_, p_, l_ in _lf if k_ == "cspbbr3_colloidal" and p_.startswith("masses")), str(_true))
+                       ("ingan_gan", "Eg_barrier"), ("inas_gaas_sk", "indot.dE_c"), ("cspbbr3_colloidal", "unstr.Eg_dot"), ("cdse_znse", "unstr.Eg_dot"),
+                       ("cspbbr3_colloidal", "masses.m_e"), ("cspbbr3_colloidal", "masses.m_h")])
+      and all(l_["checked"] is True and "Protesescu" in l_["checked_against"] for k_, p_, l_ in _lf if k_ == "cspbbr3_colloidal" and p_.startswith("masses")), str(_true))
 _cd = _bands["cdse_znse"]["variants"]["unstr"]
 _ip = _bands["inp_gainp_red"]["variants"]["strained"]
 check("band block 2026-10-13 corrections: CdSe/ZnSe dE_v 130 [V] / dE_c 924 [DR] (Woerz 1996 and Shan 1994, superseding WZ98 70 / 990), CsPbBr3 E_g 2.342 / barrier 5.842, InP/GaInP strained 1.48 / 437 / 90 (D2, Pryor -45 meV unstrained)",
