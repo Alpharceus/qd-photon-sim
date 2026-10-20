@@ -477,7 +477,8 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
 
     def base(e) -> ItemResult:
         item = e["item"]
-        if e.get("mode") == "optimum":                 # R2 SUPCMP: compare_to names the reported value (default: the item id)
+        if e.get("mode") == "optimum" or (e.get("mode") == "at_optimum" and e["class"] == "M"):
+            # R2 SUPCMP / R3-LADDER: compare_to names the reported value (default: the item id)
             ref = e.get("compare_to", item)
             if e["class"] == "M":
                 kind, ent = ids[ref]

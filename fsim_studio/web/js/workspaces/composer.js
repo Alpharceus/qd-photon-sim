@@ -344,7 +344,7 @@ function renderBoard() {
       h("div.bh-titleline",
         h("h1.board-title", S.card ? S.card.replace(/-design$/, "") : "Composer"),
         S.dom.dirty = h("span.chip.chip-dirty", { hidden: true, title: "Edits are local until you save them as a card" }, "edited")),
-      seedStillShown() ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), richText(`from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}`)) : null,
+      seedStillShown() ? h("p.seed-note.compose-seed", { dataset: { paper: S.seed.paper || "", item: S.seed.item || "" } }, icon("info", { size: 14 }), richText(`from paper ${S.seed.paper || ""}: ${S.seed.note || "ranged inputs collapsed to their central values"}${S.seed.collapsed?.length ? ` (${S.seed.collapsed.length} collapsed)` : ""}${S.seed.ladder ? ". This item's value comes from the four-level ladder solver; the Composer runs the two-level engine, so its readouts at this argmax differ from the item value." : ""}`)) : null,
       h("ol.board-desc.board-steps", { "aria-label": "How to compose a device" },
         h("li", h("b.bs-n", "1"), "Start from an example"),
         h("li", h("b.bs-n", "2"), "Click a mount's kind to swap it, its body to edit values"),

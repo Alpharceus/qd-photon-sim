@@ -199,6 +199,36 @@ class _Comp:
     phase: float
     kappa: float        # laser chirp d(omega_L)/dt, rad/ns^2
     halfwin: float
+    tp_ns: float = 0.0  # sinc_gauss: sinc time scale t_p (ns)
+    r: float = 0.0      # sinc_gauss: Gaussian window parameter of Eq 4
+
+
+#: Half window of a sinc_gauss pulse in units of the Gaussian 1/e half width r t_p/pi (3 widths: Gaussian 1.5e-4, sinc tail ~1e-3 of
+#: the peak; about +-76 ps for the Piccinini pulse) [A: numerical]. The paper's Sinc is sin x / x (unnormalised), its t_p is
+#: t_p(here)/pi, so the Eq 4 window exp[-(t/(r t_p_paper))^2] reads exp[-(pi t/(r t_p))^2] in the normalised np.sinc form used here [DR].
+SINC_WINDOW_WIDTHS = 3.0
+
+
+def sinc_gauss_area(tp_ns: float, r: float) -> float:
+    """Int sinc(t/t_p) exp[-(pi t/(r t_p))^2] dt = t_p erf(r / 2) for the NORMALISED sinc sin(pi x)/(pi x) [DR]
+    (Int sinc(x) exp(-a x^2) dx = erf(pi/(2 sqrt a)), a = (pi/r)^2); this is the paper's t_p' Erf(r/2) with t_p' = t_p/pi."""
+    return tp_ns * math.erf(r / 2.0)
+
+
+def comp_norm(c) -> float:
+    """Int env dt (ns) of a component with PEAK amplitude 1: area = amp x comp_norm(c) [DR]."""
+    if c.shape == "rect":
+        return c.dur_ns
+    if c.shape == "sinc_gauss":
+        return sinc_gauss_area(c.tp_ns, c.r)
+    return c.sigma_ns * math.sqrt(2.0 * math.pi)
+
+
+def _half_window(p) -> float:
+    """Half window (ns) of a Pulse."""
+    if p.shape == "sinc_gauss":
+        return SINC_WINDOW_WIDTHS * p.r * p.tp_ps * 1e-3 / math.pi
+    return 0.5 * rs.pulse_window(p.shape, p.fwhm_ps * 1e-3)
 
 
 class PulseTrain:
@@ -224,19 +254,22 @@ class PulseTrain:
         half = []
         for p in pulses:
             dur = p.fwhm_ps * 1e-3
-            half.append(abs(p.t0_ps) * 1e-3 + 0.5 * rs.pulse_window(p.shape, dur))
+            half.append(abs(p.t0_ps) * 1e-3 + _half_window(p))
         self.W = 2.0 * max(half)
         comps = []
         for p in pulses:
             dur = p.fwhm_ps * 1e-3
             sig = rs.gaussian_sigma(dur)
-            amp = p.area_rad / dur if p.shape == "rect" else p.area_rad / (sig * math.sqrt(2 * math.pi))
+            if p.shape == "sinc_gauss":       # Omega(t) = area s(t) / Int s dt, s = np.sinc(t/t_p) exp[-(pi t/(r t_p))^2] (peak s(0) = 1)
+                amp = p.area_rad / sinc_gauss_area(p.tp_ps * 1e-3, p.r)
+            else:
+                amp = p.area_rad / dur if p.shape == "rect" else p.area_rad / (sig * math.sqrt(2 * math.pi))
             comps.append(_Comp(
                 shape=p.shape, dur_ns=dur, sigma_ns=sig, area=float(p.area_rad), amp=float(amp),
                 tc=0.5 * self.W + p.t0_ps * 1e-3,
                 dw=det0 - float(lb.mev_to_rate(p.detuning_meV)), phase=float(p.phase_rad),
                 kappa=float(lb.mev_to_rate(p.chirp_meV_ps)) * 1e3,
-                halfwin=0.5 * rs.pulse_window(p.shape, dur)))
+                halfwin=_half_window(p), tp_ns=p.tp_ps * 1e-3, r=float(p.r)))
         self.comps = tuple(comps)
         self.det0_ns = det0
         # R2 SUPCMP: an explicit pulse-shaper field (Karli et al. 2022 Sec. V B, slm_pulse.py) replaces the Gaussian / rect
@@ -277,6 +310,9 @@ class PulseTrain:
             x = t - c.tc
             if c.shape == "rect":
                 env = np.where(np.abs(x) < 0.5 * c.dur_ns, c.amp, 0.0)
+            elif c.shape == "sinc_gauss":
+                u = x / c.tp_ns
+                env = np.where(np.abs(x) <= c.halfwin, c.amp * np.sinc(u) * np.exp(-(math.pi * u / c.r) ** 2), 0.0)
             else:
                 env = np.where(np.abs(x) <= rs.GAUSS_WINDOW_SIGMA * c.sigma_ns,
                                c.amp * np.exp(-0.5 * (x / c.sigma_ns) ** 2), 0.0)
@@ -511,10 +547,12 @@ class PolaronSolver(Solver):
         if not plan.pulses:
             return False, "polaron: plan has no pulses"
         for p in plan.pulses:
-            if p.shape not in ("rect", "gauss"):
-                return False, f"polaron: pulse shape {p.shape!r} not supported (rect|gauss)"
+            if p.shape not in ("rect", "gauss", "sinc_gauss"):
+                return False, f"polaron: pulse shape {p.shape!r} not supported (rect|gauss|sinc_gauss)"
             if not (p.fwhm_ps > 0 and math.isfinite(p.area_rad) and p.area_rad >= 0):
                 return False, "polaron: pulse needs fwhm_ps > 0 and a finite non-negative area"
+            if p.shape == "sinc_gauss" and not (p.tp_ps > 0 and p.r > 0):
+                return False, "polaron: a sinc_gauss pulse needs tp_ps > 0 and r > 0"
         if plan.f_rep_MHz is None or plan.f_rep_MHz <= 0:
             return False, "polaron: pulsed plan needs f_rep_MHz"
         if "T_K" not in plan.inputs:

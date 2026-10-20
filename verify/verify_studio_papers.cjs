@@ -379,13 +379,23 @@ async function getJSON(url) {
       for (const e of opts) {
         const g = got.find((x) => x.id === e.item);
         const src = e.mode === "optimum" ? e : opts.find((x) => x.item === e.of);
+        const ladder = src.solver === "ladder";
         const sv = src.optimum.solver;
-        const wantSolver = `${sv.phonons === true || sv.phonons === "on" ? "LA-phonon polaron" : "no phonons"}`;
+        // the page typesets X_H / X_V (the textContent then carries the math twice), so the ladder line is matched around them
+        const ladderRe = ladder ? new RegExp(String.raw`^four-level ladder \(G, .*X.*, .*X.*, XX\), no phonons, FSS ${Number(src.optimum.ladder.fss_ueV.value)} µeV$`) : null;
+        const wantSolver = ladder ? "" : `${sv.phonons === true || sv.phonons === "on" ? "LA-phonon polaron" : "no phonons"}`;
         const labelOK = e.mode === "optimum" ? g.label === "maximum over the paper's scan window" : /^at the maximum of/.test(g.label);
         const winOK = g.win.length === src.optimum.scan.length && src.optimum.scan.every((sc, i) => g.win[i].text.includes(String(Math.abs(sc.window[0]))) && g.win[i].text.includes(String(Math.abs(sc.window[1]))) && g.win[i].math >= 1);
         const amOK = g.am.length >= src.optimum.scan.length && g.am.every((a) => a.math >= 1 && /\d/.test(a.text.split("=")[1] || ""));
         check(`optimum item ${id}/${e.item}: labelled, window, typeset argmax, solver options, Open optimum in Composer enabled`,
-          labelOK && winOK && amOK && g.solver.includes(wantSolver) && g.solver.startsWith("two-level") && g.btn, JSON.stringify(g).slice(0, 400));
+          labelOK && winOK && amOK && (ladder ? ladderRe.test(g.solver) : g.solver.includes(wantSolver) && g.solver.startsWith("two-level")) && g.btn, JSON.stringify(g).slice(0, 400));
+      }
+      if (id === "piccinini2025") {                 // R3-LADDER: the two ladder items must say so (cannot silently fall back to the two-level text)
+        for (const iid of ["NX_SUPER_ladder_opt", "g2_SUPER_at_opt"]) {
+          const g = got.find((x) => x.id === iid);
+          check(`ladder item ${id}/${iid}: solver line reads the four-level ladder, no phonons, FSS 12 µeV; Open optimum enabled`,
+            !!g && /^four-level ladder \(G, .*X.*, .*X.*, XX\), no phonons, FSS 12 µeV$/.test(g.solver) && g.btn, JSON.stringify(g || null).slice(0, 300));
+        }
       }
       await shot(`optimum-${id}`);
     }

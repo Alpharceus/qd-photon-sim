@@ -128,12 +128,16 @@ for fp in sorted(Path(root, "cards", "papers").glob("*.yaml")):
         item = e["item"]
         try:
             if e.get("mode") == "optimum":                 # the optimum runner itself, in this separate process
-                res = O.optimise(spec, e["optimum"])
+                res = (O.optimise_ladder if e.get("solver") == "ladder" else O.optimise)(spec, e["optimum"])
                 store[item] = res
                 card["items"][item] = {"kind": "optimum", "model": f(res["value"]), "argmax": res["argmax"]}
                 continue
             if e.get("mode") == "at_optimum":              # the engine at the runner's argmax
                 src = store[e["of"]]
+                if e.get("solver") == "ladder":            # the four-level ladder at the ladder argmax (R3-LADDER), not the two-level engine
+                    r = O._lad.g2_at(src["setup"], [float(src["values"]["drive.area%d_pi" % (k + 1)]) for k in range(len(src["setup"].series))])
+                    card["items"][item] = {"kind": "at_optimum", "model": f(r[e["observable"]]), "argmax": src["argmax"]}
+                    continue
                 req = e["observable"] if e.get("convention", "intrinsic") == "intrinsic" else e["observable"] + ":" + e["convention"]
                 ctx = engine._run_point(src["entries"], src["values"], float(src["values"]["T_K"]), "auto")
                 card["items"][item] = {"kind": "at_optimum", "model": f(engine._value_of(ctx, req)), "argmax": src["argmax"]}
@@ -199,7 +203,15 @@ for cid, items in req_all.items():
         vals.update({k: (v if isinstance(v, str) else float(v)) for k, v in am.items()})
         rec = {}
         try:
-            if e.get("mode") == "optimum":
+            if e.get("solver") == "ladder":                # four-level ladder at the argmax: same preparation steps as optimise_ladder
+                em, _st, _sr, rt, plan, _v, _rd = E._prepare(entries, vals, float(vals["T_K"]))
+                S = O._lad.prepare(plan, em, rt, fss_ueV=float(o["ladder"]["fss_ueV"]["value"]))
+                ar = [float(vals["drive.area%d_pi" % (k + 1)]) for k in range(len(S.series))]
+                if e.get("mode") == "optimum":
+                    rec["model"] = f(O._lad.scan(S, [[a] for a in ar])["N_X"][0])
+                else:
+                    rec["model"] = f(O._lad.g2_at(S, ar)[e["observable"]])
+            elif e.get("mode") == "optimum":
                 rec["model"] = f(O._engine_px_end(entries, vals, O._onoff(o["solver"]["phonons"]) == "on", O._onoff(o["solver"]["radiative"]) == "on"))
             else:
                 req = e["observable"] if e.get("convention", "intrinsic") == "intrinsic" else e["observable"] + ":" + e["convention"]
@@ -423,6 +435,7 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
         // optimum items: "Open optimum in Composer" opens the device AT the argmax; the Composer's engine scalars there equal a direct
         // evaluation of the device with the argmax leaves set; an at_optimum item's value is reproduced by the Composer's own readout
         for (const it of (optCards[id]?.items || [])) {
+          const ladder = (optCards[id].card.reproduce || []).find((x) => x.item === it.id)?.solver === "ladder";   // R3-LADDER: valued by the four-level ladder
           try {
             await page.goto(`${BASE}/#/papers/${id}`, { waitUntil: "domcontentloaded" });
             await page.waitForSelector('#workspace[data-ready="1"]', { timeout: 30000 });
@@ -449,11 +462,13 @@ async function settle(page, ms = 400) { await page.waitForTimeout(ms); }
               const sc2 = run2.result.scalars;
               const ae = argEval[id]?.[it.id];
               if (ae?.scalars) for (const k of Object.keys(ae.scalars)) if (!relOK(sc2[k], ae.scalars[k], 1e-9)) bad2.push(`${k}: Composer ${sc2[k]} vs device at the argmax ${ae.scalars[k]}`);
-              if (it.mode === "at_optimum" && it.observable === "g2_0") {
+              if (ladder) {
+                if (!/four-level ladder/.test(note)) bad2.push(`seed note does not say the item is a four-level ladder value: ${note.slice(0, 160)}`);
+              } else if (it.mode === "at_optimum" && it.observable === "g2_0") {
                 if (!relOK(sc2.g2_0, it.model, 1e-6)) bad2.push(`Composer g2_0 ${sc2.g2_0} vs item value ${it.model}`);
               }
             }
-            check(`Open optimum in Composer ${id}/${it.id}: opens at the argmax (leaves equal, 1e-9 rel), the Composer scalars equal the device at the argmax${it.mode === "at_optimum" && it.observable === "g2_0" ? " and its g2(0) readout equals the item value (1e-6)" : ""}`, bad2.length === 0, bad2.join(" | "));
+            check(`Open optimum in Composer ${id}/${it.id}: opens at the argmax (leaves equal, 1e-9 rel), the Composer scalars equal the device at the argmax${ladder ? " and the seed note says the value is a four-level ladder one" : it.mode === "at_optimum" && it.observable === "g2_0" ? " and its g2(0) readout equals the item value (1e-6)" : ""}`, bad2.length === 0, bad2.join(" | "));
           } catch (e) {
             check(`Open optimum in Composer ${id}/${it.id}`, false, e.message.split("\n")[0]);
           }

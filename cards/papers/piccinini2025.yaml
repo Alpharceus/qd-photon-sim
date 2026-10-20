@@ -6,7 +6,9 @@ meta:
   extraction: .workers/devlib/papers/piccinini2025.yaml
   read_level: V-full
   notes:
-    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans model g2 0.0036 to 90; the central value is 6.8 (R2 SUPER, polaron B none). The paper inversion and g2 need the absolute areas, which are not derivable. Read it as a vacuous envelope pass, not agreement."
+    - "CAUTION: g2_SUPER passes only because the pulse-area envelope (0-20 pi, absolute areas not derivable: Eq 6 needs the DBR field ratio F_j of ref 27) spans two-level model g2 0.026 to 38 with the Eq 4 pulses; the central value is 21. The paper inversion and g2 need the absolute areas, which are not derivable. Read it as a vacuous envelope pass, not agreement. The like-for-like comparison is g2_SUPER_at_opt (paper four-level model at the N_X-maximising areas)."
+    - "R3-LADDER (Fable, R3 physics answer): the pulse is the Methods Eq 4 sinc x Gaussian with t_p = 0.923 h/dE = 7.95 ps (2.53 ps was the paper's t_p in its own unnormalised-Sinc convention, t_p = 7.95 ps/pi; the card slip was using it as a RECT intensity FWHM, whose spectrum is 3x too wide). The ladder items use the paper's own phonon-free four-level model (Eqs 1-4: G, X_H, X_V, XX; Gamma = 1/200 ps on all four transitions, E_b 4.0 meV, FSS 12 ueV, laser along X_H) with no tuning: the areas are the N_X argmax of a fixed 0-20 pi grid."
+    - "KEEP-MISS (documented, not modelled): the measured 0.03 +/- 0.01 is not fully attributed in the paper. Candidate residuals the paper gives no inputs for: (a) laser leak into the X channel (co-polarised detection, no suppression ratio, filter width or signal-to-background printed; g2_raw = g2 + 2 f_leak would need f_leak = 0.005-0.013 of detected counts); (b) XX-line photons leaking into the X channel, bounded by the TPE reference to <= 0.0025 at the optimum; (c) dark counts, other-line PL, blinking (not quantifiable). Where the four-level model lands inside 0.03 +/- 0.02 it is consistency, not an explanation of the residual."
   summary: "GaAs/AlGaAs droplet QD (neutral X at 783.38 nm, XX binding 4.0 meV) in a low-Q micropillar (D 1.58 um), SUPER red-detuned pulses (-3.5, -7.5 meV), T 4 K: inversion ~95 percent, g2(0) 0.03"
 
 device:
@@ -28,9 +30,9 @@ device:
     params:
       delta1_meV: {value: -3.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta1 = -3.5 meV); paper convention Delta = omega_L - omega_X, red = negative; R2 note: -3.7 meV is the two-level X point of Fig 3 (F1), see delta2"}
       delta2_meV: {value: -7.5, unit: meV, tag: V, where: "Fig 1 caption (SUPER pulses Delta2 = -7.5 meV); paper convention; R2 note: -7.5 meV is the XX-mediated resonance (Fig 3, F2); the two-level X resonance is delta2 = -6.9 meV with delta1 = -3.7 meV"}
-      shape: {value: rect, unit: "", tag: DR, where: "Methods Eq 4-5: square pulses with smooth corners (r = 10) centred at Delta_j"}
-      fwhm1_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 0.923 h/(pi dE) = 2.53 ps"}
-      fwhm2_ps: {value: 2.53, unit: ps, tag: DR, where: "Methods: FWHM_lambda = 0.923 lambda^2/(pi c t_p), 0.48 meV -> t_p = 2.53 ps (same laser, text p.2)"}
+      shape: {value: sinc_gauss, unit: "", tag: V, where: "Methods Eq 4: Omega_j(t) = Theta_j/(t_p Erf(r/2)) Sinc(t/t_p) Exp[-(t/(r t_p))^2], i.e. a sinc pulse with a Gaussian window (the earlier rect transcription is superseded, R3-LADDER). The paper's Sinc is sin x / x, so the repo form is the normalised np.sinc(t/t_p) with t_p = 7.95 ps and window exp[-(pi t/(r t_p))^2], i.e. 1/e at r t_p/pi = 25.3 ps"}
+      spectral_fwhm_meV: {value: 0.48, unit: meV, tag: V, where: "text p.2 (spectral FWHM 0.48 meV of the shaped laser); the pulse time scale t_p = 0.923 h/dE = 7.95 ps is derived by the drive [DR, Methods FWHM_lambda = 0.923 lambda0^2/(c t_p)]"}
+      r: {value: 10.0, unit: "1", tag: V, where: "Methods Eq 4 (r = 10)"}
       area1_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper: only powers (P1 = 30 uW, P2/P1 = 1.3) are given, and the power-to-area mapping (DBR transmission, ref 27) was not extracted; registry range [E]"}
       area2_pi: {range: [0.0, 20.0], unit: pi, tag: E, source: "absolute pulse areas not in the paper (see area1_pi); registry range [E]"}
       f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text Methods (80 MHz pulsed laser, 150 fs pulses)"}
@@ -58,7 +60,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "model-level tolerance: g2 0.03 with +/-0.02 at model level; 2 sigma of the paper's +/-0.01 (0.02) agrees"
     expect: pass-envelope
-    reason: "FX4: central model 0.789 misses 0.03 +/- 0.02 by far; the paper value lies inside the input envelope [0.0036, 26] only, which spans four orders of magnitude, so it is not a pass. R2 SUPCMP: at the areas that maximise the inversion (inversion_SUPER_opt) the raw model g2 is 0.0042 (g2_SUPER_at_opt), also outside 0.03 +/- 0.02, so evaluating at the optimum does not discriminate either"
+    reason: "FX4, re-run R3-LADDER with the Eq 4 pulse (t_p 7.95 ps): the two-level polaron central model is now 21 and misses 0.03 +/- 0.02 by far; the paper value lies inside the input envelope [0.026, 38] only, which spans three orders of magnitude, so it is not a pass (was central 6.8, envelope [0.0033, 90] with the 2.53 ps rect pulse). R2 SUPCMP, re-run: at the areas that maximise the two-level inversion the raw model g2 is 0.0217 (g2_SUPER_at_inversion_opt), where the two-level inversion is only 0.157. The like-for-like comparison with the paper's four-level model is g2_SUPER_at_opt"
   - item: inversion_SUPER_pred
     class: P
     observable: inversion
@@ -68,7 +70,7 @@ reproduce:
   - item: inversion_SUPER_opt
     class: P
     mode: optimum
-    tol_reason: "R2 SUPCMP, no pass/fail: the model maximum of the exciton occupation over both pulse areas (0-20 pi) at the card's detunings and 2.53 ps rect pulses, two-level X with the card's 4 K phonon setting and decay. The paper's ~95 % (abstract) is stated RELATIVE to the maximum TPE population and its derivation is not in the main text, while the model number is an absolute occupation, so a tolerance test (abs 0.05 around 0.95) would compare two different quantities; class M is therefore not defensible and the item is P. The 0.95 is quoted for context in the card history only"
+    tol_reason: "R2 SUPCMP, no pass/fail: the model maximum of the exciton occupation over both pulse areas (0-20 pi) at the card's detunings and the Eq 4 sinc x Gaussian pulses (t_p 7.95 ps, R3-LADDER; 2.53 ps rect pulses in R2), two-level X with the card's 4 K phonon setting and decay. The paper's ~95 % (abstract) is stated RELATIVE to the maximum TPE population and its derivation is not in the main text, while the model number is an absolute occupation, so a tolerance test (abs 0.05 around 0.95) would compare two different quantities; class M is therefore not defensible and the item is P. The 0.95 is quoted for context in the card history only"
     expect: pass
     optimum:
       observable: inversion
@@ -77,14 +79,40 @@ reproduce:
       scan:
         - {name: area1, path: drive.area1_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "absolute pulse areas are not printed (Eq 6 needs the DBR field ratio F_j of ref 27); registry range 0-20 pi, the same envelope as the drive leaf"}
         - {name: area2, path: drive.area2_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "as area1"}
-  - item: g2_SUPER_at_opt
+  - item: g2_SUPER_at_inversion_opt
     class: P
     mode: at_optimum
     of: inversion_SUPER_opt
     observable: g2_0
     convention: raw
-    tol_reason: "R2 SUPCMP, no comparison: the raw g2(0) the engine gives at the areas that maximise the inversion (inversion_SUPER_opt). The paper value 0.03 +/- 0.01 (g2_SUPER) is NOT compared here: the maximising areas are a model optimum, not a paper input, so this is context for g2_SUPER, not a test"
+    tol_reason: "R2 SUPCMP, no comparison: the raw g2(0) the two-level polaron engine gives at the areas that maximise the two-level inversion (inversion_SUPER_opt). Kept from R2 as the two-level control of the ladder item g2_SUPER_at_opt below (R3-LADDER renamed the R2 item g2_SUPER_at_opt to this id). The paper value 0.03 +/- 0.01 is NOT compared here"
     expect: pass
+  - item: NX_SUPER_ladder_opt
+    class: P
+    mode: optimum
+    solver: ladder
+    tol_reason: "R3-LADDER, no comparison: the maximum of the X-line photon number N_X per pulse pair of the paper's own four-level model (Methods Eqs 1-4: ground state, bright exciton X_H, dark partner X_V, biexciton XX; phonon-free, Gamma = 1/200 ps on all four transitions) over the FIXED grid 0-20 pi x 0-20 pi (81 x 81 points, 0.25 pi step, no refinement). The grid and the observable were fixed before g2 was read (section 4 of the R3 physics answer). The paper's ~95 % inversion is relative to the TPE maximum and is not compared"
+    expect: pass
+    optimum:
+      observable: N_X
+      reduction: max
+      ladder:
+        fss_ueV: {value: 12.0, unit: ueV, tag: V, where: "Fig 1 caption (FSS approx 12 ueV); carried here, not on the material, because the two-level engine ignores it (R2 F10 removed it from the material leaves) and only the ladder reads it"}
+      scan:
+        - {name: area1, path: drive.area1_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "absolute pulse areas are not printed (Eq 6 needs the DBR field ratio F_j of ref 27); registry range 0-20 pi, the same envelope as the drive leaf, 0.25 pi grid"}
+        - {name: area2, path: drive.area2_pi, window: [0.0, 20.0], n: 81, unit: pi, tag: E, source: "as area1"}
+  - item: g2_SUPER_at_opt
+    class: M
+    mode: at_optimum
+    solver: ladder
+    of: NX_SUPER_ladder_opt
+    compare_to: g2_SUPER
+    observable: g2_0
+    convention: raw
+    tol: {k_sigma: 2, abs: 0.02}
+    tol_reason: "R3-LADDER, pre-registered before the run (section 4 of the R3 physics answer): X-line g2(0) of the phonon-free four-level model at the areas that maximise N_X (NX_SUPER_ladder_opt); predicted 0.015-0.019 by the scratch solver, tolerance as for g2_SUPER: 2 sigma of the paper's +/-0.01 (0.02) around 0.03 (the model-level tolerance)"
+    expect: pass
+    note: "Model X yield at the optimum is ~0.65 photons per pulse pair, not the paper's relative 95 %: the g2 agreement is consistency (the paper's own model, its printed inputs, no tuning), not confirmation of the mechanism. A pass here says the unexplained residual is not needed to reach 0.03 +/- 0.02; it does not say what produced the measured 0.03."
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
 
@@ -96,3 +124,4 @@ history:
   - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_SUPER central 0.79 -> 6.8 (envelope [0.0036, 90], still pass-envelope), inversion_SUPER_pred 0.09 -> 0.028 (P item still passes); delta2 -7.5 meV noted as the XX-mediated F2 point; no expect or tolerance changed"}
   - {date: 2026-10-13, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "R2 dead control F10: fss_ueV removed", note: "material.fss_ueV removed from the engine (it moved no output; the two-level engine has no polarisation observable, R2 F10); the paper value 12.0 ueV [V] (Fig 1 caption (FSS approx 12 ueV)) is no longer carried by the card"}
   - {date: 2026-10-13, by: "sonnet supercmp", reason: "R2 SUPCMP like-for-like SUPER comparison: new optimum items inversion_SUPER_opt (P: max over area1, area2 in 0-20 pi; kept P, not M, because the paper 95 % is relative to the TPE maximum while the model number is absolute) and g2_SUPER_at_opt (P: raw g2 at the maximising areas); no existing expect or tolerance changed", note: "R2 SUPCMP result: model maximum occupation 0.9958 (two-level, 4 K phonons, decay on) at area1 7.89 pi, area2 13.95 pi (several near-degenerate islands of 0.9954-0.9958, e.g. 13.06/5.45 pi and 18.76/7.67 pi); the paper ~95 % (relative to the TPE maximum) is not compared. Raw g2 at those maximising areas is 0.0034-0.0042 (0.00425 at the reported argmax) against the paper 0.03 +/- 0.01: g2_SUPER stays pass-envelope"}
+  - {date: 2026-10-20, by: "sonnet r3-ladder", reason: "R3-LADDER, .workers/devlib/r3-piccinini-answer.md (Fable) and the Opus review: pulse shape rect 2.53 ps -> sinc_gauss (Eq 4: spectral_fwhm_meV 0.48 [V], r 10 [V], t_p = 0.923 h/dE = 7.95 ps [DR] in the normalised-sinc form, window exp[-(pi t/(r t_p))^2]); fwhm1/2_ps 2.53 ps removed (superseded: 2.53 ps was the paper's t_p in its unnormalised-Sinc convention, 7.95/pi; the slip was using it as a rect intensity FWHM, a spectrum 3x too wide). New items NX_SUPER_ladder_opt (P) and g2_SUPER_at_opt (M, four-level ladder, tol 2 sigma | abs 0.02, expect pass); the R2 polaron item g2_SUPER_at_opt renamed g2_SUPER_at_inversion_opt. No existing expect or tolerance changed.", note: "Moved values (old -> new, Eq 4 pulse, numerical spectral FWHM 0.476 meV): g2_SUPER central 6.81 -> 21.33, envelope [0.0033, 90] -> [0.026, 38] (still pass-envelope); inversion_SUPER_pred 0.028 -> 0.0029 (envelope [0, 0.87] -> [0, 0.15]); inversion_SUPER_opt 0.9958 at (7.89, 13.95) pi -> 0.1573 at (7.93, 7.84) pi (the old 0.996 swing-up is lost with the 7.95 ps / 0.48 meV pulse because of the pulse duration and Rabi scale, not spectral overlap with the X line: a sinc pulse with t_p 2.53 ps still reaches 0.999 phonon-free, a 2.53 ps Gaussian 0.90, a 7 ps Gaussian 0.24); two-level g2 at the inversion argmax 0.00425 -> 0.0217. Ladder: N_X maximum 0.652 at (15.50, 16.50) pi, P_XX(end) 0.201, X-line g2 0.0193 (pre-registered scratch prediction 0.015-0.019, which used a window pi too wide; converged value for the corrected pulse 0.0193, 1.1 sigma of the paper 0.03 +/- 0.01) -> g2_SUPER_at_opt passes with 2 sigma | abs 0.02."}
