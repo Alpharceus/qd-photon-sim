@@ -958,6 +958,78 @@ except ValueError as _e:
 check("PULSEEND D. a CW drive raises ValueError with a user-facing physics reason (no code names)",
       _cw_msg is not None and "pulsed" in _cw_msg and not any(t in _cw_msg for t in (".py", "polaron:", "_", "Solver")), str(_cw_msg)[:80])
 
+# ------------------------------------------------------------------ 15. r4: spectral filter + FSS gating through the engine
+from fsim_core.compose import filterhook as FH                           # noqa: E402
+
+
+def r4_spec(drv_params=None, mat_params=None, setup_params=None, struct=None, drive="resonant_pulse"):
+    return {"schema": "fsim-composed/1", "T_K": 4.0,
+            "material": {"kind": "ingaas_gaas", "params": {"k_nr_ns": 0.0, "gamma_star_4K_ns": 0.0, "a_ac_ns_per_K": 0.0, **(mat_params or {})}},
+            "structure": struct or {"kind": "generic_cavity", "params": {"F_P": 9.8, "Q": 11100, "eta_out": 0.7}},
+            "drive": {"kind": drive, "params": {"shape": "gauss", "fwhm_ps": 15.0, "area_pi": 1.0, **(drv_params or {})}},
+            "setup": {"kind": "lens_fibre_det", "params": setup_params or {}}, "solver": "auto"}
+
+
+def sc(spec):
+    return engine.evaluate_spec(spec)["scalars"]
+
+
+_u = sc(r4_spec())
+_f0 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 0.0}))
+check("R4-F1. setup.filter_fwhm_GHz = 0 reproduces the unfiltered engine numbers exactly (bit-identical g2, hom_I, B_first_lens)",
+      _u["g2_0"] == _f0["g2_0"] and _u["hom_I"] == _f0["hom_I"] and _u["B_first_lens"] == _f0["B_first_lens"],
+      f"g2 {_u['g2_0']:.6g}")
+_f3 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0}))
+_f20 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 20.0}))
+# Fable r4 pulsed 2.1 analytic estimate of the etalon effect: g2_f/g2 ~ T_s/T_l, T_s = (pi/2) B/Dnu_s with Dnu_s = 0.44/tau_p (the
+# short in-pulse photon), T_l = B/(B + Gamma/2pi) (the long photon). The formula's own accuracy at the Ding anchor (5 ps, T1 83.9 ps,
+# 3 GHz) is 0.088 vs the independent probe 0.096 (8 %); the check allows 15 % (about twice that).
+_tau_ps, _B = 15.0, 3.0
+_est = (math.pi / 2.0 * _B / (0.44 / (_tau_ps * 1e-3))) / (_B / (_B + _u["Gamma_ns"] / (2.0 * math.pi)))
+_ratio = _f3["g2_0"] / _u["g2_0"]
+check("R4-F2. 15 ps pi pulse, 3 GHz etalon: g2_f/g2 equals the Fable analytic estimate (pi/2) B tau_p/0.44 / [B/(B + Gamma/2pi)] within 15 % (the formula's own error at the Ding anchor is 8 %), "
+      "20 GHz lies between 3 GHz and unfiltered, and the brightness is untouched (filter_applies_to g2_hom)",
+      abs(_ratio - _est) / _est < 0.15 and _f3["g2_0"] < _f20["g2_0"] < _u["g2_0"] and _f3["B_first_lens"] == _u["B_first_lens"],
+      f"ratio {_ratio:.4f} vs estimate {_est:.4f}; g2 {_u['g2_0']:.4f} -> 20 GHz {_f20['g2_0']:.4f} -> 3 GHz {_f3['g2_0']:.4f}")
+_fb = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0, "filter_applies_to": "g2_hom_brightness"}))
+_Gam = _u["Gamma_ns"]
+_Tl = 3.0 / (3.0 + _Gam / (2 * math.pi))
+check("R4-F3. filter_applies_to g2_hom_brightness: the brightness drops by the etalon transmission, within 6 % of the free-decay closed form B/(B + Gamma/2pi) (short-pulse limit, the in-pulse photons add a little)",
+      abs(_fb["B_first_lens"] / _u["B_first_lens"] - _Tl) / _Tl < 0.06,
+      f"ratio {_fb['B_first_lens'] / _u['B_first_lens']:.4f} vs closed form {_Tl:.4f}")
+_lz = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0}, drv_params={"eid_ps": 1e-9}))
+check("R4-F4. the polaron step-propagator path (eid_ps 1e-9 ps routes the plan to it) and the lindblad path give the same filtered g2 and HOM overlap (1e-3 relative; the refined lindblad grid is converged to 1.5e-5): two independent propagator assemblies",
+      abs(_lz["g2_0"] - _f3["g2_0"]) / _f3["g2_0"] < 1e-3
+      and abs(_lz["hom_I"] - _f3["hom_I"]) / _f3["hom_I"] < 1e-3,
+      f"solvers {_f3['solver']} / {_lz['solver']}, g2 {_f3['g2_0']:.6g} / {_lz['g2_0']:.6g}, I {_f3['hom_I']:.6f} / {_lz['hom_I']:.6f}")
+_pa = sc(r4_spec(drive="phonon_assisted", drv_params={"detuning_meV": 0.58, "area_pi": 8.0, "fwhm_ps": 19.5}, struct=None))
+_pb = sc(r4_spec(drive="phonon_assisted", drv_params={"detuning_meV": 0.58, "area_pi": 8.0, "fwhm_ps": 19.5},
+                 setup_params={"filter_fwhm_GHz": 3.5}))
+check("R4-F5. phonon_assisted (phonons on, polaron path): a 3.5 GHz etalon gives a finite filtered g2 and HOM overlap and lowers g2",
+      math.isfinite(_pb["g2_0"]) and math.isfinite(_pb["hom_I"]) and _pb["g2_0"] < _pa["g2_0"], f"{_pa['g2_0']:.4f} -> {_pb['g2_0']:.4f}")
+# ---- FSS gating
+_nf = sc(r4_spec(drv_params={"cross_pol": True}, mat_params={"fss_ueV": 0.0}))
+check("R4-V1. fss_ueV = 0 with cross_pol: the two-level numbers are unchanged (g2, hom_I, B_first_lens equal the unpolarised run)",
+      _nf["g2_0"] == _u["g2_0"] and _nf["hom_I"] == _u["hom_I"] and _nf["B_first_lens"] == _u["B_first_lens"])
+_sh = r4_spec(drv_params={"cross_pol": True, "fwhm_ps": 0.1, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0, "tau_bare_ns": 1.0})
+_sh["structure"] = {"kind": "generic_cavity", "params": {"F_P": 0.0, "Q": 11100, "eta_out": 1.0, "F_bg": 1.0}}
+_rs_ = sc(_sh)
+_G = _rs_["Gamma_ns"]
+_d = float(lb.mev_to_rate(15e-3))
+_pH = 0.5 * _d * _d / (_G * _G + _d * _d)
+check("R4-V2. engine V-system, 0.1 ps pi pulse at 45 deg, FSS 15 ueV, no cavity: the H photon number per pulse equals the closed form (1/2) delta^2/(Gamma^2 + delta^2) within 3 %",
+      abs(_rs_["n_ph"] - _pH) / _pH < 0.03, f"n_H {_rs_['n_ph']:.4f} vs {_pH:.4f}")
+check("R4-V3. mode_ratio_H: degenerate modes give 1, split = kappa/2 gives 1/2 (Lorentzian), F_P ratio V/H 2 halves it again",
+      abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 0.0, 1.0) - 1.0) < 1e-15
+      and abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 50.0, 1.0) - 0.5) < 1e-12
+      and abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 50.0, 2.0) - 0.25) < 1e-12)
+_ph = sc(r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0}))
+_split = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_split["structure"]["params"]["mode_split_ueV"] = 90.0
+_ps = sc(_split)
+check("R4-V4. a 90 ueV H-mode split (Q 11100) lowers the collected H photon number versus degenerate modes (the H mode is Purcell-weaker)",
+      _ps["n_ph"] < _ph["n_ph"], f"{_ph['n_ph']:.4f} -> {_ps['n_ph']:.4f}")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

@@ -69,6 +69,7 @@ from .. import lindblad as lb
 from .. import qd_gf
 from .. import resonant_source as rs
 from ..spectral import KB
+from . import filterhook as _filterhook
 from .registry import Solver, register
 from .slm_pulse import SlmField
 from .types import SolverResult
@@ -622,6 +623,12 @@ class PolaronSolver(Solver):
                                f"{info['n_quad']} nodes)")
         else:
             I, info = NAN, {}
+        filt_extra = {}
+        if plan.inputs.get("filter_fwhm_GHz"):            # r4: opt-in spectral filter on the detected stream
+            st, I, filt_extra = _filterhook.polaron_filter(gen, plan, st, I, nq0, fine_for, n_f, with_hom,
+                                                           HOM_TOL, HOM_DOUBLINGS, HOM_NODE_CAP)
+            reasons.append(f"r4 filter: Lorentzian etalon {filt_extra['filter_fwhm_GHz']:g} GHz on the detected stream "
+                           "(exact cascade; phonon rates and chirp inside the emitter generator) [DR]")
         px = st["px"]
         ipk = int(np.argmax(px))
         _, lam_c, mix_c, _ = gen.dressed(np.array([0.5 * gen.W]))
@@ -633,6 +640,7 @@ class PolaronSolver(Solver):
                  "window_ps": float(train.W * 1e3), "hom": info, "det_X_meV": float(plan.pulses[0].detuning_meV),
                  "gamma_down_centre_ns": float(gd[0]), "gamma_up_centre_ns": float(gu[0]),
                  "notes": reasons}
+        extra.update(filt_extra)
         if plan.det_profile is not None:
             extra["lz"] = self._lz(train, pm.B)
         if gen.eid_ns > 0.0:

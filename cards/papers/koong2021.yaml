@@ -42,6 +42,7 @@ device:
     kind: lens_fibre_det
     params:
       zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b) / text p.2: 120 ueV grating spectral filter after the collection fibre isolates the ZPL from the phonon sideband"}
+      filter_fwhm_GHz: {value: 29.0, unit: GHz, tag: V, where: "Fig 2 caption (b) / text p.2 (120 ueV = 29.0 GHz grating spectral filter after the collection fibre; Lorentzian shape assumed [A])"}
       eta_det: {value: 0.9, unit: "1", tag: V, where: "text p.2: SNSPD detection efficiency ~90% at ~950 nm"}
 reported:
   - {id: tau_X, observable: tau_ps, value: 687.0, err: 3.0, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns"}
@@ -98,3 +99,5 @@ fits:
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: inversion_sim class M -> R (the paper's own simulation number); expect unchanged (pass)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 29.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw stays fail, gap widens (0.0088->~0.003 vs 0.016)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: no change in verdicts", note: "obtained: g2_raw 0.00064 (Fable ~0.003) vs 0.016, fail with a wider gap as predicted; the 29 GHz grating removes the in-pulse photon almost entirely"}

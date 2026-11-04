@@ -36,6 +36,7 @@ device:
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
+      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: V, where: "SM Experimental Set-up (three 0.8 nm FWHM band-pass filters in the collection path: c dlambda/lambda^2 at 924.82 nm = 280.4 GHz; treated as one Lorentzian [A])"}
 
 reported:
   - {id: g2_res, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
@@ -62,3 +63,5 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: Ms_res checked and is NOT tautological here (gamma* is the registry class default, not derived from Ms; model 0.600 vs 0.915 fails); the circularity is the other way: thomas2021.yaml enters gamma* 0.65/ns inverted from this Ms_res, which is why thomas2021 Ms_BFL is a transfer test, not an independent one. No class change"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: three 0.8 nm band-pass filters (280.4 GHz) [V SM]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_res stays pass, Ms_res stays fail (class range F_P)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: no change", note: "obtained: g2_res 0.0359 pass, Ms_res 0.603 fail (unchanged); FSS not entered: Thomas SM (Delta_FSS, dipole/cavity-axis angle) is not available, class range kept out of the card because a cross_pol V-system on a card whose resonant brightness geometry is unknown would be an invented input"}

@@ -18,6 +18,7 @@ import numpy as np
 
 from .. import lindblad as lb
 from .. import resonant_source as rs
+from . import filterhook as _filterhook
 from . import observables as obs_mod
 from . import rates as rates_mod
 from . import solvers as solvers_mod
@@ -103,6 +104,7 @@ def _prepare(entries, values, T_K):
     plan = entries["drive"].plan(tr("drive"), em, rt)
     if "T_K" not in plan.inputs:                  # P9: phonon-aware solvers need the bath temperature
         plan = replace(plan, inputs={**plan.inputs, "T_K": float(T_K)})
+    plan = _filterhook.attach(plan, em, sr, rt, vals, tr)       # r4: opt-in etalon filter / FSS gating (identity when off)
     return em, setup, sr, rt, plan, vals, reads
 
 
@@ -115,6 +117,12 @@ def _run_point(entries, values, T_K, solver_req):
     if P > 0.0:
         rt = combine(em, sr, T_K, pump_ns=P)                       # observables and solver see the pumped Gamma / beta
     res = solver.run(plan, em, rt)
+    if plan.inputs.get("filter_fwhm_GHz") and not res.extra.get("filter_applied"):
+        res = replace(res, reasons=tuple(res.reasons) + (f"setup.filter_fwhm_GHz = {plan.inputs['filter_fwhm_GHz']:g} GHz is "
+                                                         f"not applied by the {solver.name} solver (lindblad / polaron two-level pulsed only)",))
+    if plan.inputs.get("vsys") and "vsys" not in res.extra:
+        res = replace(res, reasons=tuple(res.reasons) + (f"FSS gating (material.fss_ueV) is not applied by the {solver.name} "
+                                                         f"solver (lindblad resonant_pulse only)",))
     ctx = obs_mod.Context(em, sr, rt, plan, res, setup, T_K, vals, reads)
     ctx.solver = solver
     ctx.structure_kind = entries["structure"].kind

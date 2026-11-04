@@ -355,6 +355,15 @@ LENS_FIBRE_DET = _LensFibreDet(
                   help=r"Detector timing response $\tau_{\mathrm{IRF}}$ (Gaussian FWHM); 0 = off. Feeds the IRF-convolved cw dip ($g^{(2)}_{\mathrm{IRF}}$) and "
                        r"the IRF leak of the binned GHz histogram ($g^{(2)}_{\mathrm{bin}}$). A drive-level $\tau_{\mathrm{IRF}}$ (electrical drives) "
                        r"takes precedence when non-zero."),
+        ParamSpec("filter_fwhm_GHz", "GHz", 0.0, tex=r"B_{\mathrm{etalon}}", lo=0.0, hi=1000.0, tag="A", source=_SRC,
+                  help=r"Lorentzian etalon / spectral filter FWHM $B$ on the detected photon stream of a coherent pulsed drive (exact cascaded "
+                       r"filter mode, Fock $\{0,1,2\}$; resonant_pulse, arp, phonon_assisted, dichromatic). 0 = off (bit-identical). The short "
+                       r"photon emitted inside the pulse (bandwidth $\sim 1/\tau_{\mathrm p}$) is removed, the long lifetime-limited photon passes: "
+                       r"$g^{(2)}$ and the HOM overlap are those of the filtered stream (Fischer et al., Nat. Phys. 13, 649 (2017); Fable r4 pulsed 2.1)."),
+        ParamSpec("filter_applies_to", "", "g2_hom", tex=r"\mathrm{filter\ acts\ on}", choices=("g2_hom", "g2_hom_brightness"), tag="A", source=_SRC,
+                  sweepable=False,
+                  help="Which observables are measured behind the etalon: g2_hom (purity and HOM only; the brightness was measured before it) or "
+                       "g2_hom_brightness (the filtered photon number also sets the brightness)."),
         ParamSpec("filter_width_meV", "meV", 0.0, tex=r"w_{\mathrm{filt}}", lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Top-hat spectral window width $w_{\mathrm{filt}}$ for the X / XX leakage ($\varepsilon_{XX}$); 0 = no window "
                        r"(both lines fully collected)."),

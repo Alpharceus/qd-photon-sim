@@ -37,6 +37,7 @@ device:
     params:
       NA: {value: 0.68, unit: "1", tag: V, where: "text p.2: confocal aspheric objective NA 0.68"}
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.2 / Fig 3a 20 GHz etalon"}
+      filter_fwhm_GHz: {value: 20.0, unit: GHz, tag: V, where: "text p.2 / Fig 3a (20 GHz etalon before the g2 and HOM measurements)"}
       eta_pol: {value: 0.5, unit: "1", tag: V, where: "text p.2 collection chain: polariser 50%"}
       eta_optics: {value: 0.95, unit: "1", tag: V, where: "text p.2 collection chain: beam splitter 95%"}
       eta_fibre: {value: 0.45, unit: "1", tag: V, where: "text p.2 collection chain: fibre coupling 45%"}
@@ -80,3 +81,5 @@ fits:
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 2: setup.zpl_filter true (20 GHz etalon); a_ac 0 (gamma* from measured coherence); tau_bare_ns 0.41 DR; tau_X -> class C + fit; beta0 recomputed 0.05998 -> 0.06736 so rate_det = 230000; gamma_star range [0,0.36] from CW T2/2T1; expects re-recorded: tau_X fail -> pass (class C), hom_corr and hom_raw fail -> pass (envelope covers paper), g2_raw stays fail, rate_det pass"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 20.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw stays fail (<= 0.0065 vs 0.012: unmodelled detector background)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run", note: "obtained: g2_raw 0.0035 [0.0005, 0.0065] fail as predicted (Fable 0.0035)"}

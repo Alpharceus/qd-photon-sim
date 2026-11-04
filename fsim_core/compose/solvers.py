@@ -87,6 +87,7 @@ from .. import lindblad as lb
 from .. import pulse_counting as pcnt
 from .. import resonant_source as rs
 from ..spectral import KB
+from . import filterhook as _filterhook
 from . import rates as _rates_mod
 from .registry import Solver, get as _get, kinds as _kinds, register
 from .types import SolverResult
@@ -512,11 +513,13 @@ class LindbladSolver(Solver):
         pcs = rs._pieces(tl)
         rho_w, emitted = _window_counts(pcs, p.shape, p.area_rad, dur)
         p0 = _window_p0(pcs, p.shape, p.area_rad, dur, (0,))
-        return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
-                            inversion=float(st["P_e_post"]),
-                            extra={"det_X_meV": _det_X_meV(plan),
-                                   "eta_prep": 1.0 - p0, "n_exc": float(rho_w[1, 1].real) + emitted,
-                                   "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
+        res = SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
+                           inversion=float(st["P_e_post"]),
+                           extra={"det_X_meV": _det_X_meV(plan),
+                                  "eta_prep": 1.0 - p0, "n_exc": float(rho_w[1, 1].real) + emitted,
+                                  "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
+        # r4: opt-in spectral filter / FSS cross-polarised gating (identity when neither is set)
+        return _filterhook.lindblad_postprocess(res, plan, em, rt, _window_counts, _window_p0)
 
     def _tpe(self, plan, em, rt):
         p = plan.pulses[0]

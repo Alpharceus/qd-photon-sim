@@ -578,7 +578,7 @@ def _derive(c: Context) -> dict:
                                  "paper's M_s")
     else:
         d["hom_V_raw"] = d["hom_V_corr"] = NAN
-    if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0:
+    if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0 and "vsys" not in res.extra:
         warnings.append("cross-polarised collection with eta_pol = 1: an unpolarised (trion / unpolarised X) emitter loses "
                         "1/2 in a cross-polarised setup unless the structure is polarisation-selective (brief trap 9); "
                         "set setup.eta_pol = 0.5 if that applies [A]")

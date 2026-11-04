@@ -357,7 +357,7 @@ def _hom_pulse_once(pc, shape, area, duration, n_quad, rho0=None):
 
 
 def pulsed_indistinguishability(tl, shape, area, duration, n_quad=None, tol=1e-8,
-                                max_doublings=7, rho0=None, return_info=False):
+                                max_doublings=7, rho0=None, return_info=False, pieces=None):
     """HOM indistinguishability of the photon emitted during and after one
     pulse (definition and method in the module docstring). The emitter starts
     in |g> at the pulse start [A] unless ``rho0`` is given
@@ -368,8 +368,10 @@ def pulsed_indistinguishability(tl, shape, area, duration, n_quad=None, tol=1e-8
              rectangle, the propagation grid for a Gaussian). The grid is
              doubled until the Richardson-extrapolated value changes by < tol
              (rel) or ``max_doublings`` is reached. return_info=True returns
-             (I, info) with info = dict(N, n_quad, conv_err, converged)."""
-    pc = _pieces(tl)
+             (I, info) with info = dict(N, n_quad, conv_err, converged).
+    pieces : r4 filter hook: ready-made ``_Pieces`` (e.g. a filtered output
+             stream of ``filtered_stream``); ``tl`` is then ignored (None)."""
+    pc = _pieces(tl) if pieces is None else pieces
     dim = pc.dim
     n0 = int(n_quad) if n_quad is not None else (
         32 if shape == "rect" else _default_steps(shape, duration, None))

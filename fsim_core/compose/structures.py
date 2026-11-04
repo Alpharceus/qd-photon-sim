@@ -165,6 +165,7 @@ class _Struct(Structure):
 
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the param id; UI only
 _TEX = {
+    "mode_split_ueV": r"\hbar\Delta_{HV}", "F_P_ratio_VH": r"F_{\mathrm P}^{V}/F_{\mathrm P}^{H}",
     "F_P": r"F_{\mathrm P}",
     "kappa_ueV": r"\hbar\kappa",
     "Q": r"Q",
@@ -339,6 +340,8 @@ GENERIC_CAVITY = _Struct(
         _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of the background ($F_{\mathrm{bg}}$) emission that is already in the collected mode."),
         _p("eta_out", "1", 0.5, 0.0, 1.0, help=r"Outcoupling efficiency $\eta_{\mathrm{out}}$ from the mode to the first lens, including the far-field collection."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background (non-cavity) decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$ (1 = free; $< 1$ inhibited; $> 1$ leaky)."),
+        _p("mode_split_ueV", "ueV", 0.0, 0.0, 5000.0, group="advanced", help=r"Energy split of the orthogonally polarised (H) cavity mode from the resonant (V) mode. 0 = degenerate modes (off). Only the FSS V-system of a cross-polarised drive reads it: the H-mode Purcell factor is $F_{\mathrm P}\,L(\Delta)$ with $L = 1/(1 + (2\Delta/\hbar\kappa)^2)$ (Somaschi et al. 2016: ~90 ueV)."),
+        _p("F_P_ratio_VH", "1", 1.0, 0.1, 100.0, group="advanced", help=r"Ratio $F_{\mathrm P}(V)/F_{\mathrm P}(H)$ of the two polarised modes when stated (1 = equal). Only the FSS V-system reads it."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.05, 0.9), fn=_generic_cavity)
 

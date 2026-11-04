@@ -31,7 +31,7 @@ from .types import DrivePlan, Pulse
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
 _TEX = {
     "shape": r"\Omega(t)", "fwhm_ps": r"\tau_{\mathrm{FWHM}}", "area_pi": r"\Theta", "detuning_meV": r"\Delta", "f_rep_MHz": r"f_{\mathrm{rep}}",
-    "target": r"\mathrm{target}", "cross_pol": r"\mathrm{cross\text{-}pol}", "laser_leak": r"f_{\mathrm{leak}}",
+    "pol_angle_deg": r"\varphi", "target": r"\mathrm{target}", "cross_pol": r"\mathrm{cross\text{-}pol}", "laser_leak": r"f_{\mathrm{leak}}",
     "omega_ueV": r"\hbar\Omega", "saturation_s": r"s", "pump": r"P/P_{\mathrm{sat}}", "cw": r"\mathrm{cw}",
     "window_ps": r"T_{\mathrm{win}}", "p_refill": r"p_{\mathrm{refill}}", "tau_refill_ps": r"\tau_{\mathrm{refill}}",
     "bg_frac": r"f_{\mathrm{bg}}", "tau_cap_ps": r"\tau_{\mathrm{cap}}", "cap2": r"\mathrm{cap}_{2}",
@@ -214,6 +214,10 @@ RESONANT_PULSE = PlannedDrive(
            visible_if={"cross_pol": [True]},
            help=r"Residual laser $f_{\mathrm{leak}}$ as a fraction of the signal (used only when cross-pol is on; "
                 r"do not also enter it in the setup)."),
+        _P("pol_angle_deg", "deg", 45.0, lo=0.0, hi=90.0, tag="A", source=_SRC_A, group="advanced",
+           visible_if={"cross_pol": [True]},
+           help=r"Laser polarisation angle $\varphi$ to the dot axes (cross-polarised collection). Acts only with a non-zero material.fss_ueV "
+                r"(V-system $\{G,X,Y\}$): 45 deg = Somaschi et al. 2016, 0 deg = excitation along one dipole (Thomas et al. 2021)."),
         _EID, _TRION,
     ),
     refs=("Rabi area theorem (Scully and Zubairy, Quantum Optics, 1997)",),
