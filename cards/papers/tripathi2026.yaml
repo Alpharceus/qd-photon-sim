@@ -35,7 +35,7 @@ device:
     params:
       pump: {range: [2.0, 5.0], unit: "1", tag: E, source: "the T series and the 4 K g2 are 'at saturation' (text p.9) with no absolute P/P_sat; 2 to 5 as for the other p-shell cards"}
       f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.7 (laser repetition rate 80 MHz)"}
-      p_X: {value: 0.6197183098591549, unit: "1", tag: DR, where: "refs/Third pass/tripathi2026_arxiv.txt p.7: \"of 440 kcps, while the charged exciton contributes an additional 270 kcps\"; arithmetic p_X = 440/(440+270) = 0.6197, not printed"}
+      p_X: {value: 0.6197183098591549, unit: "1", tag: E, source: "440/(440+270) = 0.6197 (arithmetic, not printed) from \"exciton (X) exhibits an integrated superconducting nanowire single-photon detector (SNSPD) count rate of 440 kcps, while the charged exciton contributes an additional 270 kcps, yielding a combined count rate of\" (tripathi2026.txt l.286). Measured under \"resonant excitation wavelength of 1120 nm using OPO and at a bias of 1 V. At saturation, the neutral\" (a 1120 nm excitation), whereas the card drive and the g2 / T series are the quasi-resonant 1225 nm scheme (\"under quasi-resonant pulsed excitation at 1225 nm using a Hanbury Brown and Twiss setup. The zero-\"); the spectrum also shows biexciton lines (\"neutral exciton (X, black), charged exciton (X ±, green), biexciton (XX, red), and charged biexciton (XX ±, yellow). Line\"), so X + X+- is not the full pair budget, and equal collection efficiency for X and X+- is assumed. A 1120 nm partition applied to a 1225 nm drive: class estimate [E], not a measured partition of this drive"}
   setup:
     kind: lens_fibre_det
     params:
@@ -72,6 +72,8 @@ reproduce:
     tol_reason: "the 440 kcps carries no error; the 4.1 +/- 0.3 percent setup efficiency gives 7 percent, and 30 percent covers the unknown absolute pump and the line partition between X and X+-"
     expect: pass
     reason: "model 0.1565 (envelope 0.1395-0.1604 over pump 2-5) vs 0.134, inside rel 30 percent; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (r4-cavity A2 alone gave 0.253 and a fail; the p_X factor 440/(440+270) = 0.62 from the two count rates of the same measurement, text p.7, brings it to 0.1565). Agreement is by construction of the X / X+- partition and not a test of the model: class C, not M."
+    weak: true
+    weak_reason: "r4 red-team item 12: the pass depends entirely on drive.p_X = 440/(440+270) = 0.62, which was measured under a 1120 nm excitation while this card's drive and the g2 / T series are the quasi-resonant 1225 nm scheme; the spectrum also shows biexciton lines (so X + X+- is not the full pair budget) and equal X / X+- collection efficiency is assumed. Without p_X the model is 0.253 (fail); the pass is a class-C construction (p_X is fitted to this item), not evidence for the model"
   - item: g2_sat_4K
     class: M
     tol: {k_sigma: 2, abs: 0.01}
@@ -88,6 +90,7 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_cbg]}
   - {param: drive.p_X, fitted_to: [BFL_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: drive.p_X retagged DR -> E with the 1120 nm vs 1225 nm excitation mismatch quoted; BFL_X flagged weak", note: "text and flag only; values, tolerances and expectations unchanged, re-run all MATCH (BFL_X 0.1565 [0.1395, 0.1604] pass, tau_cbg 775.1 pass, g2_sat_4K 0.00343 fail, g2_vs_T 0.8804 fail)"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A130, A138; DR items): F_P, BFL_X and p_X where-texts quote the printed inputs verbatim and mark the arithmetic (0.134 and 0.62 are recomputations, not printed numbers)", note: "text only; values, tolerances and expectations unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "no printed model value moved (tau_cbg 775.1, BFL_X 0.1565, g2_sat_4K 0.00343, g2_vs_T rms 0.8804 unchanged); expects unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_X 0.248 -> 0.253. Expect unchanged; not tuned."}

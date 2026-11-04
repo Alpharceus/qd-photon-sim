@@ -22,11 +22,17 @@ from .. import lindblad as lb
 from .. import resonant_source as rs
 
 NAN = float("nan")
-APPLIES = ("g2_hom", "g2_hom_brightness")
+APPLIES = ("g2_hom", "g2_hom_brightness", "hom")
 
 
 def _brightness(plan) -> bool:
     return str(plan.inputs.get("filter_applies_to", "g2_hom")) == "g2_hom_brightness"
+
+
+def _g2_filtered(plan) -> bool:
+    """r4 red-team item 2: ``hom`` = the etalon sits only in the HOM path (g2 and brightness unfiltered, the HOM overlap
+    is that of the filtered stream)."""
+    return str(plan.inputs.get("filter_applies_to", "g2_hom")) != "hom"
 
 
 # ---------------------------------------------------------------- plan inputs
@@ -145,8 +151,9 @@ def lindblad_postprocess(res, plan, em, rt, window_counts, window_p0):
                      f"(H-mode / V-mode F_P ratio {vs['mode_ratio_H']:.3g}); n_ph is the H-photon number per pulse [DR]")
         if B > 0.0:
             pf, emb = V.filtered_pieces(B)
-            g2, nf, I, _ = fs.pulse_stream(pf, p.shape, p.area_rad, dur, f_rep, max_doublings=4)
-            extra.update(g2_unfiltered=g2u, I_unfiltered=Iu, n_ph_unfiltered=nu)
+            g2f_, nf, I, _ = fs.pulse_stream(pf, p.shape, p.area_rad, dur, f_rep, max_doublings=4)
+            g2 = g2f_ if _g2_filtered(plan) else g2u
+            extra.update(g2_unfiltered=g2u, g2_filtered=float(g2f_), I_unfiltered=Iu, n_ph_unfiltered=nu)
             n = nf if _brightness(plan) else nu
             notes.append(_filter_note(B, "filter"))
     else:
@@ -154,8 +161,10 @@ def lindblad_postprocess(res, plan, em, rt, window_counts, window_p0):
                          delta_ns=float(lb.mev_to_rate(float(p.detuning_meV))))
         pc = rs._pieces(tl)
         emb = fs.FilterEmbedding(2, pc.A, fs.kappa_from_fwhm_GHz(B), det_ns=tl.delta_ns)
-        g2, nf, I, _ = fs.pulse_stream(emb.pieces(pc), p.shape, p.area_rad, dur, f_rep)
-        extra.update(g2_unfiltered=float(res.g2_0), I_unfiltered=float(res.I_single), n_ph_unfiltered=float(res.n_ph))
+        g2f_, nf, I, _ = fs.pulse_stream(emb.pieces(pc), p.shape, p.area_rad, dur, f_rep)
+        g2 = g2f_ if _g2_filtered(plan) else float(res.g2_0)
+        extra.update(g2_unfiltered=float(res.g2_0), g2_filtered=float(g2f_), I_unfiltered=float(res.I_single),
+                     n_ph_unfiltered=float(res.n_ph))
         n = nf if _brightness(plan) else float(res.n_ph)
         inv = res.inversion
         notes.append(_filter_note(B, "filter"))
@@ -301,10 +310,11 @@ def polaron_filter(gen, plan, st, I, nq0, fine_for, n_f, with_hom, hom_tol, hom_
     g2f, nf = _counting_f(fg, n_f, plan.f_rep_MHz)
     If = _hom_f(fg, nq0, fine_for, hom_tol, hom_doublings, node_cap) if with_hom else NAN
     st2 = dict(st)
-    st2["g2"] = g2f
+    if _g2_filtered(plan):
+        st2["g2"] = g2f
     if _brightness(plan):
         st2["mean_photons"] = nf
     extra = {"filter_fwhm_GHz": B, "filter_applied": True, "g2_unfiltered": float(st["g2"]),
-             "I_unfiltered": float(I), "n_ph_unfiltered": float(st["mean_photons"]),
+             "I_unfiltered": float(I), "n_ph_unfiltered": float(st["mean_photons"]), "g2_filtered": float(g2f),
              "n_ph_filtered": float(nf) if _brightness(plan) else NAN}
     return st2, If, extra

@@ -35,7 +35,7 @@ device:
     kind: lens_fibre_det
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: the HOM used a 10 pm etalon (r4 Fable 2.6), which transmits the zero-phonon line only"}
+      zpl_filter: {value: false, unit: "", tag: A, source: "r4 red-team link 1: the 10 pm etalon was NOT used for the resonant reference. Paper: \"Fig. 4(b). For one particular set of parameters we also ity with an additional 10 pm bandwidth etalon ﬁltering\" \"ration of 20.5 ps we measured g(2)(0) = 0 .011± 0.001\" (0.6 nm, 20.5 ps); the resonant g2 0.039 and Ms 0.915 carry no etalon, so no ZPL-only filter is entered"}
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "SM Experimental Set-up: \"The co-linearly polarized single photons are collected with a non-polarizing beam-splitter transmitting 90% of the light.\" (thomas2021.txt l.625; collection is co-linear with the excitation, not orthogonal; the cross-polarised resonant reference appears only in the Fig. 1(c,d) characterisation); eta_pol = 1"}
       filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: DR, where: "SM Experimental Set-up: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters\" (thomas2021.txt l.626) and the dot \"centred at 924.82 nm\" (l.624); arithmetic c dlambda/lambda^2 = 299792458 m/s x 0.8 nm / (924.82 nm)^2 = 280.4 GHz for ONE filter (the printed bandwidth is in nm; the GHz value is our conversion); treated as one Lorentzian [A]"}
 
@@ -56,11 +56,12 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "model-level tolerance +/-0.05 on Ms (the paper's +/-0.001 is dominated by the model-level tolerance); gamma* is the registry class default"
     expect: fail
-    reason: "r4-hom: pre-registered pass-envelope (Fable: envelope ~[0.75, 0.95] with the class gamma* and F_P in [2, 10]); obtained central 0.630 with envelope [0.421, 0.730] (zpl_filter true lifted it from 0.600 / [0.401, 0.695] only slightly): 0.915(1) is above the envelope top, so the item stays a fail. Fable's envelope assumed a smaller class gamma* than the registry default used here; the paper gives no dephasing number."
+    reason: "r4-hom: pre-registered pass-envelope (Fable: envelope ~[0.75, 0.95] with the class gamma* and F_P in [2, 10]); r4 red-team item 5: setup.zpl_filter is now false (the 10 pm etalon was used only at 0.6 nm / 20.5 ps, not for the resonant 0.039 / 0.915), obtained central 0.607 with envelope [0.406, 0.704] (0.630 / [0.421, 0.730] with zpl_filter true): 0.915(1) is above the envelope top, so the item stays a fail. Fable's envelope assumed a smaller class gamma* than the registry default used here; the paper gives no dephasing number."
 
 fits: []
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 5: setup.zpl_filter true -> false (the 10 pm etalon applied only to the 0.6 nm / 20.5 ps point)", note: "re-run: g2_res 0.03587 [0.01616, 0.05382] pass (unchanged), Ms_res 0.6071 [0.4058, 0.7037] fail (was 0.630 [0.421, 0.730]); expectations unchanged. setup.filter_fwhm_GHz (280.4 GHz Lorentzian band-pass) is LEFT in this card because the spec scope named only zpl_filter, although the red-team (link 1) classes it as a shape artefact like thomas2021, where it was removed; with it the HOM q comes from that 1.16 meV window"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A113): filter_fwhm_GHz V -> DR (0.8 nm printed, 280.4 GHz is the conversion); collection documented as co-linear (SM l.625)", note: "text only; no value, tolerance or expectation changed"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: Ms_res checked and is NOT tautological here (gamma* is the registry class default, not derived from Ms; model 0.600 vs 0.915 fails); the circularity is the other way: thomas2021.yaml enters gamma* 0.65/ns inverted from this Ms_res, which is why thomas2021 Ms_BFL is a transfer test, not an independent one. No class change"}

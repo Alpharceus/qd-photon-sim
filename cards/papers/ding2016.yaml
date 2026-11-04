@@ -47,8 +47,8 @@ device:
       eta_optics: {value: 0.6, unit: "1", tag: V, where: "p.2 text (optical path transmission ~60%)"}
       eta_fibre: {value: 0.72, unit: "1", tag: V, where: "p.2 text (single-mode fibre coupling ~72%)"}
       eta_det: {value: 0.33, unit: "1", tag: V, where: "p.2 text (detection efficiency ~33%)"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width)"}
-      filter_fwhm_GHz: {value: 3.0, unit: GHz, tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the extraction rate 3.7e6/s was measured before it)"}
+      filter_fwhm_GHz: {value: 3.0, unit: "GHz", tag: V, where: "p.2-3 text: \"the RF through a 3-GHz etalon and then characterize its pu-\" (ding2016.txt; the RF passes the etalon before the g2 and HOM measurements)"}
+      filter_applies_to: {value: g2_hom, unit: "", tag: V, where: "the extraction rate was measured before the etalon: \"At the π pulse, we observe a count rate of 3,700,000 per\" (ding2016.txt); purity and indistinguishability are measured behind it"}
 reported:
   - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text: 'which allows us to deduce a Purcell factor of 6.3(4)' (the (4) is the uncertainty in the last digit: 6.3 +- 0.4, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
   - {id: tau_res, observable: tau_ps, value: 83.9, tag: V, where: "p.2 text / Fig 1c (7.8 K, on resonance)", note: "raw; detector time resolution ~63 ps; no error quoted"}
@@ -104,7 +104,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "same tolerance as the 2.1 ns raw item (model-level +/-0.02)"
     expect: fail
-    reason: "R4 honest flip from the pre-registration: the filtered stream gives central 0.9826 (Fable estimated 0.973), inside the 2.1 ns window (|0.9826-0.964| = 0.019 < 0.02) but 0.024 above the 12.4 ns paper value 0.959 and the envelope floor 0.965 is above it; the 12.4 ns drop is spectral diffusion (2.1 vs 12.4 ns), which the card does not model (sigma_sd 0)"
+    reason: "R4 honest flip from the pre-registration: the filtered stream gives central 0.9795 (Fable estimated 0.973; 0.9826 before the r4 red-team item 10 change that lets the etalon's own sideband transmission set q instead of zpl_filter), inside the 2.1 ns window (|0.9795-0.964| = 0.016 < 0.02) but 0.0205 above the 12.4 ns paper value 0.959, outside abs 0.02 by 0.0005, and the envelope floor 0.9622 is above it; the 12.4 ns drop is spectral diffusion (2.1 vs 12.4 ns), which the card does not model (sigma_sd 0)"
   - item: hom_corr_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
@@ -123,6 +123,7 @@ reproduce:
 fits:
   - {param: structure.r_factor, fitted_to: [F_P_fit, tau_res]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 10: setup.zpl_filter removed (it only served to set q; the extraction rate 3.7e6/s was measured before the etalon), filter_applies_to g2_hom set with the quote", note: "obtained (q from the 3 GHz etalon's own window): g2_raw 0.00411 [0.000927, 0.008733] pass; hom_raw_2p1ns 0.9795 [0.9622, 0.9956] pass (was 0.9826); hom_corr 0.9876 pass; hom_raw_12p4ns 0.9795 fail (margin 0.0205 vs tol 0.02); B_lens_pred 0.3863, hom_I_pred 0.9855; all verdicts unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A/A2 engine change (bug fixes that move defaults): the computed pillar F_P is now phonon dressed (L_ph = Z_eff(0.225 meV, 7.8 K) = 0.864), so the C fit r_factor is re-calibrated 0.513 -> 0.594 so that F_P_eff = 6.3 again (Fable predicted 0.59, a recalibration with no outcome change); the calibration is the card's only fit and is re-run, not a tolerance change"}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription", reason: "initial transcription"}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "first run, before any expect was set", reason: "transcription fix, not a tolerance change: the first run showed HOM raw/corrected at 0.62/0.68 because the Z^2 factor was applied; the paper passes the RF through a 3 GHz etalon before HOM (p.2-3), so setup.zpl_filter=true was added; the rate_detected item was dropped because the 3.7e6 /s rate was measured BEFORE that etalon and cannot share a zpl_filter flag with the HOM items. All expects recorded from the run after this fix."}

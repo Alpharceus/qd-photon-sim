@@ -1134,6 +1134,31 @@ for _T, _wv in zip((4.0, 40.0, 77.0), _ws):
 check("R4-Z7. series per_point setup.filter_width_meV: every point equals the single evaluation at that temperature and window (1e-12)",
       all(abs(a - b) < 1e-12 for a, b in zip(_rs, _ind)) and len(set(_ws)) == 2, f"{_rs} vs {_ind}")
 
+# ---- r4 red-team item 1/2: the etalon's own sideband transmission sets q and (with filter_applies_to g2_hom_brightness) the brightness tax
+_E0 = r4_spec(struct=_NC)
+_Ed = _dd(_E0)
+_Ef = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5}))
+_Efb = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5, "filter_applies_to": "g2_hom_brightness"}))
+_Sb = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5, "filter_applies_to": "g2_hom_brightness"}))
+_S0 = sc(_E0)
+_Tl05 = 0.5 / (0.5 + _Ed["Gamma_ns"] / (2.0 * math.pi))           # free-decay etalon transmission (closed form), gamma* = 0
+_ratio_b = _Sb["B_first_lens"] / _S0["B_first_lens"]
+check("R4-E1. a narrow etalon (0.5 GHz << sideband width) without zpl_filter: q -> 1 from the filter's own window (no zpl_filter needed), "
+      "Z_filt = Z when the brightness is taxed (g2_hom_brightness) and 1 when it is not, and the brightness factor equals Z x T_etalon (closed form, 7 %)",
+      _Ef["hom_zpl_fraction"] > 0.999 and abs(_Ef["Z_filt"] - 1.0) < 1e-12
+      and abs(_Efb["Z_filt"] - _Efb["Z_phonon"]) < 5e-3 and _Efb["Z_filt"] >= _Efb["Z_phonon"]
+      and abs(_ratio_b - _Efb["Z_phonon"] * _Tl05) / (_Efb["Z_phonon"] * _Tl05) < 0.07,
+      f"q {_Ef['hom_zpl_fraction']:.5f}, Z {_Efb['Z_phonon']:.4f}, Z_filt(bright) {_Efb['Z_filt']:.4f}, B ratio {_ratio_b:.4f} vs Z T {_Efb['Z_phonon'] * _Tl05:.4f}")
+_Eh = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0, "filter_applies_to": "hom"}))
+_Eg = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0}))
+_Eu = sc(_E0)
+check("R4-E2. filter_applies_to hom (etalon in the HOM path only): g2 and the brightness are the unfiltered numbers (bit-identical), the HOM overlap is that of the filtered stream (equal to the g2_hom run)",
+      _Eh["g2_0"] == _Eu["g2_0"] and _Eh["B_first_lens"] == _Eu["B_first_lens"] and _Eh["hom_I"] == _Eg["hom_I"] and _Eg["g2_0"] < _Eu["g2_0"],
+      f"g2 {_Eu['g2_0']:.5f} (hom) vs filtered {_Eg['g2_0']:.5f}; I {_Eh['hom_I']:.5f} = {_Eg['hom_I']:.5f}")
+_Ez = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0, "zpl_filter": True}))
+check("R4-E3. zpl_filter true keeps priority over the etalon window (Z_filt = Z, q = 1): cards that set it are unchanged",
+      _Ez["hom_zpl_fraction"] == 1.0 and abs(_Ez["Z_filt"] - _Ez["Z_phonon"]) < 1e-15)
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

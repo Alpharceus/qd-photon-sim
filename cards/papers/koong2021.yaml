@@ -41,8 +41,8 @@ device:
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b): 'Spectral filtering with a bandwidth of 120 ueV after the collection fibre isolates the zero-phonon line (ZPL) from the phonon sideband (PSB) and excitation laser' (the paper does not say what kind of filter it is; the grating in the text belongs to the pulse shaper)"}
-      filter_fwhm_GHz: {value: 29.0, unit: GHz, tag: DR, where: "Fig 2 caption (b): 'Spectral filtering with a bandwidth of 120 ueV after the collection fibre' (the symbol is written u). Arithmetic [DR]: 120 ueV / 4.1357 ueV per GHz = 29.0 GHz (29.0 is not printed); Lorentzian shape assumed [A]"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b): 'Spectral filtering with a bandwidth of 120 ueV after the collection fibre isolates the zero-phonon line (ZPL) from the phonon sideband (PSB) and excitation laser'; the SI calls it a grating filter: \"tering with a bandwidth of 120 µeV after the collection ﬁbre\" ... \"with the same 120 µeV-bandwidth grating ﬁlter to sup-\" (koong2021.txt)"}
+      filter_fwhm_GHz: {value: 29.0, unit: "GHz", tag: DR, where: "SI (koong2021.txt): \"with the same 120 µeV-bandwidth grating ﬁlter to sup-\"; arithmetic [DR]: 120 ueV / 4.1357 ueV per GHz = 29.0 GHz (29.0 is not printed). The filter is a GRATING filter, so its passband is Gaussian / top-hat; the engine's Lorentzian shape is [A] and is the wrong shape: on the picosecond pulse the Lorentzian wings pass more of the in-pulse photon than a grating passband, so the modelled filtered g2 is biased HIGH and the recorded fail is conservative"}
       eta_det: {value: 0.9, unit: "1", tag: V, where: "text p.2: SNSPD detection efficiency ~90% at ~950 nm"}
 reported:
   - {id: tau_X, observable: tau_ps, value: 687.0, err: 3.0, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns"}
@@ -64,7 +64,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "2 sigma of the printed 0.001 is only 0.002; abs 0.005 floor because the paper gives no background fraction and the model has no laser leak or dark counts entered (pure re-excitation term)"
     expect: fail
-    reason: "model gap / missing input: the model raw g2 is 0.0088 (re-excitation of a 3.65 ps dichromatic pair at T1 687 ps) against 0.016(1); the 0.007 shortfall exceeds the 0.005 floor and is plausibly unmodelled background or blinking in the paper histogram (no background fraction is given, so none was entered). r4 Fable review: the 120 ueV spectral filter (29 GHz; filter type not stated by the paper) on a 3.65 ps pulse would lower the filtered model to ~0.003, widening the gap; the SI gives S/B ~ 20 only for the resonant RF reference (its g2 is 0.080), none for DPE, so the order of the unquantified background is a few percent (S/B ~ 20 means 1/20 = 0.05 of the counts)."
+    reason: "model gap / missing input: the model raw g2 is 0.0006 with the 120 ueV filter (0.0088 unfiltered: re-excitation of a 3.65 ps dichromatic pair at T1 687 ps) against 0.016(1); the shortfall exceeds the 0.005 floor and is plausibly unmodelled background or blinking in the paper histogram (no background fraction is given, so none was entered). r4 red-team item 12: the SI calls the filter a grating filter (\"with the same 120 µeV-bandwidth grating ﬁlter to sup-\"), so the engine's Lorentzian shape is [A] and the wrong shape; the Lorentzian wings pass more of the in-pulse photon than a grating passband, so the modelled filtered g2 is biased high and the recorded fail is conservative. The SI gives S/B ~ 20 only for the resonant RF reference (its g2 is 0.080), none for DPE, so the order of the unquantified background is a few percent (S/B ~ 20 means 1/20 = 0.05 of the counts)."
   - item: inversion_sim
     class: R
     tol: {abs: 0.10}
@@ -97,6 +97,7 @@ reproduce:
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: filter where-texts quote the SI ('120 ueV-bandwidth grating filter'); the Lorentzian shape is [A] and biases g2 high; the earlier statement 'the paper does not say what kind of filter it is' is removed", note: "text only; re-run: every item MATCH (g2_raw 0.00064 fail, hom_raw_10ns 0.4038 fail, Z_zpl 0.8748 pass, inversion 0.6671)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: g2_raw reason cites the SI S/B ~ 20 (resonant reference) as the order of the unquantified background; no expect changed. inversion items now report n_exc (window decay removed)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: inversion_sim class M -> R (the paper's own simulation number); expect unchanged (pass)"}

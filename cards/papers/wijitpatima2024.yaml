@@ -62,7 +62,7 @@ reproduce:
   - item: tau_4uW
     class: M
     tol: {k_sigma: 2, abs: 0.03}
-    tol_reason: "paper fit error is below 0.01 ns; 0.03 ns (4 percent) is the model-level lifetime tolerance, since the 0.78 ns input and this value differ by only 14 percent and the test is whether re-excitation lengthens the decay by that much"
+    tol_reason: "paper fit error is below 0.01 ns; 0.03 ns (4 percent) is the model-level lifetime tolerance, since the 0.78 ns input and this value differ by only 14 percent and the test is whether re-excitation lengthens the decay by that much. r4 red-team item 12: the fit CONVENTION of the paper's number is [A]: the text says only 'fitted profiles (red lines) yield decay lifetimes of 0.78, 0.83, and 0.89 ns (with fitting errors < 0.01 ns)' and specifies neither single-exponential, fit range nor IRF treatment; the engine's tau_fit_ps (unweighted linear least squares from the peak over 3 decades) is the card's own [A] convention, so the comparison is between conventions as well as values"
     expect: fail
     reason: "model 1046 ps vs 890; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (HEAD alone: 780 ps, no lengthening mechanism; the HEAD change makes tau_1uW a class-C ledger item with tau_bare 0.78 ns set from it). The item now uses tau_fit_ps, the single-exponential fit of the X-line decay of the capacity-2 reservoir cascade at mu = 1.204 (R4 incoh review 3.3: the X photon behind an XX photon is delayed by 1/Gamma_XX). The input tau_bare 0.78 ns is the 1 uW fit, itself already lengthened by loading, so the cascade lengthens it twice; the review predicted 871-1070 ps only after re-anchoring tau_X so the 20 percent point reads 780, which this card does not do (tau_1uW is evaluated on the bare lifetime). XX/X rate ratio (registry 2) and the fit range convention are class inputs [E]/[A], the capture time is unstated (default 30 ps)."
   - item: g2_4uW
@@ -80,6 +80,7 @@ fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_raw]}
   - {param: material.tau_bare_ns, fitted_to: [tau_1uW]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: tau_fit_ps fit convention tagged [A] in the tau_4uW tol_reason (paper does not specify it)", note: "text only; re-run all MATCH (tau_1uW 780 pass, tau_4uW 1046 fail, g2_4uW 0.000622 fail, hom_V_raw 0.2583 pass); the double-lengthening noted by the red-team (tau_bare set from the already loaded 1 uW point) is unchanged and re-anchoring tau_bare is outside the spec"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A141, A148): lifetime where-texts quote the paper (decay lifetimes of 0.78, 0.83, 0.89 ns from fitted profiles, ~20/40/70 % of the saturation intensity); the paper does not call the fit single-exponential and does not print 0.22/0.51/1.20; pump 1.204 is -ln(0.3), with the 70 % read as a brightness fraction (our interpretation)", note: "text only; values, tolerances and expectations unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): hom_V_raw 0.2642 -> 0.2579. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

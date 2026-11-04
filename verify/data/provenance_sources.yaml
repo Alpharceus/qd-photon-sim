@@ -1,0 +1,140 @@
+# Card id -> paper text files for verify/verify_card_provenance.py (paths relative to the repo root).
+# A .pdf entry is extracted with pypdf into .workers/devlib/r4-provenance-txt/ on first use.
+# Primary text = .workers/devlib/papers/raw/<paper>/<paper>.txt ; SI / arXiv variants from ../refs/Third pass/.
+# A card whose id has no entry (or an empty list) is reported NO_SOURCE.
+
+cards:
+  bennett2008_diode:
+    - ".workers/devlib/papers/raw/bennett2008_diode/bennett2008_diode.txt"
+  cao2015:
+    - ".workers/devlib/papers/raw/cao2015/cao2015.txt"
+  ding2016:
+    - ".workers/devlib/papers/raw/ding2016/ding2016.txt"
+  ellis2008:
+    - ".workers/devlib/papers/raw/ellis2008/ellis2008.txt"
+  he2013:
+    - ".workers/devlib/papers/raw/he2013/he2013.txt"
+  joos2023:
+    - ".workers/devlib/papers/raw/joos2023/joos2023.txt"
+  karli2022:
+    - ".workers/devlib/papers/raw/karli2022/karli2022.txt"
+  kolatschek2021:
+    - ".workers/devlib/papers/raw/kolatschek2021/kolatschek2021.txt"
+    - "../refs/Third pass/kolatschek2021.txt"
+  kolatschek2021_line1:
+    - ".workers/devlib/papers/raw/kolatschek2021/kolatschek2021.txt"
+    - "../refs/Third pass/kolatschek2021.txt"
+  kolatschek2021_pshell:
+    - ".workers/devlib/papers/raw/kolatschek2021/kolatschek2021.txt"
+    - "../refs/Third pass/kolatschek2021.txt"
+  koong2021:
+    - ".workers/devlib/papers/raw/koong2021/koong2021.txt"
+  lazic2017:
+    - ".workers/devlib/papers/raw/lazic2017/lazic2017.txt"
+  madsen2014:
+    - ".workers/devlib/papers/raw/madsen2014/madsen2014.txt"
+  matthiesen2012:
+    - ".workers/devlib/papers/raw/matthiesen2012/matthiesen2012.txt"
+  muller2014:
+    - ".workers/devlib/papers/raw/muller2014/muller2014.txt"
+    - "../refs/Third pass/muller2014_SI.txt"
+  munsch2013_trumpet:
+    - ".workers/devlib/papers/raw/munsch2013_trumpet/munsch2013_trumpet.txt"
+  nawrath2022:
+    - ".workers/devlib/papers/raw/nawrath2022/nawrath2022.txt"
+    - "../refs/Third pass/nawrath2022_arxiv.txt"
+  nowak2014:
+    - ".workers/devlib/papers/raw/nowak2014/nowak2014.txt"
+  piccinini2025:
+    - ".workers/devlib/papers/raw/piccinini2025/piccinini2025.txt"
+  piccinini2025_tpe:
+    - ".workers/devlib/papers/raw/piccinini2025/piccinini2025.txt"
+  quilter2015:
+    - ".workers/devlib/papers/raw/quilter2015/quilter2015.txt"
+  reimer2012:
+    - ".workers/devlib/papers/raw/reimer2012/reimer2012.txt"
+  sartison2019_spled:
+    - ".workers/devlib/papers/raw/sartison2019_spled/sartison2019_spled.txt"
+  schlehahn2015_ghz:
+    - ".workers/devlib/papers/raw/schlehahn2015_ghz/schlehahn2015_ghz.txt"
+  schweickert2018:
+    - ".workers/devlib/papers/raw/schweickert2018/schweickert2018.txt"
+  somaschi2016:
+    - ".workers/devlib/papers/raw/somaschi2016/somaschi2016.txt"
+    - "../refs/Third pass/somaschi2016_SI.txt"
+  somaschi2016_qd1:
+    - ".workers/devlib/papers/raw/somaschi2016/somaschi2016.txt"
+    - "../refs/Third pass/somaschi2016_SI.txt"
+  tamariz2020:
+    - ".workers/devlib/papers/raw/tamariz2020/tamariz2020.txt"
+    - "../refs/Third pass/tamariz2020_SI.txt"
+    - "../refs/Third pass/tamariz2020.txt"
+  thomas2021:
+    - ".workers/devlib/papers/raw/thomas2021/thomas2021.txt"
+  thomas2021_res:
+    - ".workers/devlib/papers/raw/thomas2021/thomas2021.txt"
+  tomm2021:
+    - ".workers/devlib/papers/raw/tomm2021/tomm2021.txt"
+    - "../refs/Third pass/tomm2021_SI.txt"
+  tripathi2026:
+    - ".workers/devlib/papers/raw/tripathi2026/tripathi2026.txt"
+    - "../refs/Third pass/tripathi2026_arxiv.txt"
+  uppu2020:
+    - ".workers/devlib/papers/raw/uppu2020/uppu2020.txt"
+  vajner2024:
+    - ".workers/devlib/papers/raw/vajner2024/vajner2024.txt"
+    - "../refs/Third pass/vajner2024_SI.txt"
+    - "../refs/Third pass/vajner2024.txt"
+  wang2019a:
+    - ".workers/devlib/papers/raw/wang2019/wang2019.txt"
+    - "../refs/Third pass/wang2019_SI.txt"
+  wang2019b:
+    - ".workers/devlib/papers/raw/wang2019/wang2019.txt"
+    - "../refs/Third pass/wang2019_SI.txt"
+  wei2014_arp:
+    - ".workers/devlib/papers/raw/wei2014_arp/wei2014_arp.txt"
+  wijitpatima2024:
+    - ".workers/devlib/papers/raw/wijitpatima2024/wijitpatima2024.txt"
+    - "../refs/Third pass/wijitpatima2024_arxiv.txt"
+  wijitpatima2024_pee:
+    - ".workers/devlib/papers/raw/wijitpatima2024/wijitpatima2024.txt"
+    - "../refs/Third pass/wijitpatima2024_arxiv.txt"
+  zhang2016_ingan_el:
+    - ".workers/devlib/papers/raw/zhang2016_ingan_el/zhang2016_ingan_el.txt"
+
+# reproduce_ledger.yaml paper: blocks -> first regex matching `paper.where` + desc picks the files.
+ledger_keywords:
+  - match: "Chatzarakis"
+    files:
+      - "../refs/Third pass/chatzarakis2023.pdf"
+      - "../refs/Third pass/chatzarakis2023_SI.pdf"
+  - match: "Reischle 2008|Reischle et al"
+    files:
+      - "../refs/Third pass/reischle2008.txt"
+  - match: "Reischle"
+    files:
+      - "../refs/Third pass/reischle2010.txt"
+      - "../refs/Third pass/reischle2008.txt"
+  - match: "Laferri"
+    files:
+      - "../refs/Third pass/laferriere2023.txt"
+  - match: "Pryor"
+    files:
+      - "../refs/Third pass/pryor1998.txt"
+      - "../refs/Third pass/pryor1997.txt"
+  - match: "Deshpande"
+    files:
+      - "../refs/Third pass/deshpande2014.txt"
+  - match: "Tamariz"
+    files:
+      - "../refs/Third pass/tamariz2020.txt"
+  - match: "Zhao"
+    files:
+      - "../refs/Second pass/zhao.pdf"
+      - "../refs/Second pass/zhao_arxiv.pdf"
+      - "../refs/Second pass/zhao supplement.pdf"
+  - match: "Zhang"
+    files:
+      - "../refs/Second pass/zhang.pdf"
+
+zhao_supplement: "../refs/Second pass/zhao supplement.pdf"

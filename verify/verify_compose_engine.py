@@ -878,7 +878,11 @@ def main():
     check("FX4-2b. JC regime with EID: result invalid with the reason 'JC regime: EID not supported by the JC solver'",
           (not sc_e["valid"]) and any("JC regime: EID not supported by the JC solver" in r for r in sc_e["invalid_reasons"]),
           str(sc_e["invalid_reasons"]))
-    sc_w = engine.evaluate_spec(card_spec("wang2019b"))["scalars"]
+    # r4 red-team item 10: the wang2019b card no longer sets zpl_filter (the etalon window now sets q itself, slightly below 1 for the
+    # 5 GHz etalon). The first-order excess probe below isolates the filtered-STREAM overlap, so zpl_filter (q = 1) is set here.
+    _sw = card_spec("wang2019b")
+    _sw["setup"]["params"]["zpl_filter"] = {"value": True, "unit": "", "tag": "A", "source": "FX4-6 probe: q = 1 (stream overlap only)"}
+    sc_w = engine.evaluate_spec(_sw)["scalars"]
     sc_big = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 1500.0}))["scalars"]
     sc_mid = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 400.0}))["scalars"]
     ex_big = sc_big["hom_I"] / (1.0 - sc_big["g2_0"])
@@ -1244,11 +1248,12 @@ def main():
     # (Fable r4 review): tau = 1450/(1 + F_P L_ph) ~ 830 ps against the measured 820 +- 30 ps.
     check("19f. Nowak 2014 tau_X = 1450/(1 + 1.04 L_ph) ~ 830 ps (+- 10 ps) and inside the paper 820 +- 60 ps (was 716 ps)",
           abs(_tau - 830.0) < 10.0 and abs(_tau - 820.0) < 60.0, f"tau_X {_tau:.1f} ps")
-    # the A2 check isolates the Z_filt fix: the card now also carries the r4-incoh reservoir loss (tau_res_ps), which lowers
-    # n_ph on top of it, so it is dropped here (in memory only) to keep the unity-capture chain 0.91 x 0.884 x 0.70
+    # the A2 check isolates the Z_filt fix: the card carried the r4-incoh reservoir loss (tau_res_ps) until the r4 red-team fix
+    # removed it (P_sat is empirical, the loss double counts); the pop stays (default None) so the unity-capture chain
+    # 0.91 x 0.884 x 0.70 is checked whether or not the card carries the input
     import copy as _copy
     _rawq = _copy.deepcopy(PP.load_paper(ROOT / "cards" / "papers" / "somaschi2016_qd1.yaml").raw)
-    _rawq["device"]["drive"]["params"].pop("tau_res_ps")
+    _rawq["device"]["drive"]["params"].pop("tau_res_ps", None)
     _sq = PP.paper_from_dict(_rawq, stem="somaschi2016_qd1")
     _repq = PP.reproduce(_sq, envelope=False)
     _Bq = {i.id: i.model for i in _repq.items}

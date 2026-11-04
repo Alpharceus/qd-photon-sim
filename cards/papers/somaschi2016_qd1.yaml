@@ -9,6 +9,8 @@ meta:
   extraction: ".workers/devlib/papers/somaschi2016.yaml"
   read_level: V-full
   display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Somaschi et al., Nat. Photonics 10, 340 (2016): electrically contacted micropillar [V] (main text; .workers/devlib/papers/somaschi2016.yaml); drawn with [A] display defaults
+  notes:
+    - "r4 red-team link 5: the reservoir arrival-loss input (drive.tau_res_ps) is NOT entered. The pump is quoted in units of the EMPIRICAL saturation power, \"power since p x scales as (1-exp(-P/P sat )) where P sat  is the saturation power of the\" ... \"a brightness value of 0.65±0.07 for QD1, consistent  with px=1, β=0.88  and ηout =0.70 as\", so the paper's P_sat already contains the capture efficiency and the Poisson mean mu = P/P_sat is the CAPTURED mean; losing a further share of the arrivals before capture double counts the loss (the brightness fall 0.56 -> 0.35 was a redefinition of P_sat, not physics). The capture race (tau_cap_ps) is kept. Excitation wavelength discrepancy recorded as found: main text \"3-picosecond pulsed non-resonant excitation around 890 nm. We present the properties\" (890 nm = 1.393 eV) versus SI \"For non resonant excitation experiments, the excitation energy is set to 1. 3381eV\" (1.3381 eV = 926.5 nm); the excitation is below the GaAs gap (wetting-layer / p-shell type pumping), so the `above_band` drive kind is a misnomer here [A] and the Siegert barrier-capture numbers transfer only loosely."
   summary: "InGaAs dot QD1 in an electrically tuned micropillar (F_P 7.6, Q ~12000, eta_out 0.70), 3 ps above-band pump at 2.45 P_sat, 4 K; paper: g2 0.024, M 0.74 raw / 0.78 corrected, brightness 0.65"
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "p.3 text (devices studied at 4 K)"}
@@ -31,7 +33,6 @@ device:
       pump: {value: 2.45, unit: "1", tag: V, where: "Fig 2a caption: \"autocorrelation histogram of device Q D1 at 2.45P sat\" (somaschi2016.txt l.383); 2.45 is the pump power in units of P_sat (P/P_sat), not a mean pair number mu"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "extraction drive.pulse_width_ps: 3 ps non-resonant pulses; rectangular window of that length is an assumption [A]"}
       tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps"}
-      tau_res_ps: {range: [1.5, 30.0], unit: ps, tag: E, source: "reservoir loss time (capture by neighbouring dots), not in the paper; lower end from refs/Third pass/siegert2005.txt (pure capture time between 1.5 and 4 ps), upper end 30 ps is an [E] class estimate"}
       f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text: \"SPS is excited twice every laser pulse cycle (12.2 ns) with a delay of 3 ns.\"; arithmetic 1 / 12.2 ns = 81.97 MHz, rounded to 82"}
   setup:
     kind: lens_fibre_det
@@ -48,8 +49,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.01}
     tol_reason: "paper 2 sigma is 0.014; 0.01 absolute floor; re-excitation within the 3 ps pump window at 2.45 P_sat is the only source in the model"
-    expect: pass-envelope
-    reason: "with the reservoir ladder (tau_res_ps 1.5-30 ps [E], loss by neighbouring dots) the model is central 0.070, envelope [0.012, 0.139]: the paper 0.024 is inside the input envelope only (central 3x too high). Pre-registered from the review: envelope [0.01, 0.3] contains 0.024 at the fast-loss edge, not a pass. The loss also lowers B_first_lens (see that item)."
+    expect: fail
+    reason: "r4 red-team item 7: the reservoir arrival-loss input tau_res_ps is removed (P_sat is the paper's empirical saturation power, so mu = P/P_sat is already the captured mean and a further loss double counts). Without it the only re-excitation channel is the 3 ps window: model 0.000458 (envelope 0.000146-0.001388) vs 0.024 +/- 0.007, tolerance abs 0.01: fail. The earlier pass-envelope (central 0.070, envelope [0.012, 0.139]) came from the double-counted loss channel and is withdrawn. Pre-registered by the review: g2 stays small without the ladder (4.6e-4)."
   - item: M_raw
     class: M
     tol: {k_sigma: 2}
@@ -64,10 +65,11 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.07 (0.14); brightness is beta x eta_out x saturation of the pump (0.88 x 0.70 x ~0.91 expected)"
-    expect: fail
-    reason: "model 0.350 (envelope 0.022-0.530) vs 0.65 +/- 0.07, outside 2 sigma; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). HEAD (r4-cavity A2, no reservoir) gave 0.563 = 0.91 (pump) x 0.884 (beta) x 0.70 (eta_out) and a pass; r4-incoh (reservoir loss tau_res_ps 1.5-30 ps [E]) removes pairs before capture, which lowers n_ph below the unity-capture value, so the brightness falls to 0.350. The ladder therefore trades a better g2 envelope for a worse brightness; the paper brightness is the setup-efficiency-corrected value at max power (the paper assumes p_X = 1) and the loss time is not in the paper."
+    expect: pass
+    reason: "r4 red-team item 7: with the reservoir arrival loss removed the brightness returns to the unity-capture value 0.91 (pump saturation 1 - exp(-2.45)) x 0.884 (beta, F_P 7.6/(1 + 7.6)) x 0.70 (eta_out) = model 0.5623 (envelope 0.5619-0.5628) vs 0.65 +/- 0.07, inside 2 sigma (0.14). The earlier fail (0.350) was the double counted loss. Same value as the pre-reservoir HEAD (0.563), predicted by the red-team result; not tuned."
 fits: []
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 7: drive.tau_res_ps removed (reservoir arrival loss double counts the empirical P_sat); 890 nm vs 1.3381 eV discrepancy recorded in meta.notes", note: "obtained: g2_raw 0.000458 [0.000146, 0.001388] pass-envelope -> fail; B_first_lens 0.350 -> 0.5623 fail -> pass; M_raw 0.7419 and M_corr 0.7426 pass (unchanged verdict). The capture race tau_cap_ps [10, 100] ps is kept. Alternative not taken (spec said remove the input): define mu as the captured mean in the engine so the g2 effect of the loss is kept without the brightness loss", change: "g2_raw expect pass-envelope -> fail; B_first_lens expect fail -> pass"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.503 -> 0.562, expect fail -> pass (no Z_filt on cavity-collected light); predicted 0.563 by the Fable review, not tuned"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A004, A067): 2.45 documented as P/P_sat (not a pair number mu); f_rep where-text verbatim; unsupported 110 ueV pillar-mode statement removed", note: "text only; no value, tolerance or expectation changed"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}

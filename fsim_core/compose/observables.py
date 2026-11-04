@@ -21,6 +21,10 @@ kappa -> 0 gives Z_eff = Z, q = 1: the ZPL-filter result (efficiency x Z, I x 1)
 (kappa None) keep the unfiltered behaviour; setup.zpl_filter forces Z_eff = Z, q = 1. The sideband is
 assumed to see the same cavity Lorentzian as the ZPL (no Purcell re-weighting of the sidebands) and the
 background-channel photons are filtered the same way (conservative) [A].
+r4 red-team item 1: with setup.filter_fwhm_GHz > 0 (and no setup.zpl_filter, which keeps priority) the HOM ZPL fraction q comes from the
+etalon's own Lorentzian window (window_filter_parts, width = the filter FWHM in meV, ZPL-centred [A]): q = Z T_zpl/Zf_window. The
+brightness is taxed only when filter_applies_to = g2_hom_brightness, by the sideband loss alone (Z_filt = Z + (Zf_window - Z T_zpl)/T_zpl),
+because the ZPL Lorentzian transmission is already in the cascade's filtered n_ph; a narrow filter therefore gives Z x T_zpl.
 
 n_ph is the solver's photons per pulse into the radiative channel. It replaces the product
 eta_prep x eta_rad of the brief because it equals that product without re-excitation and also contains
@@ -371,7 +375,11 @@ def hom_v_corrected_by(correction, V_raw, g2, eps_int=0.0, bs_R=0.5):
     engine = the exact inverse of the engine's raw law; ollivier2021 = (V + g2)/(1 - g2), Ollivier et al., PRL 126,
     063602 (2021), applied to the raw V as printed (no beam-splitter / interferometer term); santori2002 = that same
     g2 treatment after removing the beam-splitter and interferometer terms, (V/[(1 - eps) 2RT/(R^2 + T^2)] + g2)/(1 - g2),
-    the Santori et al. (2002) type with R, T, eps and g2."""
+    the Santori et al. (2002) type with R, T, eps and g2.
+    r4 red-team link 7: formula not verified against Santori 2002 (text not on disk). The on-disk refs/Third pass/santori2004.txt
+    is "Submicrosecond correlations in photoluminescence from InAs quantum dots" (the blinking paper, PRB 2004), not the 2002
+    Nature HOM paper, and contains no visibility correction; it cannot source this convention. The Ollivier Eq. 2 form is the
+    Msn = 0 limit of Ollivier Eq. 1 (justified for the in-pulse photon an etalon removes) [A]."""
     if correction == "engine":
         return hom_v_corrected(V_raw, g2, eps_int, bs_R)
     if correction == "ollivier2021":
@@ -504,6 +512,18 @@ class Context:
         return self._d
 
 
+_H_MEV_PER_GHZ = 4.135667696e-3                      # h in meV/GHz [V: CODATA]
+
+
+def _etalon_window(plan):
+    """(w_meV, taxes_brightness) of the Lorentzian etalon on the detected stream (setup.filter_fwhm_GHz; (0, False) when off
+    or not applied by the solver). r4 red-team item 1."""
+    B = float(plan.inputs.get("filter_fwhm_GHz", 0.0) or 0.0)
+    if B <= 0.0:
+        return 0.0, False
+    return B * _H_MEV_PER_GHZ, str(plan.inputs.get("filter_applies_to", "g2_hom")) == "g2_hom_brightness"
+
+
 def _derive(c: Context) -> dict:
     em, sr, rt, plan, res, su = c.em, c.sr, c.rt, c.plan, c.res, c.setup
     d: dict[str, Any] = {}
@@ -520,8 +540,19 @@ def _derive(c: Context) -> dict:
         # leaky (beta0) channel is not cavity filtered: it keeps the setup bookkeeping (Z with a ZPL filter, else 1; q = Z).
         _, Z_eff = cavity_sideband_filter(ph, c.T_K, float(kap), float(em.E_X_meV) - float(sr.E_mode_meV),
                                           lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)))
+        w_et, bright_et = _etalon_window(plan)
         if su.zpl_filter:
             Zc, qc, Zl, ql = Z / Z_eff, 1.0, Z, 1.0
+        elif w_et > 0.0:
+            # r4 red-team item 1: the etalon (setup.filter_fwhm_GHz, Lorentzian, ZPL-centred [A]) sets q from its own sideband
+            # transmission; the ZPL Lorentzian transmission is in the cascade's n_ph, so the brightness gets only the sideband tax.
+            wp = window_filter_parts(ph, c.T_K, w_et, 0.0, lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)),
+                                     "lorentzian", float(kap), float(em.E_X_meV) - float(sr.E_mode_meV))
+            Tz = wp["T_zpl"]
+            Zc_w = Z + (wp["Zf_cav"] - Z * Tz) / Tz if Tz > 0.0 else Z
+            Zl_w = Z + (wp["Zf"] - Z * Tz) / Tz if Tz > 0.0 else Z
+            Zc, Zl = (Zc_w / Z_eff, Zl_w) if bright_et else (1.0, 1.0)
+            qc, ql = Z * Tz / wp["Zf_cav"], Z * Tz / wp["Zf"]
         else:
             Zc, qc, Zl, ql = 1.0, Z / Z_eff, 1.0, Z
             w_win = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0)
@@ -542,6 +573,16 @@ def _derive(c: Context) -> dict:
         q = w_c * qc + (1.0 - w_c) * ql
     elif su.zpl_filter:
         Zf, q = Z, 1.0
+    elif _etalon_window(plan)[0] > 0.0:
+        w_et, bright_et = _etalon_window(plan)           # r4 red-team item 1 (see the cavity branch)
+        wp = window_filter_parts(ph, c.T_K, w_et, 0.0, lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)), "lorentzian") \
+            if ph is not None else None
+        if wp is None:
+            Zf, q = 1.0, 1.0
+        else:
+            Tz = wp["T_zpl"]
+            Zf = (Z + (wp["Zf"] - Z * Tz) / Tz) if (bright_et and Tz > 0.0) else 1.0
+            q = Z * Tz / wp["Zf"]
     else:
         Zf, q = 1.0, Z
         w_win = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0) if ph is not None else 0.0
@@ -775,11 +816,19 @@ def _derive(c: Context) -> dict:
     eps = float(_read(c, "setup", "eps_int", 0.0))
     bsR = float(_read(c, "setup", "bs_R", 0.5))
     corr_keys = {"engine": "hom_V_corr", "santori2002": "hom_V_corr_santori2002", "ollivier2021": "hom_V_corr_ollivier2021"}
-    if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
+    # r4 red-team item 2: filter_applies_to = hom puts the etalon in the HOM path only. The reported g2 stays unfiltered, but the
+    # g2 inside the HOM law (the multi-photon share of the stream in the interferometer) is that of the filtered stream.
+    g2_hm = g2_hs = None
+    if str(plan.inputs.get("filter_applies_to", "")) == "hom" and "g2_filtered" in res.extra:
+        g2_hs = float(res.extra["g2_filtered"])
+        g2_hm = g2_hs if (leak == 0 and su.dark_cps == 0) else (
+            g2_with_background(g2_hs, S, bg) if math.isfinite(bg) else NAN)
+    g2_r = d["g2_raw"] if g2_hm is None else g2_hm
+    if math.isfinite(d["hom_I"]) and math.isfinite(g2_r):
         # FX4: the overlap I is the SIGNAL stream's, so rho^2 = (1 - g2_raw)/(1 - g2_signal) must use the signal g2 (before
         # the drive-embedded bg_frac); g2_0 already contains that background and would double-count it (final review 1).
-        g2_sig = float(res.extra.get("g2_signal", g2))
-        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2_sig, bs_R=bsR)
+        g2_sig = float(res.extra.get("g2_signal", g2)) if g2_hs is None else g2_hs
+        d["hom_V_raw"] = hom_v_raw(d["hom_I"], g2_r, eps, g2_int=g2_sig, bs_R=bsR)
         # r4-hom (Fable 2.3): corrected = the exact inverse of the raw law (eps_int and the splitter term are removed too).
         # r4 Fable filtered-HOM note (.workers/devlib/r4-fable-filtered-hom.md): the stream identity I = M_s (1 - g2) + O(g2^2)
         # holds only for a DISTINGUISHABLE extra photon. In general I = M_s (1 - g2) + g2 [Tr(sigma G_2) - M_s + M_s p0] + O(g2^2);
@@ -787,10 +836,10 @@ def _derive(c: Context) -> dict:
         # FIRST-order excess g2 [2|s|^2/(1 + |s|^2) + p0] [DR]. The only rigorous bound is I <= 1 (G1 is a positive kernel), so
         # each corrected convention is capped at its I = 1 value: above the cap is an inconsistency (NaN); between 1 and the
         # cap is physics and is clipped to 1 with a note (the paper-style estimator is biased high).
-        V_raw_max = hom_v_raw(1.0, d["g2_raw"], eps, g2_int=g2_sig, bs_R=bsR)
+        V_raw_max = hom_v_raw(1.0, g2_r, eps, g2_int=g2_sig, bs_R=bsR)
         for cname, key in corr_keys.items():
-            v = hom_v_corrected_by(cname, d["hom_V_raw"], d["g2_raw"], eps, bsR)
-            v_max = hom_v_corrected_by(cname, V_raw_max, d["g2_raw"], eps, bsR)
+            v = hom_v_corrected_by(cname, d["hom_V_raw"], g2_r, eps, bsR)
+            v_max = hom_v_corrected_by(cname, V_raw_max, g2_r, eps, bsR)
             if v > v_max * (1.0 + 1e-6):
                 v = NAN
                 why[key] = "corrected visibility exceeds its I = 1 cap: filtered/unfiltered I and g2 inconsistent"

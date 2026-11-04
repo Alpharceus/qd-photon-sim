@@ -39,7 +39,8 @@ device:
     kind: lens_fibre_det
     params:
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: Fabry-Perot etalon of 1 GHz bandwidth in the HOM path (narrower than the ~0.5 GHz ZPL plus sideband selection); also isolates the ZPL from the cross-polarised laser"}
-      filter_fwhm_GHz: {value: 1.0, unit: GHz, tag: V, where: "text p.4 (Fabry-Perot etalon of 1 GHz bandwidth in the HOM path; also isolates the ZPL from the cross-polarised laser)"}
+      filter_fwhm_GHz: {value: 1.0, unit: "GHz", tag: V, where: "text p.4 (wei2014_arp.txt): \"emitted photons are spectrally ﬁltered with a monochromato r and a Fabry-P ´erot etalon (with a bandwidth of 1 GHz), and then fed into another unbalanced Mach-Zehnder interferome-\" (the etalon is stated for the photons fed to the HOM interferometer; the g2 paragraph \"ity is calculated to be g 2(0) = 0. 003(2) by dividing the total\" names no filter)"}
+      filter_applies_to: {value: hom, unit: "", tag: A, source: "the etalon is stated in the HOM path only (quote above); the g2 paragraph names no filter, so g2 is taken UNFILTERED [A] (the filter use for g2 is not stated)"}
       eta_det: {value: 0.2, unit: "1", tag: V, where: "text p.4: detection efficiency ~20% (overall collection ~1%)"}
       eps_int: {value: 0.005, unit: "1", tag: DR, where: "text p.4: \"the ﬁrst-order interference visibility of 0.995 in the Mach-Zehnder set-up\" (wei2014_arp.txt l.358-359); arithmetic eps_int = 1 - 0.995 = 0.005"}
       coinc_window_ns: {value: 3.2, unit: ns, tag: V, where: "text p.4: raw HOM visibility from counts within a 3.2 ns window around zero delay"}
@@ -61,10 +62,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "2 sigma of the printed 0.002 (0.004); abs 0.005 floor. The model g2 is the chirped-pulse re-excitation term plus nothing else (no background entered: the paper gives none)"
-    expect: pass
-    weak: true
-    weak_reason: "the null model g2 = 0 also passes: the tolerance floor abs 0.005 exceeds the paper value 0.003 (model 0.0007); a non-discriminating pass"
-    reason: "R4 filter: 1 GHz etalon [V]; Fable prediction 0.0045 vs 0.003(2) (0.75 sigma)"
+    expect: fail
+    reason: "r4 red-team item 11: the 1 GHz etalon is stated for the HOM path only (\"emitted photons are spectrally ﬁltered with a monochromato r and a Fabry-P ´erot etalon (with a bandwidth of 1 GHz), and then fed into another unbalanced Mach-Zehnder interferome-\"; the g2 paragraph \"ity is calculated to be g 2(0) = 0. 003(2) by dividing the total\" names no filter), so filter_applies_to = hom and g2 is UNFILTERED [A]: model 0.02767 vs 0.003 +/- 0.002 (tolerance abs 0.005), a fail (the filtered pass 0.0007 is withdrawn). Whether the paper's g2 was taken behind the etalon is not stated; the pass depended on assuming it was. Note the g2 inside the HOM visibility law is that of the filtered stream (HOM-path etalon)."
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
@@ -76,7 +75,7 @@ reproduce:
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.007 (0.014); the engine corrected convention is the exact inverse of the raw law, so it removes g2 AND the 0.995 interferometer term as the paper does (correction: engine)"
     expect: pass-envelope
-    reason: "r4-hom pre-registration (Fable 2.5): the paper value is inside the envelope over f in [0, 1]; obtained central 0.895 (f = 0.5) with envelope [0.810, 0.998] containing 0.995(7), so the central point is outside 2 sigma (0.014) and the item is a pass-envelope, as predicted. The corrected convention removes g2 and the 0.995 interferometer term exactly as the paper does."
+    reason: "r4-hom pre-registration (Fable 2.5): the paper value is inside the envelope over f in [0, 1]; obtained central 0.939 (f = 0.5) with envelope [0.887, 1.0] containing 0.995(7) (0.895 [0.810, 0.998] before the 1 GHz etalon, with the HOM-path etalon filter_applies_to hom), so the central point is outside 2 sigma (0.014) and the item is a pass-envelope. The corrected convention removes g2 and the 0.995 interferometer term exactly as the paper does."
   - item: inversion_pred
     class: P
     observable: inversion
@@ -86,6 +85,7 @@ reproduce:
 fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_hom]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 11: setup.filter_applies_to hom (etalon stated in the HOM path only; g2 unfiltered [A]); engine: g2 inside the HOM law is the filtered-stream g2 for hom", note: "obtained: g2_raw 0.0007 pass -> 0.02767 fail (as the red-team result expected, 'wei g2 will go back up'); hom_raw 0.9329 [0.8813, 0.9938] pass-envelope (unchanged), hom_corr 0.939 [0.887, 1.0] pass-envelope (unchanged verdict), linewidth_hom 1.985 pass, inversion_pred 0.9729. setup.zpl_filter left true (no brightness item in the card). The 'slow diffusion' assumption behind tau_sd [1e3, 1e6] ns is inferred from the raw visibility, not stated [A] (red-team link 4); not edited here (outside the spec items)", change: "expect pass -> fail (g2_raw)"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A021, A044; provenance): eps_int V -> DR (the paper prints the visibility 0.995, eps_int = 1 - 0.995 is arithmetic); alpha_ps2 where-text cites Ramsay et al. PRL 105, 177402 (2010) (the paper ref. [28]) and its DR alpha = hbar A/(pi k_B) = 0.027 ps^2; chirp 30 ps (not 28); all DR where-texts quote the printed inputs verbatim", note: "text only; values, tolerances and expectations unchanged. Excess linewidth 0.09 GHz is our subtraction 0.48 - 0.39 (the paper does not print it). Checker false positives: 1.4142, 5110, 2e12 (our constants), 99 (arithmetic)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3-2.5: hom_corr expect fail -> pass-envelope (two-timescale dephasing: sigma_sd 0.97 ueV, tau_sd class range, hom_delay_ns 4, hom_fast_fraction range [0, 1] on the 0.565 /ns CW excess; the corrected convention is now the exact inverse incl. eps_int). hom_raw stays fail: Fable predicted pass-envelope, obtained envelope top 0.940 < 0.979 because g2 is unfiltered (needs the r4-filter etalon). g2_raw stays fail with a corrected reason (misdiagnosis: the ARP transfer is complete, the miss is the missing 1 GHz etalon); inversion_pred now reports n_exc (0.68 -> 0.97, Fable 0.98)", change: "expect fail -> pass-envelope (hom_corr); hom_raw unchanged (fail, new reason)"}

@@ -372,10 +372,12 @@ LENS_FIBRE_DET = _LensFibreDet(
                        r"filter mode, Fock $\{0,1,2\}$; resonant_pulse, arp, phonon_assisted, dichromatic). 0 = off (bit-identical). The short "
                        r"photon emitted inside the pulse (bandwidth $\sim 1/\tau_{\mathrm p}$) is removed, the long lifetime-limited photon passes: "
                        r"$g^{(2)}$ and the HOM overlap are those of the filtered stream (Fischer et al., Nat. Phys. 13, 649 (2017); Fable r4 pulsed 2.1)."),
-        ParamSpec("filter_applies_to", "", "g2_hom", tex=r"\mathrm{filter\ acts\ on}", choices=("g2_hom", "g2_hom_brightness"), tag="A", source=_SRC,
+        ParamSpec("filter_applies_to", "", "g2_hom", tex=r"\mathrm{filter\ acts\ on}", choices=("g2_hom", "g2_hom_brightness", "hom"), tag="A", source=_SRC,
                   sweepable=False,
                   help="Which observables are measured behind the etalon: g2_hom (purity and HOM only; the brightness was measured before it) or "
-                       "g2_hom_brightness (the filtered photon number also sets the brightness)."),
+                       "g2_hom_brightness (the filtered photon number also sets the brightness); hom (the etalon is in the HOM path only: g2 and "
+                       "brightness unfiltered, HOM overlap of the filtered stream). With a filter the HOM ZPL fraction q and (for "
+                       "g2_hom_brightness) the sideband loss come from the filter's own Lorentzian window (r4 red-team item 1)."),
         ParamSpec("filter_width_meV", "meV", 0.0, tex=r"w_{\mathrm{filt}}", lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Top-hat spectral window width $w_{\mathrm{filt}}$ for the X / XX leakage ($\varepsilon_{XX}$); 0 = no window "
                        r"(both lines fully collected)."),

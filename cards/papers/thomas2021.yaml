@@ -7,6 +7,8 @@ meta:
   extraction: .workers/devlib/papers/thomas2021.yaml
   read_level: V-full
   display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Thomas et al., Phys. Rev. Lett. 126, 233601 (2021): electrically contacted micropillar [V] (.workers/devlib/papers/thomas2021.yaml); drawn with [A] display defaults
+  notes:
+    - "r4 red-team link 1: the detected stream passes three angle-tuned 0.8 nm FWHM flat-top band-pass filters, not a dot-centred Lorentzian etalon: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters (Alluxa) separate the single\" ... \"The transmission of the ﬁlters is less than the maximum of 95% per ﬁlter, since we angle-tune the ﬁlters to fully\". The engine has no flat-top / band-pass filter model (setup.filter_fwhm_GHz is a single Lorentzian mode), so setup.filter_fwhm_GHz is NOT entered and the band-pass is unmodelled [A]. The earlier 280.4 GHz Lorentzian transmitted 50 % at the 0.4 nm laser offset that the real filters extinguish, so its g2 shift (0.184 -> 0.118) was a shape artefact of unknown sign."
   summary: "InGaAs QD (neutral X, linear dipole) in an electrically contacted micropillar, Q ~4000 (Sample A), LA-phonon-assisted blue-detuned ~17 ps pulses, T ~8 K: BFL 0.50, g2(0) 0.046, Ms 0.909"
 
 device:
@@ -37,7 +39,6 @@ device:
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "SM Experimental Set-up: \"The co-linearly polarized single photons are collected with a non-polarizing beam-splitter transmitting 90% of the light.\" (thomas2021.txt l.625; collection is co-linear with the excitation, not orthogonal; the cross-polarised resonant reference appears only in the Fig. 1(c,d) characterisation); eta_pol = 1"}
-      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: DR, where: "SM Experimental Set-up: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters\" (thomas2021.txt l.626) and the dot \"centred at 924.82 nm\" (l.624); arithmetic c dlambda/lambda^2 = 299792458 m/s x 0.8 nm / (924.82 nm)^2 = 280.4 GHz for ONE filter (the printed bandwidth is in nm; the GHz value is our conversion); treated as one Lorentzian [A]"}
 
 reported:
   - {id: g2_BFL, observable: g2_0, convention: raw, value: 0.046, err: 0.001, tag: DR, where: "text p.4 and abstract: P = 1 - g2(0) = 0.954 +/- 0.001 at dlambda 0.4 nm, tau 19.5 ps (g2 implied by purity)"}
@@ -62,8 +63,8 @@ reproduce:
     class: M
     tol: {abs: 0.02}
     tol_reason: "model-level tolerance: purity 0.954 with g2 +/-0.02 at model level; the paper's +/-0.001 is statistical only and is not used as the model tolerance"
-    expect: pass-envelope
-    reason: "R4 flip from the pre-registered fail: the 0.8 nm (280 GHz) band-pass alone lowers the central g2 0.184 -> 0.118 and the envelope floor to 0.043, so the paper 0.046 enters the envelope (F_P 2-10, area 5-20 pi unstated); the central misses it by 0.07. No FSS gating is entered (co-polarised collection)"
+    expect: fail
+    reason: "r4 red-team item 4: the 280.4 GHz Lorentzian band-pass is removed (the real filters are three angle-tuned 0.8 nm flat-top band-pass filters, \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters (Alluxa) separate the single\" ... \"The transmission of the ﬁlters is less than the maximum of 95% per ﬁlter, since we angle-tune the ﬁlters to fully\"; the engine has no flat-top model), so the earlier R4 flip fail -> pass-envelope (central 0.1176, envelope [0.0426, 0.1883]) is withdrawn: it rested on a shape artefact of unknown sign. Obtained central 0.1836, envelope [0.0638, 0.3301]; the paper 0.046 lies below the envelope floor 0.0638 and the central misses it by 0.14 (tolerance abs 0.02), so the item is a fail, as Fable pre-registered before the filter was added. The band-pass is unmodelled [A]. No FSS gating is entered (co-polarised collection)"
   - item: Ms_BFL
     class: C
     tol: {k_sigma: 2, abs: 0.05}
@@ -80,6 +81,7 @@ fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 4: setup.filter_fwhm_GHz (280.4 GHz Lorentzian) removed; g2_BFL pass-envelope -> fail (honest re-record)", note: "obtained: g2_BFL central 0.1836, envelope [0.0638, 0.3301] (was 0.1176 [0.0426, 0.1883] with the Lorentzian band-pass), paper 0.046 below the envelope floor; Ms_BFL 0.8709 [0.7821, 0.9110] pass (was 0.877 [0.789, 0.907]); pQD_BFL 0.7859 pass (unchanged). No tolerance changed; the band-pass filters are an unmodelled [A] (no flat-top filter model in the engine)", change: "expect pass-envelope -> fail (g2_BFL)"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance and corrections (A113, A174, DR items): filter_fwhm_GHz V -> DR (the paper prints 0.8 nm; 280.4 GHz is the conversion); collection documented as co-linear (SM l.625), not orthogonal; detuning and gamma_star where-texts quote the paper lines; 143 ps identified as a model number", note: "text only; values, tolerances and expectations unchanged. A075: pQD_BFL 0.77 stays a documented DR (0.50 first-lens brightness / 0.65 extraction), the paper prints 0.50 at 19.5 ps"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.4: inversion is n_exc, not the end-of-window population; pQD_BFL expect fail -> pass (0.395 -> 0.786)", change: "expect fail -> pass (pQD_BFL)"}
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}

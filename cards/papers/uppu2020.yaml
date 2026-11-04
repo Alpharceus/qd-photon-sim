@@ -41,8 +41,9 @@ device:
     kind: lens_fibre_det
     params:
       eta_pol: {range: [0.80, 0.98], unit: "1", tag: V, where: "text p.2 (>98%) / App D.2 (80%)"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "App D.1 (3 GHz etalon removes the phonon sideband)"}
-      filter_fwhm_GHz: {value: 3.0, unit: GHz, tag: V, where: "App D.1 (3 GHz etalon before the g2 and HOM measurements)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "App D.2 (uppu2020.txt l.715-720): \"The phonon sideband is ﬁtted to a Gaussian to estimate the fraction emitted in the zero phonon line, ηzpl = 95 ± 1%. The product of ηY , β, ηzpl, and ηrad is the intrinsic eﬃciency of the QD single photon source\". eta_S therefore contains the ZPL fraction (Z on the brightness is like for like), while the etalon peak transmission ηf = 87 % is a separate setup factor outside eta_S. zpl_filter is kept for that reason only (r4 red-team link 1: uppu2020 HOLDS)"}
+      filter_fwhm_GHz: {value: 3.0, unit: "GHz", tag: V, where: "App D.1: \"ﬁbre is spectrally ﬁltered using a 3 GHz linewidth etalon\" \"(free spectral range: 100 GHz) to suppress the emission\" (uppu2020.txt l.456-457)"}
+      filter_applies_to: {value: g2_hom, unit: "", tag: V, where: "all detected light is spectrally filtered (\"ﬁbre is spectrally ﬁltered using a 3 GHz linewidth etalon\"), but eta_S is the intrinsic source efficiency (product of measured factors incl. eta_zpl, filter transmission eta_f separate), so only g2 and HOM are taken behind the etalon in the model"}
       laser_leak: {range: [0.0, 0.007], unit: "1", tag: V, where: "text p.3 (single-photon impurity xi < 0.007, upper bound)"}
 reported:
   - {id: gamma_rate, observable: Gamma_ns, value: 2.89, tag: V, where: "Fig 2c caption, text p.3 (radiative decay rate of the well-coupled dipole, 1/ns)"}
@@ -98,6 +99,7 @@ reproduce:
 fits:
   - {param: structure.F_bg, fitted_to: [gamma_rate]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 10: setup.zpl_filter KEPT (eta_S is a product that contains the ZPL fraction, so Z on the brightness is like for like); where-text now quotes the paper; filter_applies_to g2_hom set", note: "re-run: all ten items bit-identical to the ledger (gamma_rate 2.889, eta_zpl 0.9088, eta_S 0.753 [0.6245, 0.8585], g2_raw 0.01173, hom_corr 1, hom_raw 0.978); zpl_filter has priority over the etalon window, so the engine change does not reach this card"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A009, A073, A020, A053): the err values 0.02/0.04 are percent-format in the paper ((92± 2)%, 84± 4%, (96±2)%, (93± 2)%), where-texts now quote them (checker false positives); the unsupported statement that the Fig 8 sideband width would fix the dot size is removed (Fig 8 prints no dot size); Ramsay attribution made specific", note: "text only; values, tolerances and expectations unchanged. g2 0.015 +- 0.005 is the card value; the model 0.0117 is a model output. T1 346 ps is not used in this card"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3: hom_corr expect unavailable -> fail (clipped to 1.0 instead of NaN; the NaN rule is now 2 g2^2 + 1e-6)", change: "expect unavailable -> fail (hom_corr)"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}

@@ -37,7 +37,8 @@ device:
     params:
       NA: {value: 0.68, unit: "1", tag: V, where: "text p.2: confocal aspheric objective NA 0.68"}
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.2 / Fig 3a 20 GHz etalon"}
-      filter_fwhm_GHz: {value: 20.0, unit: GHz, tag: V, where: "text p.2 / Fig 3a (20 GHz etalon before the g2 and HOM measurements)"}
+      filter_fwhm_GHz: {value: 20.0, unit: "GHz", tag: V, where: "text p.2 (he2013.txt): \"laser background, we pass the RF through an etalon which has a bandwidth of ∼ 20GHz—much wider than\"; the etalon is drawn in the HOM schematic (Fig. 3a labels \"20-GHz\"); signal / background \"of the signal to background (including the detector dark counts) ratio from 20 to 357 at π -pulse excitation. For a\""}
+      filter_applies_to: {value: hom, unit: "", tag: A, source: "the etalon is drawn in the HOM schematic only (Fig. 3a); the g2 = 0.012 figure caption names no filter, so g2 is taken UNFILTERED [A] (the 0.3 % background of the abstract equals 1/357, so a filtered g2 is plausible but not stated)"}
       eta_pol: {value: 0.5, unit: "1", tag: V, where: "text p.2 collection chain: polariser 50%"}
       eta_optics: {value: 0.95, unit: "1", tag: V, where: "text p.2 collection chain: beam splitter 95%"}
       eta_fibre: {value: 0.45, unit: "1", tag: V, where: "text p.2 collection chain: fibre coupling 45%"}
@@ -64,7 +65,7 @@ reproduce:
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.002 (0.004). Model raw g2 = intrinsic re-excitation g2 + ~2 x laser_leak (envelope 0 to 0.003 as stated)"
     expect: fail
-    reason: "the model raw g2 spans 0.0032-0.0092 (envelope) against 0.012(2): the paper value sits just above the whole envelope; the stated laser background (< 0.003) and 3 ps re-excitation do not account for all of it (unstated detector background or excitation-induced channels)."
+    reason: "the model raw g2 spans 0.0032-0.0092 (envelope) against 0.012(2): the paper value sits just above the whole envelope; the stated laser background (< 0.003) and 3 ps re-excitation do not account for all of it (unstated detector background or excitation-induced channels). r4 red-team item 11: the 20 GHz etalon is drawn in the HOM schematic only (Fig. 3a) and the g2 caption names no filter, so g2 is taken unfiltered [A] (filter_applies_to hom)."
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
@@ -79,6 +80,7 @@ fits:
   - {param: structure.beta0, fitted_to: [rate_det]}
   - {param: material.tau_bare_ns, fitted_to: [tau_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 11: setup.filter_applies_to hom (etalon drawn in the HOM schematic only; g2 unfiltered [A])", note: "re-run: rate_det 2.3e5, tau_X 402.3 ps pass; g2_raw 0.006224 [0.003241, 0.009195] fail; hom_corr 0.935 [0.8783, 1] pass; hom_raw 0.9285 [0.8669, 0.999] pass; every verdict unchanged. setup.zpl_filter left true because rate_det is a class-C calibration (beta0 fitted with that factor in place) and re-fitting beta0 is outside the spec"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 2: setup.zpl_filter true (20 GHz etalon); a_ac 0 (gamma* from measured coherence); tau_bare_ns 0.41 DR; tau_X -> class C + fit; beta0 recomputed 0.05998 -> 0.06736 so rate_det = 230000; gamma_star range [0,0.36] from CW T2/2T1; expects re-recorded: tau_X fail -> pass (class C), hom_corr and hom_raw fail -> pass (envelope covers paper), g2_raw stays fail, rate_det pass"}
   - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 20.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw stays fail (<= 0.0065 vs 0.012: unmodelled detector background)"}
