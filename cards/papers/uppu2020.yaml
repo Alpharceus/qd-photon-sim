@@ -22,6 +22,8 @@ device:
     kind: inas_gaas_sk
     params:
       lambda_nm: {value: 947.4, unit: nm, tag: V, where: "App D.2 / Fig 8 (resonant laser 947.4 nm)"}
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "in-plane Gaussian confinement length of the exciton wavefunction of this dot is not stated; InAs/GaAs SK class range 3-5 nm (large end expected for a 947 nm dot; the sideband width in Uppu Fig 8 would fix it but is not read out); r4 Fable cavity review item F. Registry phonon constants (alpha, D_c - D_v) are NOT changed"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "out-of-plane confinement length not stated; InAs/GaAs SK class range 1-2 nm (r4 Fable cavity review item F)"}
   structure:
     kind: phc_waveguide
     params:
@@ -61,7 +63,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.03}
     tol_reason: "paper 0.95 +/- 0.01 (2 sigma = 0.02); widened to 0.03 absolute because the InAs/GaAs polaron constants are [E] class values, not Uppu's dot"
     expect: fail
-    reason: "model gap: the registry InAs/GaAs polaron constants (class [E], alpha/l_xy defaults) give Z(1.6 K) = 0.909 against the measured 0.95; this is a phonon-constant mismatch, not a missing input."
+    reason: "model gap, narrowed: the registry InAs/GaAs polaron constants (class [E], alpha fixed by Krummheuer D_c - D_v = 9.8 eV, which Ramsay 2010 supports) with the dot-size class ranges l_xy 3-5 nm, l_z 1-2 nm give Z(1.6 K) = 0.909 central, envelope [0.839, 0.941]; the tip is 0.009 below the measured 0.95, so the paper value stays outside the envelope and the outcome stays fail. The r4 Fable review predicted pass-envelope at the (5, 2) corner via the 0.03 tolerance, but the envelope test uses the paper value itself, not the tolerance window. Not a missing input: a larger dot (sideband width of Uppu Fig 8) or a measured alpha would be needed."
   - item: eta_rad
     class: M
     tol: {rel: 0.01}
@@ -72,8 +74,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.84 +/- 0.04 (2 sigma = 0.08); the setup.eta_pol range [0.80, 0.98] is the paper's own unresolved discrepancy, so a pass inside the envelope means only the 0.98 end reproduces it"
-    expect: fail
-    reason: "diagnosed: with the model Z = 0.909 (paper 0.95) and setup.eta_pol in [0.80, 0.98] the envelope is [0.68, 0.83], just below the paper 0.84 (central 0.753); the shortfall is the Z mismatch, and at eta_pol 0.80 the product is 0.69 (the paper's own 80 % vs >98 % discrepancy is unresolved). Under FX1 structure.pol_factor is inert with beta_direct, so the dipole share lives in setup.eta_pol."
+    expect: pass-envelope
+    reason: "flipped fail -> pass-envelope as a side effect of the dot-size class ranges (l_xy 3-5 nm, l_z 1-2 nm) that widen Z: central 0.753 vs 0.84 +/- 0.04 misses the 2 sigma window, and 0.84 lies inside the envelope [0.625, 0.859] only because of the setup.eta_pol range [0.80, 0.98] (the paper's own unresolved 80 % vs >98 % discrepancy) combined with the Z range; not a pass. At eta_pol 0.80 the product is 0.69. Under FX1 structure.pol_factor is inert with beta_direct, so the dipole share lives in setup.eta_pol."
   - item: g2_raw
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -98,3 +100,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr expect fail -> unavailable (V_corr > 1 is now invalid, NaN)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable cavity review item F: material.l_xy_nm [3, 5] nm and l_z_nm [1, 2] nm E class ranges added; registry phonon constants untouched. eta_zpl stays fail (envelope [0.839, 0.941] does not contain 0.95; Fable predicted pass-envelope at the corner) with the reason rewritten; eta_S fail -> pass-envelope (envelope [0.625, 0.859] now contains 0.84), an unpredicted side effect; no tolerance changed"}

@@ -27,7 +27,7 @@ device:
   structure:
     kind: cbg
     params:
-      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 is a TOTAL rate ratio Gamma/Gamma_bulk; the leaf is the cavity enhancement, 12 - 1 = 11, cards README rule; r4 Fable review item E)"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {range: [0.0, 8000.0], unit: ueV, tag: E, source: "line is blue of the mode by an unstated amount; 0 to 8 meV (line 1 is 6.6 meV) as an envelope"}
       eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8)"}
@@ -43,6 +43,8 @@ device:
       NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
       eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused for this line"}
       eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
+      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: spectral selection window FWHM 0.04 nm at 4 K (0.1 nm = 0.0745 meV at 40 and 77 K, not representable per temperature point; 4 K value entered). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.9611 eV x 0.04/1290 nm = 29.8 ueV at the assumed ~1290 nm line"}
+      filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the selection window"}
 reported:
   - {id: g2_4K, observable: g2_0, convention: raw, value: 0.0115, err: 0.0002, tag: V, where: "text p.5 / Fig 4 caption (4 K, saturation; fit with blinking envelope; fitted values 0.01-0.02 across powers)"}
   - {id: rate_4K, observable: rate_detected_Hz, value: 355000.0, tag: V, where: "text p.5 / Fig 4b (detector count rate at saturation, 4 K; ~25 % of the unblinked rate; no error given)"}
@@ -93,3 +95,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable reviews items E and cards row: structure.F_P 12 -> 11 (total ratio convention); setup.filter_width_meV 0.0298 (stated 0.04 nm FWHM window at 4 K, DR conversion). The engine uses filter_width_meV only for the X/XX top-hat leakage, not for the sideband transmission Zf_window (Fable list item 1, engine work), so no model output is expected to move; the 0.1 nm window at 40/77 K cannot be entered per temperature point"}

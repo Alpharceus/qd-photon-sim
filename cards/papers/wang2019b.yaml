@@ -12,7 +12,7 @@ meta:
   notes:
     - "SLAB LIFETIME TYPO: the main text prints the slab lifetime as '1.09 us' (p.7); 69.1 ps x 15.7 = 1.085 ns and the Fig 2 caption inset says ~1.1 ns, so it is entered as 1.09 ns."
     - "MISSING INPUT: the EBG extraction efficiency at NA 0.65 is only in Supp Fig 7 (a figure, not read). The cbg eta_table is entered as the single point 0.65 -> 0.8 [A], the same class value used for the Kolatschek CBG cards (simulated >80 % for an ideal CBG on a mirror); the paper says only 'near unity' for the mirror-backed bullseye in general. The brightness item therefore leans on this assumption."
-    - "F_P = 20 is the paper's simulated design value ('Purcell factor of >20 in a few nm', Supp Fig 7) used as a lower bound for the ideally tuned device; the measured lifetime ratio 15.7 is NOT used as an input so that the lifetime is an unfitted test. Q = 155 is derived: B2 linewidth = 2.8 THz / 1.3 = 2.15 THz at ~334 THz (897 nm)."
+    - "F_P is the paper's simulated design value 20 (a TOTAL rate ratio, entered as the cavity enhancement 19) ('Purcell factor of >20 in a few nm', Supp Fig 7) used as a lower bound for the ideally tuned device; the measured lifetime ratio 15.7 is NOT used as an input so that the lifetime is an unfitted test. Q = 155 is derived: B2 linewidth = 2.8 THz / 1.3 = 2.15 THz at ~334 THz (897 nm)."
     - "Etalon: HOM and purity were measured through a 5 GHz etalon (cuts counts ~30 %), so zpl_filter = true. The 0.56 efficiency is the loss-budget value WITHOUT the etalon, so the model B_first_lens carries an extra Z_filt (~0.9) the paper's 0.56 does not: a known convention offset of order 10 %."
     - "The EBG wavelength and temperature are not given for this dot: 897.04 nm (pillar M2) is reused [A] and T is a range 1.5-4 K [E]. Blinking (35 % loss in the paper's budget), the 62.5 nm distance to the etched surface and the polarisation degree of this device are not modelled/not given. The 2 ns and 13 ns HOM values differ in the paper (spectral diffusion); the model has none (sigma_sd 0), so both items see the same model value."
 device:
@@ -23,10 +23,11 @@ device:
       lambda_nm: {value: 897.04, unit: nm, tag: A, source: "wavelength of the EBG dot is not stated; the pillar M2 mode wavelength (text p.5, same wafer) is reused"}
       tau_bare_ns: {value: 1.09, unit: ns, tag: V, where: "text p.7 (average lifetime of more than 20 slab dots; PRINTED '1.09 us', a typo for ns: Fig 2 caption inset ~1.1 ns, and 69.1 ps x 15.7 = 1.085 ns)"}
       charge_state: {value: "X-", unit: "", tag: DR, where: "text p.5 (single-electron charged quantum dot, two-level system); X- chosen for the electron-charged transition"}
+      eta_blink: {value: 0.65, unit: "1", tag: V, where: "text p.8 (the main loss in the efficiency budget is quantum dot blinking (35 %), the dot being 62.5 nm from the etched surface; on-fraction 1 - 0.35 = 0.65; Supp Fig 11). A paper-stated input, not a fit: the quantity under test is eff_ebg"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 20.0, unit: "1", tag: DR, where: "text p.6 (simulated design value: Purcell factor >20 over a few nm, Supp Fig 7; simulated lower bound)"}
+      F_P: {value: 19.0, unit: "1", tag: DR, where: "text p.6 (simulated design value: Purcell factor >20 over a few nm, Supp Fig 7; simulated lower bound). The simulated 20 is an FDTD TOTAL rate ratio Gamma/Gamma_bulk, the leaf is the cavity enhancement, so 20 - 1 = 19 (cards README rule; r4 Fable review item E)"}
       Q: {value: 155.0, unit: "1", tag: DR, where: "text p.6 (mode splitting 2.8 THz is 1.3 times the linewidth of B2, i.e. 2.15 THz at ~334 THz; the dot is resonant with B2, Fig 2 caption)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "Fig 2 caption (the investigated quantum dot is resonant with B2)"}
       eta_table: {value: "0.65:0.8", unit: "", tag: A, source: "extraction at NA 0.65 is only in Supp Fig 7 (figure, not read); class value for a mirror-backed CBG (simulated >80 %, Kolatschek 2021) entered as a single table point"}
@@ -55,13 +56,13 @@ reproduce:
     tol: {k_sigma: 2, rel: 0.1}
     tol_reason: "paper 69.1 +/- 0.1 ps; 10 percent relative for lifetimes, because F_P is the simulated design value (a lower bound of the real, imperfectly tuned dot) and tau_bare is the slab average"
     expect: fail
-    reason: "expected, input choice not a model gap: the simulated design Purcell factor F_P = 20 (DR, Supp Fig 7) gives 51.9 ps against the measured 69.1 ps (ratio 15.7); the real dot is not perfectly tuned or placed."
+    reason: "expected, input choice not a model gap: the simulated design Purcell factor 20 (DR, Supp Fig 7; entered as 19) (F_P 19 after the total-ratio correction) gives 54.5 ps against the measured 69.1 ps (ratio 15.7); the real dot is not perfectly tuned or placed."
   - item: eff_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.1}
     tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
-    expect: fail
-    reason: "model 0.716 (envelope 0.69-0.74) vs 0.56 (0.10 tol): the design F_P = 20 overestimates beta for the real dot (see tau_ebg) and the DBR-asymmetry eta_out and assumed NA are not measured."
+    expect: pass
+    reason: "flipped fail -> pass after two paper-stated input fixes (F_P 20 -> 19 total-ratio convention, material.eta_blink 0.65 from the stated 35 % blinking loss): model 0.465 (envelope 0.451-0.478) vs 0.56 +/- 0.02, inside the 0.1 absolute tolerance by only 0.005, so the pass is marginal. Remaining offsets: the model carries the etalon Z_filt that the paper's 0.56 does not, the EBG eta_table 0.8 is an assumed class value, and the paper's own budget has no extra factors. Fable predicted 0.47 (r4 cavity review item I)."
   - item: g2_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -85,3 +86,4 @@ history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable review items E and I: structure.F_P 20 -> 19 (FDTD total ratio); material.eta_blink 0.65 added [V] (text p.8: blinking 35 %); eff_ebg expect fail -> pass (model 0.465 vs 0.56 +/- 0.02, abs 0.1, marginal; Fable predicted 0.47 pass); tau_ebg stays fail (model 54.5 ps vs 69.1 ps), reason updated; g2_ebg and the two HOM items unchanged; no tolerance changed"}

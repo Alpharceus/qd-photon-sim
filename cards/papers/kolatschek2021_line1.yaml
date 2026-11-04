@@ -15,7 +15,7 @@ meta:
     - "LINE 1 ONLY (see the file header). The 23 % first-lens figure is g2-corrected, setup-calibrated (1.4 % / 6.4 %) and a LOWER bound because competing transitions (trions of the same dot) are not counted under above-band pumping; the model's n_ph also has no competing channel, so the comparison is like-for-like only in that sense."
     - "1.4 % end-to-end and 1.1 Mcps are the same measurement divided by the repetition rate and linked to 0.23 by the 6.4 % setup efficiency, so only the first-lens brightness is put in the ledger (otherwise it would be counted twice)."
     - "Detuning 6.6 meV = 1239.84/1293 - 1239.84/1302 eV: the 9 nm blue shift is rounded in the text ('around 9 nm') and the mode wavelength 1302 nm is derived, so the detuning is DR (the CBG mode is broad: Q = 130, kappa ~ 7 meV, so the Lorentzian is not very sensitive to it)."
-    - "F_P = 12 is the paper's ideal-overlap value at the measured Q; this dot's spatial overlap is unknown (non-deterministic placement) and there is no position factor in the cbg kind (see kolatschek2021.yaml)."
+    - "F_P: the paper's ideal-overlap Purcell factor 12 at the measured Q is a total rate ratio, entered as the cavity enhancement 11; this dot's spatial overlap is unknown (non-deterministic placement) and there is no position factor in the cbg kind (see kolatschek2021.yaml, where r_factor is an E range; this line keeps r_factor = 1 because B_first_lens is the lens efficiency of a centred dipole and the offset dependence of the extraction is not in the engine)."
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "text p.3 (sample cooled to 4 K)"}
   material:
@@ -26,7 +26,7 @@ device:
   structure:
     kind: cbg
     params:
-      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200)"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200). The 12 is a TOTAL rate ratio Gamma/Gamma_bulk, the leaf is the cavity enhancement, so 12 - 1 = 11 (cards README rule; r4 Fable review item E)"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {value: 6600.0, unit: ueV, tag: DR, where: "text p.3 (line at 1293 nm is around 9 nm blue-shifted with respect to the cavity mode; dot minus mode = +6.6 meV)"}
       table_mode: {value: total, unit: enum, tag: E, source: "the paper simulated extraction above 80 percent into NA 0.6 is the whole-device collection efficiency, FX3a table_mode total"}
@@ -63,3 +63,4 @@ fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable review item E: structure.F_P 12 -> 11 (total ratio convention); expects unchanged (g2_line1 fail, B_first_lens fail)"}

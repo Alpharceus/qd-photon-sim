@@ -32,7 +32,7 @@ device:
     kind: above_band
     params:
       cw: {value: true, unit: "", tag: V, where: "text p.4 (the device is optically excited with a continuous-wave laser at 850 nm)"}
-      pump: {range: [0.5, 5.0], unit: "1", tag: E, source: "absolute pump rate in units of the X decay rate is not given (power series up to 100 uW, saturation P_sat only in Fig 4f); the count rate is quoted 'at saturation' so the rate is of order the decay rate; envelope shows the effect"}
+      pump: {range: [2.0, 20.0], unit: "1", tag: E, source: "absolute pump rate in units of the X decay rate is not given (power series up to 100 uW; P_sat is the MAXIMUM of the paper's fit I = p (P/P_sat)^x exp(-P/P_sat), Fig 4f); the quoted 4.08 MHz is the count rate at that maximum, which for this incoherent two-level pump (n_X = r/(Gamma + r)) is reached only at r of several Gamma (first-lens 0.48 GHz / Gamma 1.22 GHz = 0.39 = n_X beta eta_out needs r ~ 4-13 Gamma); range widened from [0.5, 5] (r4 Fable incoherent review section 3, cards row)"}
   setup:
     kind: lens_fibre_det
     params:
@@ -41,7 +41,7 @@ device:
       eta_det: {value: 0.0084, unit: "1", tag: V, where: "text p.5 (detection efficiency of the whole setup eta = 0.0084 +/- 0.0008, includes optics, spectrometer and detector)"}
 reported:
   - {id: tau_X, observable: tau_ps, value: 820.0, err: 30.0, tag: V, where: "text p.4 (tau_X = 0.82 +/- 0.03 ns at g = 0, from the deconvolved autocorrelation rise time, X resonant at -0.45 V)", note: "deconvolved with the 350 ps setup response"}
-  - {id: F_P_theory, observable: F_P_eff, value: 1.1, tag: V, where: "text p.4 (expected Purcell factor 1.1 for Q = 1300 and the effective volume of a 4.1 um isolated pillar)", note: "the paper's own theory number, no error"}
+  - {id: F_P_theory, observable: F_P_peak, value: 1.1, tag: V, where: "text p.4 (expected Purcell factor 1.1 for Q = 1300 and the effective volume of a 4.1 um isolated pillar)", note: "the paper's own theory number, no error"}
   - {id: F_P_measured, observable: F_P_eff, value: 0.8, err: 0.08, tag: V, where: "text p.4 (F_P = tau_ref / tau_X - 1 = 0.8 +/- 0.08)", note: "derived from the two lifetimes; tau_ref is an input here, so not a separate test (reported only)"}
   - {id: extraction, observable: eta_extract, value: 0.53, err: 0.09, tag: V, where: "text p.5 / abstract (extraction efficiency 53 +/- 9 % in NA 0.4: brightness 37 % divided by p_X = 0.69)", note: "occupation-corrected; the paper's expected beta Q/Q0 is 0.52 (F_P 1.1)"}
   - {id: rate_det, observable: rate_detected_Hz, value: 4080000.0, tag: V, where: "text p.5 (photon count rate on the detector 4.08 MHz at saturation, X line; the error printed is garbled in the text layer)", note: "equals 0.48 +/- 0.05 GHz in the first lens divided by the whole-setup efficiency 0.0084"}
@@ -59,7 +59,7 @@ reproduce:
     tol: {abs: 0.3}
     tol_reason: "no error on a theory number; 0.3 absolute is the paper's own gap between theory 1.1 and measurement 0.8, i.e. the scatter of the cavity estimate; the engine derives F_P from Q, d, the DBR stack and the Gaussian HE11 area (mode_area gaussian is a class default, not from the paper)"
     expect: pass
-    reason: "FX4: 1.1 is the paper's own theory estimate of the Purcell factor (Q and effective volume), so the comparison is model against the paper's theory (class R, not a test); model 1.027"
+    reason: "FX4: 1.1 is the paper's own theory estimate of the Purcell factor (Q and effective volume), so the comparison is model against the paper's theory (class R, not a test); model 1.045"
   - item: extraction
     class: M
     tol: {k_sigma: 2}
@@ -69,9 +69,10 @@ reproduce:
     class: M
     tol: {rel: 0.20}
     tol_reason: "20 percent: the brightness error is 19 % (7/37) and the whole-setup efficiency 10 %; the pump (E envelope) sets the model rate between zero and saturation, so a pass is weak"
-    expect: fail
-    reason: "model 3.06e6 /s (envelope 1.39e6-3.48e6 over the pump range) vs 4.08e6: the paper value is above the whole envelope (17 % over the top). The cw incoherent pump saturates as P/(1 + P) (at most 0.83 at the E bound 5), and the model extraction 0.494 is 7 % below the paper's 0.53, so the model first-lens rate tops out near 4.1e8 /s against the paper's 4.8e8 /s; the detected rate also relies on the paper's whole-setup efficiency 0.0084 being entered once."
+    expect: pass
+    reason: "flipped fail -> pass after the pump E range was widened to [2, 20] (the paper's count rate is the MAXIMUM of its power fit, which the incoherent two-level pump reaches only at r of several Gamma): central 3.79e6 vs 4.08e6 (7 % low, inside the 20 % band), envelope 2.78e6-3.91e6. The pump is an unstated E input, so the pass depends on the range; the model extraction 0.49 and the whole-setup efficiency 0.0084 entered once set the scale. Weak in that sense, not fitted."
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: F_P_theory class M -> R (the paper's own theory number); expect unchanged (pass)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable incoherent review section 3 (cards row) and cavity item G: drive.pump E range [0.5, 5] -> [2, 20] (P_sat of the paper is the maximum of its fit, i.e. n_X near saturation); F_P_theory observable F_P_eff -> F_P_peak (bare cavity Purcell factor, like for like with the paper theory 1.1; class R, expect pass unchanged, model 1.045); rate_det expect fail -> pass (central 3.79e6 vs 4.08e6, as Fable predicted 3.9-4.6e6); tau_X stays fail (model 719 ps vs 820 +/- 30 ps; the phonon-dressed Purcell rate that would give 830 ps is engine item A, not implemented); no tolerance changed"}

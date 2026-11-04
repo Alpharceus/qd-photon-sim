@@ -47,6 +47,8 @@ device:
       eta_optics: {value: 0.361, unit: "1", tag: DR, where: "text p.2: end-to-end 6.3 % / first-lens 17.4 % = 0.361 (the paper's own setup efficiency; FCSPCR is already corrected for detector efficiency)"}
       eta_fibre: {value: 1.0, unit: "1", tag: A, source: "fibre coupling is inside the 0.361 setup efficiency"}
       eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2-3: raw detected 3.91e6 / corrected FCSPCR 4.77e6 = 0.82 (also 0.83 at 40 K, 0.82 at 152 and 228 MHz)"}
+      filter_width_meV: {value: 0.282, unit: meV, tag: DR, where: "Methods (main text): a reflective bandpass filter of FWHM 0.55 nm selects the QD transition (two 1.2 nm notch filters only suppress the laser). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.7973 eV x 0.55/1555 nm = 0.282 meV; the same filter is assumed at 4 K and 40 K"}
+      filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the bandpass window (at 40 K the red-shift of the line is not modelled)"}
 reported:
   - {id: tau_QD1, observable: tau_ps, value: 520.0, tag: V, where: "text p.2 / Fig 1d: decay time 0.52 ns of QD1 in the CBG under non-resonant 850 nm excitation (raw fit, no error given)"}
   - {id: BFL_76, observable: B_first_lens, convention: intrinsic, value: 0.174, tag: V, where: "text p.2-3 and abstract: first-lens collection efficiency 17.4 % (NA 0.6), the end-to-end 6.3 % divided by the paper's setup efficiency (supp)"}
@@ -141,3 +143,4 @@ fits:
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.598 (eta_out 0.90 x beta 0.664 product, cavity-only semantics) -> 0.85 (paper FDTD >85 percent total, V), table_mode total"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable incoherent review cards row: setup.filter_width_meV 0.282 DR (stated 0.55 nm bandpass FWHM, Methods of the main text; the supplement was not read). The engine uses this leaf only for X/XX top-hat leakage, not the sideband transmission, so no model output is expected to move; cavity review item E (16.6 -> 15.6) does not apply because F_P here is already the additional ratio 1.98 = 2.98 - 1 and 16.6 is not an input; no expects changed"}
