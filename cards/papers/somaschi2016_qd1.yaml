@@ -31,6 +31,7 @@ device:
       pump: {value: 2.45, unit: "1", tag: V, where: "text p.3 / Fig 2a caption (g2 at 2.45 P_sat)"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "extraction drive.pulse_width_ps: 3 ps non-resonant pulses; rectangular window of that length is an assumption [A]"}
       tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps"}
+      tau_res_ps: {range: [1.5, 30.0], unit: ps, tag: E, source: "reservoir loss time (capture by neighbouring dots), not in the paper; lower end from refs/Third pass/siegert2005.txt (pure capture time between 1.5 and 4 ps), upper end 30 ps is an [E] class estimate"}
       f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
   setup:
     kind: lens_fibre_det
@@ -47,8 +48,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.01}
     tol_reason: "paper 2 sigma is 0.014; 0.01 absolute floor; re-excitation within the 3 ps pump window at 2.45 P_sat is the only source in the model"
-    expect: fail
-    reason: "model gap: the 3 ps pump window gives almost no re-excitation (model 4.6e-4, envelope 1.5e-4-1.4e-3) while the paper's 0.024 comes from slow capture/relaxation refilling with the pump still on and background, which the rectangular-window model does not represent."
+    expect: pass-envelope
+    reason: "with the reservoir ladder (tau_res_ps 1.5-30 ps [E], loss by neighbouring dots) the model is central 0.070, envelope [0.012, 0.139]: the paper 0.024 is inside the input envelope only (central 3x too high). Pre-registered from the review: envelope [0.01, 0.3] contains 0.024 at the fast-loss edge, not a pass. The loss also lowers B_first_lens (see that item)."
   - item: M_raw
     class: M
     tol: {k_sigma: 2}
@@ -63,10 +64,12 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.07 (0.14); brightness is beta x eta_out x saturation of the pump (0.88 x 0.70 x ~0.91 expected)"
-    expect: pass
-    reason: "r4-cavity A2 flip (fail -> pass), pre-registered from the Fable cavity review (predicted 0.563, tol 0.14): the entered F_P 7.6 is lifetime-derived (already phonon-renormalised) and the cavity channel is ZPL-only, so the old Z_filt = 0.895 on the cavity-collected light was a double count; 0.91 (pump) x 0.884 (beta) x 0.70 (eta_out) = 0.563 against the paper's 0.65 +/- 0.07 (the paper assumes p_X = 1)."
+    expect: fail
+    reason: "model 0.350 (envelope 0.022-0.530) vs 0.65 +/- 0.07, outside 2 sigma; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). HEAD (r4-cavity A2, no reservoir) gave 0.563 = 0.91 (pump) x 0.884 (beta) x 0.70 (eta_out) and a pass; r4-incoh (reservoir loss tau_res_ps 1.5-30 ps [E]) removes pairs before capture, which lowers n_ph below the unity-capture value, so the brightness falls to 0.350. The ladder therefore trades a better g2 envelope for a worse brightness; the paper brightness is the setup-efficiency-corrected value at max power (the paper assumes p_X = 1) and the loss time is not in the paper."
 fits: []
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.503 -> 0.562, expect fail -> pass (no Z_filt on cavity-collected light); predicted 0.563 by the Fable review, not tuned"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: tau_res_ps 1.5-30 ps [E] added; g2_raw fail -> pass-envelope", note: "g2 model 4.6e-4 -> 0.070 [0.012,0.139]; B_first_lens 0.503 -> 0.313 (loss of pairs before capture); M_raw 0.742 -> 0.768, M_corr 0.743 -> 0.902 (still within 2 sigma)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: B_first_lens expect was pass (HEAD, 0.563) and fail (r4-incoh, 0.313); the combined model gives 0.350, envelope [0.022, 0.530], outside the tolerance, so expect fail; this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); the HEAD pre-registered pass (predicted 0.563) did not survive the reservoir ladder; no tolerance changed"}

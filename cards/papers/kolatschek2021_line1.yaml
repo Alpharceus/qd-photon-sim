@@ -37,6 +37,7 @@ device:
       pump: {range: [0.5, 10.0], unit: "1", tag: E, source: "absolute pump power not given for the g2 measurement of Fig 2b (the line needed 'stronger pumping'); P/P_sat from 0.5 to 10 as an envelope"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "text p.3 (775 nm pulsed laser, pulse width 3 ps); rectangular window of that length is an assumption [A]"}
       f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz)"}
+      p_X: {range: [0.6, 0.8], unit: "1", tag: E, source: "p_X class range [E]: X share of the pairs loaded under non-resonant pumping. Anchors re-read in the source texts: Nowak 2014 verbatim \"From this we deduce pX = 0.69 and pCX = 0.31\" (from the 17 percent CX brightness at saturation); Reimer 2012 verbatim \"approximately one-quarter of the time an electron is captured into the quantum dot resulting in recombination of the charged exciton instead of the neutral exciton\" (a charged-exciton share of about 0.25; no p_X is printed there, so 0.75 would be arithmetic of this card and not a paper value, and it is not used as an anchor); Tripathi 2026 p.7: X 440 kcps and X+- 270 kcps, 440/(440+270) = 0.62. The range 0.6-0.8 is a class range, not a measured value for this dot"}
   setup:
     kind: lens_fibre_det
     params:
@@ -57,11 +58,13 @@ reproduce:
     class: M
     tol: {abs: 0.1}
     tol_reason: "no error printed and the value is a lower bound; 0.1 absolute (about half the value) because F_P overlap, the NA 0.6 table point and pump saturation are all assumed"
-    expect: fail
-    reason: "model overestimates (r4-cavity A2: central now 0.796, envelope [0.315, 0.800], was 0.739 [0.292, 0.743]; the decomposition below is the earlier 0.59 run): central 0.59 = n_ph 0.995 x beta 0.74 (F_P_eff 2.8 after the 6.6 meV detuning) x eta_out 0.8; the envelope [0.2325, 0.5912] (low edge at 0.5 P_sat) just misses the paper 0.23. The model has ideal placement and unity pump saturation, while the paper's 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions; the overlap is not quantifiable from the text."
+    expect: pass-envelope
+    reason: "model central 0.557, envelope [0.189, 0.640] vs 0.23 (tol abs 0.1): the paper value lies inside the input envelope only and the central value is 0.33 above it, so this is not a pass; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). Pieces: r4-cavity A2 alone put the central at 0.796 (envelope [0.315, 0.800]), and p_X 0.6-0.8 [E] (X share of the loaded pairs; the paper calls 0.23 a lower bound because competing X+- transitions are not counted) lowers it to 0.557 on the F_P 11 total-ratio structure. The model has ideal placement and unity pump saturation, while the paper 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions."
 fits: []
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.739 -> 0.796. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable review item E: structure.F_P 12 -> 11 (total ratio convention); expects unchanged (g2_line1 fail, B_first_lens fail)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added; B_first_lens expect fail -> pass-envelope", note: "model central 0.739 -> 0.517, envelope [0.292,0.743] -> [0.175,0.595]; central is outside abs 0.1 (review predicted 0.35-0.47), 0.23 is inside the envelope: flipped to pass-envelope honestly, not a pass"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: B_first_lens expect was fail (HEAD, central 0.796) and pass-envelope (r4-incoh, central 0.517); the combined model gives central 0.557, envelope [0.189, 0.640], paper 0.23 inside the envelope only, so expect pass-envelope; this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); p_X anchor text corrected to what the Nowak and Reimer texts say; no tolerance changed"}

@@ -35,6 +35,7 @@ device:
     params:
       pump: {range: [2.0, 5.0], unit: "1", tag: E, source: "the T series and the 4 K g2 are 'at saturation' (text p.9) with no absolute P/P_sat; 2 to 5 as for the other p-shell cards"}
       f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.7 (laser repetition rate 80 MHz)"}
+      p_X: {value: 0.6197183098591549, unit: "1", tag: DR, where: "refs/Third pass/tripathi2026_arxiv.txt p.7: X integrated SNSPD rate 440 kcps, charged exciton an additional 270 kcps; p_X = 440/(440+270)"}
   setup:
     kind: lens_fibre_det
     params:
@@ -66,11 +67,11 @@ reproduce:
     tol_reason: "F_P 0.178 (total rate ratio 1.178) is set from this lifetime and the planar reference 0.913 ns, so it agrees by construction; 5 percent numerical floor"
     expect: pass
   - item: BFL_X
-    class: M
+    class: C
     tol: {rel: 0.3}
     tol_reason: "the 440 kcps carries no error; the 4.1 +/- 0.3 percent setup efficiency gives 7 percent, and 30 percent covers the unknown absolute pump and the line partition between X and X+-"
-    expect: fail
-    reason: "model 0.253 (envelope 0.225-0.259 over pump 2-5; r4-cavity A2, was 0.248) vs 0.134: the model extraction is the entered 0.26 FEM table times a near-unity preparation of the X state, while the real dot splits its carriers between X (440 kcps) and X+- (270 kcps) and other lines; the model has no charge-state partition. The headline 21.7 percent (both lines summed) would agree within 2 sigma but is not a like-for-like quantity."
+    expect: pass
+    reason: "model 0.1565 (envelope 0.1395-0.1604 over pump 2-5) vs 0.134, inside rel 30 percent; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (r4-cavity A2 alone gave 0.253 and a fail; the p_X factor 440/(440+270) = 0.62 from the two count rates of the same measurement, text p.7, brings it to 0.1565). Agreement is by construction of the X / X+- partition and not a test of the model: class C, not M."
   - item: g2_sat_4K
     class: M
     tol: {k_sigma: 2, abs: 0.01}
@@ -85,7 +86,10 @@ reproduce:
     reason: "model flat at 3.4e-3 (rms_rel 0.88) vs 0.0183 -> 0.0663: the paper rise with temperature is phonon dephasing broadening the line into the detection window plus background; the p_shell path has no thermal escape (E_act, k0 not given) and no T-dependent background term."
 fits:
   - {param: structure.F_P, fitted_to: [tau_cbg]}
+  - {param: drive.p_X, fitted_to: [BFL_X]}
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_X 0.248 -> 0.253. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total now collects all emission at the FEM table, so mesa_reflector workaround replaced by cbg F_P 0.178 (rate_factor 1.178 -> F_P 0.178) + table 0.81:0.26"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: drive.p_X = 440/(440+270) added; BFL_X M/fail -> C/pass", note: "model 0.2476 -> 0.1535 (paper 0.134 +- 0.01, rel 0.3 tol passes); p_X is derived from the same measurement so the item is class C per the review"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: BFL_X expect was fail (HEAD, 0.253) and pass (r4-incoh, 0.1535, class C); the combined model gives 0.1565, envelope [0.1395, 0.1604], inside rel 0.3, so expect pass; this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); no tolerance changed"}

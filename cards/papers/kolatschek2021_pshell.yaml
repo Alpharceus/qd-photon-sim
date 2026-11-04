@@ -37,6 +37,7 @@ device:
       pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; 'saturation' is quoted (Fig 4b), so P/P_sat >= 2"}
       window_ps: {value: 3.0, unit: ps, tag: A, source: "pulse width of the 1207 nm p-shell laser is not stated in the read text; the 3 ps of the above-band laser is reused"}
       f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz; same laser system assumed for the p-shell scheme)"}
+      p_X: {range: [0.6, 0.8], unit: "1", tag: E, source: "p_X class range [E]: X share of the pairs loaded under non-resonant pumping. Anchors re-read in the source texts: Nowak 2014 verbatim \"From this we deduce pX = 0.69 and pCX = 0.31\" (from the 17 percent CX brightness at saturation); Reimer 2012 verbatim \"approximately one-quarter of the time an electron is captured into the quantum dot resulting in recombination of the charged exciton instead of the neutral exciton\" (a charged-exciton share of about 0.25; no p_X is printed there, so 0.75 would be arithmetic of this card and not a paper value, and it is not used as an anchor); Tripathi 2026 p.7: X 440 kcps and X+- 270 kcps, 440/(440+270) = 0.62. The range 0.6-0.8 is a class range, not a measured value for this dot"}
   setup:
     kind: lens_fibre_det
     params:
@@ -76,7 +77,7 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
     expect: fail
-    reason: "model 9.7e5 (envelope 8.4e5-9.75e5; r4-cavity A2, was 9.3e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
+    reason: "model 6.8e5 (envelope 5.05e5-7.8e5) vs 3.55e5, ~1.9x high; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (r4-cavity A2 alone 9.7e5, r4-incoh p_X 0.6-0.8 [E] alone 6.5e5, both on the F_P 11 total-ratio structure). The 6.4 % setup efficiency was measured on line 1 and the first-lens extraction and pump saturation are assumed, with eta_blink 0.25; no unblinked count rate is printed to separate the factors."
   - item: g2_vs_T
     class: M
     tol: {metric: rms_rel, max: 0.5}
@@ -97,3 +98,5 @@ history:
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable reviews items E and cards row: structure.F_P 12 -> 11 (total ratio convention); setup.filter_width_meV 0.0298 (stated 0.04 nm FWHM window at 4 K, DR conversion). The engine uses filter_width_meV only for the X/XX top-hat leakage, not for the sideband transmission Zf_window (Fable list item 1, engine work), so no model output is expected to move; the 0.1 nm window at 40/77 K cannot be entered per temperature point"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added", note: "rate_4K 9.3e5 -> 6.5e5 (envelope 4.6e5-7.7e5), ~1.8x high as the review predicted; expect fail unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: rate_4K expect fail on both sides, reason rewritten to the combined-model outcome (model 6.8e5, envelope 5.05e5-7.8e5, ~1.9x high); this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); p_X anchor text corrected to what the Nowak and Reimer texts say; no tolerance changed"}

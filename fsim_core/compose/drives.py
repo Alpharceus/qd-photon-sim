@@ -30,6 +30,7 @@ from .types import DrivePlan, Pulse
 
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the registry id
 _TEX = {
+    "tau_res_ps": r"\tau_{R}", "q_T": r"q_{T}", "k0_trap_ns": r"k_{0}^{T}", "E_trap_meV": r"E_{T}", "p_X": r"p_{X}", "a_slow": r"a_{s}", "tau_slow_ps": r"\tau_{s}",
     "shape": r"\Omega(t)", "fwhm_ps": r"\tau_{\mathrm{FWHM}}", "area_pi": r"\Theta", "detuning_meV": r"\Delta", "f_rep_MHz": r"f_{\mathrm{rep}}",
     "pol_angle_deg": r"\varphi", "target": r"\mathrm{target}", "cross_pol": r"\mathrm{cross\text{-}pol}", "laser_leak": r"f_{\mathrm{leak}}",
     "omega_ueV": r"\hbar\Omega", "saturation_s": r"s", "pump": r"P/P_{\mathrm{sat}}", "cw": r"\mathrm{cw}",
@@ -63,16 +64,16 @@ def _P(name, *args, **kw):
     return ParamSpec(name, *args, **kw)
 
 # observable id sets (design 2.6); cw drives exclude the per-pulse brightness (B_*) ids
-_COMMON = frozenset({"g2_0", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps", "tau_ratio", "beta", "eta_extract",
+_COMMON = frozenset({"g2_0", "g2_far", "rate_single_corr_Hz", "rate_detected_Hz", "F_P_eff", "F_P_peak", "tau_ps", "tau_ratio", "beta", "eta_extract",
                      "gamma_star_ns", "Z_phonon", "linewidth_ueV", "lambda_nm", "detuning_ueV"})
 _PULSED = frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre"})
 OBS_COHERENT_PULSED = _COMMON | _PULSED | {"inversion", "hom_vs_dt"}
 _CW_RATES = frozenset({"B_first_lens_Hz", "B_fibre_Hz"})     # devlib-fx3b: photon flux into the lens / fibre (cw)
-OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt"}      # above_band / p_shell also run cw
+OBS_INCOHERENT_PULSED = _COMMON | _PULSED | _CW_RATES | {"hom_vs_dt", "tau_fit_ps", "t_mean_ps", "g2_window"}      # above_band / p_shell also run cw
 # R2 F6: above_band / p_shell with cw = True are a cw stream: the per-pulse brightness B_*, the per-pulse HOM overlap
 # (hom_I, hom_V) and its separation series hom_vs_dt are undefined there, so the cw variant does not advertise them
 # (the photon fluxes B_*_Hz and rate_detected_Hz are the cw quantities). Decision: NOT ADVERTISED (r2-f56-decisions.md).
-OBS_INCOHERENT_CW_VARIANT = OBS_INCOHERENT_PULSED - frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt"})
+OBS_INCOHERENT_CW_VARIANT = OBS_INCOHERENT_PULSED - frozenset({"hom_I", "hom_V", "B_first_lens", "B_fibre", "hom_vs_dt", "tau_fit_ps", "t_mean_ps", "g2_window"})
 # R2 FIX-1a (audit 6): a cw stream has no per-pulse HOM overlap (it needs a timing-window definition), so the cw drives no
 # longer advertise hom_I / hom_V; the engine returns NaN with a reason if one is requested anyway.
 OBS_CW_RESONANT = _COMMON | _CW_RATES | {"g2_tau", "inversion", "s_0", "s_sat", "coherent_fraction"}
@@ -352,6 +353,17 @@ def _incoherent_plan(self, vals, em, rt, relax_name, shell):
             inputs[nm] = v
     if "tau_refill_ps" in names:
         inputs["tau_refill_ps"] = _positive("tau_refill_ps", g("tau_refill_ps"))
+    # r4-incoh (opt-in, 0 / 1 = the original scheme): reservoir ladder, trap channel, X share of the loaded pairs
+    for nm, lo, hi in (("tau_res_ps", 0.0, math.inf), ("q_T", 0.0, 10.0), ("k0_trap_ns", 0.0, math.inf),
+                       ("E_trap_meV", 0.0, math.inf), ("p_X", 0.5, 1.0), ("a_slow", 0.0, 0.9)):
+        if nm in names:
+            v = float(g(nm))
+            if not (math.isfinite(v) and lo <= v <= hi):
+                raise ValueError(f"{nm} must be in [{lo}, {hi}], got {v!r}")
+            if nm != "p_X" or v != 1.0:
+                inputs[nm] = v
+    if "tau_slow_ps" in names:
+        inputs["tau_slow_ps"] = _positive("tau_slow_ps", g("tau_slow_ps"))
     needs = frozenset({"cascade"}) if cap2 else frozenset()
     if cw:
         # P/P_sat = 1 means the pump rate equals the total X decay rate [A]
@@ -394,6 +406,33 @@ _REFILL = (
             r"with $\rho = 1 - f_{\mathrm{bg}}$. HOM and brightness are the signal-only values."),
 )
 
+_LADDER = (
+    _P("tau_res_ps", "ps", 0.0, lo=0.0, hi=1e5, tag="E", source="reservoir survival near one dot [E]: 3-30 ps in dense SK ensembles "
+       "(capture by neighbouring dots; Siegert 2005, Grosse 1997), 0.3-1 ns for a single dot in a nanowire; 0 = off (the original scheme)",
+       group="advanced", visible_if={"cw": [False]},
+       help=r"Reservoir loss time $\tau_R$ (capture by other dots / wetting-layer recombination). $> 0$ switches on the reservoir "
+            r"ladder: Poisson($\mu$) pairs wait in the reservoir, capture at $n_R/\tau_{\mathrm{cap}}$ with dot capacity 2, loss at $n_R/\tau_R$. "
+            r"Small-$\mu$ limit with a short window: $g^{(2)} = \Gamma/(\Gamma + \tau_{\mathrm{cap}}^{-1} + \tau_R^{-1})$ [DR]."),
+    _P("q_T", "1", 0.0, lo=0.0, hi=10.0, tag="E", source="trapped pairs per pump pair; class [E] (Santori 2004, Kiraz 2002 refilling "
+       "statistics), per card only as a fit (class C); 0 = off", group="advanced", visible_if={"cw": [False]},
+       help=r"Trap loading $q_T$: pairs stored in slow traps per pump pair; released at $k_{\mathrm{rel}}$ into the reservoir (delayed, uncorrelated refilling)."),
+    _P("k0_trap_ns", "1/ns", 0.0, lo=0.0, hi=1e6, tag="E", source="Arrhenius prefactor of the trap release; [E] class model", group="advanced",
+       visible_if={"cw": [False]}, help=r"Trap release $k_{\mathrm{rel}}(T) = k_0\,e^{-E_T/k_{\mathrm B}T}$ (0 = traps never release)."),
+    _P("E_trap_meV", "meV", 0.0, lo=0.0, hi=200.0, tag="E", source="trap depth; [E] class range 5-20 meV (Fable R4 review)", group="advanced",
+       visible_if={"cw": [False]}, help=r"Trap activation energy $E_T$ of the release."),
+)
+_TAIL = (
+    _P("a_slow", "1", 0.0, lo=0.0, hi=0.9, tag="E", source="weight of a slow single-photon tail (dark-exciton / trap storage); per card digitised or fitted; 0 = off",
+       group="advanced", visible_if={"cw": [False]},
+       help=r"Slow fraction $a_s$ of the single-photon emission-time density (decay $\tau_s$). It leaks the neighbouring peaks into the central window: $g^{(2)}_{\mathrm{win}} \approx g^{(2)} + 2 a_s e^{-T/2\tau_s}$ [DR]; reported by g2_window."),
+    _P("tau_slow_ps", "ps", 3000.0, lo=10.0, hi=1e5, scale="log", tag="E", source="slow tail time constant; dark-exciton storage class (Johansen 2010)",
+       group="advanced", visible_if={"cw": [False]}, help=r"Decay time $\tau_s$ of the slow single-photon tail."),
+)
+_P_X = _P("p_X", "1", 1.0, lo=0.5, hi=1.0, tag="E", source="X share of the loaded pairs under non-resonant pumping; class [E] 0.6-0.8 "
+          "(Nowak 0.69, Reimer 0.75, Tripathi 0.62); 1 = off", group="advanced",
+          help=r"Fraction $p_X$ of the loaded pairs that end in the neutral exciton line (the rest in $X^{\pm}$ or other complexes); scales the "
+               r"photons per pulse and all rates, not $g^{(2)}$ (thinning) [E].")
+
 _FREP = _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            visible_if={"cw": [False]}, help="Pulse repetition rate.")
 
@@ -409,7 +448,7 @@ ABOVE_BAND = PlannedDrive(
         _FREP,
         _P("cap2", "", False, tag="A", source=_SRC_A, sweepable=False, group="advanced",
            help="Allow loading of the biexciton (capacity 2)."),
-    ) + _REFILL,
+    ) + _REFILL + _LADDER + _TAIL + (_P_X,),
     refs=("Above-band incoherent excitation: class model [E]",),
     provides=frozenset({"incoherent_pump"}),
     observables=OBS_INCOHERENT_PULSED, observables_cw=OBS_INCOHERENT_CW_VARIANT, planner=_plan_above_band)
@@ -426,7 +465,7 @@ P_SHELL = PlannedDrive(
         _FREP,
         _P("b_dark", "1", 0.0, lo=0.0, hi=1.0, tag="A", source=_SRC_A, group="advanced",
            help=r"Branching fraction $b_{\mathrm{dark}}$ of the p -> s relaxation into an optically dark state; only $(1 - b_{\mathrm{dark}})$ of the pump loads the bright exciton (the dark state is not re-emitted)."),
-    ) + _REFILL + (
+    ) + _REFILL + _LADDER + _TAIL + (_P_X,) + (
         _P("E_act_meV", "meV", 0.0, lo=0.0, hi=200.0, tag="E", source="Arrhenius activation of the thermal "
            "escape of s-shell carriers to the p shell / wetting layer; [E] class model, no paper activation", group="advanced",
            help=r"Activation energy of the thermal escape; $k_{\mathrm{esc}}(T) = k_0\,e^{-E_{\mathrm{act}}/k_{\mathrm B}T}$."),
