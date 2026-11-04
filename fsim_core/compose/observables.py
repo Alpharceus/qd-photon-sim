@@ -313,6 +313,30 @@ def irf_dip_g2(g2_0, tau_dip_ns, irf_fwhm_ps):
     return float(1.0 - (1.0 - float(g2_0)) * cw_g2._dip_factor(float(tau_dip_ns), float(irf_fwhm_ps), "gaussian"))
 
 
+def single_photon_rate_corrected(rate_Hz, g2_raw):
+    """Multi-photon-corrected single-photon rate R_1 = R_det sqrt(1 - g2_raw) (Kolatschek Ref 38, Nowak Ref 31 convention)."""
+    return float(rate_Hz) * math.sqrt(1.0 - float(g2_raw))
+
+
+# ---- r4-incoh: peak-window g2 with a slow single-photon tail (Fable R4 review 3.6, 3.10)
+def binned_g2_tail(g2_0, components, T_bin_ns):
+    """Central-bin g2 of a pulsed histogram whose bin equals the period T when the single-photon emission-time density is a
+    sum of exponentials f(t) = sum_i a_i gamma_i exp(-gamma_i t), `components` = [(a_i, gamma_i/ns)], sum a_i = 1 [DR]:
+        g2_bin = 1 - (1 - g2_0) c0,   c0 = 2 sum_ij a_i a_j gamma_i/(gamma_i + gamma_j) (1 - exp(-gamma_j T/2))
+    (autocorrelation of f integrated over |tau| < T/2). One component reproduces `binned_g2` (IRF-free); a small slow
+    fraction a_s adds g2_bin ~ g2_0 + 2 a_s exp(-gamma_s T/2) (the neighbours' tails leaking into the central window)."""
+    T = float(T_bin_ns)
+    comp = [(float(a), float(g)) for a, g in components if float(a) > 0.0]
+    if not (T > 0.0 and comp and all(g > 0.0 for _, g in comp)):
+        return NAN
+    tot = sum(a for a, _ in comp)
+    c0 = 0.0
+    for ai, gi in comp:
+        for aj, gj in comp:
+            c0 += (ai / tot) * (aj / tot) * gi / (gi + gj) * (-math.expm1(-gj * T / 2.0))
+    return float(1.0 - (1.0 - float(g2_0)) * 2.0 * c0)
+
+
 def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None):
     """Predicted raw visibility V_raw = (rho^2 I - g2_raw)(1 - eps_int) with I the solver's whole-stream overlap
     and rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1, V = I - g2). The pre-FX2c
@@ -403,7 +427,8 @@ def _derive(c: Context) -> dict:
         Zf, q = 1.0, Z
     beta = float(res.extra.get("beta", rt.beta))
     eta_pol = float(su.eta_pol) * float(sr.pol_factor)
-    n_ph = float(res.n_ph)
+    pX = float(plan.inputs.get("p_X", 1.0) or 1.0)     # r4-incoh: X share of the loaded pairs (non-resonant pump); 1 = bit-identical
+    n_ph = float(res.n_ph) * pX
     pulsed = plan.timing == "pulsed"
     f_rep = float(plan.f_rep_MHz) * 1e6 if plan.f_rep_MHz else None
     eta_blink = float(_read(c, "material", "eta_blink", 1.0))
@@ -471,14 +496,14 @@ def _derive(c: Context) -> dict:
         d["B_lens"] = d["B_fibre"] = NAN
         why["B_lens"] = why["B_fibre"] = "continuous drive: brightness per pulse undefined (see rate_detected_Hz)"
         flux = res.extra.get("flux_ns")
-        S = (float(flux) * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
+        S = (float(flux) * pX * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * Zf * float(su.eta_fibre)
              * float(su.eta_optics) * float(su.eta_det)) if flux is not None else NAN
     d["rate_detected_Hz"] = S
     # FX3b: photon rates into the first lens / fibre (before eta_optics, eta_det), cw (flux = Gamma n_X,ss) and pulsed (f_rep B)
     if pulsed and f_rep and math.isfinite(d["B_lens"]):
         d["B_first_lens_Hz"], d["B_fibre_Hz"] = f_rep * d["B_lens"], f_rep * d["B_fibre"]
     elif not pulsed and res.extra.get("flux_ns") is not None:
-        Bl = float(res.extra["flux_ns"]) * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
+        Bl = float(res.extra["flux_ns"]) * pX * 1e9 * eta_blink * eta_pol * beta * d["eta_out"] * d["T_NA"] * Zf
         d["B_first_lens_Hz"], d["B_fibre_Hz"] = Bl, Bl * float(su.eta_fibre)
     else:
         d["B_first_lens_Hz"] = d["B_fibre_Hz"] = NAN
@@ -527,6 +552,45 @@ def _derive(c: Context) -> dict:
     else:
         d["g2_irf"] = NAN
         why["g2_irf"] = "IRF-convolved dip needs a cw rate-solver drive (dip recovery time)"
+    # r4-incoh ----------------------------------------------------------------------------------------------------------
+    # g2_far = g2_on / eta_blink (papers that normalise to FAR peaks with visible blinking: two-state emitter, tau_blink >> T_rep)
+    if eta_blink > 0.0:
+        d["g2_far"] = g2 / eta_blink
+    else:
+        d["g2_far"] = NAN
+        why["g2_far"] = "needs a non-zero blinking on-fraction"
+    # single-photon rate corrected for the multi-photon share, R_1 = R_det sqrt(1 - g2_raw) (Kolatschek Ref 38 / Nowak Ref 31)
+    if math.isfinite(S) and math.isfinite(d["g2_raw"]) and d["g2_raw"] < 1.0:
+        d["rate_single_corr_Hz"] = single_photon_rate_corrected(S, d["g2_raw"])
+    else:
+        d["rate_single_corr_Hz"] = NAN
+        why["rate_single_corr_Hz"] = "needs a detected rate and a raw g2 below 1"
+    # peak-window g2 with a slow single-photon tail (drive inputs a_slow, tau_slow_ps); no tail = the one-exponential binned g2
+    a_sl = float(plan.inputs.get("a_slow", 0.0) or 0.0)
+    if pulsed and f_rep:
+        comp = [(1.0 - a_sl, Gamma + k + k_off)]
+        if a_sl > 0.0:
+            comp.append((a_sl, 1e3 / float(plan.inputs["tau_slow_ps"])))
+        d["g2_window"] = binned_g2_tail(g2, comp, 1e9 / f_rep)
+    else:
+        d["g2_window"] = NAN
+        why["g2_window"] = "the peak-window g2 needs a pulsed drive (window = pulse period)"
+    # fitted X-line decay time of the capacity-2 reservoir cascade (incoherent pulsed drives)
+    d["tau_fit_ps"] = d["t_mean_ps"] = NAN
+    if plan.family == "incoherent" and pulsed and float(plan.relax_ns) > 0.0 and float(plan.pump_rate_ns) > 0.0:
+        try:
+            from . import solvers as _sv
+            ratio = float(em.gamma_xx_ratio)
+            gXX = ratio * float(getattr(rt, "Gamma0_ns", Gamma))
+            t_, I_ = _sv.x_line_decay(float(plan.pump_rate_ns) * float(plan.tau_on_ns), float(plan.relax_ns), Gamma, k,
+                                      gXX, k * ratio, float(plan.inputs.get("tau_res_ps", 0.0) or 0.0) * 1e-3)
+            tf, tm = _sv.tau_fit_from_decay(t_, I_)
+            d["tau_fit_ps"], d["t_mean_ps"] = 1e3 * tf, 1e3 * tm
+        except (ValueError, RuntimeError, FloatingPointError) as exc:       # pragma: no cover - degenerate inputs
+            why["tau_fit_ps"] = why["t_mean_ps"] = f"decay fit failed: {exc}"
+    if not math.isfinite(d["tau_fit_ps"]):
+        why.setdefault("tau_fit_ps", "needs an incoherent pulsed drive with a capture time (above_band / p_shell)")
+        why.setdefault("t_mean_ps", why["tau_fit_ps"])
     I1 = float(res.I_single)
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
     hg = plan.inputs.get("hom_gate")
@@ -662,6 +726,11 @@ _OBS_TEX = {
     "tau_purcell_ps": r"\tau_{\mathrm P}",
     "tau_EL_ps": r"\tau_{\mathrm{EL}}",
     "g2_binned": r"g^{(2)}_{\mathrm{bin}}(0)",
+    "g2_window": r"g^{(2)}_{\mathrm{win}}(0)",
+    "g2_far": r"g^{(2)}_{\mathrm{far}}(0)",
+    "rate_single_corr_Hz": r"R_{1}",
+    "tau_fit_ps": r"\tau_{\mathrm{fit}}",
+    "t_mean_ps": r"\langle t\rangle",
     "spectral_overlap": r"\varepsilon_{XX}",
     "g2_irf": r"g^{(2)}_{\mathrm{IRF}}(0)",
     "hom_I_gated": r"I_{\mathrm{HOM}}^{\mathrm{gate}}",
@@ -734,6 +803,14 @@ _o("tau_EL_ps", "Electroluminescence decay time $\\tau_{\\mathrm{EL}} = 1/(\\Gam
    _ALL)
 _o("g2_binned", "Central-bin $g^{(2)}$ of the pulsed histogram (bin = pulse period; EL decay leaks neighbouring peaks, IRF adds more)",
    "1", _ALL + ("setup",))
+_o("g2_window", "Central-window $g^{(2)}$ of the pulsed histogram with a slow single-photon tail (window = pulse period; "
+   "drive a_slow / tau_slow_ps; no tail = g2_binned without IRF)", "1", _ALL + ("setup",))
+_o("g2_far", "$g^{(2)}(0)$ normalised to the far peaks when blinking is visible: $g^{(2)}_{\\mathrm{on}}/\\eta_{\\mathrm{blink}}$", "1",
+   _ALL + ("setup.laser_leak", "setup.dark_cps", "material.eta_blink"))
+_o("rate_single_corr_Hz", "Multi-photon-corrected single-photon rate $R_{\\mathrm{det}}\\sqrt{1 - g^{(2)}_{\\mathrm{raw}}}$", "Hz", _CH)
+_o("tau_fit_ps", "Single-exponential fit time of the X-line decay of the capacity-2 reservoir cascade (peak, 3 decades, linear least squares)",
+   "ps", _ALL)
+_o("t_mean_ps", "Mean emission time $\\int t I\\,dt/\\int I\\,dt$ of the X-line decay of the capacity-2 reservoir cascade", "ps", _ALL)
 _o("spectral_overlap", "X-XX spectral leakage $\\varepsilon = t_{XX}/t_X$ through the top-hat window ($\\rho$, $g^{(2)} = 1 - \\rho^2$ conventions)",
    "1", _MS + ("setup.filter_*", "setup.xx_*"), ("intrinsic", "rho", "g2"),
    key="spectral_overlap", by_conv={"intrinsic": "spectral_overlap", "rho": "rho_spectral", "g2": "g2_spectral"})

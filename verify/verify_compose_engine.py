@@ -1110,6 +1110,143 @@ def main():
           "no HOM gate set" in sr56.get("unavailable", {}).get("hom_I_gated", "") and "g2_0" not in sr56.get("unavailable", {}),
           str(sr56.get("unavailable")))
 
+
+    # ------------------------------------------------------------------ 19. r4-incoh: reservoir ladder, trap channel, p_X, tail window, tau_fit
+    GAM_L = 1.0 / 0.3
+    rtL = rtx(GAM_L)
+    base_L = IS.run(inc_plan(30, 1.0, 10.0), None, rt1)
+    off_L = IS.run(inc_plan(30, 1.0, 10.0, tau_res_ps=0.0, q_T=0.0, k0_trap_ns=0.0, E_trap_meV=5.0, a_slow=0.0), None, rt1)
+    check("19a. r4-incoh defaults (tau_res_ps = q_T = 0, p_X = 1) reproduce the S3d result bit-for-bit (g2, n_ph, I)",
+          (base_L.g2_0, base_L.n_ph, base_L.I_single) == (off_L.g2_0, off_L.n_ph, off_L.I_single))
+    ok, det = True, ""
+    cL = 1.0 / 0.03
+    for tr in (30.0, 100.0, 1e9):
+        lL = 1.0 / (tr * 1e-3)
+        r = IS.run(inc_plan(2e-3, 0.05, 30.0, f=10.0, tau_res_ps=tr), None, rtL)
+        want_g2 = GAM_L / (GAM_L + cL + lL)
+        want_n = 2e-3 * cL / (cL + lL)
+        want_I = (cL + lL) / (cL + lL + GAM_L)
+        ok &= near(r.g2_0, want_g2, rel=0.01) and near(r.n_ph, want_n, rel=0.01) and near(r.I_single, want_I, rel=1e-3)
+        det += f" tau_R {tr:g} ps: g2 {r.g2_0:.4f}/{want_g2:.4f}, n {r.n_ph:.3e}/{want_n:.3e}, I {r.I_single:.4f}/{want_I:.4f};"
+    check("19b. reservoir ladder, small mu and a short window: g2 = Gamma/(Gamma + 1/tau_cap + 1/tau_R), n_ph = mu c/(c + l), "
+          "I = (c + l)/(c + l + Gamma) (hand-derived race of two pairs; 1% / 1% / 0.1%)", ok, det)
+    r0 = IS.run(inc_plan(2e-3, 0.05, 30.0, tau_res_ps=0.05), None, rtL)
+    check("19c. tau_R -> 0: every pair is lost before capture (n_ph << mu) and g2 -> 0",
+          r0.n_ph < 1e-2 * 2e-3 and r0.g2_0 < 1e-3, f"n_ph {r0.n_ph:.2e}, g2 {r0.g2_0:.2e}")
+    # trap channel: m1 = mu (1 + q); m2 = mu^2 q (2 + q) Gamma/(Gamma + k) (the second photon needs the dot empty: release after the first emission)
+    ok, det = True, ""
+    kk = 0.05
+    for q in (0.1, 0.5):
+        r = IS.run(inc_plan(2e-3, 0.05, 1.0, f=1.0, q_T=q, k0_trap_ns=kk, E_trap_meV=0.0, T_K=4.0), None, rtL)
+        want = q * (2.0 + q) * GAM_L / (GAM_L + kk) / (1.0 + q) ** 2
+        ok &= near(r.g2_0, want, rel=0.02) and near(r.n_ph, 2e-3 * (1.0 + q), rel=0.01)
+        det += f" q {q}: g2 {r.g2_0:.4f}/{want:.4f};"
+    check("19d. trap channel (k_rel T_rep >> 1): g2 = q (2 + q) Gamma/(Gamma + k_rel)/(1 + q)^2 and n_ph = mu (1 + q) (hand-derived, 2% / 1%)",
+          ok, det)
+    kT = 7.0 * math.exp(-9.0 / (_KB * 60.0))
+    r = IS.run(inc_plan(2e-3, 0.05, 1.0, f=1.0, q_T=0.1, k0_trap_ns=7.0, E_trap_meV=9.0, T_K=60.0), None, rtL)
+    check("19e. trap release is Arrhenius: reported k_rel = k0 exp(-E_T/kT) (independent exp)",
+          near(r.extra["ladder"]["k_rel_ns"], kT, rel=1e-12), f"{r.extra['ladder']['k_rel_ns']:.6g} vs {kT:.6g}")
+    sel_plan = inc_plan(2e-3, 0.05, 30.0, tau_res_ps=30.0)
+    s_sel, iss = solvers.select(sel_plan, None, rtL, "auto", want_hom=False)
+    check("19f. a ladder plan is routed to lindblad_incoherent even when the rate solver is preferred (rate refuses it with a reason)",
+          s_sel is not None and s_sel.name == "lindblad_incoherent" and any("ladder" in i for i in iss), str(iss))
+    # x-line decay: closed form (instantaneous capture, surplus pairs vanish quickly) and the mu -> 0 limit
+    from scipy.optimize import curve_fit
+    Gx = 1.0 / 0.78
+    ok, det = True, ""
+    for mu_ in (0.22, 1.2):
+        t_, I_ = solvers.x_line_decay(mu_, 1e-6, Gx, 0.0, 2.0 * Gx, 0.0, tau_res_ns=2e-4)
+        P0 = math.exp(-mu_)
+        P1 = mu_ * P0
+        P2 = 1.0 - P0 - P1
+        Icf = Gx * ((P1 + 2.0 * P2) * np.exp(-Gx * t_) - 2.0 * P2 * np.exp(-2.0 * Gx * t_))
+        dev_ = float(np.max(np.abs(I_[1:] - Icf[1:])) / np.max(Icf))        # sample 0 is the capture dead time (closed form: instantaneous)
+        ok &= dev_ < 2e-2
+        det += f" mu {mu_}: max dev {dev_:.2e};"
+    check("19g. x_line_decay with fast capture and loss of surplus pairs = (P1 + 2 P2) e^{-Gt} - 2 P2 e^{-2Gt} (ratio 2 closed form), 2% of the peak",
+          ok, det)
+    t_, I_ = solvers.x_line_decay(1e-6, 1e-6, Gx, 0.0, 2.0 * Gx, 0.0)
+    tf0, _tm = solvers.tau_fit_from_decay(t_, I_)
+    check("19h. tau_fit -> the bare lifetime as mu -> 0 (1e-3)", near(tf0, 0.78, rel=1e-3), f"{tf0 * 1e3:.2f} ps")
+    mu_ = 0.51
+    P0 = math.exp(-mu_)
+    P1 = mu_ * P0
+    P2 = 1.0 - P0 - P1
+    tt = np.linspace(0.0, 12.0 * 0.78, 4000)
+    Icf = Gx * ((P1 + 2.0 * P2) * np.exp(-Gx * tt) - 2.0 * P2 * np.exp(-2.0 * Gx * tt))
+    ip = int(np.argmax(Icf))
+    m_ = (np.arange(tt.size) >= ip) & (Icf >= Icf[ip] * 1e-3)
+    pf, _ = curve_fit(lambda x, a, b: a * np.exp(-x / b), tt[m_], Icf[m_], p0=[Icf[ip], 0.8])
+    tf_s, tm_s = solvers.tau_fit_from_decay(tt, Icf)
+    check("19i. tau_fit_from_decay = an independent scipy curve_fit of the closed-form curve (peak, 3 decades, linear LSQ); the fit "
+          "is longer than the bare lifetime and t_mean sits between", near(tf_s, pf[1], rel=1e-6) and tf_s > 0.78 and 0.78 < tm_s,
+          f"{tf_s * 1e3:.1f} ps (curve_fit {pf[1] * 1e3:.1f}), t_mean {tm_s * 1e3:.1f} ps")
+    # g2 window with a slow tail
+    gb1 = OB.binned_g2(0.1, 3.0, 12.5)
+    gw1 = OB.binned_g2_tail(0.1, [(1.0, 3.0)], 12.5)
+    check("19j. binned_g2_tail with one component = the closed-form binned_g2 (1e-12)", abs(gb1 - gw1) < 1e-12, f"{gw1:.6f}")
+    T_, aS, gS, gF, g20 = 13.2, 0.02, 1.0 / 3.0, 3.0, 0.005
+    dtn = 1e-3
+    tg = np.arange(0.0, 60.0, dtn)
+    fdens = (1.0 - aS) * gF * np.exp(-gF * tg) + aS * gS * np.exp(-gS * tg)
+    fdens = fdens / (np.sum(fdens) * dtn)                      # unit mass on the grid
+    # autocorrelation by FFT-free direct sum on a coarse lag grid (independent of the closed form): G(tau) = int f(t) f(t + tau) dt
+    lags = np.arange(0.0, T_ / 2.0, 0.01)
+    Gt = np.array([np.sum(fdens[:tg.size - int(round(l / dtn))] * fdens[int(round(l / dtn)):]) * dtn for l in lags])
+    c0_num = 2.0 * np.trapezoid(Gt, lags)
+    want_w = 1.0 - (1.0 - g20) * c0_num
+    got_w = OB.binned_g2_tail(g20, [(1.0 - aS, gF), (aS, gS)], T_)
+    small = g20 + 2.0 * aS * math.exp(-gS * T_ / 2.0)
+    check("19k. binned_g2_tail with a slow tail = numerical autocorrelation integral (3e-4) and the small-a_s form g2 + 2 a_s e^{-T/2tau_s} (O(a_s^2))",
+          abs(got_w - want_w) < 3e-4 and abs(got_w - small) < 4.0 * aS * aS + 1e-3, f"{got_w:.5f} vs numeric {want_w:.5f}, small-a_s {small:.5f}")
+    check("19l. rate_single_corr: the Kolatschek line-1 check 1.3 Mcps x sqrt(1 - 0.262) = the printed 1.1 Mcps (2%)",
+          near(OB.single_photon_rate_corrected(1.3e6, 0.262), 1.1e6, rel=0.02), f"{OB.single_photon_rate_corrected(1.3e6, 0.262):.4g}")
+    # g2_far: two-state emitter, blink blocks much longer than a period, iid states per block (independent far peaks)
+    rng = np.random.default_rng(7)
+    eta_b, m1_on, g2_on = 0.4, 0.3, 0.2
+    P2n = 0.5 * g2_on * m1_on ** 2
+    P1n = m1_on - 2.0 * P2n
+    nblk, blen = 4000, 50
+    on = rng.random(nblk) < eta_b
+    u = rng.random((nblk, blen))
+    nph = np.where(u < P2n, 2, np.where(u < P2n + P1n, 1, 0)) * on[:, None]
+    near_a = np.mean(nph * (nph - 1))
+    far_a = np.mean(nph) ** 2
+    g2_far_mc = near_a / far_a
+    check("19m. g2_far = g2_on/eta_blink matches a two-state Monte Carlo (blink blocks, near/far peak areas; 5%)",
+          near(g2_far_mc, g2_on / eta_b, rel=0.05), f"MC {g2_far_mc:.3f} vs {g2_on / eta_b:.3f}")
+
+    def ab_spec(**dp):
+        pars = {"pump": 3.0, "window_ps": 3.0, "f_rep_MHz": 76.0, **dp}
+        return {"schema": "fsim-composed/1", "T_K": {"value": 4.0, "unit": "K", "tag": "V", "source": "t"},
+                "material": {"kind": "inas_gaas_sk", "params": {}}, "structure": {"kind": "bulk_planar", "params": {}},
+                "drive": {"kind": "above_band", "params": {k: exact(v, R.get("drive", "above_band").param(k).unit, "A") for k, v in pars.items()}},
+                "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+    s_a = engine.evaluate_spec(ab_spec())["scalars"]
+    s_x = engine.evaluate_spec(ab_spec(p_X=0.7))["scalars"]
+    s_1 = engine.evaluate_spec(ab_spec(p_X=1.0))["scalars"]
+    check("19n. p_X thins the photons per pulse and the brightness (B_first_lens x p_X exactly), leaves g2 alone; p_X = 1 is bit-identical",
+          near(s_x["B_first_lens"], 0.7 * s_a["B_first_lens"], rel=1e-12) and near(s_x["n_ph"], 0.7 * s_a["n_ph"], rel=1e-12)
+          and s_x["g2_0"] == s_a["g2_0"] and all(s_1[k] == s_a[k] for k in ("g2_0", "B_first_lens", "n_ph", "rate_detected_Hz")),
+          f"{s_x['B_first_lens'] / s_a['B_first_lens']:.6f}")
+    NEWO = ["tau_fit_ps", "t_mean_ps", "g2_window", "g2_far", "rate_single_corr_Hz", "g2_binned", "n_ph"]
+    e_l = engine.envelope(ab_spec(tau_res_ps=30.0), NEWO)
+    s_l = {k: e_l[k]["central"] for k in NEWO}
+    e_a = engine.envelope(ab_spec(), NEWO)
+    s_a = {**s_a, **{k: e_a[k]["central"] for k in NEWO}}
+    check("19o. engine above_band with tau_res_ps = 30: the ladder runs (solver lindblad_incoherent), the observables tau_fit_ps / t_mean_ps / "
+          "g2_window / g2_far / rate_single_corr_Hz are finite, and the reservoir loss lowers n_ph",
+          engine.evaluate_spec(ab_spec(tau_res_ps=30.0))["scalars"]["solver"] == "lindblad_incoherent"
+          and all(math.isfinite(s_l[k]) for k in ("tau_fit_ps", "t_mean_ps", "g2_window", "g2_far", "rate_single_corr_Hz"))
+          and s_l["n_ph"] < s_a["n_ph"] and s_l["tau_fit_ps"] > 0.0,
+          f"n_ph {s_l['n_ph']:.4f} vs {s_a['n_ph']:.4f}, tau_fit {s_l['tau_fit_ps']:.1f} ps")
+    e_t = engine.envelope(ab_spec(a_slow=0.02, tau_slow_ps=3000.0), NEWO)
+    s_t = {k: e_t[k]["central"] for k in NEWO}
+    check("19p. above_band a_slow / tau_slow_ps: g2_window rises above g2_binned by the leaked neighbour tails; without a tail they agree (1e-12)",
+          s_t["g2_window"] > s_t["g2_binned"] + 1e-3 and abs(s_a["g2_window"] - s_a["g2_binned"]) < 1e-12,
+          f"{s_t['g2_window']:.4f} vs {s_t['g2_binned']:.4f}")
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1

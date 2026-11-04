@@ -37,6 +37,7 @@ device:
       pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; 'saturation' is quoted (Fig 4b), so P/P_sat >= 2"}
       window_ps: {value: 3.0, unit: ps, tag: A, source: "pulse width of the 1207 nm p-shell laser is not stated in the read text; the 3 ps of the above-band laser is reused"}
       f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz; same laser system assumed for the p-shell scheme)"}
+      p_X: {range: [0.6, 0.8], unit: "1", tag: E, source: "p_X class range [E]: X share of the pairs loaded under non-resonant pumping. One anchor is verbatim in refs/Third pass/tripathi2026_arxiv.txt p.7 (X 440 kcps and X+- 270 kcps, 440/(440+270) = 0.62); the other anchors (Nowak 0.69, Reimer 0.75) are values quoted in the R4 incoherent review, not re-read here"}
   setup:
     kind: lens_fibre_det
     params:
@@ -74,7 +75,7 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
     expect: fail
-    reason: "model 9.3e5 (envelope 7.7e5-9.7e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
+    reason: "model 6.5e5 (envelope 4.6e5-7.7e5, after p_X 0.6-0.8 [E]) vs 3.55e5 (~1.8x high); before p_X 9.3e5 (envelope 7.7e5-9.7e5) with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
   - item: g2_vs_T
     class: M
     tol: {metric: rms_rel, max: 0.5}
@@ -93,3 +94,4 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added", note: "rate_4K 9.3e5 -> 6.5e5 (envelope 4.6e5-7.7e5), ~1.8x high as the review predicted; expect fail unchanged"}

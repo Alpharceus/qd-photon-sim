@@ -39,6 +39,7 @@ device:
       pump: {range: [2.0, 10.0], unit: "1", tag: E, source: "absolute pump power not given; 'saturation' is quoted (Fig 3c) although the text says no clear count-rate saturation is observed, so P/P_sat >= 2 is an estimate"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "text p.3 (775 nm pulsed laser, pulse width 3 ps); rectangular window of that length is an assumption [A]"}
       f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz)"}
+      p_X: {range: [0.6, 0.8], unit: "1", tag: E, source: "p_X class range [E]: X share of the pairs loaded under non-resonant pumping. One anchor is verbatim in refs/Third pass/tripathi2026_arxiv.txt p.7 (X 440 kcps and X+- 270 kcps, 440/(440+270) = 0.62); the other anchors (Nowak 0.69, Reimer 0.75) are values quoted in the R4 incoherent review, not re-read here"}
   setup:
     kind: lens_fibre_det
     params:
@@ -48,7 +49,7 @@ device:
 reported:
   - {id: tau_cav, observable: tau_ps, value: 300.8, err: 0.8, tag: V, where: "text p.4 / Fig 3b (decay time inside the cavity, line 2)"}
   - {id: g2_sat, observable: g2_0, convention: raw, value: 0.70, err: 0.07, tag: V, where: "text p.4 / Fig 3c (above-band saturation; fit with cw dip and blinking envelope; strong refilling)"}
-  - {id: rate_sat, observable: rate_detected_Hz, value: 550000.0, tag: V, where: "text p.4 (g2-CORRECTED single-photon count rate on the detectors at saturation, above-band; no error given)"}
+  - {id: rate_sat, observable: rate_single_corr_Hz, value: 550000.0, tag: V, where: "text p.4 (g2-CORRECTED single-photon count rate on the detectors at saturation, above-band; no error given)"}
 reproduce:
   - item: tau_cav
     class: M
@@ -67,9 +68,10 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; a factor-1.5 band (50 percent) because pump saturation, the 6.4 % setup efficiency (measured on line 1) and the NA 0.6 table point are all assumed; blinking is not modelled"
     expect: fail
-    reason: "model overestimates by ~6x (3.6 Mcps vs 0.55 Mcps): the model assumes unity pump saturation, ideal placement and no blinking. NOTE the paper 550 kcps is the g2-corrected true single-photon rate (p.4) while the model value is the raw detected rate, so the comparison is not like for like; the count-rate assumptions (6.4 % reused from line 1, NA 0.6 table point) are also not from this line."
+    reason: "model 2.7e6 (envelope 2.0-3.1e6) vs 5.5e5, ~4.9x high, after the convention fix (item now rate_single_corr_Hz = R_det sqrt(1 - g2_raw), the paper R_1 convention) and p_X 0.6-0.8 [E]. The convention changes nothing numerically here because the model g2 is ~1e-3; p_X lowers the model by ~0.7. What remains is unmodelled blinking duty (no number printed for this line), the unknown placement (F_P 12 ideal vs 4 measured), and the 6.4 percent setup efficiency measured on line 1."
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 15: rate_sat reason rewritten (paper 550 kcps is the g2-corrected true single-photon rate vs the raw model rate)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: rate_sat observable -> rate_single_corr_Hz; p_X range 0.6-0.8 [E]", note: "model rate 3.8e6 -> 2.7e6; expect fail unchanged (review predicted ~2.5x after p_X and beta from F_P 3, which this card does not enter)"}
