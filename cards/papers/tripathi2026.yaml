@@ -88,6 +88,7 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_cbg]}
   - {param: drive.p_X, fitted_to: [BFL_X]}
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "no printed model value moved (tau_cbg 775.1, BFL_X 0.1565, g2_sat_4K 0.00343, g2_vs_T rms 0.8804 unchanged); expects unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_X 0.248 -> 0.253. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total now collects all emission at the FEM table, so mesa_reflector workaround replaced by cbg F_P 0.178 (rate_factor 1.178 -> F_P 0.178) + table 0.81:0.26"}

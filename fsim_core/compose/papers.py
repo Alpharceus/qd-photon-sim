@@ -304,6 +304,14 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
                 P.append(f"{w}: digitized series must be tag DR")
             if not _nonempty(s.get("method")):
                 P.append(f"{w}: digitized series needs a non-empty `method` note")
+        pp_ = s.get("per_point")
+        if pp_ is not None:                                      # r4-phonon I1: other leaves that change per series point
+            npts_ = len(s["points"]) if isinstance(s.get("points"), list) else -1
+            if not (isinstance(pp_, dict) and all(isinstance(v, list) and len(v) == npts_ and all(_is_num(t) for t in v)
+                                                  for v in pp_.values())):
+                P.append(f"{w}: per_point must map a leaf path to a list of one number per point")
+            elif resolved and any(k not in resolved for k in pp_):
+                P.append(f"{w}: per_point path not a device leaf path: {[k for k in pp_ if k not in resolved]}")
         pts = s.get("points")
         if not (isinstance(pts, list) and pts and all(
                 isinstance(p, (list, tuple)) and len(p) in (2, 3) and all(_is_num(v) for v in p) for p in pts)):
@@ -576,7 +584,7 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
         xs = [float(p[0]) for p in pts]
         py = [float(p[1]) for p in pts]
         try:
-            sr = engine.series(spec, s["x"]["path"], xs, [r.request])
+            sr = engine.series(spec, s["x"]["path"], xs, [r.request], per_point=s.get("per_point"))
         except SolverUnavailable as e:
             r.outcome, r.note = "unavailable", f"solver unavailable: {e}"
             continue

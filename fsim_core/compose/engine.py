@@ -385,9 +385,11 @@ def envelope(spec, observables, max_corners: int = 16, n_lhs: int = 32) -> dict:
     return out
 
 
-def series(spec, path: str, values, observables) -> dict:
+def series(spec, path: str, values, observables, per_point=None) -> dict:
     """Sweep one leaf path (e.g. 'structure.F_P', or 'T_K') over `values` at the central point of every
-    other leaf. -> {"path", "x", "y": {request: [..]}, "tag": {request: tag}, "failed": [indices]}."""
+    other leaf. -> {"path", "x", "y": {request: [..]}, "tag": {request: tag}, "failed": [indices]}.
+    per_point (r4-phonon I1): optional {leaf path: [value per x]} of other leaves that change with the swept point (e.g. a
+    spectral window that is wider at the high temperatures of the same series); None = bit-identical."""
     spec = _as_spec(spec)
     entries = _entries(spec)
     leaves = _leaves(spec, entries)
@@ -400,6 +402,10 @@ def series(spec, path: str, values, observables) -> dict:
     reads = {a: set() for a in AXIS_KEYS}
     for i, x in enumerate(values):
         p = {**base, path: x}
+        for pp, vv in (per_point or {}).items():
+            if pp not in leaves:
+                raise KeyError(f"unknown per_point leaf path {pp!r}; known: {sorted(leaves)}")
+            p[pp] = vv[i]
         try:
             c = _run_point(entries, p, float(p["T_K"]), spec.solver)
         except SolverUnavailable:

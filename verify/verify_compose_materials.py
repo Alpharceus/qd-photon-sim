@@ -328,6 +328,30 @@ check("band block 2026-10-13 corrections (user PDFs): GaN/AlN dE_v 850 [V] (VM03
       and _bands["cdse_znse"]["Eg_barrier"]["value"] == 2.82
       and tuple(_bands["ingan_gan"]["variants"]["unstr"][q]["value"] for q in ("Eg_dot", "dE_c", "dE_v")) == (2.74, 670, 100))
 
+# ---- r4-phonon I2: the O-band metamorphic row is an [E] class range, not the InAs/GaAs [A] reuse (Fable r4 adjudication)
+_mm = R.get("material", "inas_ingaas_metamorphic_cband")
+_lx, _lz = _mm.param("l_xy_nm"), _mm.param("l_z_nm")
+_QUOTE = "O-band dot class; Kolatschek rate(T) brackets it"
+check("r4-phonon I2: inas_ingaas_metamorphic_cband l_xy [5, 8] nm, l_z [2, 3] nm, tag E (adjudication: O-band dot class)",
+      (_lx.lo, _lx.hi, _lz.lo, _lz.hi) == (5.0, 8.0, 2.0, 3.0) and _lx.tag == "E" and _lz.tag == "E",
+      f"l_xy {_lx.lo}-{_lx.hi} {_lx.tag}, l_z {_lz.lo}-{_lz.hi} {_lz.tag}")
+check("r4-phonon I2: the class-range source text quotes the adjudication reason",
+      _QUOTE in _lx.source and _QUOTE in _lz.source)
+_gm = R.get("material", "inas_gaas_sk")
+check("r4-phonon I2: alpha, D_c, D_v, rho, c_LA of the row are unchanged (equal to the InAs/GaAs row) and the InAs/GaAs l ranges stay [3, 5] / [1, 2]",
+      all(getattr(_mm.param(n_), a_) == getattr(_gm.param(n_), a_) for n_ in ("alpha_ps2", "D_c_eV", "D_v_eV", "rho_kg_m3", "c_LA_m_s") for a_ in ("lo", "hi"))
+      and (_gm.param("l_xy_nm").lo, _gm.param("l_xy_nm").hi, _gm.param("l_z_nm").lo, _gm.param("l_z_nm").hi) == (3.0, 5.0, 1.0, 2.0))
+# adjudication numbers (Fable probe, independent of this code): Z(4 K) 0.891 -> 0.947 for the row midpoints (4, 1.5) -> (6.5, 2.5)
+_mk = lambda a_, b_: qd_gf.PhononParams(D_e_eV=-14.6, D_h_eV=-4.8, rho_m_kg_m3=5370.0, c_s_m_s=5110.0, l_xy_nm=a_, l_z_nm=b_)      # noqa: E731
+_Zmm, _Zold = qd_gf.zpl_weight(_mk(6.5, 2.5), 4.0), qd_gf.zpl_weight(_mk(4.0, 1.5), 4.0)
+check("r4-phonon I2: Z(4 K) of the old row midpoint (4, 1.5) is 0.891 and of the new midpoint (6.5, 2.5) 0.947 (adjudication probe, +-0.004)",
+      abs(_Zold - 0.891) < 0.004 and abs(_Zmm - 0.947) < 0.004, f"{_Zold:.4f} -> {_Zmm:.4f}")
+# uppu2020 eta_zpl anchors (adjudication section 1): Z(1.6 K) 0.909 at (4, 1.5), 0.941 at the class corner (5, 2); paper 0.95 +- 0.01
+_Zu = [qd_gf.zpl_weight(_mk(a_, b_), 1.6) for a_, b_ in ((4.0, 1.5), (5.0, 2.0))]
+check("r4-phonon uppu2020 eta_zpl: Z(1.6 K) = 0.909 at the InAs/GaAs midpoint and 0.941 at the class corner (5, 2) (adjudication probe, +-0.003): "
+      "both below the paper 0.95 +- 0.01, so the card item stays a fail until the sideband width is a paper input (I3 skipped)",
+      abs(_Zu[0] - 0.909) < 0.003 and abs(_Zu[1] - 0.941) < 0.003 and _Zu[1] < 0.95 - 0.003, f"{_Zu[0]:.4f}, {_Zu[1]:.4f}")
+
 n, total = sum(RESULTS), len(RESULTS)
 print(f"{n}/{total} compose materials checks passed")
 sys.exit(0 if n == total else 1)

@@ -127,7 +127,7 @@ materials:
 
   inas_ingaas_metamorphic_cband:
     label: "InAs/InGaAs metamorphic dot on GaAs (C-band)"
-    summary: "InAs dot under an InGaAs metamorphic buffer on GaAs emitting near 1.55 um. [E] class-only, not anchored: no published row exists for this system; GaAs-matrix phonon and InAs/GaAs dot ranges are extrapolated."
+    summary: "InAs dot under an InGaAs metamorphic buffer on GaAs emitting near 1.55 um. [E] class-only, not anchored: no published row exists for this system; GaAs-matrix phonon constants are extrapolated; the dot confinement lengths are an O-band dot class range [E] (r4 Fable adjudication)."
     refs: ["No dedicated literature row; InAs/GaAs Stranski-Krastanov class reused [A]"]
     varshni: GaAs
     params:
@@ -143,8 +143,8 @@ materials:
       D_v_eV: *gaas_Dv
       rho_kg_m3: *gaas_rho
       c_LA_m_s: *gaas_c
-      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: A, source: "InAs/GaAs class reused [A]"}
-      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: A, source: "InAs/GaAs class reused [A]"}
+      l_xy_nm: {range: [5.0, 8.0], unit: nm, tag: E, source: "class range [E] (r4 Fable adjudication, Z of uppu2020 vs the model): O-band dot class; Kolatschek rate(T) brackets it. 1.3 um dots are large, low-confinement dots, so the InAs/GaAs range [3, 5] reused here as an [A] was wrong. Not a paper value; alpha, D_c, D_v, rho, c_LA unchanged"}
+      l_z_nm: {range: [2.0, 3.0], unit: nm, tag: E, source: "class range [E] (r4 Fable adjudication): O-band dot class; Kolatschek rate(T) brackets it. 1.3 um dots are large, low-confinement dots, so the InAs/GaAs range [1, 2] reused here as an [A] was wrong. Not a paper value"}
       n_host: {value: 3.4, unit: "1", tag: A, source: "GaAs-class index near 1.55 um [A]", band: [3.3, 3.6]}
       E_LO_meV: *gaas_nlo
       k_nr_ns: *knr0

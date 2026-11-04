@@ -392,6 +392,71 @@ def cavity_sideband_filter(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
     return float(z), float((z + t_sb) / (z + sb_area))
 
 
+# ---- r4-phonon I1: Zf_window (Fable r4 adjudication section 2) -----------------------------------------------------
+WINDOW_SHAPES = ("lorentzian", "gaussian", "tophat")
+
+
+def zpl_window_transmission(w_meV, offset_meV, gamma_meV, shape="lorentzian"):
+    """Fraction of a unit-area Lorentzian ZPL (FWHM gamma, centred `offset` from the window centre) that a spectral window of
+    FWHM/width `w` passes. Lorentzian window (peak 1): (w (w + g)/4)/(off^2 + ((w + g)/2)^2), = w/(w + g) on centre (convolution of
+    two Lorentzians); tophat: [atan((w/2 - off)/(g/2)) + atan((w/2 + off)/(g/2))]/pi; gaussian: Re wofz((off + i g/2)/(s sqrt2)),
+    s = w/(2 sqrt(2 ln2)). w = 0 passes 0, w -> inf passes 1."""
+    import math
+    w, off, g = float(w_meV), float(offset_meV), float(gamma_meV)
+    if w <= 0.0:
+        return 0.0
+    if g <= 0.0:                                                   # delta-function ZPL: the window value at the line
+        x = off
+        return (1.0 if abs(x) <= w / 2.0 else 0.0) if shape == "tophat" else (
+            math.exp(-4.0 * math.log(2.0) * x * x / (w * w)) if shape == "gaussian"
+            else (w / 2.0) ** 2 / (x * x + (w / 2.0) ** 2))
+    if shape == "lorentzian":
+        return (w * (w + g) / 4.0) / (off * off + ((w + g) / 2.0) ** 2)
+    if shape == "tophat":
+        return (math.atan((w / 2.0 - off) / (g / 2.0)) + math.atan((w / 2.0 + off) / (g / 2.0))) / math.pi
+    if shape == "gaussian":
+        from scipy.special import wofz
+        sg = w / (2.0 * math.sqrt(2.0 * math.log(2.0)))
+        return float(wofz(complex(off, g / 2.0) / (sg * math.sqrt(2.0))).real)
+    raise ValueError(f"unknown filter shape {shape!r}; valid: {WINDOW_SHAPES}")
+
+
+def _window_acceptance(x, w, shape):
+    import numpy as np
+    if shape == "lorentzian":
+        return (w / 2.0) ** 2 / (x ** 2 + (w / 2.0) ** 2)
+    if shape == "gaussian":
+        return np.exp(-4.0 * np.log(2.0) * (x / w) ** 2)
+    if shape == "tophat":
+        return (np.abs(x) <= w / 2.0).astype(float)
+    raise ValueError(f"unknown filter shape {shape!r}; valid: {WINDOW_SHAPES}")
+
+
+def window_filter_parts(ph, T_K, w_meV, offset_meV, gamma_zpl_meV, shape="lorentzian", kappa_meV=None, detuning_meV=0.0):
+    """Zf of a spectral window (module doc / adjudication I1) on the dot spectrum Z delta_Gamma + S_sb.
+    offset_meV = ZPL minus window centre (the setup's filter_offset_meV); the sideband sits at offset + omega.
+    Returns dict z, T_zpl, Zf (window-passed share of the spectrum seen by the window, normalised by z + sideband area as in
+    cavity_sideband_filter: w -> 0 gives Z, w -> inf gives 1), Zf_cav (cavity-collected light: ZPL passed whole, sideband
+    through a Lorentzian cavity kappa at `detuning_meV` = E_ZPL - E_mode, then the window; None without kappa) and Z_eff_cav
+    (the cavity-only Z_eff of cavity_sideband_filter)."""
+    import numpy as np
+    omega, s_sb, z = qd_gf._spectrum_parts(ph, float(T_K), float(gamma_zpl_meV))
+    z = float(z)
+    sb_area = float(np.trapezoid(s_sb, omega))
+    w = float(w_meV)
+    t_zpl = zpl_window_transmission(w, offset_meV, gamma_zpl_meV, shape)
+    t_sb = float(np.trapezoid(s_sb * _window_acceptance(omega + float(offset_meV), w, shape), omega)) if w > 0.0 else 0.0
+    out = {"z": z, "T_zpl": t_zpl, "Zf": (z * t_zpl + t_sb) / (z + sb_area), "Zf_cav": None, "Z_eff_cav": None}
+    if kappa_meV is not None:
+        acc = (kappa_meV / 2.0) ** 2 / ((omega + float(detuning_meV)) ** 2 + (kappa_meV / 2.0) ** 2)
+        b_c = float(np.trapezoid(s_sb * acc, omega))
+        b_w = float(np.trapezoid(s_sb * acc * _window_acceptance(omega + float(offset_meV), w, shape), omega)) if w > 0.0 else 0.0
+        out["Z_eff_cav"] = (z + b_c) / (z + sb_area)
+        out["Zf_cav"] = (z * t_zpl + b_w) / (z + sb_area)           # window-passed, absolute (unit-area spectrum)
+    return out
+# ---- end r4-phonon I1 ----------------------------------------------------------------------------------------------
+
+
 def g2_with_background(g2, signal_rate, background_rate):
     s, b = signal_rate, background_rate
     if b == 0.0:
@@ -459,6 +524,16 @@ def _derive(c: Context) -> dict:
             Zc, qc, Zl, ql = Z / Z_eff, 1.0, Z, 1.0
         else:
             Zc, qc, Zl, ql = 1.0, Z / Z_eff, 1.0, Z
+            w_win = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0)
+            if w_win > 0.0:
+                # r4-phonon I1 (Zf_window): the setup's spectral window also truncates the ZPL and the sideband. Cavity light:
+                # window-passed share relative to the cavity-collected light; leaky channel: the window on the whole spectrum.
+                wp = window_filter_parts(ph, c.T_K, w_win, float(_read(c, "setup", "filter_offset_meV", 0.0) or 0.0),
+                                         lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)),
+                                         str(_read(c, "setup", "filter_shape", "lorentzian")),
+                                         float(kap), float(em.E_X_meV) - float(sr.E_mode_meV))
+                Zc, qc = wp["Zf_cav"] / wp["Z_eff_cav"], Z * wp["T_zpl"] / wp["Zf_cav"]
+                Zl, ql = wp["Zf"], Z * wp["T_zpl"] / wp["Zf"]
         G0r = float(rt.Gamma0_ns)
         sh_c = float(rt.F_P_eff) * G0r / Gamma if (Gamma > 0.0 and G0r > 0.0) else 1.0
         sh_b = float(rt.beta0) * float(rt.Gamma_bg_ns) / Gamma if Gamma > 0.0 else 0.0
@@ -469,6 +544,12 @@ def _derive(c: Context) -> dict:
         Zf, q = Z, 1.0
     else:
         Zf, q = 1.0, Z
+        w_win = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0) if ph is not None else 0.0
+        if w_win > 0.0:                                 # r4-phonon I1 (Zf_window): the window truncates the ZPL and the sideband
+            wp = window_filter_parts(ph, c.T_K, w_win, float(_read(c, "setup", "filter_offset_meV", 0.0) or 0.0),
+                                     lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)),
+                                     str(_read(c, "setup", "filter_shape", "lorentzian")))
+            Zf, q = wp["Zf"], Z * wp["T_zpl"] / wp["Zf"]
     beta = float(res.extra.get("beta", rt.beta))
     eta_pol = float(su.eta_pol) * float(sr.pol_factor)
     pX = float(plan.inputs.get("p_X", 1.0) or 1.0)     # r4-incoh: X share of the loaded pairs (non-resonant pump); 1 = bit-identical
@@ -867,8 +948,8 @@ _o("hom_XX", "HOM overlap of the XX-line photons, instantaneous preparation (TPE
 _o("n_XX", "XX-line photons per pulse (TPE)", "1", _ALL)
 _o("inversion", "Inversion $w$ after the pulse", "1", _ALL)
 _o("Z_phonon", "ZPL weight $Z(T)$", "1", ("material",))
-_o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter"))
-_o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter"))
+_o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape"))
+_o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape"))
 _o("gamma_star_ns", "Pure-dephasing linewidth $\\Gamma_{\\mathrm{ph}} = 2\\gamma_{\\mathrm{ph}} = 2/T_2^{*}$ (code gamma*; coherence decays at $\\gamma_{\\mathrm{ph}}$)", "1/ns", ("material",))
 _o("Gamma_ns", "Radiative rate $\\Gamma$", "1/ns", _MS)
 _o("n_ph", "Photons per pulse $n_{\\mathrm{ph}}$", "1", _ALL)

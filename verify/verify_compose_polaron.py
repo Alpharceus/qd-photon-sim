@@ -1044,6 +1044,78 @@ _ps = sc(_split)
 check("R4-V4. a 90 ueV H-mode split (Q 11100) lowers the collected H photon number versus degenerate modes (the H mode is Purcell-weaker)",
       _ps["n_ph"] < _ph["n_ph"], f"{_ph['n_ph']:.4f} -> {_ps['n_ph']:.4f}")
 
+# ---- r4-phonon I1: Zf_window (Fable r4 adjudication section 2)
+import copy as _copy                                                          # noqa: E402
+from scipy.integrate import quad as _quad                                      # noqa: E402
+from fsim_core.compose import observables as _OB                              # noqa: E402
+
+_ph0 = qd_gf.PhononParams(alpha_ps2=0.0)
+_wp = _OB.window_filter_parts(_ph0, 4.0, 0.05, 0.0, 0.01)
+check("R4-Z1. alpha = 0 (no sideband): Zf = T_zpl = w/(w + gamma) for a Lorentzian window (closed form 0.05/0.06)",
+      abs(_wp["z"] - 1.0) < 1e-12 and abs(_wp["T_zpl"] - 0.05 / 0.06) < 1e-12 and abs(_wp["Zf"] - 0.05 / 0.06) < 1e-9,
+      f"Zf {_wp['Zf']:.9f} vs {0.05 / 0.06:.9f}")
+_php = qd_gf.PhononParams(D_e_eV=-14.6, D_h_eV=-4.8, rho_m_kg_m3=5370.0, c_s_m_s=5110.0, l_xy_nm=4.0, l_z_nm=1.5)
+_Zp = qd_gf.zpl_weight(_php, 4.0)
+_tiny = _OB.window_filter_parts(_php, 4.0, 0.02, 0.0, 1e-5)
+_huge = _OB.window_filter_parts(_php, 4.0, 1e5, 0.0, 1e-3)
+check("R4-Z2. limits: gamma << w << E_c gives Zf = Z (to 3e-3: the sideband inside a 20 ueV window is ~0.1 %, adjudication 2), w -> infinity gives Zf = 1 and T_zpl = 1",
+      abs(_tiny["Zf"] - _Zp) < 3e-3 and abs(_huge["Zf"] - 1.0) < 1e-4 and abs(_huge["T_zpl"] - 1.0) < 1e-6,
+      f"Z {_Zp:.5f}, small-w Zf {_tiny['Zf']:.5f}, huge-w Zf {_huge['Zf']:.6f}")
+_leak = _OB.window_filter_parts(_php, 4.0, 0.0298, 0.0, 1e-9)["Zf"] - _Zp      # sideband light inside the window, share of the whole spectrum
+check("R4-Z3. the share of the sideband inside the 29.8 ueV window at 4 K is ~0.1 % (adjudication section 2 probe; accepted 0.03-0.3 %)",
+      3e-4 < _leak < 3e-3, f"sideband share {_leak * 100:.3f} %")
+_g, _w, _o = 0.012, 0.03, 0.007
+_lor = lambda x: (_g / 2 / math.pi) / ((x - _o) ** 2 + (_g / 2) ** 2)          # noqa: E731
+_Tth = _quad(_lor, -_w / 2, _w / 2, points=[_o], limit=400)[0]
+_sg = _w / (2 * math.sqrt(2 * math.log(2)))
+_gau = lambda x: math.exp(-x * x / (2 * _sg * _sg)) * _lor(x)                  # noqa: E731
+_Tga = _quad(_gau, -10 * _sg, 10 * _sg, points=[0.0, _o], limit=400)[0]
+_Tlo = _quad(lambda x: (_w / 2) ** 2 / (x * x + (_w / 2) ** 2) * _lor(x), -2.0, 2.0, points=[0.0, _o], limit=800)[0]
+check("R4-Z4. T_zpl for the three window shapes (offset 7 ueV) matches an independent numerical quadrature of the Lorentzian line (1e-4)",
+      abs(_OB.zpl_window_transmission(_w, _o, _g, "tophat") - _Tth) < 1e-4
+      and abs(_OB.zpl_window_transmission(_w, _o, _g, "gaussian") - _Tga) < 1e-4
+      and abs(_OB.zpl_window_transmission(_w, _o, _g, "lorentzian") - _Tlo) < 1e-4,
+      f"tophat {_Tth:.5f}, gaussian {_Tga:.5f}, lorentzian {_Tlo:.5f}")
+# engine wiring: bit-identical defaults and the limits through evaluate_spec
+_NC = {"kind": "bulk_planar", "params": {}}                      # no finite-kappa cavity: the setup window acts on the whole spectrum
+
+
+def _dd(spec):
+    sp_ = engine._as_spec(spec)
+    en_ = engine._entries(sp_)
+    return engine._run_point(en_, engine._central_values(engine._leaves(sp_, en_)), float(sp_.T_K), "auto").d
+
+
+_b0 = _dd(r4_spec(struct=_NC))
+_bw0 = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.0}))
+_bzf = _dd(r4_spec(struct=_NC, setup_params={"zpl_filter": True}))
+_bzfw = _dd(r4_spec(struct=_NC, setup_params={"zpl_filter": True, "filter_width_meV": 0.03}))
+check("R4-Z5. filter_width 0 is bit-identical to no window, and zpl_filter true ignores the window (Z_filt = Z, q = 1, brightness identical)",
+      _b0["Z_filt"] == 1.0 and _bw0["Z_filt"] == 1.0 and _bw0["hom_zpl_fraction"] == _b0["hom_zpl_fraction"]
+      and _bzfw["Z_filt"] == _bzf["Z_filt"] == _bzf["Z_phonon"] and _bzfw["hom_zpl_fraction"] == 1.0
+      and _bzfw["Z_filt"] == _bzf["Z_filt"])
+_bw = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.05}))
+_bwide = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 1e5}))
+_gam_ns = _bw["Gamma_ns"] + _bw["gamma_star_ns"]      # k_nr = 0 in r4_spec
+check("R4-Z6. a 50 ueV Lorentzian window without the ZPL switch lowers Z_filt below Z (truncated ZPL, ~0.1 % of the sideband) "
+      "and sets q = Z T_zpl/Zf with the closed-form T_zpl; a 100 eV window gives Z_filt = 1 and q = Z",
+      _bw["Z_filt"] < _bw["Z_phonon"]
+      and abs(_bw["hom_zpl_fraction"] - _bw["Z_phonon"] * (0.05 / (0.05 + lb.HBAR_MEV_NS * _gam_ns)) / _bw["Z_filt"]) < 1e-6
+      and abs(_bwide["Z_filt"] - 1.0) < 1e-4 and abs(_bwide["hom_zpl_fraction"] - _bwide["Z_phonon"]) < 1e-4,
+      f"Z {_bw['Z_phonon']:.4f} Zf(50 ueV) {_bw['Z_filt']:.4f} q {_bw['hom_zpl_fraction']:.4f}; wide Zf {_bwide['Z_filt']:.5f}")
+# per-point series window: each point equals the single evaluation at that window
+_ser_spec = r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.03})
+_ws = [0.03, 0.075, 0.075]
+_rs = engine.series(_ser_spec, "T_K", [4.0, 40.0, 77.0], ["Z_filt"], per_point={"setup.filter_width_meV": _ws})["y"]["Z_filt"]
+_ind = []
+for _T, _wv in zip((4.0, 40.0, 77.0), _ws):
+    _sp = _copy.deepcopy(_ser_spec)
+    _sp["T_K"] = _T
+    _sp["setup"]["params"]["filter_width_meV"] = _wv
+    _ind.append(_dd(_sp)["Z_filt"])
+check("R4-Z7. series per_point setup.filter_width_meV: every point equals the single evaluation at that temperature and window (1e-12)",
+      all(abs(a - b) < 1e-12 for a, b in zip(_rs, _ind)) and len(set(_ws)) == 2, f"{_rs} vs {_ind}")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)
