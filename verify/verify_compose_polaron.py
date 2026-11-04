@@ -546,11 +546,20 @@ RT_w = Rates(Gamma_ns=2.45, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, 
 r_w, pl_w = arp_run(1.6, 32.3, alpha0=True, rt=RT_w, f_rep_MHz=82.0)
 pc_w = pl_w.pulses[0]
 ref_w = ode_chirp(pc_w.area_rad / math.pi, pc_w.fwhm_ps, pc_w.chirp_meV_ps)
-check("arp card-like case (phonons off, Gamma 2.45/ns): eta_prep > 0.99 while the end-of-window inversion is < 0.8 "
-      "(radiative decay inside the window, not an incomplete transfer); the lossless ODE of the same chirped pulse gives ~1",
-      r_w.extra["eta_prep"] > 0.99 and r_w.inversion < 0.8 and ref_w > 0.99,
-      f"eta_prep {r_w.extra['eta_prep']:.4f}, inversion {r_w.inversion:.3f}, ODE (no decay) {ref_w:.4f}, "
+check("arp card-like case (phonons off, Gamma 2.45/ns): eta_prep > 0.99 and the expected count n_exc > 0.97 (r4-hom: `inversion` of the engine is n_exc) "
+      "while the end-of-window population P_X_end stays below n_exc by the decay inside the (now +-5 sigma_c) window; the lossless ODE of the same "
+      "chirped pulse gives ~1",
+      r_w.extra["eta_prep"] > 0.99 and r_w.extra["n_exc"] > 0.97 and r_w.inversion < r_w.extra["n_exc"] - 0.1 and ref_w > 0.99,
+      f"eta_prep {r_w.extra['eta_prep']:.4f}, n_exc {r_w.extra['n_exc']:.4f}, P_X_end {r_w.inversion:.3f}, ODE (no decay) {ref_w:.4f}, "
       f"window {r_w.extra['window_ps']:.0f} ps")
+# r4-hom 2.4: the CLOSED system (Gamma = 0, phonons off, Wei chirp 32.3 ps^2, 1.6 pi) completes the transfer: n_exc = P_X_end >= 0.999
+RT_c = Rates(Gamma_ns=1e-9, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+r_c, pl_c = arp_run(1.6, 32.3, alpha0=True, rt=RT_c)
+check("R4-ARP. closed system (Gamma ~ 0, phonons off, Wei chirp, 1.6 pi): n_exc >= 0.999 from |G> (adiabatic transfer is complete, "
+      "Landau-Zener parameter ~10; P_X_end is the periodic-state population, 0.5 here because the closed system never relaxes between pulses); the chirped window is +-5 sigma_c, shorter than the unchirped +-8 sigma",
+      r_c.extra["n_exc"] >= 0.999
+      and abs(r_c.extra["window_ps"] - 2.0 * PL.CHIRP_WINDOW_SIGMA * rs.gaussian_sigma(pl_c.pulses[0].fwhm_ps * 1e-3) * 1e3) < 1e-6,
+      f"n_exc {r_c.extra['n_exc']:.6f}, P_X_end {r_c.inversion:.6f}, window {r_c.extra['window_ps']:.1f} ps")
 
 # 14c. phonons at 4.2 K: positive chirp robust, negative chirp degraded (Wei 2014: |+> -> |-> relaxation emits phonons)
 RT_b = Rates(Gamma_ns=0.02, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
@@ -742,12 +751,12 @@ eng_sp = {"schema": "fsim-composed/1", "T_K": 4.2,
           "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
 o_eid = engine.evaluate_spec(eng_sp)["scalars"]
 want_eid = ivp_eid(3 * math.pi, 20.0, 5.0, float(o_eid["Gamma_ns"]), float(o_eid["gamma_star_ns"]))
-check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, material gamma* 0.5/ns): the inversion equals the independent "
+check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, material gamma* 0.5/ns): the end-of-window population P_X_end (r4-hom: `inversion` is n_exc now) equals the independent "
       "2x2 Lindblad solve_ivp with the engine's Gamma and gamma* (1e-5), and differs from the EID-off run by > 0.01",
-      abs(o_eid["inversion"] - want_eid) < 1e-5
+      abs(o_eid["P_X_end"] - want_eid) < 1e-5
       and abs(engine.evaluate_spec({**eng_sp, "drive": {"kind": "resonant_pulse", "params": {**eng_sp["drive"]["params"], "eid_ps": 0.0}}})
-              ["scalars"]["inversion"] - o_eid["inversion"]) > 0.01,
-      f"{o_eid['inversion']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
+              ["scalars"]["P_X_end"] - o_eid["P_X_end"]) > 0.01,
+      f"{o_eid['P_X_end']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
 
 # ------------------------------------------------------------------ 14. R2 FIX-1a: registry defaults do what the drive claims
 def ref_spec(drv):

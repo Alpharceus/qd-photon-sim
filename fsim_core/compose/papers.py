@@ -253,6 +253,12 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
             conv = r.get("convention", "intrinsic")
             if conv not in o.conventions:
                 P.append(f"{w}: convention {conv!r} invalid for {o.id}; valid: {list(o.conventions)}")
+        if r.get("correction") is not None:        # r4-hom: the correction formula the paper declares for a corrected HOM item
+            from .observables import HOM_CORRECTIONS
+            if r.get("observable") not in ("hom_I", "hom_V") or r.get("convention") != "corrected":
+                P.append(f"{w}: `correction` applies only to hom_I / hom_V items with convention 'corrected'")
+            elif r["correction"] not in HOM_CORRECTIONS:
+                P.append(f"{w}: correction {r['correction']!r} invalid; valid: {list(HOM_CORRECTIONS)}")
         if not _is_num(r.get("value")):
             P.append(f"{w}: value must be a number")
         if r.get("err") is not None and not (_is_num(r["err"]) and r["err"] >= 0):
@@ -493,6 +499,8 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             kind, ent = ids[item]
             if kind == "scalar":
                 oid, conv = ent["observable"], ent.get("convention", "intrinsic")
+                if conv == "corrected" and ent.get("correction") not in (None, "engine"):
+                    conv = "corrected_" + str(ent["correction"])          # r4-hom: the paper's declared correction formula
             else:
                 oid, conv = ent["y"]["observable"], ent["y"].get("convention", "intrinsic")
         r = ItemResult(id=item, cls=e["class"], kind=kind, observable=oid, convention=conv,

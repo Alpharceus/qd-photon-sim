@@ -348,7 +348,19 @@ LENS_FIBRE_DET = _LensFibreDet(
                        r"Ignored by continuous drives."),
         ParamSpec("eps_int", "1", 0.0, tex=r"\varepsilon_{\mathrm{int}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
                   help=r"Interferometer imperfection $\varepsilon_{\mathrm{int}}$ (1 - fringe contrast of a perfect source) in the raw HOM visibility: "
-                       r"$V_{\mathrm{raw}} = \left[(1 - g^{(2)})\,I - g^{(2)}\right](1 - \varepsilon_{\mathrm{int}})$."),
+                       r"$V_{\mathrm{raw}} = \frac{I}{1 + g^{(2)}}\,(1 - \varepsilon_{\mathrm{int}})\,\frac{2RT}{R^2 + T^2}$ "
+                       r"(cross-polarised normalisation, r4-hom)."),
+        ParamSpec("bs_R", "1", 0.5, tex=r"R", lo=0.01, hi=0.99, tag="A", source=_SRC,
+                  help=r"Beam-splitter reflectivity $R$ of the HOM interferometer ($T = 1 - R$); an unbalanced splitter scales the raw "
+                       r"visibility by $2RT/(R^2 + T^2)$ (1 at $R = 1/2$)."),
+        ParamSpec("hom_fast_fraction", "1", 1.0, tex=r"f_{\mathrm{fast}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Fraction $f$ of the pure dephasing $\gamma^*$ that is FAST on the photon-separation scale: the HOM overlap is solved at "
+                       r"$f\gamma^*$ (the remainder is slow wandering invisible to HOM); linewidth, $g^{(2)}$ and brightness keep the full "
+                       r"$\gamma^*$. A CW linewidth excess is an upper bound on $\gamma^*_{\mathrm{fast}}$, so a card enters $f \in [0, 1]$. 1 = off."),
+        ParamSpec("hom_delay_ns", "ns", 0.0, tex=r"\Delta t_{\mathrm{HOM}}", lo=0.0, hi=1.0e6, tag="A", source=_SRC,
+                  help=r"Time separation $\Delta t$ of the two interfering photons. 0 = off (the solver's overlap with the fast dephasing "
+                       r"$\gamma^*$ only). > 0 multiplies $I$ by the spectral-diffusion factor $F_{\mathrm{sd}}(\sigma_{\mathrm{sd}}, "
+                       r"\tau_{\mathrm{sd}}, \Delta t)$ of the material (slow wandering that is invisible to HOM at short $\Delta t$)."),
         ParamSpec("zpl_filter", "", False, tex=r"\mathrm{ZPL\ filter}", tag="A", source=_SRC,
                   help=r"Spectrally filter to the zero-phonon line (brightness $\times Z$, HOM unity)."),
         ParamSpec("irf_ps", "ps", 0.0, tex=r"\tau_{\mathrm{IRF}}", lo=0.0, hi=2000.0, tag="A", source=_SRC,

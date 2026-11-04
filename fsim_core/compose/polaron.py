@@ -208,6 +208,10 @@ class _Comp:
 #: t_p(here)/pi, so the Eq 4 window exp[-(t/(r t_p_paper))^2] reads exp[-(pi t/(r t_p))^2] in the normalised np.sinc form used here [DR].
 SINC_WINDOW_WIDTHS = 3.0
 
+#: Half window of a CHIRPED Gaussian (ARP) in units of its sigma_c (r4-hom, Fable 2.4): erfc(5/sqrt 2) = 6e-7 of the area lies outside,
+#: against 8 sigma for the unchirped Gaussian; the shorter window stops radiative decay from eating the end-of-window population.
+CHIRP_WINDOW_SIGMA = 5.0
+
 
 def sinc_gauss_area(tp_ns: float, r: float) -> float:
     """Int sinc(t/t_p) exp[-(pi t/(r t_p))^2] dt = t_p erf(r / 2) for the NORMALISED sinc sin(pi x)/(pi x) [DR]
@@ -228,6 +232,8 @@ def _half_window(p) -> float:
     """Half window (ns) of a Pulse."""
     if p.shape == "sinc_gauss":
         return SINC_WINDOW_WIDTHS * p.r * p.tp_ps * 1e-3 / math.pi
+    if p.shape == "gauss" and float(p.chirp_meV_ps) != 0.0:
+        return CHIRP_WINDOW_SIGMA * rs.gaussian_sigma(p.fwhm_ps * 1e-3)       # r4-hom (Fable 2.4): chirped Gaussian, +-5 sigma_c
     return 0.5 * rs.pulse_window(p.shape, p.fwhm_ps * 1e-3)
 
 
@@ -314,7 +320,7 @@ class PulseTrain:
                 u = x / c.tp_ns
                 env = np.where(np.abs(x) <= c.halfwin, c.amp * np.sinc(u) * np.exp(-(math.pi * u / c.r) ** 2), 0.0)
             else:
-                env = np.where(np.abs(x) <= rs.GAUSS_WINDOW_SIGMA * c.sigma_ns,
+                env = np.where(np.abs(x) <= c.halfwin,
                                c.amp * np.exp(-0.5 * (x / c.sigma_ns) ** 2), 0.0)
             out = out + env * np.exp(-1j * (c.dw * x + 0.5 * c.kappa * x * x + c.phase))
         return out

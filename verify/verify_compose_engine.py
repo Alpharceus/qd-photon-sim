@@ -190,18 +190,25 @@ def main():
           f"dL={rt.L - sr_['L']:.2e} dG={rt.Gamma_ns - sr_['Gamma']:.2e}")
 
     # 7. HOM correction
-    v = OB.hom_v_corrected(0.925, 0.021)
-    check("7a. V_corr(0.925, 0.021) = 0.966 +- 0.001", abs(v - 0.966) < 1e-3, f"{v:.5f}")
-    # FX2c: the solver's I is the whole-stream overlap (multi-photon terms inside), so V_raw = I - g2 and the
-    # g2-corrected value is I/(1 - g2) (7b'/7b'' keep the old (1 - g2) I - g2 form as the Ollivier M_s relation only)
-    check("7b. FX2c V_raw = I - g2 (no background), V_corr = I/(1 - g2)",
-          near(OB.hom_v_raw(0.9, 0.03), 0.9 - 0.03, ab=1e-15)
+    v = OB.hom_v_corrected_by("ollivier2021", 0.925, 0.021)
+    check("7a. Ollivier-2021 correction (V + g2)/(1 - g2): (0.925, 0.021) = 0.966 +- 0.001 (paper value, r4-hom per-item `correction:`)",
+          abs(v - 0.966) < 1e-3, f"{v:.5f}")
+    # r4-hom (Fable 2.3): cross-polarised raw law V = rho^2 I/(1 + g2) (1 - eps) 2RT/(R^2 + T^2) and its exact inverse
+    # M = V/[(1 - eps) 2RT/(R^2 + T^2)] (1 + g2)/(1 - g2) (= I/(1 - g2_signal)); hand numbers: 0.9/1.03 and 0.9/0.97
+    check("7b. r4-hom V_raw = I/(1 + g2) (no background), V_corr = I/(1 - g2)",
+          near(OB.hom_v_raw(0.9, 0.03), 0.9 / 1.03, ab=1e-15)
           and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.03), 0.03), 0.9 / 0.97, ab=1e-12))
     vb = OB.hom_v_raw(0.9, 0.05, 0.1, g2_int=0.03)
-    check("7b2. FX2c background: V_raw = (rho^2 I - g2_raw)(1 - eps), rho^2 = (1 - g2_raw)/(1 - g2_int); the corrected "
-          "value removes the background: V_corr = I/(1 - g2_int) for eps = 0",
-          near(vb, (0.9 * 0.95 / 0.97 - 0.05) * 0.9, ab=1e-12)
-          and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.05, 0.0, g2_int=0.03), 0.05), 0.9 / 0.97, ab=1e-12))
+    check("7b2. r4-hom background: V_raw = rho^2 I/(1 + g2_raw) (1 - eps), rho^2 = (1 - g2_raw)/(1 - g2_int); the corrected "
+          "value is the exact inverse, V_corr = I/(1 - g2_int) even with eps_int != 0 and an unbalanced splitter",
+          near(vb, (0.9 * 0.95 / 0.97) / 1.05 * 0.9, ab=1e-12)
+          and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.05, 0.1, g2_int=0.03), 0.05, 0.1), 0.9 / 0.97, ab=1e-12)
+          and near(OB.hom_v_corrected(OB.hom_v_raw(0.9, 0.05, 0.0, g2_int=0.03, bs_R=0.4), 0.05, 0.0, 0.4), 0.9 / 0.97, ab=1e-12))
+    check("7b3. beam splitter 2RT/(R^2 + T^2): R = 0.47 (Wang 47:53) -> 0.99820 (hand: 2 x 0.47 x 0.53/(0.2209 + 0.2809)); "
+          "santori2002 removes it and eps_int, ollivier2021 does not",
+          near(OB.hom_v_raw(1.0, 0.0, 0.0, bs_R=0.47), 0.4982 / 0.5018, ab=1e-12)
+          and near(OB.hom_v_corrected_by("santori2002", 0.9 * 0.9, 0.0, 0.1), (0.9 * 0.9 / 0.9 + 0.0) / 1.0, ab=1e-12)
+          and near(OB.hom_v_corrected_by("ollivier2021", 0.81, 0.02), (0.81 + 0.02) / 0.98, ab=1e-12))
 
     # 7c. cavity sideband filter limits (review finding 4) and g2_raw without background (finding 11)
     from fsim_core import qd_gf as _qg
@@ -727,21 +734,25 @@ def main():
         V_exact = 1.0 - 2.0 * C_par / C_far
         g2q, Iq = 1.0 / (2.0 * q), 0.5
         ok &= near(Nc, N, ab=1e-12) and near(Nd, N, ab=1e-12)
-        ok &= near(V_exact, OB.hom_v_raw(Iq, g2q), ab=1e-12) and near(V_exact, (q - 1.0) / (2.0 * q), ab=1e-12)
-        ok &= abs(((1 - g2q) * Iq - g2q) - V_exact) > 0.02          # the pre-FX2c relation is off
-        det += f" q={q}: V {V_exact:.6f} = I - g2 {Iq - g2q:.6f} (old {(1 - g2q) * Iq - g2q:.6f});"
-    check("15e. FX2c HOM: exact beam-splitter coincidences of two identical sources (Fock space, n = 0 or 2 photons) give "
-          "V = 1 - 2 C_par/C_far = I - g2 for I = Int Int |G1|^2/N^2 = 1/2, g2 = 1/(2q); the old ((1 - g2) I - g2) is "
-          "off by > 0.02 (it would be right for the single-photon overlap M_s = 1: 1 - 2 g2)", ok, det)
+        # cross-polarised normalisation (r4-hom): the perpendicular peak of two independent sources is C_perp = C_far (1 + g2)/2
+        # (identity of the second-order operator expansion; the far peak is the product of the singles), so V_cross = 1 - C_par/C_perp
+        V_cross = 1.0 - C_par / (0.5 * C_far * (1.0 + g2q))
+        ok &= near(V_exact, Iq - g2q, ab=1e-12) and near(V_exact, (q - 1.0) / (2.0 * q), ab=1e-12)
+        ok &= near(V_cross, OB.hom_v_raw(Iq, g2q), ab=1e-12) and near(V_cross, Iq / (1.0 + g2q), ab=1e-12)
+        ok &= abs((Iq - g2q) - V_cross) > 0.02 or q > 0.9           # the far-peak law differs from the cross-pol one by g2 (1 - I) + g2^2
+        det += f" q={q}: V_far {V_exact:.6f} = I - g2; V_cross {V_cross:.6f} = I/(1 + g2) {Iq / (1.0 + g2q):.6f};"
+    check("15e. r4-hom HOM: exact beam-splitter coincidences of two identical sources (Fock space, n = 0 or 2 photons) give the far-peak "
+          "V = 1 - 2 C_par/C_far = I - g2 and the cross-polarised V = 1 - C_par/C_perp = I/(1 + g2) for I = Int Int |G1|^2/N^2 = 1/2, "
+          "g2 = 1/(2q) (engine hom_v_raw is the second)", ok, det)
 
     sp_h = engine._as_spec(spec())
     ent_h = engine._entries(sp_h)
     c_h = engine._run_point(ent_h, engine._central_values(engine._leaves(sp_h, ent_h)), 4.2, "auto")
     dh = c_h.d
-    want_h = (dh["hom_I"] * (1.0 - dh["g2_raw"]) / (1.0 - dh["g2_0"]) - dh["g2_raw"])
-    check("15f. engine hom_V_raw = (rho^2 hom_I - g2_raw) with rho^2 = (1 - g2_raw)/(1 - g2_0); hom_V_corr = hom_I/(1 - g2_0)",
+    want_h = dh["hom_I"] * (1.0 - dh["g2_raw"]) / (1.0 - dh["g2_0"]) / (1.0 + dh["g2_raw"])
+    check("15f. r4-hom engine hom_V_raw = rho^2 hom_I/(1 + g2_raw), rho^2 = (1 - g2_raw)/(1 - g2_0); hom_V_corr = hom_I/(1 - g2_0) (clipped at 1)",
           math.isfinite(dh["hom_V_raw"]) and near(dh["hom_V_raw"], want_h, ab=1e-12)
-          and near(dh["hom_V_corr"], dh["hom_I"] / (1.0 - dh["g2_0"]), ab=1e-9),
+          and near(dh["hom_V_corr"], min(1.0, dh["hom_I"] / (1.0 - dh["g2_0"])), ab=1e-9),
           f"hom_I {dh['hom_I']:.5f}, g2_0 {dh['g2_0']:.5f}, V_raw {dh['hom_V_raw']:.5f}, V_corr {dh['hom_V_corr']:.5f}")
 
     # 16. devlib-fx3b (real registry entries): M-3 eta_capture double count, bg_corrected g2, cw brightness
@@ -852,10 +863,10 @@ def main():
         I0 = sc_b["hom_I"] if I0 is None else I0
         vc.append(sc_b["hom_V_corr"])
         ok_bg &= near(sc_b["hom_I"], I0, rel=1e-12)
-        # independent: V_raw = rho^2 I - g2_raw with rho = 1 - bg (no leak / dark counts on this card)
-        want_raw = (1.0 - bg_) ** 2 * sc_b["hom_I"] - sc_b["g2_raw"]
+        # independent: V_raw = rho^2 I/(1 + g2_raw) with rho = 1 - bg (no leak / dark counts on this card; r4-hom cross-pol law)
+        want_raw = (1.0 - bg_) ** 2 * sc_b["hom_I"] / (1.0 + sc_b["g2_raw"])
         ok_bg &= near(sc_b["hom_V_raw"], want_raw, ab=1e-9)
-    check("FX4-1. HOM with bg_frac: V_corr = I/(1 - g2_signal) is invariant under bg_frac 0..0.5 and V_raw = rho^2 I - g2_raw",
+    check("FX4-1. HOM with bg_frac: V_corr = I/(1 - g2_signal) is invariant under bg_frac 0..0.5 and V_raw = rho^2 I/(1 + g2_raw)",
           ok_bg and max(vc) - min(vc) < 1e-9, f"V_corr {[round(v, 6) for v in vc]}")
     sc_t0 = engine.evaluate_spec(card_spec("tomm2021"))["scalars"]
     sc_t1 = engine.evaluate_spec(card_spec("tomm2021", {"p_trion": 1e-6}))["scalars"]
@@ -868,9 +879,83 @@ def main():
           (not sc_e["valid"]) and any("JC regime: EID not supported by the JC solver" in r for r in sc_e["invalid_reasons"]),
           str(sc_e["invalid_reasons"]))
     sc_w = engine.evaluate_spec(card_spec("wang2019b"))["scalars"]
-    check("FX4-6. corrected HOM visibility > 1 -> NaN with the reason 'corrected visibility > 1: ...' (never a pass)",
-          not math.isfinite(sc_w["hom_V_corr"]) and "corrected visibility > 1" in sc_w.get("hom_V_corr_invalid_reason", "")
-          and math.isfinite(sc_w["hom_V_raw"]))
+    sc_big = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 1500.0}))["scalars"]
+    sc_mid = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 400.0}))["scalars"]
+    ex_big = sc_big["hom_I"] / (1.0 - sc_big["g2_0"])
+    ex_mid = sc_mid["hom_I"] / (1.0 - sc_mid["g2_0"])
+    check("FX4-6. r4-hom corrected HOM visibility above 1: within 2 g2^2 + 1e-6 it is clipped to 1 with a note (wang2019b 1.001, "
+          "Gaussian 400 ps); beyond it -> NaN with the reason 'corrected visibility > 1: ...' (Gaussian 1500 ps) -- never a pass",
+          sc_w["hom_V_corr"] == 1.0 and math.isfinite(sc_w["hom_V_raw"])
+          and any("clipped to 1" in n for n in sc_w["notes"])
+          and 1.0 < ex_mid <= 1.0 + 2.0 * sc_mid["g2_0"] ** 2 + 1e-6 and sc_mid["hom_V_corr"] == 1.0
+          and ex_big > 1.0 + 2.0 * sc_big["g2_0"] ** 2 + 1e-6 and not math.isfinite(sc_big["hom_V_corr"])
+          and "corrected visibility > 1" in sc_big.get("hom_V_corr_invalid_reason", ""),
+          f"wang {sc_w['hom_V_corr']}, 400ps {ex_mid:.4f} -> {sc_mid['hom_V_corr']}, 1500ps {ex_big:.4f} -> {sc_big['hom_V_corr']}")
+
+    # ---- r4-hom 2.4: `inversion` is the expected excitation count n_exc; P_X_end keeps the end-of-window population
+    rg = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}))["scalars"]
+    check("R4-1. inversion = n_exc (expected excitation count, ~1 + g2/2 for a Gaussian pi pulse, Gamma tau_p = 0.1: 1.02), "
+          "P_X_end is the decayed end-of-window population (0.63) and is reported separately",
+          near(rg["inversion"], 1.0 + 0.5 * rg["g2_0"], ab=0.01) and rg["P_X_end"] < rg["inversion"] - 0.3
+          ,
+          f"inversion {rg['inversion']:.5f}, P_X_end {rg['P_X_end']:.5f}, g2 {rg['g2_0']:.4f}")
+
+    # ---- r4-hom 2.5: setup.hom_delay_ns (two-timescale dephasing). Independent closed form for gamma* = 0:
+    # E_d[Gamma^2/(Gamma^2 + d^2)], d ~ N(0, s^2) = sqrt(pi/2) (Gamma/s) erfcx(Gamma/(sqrt 2 s)) (erfcx = exp(x^2) erfc(x)), s^2 = 2 sigma^2 (1 - e^{-dt/tau_sd})
+    from scipy.special import erfcx as _erfcx
+
+    def f_closed(Gam, sig_rate, tau, dt):
+        s_ = math.sqrt(2.0 * sig_rate ** 2 * (1.0 - math.exp(-dt / tau)))
+        return 1.0 if s_ <= 0 else math.sqrt(math.pi / 2.0) * (Gam / s_) * _erfcx(Gam / (math.sqrt(2.0) * s_))
+    sig_r = 0.5e-3 / HB                                     # fixture sigma_sd 0.5 ueV in 1/ns
+    h0 = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}))["scalars"]
+    ok_d, det_d = True, ""
+    for dt_ in (1e-6, 50.0, 1e5):
+        hd = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}, su={"hom_delay_ns": dt_}))["scalars"]
+        want_f = f_closed(1.0, sig_r, 50.0, dt_)
+        ok_d &= near(hd["hom_I"] / h0["hom_I"], want_f, ab=2e-4)
+        det_d += f" dt={dt_:g}: {hd['hom_I'] / h0['hom_I']:.5f} vs {want_f:.5f};"
+    check("R4-2. setup.hom_delay_ns: hom_I(dt)/hom_I(0) = the spectral-diffusion closed form (dt -> 0: 1; dt = tau_sd; dt >> tau_sd: static "
+          "Gaussian-Lorentzian limit); delay 0 is the tile unchanged", ok_d and h0["hom_I"] == engine.evaluate_spec(
+              spec(drp={"shape": "gauss", "fwhm_ps": 100.0}, su={"hom_delay_ns": 0.0}))["scalars"]["hom_I"], det_d)
+    h1 = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}, su={"hom_delay_ns": 50.0}))
+    y_ref = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}))["series"]["hom_vs_dt"]["y"][0]
+    check("R4-3. hom_vs_dt series stays anchored to the delay-free tile at dt -> 0 (identical with and without hom_delay_ns)",
+          near(h1["series"]["hom_vs_dt"]["y"][0], y_ref, ab=1e-12))
+
+    # ---- r4-hom 2.5: setup.hom_fast_fraction f: HOM solved at f gamma*, the linewidth keeps the full gamma*
+    dp_ = {"shape": "gauss", "fwhm_ps": 10.0}
+    full = engine.evaluate_spec(spec(mat={"gamma_star_ns": 0.5}, drp=dp_))["scalars"]
+    half = engine.evaluate_spec(spec(mat={"gamma_star_ns": 0.5}, drp=dp_, su={"hom_fast_fraction": 0.5}))["scalars"]
+    ref_ = engine.evaluate_spec(spec(mat={"gamma_star_ns": 0.25}, drp=dp_))["scalars"]
+    zero = engine.evaluate_spec(spec(mat={"gamma_star_ns": 0.5}, drp=dp_, su={"hom_fast_fraction": 0.0}))["scalars"]
+    check("R4-6. setup.hom_fast_fraction f: hom_I(f = 0.5, gamma* 0.5) equals hom_I(gamma* 0.25) exactly, f = 0 gives the dephasing-free "
+          "overlap, linewidth_ueV keeps the full gamma*; short-pulse limit I -> Gamma/(Gamma + gamma*) = 1/1.25 = 0.8 (Gamma = 1/ns)",
+          near(half["hom_I"], ref_["hom_I"], ab=1e-9) and near(full["hom_I"], 1.0 / 1.5, ab=0.01) and near(half["hom_I"], 0.8, ab=0.01)
+          and zero["hom_I"] > 0.99 and near(half["linewidth_ueV"], full["linewidth_ueV"], ab=1e-12) and half["linewidth_ueV"] > ref_["linewidth_ueV"],
+          f"I full {full['hom_I']:.4f}, half {half['hom_I']:.4f}, gamma*=0.25 {ref_['hom_I']:.4f}, f=0 {zero['hom_I']:.4f}")
+
+    # ---- r4-hom 2.3: card `correction:` field (schema + routing) and the unbalanced splitter through the engine
+    from fsim_core.compose import papers as _PP
+    rb = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}, su={"bs_R": 0.4, "eps_int": 0.02}))["scalars"]
+    want_bs = h0["hom_V_raw"] * 0.98 * (2 * 0.4 * 0.6 / (0.16 + 0.36))
+    check("R4-4. bs_R = 0.4 and eps_int 0.02 scale V_raw by 0.98 x 2RT/(R^2 + T^2) (hand: 0.96/0.52 = 0.9231 x 0.98) and corrected stays I/(1 - g2)",
+          near(rb["hom_V_raw"], want_bs, ab=1e-12) and near(rb["hom_V_corr"], h0["hom_V_corr"], ab=1e-12),
+          f"{rb['hom_V_raw']:.6f} vs {want_bs:.6f}")
+    import copy as _cp
+    import yaml as _y2
+    base_raw = _y2.safe_load((ROOT / "cards" / "papers" / "_fixture.yaml").read_text(encoding="utf-8"))
+
+    def probs(item):
+        raw = _cp.deepcopy(base_raw)
+        raw["reported"] = list(raw.get("reported") or []) + [dict({"id": "zz_hom", "observable": "hom_V", "value": 0.9, "tag": "V", "where": "w"}, **item)]
+        return [x for x in _PP._validate(raw, None)[0] if "zz_hom" in x and "correction" in x]
+    check("R4-5. `correction:` validates on corrected hom items with a known formula and is rejected on raw items / unknown formulas",
+          probs({"convention": "corrected", "correction": "santori2002"}) == []
+          and probs({"convention": "corrected", "correction": "ollivier2021"}) == []
+          and probs({"convention": "corrected", "correction": "engine"}) == []
+          and len(probs({"convention": "raw", "correction": "santori2002"})) == 1
+          and len(probs({"convention": "corrected", "correction": "bogus"})) == 1)
 
     # 17. R2: cw incoherent pump P broadens the dot line the cavity filter sees (ch08 eq. dp-lor): w_dot = hbar (Gamma_bg + k + gamma* + P)
     def cav_cw(pump):
