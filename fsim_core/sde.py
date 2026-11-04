@@ -13,14 +13,17 @@ SKELETON (which reservoirs feed which, which rates the photon field):
     dS/dt    = R_stim - S/tau_p + beta_sp*N_GS/tau_GS_spon
 
 The exact closed forms for R_RS<->ES, R_ES<->GS, R_stim and every numeric
-rate constant are in the paper's Supplementary Material, which is NOT
-available in this workspace (see cards/zhao.yaml meta.source). Every
-parameter below is therefore drawn from the standard 1.3 um InAs/GaAs
-QD-laser rate-equation literature class and TUNED within the stated [E]
-bounds to reproduce cards/zhao.yaml's g2_vs_pump validation points -- this is
-the plan's Tier-2 fit, not a first-principles prediction. See
-QDLaserParams's field comments for the literature band behind each entry,
-and scripts/run_zhao_fit.py's module docstring for the final tuned table.
+rate constant are in the paper's Supplementary Material, which IS available at
+../refs/Second pass/zhao supplement.pdf (Table S1 parameters, Table S2 rate
+forms and the Poisson-event scheme, Delta t = 0.1 ps; ported in devlib-r4 as
+QDLaserParams.zhao_table_s1()). The DEFAULT parameter set below pre-dates that
+port: every default is drawn from the standard 1.3 um InAs/GaAs QD-laser
+rate-equation literature class and TUNED within the stated [E] bounds to
+reproduce cards/zhao.yaml's g2_vs_pump validation points -- this is the plan's
+Tier-2 fit, not a first-principles prediction (defaults are kept untouched so
+the legacy pins do not move). See QDLaserParams's field comments for the
+literature band behind each entry, and scripts/run_zhao_fit.py's module
+docstring for the final tuned table.
 
 Rate closed forms used here [E, standard QD-laser rate-equation form]:
 
@@ -128,8 +131,8 @@ BURNIN_FRAC = 0.1  # fraction of simulate()/g2_vs_pump() steps discarded as SDE 
 class QDLaserParams:
     """Tuned literature-class three-level QD-laser parameter set. Every field
     is [E] (estimated from the standard 1.3 um InAs/GaAs QD-laser rate-
-    equation literature -- the paper's own numbers are in its unavailable
-    Supplement) unless the comment says otherwise. Defaults are the Tier-2
+    equation literature; the paper's own numbers are in its Supplement, see
+    zhao_table_s1()) unless the comment says otherwise. Defaults are the Tier-2
     fit to cards/zhao.yaml (see scripts/run_zhao_fit.py docstring for the
     tuned-parameter table)."""
 
@@ -167,6 +170,14 @@ class QDLaserParams:
     # g2(0); see the "near-miss" note in this module's docstring and
     # scripts/run_zhao_fit.py for the full account.
     E_a_GS_meV: float = 150.0   # [E] ES-GS separation; same reasoning/band as E_a_ES_meV, kept below it (GS is the shallower-bound level)
+    esc_pref_ES: float = 1.0
+    # dimensionless detailed-balance prefactor of the ES->RS escape time,
+    # tau_esc_ES = tau_cap * esc_pref_ES * exp(E_a_ES/kT). 1.0 = the legacy
+    # Tier-2 form (no degeneracy / density-of-states factor). zhao_table_s1()
+    # sets sigma_ES N_B / D_RS [DR].
+    esc_pref_GS: float = 1.0
+    # same for GS->ES: tau_esc_GS = tau_relax * esc_pref_GS * exp(E_a_GS/kT);
+    # zhao_table_s1() sets sigma_GS / sigma_ES [DR].
 
     # ---- photon field / gain
     tau_p: float = 2.0e-12
@@ -221,6 +232,57 @@ class QDLaserParams:
     def kT_meV(self) -> float:
         return KB * self.T
 
+    @classmethod
+    def zhao_table_s1(cls, m_RS_over_me: float = 0.06, F_pump: float = 0.0) -> "QDLaserParams":
+        """Zhao et al. (PRResearch 6, L032021 (2024)) Supplementary Material Table S1 / S2 parameter set
+        (../refs/Second pass/zhao supplement.pdf), ported in devlib-r4 (Fable r4-fable-legacy.md section 5).
+        Tags: [V] printed in the SI, [DR] derived here, [E] estimate, [A] assumption. The class DEFAULTS are untouched.
+
+        Current axis: I_ref = eta * 1 mA / q, so the module's "I_over_Ith" argument is the injected current IN mA
+        (find_threshold(p, ...) then returns I_th in mA; held-out check against the measured 9 mA [V, main text]).
+
+        Rate forms (SI Table S2, [V]): capture N_RS(1-rho_ES)/tau_RS^ES, relaxation N_ES(1-rho_GS)/tau_ES^GS, stimulated
+        Gamma_p v_g g_GS S with g_GS = a_GS/(1+xi S/V_B) (N_B/V_B)(2 rho_GS - 1), loss S/tau_p (alpha_in ~ 0, mirror
+        alpha_m 23.72 /cm). SI detailed-balance escape times (S1, S2): the SI prints the exponents swapped between the
+        two equations (S1 carries E_ES - E_GS for the ES->RS time, S2 carries E_RS - E_ES for the GS->ES time). This port
+        uses the PHYSICAL assignment [DR] (detailed balance, N_ES/N_RS = (sigma_ES N_B/D_RS) exp(+(E_RS-E_ES)/kT), and
+        N_GS/N_ES = (sigma_GS/sigma_ES) exp(+(E_ES-E_GS)/kT)): ES->RS uses 220 meV with prefactor sigma_ES N_B/D_RS,
+        GS->ES uses 80 meV with prefactor sigma_GS/sigma_ES.
+
+        m_RS_over_me [E 0.05-0.07]: reservoir effective mass behind D_RS = m* kT/(pi hbar^2) * (W L n_layer) [DR].
+        F_pump = 0 [V, Table S2 note a: quiet pumping is a constant rate]; pass 0.08 for the [E] noisy-quiet row."""
+        q_e = 1.602176634e-19       # C
+        hbar = 1.054571817e-34      # J s
+        m_e = 9.1093837015e-31      # kg
+        kB_J = 1.380649e-23         # J/K
+        T = 293.0                   # K [V Table S1]
+        eta = 0.18                  # [V] injection efficiency (experimental, Table S1)
+        area_cm2 = 2.0e-4 * 0.075 * 8   # [V] W L n_layer = 2 um * 750 um * 8 layers = 1.2e-4 cm^2
+        N_B = 7.08e6                # [V] total QD number
+        V_B = 6.0e-11               # [V] cm^3 active volume
+        c_cm = 2.99792458e10
+        v_g = c_cm / 3.5            # [V] n_r = 3.5
+        a_GS, Gamma_p, xi = 5.0e-15, 0.06, 2.0e-16     # [V] cm^2, -, cm^3
+        D_RS = m_RS_over_me * m_e * kB_J * T / (np.pi * hbar**2) * area_cm2 * 1.0e-4   # [DR] states: density 1/m^2 -> 1/cm^2 (x1e-4), times area in cm^2
+        return cls(
+            N_dots=N_B,                              # [V]
+            g_ES=4.0, g_GS=2.0,                      # [V] sigma_ES, sigma_GS
+            tau_cap=6.3e-12, tau_relax=2.9e-12,      # [V]
+            tau_RS_spon=0.5e-9, tau_ES_spon=0.5e-9, tau_GS_spon=1.2e-9,   # [V]
+            E_a_ES_meV=1250.0 - 1030.0,              # [V] E_RS - E_ES = 220 meV (physical ES->RS escape)
+            E_a_GS_meV=1030.0 - 950.0,               # [V] E_ES - E_GS = 80 meV (physical GS->ES escape)
+            esc_pref_ES=4.0 * N_B / D_RS,            # [DR] sigma_ES N_B / D_RS
+            esc_pref_GS=2.0 / 4.0,                   # [DR] sigma_GS / sigma_ES
+            tau_p=4.9e-12,                           # [V] Table S1 (alpha_m 23.72 /cm, alpha_in ~ 0, n_r 3.5)
+            beta_sp=1.0e-4,                          # [V]
+            g0=Gamma_p * v_g * a_GS * N_B / V_B,     # [DR] Gamma_p v_g a_GS N_B/V_B ~ 3.0e11 /s
+            eps_gain=xi / V_B,                       # [DR] xi/V_B = 3.3e-6 per photon
+            I_ref=eta * 1.0e-3 / q_e,                # [V] eta * (1 mA)/q: axis in mA (see docstring)
+            F_pump=F_pump,                           # [V] 0 = constant-rate quiet pump (Table S2 note a)
+            eta_ext=0.2,
+            T=T,
+        )
+
 
 # ============================================================================ rates
 
@@ -231,8 +293,8 @@ def _rates(N_RS, N_ES, N_GS, S, R_pump, p: QDLaserParams):
     rho_ES = np.clip(N_ES / (p.g_ES * p.N_dots), 0.0, 1.0)
     rho_GS = np.clip(N_GS / (p.g_GS * p.N_dots), 0.0, 1.0)
 
-    tau_esc_ES = p.tau_cap * np.exp(p.E_a_ES_meV / kT)
-    tau_esc_GS = p.tau_relax * np.exp(p.E_a_GS_meV / kT)
+    tau_esc_ES = p.tau_cap * p.esc_pref_ES * np.exp(p.E_a_ES_meV / kT)
+    tau_esc_GS = p.tau_relax * p.esc_pref_GS * np.exp(p.E_a_GS_meV / kT)
 
     R_cap = np.maximum(N_RS, 0.0) / p.tau_cap * (1.0 - rho_ES)
     R_esc1 = np.maximum(N_ES, 0.0) / tau_esc_ES

@@ -187,6 +187,11 @@ REISCHLE_IRF_FWHM_PS = 693.0  # [V] 2 ln2 x 0.5 ns: the paper's fit-model IRF C 
 REISCHLE_APERTURE_UM = 0.46   # [V] nanosphere shadow-mask aperture
 REISCHLE_R_FLOOR_NS = 0.01    # [A] smallest realisable pump rate (r = 1/tau_c - gamma_X - k_X < 0 is not physical)
 REISCHLE_I_PROBE_UA = 0.001   # [A] low-current probe point (the paper's 11.9 mA runs the 1 um default mesa to thermal runaway)
+# devlib-r4 R3 (Fable r4-fable-legacy.md 3.1): aperture-competitor prediction of the measured signal fraction rho = 0.88.
+REISCHLE_DENSITY_CM2 = 1e10   # [V] Reischle 2010 companion: dot density under the 460 nm aperture (16.6 dots geometric)
+REISCHLE_W_BRACKET_MEV = (1.0, 3.0)        # [E] swept HBT spectral window w (class; the 2008 value is a PAPERS NEEDED input)
+REISCHLE_SIGMA_BRACKET_MEV = (40.0, 60.0)  # [E] ensemble inhomogeneous width sigma_inh (class; PAPERS NEEDED)
+REISCHLE_BCOMP_BRACKET = (0.1, 1.0)        # [E] in-window competitor brightness relative to the target dot
 
 
 def ev_reischle_dc():
@@ -197,19 +202,29 @@ def ev_reischle_dc():
     D_eff and gives the intrinsic, with-background and IRF-convolved g2(0) via cw_g2.cw_report."""
     from fsim_core import cw_g2
     from fsim_core.device import DeviceDesign, evaluate
-    d = DeviceDesign()
-    d.ret.mode = "confinement"
-    d.ret.preset = "InP/AlGaInP0.2/AlGaInP0.55 on GaAs"
-    d.drive.mode = "EL-transport"
-    d.drive.diode = {"preset": "red"}
-    d.drive.cw = True
-    d.drive.cw_irf_shape = "exponential"
-    d.drive.cw_irf_fwhm_ps = REISCHLE_IRF_FWHM_PS
-    d.drive.duty = 1.0
-    d.drive.n_dot_cm2 = 1e10
-    d.drive.I_uA = REISCHLE_I_PROBE_UA
-    d.aperture.diameter_um = REISCHLE_APERTURE_UM
-    d.thermal.T_hs = 80.0
+
+    def design(compose=False, w=None, sigma=None, b_comp=None):
+        d = DeviceDesign()
+        d.ret.mode = "confinement"
+        d.ret.preset = "InP/AlGaInP0.2/AlGaInP0.55 on GaAs"
+        d.drive.mode = "EL-transport"
+        d.drive.diode = {"preset": "red"}
+        d.drive.cw = True
+        d.drive.cw_irf_shape = "exponential"
+        d.drive.cw_irf_fwhm_ps = REISCHLE_IRF_FWHM_PS
+        d.drive.duty = 1.0
+        d.drive.n_dot_cm2 = 1e10
+        d.drive.I_uA = REISCHLE_I_PROBE_UA
+        d.aperture.diameter_um = REISCHLE_APERTURE_UM
+        d.thermal.T_hs = 80.0
+        if compose:   # devlib-r4 R3: opt-in aperture-competitor bath at the class bracket inputs
+            d.aperture.compose = True
+            d.aperture.density_cm2 = REISCHLE_DENSITY_CM2
+            d.aperture.sigma_inh, d.aperture.comp_brightness = sigma, b_comp
+            d.filter.auto_w, d.filter.w = False, w
+        return d
+
+    d = design()
     sc = evaluate(d, [80.0])["scalars"]
     gX, S, eps = float(sc["cw_gamma_X_ns"]), float(sc["S_resolved"]), float(sc["eps_op"])
     r_dev, rho_dev = float(sc["cw_r_ns"]), float(sc["cw_rho_op"])
@@ -238,7 +253,40 @@ def ev_reischle_dc():
     f10_m, _, _, _ = fx(REISCHLE_TAU_C_NS, REISCHLE_RHO_MEASURED)
     f16_m, D16, _, _ = fx(REISCHLE_TAU_C_DR_NS, REISCHLE_RHO_MEASURED)
     f10_d, _, _, _ = fx(REISCHLE_TAU_C_NS, rho_dev)
-    return {"g2_dot0": float(f10_hi["g2_dot0"]), "g2_meas0_rho088": float(f10_m["g2_meas0"]),
+
+    # devlib-r4 R3 (Fable r4 3.1): predicted signal fraction rho_pred = 1/(1 + lam) of the target dot under the 460 nm
+    # aperture at 1e10 cm^-2 (16.6 dots geometric), lam = N_w b_comp from the device's own aperture.compose path
+    # (aperture_lambda_op).  Class bracket (w, sigma_inh, b_comp): lam_min at (w_lo, sigma_hi, b_lo), lam_max at the
+    # opposite corner.  Hand formula and legacy guard are checked here and raise on disagreement.
+    from fsim_core.loading import n_window_competitors
+    A_um2 = np.pi * (REISCHLE_APERTURE_UM / 2.0) ** 2
+    corners = {"lo": (REISCHLE_W_BRACKET_MEV[0], REISCHLE_SIGMA_BRACKET_MEV[1], REISCHLE_BCOMP_BRACKET[0]),
+               "hi": (REISCHLE_W_BRACKET_MEV[1], REISCHLE_SIGMA_BRACKET_MEV[0], REISCHLE_BCOMP_BRACKET[1])}
+    lam, rho_pred, hand_diff, rho_dev_on = {}, {}, 0.0, {}
+    for key, (w_c, sig_c, b_c) in corners.items():
+        sc_c = evaluate(design(True, w_c, sig_c, b_c), [80.0])["scalars"]
+        lam[key] = float(sc_c["aperture_lambda_op"])
+        rho_pred[key] = 1.0 / (1.0 + lam[key])
+        hand = 1.0 / (1.0 + float(n_window_competitors(REISCHLE_DENSITY_CM2, A_um2, w_c, sig_c)) * b_c)
+        hand_diff = max(hand_diff, abs(rho_pred[key] - hand))
+        rho_dev_on[key] = float(sc_c["cw_rho_op"])
+    if hand_diff > 1e-9:
+        raise RuntimeError(f"reischle_dc rho_pred disagrees with the hand formula 1/(1 + N_w b_comp): {hand_diff:.3e}")
+    # legacy guard: compose False (with the same density / sigma / b_comp set) leaves the signal fraction untouched
+    dg = design()
+    dg.aperture.density_cm2, dg.aperture.sigma_inh, dg.aperture.comp_brightness = REISCHLE_DENSITY_CM2, 50.0, 0.5
+    legacy_diff = abs(float(evaluate(dg, [80.0])["scalars"]["cw_rho_op"]) - rho_dev)
+    if legacy_diff != 0.0:
+        raise RuntimeError(f"reischle_dc legacy guard: compose False moved the model rho by {legacy_diff:.3e}")
+    # raw g2 with rho_pred over (tau_c, rho_pred) corners: lower end = rho high, tau_c 1.6; upper end = rho low, tau_c 1.0
+    g_raw_lo = fx(REISCHLE_TAU_C_DR_NS, rho_pred["lo"])[0]["g2_raw0"]
+    g_raw_hi = fx(REISCHLE_TAU_C_NS, rho_pred["hi"])[0]["g2_raw0"]
+    return {"rho_pred_lo": float(rho_pred["hi"]), "rho_pred_hi": float(rho_pred["lo"]),
+            "lam_min": float(lam["lo"]), "lam_max": float(lam["hi"]), "rho_pred_hand_absdiff": float(hand_diff),
+            "legacy_guard_rho_absdiff": float(legacy_diff),
+            "compose_on_rho_absdiff": float(max(abs(v - rho_dev) for v in rho_dev_on.values())),
+            "g2_raw0_rho_pred_lo": float(g_raw_lo), "g2_raw0_rho_pred_hi": float(g_raw_hi),
+            "g2_dot0": float(f10_hi["g2_dot0"]), "g2_meas0_rho088": float(f10_m["g2_meas0"]),
             "g2_raw0_rho088_tauc16": float(f16_m["g2_raw0"]), "g2_raw0_rho088_tauc10": float(f10_m["g2_raw0"]),
             "g2_raw0_rho_model": float(f10_d["g2_raw0"]),
             "D_eff_tauc10_ns": float(D10), "D_eff_tauc16_ns": float(D16), "Gamma_eff_tauc10_ns": float(G10),
@@ -275,6 +323,27 @@ def ev_zhao_spectrum():
     lo = (f >= 0.49e9) & (f <= 1.01e9)
     return {"squeezing_dB": float(o["squeezing_dB"]), "squeezing_dB__se": float(o["squeezing_dB_se"]),
             "F_band_3_12GHz": float(o["F_band"]), "F_lo_0p5_1GHz": float(np.mean(o["F"][lo]))}
+
+
+def ev_zhao_s1():
+    """devlib-r4 Z2 (Fable r4-fable-legacy.md section 5): the SI Table S1 parameter set
+    (QDLaserParams.zhao_table_s1(), F_pump 0 = constant-rate quiet pump) at I = 4.4 I_th(model), band 3-12 GHz,
+    eta_det 0.219.  Run settings as the legacy row: 8 runs x 20 ns, seg 2 ns, 10 ps bins, seed 7; dt = 0.1 ps (SI Delta t).
+    The current axis of the S1 set is mA (I_ref = eta * 1 mA / q); I_th by find_threshold (I_hi 60 mA) [A]."""
+    from fsim_core.sde import QDLaserParams, find_threshold, output_noise_spectrum
+    params = QDLaserParams.zhao_table_s1()
+    I_th = find_threshold(params, I_lo=0.5, I_hi=60.0)
+    o = output_noise_spectrum(params, 4.4 * I_th, f_band_Hz=(3.0e9, 12.0e9), n_runs=8, t_end=20.0e-9, dt=1.0e-13,
+                              bin_ps=10.0, seed=7, F_pump=0.0, eta_det=ZHAO_ETA_TOTAL, seg_ns=2.0)
+    return {"squeezing_dB": float(o["squeezing_dB"]), "squeezing_dB__se": float(o["squeezing_dB_se"]),
+            "F_band_3_12GHz": float(o["F_band"]), "I_th_mA": float(I_th), "I_op_mA": float(4.4 * I_th)}
+
+
+def ev_tamariz_lo():
+    """devlib-r4 T1 unit check: the engine's total-width form spectral.gamma_of_T with the paper's Eq. 1 constants
+    (Gamma_0 = 1.0 meV, gamma_A = 0.018 meV/K, Gamma_LO = 3570 meV, E_LO = 102 meV) at 300 K, in meV [DR]."""
+    from fsim_core.spectral import gamma_of_T
+    return {"eq1_300K_meV": float(gamma_of_T(300.0, 1.0, 0.018, 3570.0, 102.0))}
 
 
 SSL_GAAS_NM = 0.86  # [DR] <Al> = y/(x+y) = 16/(x+16) = 0.65 -> x = 8.6 A (Chatzarakis 2023 SSL sample)
@@ -444,7 +513,7 @@ def ev_nanowire():
 
 EVALUATORS = {"chatz_va": ev_chatz_va, "chatz_va_ibm": ev_chatz_va_ibm, "chatz_dev_ibm": ev_chatz_dev_ibm,
               "chatz_dev_ibm_lor": ev_chatz_dev_ibm_lor, "laf_mid": ev_laf_mid,
-              "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "zhao_spec": ev_zhao_spectrum, "dot_levels": ev_dot_levels,
+              "reischle": ev_reischle, "reischle_dc": ev_reischle_dc, "zhao": ev_zhao, "zhao_spec": ev_zhao_spectrum, "zhao_s1": ev_zhao_s1, "tamariz_lo": ev_tamariz_lo, "dot_levels": ev_dot_levels,
               "nitride": ev_nitride, "nanowire": ev_nanowire}
 
 
