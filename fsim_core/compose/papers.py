@@ -100,6 +100,7 @@ class ItemResult:
     reason: str = ""
     weak: bool = False                 # FX4: a pass that cannot discriminate (reason in weak_reason)
     weak_reason: str = ""
+    unavailable_reason: str = ""       # r4 review 11: the engine has no observable comparable with the paper quantity (item is unavailable)
     mode: str = ""                      # "" | optimum | at_optimum (optimum.py)
     argmax: dict = field(default_factory=dict)   # optimum items: the scanned values and pulse leaves at the maximum
 
@@ -353,6 +354,8 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
             P.append(f"{w}: weak must be true or false")
         if e.get("weak") is True and not _nonempty(e.get("weak_reason")):
             P.append(f"{w}: weak: true needs a non-empty weak_reason")
+        if e.get("unavailable_reason") is not None and (not _nonempty(e.get("unavailable_reason")) or e.get("expect") != "unavailable"):
+            P.append(f"{w}: unavailable_reason needs a non-empty text and expect: unavailable")
         if cls == "R" and e.get("weak"):
             P.append(f"{w}: class R is never counted, so it carries no weak flag")
         if e.get("expect") not in EXPECTS:
@@ -514,7 +517,8 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
         r = ItemResult(id=item, cls=e["class"], kind=kind, observable=oid, convention=conv,
                        expect=e["expect"], where=ent.get("where", ""), tol=dict(e.get("tol") or {}),
                        tol_reason=e.get("tol_reason", ""), reason=e.get("reason", ""),
-                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""), mode=e.get("mode", ""))
+                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""), mode=e.get("mode", ""),
+                       unavailable_reason=str(e.get("unavailable_reason", "") or ""))
         if kind == "scalar":
             r.paper, r.err = float(ent["value"]), (None if ent.get("err") is None else float(ent["err"]))
         if r.tol:
@@ -566,7 +570,9 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             continue
         r.model, (r.lo, r.hi) = float(ev["central"]), ev["range"]
         r.inputs = [p for p in ev["inputs"] if p in paper.inputs_from_paper]
-        if not rep_valid:
+        if r.unavailable_reason:
+            r.outcome, r.note = "unavailable", r.unavailable_reason
+        elif not rep_valid:
             r.outcome, r.note = "unavailable", "model run flagged invalid: " + "; ".join(rep_reasons)
         elif not math.isfinite(r.model):
             r.outcome = "unavailable"

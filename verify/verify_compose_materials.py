@@ -328,14 +328,15 @@ check("band block 2026-10-13 corrections (user PDFs): GaN/AlN dE_v 850 [V] (VM03
       and _bands["cdse_znse"]["Eg_barrier"]["value"] == 2.82
       and tuple(_bands["ingan_gan"]["variants"]["unstr"][q]["value"] for q in ("Eg_dot", "dE_c", "dE_v")) == (2.74, 670, 100))
 
-# ---- r4-phonon I2: the O-band metamorphic row is an [E] class range, not the InAs/GaAs [A] reuse (Fable r4 adjudication)
+# ---- r4-phonon I2 (REVERTED by the r4 review, item 12): the [5, 8] / [2, 3] nm ranges were justified by "Kolatschek rate(T) brackets it",
+# i.e. tuned to a test datum, with no literature citation; the row is back to the InAs/GaAs class reuse [A] ([3, 5] / [1, 2] nm)
 _mm = R.get("material", "inas_ingaas_metamorphic_cband")
 _lx, _lz = _mm.param("l_xy_nm"), _mm.param("l_z_nm")
-_QUOTE = "O-band dot class; Kolatschek rate(T) brackets it"
-check("r4-phonon I2: inas_ingaas_metamorphic_cband l_xy [5, 8] nm, l_z [2, 3] nm, tag E (adjudication: O-band dot class)",
-      (_lx.lo, _lx.hi, _lz.lo, _lz.hi) == (5.0, 8.0, 2.0, 3.0) and _lx.tag == "E" and _lz.tag == "E",
+_QUOTE = "no on-disk source for C-band metamorphic dot sizes (pending literature)"
+check("r4 review 12: inas_ingaas_metamorphic_cband l_xy [3, 5] nm, l_z [1, 2] nm, tag A (InAs/GaAs class reused; the tuned [E] ranges are withdrawn)",
+      (_lx.lo, _lx.hi, _lz.lo, _lz.hi) == (3.0, 5.0, 1.0, 2.0) and _lx.tag == "A" and _lz.tag == "A",
       f"l_xy {_lx.lo}-{_lx.hi} {_lx.tag}, l_z {_lz.lo}-{_lz.hi} {_lz.tag}")
-check("r4-phonon I2: the class-range source text quotes the adjudication reason",
+check("r4 review 12: the source text states that no on-disk source exists for the C-band dot sizes",
       _QUOTE in _lx.source and _QUOTE in _lz.source)
 _gm = R.get("material", "inas_gaas_sk")
 check("r4-phonon I2: alpha, D_c, D_v, rho, c_LA of the row are unchanged (equal to the InAs/GaAs row) and the InAs/GaAs l ranges stay [3, 5] / [1, 2]",

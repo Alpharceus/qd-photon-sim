@@ -43,7 +43,7 @@ device:
 
 reported:
   - {id: g2_SUPER, observable: g2_0, convention: raw, value: 0.03, err: 0.01, tag: V, where: "text p.2 and abstract: g2(0) = 0.03 +/- 0.01 for SUPER (same area-of-zero-peak method as TPE, raw)"}
-  - {id: inversion_SUPER, observable: inversion, convention: intrinsic, value: 0.95, tag: V, where: "abstract (near-unity exciton inversion, approx 95 percent); the main text does not say how it is derived, and it is stated relative to the maximum TPE population, not absolute"}
+  - {id: inversion_SUPER, observable: inversion, convention: count, value: 0.95, tag: V, where: "abstract (near-unity exciton inversion, approx 95 percent); the main text does not say how it is derived, and it is stated relative to the maximum TPE population, not absolute"}
   - {id: tau_decay, observable: tau_ps, convention: intrinsic, value: 200.0, tag: V, where: "abstract (monoexponential decay approx 200 ps); used as the input tau_bare_ns, so not a test item"}
   - {id: g2_TPE, observable: g2_0, convention: raw, value: 0.009, err: 0.002, tag: V, where: "text p.2 (TPE reference, same method); TPE is not a carded drive"}
 
@@ -117,6 +117,7 @@ fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); inversion_SUPER (relative to the TPE maximum, count-type) -> count", note: "no value change (count = the previous intrinsic value); expects unchanged"}
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 4: structure -> bulk_planar (200 ps measured in pillar, no Purcell on top); tau_decay -> class C + fit on tau_bare_ns; fwhm1/2_ps -> 2.53 ps DR with rect shape (Methods Eq 4-5, 0.923 lambda^2/(pi c t_p)); area1/2_pi stay E ranges (Eq 6 needs the DBR field ratio F_j from ref 27, not given)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: the SUPER drive is now available (polaron solver); g2_SUPER expect unavailable -> pass (vacuous: area envelope 0-20 pi spans model g2 0.0036-26, central 0.79); inversion_SUPER (M, unavailable) -> P item inversion_SUPER_pred because the pulse areas are not derivable (model inversion 0.09 central, envelope [0, 0.92]); reported inversion_SUPER kept for the record"}

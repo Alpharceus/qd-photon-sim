@@ -38,7 +38,7 @@ device:
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: Fabry-Perot etalon of 1 GHz bandwidth in the HOM path (narrower than the ~0.5 GHz ZPL plus sideband selection); also isolates the ZPL from the cross-polarised laser"}
+      zpl_filter: {value: true, unit: "", tag: A, source: "choice [A], not stated: the text p.4 reads \"emitted photons are spectrally ﬁltered with a monochromato r and a Fabry-P ´erot etalon (with a bandwidth of 1 GHz), and then fed into another unbalanced Mach-Zehnder interferome-\"; that the filtered light is the ZPL alone (q = 1, brightness x Z) is our reading of 'monochromator plus etalon'; the 1 GHz etalon itself is modelled by setup.filter_fwhm_GHz"}
       filter_fwhm_GHz: {value: 1.0, unit: "GHz", tag: V, where: "text p.4 (wei2014_arp.txt): \"emitted photons are spectrally ﬁltered with a monochromato r and a Fabry-P ´erot etalon (with a bandwidth of 1 GHz), and then fed into another unbalanced Mach-Zehnder interferome-\" (the etalon is stated for the photons fed to the HOM interferometer; the g2 paragraph \"ity is calculated to be g 2(0) = 0. 003(2) by dividing the total\" names no filter)"}
       filter_applies_to: {value: hom, unit: "", tag: A, source: "the etalon is stated in the HOM path only (quote above); the g2 paragraph names no filter, so g2 is taken UNFILTERED [A] (the filter use for g2 is not stated)"}
       eta_det: {value: 0.2, unit: "1", tag: V, where: "text p.4: detection efficiency ~20% (overall collection ~1%)"}
@@ -79,12 +79,20 @@ reproduce:
   - item: inversion_pred
     class: P
     observable: inversion
-    convention: intrinsic
+    convention: count
     tol_reason: "no reported inversion number (population only plotted in Fig 2b); the model chirped-pulse inversion at 1.6 pi is stated for the record"
+    expect: pass
+  - item: inversion_pop_pred
+    class: P
+    observable: inversion
+    convention: population
+    tol_reason: "no reported inversion number; review item E companion of inversion_pred (count): the exciton population right after the pulse. A chirped pulse is treated as filling its solver window (margin 0), so this is the end-of-window population P_X_end, a lower bound of the pulse-end population"
     expect: pass
 fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_hom]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); inversion_pred -> count, new companion P item inversion_pop_pred -> population", note: "obtained: inversion_pred 0.9729 (count), inversion_pop_pred 0.7793 (the chirped pulse fills its window, margin 0: the end-of-window population, a lower bound); both pass (prediction)"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 14: setup.zpl_filter where-text (a paraphrase tagged V with wrong logic) replaced by the verbatim etalon line from the paper, the zpl_filter choice itself retagged A; review item C: the HOM-path background uses the filtered signal", note: "obtained: g2_raw 0.02767 fail, hom_raw 0.9329 [0.8813, 0.9938] and hom_corr 0.939 [0.887, 1] pass-envelope, linewidth_hom 1.985 pass, inversion_pred 0.9729 (count; population companion added); all expects unchanged"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 11: setup.filter_applies_to hom (etalon stated in the HOM path only; g2 unfiltered [A]); engine: g2 inside the HOM law is the filtered-stream g2 for hom", note: "obtained: g2_raw 0.0007 pass -> 0.02767 fail (as the red-team result expected, 'wei g2 will go back up'); hom_raw 0.9329 [0.8813, 0.9938] pass-envelope (unchanged), hom_corr 0.939 [0.887, 1.0] pass-envelope (unchanged verdict), linewidth_hom 1.985 pass, inversion_pred 0.9729. setup.zpl_filter left true (no brightness item in the card). The 'slow diffusion' assumption behind tau_sd [1e3, 1e6] ns is inferred from the raw visibility, not stated [A] (red-team link 4); not edited here (outside the spec items)", change: "expect pass -> fail (g2_raw)"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A021, A044; provenance): eps_int V -> DR (the paper prints the visibility 0.995, eps_int = 1 - 0.995 is arithmetic); alpha_ps2 where-text cites Ramsay et al. PRL 105, 177402 (2010) (the paper ref. [28]) and its DR alpha = hbar A/(pi k_B) = 0.027 ps^2; chirp 30 ps (not 28); all DR where-texts quote the printed inputs verbatim", note: "text only; values, tolerances and expectations unchanged. Excess linewidth 0.09 GHz is our subtraction 0.48 - 0.39 (the paper does not print it). Checker false positives: 1.4142, 5110, 2e12 (our constants), 99 (arithmetic)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}

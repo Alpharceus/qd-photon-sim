@@ -45,7 +45,7 @@ reported:
   - {id: g2_corr, observable: g2_0, convention: intrinsic, value: 0.02, err: 0.06, tag: V, where: "text p.4 / Table I: background-corrected g2(0) = 1 + (g2_meas - 1)/rho^2 = 0.02(6), rho = 0.91(1)"}
   - {id: g2_post, observable: g2_0, convention: intrinsic, value: 0.073, err: 0.003, tag: V, where: "text p.4 / Table I: peak-area ratio 0.073(3), meaningful only with on/off post-selection", note: "not a ledger item: post-selected method, different definition"}
   - {id: g2_res_samedot, observable: g2_0, convention: intrinsic, value: 0.016, err: 0.001, tag: V, where: "text p.4: 'on resonant excitation of the same quantum dot, we obtained g(2)res (0) = 0.016(1) [46]' ((1) = +- 0.001)", note: "not a ledger item: different drive"}
-  - {id: inversion_theory, observable: inversion, convention: intrinsic, value: 0.97, tag: V, where: "text p.4: maximum exciton occupation about 97% in the considered parameter window (two-level model, no phonons)", note: "paper theory, maximised over (Delta2, T2); a theory-vs-model check, not a measurement"}
+  - {id: inversion_theory, observable: inversion, convention: population, value: 0.97, tag: V, where: "text p.4: maximum exciton occupation about 97% in the considered parameter window (two-level model, no phonons)", note: "paper theory, maximised over (Delta2, T2); a theory-vs-model check, not a measurement"}
 reproduce:
   - item: tau_decay
     class: C
@@ -98,6 +98,7 @@ fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_decay]}
   - {param: setup.laser_leak, fitted_to: [g2_raw]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); inversion_theory (theory occupation) -> population on the reported entry (the item itself is an optimum item with its own occupation machinery)", note: "obtained: inversion_theory 0.9879 pass (optimum, unchanged), inversion_8K_pred 0.9879 pass; expects unchanged"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_raw 0.185 -> 0.183, g2_corr 0.0154 -> 0.0135, inversion_theory 0.27 -> 0.33 (still fails vs 0.97); all verdicts unchanged; no expect or tolerance changed"}
   - {date: 2026-10-13, by: "sonnet supercmp", reason: "R2 SUPCMP like-for-like SUPER comparison: inversion_theory is now an optimum item (max over the quoted Delta2 x T2 window, two-level, phonons and decay off, 5.48 ps transform-limited Gaussians of the 0.2 meV masks) instead of one 8 K point: 0.27/0.33 -> 0.643 (still fails vs 0.97, tolerance now abs 0.03 per the new definition); new P item inversion_8K_pred (same optimum with the 8 K polaron solver: 0.643); the argmax is on the Delta2 = -11.0 boundary and the optimum reaches 1.0 only for Delta2 near -12 meV (see the reason)", note: "no other expect or tolerance changed"}

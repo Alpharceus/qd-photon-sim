@@ -8,6 +8,8 @@ meta:
   read_level: V-full
   display_as: micropillar   # 3D view only (the cavity model is lumped): the device is a micropillar, Thomas et al., Phys. Rev. Lett. 126, 233601 (2021): electrically contacted micropillar [V] (.workers/devlib/papers/thomas2021.yaml); drawn with [A] display defaults
   summary: "InGaAs QD (neutral X, linear dipole) in an electrically contacted micropillar, Q ~4000 (Sample A), RESONANT 13 ps pi pulse at max brightness, T ~8 K: g2(0) 0.039, Ms 0.915"
+  notes:
+    - "r4 review item 10: the detected stream passes three angle-tuned 0.8 nm FWHM flat-top band-pass filters, not a dot-centred Lorentzian etalon: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters (Alluxa) separate the single\" ... \"The transmission of the ﬁlters is less than the maximum of 95% per ﬁlter, since we angle-tune the ﬁlters to fully\". The engine has no flat-top / band-pass filter model (setup.filter_fwhm_GHz is a single Lorentzian mode), so setup.filter_fwhm_GHz is NOT entered and the band-pass is unmodelled [A] (same note as thomas2021). The earlier 280.4 GHz Lorentzian was a shape artefact."
 
 device:
   T_K: {value: 8.0, unit: K, tag: V, where: "text p.2 (device description: cooled to around 8 K for Sample A, 7 K for Sample B)"}
@@ -23,6 +25,7 @@ device:
       Q: {value: 4000.0, unit: "1", tag: V, where: "text p.1-2 (quality factor of around 4,000 for Sample A)"}
       eta_out: {value: 0.65, unit: "1", tag: V, where: "text p.4 (extraction efficiency eta_ext ~0.65)"}
       F_P: {range: [2.0, 10.0], unit: "1", tag: E, source: "Purcell factor not stated in the paper (extraction model_inputs_missing); class range for a Q~4000 pillar [E], envelope only"}
+      F_P_source: {value: computed, unit: enum, tag: A, source: "r4 review item 16: F_P is not stated and not lifetime-derived; the class range [2, 10] is a Q/V-type design number for \"a quality factor of around 4,000 (10,000) respectively.\" (text), i.e. the bare ZPL cavity Purcell factor, which the rate dresses with the phonon overlap [A]"}
   drive:
     kind: resonant_pulse
     params:
@@ -37,7 +40,6 @@ device:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
       zpl_filter: {value: false, unit: "", tag: A, source: "r4 red-team link 1: the 10 pm etalon was NOT used for the resonant reference. Paper: \"Fig. 4(b). For one particular set of parameters we also ity with an additional 10 pm bandwidth etalon ﬁltering\" \"ration of 20.5 ps we measured g(2)(0) = 0 .011± 0.001\" (0.6 nm, 20.5 ps); the resonant g2 0.039 and Ms 0.915 carry no etalon, so no ZPL-only filter is entered"}
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "SM Experimental Set-up: \"The co-linearly polarized single photons are collected with a non-polarizing beam-splitter transmitting 90% of the light.\" (thomas2021.txt l.625; collection is co-linear with the excitation, not orthogonal; the cross-polarised resonant reference appears only in the Fig. 1(c,d) characterisation); eta_pol = 1"}
-      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: DR, where: "SM Experimental Set-up: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters\" (thomas2021.txt l.626) and the dot \"centred at 924.82 nm\" (l.624); arithmetic c dlambda/lambda^2 = 299792458 m/s x 0.8 nm / (924.82 nm)^2 = 280.4 GHz for ONE filter (the printed bandwidth is in nm; the GHz value is our conversion); treated as one Lorentzian [A]"}
 
 reported:
   - {id: g2_res, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
@@ -61,6 +63,7 @@ reproduce:
 fits: []
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 10: setup.filter_fwhm_GHz (280.4 GHz Lorentzian) removed (three 0.8 nm flat-top band-pass filters are not a Lorentzian; same [A] note as thomas2021); review item 16: structure.F_P_source computed (class range for Q ~ 4000)", note: "obtained: g2_res 0.03258 [0.01501, 0.04877] pass (was 0.03587), Ms_res 0.5722 [0.3795, 0.6693] fail (was 0.6071); expects unchanged, no tolerance changed"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 5: setup.zpl_filter true -> false (the 10 pm etalon applied only to the 0.6 nm / 20.5 ps point)", note: "re-run: g2_res 0.03587 [0.01616, 0.05382] pass (unchanged), Ms_res 0.6071 [0.4058, 0.7037] fail (was 0.630 [0.421, 0.730]); expectations unchanged. setup.filter_fwhm_GHz (280.4 GHz Lorentzian band-pass) is LEFT in this card because the spec scope named only zpl_filter, although the red-team (link 1) classes it as a shape artefact like thomas2021, where it was removed; with it the HOM q comes from that 1.16 meV window"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A113): filter_fwhm_GHz V -> DR (0.8 nm printed, 280.4 GHz is the conversion); collection documented as co-linear (SM l.625)", note: "text only; no value, tolerance or expectation changed"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}

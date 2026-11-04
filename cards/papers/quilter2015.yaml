@@ -31,7 +31,7 @@ device:
     params: {}
 
 reported:
-  - {id: CX_max, observable: inversion, convention: intrinsic, value: 0.67, err: 0.06, tag: V, where: "abstract and text p.3: maximum exciton population 0.67 +/- 0.06 at +0.83 meV, pump area 8.46 pi; photocurrent-calibrated and tunnelling-corrected (not a direct emission measurement)"}
+  - {id: CX_max, observable: inversion, convention: population, value: 0.67, err: 0.06, tag: V, where: "abstract and text p.3: maximum exciton population 0.67 +/- 0.06 at +0.83 meV, pump area 8.46 pi; photocurrent-calibrated and tunnelling-corrected (not a direct emission measurement)"}
 
 series: []
 
@@ -45,6 +45,7 @@ reproduce:
 fits: []
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); CX_max (photocurrent-calibrated occupation) -> population", note: "obtained: CX_max 0.6838 -> 0.6629 [0.6588, 0.6656] vs 0.67 +/- 0.06, pass; expect unchanged"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (DR/V items): lambda_nm, area_pi and fwhm_ps where-text now quote the paper lines verbatim and show the arithmetic", note: "text only; values, tolerances and expectations unchanged. The checker flags 954 and 11.9 because they are converted values (false positives)"}
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9 polaron solver: CX_max expect unavailable -> pass (model 0.644 [0.636, 0.650] vs 0.67 +- 0.06)"}

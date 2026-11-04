@@ -169,8 +169,8 @@ def lindblad_postprocess(res, plan, em, rt, window_counts, window_p0):
         inv = res.inversion
         notes.append(_filter_note(B, "filter"))
     if B > 0.0:
-        extra.update(filter_fwhm_GHz=B, n_ph_filtered=float(n) if _brightness(plan) else NAN,
-                     filter_T_free_decay=fs.free_decay_transmission(B, float(rt.Gamma_ns), float(rt.gamma_star_ns)),
+        extra.update(filter_fwhm_GHz=B, n_ph_filtered=float(nf),          # r4 review C: stored always (the HOM-path etalon needs n_f/n_u)
+                     filter_T_free_decay=fs.free_decay_transmission(B, float(rt.Gamma_ns), float(rt.gamma_star_ns), float(rt.k_nr_ns)),
                      filter_applied=True)
     extra["notes"] = notes
     return replace(res, g2_0=float(g2), n_ph=float(n), I_single=float(I), inversion=inv, extra=extra,
@@ -316,5 +316,5 @@ def polaron_filter(gen, plan, st, I, nq0, fine_for, n_f, with_hom, hom_tol, hom_
         st2["mean_photons"] = nf
     extra = {"filter_fwhm_GHz": B, "filter_applied": True, "g2_unfiltered": float(st["g2"]),
              "I_unfiltered": float(I), "n_ph_unfiltered": float(st["mean_photons"]), "g2_filtered": float(g2f),
-             "n_ph_filtered": float(nf) if _brightness(plan) else NAN}
+             "n_ph_filtered": float(nf)}
     return st2, If, extra

@@ -4,8 +4,12 @@
     beta  = (beta0 F_bg + F_P L)/(F_bg + F_P L)                                      [DR]
     k_nr                                   photonless loss, kept separate (not Purcell-enhanced)
 
-r4-cavity A: for a COMPUTED / simulated F_P (StructureResponse.F_P_source) the cavity channel is phonon dressed,
-F_P L -> F_P L L_ph with L_ph = Z_eff(kappa, T) (observables.cavity_sideband_filter); L_ph = 1 otherwise (bit-identical).
+r4-cavity A (corrected by the r4 review, item A): for a COMPUTED / simulated F_P (StructureResponse.F_P_source) the cavity
+channel sees the WHOLE phonon-dressed emission spectrum once, F_P L -> F_P L_spec with
+L_spec = (Z L + t_sb)/(Z + sb) (observables.cavity_sideband_parts; Z the ZPL weight, t_sb the sideband overlap with the cavity
+Lorentzian at the sideband's own position, sb the sideband area). L_ph := L_spec/L is kept for the note and the tests (the earlier
+form F_P L L_ph with L_ph = Z_eff = (Z + t_sb)/(Z + sb) multiplied the sideband term by L a second time); L_spec = L
+otherwise (bit-identical).
 
 L is the overlap of the DOT line with the cavity Lorentzian
 (spectral.cavity_transmission):
@@ -69,7 +73,10 @@ class RatesEx(Rates):
     linewidth_ueV: float = 0.0              # emitter FWHM hbar (Gamma + k_nr + gamma*) (Purcell-broadened, informational)
     dot_linewidth_ueV: float = 0.0          # width used for L: hbar (Gamma_bg + k_nr + gamma*), no Purcell channel
     beta0: float = 0.0                      # background-channel collected fraction (the structure's beta0)
-    L_ph: float = 1.0                       # r4-cavity A: phonon overlap Z_eff(kappa, T) of the cavity channel (1 = not applied)
+    L_ph: float = 1.0                       # r4-cavity A: L_spec/L (1 = not applied)
+    L_spec: float = 0.0                     # r4 review A: full spectral overlap (Z L + t_sb)/(Z + sb) (= L when the dressing is off)
+    ph_model: object = None                 # PhononParams when the cavity channel is phonon dressed (apply_pump recomputes L_spec), else None
+    T_K: float = 0.0
 
 
 def apply_pump(rt: RatesEx, P_ns: float) -> RatesEx:
@@ -87,14 +94,21 @@ def apply_pump(rt: RatesEx, P_ns: float) -> RatesEx:
     h = lb.HBAR_MEV_NS * 1e3
     G0, k, gs = float(rt.Gamma0_ns), float(rt.k_nr_ns), float(rt.gamma_star_ns)
     F_bg = float(rt.Gamma_bg_ns) / G0
-    L_ph = float(rt.L_ph)
-    F_P = float(rt.F_P_eff) / (float(rt.L) * L_ph)
+    L_spec_old = float(rt.L_spec) if rt.L_spec > 0.0 else float(rt.L)
+    F_P = float(rt.F_P_eff) / L_spec_old
     w_dot = h * (float(rt.Gamma_bg_ns) + k + gs + P)
     L = float(cavity_transmission(float(rt.detuning_ueV), w_dot, float(rt.kappa_ns) * h))
-    FPL = F_P * L * L_ph
+    L_spec = L
+    if rt.ph_model is not None:                  # r4 review A: the pumped dot width enters the sideband correlator, recompute
+        from .observables import cavity_sideband_parts
+        Z, t_sb, sb = cavity_sideband_parts(rt.ph_model, float(rt.T_K), float(rt.kappa_ns) * h * 1e-3,
+                                            float(rt.detuning_ueV) * 1e-3, w_dot * 1e-3)
+        L_spec = (Z * L + t_sb) / (Z + sb)
+    FPL = F_P * L_spec
     Gamma = G0 * (F_bg + FPL)
     beta = (float(rt.beta0) * F_bg + FPL) / (F_bg + FPL)
-    return _dc_replace(rt, Gamma_ns=Gamma, L=L, F_P_eff=FPL, beta=beta, dot_linewidth_ueV=w_dot,
+    return _dc_replace(rt, Gamma_ns=Gamma, L=L, L_spec=L_spec, L_ph=(L_spec / L if L > 0.0 else 1.0),
+                       F_P_eff=FPL, beta=beta, dot_linewidth_ueV=w_dot,
                        linewidth_ueV=h * (Gamma + k + gs + P),
                        notes=tuple(rt.notes) + (f"cw pump P = {P:.4g}/ns added to the dot line width seen by the cavity (L = {L:.4g})",))
 
@@ -121,16 +135,20 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
     else:
         L = 1.0
 
-    # r4-cavity A: the cavity channel sees the phonon-dressed emission spectrum (ZPL + LA sideband), not the ZPL alone:
-    # Gamma_cav = Gamma0 F_P L L_ph with L_ph = Z_eff(kappa, T) (observables.cavity_sideband_filter; kappa << E_c gives the
-    # polaron Z(T), kappa >> E_c gives 1). Applied only to a COMPUTED / simulated F_P (StructureResponse.F_P_source); an entered
+    # r4-cavity A + r4 review A: the cavity channel sees the phonon-dressed emission spectrum (ZPL + LA sideband), not the ZPL
+    # alone: Gamma_cav = Gamma0 F_P L_spec, L_spec = (Z L + t_sb)/(Z + sb) (observables.cavity_sideband_parts; kappa << E_c gives
+    # Z L, kappa >> E_c gives 1). Applied only to a COMPUTED / simulated F_P (StructureResponse.F_P_source); an entered
     # g or lifetime-derived F_P already contains the phonon renormalisation. The sideband share decays through F_bg (unfiltered).
-    L_ph = 1.0
+    L_spec = L
+    ph_model = None
     if (has_cav and em.phonon is not None and getattr(sr, "F_P_source", "measured") in ("computed", "simulated")
             and sr.E_mode_meV is not None):
-        from .observables import cavity_sideband_filter
-        L_ph = float(cavity_sideband_filter(em.phonon, float(T_K), float(sr.kappa_meV), detuning_ueV * 1e-3, w_dot * 1e-3)[1])
-    FPL = F_P * L * L_ph
+        from .observables import cavity_sideband_parts
+        Z_, t_sb_, sb_ = cavity_sideband_parts(em.phonon, float(T_K), float(sr.kappa_meV), detuning_ueV * 1e-3, w_dot * 1e-3)
+        L_spec = (Z_ * L + t_sb_) / (Z_ + sb_)
+        ph_model = em.phonon
+    L_ph = L_spec / L if (L > 0.0 and ph_model is not None) else 1.0
+    FPL = F_P * L_spec
     Gamma = G0 * (F_bg + FPL)
     beta = (float(sr.beta0) * F_bg + FPL) / (F_bg + FPL)
     Gamma_bg = G0 * F_bg
@@ -145,8 +163,8 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
 
     notes = [f"gamma* convention: {GAMMA_STAR_CONVENTION}"]
     if L_ph != 1.0:
-        notes.append(f"phonon-dressed cavity channel: Gamma_cav = Gamma0 F_P L L_ph with L_ph = Z_eff(kappa, T) = {L_ph:.4g} "
-                     "(computed F_P is the ZPL-only cavity number; the sideband share decays through F_bg) [DR]")
+        notes.append(f"phonon-dressed cavity channel: Gamma_cav = Gamma0 F_P L_spec with L_spec = (Z L + t_sb)/(Z + sb) = {L_spec:.4g} "
+                     f"(L_spec/L = {L_ph:.4g}; computed F_P is the ZPL-only cavity number; the sideband share decays through F_bg) [DR]")
     regime = "weak"
     jc = False
     if has_cav and g_ns > 0.0:
@@ -163,4 +181,5 @@ def combine(em: EmitterModel, sr: StructureResponse, T_K: float) -> RatesEx:
                    regime=regime, notes=tuple(notes), jc_recommended=bool(jc), g_ns=g_ns,
                    kappa_ns=kappa_ns, detuning_ueV=detuning_ueV, cav_minus_dot_ns=cav_minus_dot,
                    Gamma_bg_ns=Gamma_bg, Gamma0_ns=G0, linewidth_ueV=h * (Gamma + k + gs),
-                   dot_linewidth_ueV=w_dot, beta0=float(sr.beta0), L_ph=L_ph)
+                   dot_linewidth_ueV=w_dot, beta0=float(sr.beta0), L_ph=L_ph, L_spec=L_spec,
+                   ph_model=ph_model, T_K=float(T_K))

@@ -27,6 +27,7 @@ device:
       Q: {value: 4000.0, unit: "1", tag: V, where: "text p.1-2 (quality factor of around 4,000 for Sample A)"}
       eta_out: {value: 0.65, unit: "1", tag: V, where: "text p.4 (extraction efficiency eta_ext ~0.65)"}
       F_P: {range: [2.0, 10.0], unit: "1", tag: E, source: "Purcell factor not stated in the paper (extraction model_inputs_missing); class range for a Q~4000 pillar [E], envelope only"}
+      F_P_source: {value: computed, unit: enum, tag: A, source: "r4 review item 16: F_P is not stated and not lifetime-derived; the class range [2, 10] is a Q/V-type design number for \"a quality factor of around 4,000 (10,000) respectively.\" (text), i.e. the bare ZPL cavity Purcell factor, which the rate dresses with the phonon overlap [A]"}
   drive:
     kind: phonon_assisted
     params:
@@ -44,7 +45,7 @@ reported:
   - {id: g2_BFL, observable: g2_0, convention: raw, value: 0.046, err: 0.001, tag: DR, where: "text p.4 and abstract: P = 1 - g2(0) = 0.954 +/- 0.001 at dlambda 0.4 nm, tau 19.5 ps (g2 implied by purity)"}
   - {id: Ms_BFL, observable: hom_I, convention: corrected, value: 0.909, err: 0.004, tag: V, where: "text p.4 and abstract: Ms = 0.909 +/- 0.004 at the same point; g2-corrected via Ms = (V+g2)/(1-g2)"}
   - {id: BFL_best, observable: B_first_lens, convention: intrinsic, value: 0.50, err: 0.01, tag: V, where: "text p.4 and abstract: first-lens brightness 0.50 +/- 0.01 (setup-calibrated), dlambda 0.4 nm, tau 19.5 ps"}
-  - {id: pQD_BFL, observable: inversion, convention: intrinsic, value: 0.77, tag: DR, where: "0.50/0.65 text p.4 (BFL 0.50 divided by the paper's eta_ext 0.65 = occupation probability at the best-brightness point)"}
+  - {id: pQD_BFL, observable: inversion, convention: count, value: 0.77, tag: DR, where: "0.50/0.65 text p.4 (BFL 0.50 divided by the paper's eta_ext 0.65 = occupation probability at the best-brightness point)"}
   - {id: BFL_expected_max, observable: B_first_lens, convention: intrinsic, value: 0.55, tag: DR, where: "text p.4: eta_ext x p_QD = 0.65 x 0.85 (paper's own ceiling, not a measurement)"}
   - {id: g2_13ps_085nm, observable: g2_0, convention: raw, value: 0.030, err: 0.002, tag: V, where: "text p.3 (0.85 nm, 13 ps, LA-assisted at max brightness; Fig 3b)"}
   - {id: g2_13ps_resonant, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
@@ -81,6 +82,8 @@ fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); pQD_BFL (BFL/eta_ext, brightness-calibrated) -> count", note: "no value change (count = the previous intrinsic value)"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 16: structure.F_P_source set to computed (the class range [2, 10] is a Q/V-type design number for the stated Q ~ 4000, not a lifetime-derived value); the phonon-dressed cavity channel L_spec now applies; engine fixes of the review (L_spec, q pass weighting, w_dot)", note: "obtained: g2_BFL 0.1657 [0.0584, 0.3006] fail (was 0.1836 [0.0638, 0.3301]), Ms_BFL 0.8615 [0.7688, 0.9023] pass (was 0.8709), pQD_BFL 0.7777 pass (was 0.7859; convention count); expects unchanged, no tolerance changed"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 4: setup.filter_fwhm_GHz (280.4 GHz Lorentzian) removed; g2_BFL pass-envelope -> fail (honest re-record)", note: "obtained: g2_BFL central 0.1836, envelope [0.0638, 0.3301] (was 0.1176 [0.0426, 0.1883] with the Lorentzian band-pass), paper 0.046 below the envelope floor; Ms_BFL 0.8709 [0.7821, 0.9110] pass (was 0.877 [0.789, 0.907]); pQD_BFL 0.7859 pass (unchanged). No tolerance changed; the band-pass filters are an unmodelled [A] (no flat-top filter model in the engine)", change: "expect pass-envelope -> fail (g2_BFL)"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance and corrections (A113, A174, DR items): filter_fwhm_GHz V -> DR (the paper prints 0.8 nm; 280.4 GHz is the conversion); collection documented as co-linear (SM l.625), not orthogonal; detuning and gamma_star where-texts quote the paper lines; 143 ps identified as a model number", note: "text only; values, tolerances and expectations unchanged. A075: pQD_BFL 0.77 stays a documented DR (0.50 first-lens brightness / 0.65 extraction), the paper prints 0.50 at 19.5 ps"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.4: inversion is n_exc, not the end-of-window population; pQD_BFL expect fail -> pass (0.395 -> 0.786)", change: "expect fail -> pass (pQD_BFL)"}

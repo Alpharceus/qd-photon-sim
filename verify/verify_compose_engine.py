@@ -893,13 +893,15 @@ def main():
     # (M - 1)/g2_f = 2|s|^2/(1 + |s|^2) + p0 with |s|^2 = Gamma/(Gamma + kappa) -> 0.54 (Fable probe; engine 0.551), tol 0.05.
     wang_ex = sc_w["hom_I"] / (1.0 - sc_w["g2_0"])
     wang_coef = (wang_ex - 1.0) / sc_w["g2_0"] if sc_w["g2_0"] > 0 else float("nan")
-    check("FX4-6. corrected HOM visibility above 1 (Fable filtered-HOM cap): I <= 1 holds (ex <= 1/(1 - g2)) for the "
-          "filtered wang2019b stream and Gaussian 400 / 1500 ps pulses; all three are clipped to 1 with a note, never NaN; the "
-          "filtered wang2019b excess (M - 1)/g2_f matches the analytic first-order coefficient 0.54 within 0.05",
+    # r4 review 7: the sub-checks `ex <= 1 or V_corr == 1` are tautological given the clip and are removed. What is kept is
+    # independent of the clip: the rigorous bound I <= 1 and the analytic coefficient, evaluated on a PROBE (wang2019b with
+    # zpl_filter forced to isolate the filtered-stream overlap), not on the card as published.
+    check("FX4-6. PROBE (wang2019b with zpl_filter forced, q = 1): I <= 1 holds for the probe and the Gaussian 400 / 1500 ps pulses; "
+          "the probe's corrected visibility is clipped to 1 with a note, never NaN; its excess (M - 1)/g2_f matches the analytic "
+          "first-order coefficient 0.54 within 0.05",
           sc_w["hom_V_corr"] == 1.0 and math.isfinite(sc_w["hom_V_raw"])
           and any("clipped to 1" in n for n in sc_w["notes"])
           and sc_w["hom_I"] <= 1.0 + 1e-12 and sc_mid["hom_I"] <= 1.0 + 1e-12 and sc_big["hom_I"] <= 1.0 + 1e-12
-          and (ex_mid <= 1.0 or sc_mid["hom_V_corr"] == 1.0) and (ex_big <= 1.0 or sc_big["hom_V_corr"] == 1.0)
           and abs(wang_coef - 0.54) < 0.05,
           f"wang ex {wang_ex:.6f} coef {wang_coef:.3f}; 400 ps ex {ex_mid:.6f} -> {sc_mid['hom_V_corr']}; "
           f"1500 ps ex {ex_big:.6f} -> {sc_big['hom_V_corr']}")
@@ -950,10 +952,11 @@ def main():
     # ---- r4-hom 2.3: card `correction:` field (schema + routing) and the unbalanced splitter through the engine
     from fsim_core.compose import papers as _PP
     rb = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}, su={"bs_R": 0.4, "eps_int": 0.02}))["scalars"]
-    want_bs = h0["hom_V_raw"] * 0.98 * (2 * 0.4 * 0.6 / (0.16 + 0.36))
-    check("R4-4. bs_R = 0.4 and eps_int 0.02 scale V_raw by 0.98 x 2RT/(R^2 + T^2) (hand: 0.96/0.52 = 0.9231 x 0.98) and corrected stays I/(1 - g2)",
-          near(rb["hom_V_raw"], want_bs, ab=1e-12) and near(rb["hom_V_corr"], h0["hom_V_corr"], ab=1e-12),
-          f"{rb['hom_V_raw']:.6f} vs {want_bs:.6f}")
+    # r4 review G: exact splitter law V = 2RT I (1 - eps)/(R^2 + T^2 + 2RT g2) (hand numbers: 2RT = 0.48, R^2 + T^2 = 0.52, eps 0.02)
+    want_bs = 0.48 * 0.98 * rb["hom_I"] / (0.52 + 0.48 * rb["g2_raw"])
+    check("R4-4. bs_R = 0.4 and eps_int 0.02: V_raw = 0.48 x 0.98 I/(0.52 + 0.48 g2) (exact splitter law, hand numbers) and corrected is I/(1 - g2) capped at 1 (the I = 1 cap)",
+          near(rb["hom_V_raw"], want_bs, ab=1e-12) and near(rb["hom_V_corr"], min(1.0, rb["hom_I"] / (1.0 - rb["g2_raw"])), ab=1e-12),
+          f"{rb['hom_V_raw']:.6f} vs {want_bs:.6f}; corr {rb['hom_V_corr']:.9f} vs {rb['hom_I'] / (1.0 - rb['g2_raw']):.9f}")
     import copy as _cp
     import yaml as _y2
     base_raw = _y2.safe_load((ROOT / "cards" / "papers" / "_fixture.yaml").read_text(encoding="utf-8"))
@@ -1229,8 +1232,20 @@ def main():
           abs(_rw.L_ph - 1.0) < 1e-4 and abs(_rw.Gamma_ns / rates.combine(_em19, _sr19(1e5, "measured"), _T).Gamma_ns - 1) < 1e-4,
           f"L_ph {_rw.L_ph:.6f}")
     _rn = rates.combine(_em19, _sr19(1e-5, "computed"), _T)
-    check("19c. kappa -> 0: L_ph -> Z(T) (polaron B^2) to 1e-3, F_P_eff = F_P L Z",
-          abs(_rn.L_ph - _Z19) < 1e-3 and abs(_rn.F_P_eff / (5.0 * _rn.L * _Z19) - 1) < 2e-3, f"L_ph {_rn.L_ph:.5f}, Z {_Z19:.5f}")
+    # r4 review A: the cavity channel is the overlap of the WHOLE spectrum with the cavity, L_spec = (Z L + t_sb)/(Z + sb); the
+    # expectation below integrates the sideband independently (own trapezoid + Lorentzian) and takes only Z, L from the engine
+    import numpy as _np19
+
+    def _lspec_ref(kappa, Lz, det, wdot):
+        om, ssb, zz = qd_gf._spectrum_parts(_ph, _T, wdot)
+        tc = (kappa / 2.0) ** 2 / ((om + det) ** 2 + (kappa / 2.0) ** 2)
+        return (zz * Lz + float(_np19.trapezoid(ssb * tc, om))) / (zz + float(_np19.trapezoid(ssb, om)))
+    _wd = _rn.dot_linewidth_ueV * 1e-3
+    check("19c. kappa -> 0: L_spec -> Z L (ZPL only) within the sideband share t_sb/(Z L) < 1e-2, and F_P_eff = F_P L_spec equals the "
+          "independent integral (1e-9)",
+          abs(_rn.F_P_eff / (5.0 * _rn.L * _Z19) - 1) < 1e-2
+          and abs(_rn.F_P_eff / (5.0 * _lspec_ref(1e-5, _rn.L, 0.0, _wd)) - 1) < 1e-9,
+          f"F_P_eff/(F_P L Z) {_rn.F_P_eff / (5.0 * _rn.L * _Z19):.5f}, L_spec {_rn.L_spec:.6f}")
     _rb = rates.combine(_em19, _sr19(0.3, "computed", b0=0.4), _T)
     _c = _rb.F_P_eff / (_rb.Gamma_ns / 1.0)
     _l = 0.8 / (_rb.Gamma_ns / 1.0)
@@ -1239,15 +1254,21 @@ def main():
           abs(_c + _l - 1.0) < 1e-12 and abs(_rb.beta - (_c + 0.4 * _l)) < 1e-12
           and _c < 5.0 * _rb.L / (0.8 + 5.0 * _rb.L) and 0.0 < _rb.L_ph < 1.0, f"{_c:.5f} + {_l:.5f}, L_ph {_rb.L_ph:.4f}")
     _rp = rates.apply_pump(_rb, 0.5)
-    check("19e. apply_pump keeps L_ph (F_P_eff = F_P L L_ph recomputed at the pumped L)",
-          _rp.L_ph == _rb.L_ph and abs(_rp.F_P_eff / (_rp.L * _rp.L_ph) - 5.0) < 1e-12)
+    _wp = _rp.dot_linewidth_ueV * 1e-3
+    check("19e. apply_pump recomputes L_spec at the pumped dot width: F_P_eff = F_P (Z L + t_sb)/(Z + sb) with the independent integral (1e-9), "
+          "and the bare F_P F_P_eff/L_spec is unchanged (5)",
+          abs(_rp.F_P_eff / (5.0 * _lspec_ref(0.3, _rp.L, 0.0, _wp)) - 1) < 1e-9 and abs(_rp.F_P_eff / _rp.L_spec - 5.0) < 1e-12
+          and abs(_rp.L_ph - _rp.L_spec / _rp.L) < 1e-12 and _rp.L < _rb.L)
     _pw = PP.load_paper(ROOT / "cards" / "papers" / "nowak2014.yaml")
     _rep = PP.reproduce(_pw, envelope=False)
     _tau = {i.id: i.model for i in _rep.items}["tau_X"]
     # Nowak (Nat. Commun. 5, 3240): tau_ref 1.45 ns, bare F_P 1.04 (paper theory 1.1), L_ph = Z_eff(1.03 meV, 35 K) ~ 0.72
     # (Fable r4 review): tau = 1450/(1 + F_P L_ph) ~ 830 ps against the measured 820 +- 30 ps.
-    check("19f. Nowak 2014 tau_X = 1450/(1 + 1.04 L_ph) ~ 830 ps (+- 10 ps) and inside the paper 820 +- 60 ps (was 716 ps)",
-          abs(_tau - 830.0) < 10.0 and abs(_tau - 820.0) < 60.0, f"tau_X {_tau:.1f} ps")
+    check("19f(a). PAPER check: Nowak 2014 tau_X within 2 sigma of the printed 'tau_X = 0.82 +/- 0.03 ns' (820 +- 60 ps)",
+          abs(_tau - 820.0) < 60.0, f"tau_X {_tau:.1f} ps")
+    check("19f(b). regression lock (code output, not a paper check): Nowak 2014 tau_X stays at the r4-review value ~ 835 ps (+- 10 ps; "
+          "Fable's hand estimate 1450/(1 + 1.04 L_ph) ~ 830 ps)",
+          abs(_tau - 835.0) < 10.0, f"tau_X {_tau:.1f} ps")
     # the A2 check isolates the Z_filt fix: the card carried the r4-incoh reservoir loss (tau_res_ps) until the r4 red-team fix
     # removed it (P_sat is empirical, the loss double counts); the pop stays (default None) so the unity-capture chain
     # 0.91 x 0.884 x 0.70 is checked whether or not the card carries the input
@@ -1259,7 +1280,11 @@ def main():
     _Bq = {i.id: i.model for i in _repq.items}
     _tm = PP.reproduce(PP.load_paper(ROOT / "cards" / "papers" / "tomm2021.yaml"), envelope=False)
     _Bt = {i.id: i.model for i in _tm.items}["sys_eff_QD1"]
-    check("19g. A2 (no Z_filt double count): Tomm 2021 system efficiency 0.51 -> ~0.57 (Fable r4 prediction, paper 0.53 +- 0.03 within 2 sigma + 0.01)",
+    check("19g(a). PAPER check: Tomm 2021 system efficiency within 2 sigma of the printed '53+- 3% for QD1' (0.53 +- 0.06; the "
+          "range over QD1-QD6 is '53%-57%')",
+          abs(_Bt - 0.53) <= 0.06, f"sys_eff_QD1 {_Bt:.4f}")
+    check("19g(b). regression lock (code output, not a paper check): A2 no Z_filt double count keeps Tomm sys_eff_QD1 in 0.55-0.60 "
+          "(was 0.51 with the double count)",
           0.55 < _Bt < 0.60, f"sys_eff_QD1 {_Bt:.4f}")
     check("19h. A2: somaschi2016_qd1 brightness = 0.91 x 0.884 x 0.70 = 0.563 within 3 % (was 0.503 with the Z_filt double count)",
           abs(_Bq.get("B_first_lens", _Bq.get("brightness", float("nan"))) / 0.563 - 1) < 0.03,

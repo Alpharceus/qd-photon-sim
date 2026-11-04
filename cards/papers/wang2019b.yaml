@@ -61,7 +61,7 @@ reproduce:
   - item: eff_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.1}
-    tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
+    tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which covers the assumed eta_table point (the card no longer taxes the brightness with the etalon: the paper's 0.56 is the loss budget without it, so no Z_filt convention offset remains)"
     expect: pass
     reason: "flipped fail -> pass after two paper-stated input fixes (F_P 20 -> 19 total-ratio convention, material.eta_blink 0.65 from the stated 35 % blinking loss). r4 red-team item 10: setup.zpl_filter is removed (it taxed the brightness by Z_filt ~ 0.9 although the paper's 0.56 is the loss budget WITHOUT the etalon, and was the only reason the pass was marginal): model 0.5159 (envelope 0.5057-0.5259) vs 0.56 +/- 0.02, inside the 0.1 absolute tolerance by 0.056 (was 0.471, inside by 0.005). Remaining offsets: the EBG eta_table 0.8 is an assumed class value and the paper's own budget has no extra factors. Fable predicted 0.47 (r4 cavity review item I) with the factor; removing it moves the model toward the paper, as the red-team result expected (~0.52)."
   - item: g2_ebg
@@ -75,7 +75,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
     expect: pass
-    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.981, 1.000]) vs the paper within abs 0.05 (gap 0.049). Non-discriminating: the clipped ideal value is what the null model gives."
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.9796, 1.000], r4 review re-run) vs the paper within abs 0.05 (gap 0.049). Non-discriminating: the clipped ideal value is what the null model gives."
     weak: true
     weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at 1 and abs 0.05 exceeds the gap to the paper; the paper-style correction is also biased high by ~0.54 g2 behind a 5 GHz etalon"
   - item: hom_corr_2ns
@@ -83,11 +83,12 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.973 +/- 0.005; 0.05 absolute as for 13 ns; the model has no delay dependence, so the same model value is compared with the 2 ns paper number"
     expect: pass
-    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.981, 1.000]) vs the paper within abs 0.05 (gap 0.027). Non-discriminating: the clipped ideal value is what the null model gives."
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.9796, 1.000], r4 review re-run) vs the paper within abs 0.05 (gap 0.027). Non-discriminating: the clipped ideal value is what the null model gives."
     weak: true
     weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at 1 and abs 0.05 exceeds the gap to the paper; the paper-style correction is also biased high by ~0.54 g2 behind a 5 GHz etalon"
 fits: []
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 13: stale texts refreshed (hom_corr reasons, eff_ebg tol_reason wording; tol values unchanged). CURRENT values after the review engine fixes (cavity spectral overlap L_spec, q pass-weighting, w_dot sideband width) and the metamorphic-size revert: tau_ebg 54.5 ps fail, eff_ebg 0.5159 [0.5057, 0.5259] pass, g2_ebg 0.002071 fail, hom_corr_13ns and hom_corr_2ns 1.000 [0.9796, 1] pass (weak). Older history lines that quote other numbers (eff_ebg 0.716, 0.724, 0.471; envelope 0.9787) are superseded by these", note: "no expect or tolerance changed"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 10: setup.zpl_filter removed, filter_applies_to g2_hom set with the quote (the etalon is in the purity / HOM path only)", note: "obtained: eff_ebg 0.471 -> 0.5159 [0.5057, 0.5259] pass (no longer a marginal pass); tau_ebg 54.5 ps fail, g2_ebg 0.002071 fail, hom_corr_13ns / hom_corr_2ns 0.9993 [0.9787, 1] pass (weak) all unchanged verdicts. The HOM ZPL fraction q now comes from the 5 GHz etalon's own window"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A083, A156; provenance Q): structure.F_P retagged DR -> A (the paper never defines the simulated >20 as a total rate ratio; the -1 is our assumption), value 19.0 unchanged; Q and etalon where-texts quote the paper lines; measured Purcell ratio is ~15.7 (not 14.7)", note: "text only; values, tolerances and expectations unchanged. The 334 THz carrier in Q is our conversion c/897 nm (false positive 334 in the checker)"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): eff_ebg 0.716 -> 0.724. Expect unchanged; not tuned."}

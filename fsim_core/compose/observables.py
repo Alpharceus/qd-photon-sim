@@ -343,28 +343,34 @@ def binned_g2_tail(g2_0, components, T_bin_ns):
 
 
 def _bs_factor(bs_R=0.5):
-    """2RT/(R^2 + T^2), T = 1 - R: the fringe-contrast factor of an unbalanced beam splitter (1 at R = 1/2) [DR]."""
+    """2RT/(R^2 + T^2), T = 1 - R: the fringe-contrast factor of an unbalanced beam splitter (1 at R = 1/2) [DR]. Used only by the
+    declared santori2002 estimator; the engine laws below carry the exact g2 dependence of the splitter."""
     R = float(bs_R)
     T = 1.0 - R
     return 2.0 * R * T / (R * R + T * T)
 
 
 def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None, bs_R=0.5):
-    """Raw visibility in the CROSS-polarised normalisation the experiments use (r4-hom, Fable 2.3):
-    V_raw = rho^2 I/(1 + g2_raw) (1 - eps_int) 2RT/(R^2 + T^2), with I the solver's whole-stream overlap and
-    rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1, V = I/(1 + g2)). For two independent
-    identical sources C_par = (N^2/4)(2 g2 + 2 - 2 I), C_perp = (N^2/4)(2 g2 + 2), so V = 1 - C_par/C_perp = I/(1 + g2) [DR].
-    The pre-r4 law (rho^2 I - g2_raw) normalised to the far peak; it agrees to O(g2)."""
+    """Raw visibility in the CROSS-polarised normalisation the experiments use (r4-hom, Fable 2.3; exact splitter law r4 review G):
+    V_raw = 2RT rho^2 I (1 - eps_int)/(R^2 + T^2 + 2RT g2_raw), T = 1 - R, with I the solver's whole-stream overlap and
+    rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1). Normal-ordered expansion for two independent
+    identical sources into an R/T splitter: C_par = N^2 [R^2 + T^2 + 2RT g2 - 2RT I], C_perp = N^2 [R^2 + T^2 + 2RT g2], so
+    V = 1 - C_par/C_perp = 2RT I/(R^2 + T^2 + 2RT g2) [DR; agrees with Ollivier et al. 2021 SI Eq. S.2 / S.5, refs/Third pass/
+    ollivier2021_arxiv.txt]. R = 1/2 gives I/(1 + g2). The pre-r4 law (rho^2 I - g2_raw) normalised to the far peak; it agrees to O(g2)."""
+    R = float(bs_R)
+    T = 1.0 - R
     rho2 = 1.0 if (g2_int is None or not g2_int < 1.0) else (1.0 - g2_raw) / (1.0 - g2_int)
-    return rho2 * I / (1.0 + g2_raw) * (1.0 - eps_int) * _bs_factor(bs_R)
+    return 2.0 * R * T * rho2 * I * (1.0 - eps_int) / (R * R + T * T + 2.0 * R * T * g2_raw)
 
 
 def hom_v_corrected(V_raw, g2, eps_int=0.0, bs_R=0.5):
-    """Exact inverse of `hom_v_raw` for the single-photon overlap M_s: M = V_raw/[(1 - eps_int) 2RT/(R^2 + T^2)] (1 + g2)/(1 - g2)
+    """Exact inverse of `hom_v_raw` for the single-photon overlap M_s: M = V_raw (R^2 + T^2 + 2RT g2)/(2RT (1 - eps_int)(1 - g2))
     (the stream overlap is I = M_s (1 - g2) + O(g2^2) only for a distinguishable extra photon; a filtered
     stream has a first-order excess, see the cap in _derive). With a background and g2 = g2_raw this equals I/(1 - g2_signal)
-    exactly (Tomm 0.925-type values: with eps = 0, R = 1/2 it is the old I/(1 - g2))."""
-    return V_raw / ((1.0 - eps_int) * _bs_factor(bs_R)) * (1.0 + g2) / (1.0 - g2)
+    exactly (Tomm 0.925-type values: with eps = 0, R = 1/2 it is the old I/(1 - g2)) [DR]."""
+    R = float(bs_R)
+    T = 1.0 - R
+    return V_raw * (R * R + T * T + 2.0 * R * T * g2) / (2.0 * R * T * (1.0 - eps_int) * (1.0 - g2))
 
 
 HOM_CORRECTIONS = ("engine", "santori2002", "ollivier2021")
@@ -389,15 +395,24 @@ def hom_v_corrected_by(correction, V_raw, g2, eps_int=0.0, bs_R=0.5):
     raise ValueError(f"unknown HOM correction {correction!r}; valid: {HOM_CORRECTIONS}")
 
 
-def cavity_sideband_filter(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
-    """(Z, Z_eff) of the cavity-filtered output (module doc): detuning_meV = E_ZPL - E_mode."""
+def cavity_sideband_parts(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
+    """(Z, t_sb, sb) of the polaron spectrum S = Z Lor + S_sb seen by a Lorentzian cavity (peak-normalised, FWHM kappa) at
+    detuning_meV = E_ZPL - E_mode: t_sb = int S_sb T_cav(w + Delta) dw, sb = int S_sb dw. The cavity-channel rate is the overlap
+    of the WHOLE spectrum with the cavity response, Gamma_cav = Gamma_0 F_P (Z L + t_sb)/(Z + sb) (r4 review A) [DR]."""
     import numpy as np
     omega, s_sb, z = qd_gf._spectrum_parts(ph, float(T_K), float(gamma_zpl_meV))
     sb_area = float(np.trapezoid(s_sb, omega))
     xc = omega + float(detuning_meV)
     acc = (kappa_meV / 2.0) ** 2 / (xc ** 2 + (kappa_meV / 2.0) ** 2)
     t_sb = float(np.trapezoid(s_sb * acc, omega))
-    return float(z), float((z + t_sb) / (z + sb_area))
+    return float(z), t_sb, sb_area
+
+
+def cavity_sideband_filter(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
+    """(Z, Z_eff) of the cavity-filtered output (module doc): detuning_meV = E_ZPL - E_mode. Z_eff = (Z + t_sb)/(Z + sb) is the
+    ZPL-overlap-free (L = 1) limit of the cavity-channel spectral overlap L_spec = (Z L + t_sb)/(Z + sb)."""
+    z, t_sb, sb_area = cavity_sideband_parts(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV)
+    return z, float((z + t_sb) / (z + sb_area))
 
 
 # ---- r4-phonon I1: Zf_window (Fable r4 adjudication section 2) -----------------------------------------------------
@@ -440,13 +455,15 @@ def _window_acceptance(x, w, shape):
     raise ValueError(f"unknown filter shape {shape!r}; valid: {WINDOW_SHAPES}")
 
 
-def window_filter_parts(ph, T_K, w_meV, offset_meV, gamma_zpl_meV, shape="lorentzian", kappa_meV=None, detuning_meV=0.0):
+def window_filter_parts(ph, T_K, w_meV, offset_meV, gamma_zpl_meV, shape="lorentzian", kappa_meV=None, detuning_meV=0.0,
+                        L_zpl=1.0):
     """Zf of a spectral window (module doc / adjudication I1) on the dot spectrum Z delta_Gamma + S_sb.
     offset_meV = ZPL minus window centre (the setup's filter_offset_meV); the sideband sits at offset + omega.
     Returns dict z, T_zpl, Zf (window-passed share of the spectrum seen by the window, normalised by z + sideband area as in
     cavity_sideband_filter: w -> 0 gives Z, w -> inf gives 1), Zf_cav (cavity-collected light: ZPL passed whole, sideband
     through a Lorentzian cavity kappa at `detuning_meV` = E_ZPL - E_mode, then the window; None without kappa) and Z_eff_cav
-    (the cavity-only Z_eff of cavity_sideband_filter)."""
+    (the cavity-only Z_eff of cavity_sideband_filter). r4 review A: L_zpl = the ZPL-cavity overlap L weights the ZPL term of the
+    cavity light, Z_eff_cav = (Z L + b_c)/(Z + sb), Zf_cav = (Z L T_zpl + b_w)/(Z + sb); the default L_zpl = 1 is the pre-review value."""
     import numpy as np
     omega, s_sb, z = qd_gf._spectrum_parts(ph, float(T_K), float(gamma_zpl_meV))
     z = float(z)
@@ -459,8 +476,8 @@ def window_filter_parts(ph, T_K, w_meV, offset_meV, gamma_zpl_meV, shape="lorent
         acc = (kappa_meV / 2.0) ** 2 / ((omega + float(detuning_meV)) ** 2 + (kappa_meV / 2.0) ** 2)
         b_c = float(np.trapezoid(s_sb * acc, omega))
         b_w = float(np.trapezoid(s_sb * acc * _window_acceptance(omega + float(offset_meV), w, shape), omega)) if w > 0.0 else 0.0
-        out["Z_eff_cav"] = (z + b_c) / (z + sb_area)
-        out["Zf_cav"] = (z * t_zpl + b_w) / (z + sb_area)           # window-passed, absolute (unit-area spectrum)
+        out["Z_eff_cav"] = (z * float(L_zpl) + b_c) / (z + sb_area)
+        out["Zf_cav"] = (z * float(L_zpl) * t_zpl + b_w) / (z + sb_area)           # window-passed, absolute (unit-area spectrum)
     return out
 # ---- end r4-phonon I1 ----------------------------------------------------------------------------------------------
 
@@ -515,11 +532,33 @@ class Context:
 _H_MEV_PER_GHZ = 4.135667696e-3                      # h in meV/GHz [V: CODATA]
 
 
-def _etalon_window(plan):
+def _pulse_end_margin_ns(plan) -> float:
+    """Time (ns) from the end of the last pulse to the end of the solver window (r4 review E). A Gaussian ends where its field is
+    e^-8 of the peak, t_c + 4 sigma (window end t_c + 8 sigma); a rectangle ends with its window; chirped / sinc / explicit-field
+    pulses are treated as filling their window (margin 0, conservative). Window as polaron.PulseTrain: W = 2 max(|t0| + half)."""
+    from . import polaron as _pl
+    from .. import resonant_source as _rs
+    ps = plan.pulses
+    if not ps or plan.inputs.get("slm_field"):
+        return 0.0
+    half = [abs(p.t0_ps) * 1e-3 + _pl._half_window(p) for p in ps]
+    W = 2.0 * max(half)
+    ends = []
+    for p in ps:
+        tc = 0.5 * W + p.t0_ps * 1e-3
+        e = _pl._half_window(p)
+        if p.shape == "gauss" and float(p.chirp_meV_ps) == 0.0:
+            e = 0.5 * _rs.GAUSS_WINDOW_SIGMA * _rs.gaussian_sigma(p.fwhm_ps * 1e-3)       # 4 sigma
+        ends.append(tc + e)
+    return max(0.0, W - max(ends))
+
+
+def _etalon_window(plan, res):
     """(w_meV, taxes_brightness) of the Lorentzian etalon on the detected stream (setup.filter_fwhm_GHz; (0, False) when off
-    or not applied by the solver). r4 red-team item 1."""
+    or not applied by the solver, i.e. res.extra["filter_applied"] is not set: engine.py then lists the filter in
+    invalid_reasons). r4 red-team item 1; r4 review fix 1."""
     B = float(plan.inputs.get("filter_fwhm_GHz", 0.0) or 0.0)
-    if B <= 0.0:
+    if B <= 0.0 or not res.extra.get("filter_applied"):
         return 0.0, False
     return B * _H_MEV_PER_GHZ, str(plan.inputs.get("filter_applies_to", "g2_hom")) == "g2_hom_brightness"
 
@@ -538,43 +577,54 @@ def _derive(c: Context) -> dict:
         # channel's sideband loss is already in beta (rates L_ph) or in the entered/lifetime-derived F_P; its Z_filt is 1
         # without a ZPL filter, and a ZPL filter removes only Z/Z_eff of the cavity light (1 for a narrow pillar). The
         # leaky (beta0) channel is not cavity filtered: it keeps the setup bookkeeping (Z with a ZPL filter, else 1; q = Z).
-        _, Z_eff = cavity_sideband_filter(ph, c.T_K, float(kap), float(em.E_X_meV) - float(sr.E_mode_meV),
-                                          lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)))
-        w_et, bright_et = _etalon_window(plan)
+        # r4 review A: the dot width the cavity sees is w_dot (no Purcell channel), as in rates.combine; the cavity light's ZPL
+        # share carries the ZPL-cavity overlap L, q_c = Z L/(Z L + t_sb), L_spec = (Z L + t_sb)/(Z + sb).
+        w_dot_meV = float(rt.dot_linewidth_ueV) * 1e-3
+        det_meV = float(em.E_X_meV) - float(sr.E_mode_meV)
+        Zs, t_sb, sb_ = cavity_sideband_parts(ph, c.T_K, float(kap), det_meV, w_dot_meV)
+        Lc = float(rt.L)
+        Z_eff = (Zs * Lc + t_sb) / (Zs + sb_)              # L_spec: cavity-channel spectral overlap
+        qc0 = Zs * Lc / (Zs * Lc + t_sb) if (Zs * Lc + t_sb) > 0.0 else 1.0
+        w_et, bright_et = _etalon_window(plan, res)
         if su.zpl_filter:
-            Zc, qc, Zl, ql = Z / Z_eff, 1.0, Z, 1.0
+            Zc, qc, Zl, ql = qc0, 1.0, Z, 1.0
+            P_c, P_l = Zc, Zl
         elif w_et > 0.0:
             # r4 red-team item 1: the etalon (setup.filter_fwhm_GHz, Lorentzian, ZPL-centred [A]) sets q from its own sideband
             # transmission; the ZPL Lorentzian transmission is in the cascade's n_ph, so the brightness gets only the sideband tax.
-            wp = window_filter_parts(ph, c.T_K, w_et, 0.0, lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)),
-                                     "lorentzian", float(kap), float(em.E_X_meV) - float(sr.E_mode_meV))
+            wp = window_filter_parts(ph, c.T_K, w_et, 0.0, w_dot_meV, "lorentzian", float(kap), det_meV, Lc)
             Tz = wp["T_zpl"]
-            Zc_w = Z + (wp["Zf_cav"] - Z * Tz) / Tz if Tz > 0.0 else Z
+            Zc_w = wp["Zf_cav"] / Tz if Tz > 0.0 else Z
             Zl_w = Z + (wp["Zf"] - Z * Tz) / Tz if Tz > 0.0 else Z
-            Zc, Zl = (Zc_w / Z_eff, Zl_w) if bright_et else (1.0, 1.0)
-            qc, ql = Z * Tz / wp["Zf_cav"], Z * Tz / wp["Zf"]
+            Zc, Zl = (Zc_w / wp["Z_eff_cav"], Zl_w) if bright_et else (1.0, 1.0)
+            qc, ql = Z * Lc * Tz / wp["Zf_cav"], Z * Tz / wp["Zf"]
+            # r4 review B: the HOM path is ALWAYS filtered, whatever the brightness convention
+            P_c, P_l = Zc_w / wp["Z_eff_cav"], Zl_w
         else:
-            Zc, qc, Zl, ql = 1.0, Z / Z_eff, 1.0, Z
+            Zc, qc, Zl, ql = 1.0, qc0, 1.0, Z
+            P_c, P_l = 1.0, 1.0
             w_win = float(_read(c, "setup", "filter_width_meV", 0.0) or 0.0)
             if w_win > 0.0:
                 # r4-phonon I1 (Zf_window): the setup's spectral window also truncates the ZPL and the sideband. Cavity light:
                 # window-passed share relative to the cavity-collected light; leaky channel: the window on the whole spectrum.
                 wp = window_filter_parts(ph, c.T_K, w_win, float(_read(c, "setup", "filter_offset_meV", 0.0) or 0.0),
-                                         lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)),
-                                         str(_read(c, "setup", "filter_shape", "lorentzian")),
-                                         float(kap), float(em.E_X_meV) - float(sr.E_mode_meV))
-                Zc, qc = wp["Zf_cav"] / wp["Z_eff_cav"], Z * wp["T_zpl"] / wp["Zf_cav"]
+                                         w_dot_meV, str(_read(c, "setup", "filter_shape", "lorentzian")),
+                                         float(kap), det_meV, Lc)
+                Zc, qc = wp["Zf_cav"] / wp["Z_eff_cav"], Z * Lc * wp["T_zpl"] / wp["Zf_cav"]
                 Zl, ql = wp["Zf"], Z * wp["T_zpl"] / wp["Zf"]
+                P_c, P_l = Zc, Zl
         G0r = float(rt.Gamma0_ns)
         sh_c = float(rt.F_P_eff) * G0r / Gamma if (Gamma > 0.0 and G0r > 0.0) else 1.0
         sh_b = float(rt.beta0) * float(rt.Gamma_bg_ns) / Gamma if Gamma > 0.0 else 0.0
         w_c = sh_c / (sh_c + sh_b) if (sh_c + sh_b) > 0.0 else 1.0
         Zf = w_c * Zc + (1.0 - w_c) * Zl
-        q = w_c * qc + (1.0 - w_c) * ql
+        # r4 review B: q weights the channels by the light each PASSES the HOM-path filter, q = sum w P q / sum w P
+        qden = w_c * P_c + (1.0 - w_c) * P_l
+        q = (w_c * P_c * qc + (1.0 - w_c) * P_l * ql) / qden if qden > 0.0 else w_c * qc + (1.0 - w_c) * ql
     elif su.zpl_filter:
         Zf, q = Z, 1.0
-    elif _etalon_window(plan)[0] > 0.0:
-        w_et, bright_et = _etalon_window(plan)           # r4 red-team item 1 (see the cavity branch)
+    elif _etalon_window(plan, res)[0] > 0.0:
+        w_et, bright_et = _etalon_window(plan, res)           # r4 red-team item 1 (see the cavity branch)
         wp = window_filter_parts(ph, c.T_K, w_et, 0.0, lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)), "lorentzian") \
             if ph is not None else None
         if wp is None:
@@ -637,10 +687,24 @@ def _derive(c: Context) -> dict:
         d["beta_entered"] = NAN
         why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
-    # r4-hom (Fable 2.4): `inversion` is the expected excitation count n_exc (P_X(end) + photons emitted in the window), which does
-    # not depend on how long the window runs after the pulse; the end-of-window population stays as the observable P_X_end.
+    # r4-hom (Fable 2.4): `inversion` (convention count = intrinsic) is the expected excitation count n_exc (P_X(end) + photons emitted
+    # in the window), which does not depend on how long the window runs after the pulse; the end-of-window population stays as the
+    # observable P_X_end.
     if "n_exc" in res.extra and res.inversion is not None and math.isfinite(float(res.extra["n_exc"])):
         d["inversion"] = float(res.extra["n_exc"])
+    # r4 review E: convention population = the exciton population right after the pulse, <= 1 by definition (a simulated / theory
+    # "final occupation"; n_exc adds the photons emitted during the pulse and the re-excited ones). Once the drive is off the
+    # two-level population decays exactly as exp(-(Gamma + k) t), so P_pulse_end = P_X_end exp((Gamma + k) m) with m the time from
+    # the end of the last pulse (field e^-8 of the peak = t_c + 4 sigma for a Gaussian) to the window end [DR, Fable r4 review E].
+    d["inversion_pop"] = NAN
+    if "P_X_end" in res.extra and math.isfinite(float(res.extra["P_X_end"])) and res.inversion is not None:
+        if "cascade" in plan.needs or "n_cav_end" in res.extra:
+            why["inversion_pop"] = ("the pulse-end population is a closed form for the two-level (lindblad / polaron) solvers; the "
+                                    "jc and TPE cascade solvers would need the propagator state at the pulse end")
+        else:
+            d["inversion_pop"] = float(res.extra["P_X_end"]) * math.exp((Gamma + k) * _pulse_end_margin_ns(plan))
+    else:
+        why["inversion_pop"] = "the solver has no pulse-end population (incoherent / cw drive)"
     irf_ps = float(plan.inputs.get("irf_ps", 0.0) or 0.0) or float(_read(c, "setup", "irf_ps", 0.0) or 0.0)
     d["irf_ps"] = irf_ps
     if "eta_prep" in res.extra:
@@ -725,11 +789,23 @@ def _derive(c: Context) -> dict:
         why["g2_irf"] = "IRF-convolved dip needs a cw rate-solver drive (dip recovery time)"
     # r4-incoh ----------------------------------------------------------------------------------------------------------
     # g2_far = g2_on / eta_blink (papers that normalise to FAR peaks with visible blinking: two-state emitter, tau_blink >> T_rep)
+    # (intrinsic = background free). r4 review F: convention raw = the long-delay value a detector gives with the background,
+    # 1 - rho^2 (1 - g2/eta_blink), rho = S/(S + B), S the blink-averaged detected rate (the blink division acts on the intrinsic g2
+    # first, the background mixing after) [DR].
     if eta_blink > 0.0:
         d["g2_far"] = g2 / eta_blink
+        if leak == 0 and su.dark_cps == 0:
+            d["g2_far_raw"] = d["g2_far"]
+        elif math.isfinite(bg):
+            d["g2_far_raw"] = g2_with_background(d["g2_far"], S, bg)
+            if not math.isfinite(d["g2_far_raw"]):
+                why["g2_far_raw"] = "no detected signal (S <= 0) with a non-zero background: g2_far_raw undefined"
+        else:
+            d["g2_far_raw"] = NAN
+            why["g2_far_raw"] = "background rate needs the detected signal rate S, which is unavailable"
     else:
-        d["g2_far"] = NAN
-        why["g2_far"] = "needs a non-zero blinking on-fraction"
+        d["g2_far"] = d["g2_far_raw"] = NAN
+        why["g2_far"] = why["g2_far_raw"] = "needs a non-zero blinking on-fraction"
     # single-photon rate corrected for the multi-photon share, R_1 = R_det sqrt(1 - g2_raw) (Kolatschek Ref 38 / Nowak Ref 31)
     if math.isfinite(S) and math.isfinite(d["g2_raw"]) and d["g2_raw"] < 1.0:
         d["rate_single_corr_Hz"] = single_photon_rate_corrected(S, d["g2_raw"])
@@ -753,14 +829,21 @@ def _derive(c: Context) -> dict:
             from . import solvers as _sv
             ratio = float(em.gamma_xx_ratio)
             gXX = ratio * float(getattr(rt, "Gamma0_ns", Gamma))
+            # r4 review D: a ladder plan (tau_res / q_T > 0) uses its OWN generator (blocked pairs wait and refill the emptied dot,
+            # NR as the plan's N_R); the S3d scheme keeps the stand-alone estimator where surplus pairs vanish [A] (= the ladder
+            # with tau_res -> 0 for blocked pairs, validated on wijitpatima)
+            lcfg = _sv._ladder_cfg(plan)
             t_, I_ = _sv.x_line_decay(float(plan.pump_rate_ns) * float(plan.tau_on_ns), float(plan.relax_ns), Gamma, k,
-                                      gXX, k * ratio, float(plan.inputs.get("tau_res_ps", 0.0) or 0.0) * 1e-3)
+                                      gXX, k * ratio, float(plan.inputs.get("tau_res_ps", 0.0) or 0.0) * 1e-3,
+                                      NR=(lcfg["N_R"] or None) if lcfg else None, full_loss=lcfg is None)
             tf, tm = _sv.tau_fit_from_decay(t_, I_)
             d["tau_fit_ps"], d["t_mean_ps"] = 1e3 * tf, 1e3 * tm
         except (ValueError, RuntimeError, FloatingPointError) as exc:       # pragma: no cover - degenerate inputs
             why["tau_fit_ps"] = why["t_mean_ps"] = f"decay fit failed: {exc}"
     if not math.isfinite(d["tau_fit_ps"]):
-        why.setdefault("tau_fit_ps", "needs an incoherent pulsed drive with a capture time (above_band / p_shell)")
+        why.setdefault("tau_fit_ps", "needs an incoherent pulsed drive with a capture time (above_band / p_shell); a cw drive or a "
+                                     "coherent single-X pulse decays as the single exponential tau_ps, and the TPE cascade X line "
+                                     "(two exponentials) is not fitted")
         why.setdefault("t_mean_ps", why["tau_fit_ps"])
     I1 = float(res.I_single)
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
@@ -821,8 +904,17 @@ def _derive(c: Context) -> dict:
     g2_hm = g2_hs = None
     if str(plan.inputs.get("filter_applies_to", "")) == "hom" and "g2_filtered" in res.extra:
         g2_hs = float(res.extra["g2_filtered"])
-        g2_hm = g2_hs if (leak == 0 and su.dark_cps == 0) else (
-            g2_with_background(g2_hs, S, bg) if math.isfinite(bg) else NAN)
+        if leak == 0 and su.dark_cps == 0:
+            g2_hm = g2_hs
+        else:
+            # r4 review C: the stream entering the HOM interferometer is the etalon-filtered signal S_hom = S n_f/n_u; the dark counts
+            # arise in the detector behind the filter (unchanged) and the laser leak is a fraction of the detected signal [A]
+            nf_, nu_ = res.extra.get("n_ph_filtered"), res.extra.get("n_ph_unfiltered")
+            if nf_ is not None and nu_ is not None and math.isfinite(float(nf_)) and float(nu_) > 0.0 and math.isfinite(S):
+                S_hom = S * float(nf_) / float(nu_)
+                g2_hm = g2_with_background(g2_hs, S_hom, leak * S_hom + dark)
+            else:
+                g2_hm = NAN
     g2_r = d["g2_raw"] if g2_hm is None else g2_hm
     if math.isfinite(d["hom_I"]) and math.isfinite(g2_r):
         # FX4: the overlap I is the SIGNAL stream's, so rho^2 = (1 - g2_raw)/(1 - g2_signal) must use the signal g2 (before
@@ -842,7 +934,7 @@ def _derive(c: Context) -> dict:
             v_max = hom_v_corrected_by(cname, V_raw_max, g2_r, eps, bsR)
             if v > v_max * (1.0 + 1e-6):
                 v = NAN
-                why[key] = "corrected visibility exceeds its I = 1 cap: filtered/unfiltered I and g2 inconsistent"
+                why[key] = "corrected visibility exceeds its I = 1 cap: solver overlap I > 1 (numerics)"
             elif v > 1.0:
                 warnings.append(f"{key} = {v:.6f} exceeds 1 by {v - 1.0:.2e} <= cap {v_max - 1.0:.2e} = its value at I = 1: the "
                                 "multi-photon component overlaps the single-photon mode (first order in g2, "
@@ -995,10 +1087,12 @@ _o("tau_XX_ps", "XX lifetime $\\tau_{XX} = 1/(\\Gamma_{XX} + k_{XX})$ read off t
 _o("g2_XX", "$g^{(2)}(0)$ of the XX-line photon stream (TPE)", "1", _ALL)
 _o("hom_XX", "HOM overlap of the XX-line photons, instantaneous preparation (TPE)", "1", _ALL + ("setup",))
 _o("n_XX", "XX-line photons per pulse (TPE)", "1", _ALL)
-_o("inversion", "Inversion $w$ after the pulse", "1", _ALL)
+_o("inversion", "Inversion $w$ after the pulse (count = expected excitation count $n_{\\mathrm{exc}}$, may exceed 1; population = exciton "
+   "population right after the pulse, $\\leq 1$)", "1", _ALL, ("intrinsic", "count", "population"),
+   by_conv={"intrinsic": "inversion", "count": "inversion", "population": "inversion_pop"})
 _o("Z_phonon", "ZPL weight $Z(T)$", "1", ("material",))
-_o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape"))
-_o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape"))
+_o("Z_filt", "ZPL / cavity sideband filter factor $Z_{\\mathrm{filt}}$", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape", "setup.filter_fwhm_GHz", "setup.filter_applies_to"))
+_o("hom_zpl_fraction", "ZPL fraction $q$ of the collected light ($I_{\\mathrm{HOM}} = I\\,q^2$)", "1", ("material", "structure", "setup.zpl_filter", "setup.filter_width_meV", "setup.filter_offset_meV", "setup.filter_shape", "setup.filter_fwhm_GHz", "setup.filter_applies_to"))
 _o("gamma_star_ns", "Pure-dephasing linewidth $\\Gamma_{\\mathrm{ph}} = 2\\gamma_{\\mathrm{ph}} = 2/T_2^{*}$ (code gamma*; coherence decays at $\\gamma_{\\mathrm{ph}}$)", "1/ns", ("material",))
 _o("Gamma_ns", "Radiative rate $\\Gamma$", "1/ns", _MS)
 _o("n_ph", "Photons per pulse $n_{\\mathrm{ph}}$", "1", _ALL)
@@ -1016,8 +1110,10 @@ _o("g2_binned", "Central-bin $g^{(2)}$ of the pulsed histogram (bin = pulse peri
    "1", _ALL + ("setup",))
 _o("g2_window", "Central-window $g^{(2)}$ of the pulsed histogram with a slow single-photon tail (window = pulse period; "
    "drive a_slow / tau_slow_ps; no tail = g2_binned without IRF)", "1", _ALL + ("setup",))
-_o("g2_far", "$g^{(2)}(0)$ normalised to the far peaks when blinking is visible: $g^{(2)}_{\\mathrm{on}}/\\eta_{\\mathrm{blink}}$", "1",
-   _ALL + ("setup.laser_leak", "setup.dark_cps", "material.eta_blink"))
+_o("g2_far", "$g^{(2)}(0)$ normalised to the far peaks when blinking is visible: $g^{(2)}_{\\mathrm{on}}/\\eta_{\\mathrm{blink}}$ "
+   "(intrinsic; raw = with laser leak and dark counts, $1 - \\rho^2(1 - g^{(2)}/\\eta_{\\mathrm{blink}})$)", "1",
+   _ALL + ("setup.laser_leak", "setup.dark_cps", "setup.coinc_window_ns", "material.eta_blink"), ("intrinsic", "raw"),
+   by_conv={"intrinsic": "g2_far", "raw": "g2_far_raw"})
 _o("rate_single_corr_Hz", "Multi-photon-corrected single-photon rate $R_{\\mathrm{det}}\\sqrt{1 - g^{(2)}_{\\mathrm{raw}}}$", "Hz", _CH)
 _o("tau_fit_ps", "Single-exponential fit time of the X-line decay of the capacity-2 reservoir cascade (peak, 3 decades, linear least squares)",
    "ps", _ALL)

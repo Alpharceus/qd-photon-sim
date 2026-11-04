@@ -52,9 +52,10 @@ def kappa_from_fwhm_GHz(B_GHz: float) -> float:
     return 2.0 * np.pi * float(B_GHz)
 
 
-def free_decay_transmission(B_GHz, Gamma_ns, gamma_star_ns=0.0):
-    """T_l = B / (B + (Gamma + gamma*)/(2 pi)): fraction of a freely decaying Lorentzian photon the etalon passes [DR]."""
-    w = (float(Gamma_ns) + float(gamma_star_ns)) / (2.0 * np.pi)
+def free_decay_transmission(B_GHz, Gamma_ns, gamma_star_ns=0.0, k_nr_ns=0.0):
+    """T_l = B / (B + (Gamma + k_nr + gamma*)/(2 pi)): fraction of a freely decaying Lorentzian photon the etalon passes [DR].
+    The line width is the coherence decay of the cascade, (Gamma + k_nr + gamma*)/2 (k_nr = 0 is the pre-r4-review value)."""
+    w = (float(Gamma_ns) + float(k_nr_ns) + float(gamma_star_ns)) / (2.0 * np.pi)
     return float(B_GHz) / (float(B_GHz) + w)
 
 
@@ -211,7 +212,8 @@ class VSystem:
     def filtered_pieces(self, B_GHz, mode="cascade", eps_ns=1.0):
         pc = self.pieces("H")
         sig = np.outer(np.array([1.0, 0, 0], dtype=complex), self._ket("H").conj())
-        emb = FilterEmbedding(3, pc.A, kappa_from_fwhm_GHz(B_GHz), mode=mode, sigma=sig, eps_ns=eps_ns)
+        # r4 review fix 2: dot-centred filter, det_ns as in the two-level branch (filterhook: det_ns=tl.delta_ns)
+        emb = FilterEmbedding(3, pc.A, kappa_from_fwhm_GHz(B_GHz), mode=mode, sigma=sig, eps_ns=eps_ns, det_ns=self.delta_ns)
         return emb.pieces(pc), emb
 
 

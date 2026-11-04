@@ -47,8 +47,8 @@ device:
 reported:
   - {id: tau_X, observable: tau_ps, value: 687.0, err: 3.0, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.016, err: 0.001, tag: V, where: "text p.4 / Fig 4a: g2(0) = 0.016(1) at C = -0.65, raw"}
-  - {id: inversion_sim, observable: inversion, convention: intrinsic, value: 0.60, tag: V, where: "text p.4 / Fig 3d: simulated final occupation ~60% with phonons at 5 pi, C = -0.65 (path-integral, rectangular spectral boxes, 0.4 meV, T = 4 K)", note: "paper simulation, no error stated"}
-  - {id: inversion_meas, observable: inversion, convention: intrinsic, value: 0.80, tag: V, where: "text p.4 / abstract: measured inversion efficiency ~80% (C ~ -0.65)", note: "paper text attributes the 0.8 vs 0.6 gap to a pulse-shape mismatch between simulation and experiment; no error stated"}
+  - {id: inversion_sim, observable: inversion, convention: population, value: 0.60, tag: V, where: "text p.4 / Fig 3d: simulated final occupation ~60% with phonons at 5 pi, C = -0.65 (path-integral, rectangular spectral boxes, 0.4 meV, T = 4 K)", note: "paper simulation, no error stated"}
+  - {id: inversion_meas, observable: inversion, convention: count, value: 0.80, tag: V, where: "text p.4 / abstract: measured inversion efficiency ~80% (C ~ -0.65)", note: "paper text attributes the 0.8 vs 0.6 gap to a pulse-shape mismatch between simulation and experiment; no error stated"}
   - {id: Z_zpl, observable: Z_phonon, value: 0.92, tag: V, where: "SI Sec II p.8: ZPL fraction ~92% from the polaron fit of the CW resonance-fluorescence spectrum (previously cited parameters, not the Sec I simulation set)", note: "approximate, no error stated"}
   - {id: hom_raw_10ns, observable: hom_V, convention: raw, value: 0.29, err: 0.02, tag: V, where: "text p.5 / SI Sec III: raw V_HOM = 0.29(2) over a 10 ns window, photons 12.5 ns apart"}
   - {id: hom_postsel_100ps, observable: hom_V, convention: raw, value: 0.81, err: 0.12, tag: V, where: "text p.5: temporally post-selected V_HOM = 0.81(12) in a 0.1 ns window", note: "not a ledger item: temporal post-selection is not modelled"}
@@ -97,6 +97,7 @@ reproduce:
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); inversion_sim (simulated final occupation) -> population, inversion_meas (measured, brightness-calibrated) -> count", note: "obtained: inversion_sim 0.6671 -> 0.6576 vs 0.60 (class R, pass, tol abs 0.1); inversion_meas 0.6671 (count, unchanged) vs 0.80 fail; expects unchanged"}
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: filter where-texts quote the SI ('120 ueV-bandwidth grating filter'); the Lorentzian shape is [A] and biases g2 high; the earlier statement 'the paper does not say what kind of filter it is' is removed", note: "text only; re-run: every item MATCH (g2_raw 0.00064 fail, hom_raw_10ns 0.4038 fail, Z_zpl 0.8748 pass, inversion 0.6671)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: g2_raw reason cites the SI S/B ~ 20 (resonant reference) as the order of the unquantified background; no expect changed. inversion items now report n_exc (window decay removed)"}
