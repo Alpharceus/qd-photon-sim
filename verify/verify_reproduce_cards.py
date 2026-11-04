@@ -184,11 +184,13 @@ REISCHLE_TAU_C_DR_NS = 1.6    # [DR] r2-physics-a Q4: inverting the paper's own 
 REISCHLE_R_OVER_D = 0.2       # [A] r/D_eff, sub-saturation (moves g2_dot0 by 0.004 only); D_eff + r = 1/tau_c
 REISCHLE_RHO_MEASURED = 0.88  # [V] Reischle 2008: measured rho = S/(S+B), QD C (80 K); TRANSCRIBED, not predicted
 REISCHLE_IRF_FWHM_PS = 693.0  # [V] 2 ln2 x 0.5 ns: the paper's fit-model IRF C exp(-|tau/0.5 ns|), exponential shape
-REISCHLE_APERTURE_UM = 0.46   # [V] nanosphere shadow-mask aperture
+REISCHLE_APERTURE_UM = 0.46   # [V] Reischle 2008 Opt. Express: "460 nm diameter polystyrene nanospheres" (nano-aperture shadow mask); the 2010 APL paper has a ~20 um contact aperture
 REISCHLE_R_FLOOR_NS = 0.01    # [A] smallest realisable pump rate (r = 1/tau_c - gamma_X - k_X < 0 is not physical)
 REISCHLE_I_PROBE_UA = 0.001   # [A] low-current probe point (the paper's 11.9 mA runs the 1 um default mesa to thermal runaway)
 # devlib-r4 R3 (Fable r4-fable-legacy.md 3.1): aperture-competitor prediction of the measured signal fraction rho = 0.88.
-REISCHLE_DENSITY_CM2 = 1e10   # [V] Reischle 2010 companion: dot density under the 460 nm aperture (16.6 dots geometric)
+REISCHLE_DENSITY_CM2 = 1e10   # [V] density ~1e10 cm^-2 is from Reischle 2010 (APL 97, 143513): "Due to the high QD density" followed by ~1e10 cm^-2, "emission from many QDs
+                              # is expected"; the 460 nm aperture is from Reischle 2008 (Opt. Express 16, 12771): "460 nm diameter polystyrene nanospheres
+                              # [13] were spin coated"; 16.6 dots under the aperture = pi (0.23 um)^2 x 1e10 cm^-2 [DR arithmetic, not printed]
 REISCHLE_W_BRACKET_MEV = (1.0, 3.0)        # [E] swept HBT spectral window w (class; the 2008 value is a PAPERS NEEDED input)
 REISCHLE_SIGMA_BRACKET_MEV = (40.0, 60.0)  # [E] ensemble inhomogeneous width sigma_inh (class; PAPERS NEEDED)
 REISCHLE_BCOMP_BRACKET = (0.1, 1.0)        # [E] in-window competitor brightness relative to the target dot
@@ -255,7 +257,7 @@ def ev_reischle_dc():
     f10_d, _, _, _ = fx(REISCHLE_TAU_C_NS, rho_dev)
 
     # devlib-r4 R3 (Fable r4 3.1): predicted signal fraction rho_pred = 1/(1 + lam) of the target dot under the 460 nm
-    # aperture at 1e10 cm^-2 (16.6 dots geometric), lam = N_w b_comp from the device's own aperture.compose path
+    # aperture (Reischle 2008) at 1e10 cm^-2 (Reischle 2010 density; 16.6 dots geometric = DR arithmetic), lam = N_w b_comp from the device's own aperture.compose path
     # (aperture_lambda_op).  Class bracket (w, sigma_inh, b_comp): lam_min at (w_lo, sigma_hi, b_lo), lam_max at the
     # opposite corner.  Hand formula and legacy guard are checked here and raise on disagreement.
     from fsim_core.loading import n_window_competitors

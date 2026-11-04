@@ -17,7 +17,7 @@ device:
     params:
       lambda_nm: {value: 897.44, unit: nm, tag: V, where: "p.2 text (pulsed laser central wavelength; the emission wavelength is not stated separately)"}
       tau_bare_ns: {value: 0.5878, unit: ns, tag: V, where: "p.2 text (587.8 ps decay at 28 K, >1 meV detuned; used as the bare-rate proxy; it is NOT a bulk lifetime)"}
-      gamma_star_4K_ns: {range: [0.0, 0.565], unit: "1/ns", tag: DR, where: "p.2 text: homogeneous width 1.91(7) GHz vs lifetime-limited 1.89 GHz, excess 0.02 GHz, upper end = +1 sigma (0.09 GHz) x 2 pi; gamma*_repo = 2 pi x excess width"}
+      gamma_star_4K_ns: {range: [0.0, 0.565], unit: "1/ns", tag: DR, where: "p.2 text: 'a homogeneous (Lorentzian) line width of 1.91(7) GHz' and 'lifetime-limited line width of 1.89 GHz'. Arithmetic on the printed values [DR]: excess = 1.91 - 1.89 = 0.02 GHz; upper end = excess + 1 sigma = 0.02 + 0.07 = 0.09 GHz; x 2 pi = 0.565 /ns; gamma*_repo = 2 pi x excess width (0.02 and 0.09 GHz are not printed)"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is taken at the operating temperature from the measured resonant linewidth; the non-resonant a_ac slope would double count it"}
   structure:
     kind: micropillar
@@ -33,7 +33,7 @@ device:
     kind: resonant_pulse
     params:
       shape: {value: gauss, unit: "", tag: A, source: "pulse shape not stated in the paper (Ti:sapphire, ~3 ps)"}
-      fwhm_ps: {range: [3.0, 7.0], unit: ps, tag: DR, where: "p.2 45 GHz excitation etalon (Lorentzian ~3.5 ps decay convolved with 3 ps)"}
+      fwhm_ps: {range: [3.0, 7.0], unit: ps, tag: DR, where: "p.2: 'a pulse width of ~3 ps. The excitation laser is further filtered with an etalon with a linewidth of 45 GHz'. Arithmetic [DR]: a Lorentzian of 45 GHz FWHM has intensity decay time 1/(2 pi x 45 GHz) = 3.5 ps (amplitude decay 1/(pi x 45 GHz) = 7.1 ps), convolved with the 3 ps pulse; 3.5 ps is not printed; range 3-7 ps"}
       area_pi: {value: 1.0, unit: pi, tag: V, where: "p.2 text (pi pulse, 24 nW laser power, Rabi maximum Fig 2b)"}
       detuning_meV: {value: 0.0, unit: meV, tag: V, where: "p.2 text (strict s-shell resonant excitation)"}
       f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "p.2 text (81 MHz repetition rate)"}
@@ -50,15 +50,15 @@ device:
       zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width)"}
       filter_fwhm_GHz: {value: 3.0, unit: GHz, tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the extraction rate 3.7e6/s was measured before it)"}
 reported:
-  - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text (fit of lifetime vs detuning, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
+  - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text: 'which allows us to deduce a Purcell factor of 6.3(4)' (the (4) is the uncertainty in the last digit: 6.3 +- 0.4, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
   - {id: tau_res, observable: tau_ps, value: 83.9, tag: V, where: "p.2 text / Fig 1c (7.8 K, on resonance)", note: "raw; detector time resolution ~63 ps; no error quoted"}
   - {id: extraction_first_lens, observable: eta_extract, value: 0.66, tag: V, where: "p.2 text / abstract", note: "corrected: count rate divided by detector 33%, polariser 50%, optics 60%, fibre 72%, preparation 96%, assuming unit internal QE; fraction of GENERATED photons into the first lens (NA 0.68), i.e. beta x eta_out with NA included, polarisation not included"}
   - {id: eta_prep_96, observable: eta_prep, value: 0.96, tag: V, where: "p.2 text (excited-state preparation efficiency ~96% at the pi pulse)", note: "estimated by the authors, method not given"}
-  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.009, err: 0.001, tag: V, where: "p.3 text / Fig 2c caption (intro p.1 prints 0.009(2))", note: "raw, after the 3 GHz etalon; zero-delay peak area / adjacent peak area"}
-  - {id: hom_raw_2p1ns, observable: hom_I, convention: raw, value: 0.964, err: 0.003, tag: V, where: "p.3 text / Fig 3 caption (2.1 ns delay, free-space set-up)"}
-  - {id: hom_corr_2p1ns, observable: hom_I, convention: corrected, value: 0.985, err: 0.004, tag: V, where: "p.3 text / abstract (2.1 ns, corrected with g2(0) = 0.009(1); p.4 summary prints 98.6%)"}
-  - {id: hom_raw_12p4ns, observable: hom_I, convention: raw, value: 0.959, err: 0.003, tag: V, where: "p.3-4 text / Fig 3 caption (12.4 ns delay)"}
-  - {id: hom_corr_12p4ns, observable: hom_I, convention: corrected, value: 0.978, err: 0.004, tag: V, where: "p.4 text (12.4 ns delay, g2-corrected)"}
+  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.009, err: 0.001, tag: V, where: "p.3 text: '(g2(0) = 0.009(1))' (uncertainty in the last digit: +- 0.001; intro prints 'g2(0) = 0.009(2)'), Fig 2c", note: "raw, after the 3 GHz etalon; zero-delay peak area / adjacent peak area"}
+  - {id: hom_raw_2p1ns, observable: hom_I, convention: raw, value: 0.964, err: 0.003, tag: V, where: "Fig 3 caption: 'the raw visibility, which is 0.964(3) and 0.959(3) for the time delay of 2.1 ns and 12.4 ns, respectively' ((3) = +- 0.003)"}
+  - {id: hom_corr_2p1ns, observable: hom_I, convention: corrected, value: 0.985, err: 0.004, tag: V, where: "p.3 text: 'After correcting with the residual multiphoton probability (g2(0) = 0.009(1)), we obtained the corrected degrees of indistinguishability to be 0.985(4)' ((4) = +- 0.004); p.4 summary prints 98.6%"}
+  - {id: hom_raw_12p4ns, observable: hom_I, convention: raw, value: 0.959, err: 0.003, tag: V, where: "Fig 3 caption: '0.964(3) and 0.959(3) for the time delay of 2.1 ns and 12.4 ns, respectively' ((3) = +- 0.003)"}
+  - {id: hom_corr_12p4ns, observable: hom_I, convention: corrected, value: 0.978, err: 0.004, tag: V, where: "p.4 text: 'we extract raw and corrected visibilities of 0.959(3) and 0.978(4), respectively' ((4) = +- 0.004; 12.4 ns delay)"}
 series: []
 reproduce:
   - item: F_P_fit

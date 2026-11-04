@@ -22,12 +22,12 @@ device:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {range: [1280.0, 1301.0], unit: nm, tag: E, source: "text p.5: line is 'blue-shifted with respect to the cavity mode' (mode ~1302 nm from the line-1 shift); wavelength not stated"}
-      eta_blink: {value: 0.25, unit: "1", tag: V, where: "text ~l.348-355 blinking limits rate to ~25%"}
+      eta_blink: {value: 0.25, unit: "1", tag: V, where: "text p.5: blinking 'on a timescale of around 100ns is observed' ... 'count rate to around 25% in comparison to the' unblinked case (verbatim fragments)"}
       charge_state: {value: "X-", unit: "", tag: DR, where: "text p.5 (no fine structure splitting observed, hinting strongly at a charged transition); X- vs X+ is not stated, X- chosen [A]"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 is a TOTAL rate ratio Gamma/Gamma_bulk; the leaf is the cavity enhancement, 12 - 1 = 11, cards README rule; r4 Fable review item E)"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3: 'the maximally achievable Purcell factor for perfect spatial and spectral overlap is reduced to 12'. The paper does NOT say whether 12 is a total rate ratio Gamma/Gamma_bulk; treating it as the total ratio is our interpretation [A] (cards README rule; r4 Fable review item E); the leaf is the cavity enhancement, 12 - 1 = 11 [DR arithmetic on that interpretation]"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {range: [0.0, 8000.0], unit: ueV, tag: E, source: "line is blue of the mode by an unstated amount; 0 to 8 meV (line 1 is 6.6 meV) as an envelope"}
       eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8)"}
@@ -44,7 +44,7 @@ device:
       NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
       eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused for this line"}
       eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
-      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: spectral selection window FWHM 0.04 nm at 4 K (0.1 nm = 0.0745 meV at 40 and 77 K, text p.5 'the spectral selection window is increased to FWHM = 0.1nm'; the 4 K leaf value is entered here and the 0.0745 meV of the 40 / 77 K points is supplied per point by series rate_vs_T per_point). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.9611 eV x 0.04/1290 nm = 29.8 ueV at the assumed ~1290 nm line"}
+      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: 'the excitonic line is spectrally filtered (full width at half maximum (FWHM) = 0.04nm)' at 4 K and 'the spectral selection window is increased to FWHM = 0.1nm' at 40 and 77 K. The printed values are WAVELENGTH widths only; the meV values are our conversion [DR arithmetic]: dE = (1239.84 eV nm / lambda) (dlambda / lambda) with lambda = 1290 nm [A, the line wavelength is not printed for this p-shell charged line; the card ranges it 1280-1301 nm]: 0.9611 eV x 0.04/1290 = 29.8 ueV = 0.0298 meV and 0.9611 eV x 0.1/1290 = 74.5 ueV = 0.0745 meV (neither is printed); the 4 K leaf value is entered here and the 0.0745 meV of the 40 / 77 K points is supplied per point by series rate_vs_T per_point"}
       filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the selection window"}
 reported:
   - {id: g2_4K, observable: g2_0, convention: raw, value: 0.0115, err: 0.0002, tag: V, where: "text p.5 / Fig 4 caption (4 K, saturation; fit with blinking envelope; fitted values 0.01-0.02 across powers)"}
@@ -93,7 +93,7 @@ reproduce:
     tol: {metric: rms_rel, max: 0.5}
     tol_reason: "three text-printed rates spanning a factor 1.9; rms relative deviation 0.5 is the same loose band as the rate_4K item (6.4 % setup efficiency measured on line 1, unknown pump saturation), written before the run"
     expect: pass
-    reason: "r4-phonon I1 flip fail -> pass (Fable predicted the series shape improves and the absolute stays a fail; the series rms came out inside 0.5): with the stated windows (0.04 nm at 4 K, 0.1 nm at 40 and 77 K, per_point) the window-passed Zf of the phonon spectrum and the ZPL truncation T_zpl = w/(w + gamma) bring the model to 5.2e5 / 3.9e5 / 2.6e5 against 3.55e5 / 2.62e5 / 1.91e5 (rms_rel 0.4527, only just inside the 0.5 tolerance); the ratios 40 K / 4 K 0.76 and 77 K / 4 K 0.51 match the paper 0.74 and 0.54, while the absolute scale stays about 1.5x high. The window shape is not stated by the paper (default Lorentzian; Gaussian and top-hat give the same ratios within 5 percent)."
+    reason: "r4-phonon I1 flip fail -> pass (Fable predicted the series shape improves and the absolute stays a fail; the series rms came out inside 0.5): with the stated windows (0.04 nm at 4 K, 0.1 nm at 40 and 77 K, per_point) the window-passed Zf of the phonon spectrum and the ZPL truncation T_zpl = w/(w + gamma) bring the model to 5.2e5 / 3.9e5 / 2.6e5 against 3.55e5 / 2.62e5 / 1.91e5 (rms_rel 0.4527, only just inside the 0.5 tolerance); the model ratios 40 K / 4 K 0.76 and 77 K / 4 K 0.51 compare with 262/355 = 0.74 and 191/355 = 0.54 (our ratios of the printed 355, 262 and 191 kcps; the paper itself prints only 'around 50% of the count rate at 4K' for 77 K), while the absolute scale stays about 1.5x high. The window shape is not stated by the paper (default Lorentzian; Gaussian and top-hat give the same ratios within 5 percent)."
     weak: true
     weak_reason: "CIRCULAR, not an independent test: the metamorphic C-band dot-size class range (l_xy [5, 8] nm, l_z [2, 3] nm) was chosen in the r4 Z adjudication with this card's rate(T) as the bracketing datum, so passing rate(T) with it is a fit, not a prediction. Becomes a test only when an independent literature source for O/C-band metamorphic dot sizes is entered."
 fits: []

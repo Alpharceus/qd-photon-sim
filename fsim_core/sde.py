@@ -243,7 +243,13 @@ class QDLaserParams:
 
         Rate forms (SI Table S2, [V]): capture N_RS(1-rho_ES)/tau_RS^ES, relaxation N_ES(1-rho_GS)/tau_ES^GS, stimulated
         Gamma_p v_g g_GS S with g_GS = a_GS/(1+xi S/V_B) (N_B/V_B)(2 rho_GS - 1), loss S/tau_p (alpha_in ~ 0, mirror
-        alpha_m 23.72 /cm). SI detailed-balance escape times (S1, S2): the SI prints the exponents swapped between the
+        alpha_m 23.72). Source of the rate forms: the SI says \"we have refined a standard multi-level QD lasers model
+        [2, 4, 13]\", i.e. Sugawara et al. PRB 61, 7595 (2000); Wang, Osinski, Even, Grillot, APL 105, 221114 (2014); Chow
+        and Koch, IEEE JQE 41, 495 (2005). The spontaneous lifetimes and the detailed-balance escape are cited to [5]
+        Grillot et al., IEEE JQE 45, 872 (2009). (The SI does not cite a Wang/Grillot/Even JQE 48, 1144 (2012) paper.)
+        alpha_m is printed WITHOUT a unit (SI: \"resulting in a mirror loss \u03b1m of 23.72\"); the cm^-1 unit used here
+        is our reading [DR], consistent with alpha_m = (1/2L) ln(1/R1R2) for R1 = 0.03, R2 = 0.95, L = 750 um (23.7 /cm).
+        SI detailed-balance escape times (S1, S2): the SI prints the exponents swapped between the
         two equations (S1 carries E_ES - E_GS for the ES->RS time, S2 carries E_RS - E_ES for the GS->ES time). This port
         uses the PHYSICAL assignment [DR] (detailed balance, N_ES/N_RS = (sigma_ES N_B/D_RS) exp(+(E_RS-E_ES)/kT), and
         N_GS/N_ES = (sigma_GS/sigma_ES) exp(+(E_ES-E_GS)/kT)): ES->RS uses 220 meV with prefactor sigma_ES N_B/D_RS,
@@ -273,7 +279,7 @@ class QDLaserParams:
             E_a_GS_meV=1030.0 - 950.0,               # [V] E_ES - E_GS = 80 meV (physical GS->ES escape)
             esc_pref_ES=4.0 * N_B / D_RS,            # [DR] sigma_ES N_B / D_RS
             esc_pref_GS=2.0 / 4.0,                   # [DR] sigma_GS / sigma_ES
-            tau_p=4.9e-12,                           # [V] Table S1 (alpha_m 23.72 /cm, alpha_in ~ 0, n_r 3.5)
+            tau_p=4.9e-12,                           # [V] Table S1 (alpha_m 23.72, unit not printed; alpha_in ~ 0, n_r 3.5)
             beta_sp=1.0e-4,                          # [V]
             g0=Gamma_p * v_g * a_GS * N_B / V_B,     # [DR] Gamma_p v_g a_GS N_B/V_B ~ 3.0e11 /s
             eps_gain=xi / V_B,                       # [DR] xi/V_B = 3.3e-6 per photon

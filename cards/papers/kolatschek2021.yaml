@@ -24,11 +24,11 @@ device:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {value: 1302.0, unit: nm, tag: DR, where: "text p.3 (line 1 at 1293 nm is ~9 nm blue of the cavity mode, so the mode is near 1302 nm; line 2 is 'almost resonant', text p.4)"}
-      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: V, where: "text p.4 (decay time outside the cavity: mean 1209.4 ps, standard deviation 226.3 ps over several QDs; +/-1 sigma)"}
+      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: DR, where: "text p.4: 'measurements of decay times from multiple QDs outside the cavity (taumean = 1209.4 ps with a standard deviation of 226.3 ps)'. Arithmetic [DR]: mean -/+ 1 sigma = 1209.4 -/+ 226.3 = 983.1 .. 1435.7 ps = 0.9831 .. 1.4357 ns (the bounds are not printed; they are a spread over different dots, not a measurement uncertainty)"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200). The 12 is a TOTAL rate ratio Gamma/Gamma_bulk, the leaf is the cavity enhancement, so 12 - 1 = 11 (cards README rule; r4 Fable review item E)"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3: 'the maximally achievable Purcell factor for perfect spatial and spectral overlap is reduced to 12' ('simulated 18.6' with 'a Q-factor of around 200'). The paper does NOT say whether 12 is a total rate ratio Gamma/Gamma_bulk or a Purcell-only factor; treating it as the total ratio is our interpretation [A] (cards README rule; r4 Fable review item E), the leaf is the cavity enhancement, so 12 - 1 = 11 [DR arithmetic on that interpretation]"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       r_factor: {range: [0.1, 1.0], unit: "1", tag: E, source: "position factor |E(r)|^2/|E_max|^2 of this non-deterministically placed dot: not stated in the paper. The paper's own measured Purcell 4.0 (total) vs 12 (ideal) would give r ~ 0.27, but that is the lifetime under test, so it is NOT entered as a value; the class range [0.1, 1] is an envelope (r4 Fable review item G)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "text p.4: line 2 is 'almost resonant' with the cavity mode, only a small spectral mismatch; no number given"}
@@ -50,7 +50,7 @@ device:
 reported:
   - {id: tau_cav, observable: tau_ps, value: 300.8, err: 0.8, tag: V, where: "text p.4 / Fig 3b (decay time inside the cavity, line 2)"}
   - {id: g2_sat, observable: g2_0, convention: raw, value: 0.70, err: 0.07, tag: V, where: "text p.4 / Fig 3c (above-band saturation; fit with cw dip and blinking envelope; strong refilling)"}
-  - {id: rate_sat, observable: rate_single_corr_Hz, value: 550000.0, tag: V, where: "text p.4 (g2-CORRECTED single-photon count rate on the detectors at saturation, above-band; no error given)"}
+  - {id: rate_sat, observable: rate_single_corr_Hz, value: 550000.0, tag: V, where: "text p.4: 'To deduce the true single-photon count rate on the detector, the measured count rate is corrected for the non-perfect g(2)(0) yielding at saturation a count rate of 550kcps' (no error given; the correction formula is not printed there, line 1 says only 'the correction is analogues to Ref. 38')"}
 reproduce:
   - item: tau_cav
     class: M
@@ -69,7 +69,7 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; a factor-1.5 band (50 percent) because pump saturation, the 6.4 % setup efficiency (measured on line 1) and the NA 0.6 table point are all assumed; blinking is not modelled"
     expect: fail
-    reason: "model 2.72e6 (envelope 2.02-3.11e6) vs 5.5e5, ~4.9x high; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). The item is rate_single_corr_Hz = R_det sqrt(1 - g2_raw), the paper R_1 convention: the paper 550 kcps is the g2-corrected true single-photon rate (p.4; check on line 1: 1.3 Mcps x sqrt(1 - 0.262) = 1.12 Mcps = the printed 1.1 Mcps), so the comparison is now like for like, and the convention changes nothing numerically because the model g2 is ~1e-3. The model includes p_X 0.6-0.8 [E] (about x0.7) on the F_P 11 total-ratio structure. What remains is unmodelled blinking duty (no number printed for this line), the unknown placement (the entered F_P is the ideal-placement total ratio) and the 6.4 percent setup efficiency (and NA 0.6 table point) measured on line 1, not on this line."
+    reason: "model 2.72e6 (envelope 2.02-3.11e6) vs 5.5e5, ~4.9x high; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). The item is rate_single_corr_Hz = R_det sqrt(1 - g2_raw), the R_det sqrt(1 - g2) convention, which is OUR assumption [A] (the paper prints no formula: 550 kcps is 'corrected for the non-perfect g(2)(0)' and the line-1 correction 'is analogues to Ref. 38'; our consistency check on line 1: 1.3 Mcps x sqrt(1 - 0.262) = 1.12 Mcps vs the printed 1.1 Mcps), so the comparison is like for like only if the paper's correction has this form, and the convention changes nothing numerically because the model g2 is ~1e-3. The model includes p_X 0.6-0.8 [E] (about x0.7) on the F_P 11 total-ratio structure. What remains is unmodelled blinking duty (no number printed for this line), the unknown placement (the entered F_P is the ideal-placement total ratio) and the 6.4 percent setup efficiency (and NA 0.6 table point) measured on line 1, not on this line."
 fits: []
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "no printed model value moved (tau_cav, g2_sat, rate_sat unchanged to the printed digits: CBG light is cavity filtered, Z_filt = 1); expects unchanged"}

@@ -23,16 +23,16 @@ device:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {value: 1551.0, unit: nm, tag: V, where: "text p.2 and p.3: positively charged exciton at 1551 nm"}
-      tau_bare_ns: {value: 2.15, unit: ns, tag: DR, where: "text p.2: lifetime about 500 ps and Purcell enhancement 4.3(8): 0.5 ns x 4.3 = 2.15 ns"}
+      tau_bare_ns: {value: 2.15, unit: ns, tag: DR, where: "text p.2: 'a lifetime of ~ 500 ps owing to a Purcell enhancement of 4 .3(8)' (stray space is in the extracted text; 4.3 +- 0.8). Arithmetic [DR]: 0.5 ns x 4.3 = 2.15 ns (2.15 is not printed)"}
       eta_blink: {value: 0.67, unit: "1", tag: V, where: "text p.5: QD optically active 67 percent of the time under SUPER pumping"}
       charge_state: {value: "X+", unit: "", tag: V, where: "text p.2: positively charged exciton"}
       gamma_star_4K_ns: {value: 29.0, unit: "1/ns", tag: DR, where: "text p.4: single-peak linewidth 4.94 GHz FWHM: 2 pi x 4.94 - Gamma_total (2.0 /ns) = 29.0 /ns, treated as a Lorentzian (see notes)"}
-      sigma_sd_ueV: {value: 8.68, unit: ueV, tag: DR, where: "text p.4 / Fig 2d: Gaussian-dominated Voigt line of 4.94 GHz FWHM per doublet peak: 4.94 GHz x 4.1357 ueV/GHz = 20.43 ueV FWHM / 2.355 = 8.68 ueV standard deviation (slow line jumps)"}
-      tau_sd_ns: {range: [1000.0, 1000000.0], unit: ns, tag: E, source: "class range for charge-noise spectral diffusion (Kuhlmann 2013/2015, Thoma 2016, Wang 2016)"}
+      sigma_sd_ueV: {value: 8.68, unit: ueV, tag: DR, where: "text p.4 / Fig 2d: 'single-peak linewidth of Gamma FWHM = 4.94(5) GHz. As the Gaussian component of the Voigt profile dominates'. Arithmetic [DR]: 4.94 GHz x 4.1357 ueV/GHz (Planck constant, ours) = 20.43 ueV FWHM; / 2.355 (= 2 sqrt(2 ln 2), ours) = 8.68 ueV standard deviation (slow line jumps); 20.43, 2.355 and 8.68 are not printed"}
+      tau_sd_ns: {range: [1000.0, 1000000.0], unit: ns, tag: E, source: "class range [E] for slow spectral diffusion, 1e3-1e6 ns. Only Kuhlmann et al. 2013 (arXiv text on disk) was checked: it prints 'a characteristic frequency 20 Hz (correlation time 0.05 s)' for charge noise (= 5e7 ns, ABOVE this range) and 'a characteristic frequency 125 kHz (correlation time 8 us)' for spin noise (= 8e3 ns, inside it). Kuhlmann 2015, Thoma 2016 and Wang 2016 texts are not on disk (not verified); the range is a class choice, not a printed value"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 3.3, unit: "1", tag: DR, where: "text p.2: Purcell enhancement 4.3(8) as the total decay-rate ratio, minus 1 for the additional ratio"}
+      F_P: {value: 3.3, unit: "1", tag: DR, where: "text p.2: 'a Purcell enhancement of 4 .3(8)'. Arithmetic [DR]: taken as the total decay-rate ratio (our reading, the paper does not define it) minus 1 for the additional ratio: 4.3 - 1 = 3.3 (3.3 is not printed)"}
       eta_table: {value: "0.6:0.85", unit: "", tag: A, source: "no FDTD figure in the joos main text; same platform as Nawrath 2022 whose FDTD whole-device first-lens efficiency into NA 0.6 is above 85 percent (p.2 there); total semantics"}
       table_mode: {value: total, unit: enum, tag: E, source: "same-platform whole-device FDTD extraction, FX3a table_mode total; F_P 3.3 only sets the rate"}
   drive:
@@ -58,7 +58,7 @@ device:
       hom_fast_fraction: {range: [0.0, 1.0], unit: "1", tag: E, source: "the 4.94 GHz Gaussian-dominated line is entered as a Lorentzian (gamma* 29 /ns); only the part fast on the 6.6 ns scale reduces V_TPI and the paper does not split it: gamma*_fast = f x 29 /ns, f in [0, 1] (Fable r4 2.5)"}
 reported:
   - {id: tau_dev, observable: tau_ps, value: 500.0, tag: V, where: "text p.2: lifetime of about 500 ps (approximate, no error), supp I"}
-  - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 4.94(5) GHz = h x 4.94 GHz = 20.43 ueV; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
+  - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 'Gamma FWHM = 4.94(5) GHz' x h (4.1357 ueV/GHz, ours) = 20.43 ueV [DR]; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
   - {id: g2_super_raw, observable: g2_0, convention: raw, value: 0.076, err: 0.001, tag: V, where: "text p.3-4 / Fig 2c: g2(0) = 0.076(1), coincidences integrated over one repetition period, dark counts corrected only, vs the Poisson-level peak"}
   - {id: rate_raw_super, observable: rate_detected_Hz, convention: intrinsic, value: 6500000.0, tag: V, where: "text p.3: raw detected count rate CR_raw = 6.50 MHz at 152 MHz (end-to-end 5.36 percent = CR_raw / 0.768 x (1 - g2/2) / f); no error given"}
   - {id: hom_V_super, observable: hom_V, convention: raw, value: 0.104, err: 0.014, tag: V, where: "text p.4 / Fig 2 caption: V_TPI = 0.104(14), central-peak area parallel vs orthogonal, 6.6 ns separation, unfiltered"}
@@ -81,7 +81,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "model-level tolerance: g2 +/-0.02 at model level (the paper +/-0.001 is statistical only); the raw value integrates a full period against the Poisson peak, so it contains the re-excitation and the phonon-pumped background that the model computes"
     expect: fail
-    reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (each laser alone gives about a tenth of the SUPER intensity, text p.3) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
+    reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (Fig. 2a plots the single-laser components with a 'x10' label, i.e. each laser alone is of order a tenth of the SUPER spectrum: read from the figure label, not printed in the text) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
   - item: rate_raw_super
     class: M
     tol: {rel: 0.5}

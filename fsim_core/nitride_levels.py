@@ -126,11 +126,11 @@ DESHPANDE2013_DIAMETER_NM = 25.0      # [V] ibid., p.2, Fig. 1c (25 +/- 5 nm)
 DESHPANDE2013_X_IN = 0.25             # [V] ibid., p.2 (single-wire EDX)
 DESHPANDE2013_X_NM = 436.56           # [V] ibid., p.2-3, Fig. 3c (single-dot EL, X line)
 DESHPANDE2013_XX_ANTIBIND_MEV = -10.0 # [V] ibid., p.2-3, Fig. 3c (XX above X: antibinding)
-ZHANG2013_HEIGHT_NM = 3.0             # [V] Zhang et al., APL 103, 192114 (2013), Fig. 2
-ZHANG2013_DIAMETER_NM = 29.0          # [V] ibid., Fig. 2 (D = 29 nm pillar)
-ZHANG2013_X_IN = 0.15                 # [V] ibid., Fig. 2 (In0.15Ga0.85N)
-ZHANG2013_ZPL_EV = 2.95               # [V] ibid., Fig. 2 (10 K)
-ZHANG2013_LIFETIME_NS = 3.40          # [V] ibid., Fig. 2 (mono-exp lifetime, 10 K)
+ZHANG2013_HEIGHT_NM = 3.0             # [V-unverified: source text not on disk] Zhang et al., APL 103, 192114 (2013), Fig. 2
+ZHANG2013_DIAMETER_NM = 29.0          # [V-unverified: source text not on disk] ibid., Fig. 2 (D = 29 nm pillar)
+ZHANG2013_X_IN = 0.15                 # [V-unverified: source text not on disk] ibid., Fig. 2 (In0.15Ga0.85N)
+ZHANG2013_ZPL_EV = 2.95               # [V-unverified: source text not on disk] ibid., Fig. 2 (10 K)
+ZHANG2013_LIFETIME_NS = 3.40          # [V-unverified: source text not on disk] ibid., Fig. 2 (mono-exp lifetime, 10 K)
 ZHANG2016_SLOPE_MEV_PER_V = -10.0     # [V] Zhang et al., APL 108, 153102 (2016), Fig. 5 (below 2 V)
 INGAN_DOT_LIFETIME_RANGE_NS = (1.0, 10.0) # [E] digest class range, nitride_digests.md Sec.11 item 5
 TAU_RAD0_DEFAULT_NS = 1.3              # [E] Deshpande et al., APL 105, 141109 (2014), abstract:
