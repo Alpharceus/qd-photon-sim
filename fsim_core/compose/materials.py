@@ -58,6 +58,7 @@ _TEX = {
     "rho_kg_m3": r"\rho", "c_LA_m_s": r"c_{\mathrm{LA}}", "l_xy_nm": r"\ell_{xy}", "l_z_nm": r"\ell_{z}",
     "n_host": r"n_{\mathrm{host}}", "E_LO_meV": r"E_{\mathrm{LO}}", "k_nr_ns": r"k_{\mathrm{nr}}",
     "sigma_sd_ueV": r"\sigma_{\mathrm{sd}}", "tau_sd_ns": r"\tau_{\mathrm{sd}}", "b_LO_meV": r"b_{\mathrm{LO}}",
+    "fss_ueV": r"\delta_{\mathrm{FSS}}",
 }
 # name -> (ParamSpec unit, group, help). Order = display order.
 _PARAMS = {
@@ -91,8 +92,16 @@ _OPTIONAL = {
                  "source": "assumption: no LO-phonon linewidth coupling (gamma_T_model = lo_phonon then equals the "
                            "linear model up to the 4 K reference) [A]", "band": [0.0, 1.0e4]},
 }
+_OPTIONAL["fss_ueV"] = {"value": 0.0, "tag": "A", "unit": "ueV", "band": [0.0, 7000.0],
+                        "source": "assumption: no fine-structure splitting modelled (0 = the two-level engine, bit-identical). Enter the "
+                                  "paper value to switch on the V-system {G,X,Y} of a cross-polarised resonant_pulse [A]"}
 _OPT_PARAMS = {"b_LO_meV": ("meV", "advanced", r"LO-phonon coupling $b_{\mathrm{LO}}$ of the total width $\Gamma(T) = \Gamma_0 + a_{\mathrm{ac}}T + "
                        r"b_{\mathrm{LO}}/(e^{E_{\mathrm{LO}}/k_{\mathrm B}T} - 1)$ (used only when the temperature model is lo_phonon).")}
+# r4 (Fable pulsed 2.2): the fine-structure splitting is live again for cross_pol resonant_pulse drives
+_OPT_PARAMS["fss_ueV"] = ("ueV", "advanced", r"Neutral-exciton fine-structure splitting $\delta_{\mathrm{FSS}}$ (X / Y dipole splitting). 0 = off. "
+                          r"With a cross-polarised resonant_pulse drive it switches on the three-level V-system: the in-pulse photon is "
+                          r"polarisation-gated by the quantum beat ($p_H = \tfrac12\delta^2/(\Gamma^2 + \delta^2)$ for a 45 deg excitation). "
+                          r"Class ranges: InAs/GaAs 10-50 ueV, InGaAs 5-50 ueV [E].")
 _ENUMS = (
     ParamSpec("gamma_T_model", "", "linear", tex=r"\Gamma_{\mathrm{ph}}(T)\ \mathrm{model}", choices=("linear", "lo_phonon"), tag="A", sweepable=False,
               source="user choice of the dephasing temperature model [A]",
@@ -256,7 +265,8 @@ class DataMaterial(Material):
             E_X_meV=HC_MEV_NM / lam, lambda_nm=lam, n_host=float(g("n_host")),
             gamma0_ns=1.0 / tau, k_nr_ns=float(g("k_nr_ns")), gamma_star_ns=gs, phonon=ph,
             delta_xx_meV=-float(g("E_b_meV")), gamma_xx_ratio=float(g("gamma_xx_ratio")),
-            fss_ueV=0.0, transitions=frozenset(trans), dipole=str(g("dipole")),
+            fss_ueV=float(getattr(vals, "_d", vals).get("fss_ueV", self.param("fss_ueV").default)),   # untracked read: provenance only when attach() uses it
+            transitions=frozenset(trans), dipole=str(g("dipole")),
             dEdT_meV_K=_dEdT_meV_K(self.varshni, T), sigma_sd_ueV=float(g("sigma_sd_ueV")),
             tau_sd_ns=float(g("tau_sd_ns")), inputs=inputs)
 

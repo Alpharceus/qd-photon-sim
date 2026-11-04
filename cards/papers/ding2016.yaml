@@ -48,6 +48,7 @@ device:
       eta_fibre: {value: 0.72, unit: "1", tag: V, where: "p.2 text (single-mode fibre coupling ~72%)"}
       eta_det: {value: 0.33, unit: "1", tag: V, where: "p.2 text (detection efficiency ~33%)"}
       zpl_filter: {value: true, unit: "", tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the 225 ueV pillar mode also sits far below the phonon-sideband width)"}
+      filter_fwhm_GHz: {value: 3.0, unit: GHz, tag: V, where: "p.2-3 text (the RF passes a 3 GHz etalon before the g2 and HOM measurements; the extraction rate 3.7e6/s was measured before it)"}
 reported:
   - {id: F_P_fit, observable: F_P_eff, value: 6.3, err: 0.4, tag: V, where: "p.2 text (fit of lifetime vs detuning, Fig 1c)", note: "additional rate ratio from a weak-coupling fit in which the far-detuned lifetime is not bulk (587.8/83.9 = 7.0 = 1 + F_P_total)"}
   - {id: tau_res, observable: tau_ps, value: 83.9, tag: V, where: "p.2 text / Fig 1c (7.8 K, on resonance)", note: "raw; detector time resolution ~63 ps; no error quoted"}
@@ -85,13 +86,13 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "model-level window 0.005-0.02 for re-excitation plus laser leak; paper 2 sigma is only 0.002, so the 0.005 absolute floor is used; the post-etalon laser leak (envelope 0-2.5%) adds 2 f_leak to the raw value"
-    expect: fail
-    reason: "model 0.0255 vs 0.009: re-excitation in the F_P 6.3 pillar plus residual leak (envelope 0.016-0.039 does not reach 0.009); the paper's etalon-filtered leak and sub-ps timing are not fully modelled."
+    expect: pass
+    reason: "R4 filter: 3 GHz etalon [V] on the detected stream removes the short in-pulse photon; Fable prediction filtered ~0.0044 central, envelope [0.0009, 0.0085] (paper 0.009 inside abs 0.005)"
   - item: hom_raw_2p1ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "model-level tolerance +/-0.02; gamma* is entered from the measured linewidth (range), so this is near source-transcription, not an independent test of dephasing"
-    expect: pass-envelope
+    expect: pass
     reason: "FX4: central model 0.928 vs 0.964 +/- 0.003 misses the window (abs 0.02); 0.964 lies inside the gamma* envelope [0.882, 0.969] only at its tip, and gamma* is entered from the measured linewidth, so it is not a pass"
   - item: hom_corr_2p1ns
     class: M
@@ -102,8 +103,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "same tolerance as the 2.1 ns raw item (model-level +/-0.02)"
-    expect: pass-envelope
-    reason: "FX4: central model 0.928 vs 0.959 +/- 0.003 misses the window (abs 0.02); 0.959 lies inside the gamma* envelope [0.882, 0.969] only, so it is not a pass"
+    expect: fail
+    reason: "R4 honest flip from the pre-registration: the filtered stream gives central 0.9826 (Fable estimated 0.973), inside the 2.1 ns window (|0.9826-0.964| = 0.019 < 0.02) but 0.024 above the 12.4 ns paper value 0.959 and the envelope floor 0.965 is above it; the 12.4 ns drop is spectral diffusion (2.1 vs 12.4 ns), which the card does not model (sigma_sd 0)"
   - item: hom_corr_12p4ns
     class: M
     tol: {k_sigma: 2, abs: 0.02}
@@ -129,3 +130,5 @@ history:
   - {date: "2026-10-12", by: "sonnet card-fix", reason: "card-review item 1: mode_area -> gaussian (cylinder envelope was vacuous); r_factor 0.513 calibrated to F_P 6.3/12.28, F_P_fit+tau_res -> class C with fits; laser_leak -> [0,0.002] DR; fwhm_ps -> [3,7] DR (45 GHz etalon); added hom_raw_12p4ns, hom_corr_12p4ns; expects re-recorded from the post-fix run: extraction_first_lens, eta_prep_96, g2_raw, hom_raw_2p1ns, hom_corr_2p1ns, hom_raw_12p4ns pass -> fail (FX2b open for eta_prep)"}
   - {date: "2026-10-12", by: "sonnet card-fix", reason: "engine change landed while the cards were being written (eta_prep redefined as a probability, P_X(end) + photons emitted in the window; HOM path also changed): re-run --only ding2016 at the end of the session", note: "eta_prep_96 fail -> pass (model 0.9994, envelope 0.998-1.000 vs 0.96, tol 0.05; the earlier low model value was the engine FX2b definition bias, not physics; the +0.04 over the authors' ~96 percent is within tolerance but the two-level model has no phonon loss); hom_raw_2p1ns, hom_corr_2p1ns, hom_raw_12p4ns fail -> pass (model 0.928 / 0.9785 / 0.928, paper values 0.964 / 0.985 / 0.959 inside the envelopes' tolerance); extraction_first_lens (0.764) and g2_raw (0.0255) still fail. M tests 5/7"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_raw_2p1ns and hom_raw_12p4ns expect pass -> pass-envelope (central 0.928 misses 0.964 / 0.959; paper values inside the gamma* envelope [0.882, 0.969] only)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 3.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw fail->pass (0.0255->~0.0044), hom_raw x2 pass-envelope->pass (0.928->~0.973), hom_corr stays pass"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: hom_raw_12p4ns pass -> fail", note: "obtained: g2_raw 0.0041 (pass, predicted 0.0044), hom_raw_2p1ns 0.9826 pass; hom_raw_12p4ns 0.9826 vs 0.959 fails because the model has no spectral diffusion; envelope [0.965, 0.999] excludes 0.959"}

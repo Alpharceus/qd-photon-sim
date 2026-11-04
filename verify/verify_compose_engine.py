@@ -883,14 +883,22 @@ def main():
     sc_mid = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 400.0}))["scalars"]
     ex_big = sc_big["hom_I"] / (1.0 - sc_big["g2_0"])
     ex_mid = sc_mid["hom_I"] / (1.0 - sc_mid["g2_0"])
-    check("FX4-6. r4-hom corrected HOM visibility above 1: within 2 g2^2 + 1e-6 it is clipped to 1 with a note (wang2019b 1.001, "
-          "Gaussian 400 ps); beyond it -> NaN with the reason 'corrected visibility > 1: ...' (Gaussian 1500 ps) -- never a pass",
+    # r4 Fable filtered-HOM note (.workers/devlib/r4-fable-filtered-hom.md): only I <= 1 is rigorous, so the corrected value is
+    # capped at its I = 1 value (engine: 1/(1 - g2)); values in (1, cap] are clipped to 1 with a note, above the cap -> NaN.
+    # Independent numbers: the rigorous bound I <= 1, and for the filtered wang2019b stream the analytic first-order excess
+    # (M - 1)/g2_f = 2|s|^2/(1 + |s|^2) + p0 with |s|^2 = Gamma/(Gamma + kappa) -> 0.54 (Fable probe; engine 0.551), tol 0.05.
+    wang_ex = sc_w["hom_I"] / (1.0 - sc_w["g2_0"])
+    wang_coef = (wang_ex - 1.0) / sc_w["g2_0"] if sc_w["g2_0"] > 0 else float("nan")
+    check("FX4-6. corrected HOM visibility above 1 (Fable filtered-HOM cap): I <= 1 holds (ex <= 1/(1 - g2)) for the "
+          "filtered wang2019b stream and Gaussian 400 / 1500 ps pulses; all three are clipped to 1 with a note, never NaN; the "
+          "filtered wang2019b excess (M - 1)/g2_f matches the analytic first-order coefficient 0.54 within 0.05",
           sc_w["hom_V_corr"] == 1.0 and math.isfinite(sc_w["hom_V_raw"])
           and any("clipped to 1" in n for n in sc_w["notes"])
-          and 1.0 < ex_mid <= 1.0 + 2.0 * sc_mid["g2_0"] ** 2 + 1e-6 and sc_mid["hom_V_corr"] == 1.0
-          and ex_big > 1.0 + 2.0 * sc_big["g2_0"] ** 2 + 1e-6 and not math.isfinite(sc_big["hom_V_corr"])
-          and "corrected visibility > 1" in sc_big.get("hom_V_corr_invalid_reason", ""),
-          f"wang {sc_w['hom_V_corr']}, 400ps {ex_mid:.4f} -> {sc_mid['hom_V_corr']}, 1500ps {ex_big:.4f} -> {sc_big['hom_V_corr']}")
+          and sc_w["hom_I"] <= 1.0 + 1e-12 and sc_mid["hom_I"] <= 1.0 + 1e-12 and sc_big["hom_I"] <= 1.0 + 1e-12
+          and (ex_mid <= 1.0 or sc_mid["hom_V_corr"] == 1.0) and (ex_big <= 1.0 or sc_big["hom_V_corr"] == 1.0)
+          and abs(wang_coef - 0.54) < 0.05,
+          f"wang ex {wang_ex:.6f} coef {wang_coef:.3f}; 400 ps ex {ex_mid:.6f} -> {sc_mid['hom_V_corr']}; "
+          f"1500 ps ex {ex_big:.6f} -> {sc_big['hom_V_corr']}")
 
     # ---- r4-hom 2.4: `inversion` is the expected excitation count n_exc; P_X_end keeps the end-of-window population
     rg = engine.evaluate_spec(spec(drp={"shape": "gauss", "fwhm_ps": 100.0}))["scalars"]

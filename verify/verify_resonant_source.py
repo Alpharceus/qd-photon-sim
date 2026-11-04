@@ -678,6 +678,135 @@ def _f4():
     return bool(ok)
 
 
+# ------------------------------------------------------------------ r4: spectral filter (f) and FSS gating (v)
+from fsim_core import filtered_stream as fsx      # noqa: E402
+
+
+@check("(f1) free decay through the etalon passes B/(B + (Gamma + gamma*)/2pi) of the photons (closed form, 1e-9), HOM overlap of the filtered stream at gamma* = 0 is 1")
+def _f1():
+    ok = True
+    G = 1.0 / 0.143
+    for gs in (0.0, 0.5):
+        for B in (1.0, 3.0, 20.0):
+            pc = rs._pieces(rs.TwoLevel(G, gamma_star_ns=gs))
+            emb = fsx.FilterEmbedding(2, pc.A, fsx.kappa_from_fwhm_GHz(B))
+            pf = emb.pieces(pc)
+            rho0 = np.zeros((6, 6), complex)
+            rho0[3, 3] = 1.0                                   # |e, 0>
+            I, N = lb.indistinguishability(pf.L0, 6, rho0, pf.A, return_counts=True)
+            exp = B / (B + (G + gs) / (2 * np.pi))             # closed form: Lorentzian x Lorentzian overlap
+            ok &= abs(N - exp) < 1e-9
+            if gs == 0.0:
+                ok &= abs(I - 1.0) < 1e-9
+    return bool(ok)
+
+
+@check("(f2) embedding is the existing cascaded filter: lift(L_emit) + L_fc equals lindblad.build_system(filt=...) Liouvillian (1e-12)")
+def _f2():
+    G = 1.0 / 0.143
+    pc = rs._pieces(rs.TwoLevel(G))
+    emb = fsx.FilterEmbedding(2, pc.A, 2 * np.pi * 3.0)
+    s_ = lb.build_system(levels=2, gamma_X_ns=G, filt=dict(fwhm_ns=2 * np.pi * 3.0, n_max=3))
+    return float(np.abs(emb.lift(pc.L0) + emb.L_fc - s_.L).max()) < 1e-12
+
+
+@check("(f3) Gaussian pi pulse, Gamma tau = 0.06 (Ding 5 ps, T1 83.9 ps), B = 3 GHz: g2_f/g2 = 0.096 +- 0.01 (Fable r4 independent probe B)")
+def _f3():
+    r = fsx.filtered_two_level(rs.TwoLevel(12.0), "gauss", np.pi, 0.005, 80.0, 3.0, hom=False)
+    print(f"    g2_f/g2 = {r['g2'] / r['g2_unf']:.4f}")
+    return abs(r["g2"] / r["g2_unf"] - 0.096) < 0.01
+
+
+@check("(f4) sensor variant: g2 of the filtered stream changes < 3 % between eps = 1 and 0.5 /ns, and agrees with the exact cascade to 10 %")
+def _f4():
+    tl = rs.TwoLevel(12.0)
+    a = fsx.filtered_two_level(tl, "gauss", np.pi, 0.005, 80.0, 3.0, mode="sensor", eps_ns=1.0, hom=False)["g2"]
+    b = fsx.filtered_two_level(tl, "gauss", np.pi, 0.005, 80.0, 3.0, mode="sensor", eps_ns=0.5, hom=False)["g2"]
+    c = fsx.filtered_two_level(tl, "gauss", np.pi, 0.005, 80.0, 3.0, hom=False)["g2"]
+    print(f"    sensor {a:.5f} {b:.5f}, cascade {c:.5f}")
+    return abs(a - b) / b < 0.03 and abs(a - c) / c < 0.10
+
+
+def _known_deviation_thomas_pair():
+    """KNOWN DEVIATION (recorded, not a pass/fail check). Thomas et al., PRL 126, 233601 (2021): g2 0.011(1) with the 10 pm etalon vs 0.046(1)
+    without, at 0.6 nm detuning and 20.5 ps, i.e. a ratio 0.239 +- 0.022 (statistical errors propagated). The resonant two-level model with
+    T1 143 ps (the resonant card) gives 0.29: 2.3 sigma above. It is not a like-for-like test (the paper's pair is phonon-assisted, detuned
+    excitation; the model here is the resonant source), so it is printed, not asserted."""
+    r = fsx.filtered_two_level(rs.TwoLevel(1 / 0.143), "gauss", np.pi, 0.0205, 80.0, 3.5, hom=False)
+    ratio = r["g2"] / r["g2_unf"]
+    sig = (0.011 / 0.046) * np.hypot(0.001 / 0.011, 0.001 / 0.046)
+    print(f"    [KNOWN-DEVIATION] Thomas 2021 etalon pair: model ratio {ratio:.3f} vs paper {0.011 / 0.046:.3f} +- {sig:.3f} ({(ratio - 0.011 / 0.046) / sig:+.1f} sigma); resonant two-level model vs phonon-assisted measurement")
+
+
+@check("(f5) filtered g2 is converged: the refined counting grid used by default (8x the sigma/8 steps) agrees with a 16x grid to 1e-4 relative, and the plain sigma/8 grid is within 2e-3 of it (the reason for the refinement)")
+def _f5():
+    tl = rs.TwoLevel(10.745)
+    pc = rs._pieces(tl)
+    pf = fsx.FilterEmbedding(2, pc.A, fsx.kappa_from_fwhm_GHz(3.0)).pieces(pc)
+    fine = fsx.pulse_stream(pf, "gauss", np.pi, 0.015, 76.2, hom=False)[0]
+    ref = rs._stats(pf, "gauss", np.pi, 0.015, 76.2, 2048, True)["g2"]
+    plain = rs._stats(pf, "gauss", np.pi, 0.015, 76.2, None, True)["g2"]
+    print(f"    fine {fine:.7g}, 16x {ref:.7g}, plain {plain:.7g}")
+    _known_deviation_thomas_pair()
+    return abs(fine - ref) / ref < 1e-4 and abs(plain - ref) / ref < 2e-3
+
+
+@check("(f6) gamma* = 0: filtered overlap I_f >= 1 - 1.5 g2_f (Ding-like and Somaschi-like pulses); B -> large recovers the unfiltered g2 and I (rel 2e-3)")
+def _f6():
+    ok = True
+    for G, tau in ((12.0, 0.005), (1 / 0.121, 0.015)):
+        r = fsx.filtered_two_level(rs.TwoLevel(G), "gauss", np.pi, tau, 80.0, 3.0)
+        ok &= r["I"] >= 1.0 - 1.5 * r["g2"]
+    r = fsx.filtered_two_level(rs.TwoLevel(12.0), "gauss", np.pi, 0.005, 80.0, 1.0e4)
+    ok &= abs(r["g2"] - r["g2_unf"]) / r["g2_unf"] < 2e-3 and abs(r["I"] - r["I_unf"]) / r["I_unf"] < 2e-3
+    ok &= abs(r["n_ph"] - r["n_unf"]) / r["n_unf"] < 2e-3
+    return bool(ok)
+
+
+def _v(G, fss_ns, phi=np.pi / 4, **kw):
+    return fsx.VSystem(Gamma_H_ns=G, Gamma_V_ns=G, fss_ns=fss_ns, phi_rad=phi, **kw)
+
+
+@check("(v1) H-photon yield of an instantaneously prepared V exciton = (1/2) delta^2/(Gamma^2 + delta^2) (closed form, 1e-9)")
+def _v1():
+    ok = True
+    for G, d_ueV in ((1 / 0.12, 15.0), (3.0, 40.0), (1 / 0.4, 5.0)):
+        d = float(lb.mev_to_rate(d_ueV * 1e-3))
+        V = _v(G, d)
+        pc = V.pieces("H")
+        ket = V._ket("V")
+        rho0 = np.outer(ket, ket.conj())
+        _, N = lb.indistinguishability(pc.L0, 3, rho0, pc.A, return_counts=True)
+        ok &= abs(N - 0.5 * d * d / (G * G + d * d)) < 1e-9
+    return bool(ok)
+
+
+@check("(v2) limits: delta -> 0 gives zero H emission; delta >> Gamma gives 1/2; Gamma -> 0 gives 1/2")
+def _v2():
+    def yH(G, d):
+        V = _v(G, d)
+        ket = V._ket("V")
+        _, N = lb.indistinguishability(V.pieces("H").L0, 3, np.outer(ket, ket.conj()), V.pieces("H").A, return_counts=True)
+        return N
+    return abs(yH(8.0, 0.0)) < 1e-12 and abs(yH(1.0, 1.0e4) - 0.5) < 1e-6 and abs(yH(1e-4, 22.8) - 0.5) < 1e-6
+
+
+@check("(v3) 15 ps pi pulse at 45 deg, FSS 15 ueV, Gamma_V = Gamma_H = 1/121 ps: g2_H <= g2 sin^2(delta tau_p/2)/p_H (Fable bound); a 0.5 ps pi pulse gives n_H within 2 % of the closed form p_H (agreement improves as tau_p -> 0)")
+def _v3():
+    G = 1 / 0.121
+    d = float(lb.mev_to_rate(15e-3))
+    V = _v(G, d)
+    pc = V.pieces("H")
+    st = rs._stats(pc, "gauss", np.pi, 0.015, 82.0, None, True)
+    g2_2lvl = rs.pulsed_photon_statistics(rs.TwoLevel(G), "gauss", np.pi, 0.015, 82.0)["g2"]
+    pH = 0.5 * d * d / (G * G + d * d)
+    bound = g2_2lvl * np.sin(d * 0.015 / 2.0) ** 2 / pH
+    n15 = st["mean_photons"]
+    n05 = rs._stats(pc, "gauss", np.pi, 0.0005, 82.0, None, True)["mean_photons"]
+    print(f"    g2_H {st['g2']:.3e} <= bound {bound:.3e}; n_H(15 ps) {n15:.4f}, n_H(0.5 ps) {n05:.4f} vs p_H {pH:.4f}")
+    return st["g2"] <= bound and abs(n05 - pH) / pH < 0.02
+
+
 def main():
     t0 = time.time()
     n_pass = 0

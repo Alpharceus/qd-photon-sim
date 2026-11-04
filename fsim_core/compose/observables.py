@@ -333,7 +333,8 @@ def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None, bs_R=0.5):
 
 def hom_v_corrected(V_raw, g2, eps_int=0.0, bs_R=0.5):
     """Exact inverse of `hom_v_raw` for the single-photon overlap M_s: M = V_raw/[(1 - eps_int) 2RT/(R^2 + T^2)] (1 + g2)/(1 - g2)
-    (the stream overlap is I = M_s (1 - g2) + O(g2^2)). With a background and g2 = g2_raw this equals I/(1 - g2_signal)
+    (the stream overlap is I = M_s (1 - g2) + O(g2^2) only for a distinguishable extra photon; a filtered
+    stream has a first-order excess, see the cap in _derive). With a background and g2 = g2_raw this equals I/(1 - g2_signal)
     exactly (Tomm 0.925-type values: with eps = 0, R = 1/2 it is the old I/(1 - g2))."""
     return V_raw / ((1.0 - eps_int) * _bs_factor(bs_R)) * (1.0 + g2) / (1.0 - g2)
 
@@ -634,26 +635,31 @@ def _derive(c: Context) -> dict:
         # the drive-embedded bg_frac); g2_0 already contains that background and would double-count it (final review 1).
         g2_sig = float(res.extra.get("g2_signal", g2))
         d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2_sig, bs_R=bsR)
-        # r4-hom (Fable 2.3): corrected = the exact inverse of the raw law (eps_int and the splitter term are removed too); a
-        # value above 1 by less than the second order of the stream-vs-single-photon identity, 2 g2^2 + 1e-6, is clipped to 1
-        # (noted); only a larger excess is NaN.
-        tol_gt1 = 2.0 * g2_sig * g2_sig + 1e-6
+        # r4-hom (Fable 2.3): corrected = the exact inverse of the raw law (eps_int and the splitter term are removed too).
+        # r4 Fable filtered-HOM note (.workers/devlib/r4-fable-filtered-hom.md): the stream identity I = M_s (1 - g2) + O(g2^2)
+        # holds only for a DISTINGUISHABLE extra photon. In general I = M_s (1 - g2) + g2 [Tr(sigma G_2) - M_s + M_s p0] + O(g2^2);
+        # a re-excitation photon that overlaps the single photon (spectral filter: |s|^2 = Gamma/(Gamma + kappa)) gives a
+        # FIRST-order excess g2 [2|s|^2/(1 + |s|^2) + p0] [DR]. The only rigorous bound is I <= 1 (G1 is a positive kernel), so
+        # each corrected convention is capped at its I = 1 value: above the cap is an inconsistency (NaN); between 1 and the
+        # cap is physics and is clipped to 1 with a note (the paper-style estimator is biased high).
+        V_raw_max = hom_v_raw(1.0, d["g2_raw"], eps, g2_int=g2_sig, bs_R=bsR)
         for cname, key in corr_keys.items():
             v = hom_v_corrected_by(cname, d["hom_V_raw"], d["g2_raw"], eps, bsR)
-            if v > 1.0 + tol_gt1:
+            v_max = hom_v_corrected_by(cname, V_raw_max, d["g2_raw"], eps, bsR)
+            if v > v_max * (1.0 + 1e-6):
                 v = NAN
-                why[key] = ("corrected visibility > 1: engine's multi-photon convention differs from the "
-                            "paper's M_s")
+                why[key] = "corrected visibility exceeds its I = 1 cap: filtered/unfiltered I and g2 inconsistent"
             elif v > 1.0:
-                warnings.append(f"{key} = {v:.6f} exceeds 1 by less than 2 g2^2 + 1e-6 = {tol_gt1:.2e} (second order of the "
-                                "stream-vs-single-photon identity): clipped to 1")
+                warnings.append(f"{key} = {v:.6f} exceeds 1 by {v - 1.0:.2e} <= cap {v_max - 1.0:.2e} = its value at I = 1: the "
+                                "multi-photon component overlaps the single-photon mode (first order in g2, "
+                                "I = M_s(1 - g2) + g2[2|s|^2/(1+|s|^2) + p0]); the paper estimator is biased high, clipped to 1")
                 v = 1.0
             d[key] = v
     else:
         d["hom_V_raw"] = NAN
         for key in corr_keys.values():
             d[key] = NAN
-    if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0:
+    if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0 and "vsys" not in res.extra:
         warnings.append("cross-polarised collection with eta_pol = 1: an unpolarised (trion / unpolarised X) emitter loses "
                         "1/2 in a cross-polarised setup unless the structure is polarisation-selective (brief trap 9); "
                         "set setup.eta_pol = 0.5 if that applies [A]")

@@ -39,6 +39,7 @@ device:
     kind: lens_fibre_det
     params:
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: Fabry-Perot etalon of 1 GHz bandwidth in the HOM path (narrower than the ~0.5 GHz ZPL plus sideband selection); also isolates the ZPL from the cross-polarised laser"}
+      filter_fwhm_GHz: {value: 1.0, unit: GHz, tag: V, where: "text p.4 (Fabry-Perot etalon of 1 GHz bandwidth in the HOM path; also isolates the ZPL from the cross-polarised laser)"}
       eta_det: {value: 0.2, unit: "1", tag: V, where: "text p.4: detection efficiency ~20% (overall collection ~1%)"}
       eps_int: {value: 0.005, unit: "1", tag: V, where: "text p.4: first-order Mach-Zehnder interference visibility 0.995, so eps_int = 1 - 0.995"}
       coinc_window_ns: {value: 3.2, unit: ns, tag: V, where: "text p.4: raw HOM visibility from counts within a 3.2 ns window around zero delay"}
@@ -60,14 +61,16 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "2 sigma of the printed 0.002 (0.004); abs 0.005 floor. The model g2 is the chirped-pulse re-excitation term plus nothing else (no background entered: the paper gives none)"
-    expect: fail
-    reason: "model 0.0277 vs 0.003(2): NOT an incomplete ARP transfer (r4 Fable review: the closed-system transfer is complete, P_e = 0.9999, Landau-Zener parameter ~10; the earlier 'inversion 0.68' was P_X at the end of the +-8 sigma_c window, 72 % of the prepared population surviving 134 ps of radiative decay). 0.0277 is the two-level re-excitation value of a 28 ps chirped pulse; the paper measured behind a 1 GHz etalon that removes the short in-pulse photon (the engine has no spectral filter on the photon stream until the r4-filter change merges): filtered ~0.0045 vs 0.003(2) predicted."
+    expect: pass
+    weak: true
+    weak_reason: "the null model g2 = 0 also passes: the tolerance floor abs 0.005 exceeds the paper value 0.003 (model 0.0007); a non-discriminating pass"
+    reason: "R4 filter: 1 GHz etalon [V]; Fable prediction 0.0045 vs 0.003(2) (0.75 sigma)"
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.006 (0.012). The overlap is solved at the FAST dephasing f x 0.565 /ns (f in [0, 1]: the CW excess is an upper bound) and multiplied by the slow-diffusion factor at the stated 4 ns separation (sigma_sd 0.97 ueV, tau_sd class range); raw V = I/(1 + g2) x 0.995 (cross-polarised normalisation)"
-    expect: fail
-    reason: "r4-hom: pre-registered pass-envelope (Fable: envelope [0.73, 0.98] containing 0.979), obtained central 0.8425 with envelope [0.762, 0.940] over f in [0, 1]: the top 0.940 misses 0.979(6). Cause: V_raw = I/(1 + g2) with the UNFILTERED g2 = 0.0277 (the 1 GHz etalon that removes the short in-pulse photon is not in this branch; r4-filter); at f = 0 the overlap is 0.997 and 0.997 x 0.995/1.0277 = 0.965 is capped below the paper. Expected to move to pass-envelope when the spectral filter merges (filtered g2 ~0.0045: ceiling ~0.983 per Fable)."
+    expect: pass-envelope
+    reason: "merge of r4-filter with r4-cavity/r4-hom (combined model, not pre-registered by either branch): central 0.933 vs 0.979 +/- 0.006 misses 2 sigma; 0.979 lies inside the envelope [0.881, 0.994] (fast-dephasing fraction f in [0, 1] [E], 1 GHz etalon [V], slow-diffusion factor at the 4 ns separation), so it is not a pass. As the r4-hom coder predicted once the filter merged."
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
@@ -85,3 +88,7 @@ fits:
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3-2.5: hom_corr expect fail -> pass-envelope (two-timescale dephasing: sigma_sd 0.97 ueV, tau_sd class range, hom_delay_ns 4, hom_fast_fraction range [0, 1] on the 0.565 /ns CW excess; the corrected convention is now the exact inverse incl. eps_int). hom_raw stays fail: Fable predicted pass-envelope, obtained envelope top 0.940 < 0.979 because g2 is unfiltered (needs the r4-filter etalon). g2_raw stays fail with a corrected reason (misdiagnosis: the ARP transfer is complete, the miss is the missing 1 GHz etalon); inversion_pred now reports n_exc (0.68 -> 0.97, Fable 0.98)", change: "expect fail -> pass-envelope (hom_corr); hom_raw unchanged (fail, new reason)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 1.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw fail->pass (0.0277->~0.0045); hom_raw / hom_corr stay fail (need the two-timescale dephasing of review 2.5, not in this piece)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run", note: "obtained: g2_raw 0.00073 pass (Fable estimated 0.0045 from g2 T_s/T_l; the exact cascade on the chirped pulse is lower); hom_raw 0.883 / hom_corr 0.884 fail as predicted"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "null-model gate: g2_raw flagged weak", note: "expectation pass pre-registered; the number (0.0007) is inside abs 0.005 of the paper 0.003 and also of zero, so the pass is flagged weak; tolerance untouched"}
+  - {date: 2026-11-03, by: "orchestrator (Opus) merge r4-filter", reason: "combined-model outcome: hom_raw fail -> pass-envelope (0.979 inside [0.881, 0.994])"}

@@ -9,10 +9,7 @@ the engine ignores it (the engine reads only the parameters a kind declares).
 from __future__ import annotations
 
 REMOVED_PARAMS = {
-    ("material", "*"): {
-        "fss_ueV": "the exciton fine-structure splitting is a polarisation quantum beat; the engine has no polarisation-"
-                   "resolved or entanglement observable that depends on it (removed, R2 F10)",
-    },
+    # r4: ("material", "*") fss_ueV is live again (V-system of a cross-polarised resonant_pulse, Fable pulsed 2.2)
     ("drive", "electrical_pulsed"): {
         "mu": "every pulsed mechanism ignores mu (M-3 computes mu = eta I tau / e from the current, the M-4 turnstile fixes "
               "mu = 1); mu is the cw operating point (removed, R2 F10b)",

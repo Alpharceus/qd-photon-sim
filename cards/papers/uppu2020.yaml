@@ -42,6 +42,7 @@ device:
     params:
       eta_pol: {range: [0.80, 0.98], unit: "1", tag: V, where: "text p.2 (>98%) / App D.2 (80%)"}
       zpl_filter: {value: true, unit: "", tag: V, where: "App D.1 (3 GHz etalon removes the phonon sideband)"}
+      filter_fwhm_GHz: {value: 3.0, unit: GHz, tag: V, where: "App D.1 (3 GHz etalon before the g2 and HOM measurements)"}
       laser_leak: {range: [0.0, 0.007], unit: "1", tag: V, where: "text p.3 (single-photon impurity xi < 0.007, upper bound)"}
 reported:
   - {id: gamma_rate, observable: Gamma_ns, value: 2.89, tag: V, where: "Fig 2c caption, text p.3 (radiative decay rate of the well-coupled dipole, 1/ns)"}
@@ -80,19 +81,20 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "paper 0.015 +/- 0.005 (2 sigma = 0.01); partly input-determined by the laser_leak range, which is the paper's own xi bound"
-    expect: fail
-    reason: "model gap: pi-pulse re-excitation alone (laser leak 0) gives about 0.024 for Gamma tau_p = 0.058 at 20 ps FWHM, plus 2 xi up to 0.014; the paper attributes its 0.015 to laser background alone. The 20 ps intensity-FWHM convention is an assumption and moves this."
+    expect: pass
+    reason: "R4 filter: 3 GHz etalon [V]; Fable prediction central 0.012 (range [0.005, 0.019]) vs 0.015"
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.96 +/- 0.02 (2 sigma = 0.04); gamma* is the material class default (paper gives no pure dephasing), so this is an unfitted comparison"
     expect: fail
-    reason: "r4-hom (Fable 2.3): the corrected value is now finite: 1.001 is within the second-order tolerance 2 g2^2 + 1e-6 and is clipped to 1 (was NaN, unavailable). 1.0 vs 0.96(2) misses 2 sigma by a hair (0.04 vs 0.04): the dot's real dephasing (gamma* ~0.12 /ns from M 0.96) is not in the class default and the paper's own correction divides out R 0.476 / T 0.524 and 0.995 (Eq. C2), which this card does not enter. With the etalon filter (r4-filter) Fable predicts 0.993 (pass)."
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 vs 0.96 +/- 0.02 misses 2 sigma: the residual is the class gamma* (the dot's dephasing is not in the paper). Note the paper-style correction itself is biased high by ~0.24 g2 behind its 3 GHz etalon."
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.93 +/- 0.02 (2 sigma = 0.04); the model raw V uses g2_raw and eps_int = 0, so the paper's extra alignment/BS losses are not in the model"
-    expect: pass
+    expect: fail
+    reason: "R4 honest flip: the earlier pass was two errors cancelling (in-pulse photons lowered I by ~0.023, the leak raised g2_raw); the filtered overlap gives V_raw ~0.977 vs 0.93; the paper dot has real dephasing (gamma* ~ 0.12 /ns from M 0.96) that the class default does not carry"
 fits:
   - {param: structure.F_bg, fitted_to: [gamma_rate]}
 history:
@@ -102,3 +104,8 @@ history:
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr expect fail -> unavailable (V_corr > 1 is now invalid, NaN)"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable cavity review item F: material.l_xy_nm [3, 5] nm and l_z_nm [1, 2] nm E class ranges added; registry phonon constants untouched. eta_zpl stays fail (envelope [0.839, 0.941] does not contain 0.95; Fable predicted pass-envelope at the corner) with the reason rewritten; eta_S fail -> pass-envelope (envelope [0.625, 0.859] now contains 0.84), an unpredicted side effect; no tolerance changed"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 3.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw fail->pass, hom_corr unavailable->pass, hom_raw pass->FAIL (honest flip)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: hom_corr pass -> unavailable (stays)", note: "obtained: g2_raw 0.0117 pass (Fable 0.012); hom_raw 0.9777 vs 0.93 fail (predicted honest flip, now recorded); hom_corr remains unavailable until review 2.3 lands"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "rendered-text gate", note: "the card-text check failed on a file name in the hom_corr reason (my wording); reworded, no expectation or number changed"}
+  - {date: 2026-11-03, by: "orchestrator (Opus) merge r4-filter", reason: "combined-model outcome: corrected HOM -> unavailable (V_corr > 1 beyond 2 g2^2 with the filter on); open review question, not a test"}
+  - {date: 2026-11-03, by: "orchestrator (Opus)", reason: "r4 Fable filtered-HOM cap (corrected HOM capped at its I = 1 value): hom_corr unavailable -> model 1.000 clipped; uppu fail, wang2019b pass weak (null model passes)"}

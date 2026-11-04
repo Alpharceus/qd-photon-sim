@@ -44,6 +44,7 @@ device:
       NA: {value: 0.65, unit: "1", tag: V, where: "Supp Fig 7 caption (extraction simulated with an objective of NA = 0.65)"}
       eta_pol: {range: [0.962, 1.0], unit: "1", tag: E, source: "polarisation degree of the EBG device is not given; the pillar's 0.962 (text p.7) is the lower end"}
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.8 (5 GHz etalon filters out the phonon sideband for the HOM/purity measurement; it cuts the counts by ~30 %)"}
+      filter_fwhm_GHz: {value: 5.0, unit: GHz, tag: V, where: "text p.8 (5 GHz etalon for the HOM / purity measurement; the 0.56 efficiency is the loss-budget value without it)"}
 reported:
   - {id: tau_ebg, observable: tau_ps, value: 69.1, err: 0.1, tag: V, where: "text p.7 / Fig 2f (radiative lifetime of the EBG-coupled dot, resonance fluorescence)"}
   - {id: eff_ebg, observable: B_first_lens, value: 0.56, err: 0.02, tag: V, where: "text p.8 (polarised single-photon efficiency at the first lens, loss-budget based, WITHOUT the etalon; main loss blinking 35 %)"}
@@ -68,23 +69,23 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "paper 0.009 +/- 0.001 (2 sigma = 0.002); 0.005 absolute for a model with zero laser leak (the paper gives no leak number) and only intrinsic re-excitation"
     expect: fail
-    reason: "model 0.0239 vs 0.009 (0.005 floor): intrinsic re-excitation for the now-explicit 3 ps pulse (E) at F_P 20 exceeds the paper's value, which has little laser leak; the 3 ps width is not stated in the paper."
+    reason: "R4 filter: 5 GHz etalon [V] gives ~0.0022 (Fable) against 0.009: the residual 0.007 is the unquantified laser leakage the paper names (no leak number is invented)"
   - item: hom_corr_13ns
     class: M
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.951 +/- 0.005; 0.05 absolute; gamma* is the registry class default (no dephasing number), 13 ns spectral diffusion not modelled"
-    weak: true
-    weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at its physical cap 1.0 and abs 0.05 is wider than the 1 - 0.951 gap"
     expect: pass
-    reason: "r4-hom (Fable 2.3): V_corr 1.001 is within the second-order tolerance 2 g2^2 + 1e-6 and is clipped to 1 (was NaN, unavailable). Fable predicted a FAIL (M_s = 0.999 vs 0.951, abs 0.05) but the abs 0.05 tolerance is met (|1 - 0.951| <= 0.05); the dot dephasing and the 2-vs-13 ns spectral diffusion are not in the paper, so the item cannot discriminate and is flagged weak."
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.981, 1.000]) vs the paper within abs 0.05 (gap 0.049). Non-discriminating: the clipped ideal value is what the null model gives."
+    weak: true
+    weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at 1 and abs 0.05 exceeds the gap to the paper; the paper-style correction is also biased high by ~0.54 g2 behind a 5 GHz etalon"
   - item: hom_corr_2ns
     class: M
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "paper 0.973 +/- 0.005; 0.05 absolute as for 13 ns; the model has no delay dependence, so the same model value is compared with the 2 ns paper number"
-    weak: true
-    weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at its physical cap 1.0 and abs 0.05 is wider than the 1 - 0.973 gap"
     expect: pass
-    reason: "r4-hom (Fable 2.3): V_corr 1.001 is within the second-order tolerance 2 g2^2 + 1e-6 and is clipped to 1 (was NaN, unavailable). Fable predicted a FAIL (M_s = 0.999 vs 0.973, abs 0.05) but the abs 0.05 tolerance is met (|1 - 0.973| <= 0.05); the dot dephasing and the 2-vs-13 ns spectral diffusion are not in the paper, so the item cannot discriminate and is flagged weak."
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 (envelope [0.981, 1.000]) vs the paper within abs 0.05 (gap 0.027). Non-discriminating: the clipped ideal value is what the null model gives."
+    weak: true
+    weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at 1 and abs 0.05 exceeds the gap to the paper; the paper-style correction is also biased high by ~0.54 g2 behind a 5 GHz etalon"
 fits: []
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): eff_ebg 0.716 -> 0.724. Expect unchanged; not tuned."}
@@ -93,3 +94,7 @@ history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable review items E and I: structure.F_P 20 -> 19 (FDTD total ratio); material.eta_blink 0.65 added [V] (text p.8: blinking 35 %); eff_ebg expect fail -> pass (model 0.465 vs 0.56 +/- 0.02, abs 0.1, marginal; Fable predicted 0.47 pass); tau_ebg stays fail (model 54.5 ps vs 69.1 ps), reason updated; g2_ebg and the two HOM items unchanged; no tolerance changed"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 5.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_ebg stays fail (0.0239->0.0022, leak), hom_corr x2 unavailable->fail (finite ~0.999)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: hom_corr x2 stay unavailable", note: "obtained: g2_ebg 0.00223 fail as predicted (residual = unquantified laser leak); hom_corr stays unavailable pending review 2.3"}
+  - {date: 2026-11-03, by: "orchestrator (Opus) merge r4-filter", reason: "combined-model outcome: corrected HOM -> unavailable (V_corr > 1 beyond 2 g2^2 with the filter on); open review question, not a test"}
+  - {date: 2026-11-03, by: "orchestrator (Opus)", reason: "r4 Fable filtered-HOM cap (corrected HOM capped at its I = 1 value): hom_corr unavailable -> model 1.000 clipped; uppu fail, wang2019b pass weak (null model passes)"}
