@@ -63,9 +63,10 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.07 (0.14); brightness is beta x eta_out x saturation of the pump (0.88 x 0.70 x ~0.91 expected)"
-    expect: fail
-    reason: "model 0.503 vs 0.65 (0.14 tol, 0.147 off): beta x eta_out with F_P 7.6 and the engine's pump saturation 1 - exp(-2.45) = 0.91 gives 0.50; the paper's 0.65 assumes p_X = 1 and beta 0.88 (0.62 for beta x eta_out), i.e. the engine's beta at F_P 7.6 or the first-lens factor is lower than the paper's."
+    expect: pass
+    reason: "r4-cavity A2 flip (fail -> pass), pre-registered from the Fable cavity review (predicted 0.563, tol 0.14): the entered F_P 7.6 is lifetime-derived (already phonon-renormalised) and the cavity channel is ZPL-only, so the old Z_filt = 0.895 on the cavity-collected light was a double count; 0.91 (pump) x 0.884 (beta) x 0.70 (eta_out) = 0.563 against the paper's 0.65 +/- 0.07 (the paper assumes p_X = 1)."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.503 -> 0.562, expect fail -> pass (no Z_filt on cavity-collected light); predicted 0.563 by the Fable review, not tuned"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}

@@ -113,6 +113,7 @@ reproduce:
 fits:
   - {param: structure.g_ueV, fitted_to: [F_P_QD1, tau_res_purcell, tau_res_jc, beta_H]}
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): sys_eff_QD1 0.520 -> 0.583 (expect pass unchanged, paper 0.53 +/- 0.03 so 0.053 off, inside the 2 sigma = 0.06): the cavity-collected light no longer carries Z_filt = Z (kappa = 99 ueV passes only the ZPL, so the cavity is the filter and zpl_filter removes Z/Z_eff = 1.0 of it). Fable predicted 0.51 -> 0.57 (+12 percent); same factor 1/Z. The paper's own budget has no Z factor, so 0.58 is the honest number; closer to the edge of the tolerance. Not tuned."}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "initial transcription; expects recorded from the engine state at the time of the run", reason: "initial transcription"}
   - {date: "2026-10-12", by: "Sonnet 5.5 (coder)", note: "an earlier engine gave tau_res_jc 59.5, tau_res_purcell 55.5 and F_P 8.4 (fail); after the FX1 engine update all pass, expects set to pass", reason: "engine changed between runs (FX1 landing)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 6: F_P_QD1 and tau_res_purcell -> class C with fits on structure.g_ueV (authors derived g from the lifetimes, Supp l.1016-1021); lambda_nm -> 919.0 DR (Supp l.1019); setup.eps_int 0.0097 DR (0.916 -> 0.925 interferometer correction). tau_res_jc stays M; note beta_H and sys_eff_QD1 are near-transcription (g and eta_out/eta_fibre are paper inputs)"}

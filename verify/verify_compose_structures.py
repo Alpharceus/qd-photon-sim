@@ -569,6 +569,34 @@ check("dipole: nitride_planar_cavity F_P scales by 0.05 for an axial dipole", ab
 check("every structures.py param carries a tex symbol and a $...$ help",
       all(p_.tex and "$" in p_.help for k_ in R.kinds("structure") for p_ in R.get("structure", k_).params))
 
+# ---- r4-cavity B: eta_mirror consistent with a measured Q (opt-in `excess_loss: scattering`); A: F_P_source defaults
+_Tt = 1.0 - dbr.qw_peak_reflectivity(1.0, n_h, n_h, n_l, 25)
+_Tb = 1.0 - dbr.qw_peak_reflectivity(n_h, n_h, n_h, n_l, 40)
+_loss = 1e-4
+_Qpl = 4 * math.pi * n_h * Leff * 1e3 / (lam * (_Tt + _Tb + _loss))              # closed form, same planar budget as the code
+_base = {"d_um": d, "n_high": n_h, "n_low": n_l}
+_eta_ign = resp("micropillar", {**_base, "Q_measured": _Qpl / 2}).eta_out
+_eta_pl = resp("micropillar", {**_base, "Q_measured": _Qpl}).eta_out
+check("B: default excess_loss = ignore is the old planar eta_mirror (Q_meas halved: eta unchanged, bit-identical to explicit ignore)",
+      _eta_ign == resp("micropillar", {**_base, "Q_measured": _Qpl / 2, "excess_loss": "ignore"}).eta_out
+      and _eta_ign == _eta_pl, f"{_eta_ign:.6g}")
+_eta_sc_eq = resp("micropillar", {**_base, "Q_measured": _Qpl, "excess_loss": "scattering"}).eta_out
+_eta_sc_hi = resp("micropillar", {**_base, "Q_measured": 3 * _Qpl, "excess_loss": "scattering"}).eta_out
+_eta_sc_half = resp("micropillar", {**_base, "Q_measured": _Qpl / 2, "excess_loss": "scattering"}).eta_out
+check("B: scattering with Q_meas = Q_planar leaves eta unchanged (and Q_meas > Q_planar is capped at the design value)",
+      abs(_eta_sc_eq / _eta_pl - 1) < 1e-9 and abs(_eta_sc_hi / _eta_pl - 1) < 1e-12, f"{_eta_sc_eq:.6g} vs {_eta_pl:.6g}")
+check("B: scattering with Q_meas = Q_planar / 2 halves eta_out (excess loss never leaves through the top mirror)",
+      abs(_eta_sc_half / _eta_pl - 0.5) < 1e-9, f"ratio {_eta_sc_half / _eta_pl:.9f}")
+check("B: eta_mirror = T_top / l_tot with l_tot = 4 pi n_c L_eff / (lambda Q_meas) (closed form)",
+      abs(_eta_sc_half / resp("micropillar", {**_base, "Q_measured": _Qpl / 2, "eta_out": 1.0}).eta_out
+          - _Tt / (4 * math.pi * n_h * Leff * 1e3 / (lam * (_Qpl / 2)))) < 1e-9)
+check("A: F_P_source defaults: micropillar / phc_cavity computed, generic_cavity / cbg measured, open_cavity direct measured, geometry computed",
+      resp("micropillar").F_P_source == "computed" and resp("phc_cavity").F_P_source == "computed"
+      and resp("generic_cavity").F_P_source == "measured" and resp("cbg").F_P_source == "measured"
+      and resp("open_cavity").F_P_source == "measured" and resp("open_cavity", {"mode": "geometry"}).F_P_source == "computed"
+      and resp("generic_cavity", {"F_P_source": "simulated"}).F_P_source == "simulated"
+      and resp("bulk_planar").F_P_source == "measured")
+
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} compose_structures checks passed")
 sys.exit(0 if n_ok == len(RESULTS) else 1)

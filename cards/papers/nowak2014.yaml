@@ -52,14 +52,14 @@ reproduce:
     class: M
     tol: {k_sigma: 2, rel: 0.10}
     tol_reason: "model-level lifetime window 10 % (the paper's 2 sigma is only 0.06 ns = 7 %); tau_ref is entered as the bare lifetime, so the test is the engine's Purcell factor from Q 1300 and the 4.1 um equivalent pillar; the paper's own theory (1.1) and measurement (0.8) differ by 30 % in F_P"
-    expect: fail
-    reason: "model 715 ps vs 820 ps (105 ps off, tolerance 82 ps): the engine F_P = 1.03 (see F_P_theory) agrees with the paper's THEORY 1.1, not with the measured 0.8 (tau_ref 1.45 ns / 1.8 = 806 ps); a model-versus-measurement gap of the paper's own, not a missing input."
+    expect: pass
+    reason: "r4-cavity A flip (fail -> pass), pre-registered from the Fable cavity review (predicted 830 ps, tol 2 sigma | 10 percent): the computed pillar F_P is the bare ZPL number (1.045, agrees with the paper's theory 1.1) and the cavity channel only sees the phonon-dressed spectrum, L_ph = Z_eff(1.03 meV, 35 K) = 0.71, so F_P L L_ph = 0.74 (paper measured 0.8 +/- 0.08) and tau = 1450/1.74 = 835 ps. Was 716 ps."
   - item: F_P_theory
     class: R
     tol: {abs: 0.3}
     tol_reason: "no error on a theory number; 0.3 absolute is the paper's own gap between theory 1.1 and measurement 0.8, i.e. the scatter of the cavity estimate; the engine derives F_P from Q, d, the DBR stack and the Gaussian HE11 area (mode_area gaussian is a class default, not from the paper)"
     expect: pass
-    reason: "FX4: 1.1 is the paper's own theory estimate of the Purcell factor (Q and effective volume), so the comparison is model against the paper's theory (class R, not a test); model 1.045"
+    reason: "FX4: 1.1 is the paper's own theory estimate of the Purcell factor (Q and effective volume), so the comparison is model against the paper's theory (class R, not a test); model 1.045 (F_P_eff was 1.024 before r4-cavity A). r4-cavity A: the observable is now F_P_peak (the bare ZPL cavity factor the paper's formula gives), not F_P_eff, which now carries the phonon overlap L_ph (0.74) and would compare a dressed number with a bare theory"
   - item: extraction
     class: M
     tol: {k_sigma: 2}
@@ -73,6 +73,7 @@ reproduce:
     reason: "flipped fail -> pass after the pump E range was widened to [2, 20] (the paper's count rate is the MAXIMUM of its power fit, which the incoherent two-level pump reaches only at r of several Gamma): central 3.79e6 vs 4.08e6 (7 % low, inside the 20 % band), envelope 2.78e6-3.91e6. The pump is an unstated E input, so the pass depends on the range; the model extraction 0.49 and the whole-setup efficiency 0.0084 entered once set the scale. Weak in that sense, not fitted."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A engine change (bug fix that moves defaults): tau_X 716 -> 835 ps, expect fail -> pass (phonon-dressed cavity channel L_ph = 0.71; Fable predicted 830 ps); F_P_theory observable F_P_eff -> F_P_peak (the bare theory number; F_P_eff 0.74 is now the dressed rate, the measured F_P 0.8 +/- 0.08 is reported only); extraction 0.494 -> 0.414 (paper 0.53 +/- 0.09, still pass); rate_det unchanged (3.06e6, pump limited). Not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: F_P_theory class M -> R (the paper's own theory number); expect unchanged (pass)"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable incoherent review section 3 (cards row) and cavity item G: drive.pump E range [0.5, 5] -> [2, 20] (P_sat of the paper is the maximum of its fit, i.e. n_X near saturation); F_P_theory observable F_P_eff -> F_P_peak (bare cavity Purcell factor, like for like with the paper theory 1.1; class R, expect pass unchanged, model 1.045); rate_det expect fail -> pass (central 3.79e6 vs 4.08e6, as Fable predicted 3.9-4.6e6); tau_X stays fail (model 719 ps vs 820 +/- 30 ps; the phonon-dressed Purcell rate that would give 830 ps is engine item A, not implemented); no tolerance changed"}

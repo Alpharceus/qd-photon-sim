@@ -71,6 +71,7 @@ reproduce:
     reason: "model overestimates by ~7x (3.8 Mcps vs 0.55 Mcps): the model assumes unity pump saturation, ideal placement and no blinking. NOTE the paper 550 kcps is the g2-corrected true single-photon rate R_raw sqrt(1 - g2) (p.4; check on line 1: 1.3 Mcps x sqrt(1 - 0.262) = 1.12 Mcps = the printed 1.1 Mcps), so the raw detected rate implied for this line is ~1.0 Mcps and the model is ~3.6x high like for like, while the model value here is the raw detected rate and the comparison is not like for like (the engine has no corrected-rate observable); the count-rate assumptions (6.4 % reused from line 1, NA 0.6 table point) are also not from this line."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): rate_sat 3.82e6 -> 3.89e6. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 15: rate_sat reason rewritten (paper 550 kcps is the g2-corrected true single-photon rate vs the raw model rate)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}

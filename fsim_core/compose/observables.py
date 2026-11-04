@@ -33,8 +33,9 @@ observable `n_exc`; the old end-of-window population is `P_X_end` (informational
 p_loaded as eta_prep and no n_exc.
 XX channel (TPE cascade only): tau_XX_ps, g2_XX, n_XX, hom_XX (hom_XX carries the same q^2 as hom_I).
 T_NA = 1: the structure's response() already received the setup NA, so eta_out contains the NA
-collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL,
-Z_eff (below) for a finite-kappa structure, else 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor
+collection (T_NA is reported as 1 for the record). Z_filt = Z(T) when the setup filters to the ZPL, else 1; r4-cavity A2: for
+a finite-kappa structure the CAVITY-collected light has Z_filt = 1 (the cavity is the filter and its sideband loss is already in
+beta / the entered F_P) or Z/Z_eff with a ZPL filter, and only the leaky beta0 channel keeps Z / 1. Phonon bookkeeping (brief trap 3, tier P0): HOM factor
 Z^2 UNFILTERED, efficiency x Z FILTERED, never both; a cavity interpolates between the two.
 
 g2: `g2_0` is intrinsic (it already contains a drive-embedded `bg_frac`, plan.inputs["bg_frac"], where a drive has one:
@@ -393,12 +394,25 @@ def _derive(c: Context) -> dict:
     ph = em.phonon
     Z = float(qd_gf.zpl_weight(ph, c.T_K)) if ph is not None else 1.0
     kap = sr.kappa_meV
-    if su.zpl_filter:
+    if ph is not None and kap is not None and kap > 0.0 and sr.E_mode_meV is not None:
+        # r4-cavity A2: no Z_filt double count for CAVITY-collected photons. The cavity is the spectral filter, so the cavity
+        # channel's sideband loss is already in beta (rates L_ph) or in the entered/lifetime-derived F_P; its Z_filt is 1
+        # without a ZPL filter, and a ZPL filter removes only Z/Z_eff of the cavity light (1 for a narrow pillar). The
+        # leaky (beta0) channel is not cavity filtered: it keeps the setup bookkeeping (Z with a ZPL filter, else 1; q = Z).
+        _, Z_eff = cavity_sideband_filter(ph, c.T_K, float(kap), float(em.E_X_meV) - float(sr.E_mode_meV),
+                                          lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)))
+        if su.zpl_filter:
+            Zc, qc, Zl, ql = Z / Z_eff, 1.0, Z, 1.0
+        else:
+            Zc, qc, Zl, ql = 1.0, Z / Z_eff, 1.0, Z
+        G0r = float(rt.Gamma0_ns)
+        sh_c = float(rt.F_P_eff) * G0r / Gamma if (Gamma > 0.0 and G0r > 0.0) else 1.0
+        sh_b = float(rt.beta0) * float(rt.Gamma_bg_ns) / Gamma if Gamma > 0.0 else 0.0
+        w_c = sh_c / (sh_c + sh_b) if (sh_c + sh_b) > 0.0 else 1.0
+        Zf = w_c * Zc + (1.0 - w_c) * Zl
+        q = w_c * qc + (1.0 - w_c) * ql
+    elif su.zpl_filter:
         Zf, q = Z, 1.0
-    elif ph is not None and kap is not None and kap > 0.0 and sr.E_mode_meV is not None:
-        _, Zf = cavity_sideband_filter(ph, c.T_K, float(kap), float(em.E_X_meV) - float(sr.E_mode_meV),
-                                       lb_hbar_ueV() * 1e-3 * (Gamma + k + float(rt.gamma_star_ns)))
-        q = Z / Zf
     else:
         Zf, q = 1.0, Z
     beta = float(res.extra.get("beta", rt.beta))

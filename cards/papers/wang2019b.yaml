@@ -62,7 +62,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.1}
     tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
     expect: pass
-    reason: "flipped fail -> pass after two paper-stated input fixes (F_P 20 -> 19 total-ratio convention, material.eta_blink 0.65 from the stated 35 % blinking loss): model 0.465 (envelope 0.451-0.478) vs 0.56 +/- 0.02, inside the 0.1 absolute tolerance by only 0.005, so the pass is marginal. Remaining offsets: the model carries the etalon Z_filt that the paper's 0.56 does not, the EBG eta_table 0.8 is an assumed class value, and the paper's own budget has no extra factors. Fable predicted 0.47 (r4 cavity review item I)."
+    reason: "flipped fail -> pass after two paper-stated input fixes (F_P 20 -> 19 total-ratio convention, material.eta_blink 0.65 from the stated 35 % blinking loss): model 0.471 (envelope 0.456-0.484; after the r4-cavity A2 merge, was 0.465) vs 0.56 +/- 0.02, inside the 0.1 absolute tolerance by only 0.005, so the pass is marginal. Remaining offsets: the model carries the etalon Z_filt that the paper's 0.56 does not, the EBG eta_table 0.8 is an assumed class value, and the paper's own budget has no extra factors. Fable predicted 0.47 (r4 cavity review item I)."
   - item: g2_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -83,6 +83,7 @@ reproduce:
     reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.973). The previous pass accepted 1.001 against 0.973 through abs 0.05, ten times the paper error"
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): eff_ebg 0.716 -> 0.724. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}

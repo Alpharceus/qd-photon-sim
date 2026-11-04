@@ -393,11 +393,16 @@ th = PP.load_paper(ROOT / "cards" / "papers" / "thomas2021.yaml")
 sp_th = engine._as_spec(th.device)
 ent_th = engine._entries(sp_th)
 c_th = engine._run_point(ent_th, engine._central_values(engine._leaves(sp_th, ent_th)), 8.0, "auto")
-Zt, Zft = c_th.d["Z_phonon"], c_th.d["Z_filt"]
+Zt = c_th.d["Z_phonon"]
+# r4-cavity A2: Z_filt of the cavity-collected light is 1 (the cavity is the filter), the ZPL fraction q = Z/Z_eff is separate
+from fsim_core.compose.observables import cavity_sideband_filter as _csf                  # noqa: E402
+_, Zft = _csf(c_th.em.phonon, 8.0, float(c_th.sr.kappa_meV), float(c_th.em.E_X_meV) - float(c_th.sr.E_mode_meV),
+              lb.HBAR_MEV_NS * (c_th.d["Gamma_ns"] + float(c_th.rt.k_nr_ns) + c_th.d["gamma_star_ns"]))
 I1 = float(c_th.res.I_single)
 check("Thomas 2021 diagnosis: engine hom_I = I_single(polaron ZPL overlap) x (Z/Z_eff)^2 exactly (Z once, no double "
-      "counting) and exceeds I_single x Z^2",
-      c_th.solver.name == "polaron" and abs(c_th.d["hom_I"] - I1 * (Zt / Zft) ** 2) <= 1e-12 and c_th.d["hom_I"] > I1 * Zt ** 2,
+      "counting; Z_filt = 1 for the cavity-collected light) and exceeds I_single x Z^2",
+      c_th.solver.name == "polaron" and c_th.d["Z_filt"] == 1.0
+      and abs(c_th.d["hom_I"] - I1 * (Zt / Zft) ** 2) <= 1e-12 and c_th.d["hom_I"] > I1 * Zt ** 2,
       f"hom_I {c_th.d['hom_I']:.4f}, I_single {I1:.4f}, Z {Zt:.4f}, Z_eff {Zft:.4f}, "
       f"Gamma/(Gamma+gamma*) = {c_th.d['Gamma_ns'] / (c_th.d['Gamma_ns'] + c_th.d['gamma_star_ns']):.3f} (gamma* {c_th.d['gamma_star_ns']:.2f}/ns "
       f"from the InAs/GaAs-class T slope at 8 K), g2 {c_th.d['g2_0']:.3f}")

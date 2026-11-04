@@ -65,9 +65,10 @@ reproduce:
     tol: {rel: 0.15}
     tol_reason: "no error printed; 15 % is the model-level 10 % lifetime tolerance widened for the bi-exponential (dark-state) decay and the unknown bulk lifetime; the cavity inputs are E envelopes"
     expect: pass-envelope
-    reason: "r4 Fable review item G: central model 149 ps vs 1610 ps is far outside the 15 % window; 1610 ps lies inside the envelope [45.5, 8849] ps only after the E ranges were widened to the corner the paper's own rates fix (spatial_overlap down to 0.003, F_bg 0.1-1, M3 mode volume 0.7-3 (lambda/n)^3). The paper's QD1 is inhibited (gamma = 0.62 /ns ~ gamma_0 (F_bg + F_P L xi)); nothing in the text narrows the unstated dot position, so this is a pass-envelope, not a pass."
+    reason: "r4 Fable review item G: central model 153 ps (after the r4-cavity merge, was 149) vs 1610 ps is far outside the 15 % window; 1610 ps lies inside the envelope [46.5, 8925] ps only after the E ranges were widened to the corner the paper's own rates fix (spatial_overlap down to 0.003, F_bg 0.1-1, M3 mode volume 0.7-3 (lambda/n)^3). The paper's QD1 is inhibited (gamma = 0.62 /ns ~ gamma_0 (F_bg + F_P L xi)); nothing in the text narrows the unstated dot position, so this is a pass-envelope, not a pass."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): tau_X_QD1 56.4 -> 58.0 ps, eta_X 0.530 -> 0.529 (phc_cavity F_P now phonon dressed, kappa 4.6 meV). Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: eta_X_QD1 envelope wide (spatial_overlap 0.05-1); paper states no dot position so the range is unchanged and the pass is recorded as weak (note only, no tol or input change)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: eta_X_QD1 expect pass -> pass-envelope (paper value inside the envelope [0.145, 0.787] only, central 0.530 misses 0.443 +/- 0.042); g2_2p1Psat flagged weak (tol accepts any g2 < 0.14)"}

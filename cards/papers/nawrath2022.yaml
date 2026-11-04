@@ -96,7 +96,7 @@ reproduce:
     tol: {rel: 0.3}
     tol_reason: "no error printed; 30 % covers the setup-efficiency calibration (the 17.4 % is back-computed with it) and the unstated P/P_sat; the QD-to-CBG offset is not covered, which is the point of the test"
     expect: fail
-    reason: "model 0.562 (envelope 0.501-0.576 over pump P/P_sat 2-5, FX3a table_mode total with the paper's FDTD >85 percent) vs 0.174: eta_table is the FDTD whole-device efficiency of a centred emitter while the paper attributes the lost Purcell (3 vs 16.6) and, implicitly, brightness to a QD-to-CBG offset of unknown size (supp); the offset is a missing input, not a transcription error."
+    reason: "model 0.577 (r4-cavity A2, was 0.562; envelope 0.515-0.591 over pump P/P_sat 2-5, FX3a table_mode total with the paper's FDTD >85 percent) vs 0.174: eta_table is the FDTD whole-device efficiency of a centred emitter while the paper attributes the lost Purcell (3 vs 16.6) and, implicitly, brightness to a QD-to-CBG offset of unknown size (supp); the offset is a missing input, not a transcription error."
   - item: g2_ps_76
     class: M
     tol: {abs: 0.005}
@@ -118,7 +118,7 @@ reproduce:
     tol: {metric: rms_rel, max: 0.3}
     tol_reason: "two printed raw detector rates (a 37 % fall from 4 to 40 K); 0.3 rms relative deviation means the model must put the 4 K rate within about 30 % and not be T-flat by more than the fall"
     expect: fail
-    reason: "model rate scale ~3.2x the paper (rms_rel 3.11 after FX3a): the same ~3.2x brightness overshoot as BFL_76 (offset) plus a model rate that falls only 7 percent from 4 to 40 K against the paper 37 percent (no thermal escape without E_act, k0, which the paper does not give)."
+    reason: "model rate scale ~3.2x the paper (rms_rel 3.43 after FX3a and r4-cavity A2 (was 3.11)): the same ~3.2x brightness overshoot as BFL_76 (offset) plus a model rate that falls only 7 percent from 4 to 40 K against the paper 37 percent (no thermal escape without E_act, k0, which the paper does not give)."
   - item: rate_vs_frep
     class: M
     tol: {metric: rms_rel, max: 0.3}
@@ -141,6 +141,7 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_QD1]}
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_TPI]}
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_76 0.562 -> 0.577, rate_vs_T rms 3.11 -> 3.43, rate_vs_frep 2.28 -> 2.37, hom_V_TPI 0.0811 -> 0.0797. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.598 (eta_out 0.90 x beta 0.664 product, cavity-only semantics) -> 0.85 (paper FDTD >85 percent total, V), table_mode total"}
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable incoherent review cards row: setup.filter_width_meV 0.282 DR (stated 0.55 nm bandpass FWHM, Methods of the main text; the supplement was not read). The engine uses this leaf only for X/XX top-hat leakage, not the sideband transmission, so no model output is expected to move; cavity review item E (16.6 -> 15.6) does not apply because F_P here is already the additional ratio 1.98 = 2.98 - 1 and 16.6 is not an input; no expects changed"}
