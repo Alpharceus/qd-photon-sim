@@ -58,8 +58,9 @@ reproduce:
     tol: {abs: 0.1}
     tol_reason: "no error printed and the value is a lower bound; 0.1 absolute (about half the value) because F_P overlap, the NA 0.6 table point and pump saturation are all assumed"
     expect: fail
-    reason: "model overestimates: central 0.59 = n_ph 0.995 x beta 0.74 (F_P_eff 2.8 after the 6.6 meV detuning) x eta_out 0.8; the envelope [0.2325, 0.5912] (low edge at 0.5 P_sat) just misses the paper 0.23. The model has ideal placement and unity pump saturation, while the paper's 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions; the overlap is not quantifiable from the text."
+    reason: "model overestimates (r4-cavity A2: central now 0.796, envelope [0.315, 0.800], was 0.739 [0.292, 0.743]; the decomposition below is the earlier 0.59 run): central 0.59 = n_ph 0.995 x beta 0.74 (F_P_eff 2.8 after the 6.6 meV detuning) x eta_out 0.8; the envelope [0.2325, 0.5912] (low edge at 0.5 P_sat) just misses the paper 0.23. The model has ideal placement and unity pump saturation, while the paper's 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions; the overlap is not quantifiable from the text."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.739 -> 0.796. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}

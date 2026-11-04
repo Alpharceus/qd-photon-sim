@@ -61,7 +61,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.1}
     tol_reason: "paper 0.56 +/- 0.02 (2 sigma = 0.04); 0.1 absolute, which also covers the ~10 percent Z_filt convention offset (the model carries the etalon, the paper's 0.56 does not) and the assumed eta_table point"
     expect: fail
-    reason: "model 0.716 (envelope 0.69-0.74) vs 0.56 (0.10 tol): the design F_P = 20 overestimates beta for the real dot (see tau_ebg) and the DBR-asymmetry eta_out and assumed NA are not measured."
+    reason: "model 0.724 (envelope 0.70-0.745; r4-cavity A2, was 0.716) vs 0.56 (0.10 tol): the design F_P = 20 overestimates beta for the real dot (see tau_ebg) and the DBR-asymmetry eta_out and assumed NA are not measured."
   - item: g2_ebg
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -82,6 +82,7 @@ reproduce:
     reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1, so this cannot count as a pass (paper 0.973). The previous pass accepted 1.001 against 0.973 through abs 0.05, ten times the paper error"
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): eff_ebg 0.716 -> 0.724. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 9: fwhm_ps -> 3.0 E; F_P tag V -> DR (simulated design value, Supp Fig 7); g2_ebg expect pass -> fail (model 0.0239 vs 0.009)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr_13ns and hom_corr_2ns expect pass -> unavailable: the engine now reports V_corr > 1 as invalid (NaN) instead of a pass; the old 1.001 accepted both 0.951 and 0.973 through abs 0.05"}

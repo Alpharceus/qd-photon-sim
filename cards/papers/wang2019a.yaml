@@ -34,6 +34,7 @@ device:
       Q_measured: {value: 5016.0, unit: "1", tag: V, where: "text p.5 (quality factor of the major-axis mode M2; M1 is 4075)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "Fig 2 caption (the quantum dot is resonant with the M2 mode)"}
       mode_area: {value: gaussian, unit: enum, tag: A, source: "registry note: the Gaussian mode area is the closer class to measured micropillar Purcell factors (Ding 2016); the cylinder over-fills the mode"}
+      excess_loss: {value: scattering, unit: enum, tag: V, where: "text p.8 loss budget (sidewall scattering 22.8 %): the pillar's Q deficit against the planar budget is sidewall scattering, which never leaves through the top mirror (r4-cavity B)"}
   drive:
     kind: resonant_pulse
     params:
@@ -58,13 +59,13 @@ reproduce:
     tol: {k_sigma: 2, rel: 0.1}
     tol_reason: "paper 61.0 +/- 0.1 ps is far tighter than the model: F_P is computed from the measured Q and V (the cylinder/Gaussian mode-area class is 2-3x uncertain); 10 percent relative for lifetimes"
     expect: fail
-    reason: "model gap: F_P is computed from the measured Q = 5016 and the equal-area Gaussian mode volume (ideal F_P ~20.6 vs the measured 16.8 total ratio less one), giving ~48.7 ps against the measured 61.0 ps; the registry circular-pillar volume model and the ideal position/polarisation overlap overestimate the Purcell enhancement."
+    reason: "model gap, narrowed by r4-cavity A (phonon-dressed cavity channel, L_ph = Z_eff(0.276 meV, 4 K) = 0.90): F_P is computed from the measured Q = 5016 and the equal-area Gaussian mode volume (ideal F_P ~21.5, 19.3 after L_ph), giving 53.8 ps (was 48.7 ps) against the measured 61.0 ps, 1.1 ps outside the 10 percent window (54.9-67.1). The rest is the paper's own 17.8 slab-lifetime ratio against the degenerate-dipole picture (trion projection, not modelled here)."
   - item: eff_pillar
     class: M
     tol: {k_sigma: 2, abs: 0.1}
     tol_reason: "paper 0.60 +/- 0.02 (2 sigma = 0.04); the model-level tolerance allows +/- 0.1 for brightness because eta_out comes from the DBR asymmetry model and the NA is assumed"
-    expect: fail
-    reason: "model 0.72 vs 0.60 (0.10 tol): with the 3.8 % polarisation loss now in setup.eta_pol (FX1) the first-lens brightness is 0.72; the 0.12 overshoot is the DBR-asymmetry eta_out and the assumed NA 0.65, and the model F_P/beta is too high (see tau_pillar)."
+    expect: pass
+    reason: "r4-cavity A2 + B flip (fail -> pass), pre-registered from the Fable cavity review (predicted ~0.66, model 0.659, tol 0.10): the Z_filt double count of the cavity-collected light is gone (0.72 -> 0.80) and the paper's own sidewall-scattering budget (22.8 %) enters through structure.excess_loss = scattering (eta_mirror = T_top/l_tot with l_tot implied by Q_meas = 5016 against the planar Q 6069). IQE 0.82 and blinking stay unmodelled."
   - item: g2_pillar
     class: M
     tol: {k_sigma: 2, abs: 0.005}
@@ -82,5 +83,6 @@ reproduce:
     expect: pass
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A/A2/B engine change (bug fixes that move defaults): tau_pillar 48.7 -> 53.8 ps (still fail, window 54.9-67.1), eff_pillar 0.722 -> 0.659 expect fail -> pass (A2 removes the Z_filt double count; structure.excess_loss = scattering from the paper's own 22.8 % sidewall budget, text p.8). Pre-registered from the Fable review (tau 53.6, eff 0.66); not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 8 / engine FX1 (2259a83): structure.pol_factor deleted, setup.eta_pol 0.962 DR (p.7 3.8% polarisation loss); fwhm_ps -> 3.0 E (not stated; same-group ~3 ps); eff_pillar expect pass -> fail and hom_corr_pillar expect fail -> pass (observed after the input fix); tau_pillar reason rewritten (model ~48.7 ps)"}

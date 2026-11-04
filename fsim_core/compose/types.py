@@ -46,6 +46,8 @@ class StructureResponse:
     notes: tuple = ()
     inputs: dict = field(default_factory=dict)
     tag_floor: str = ""              # widest provenance tag of constants hidden inside response() ("" = none); tag_of applies it
+    F_P_source: str = "measured"     # r4-cavity A: "computed" | "simulated" F_P is a bare (ZPL-only) cavity number that rates.combine
+                                     # dresses with the phonon overlap L_ph; "measured" (entered g / lifetime-derived F_P) already contains it
 
 
 @dataclass(frozen=True)

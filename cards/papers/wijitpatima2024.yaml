@@ -74,5 +74,6 @@ reproduce:
 fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_raw]}
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): hom_V_raw 0.2642 -> 0.2579. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total works for F_P 0, so mesa_reflector workaround replaced by cbg F_P 0 + the same FEM table"}

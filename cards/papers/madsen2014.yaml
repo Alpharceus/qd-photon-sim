@@ -64,9 +64,10 @@ reproduce:
     tol: {rel: 0.15}
     tol_reason: "no error printed; 15 % is the model-level 10 % lifetime tolerance widened for the bi-exponential (dark-state) decay and the unknown bulk lifetime; the cavity inputs are E envelopes"
     expect: fail
-    reason: "input envelope too narrow plus a model gap: model 56 ps (envelope 31-820 ps) vs 1610 ps. At Q = 300 the class F_P(0) is ~30 (V/(lambda/n)^3 = 0.7), so even the least-coupled corner (overlap 0.05, F_bg 0.3, detuned) keeps F_P L above ~1; the paper's QD1 is inhibited (effectively F_P L ~ 0, leaky rate < bulk), which needs an overlap of a few 1e-3 that the chosen E range did not reach. Recorded as observed (inputs not changed after the run); a lower overlap bound and the bulk lifetime of this sample would be needed for an informative test."
+    reason: "input envelope too narrow plus a model gap: model 58 ps (envelope 32-868 ps; r4-cavity A, was 56 ps) vs 1610 ps. At Q = 300 the class F_P(0) is ~30 (V/(lambda/n)^3 = 0.7), so even the least-coupled corner (overlap 0.05, F_bg 0.3, detuned) keeps F_P L above ~1; the paper's QD1 is inhibited (effectively F_P L ~ 0, leaky rate < bulk), which needs an overlap of a few 1e-3 that the chosen E range did not reach. Recorded as observed (inputs not changed after the run); a lower overlap bound and the bulk lifetime of this sample would be needed for an informative test."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): tau_X_QD1 56.4 -> 58.0 ps, eta_X 0.530 -> 0.529 (phc_cavity F_P now phonon dressed, kappa 4.6 meV). Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: eta_X_QD1 envelope wide (spatial_overlap 0.05-1); paper states no dot position so the range is unchanged and the pass is recorded as weak (note only, no tol or input change)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: eta_X_QD1 expect pass -> pass-envelope (paper value inside the envelope [0.145, 0.787] only, central 0.530 misses 0.443 +/- 0.042); g2_2p1Psat flagged weak (tol accepts any g2 < 0.14)"}

@@ -1110,6 +1110,58 @@ def main():
           "no HOM gate set" in sr56.get("unavailable", {}).get("hom_I_gated", "") and "g2_0" not in sr56.get("unavailable", {}),
           str(sr56.get("unavailable")))
 
+    # 19. r4-cavity A / A2: phonon-dressed cavity channel and the Z_filt double count
+    from fsim_core.compose import papers as PP
+    _ph = qd_gf.PhononParams(alpha_ps2=0.0181)
+    _em19 = EmitterModel(E_X_meV=1340.0, lambda_nm=925.0, n_host=3.5, gamma0_ns=1.0, k_nr_ns=0.0, gamma_star_ns=0.0,
+                         phonon=_ph, delta_xx_meV=-2.0, gamma_xx_ratio=1.0, fss_ueV=0, transitions=frozenset({"X"}),
+                         dipole="x", dEdT_meV_K=0, sigma_sd_ueV=0, tau_sd_ns=1)
+
+    def _sr19(kappa_meV, src, F=5.0, F_bg=0.8, b0=0.0):
+        return StructureResponse(F_P=F, kappa_meV=kappa_meV, E_mode_meV=1340.0, g_meV=None, F_bg=F_bg, beta0=b0,
+                                 F_P_source=src)
+    _T = 4.0
+    _Z19 = qd_gf.zpl_weight(_ph, _T)
+    _rm = rates.combine(_em19, _sr19(0.3, "measured"), _T)
+    _G_old = 1.0 * (0.8 + 5.0 * _rm.L)                                   # the pre-r4 closed form Gamma0 (F_bg + F_P L)
+    check("19a. measured F_P: L_ph = 1 and Gamma = Gamma0 (F_bg + F_P L) bit for bit (the old numbers)",
+          _rm.L_ph == 1.0 and _rm.Gamma_ns == _G_old and _rm.F_P_eff == 5.0 * _rm.L,
+          f"{_rm.Gamma_ns!r} vs {_G_old!r}")
+    _rw = rates.combine(_em19, _sr19(1e5, "computed"), _T)
+    check("19b. kappa -> inf: L_ph -> 1 and the computed channel returns the measured-path numbers (1e-4)",
+          abs(_rw.L_ph - 1.0) < 1e-4 and abs(_rw.Gamma_ns / rates.combine(_em19, _sr19(1e5, "measured"), _T).Gamma_ns - 1) < 1e-4,
+          f"L_ph {_rw.L_ph:.6f}")
+    _rn = rates.combine(_em19, _sr19(1e-5, "computed"), _T)
+    check("19c. kappa -> 0: L_ph -> Z(T) (polaron B^2) to 1e-3, F_P_eff = F_P L Z",
+          abs(_rn.L_ph - _Z19) < 1e-3 and abs(_rn.F_P_eff / (5.0 * _rn.L * _Z19) - 1) < 2e-3, f"L_ph {_rn.L_ph:.5f}, Z {_Z19:.5f}")
+    _rb = rates.combine(_em19, _sr19(0.3, "computed", b0=0.4), _T)
+    _c = _rb.F_P_eff / (_rb.Gamma_ns / 1.0)
+    _l = 0.8 / (_rb.Gamma_ns / 1.0)
+    check("19d. rate budget: cavity share + leaky share = 1 (Gamma = Gamma0 (F_bg + F_P L L_ph)), beta = cavity + beta0 x leaky, "
+          "and the phonon-dressed cavity share is below the bare one",
+          abs(_c + _l - 1.0) < 1e-12 and abs(_rb.beta - (_c + 0.4 * _l)) < 1e-12
+          and _c < 5.0 * _rb.L / (0.8 + 5.0 * _rb.L) and 0.0 < _rb.L_ph < 1.0, f"{_c:.5f} + {_l:.5f}, L_ph {_rb.L_ph:.4f}")
+    _rp = rates.apply_pump(_rb, 0.5)
+    check("19e. apply_pump keeps L_ph (F_P_eff = F_P L L_ph recomputed at the pumped L)",
+          _rp.L_ph == _rb.L_ph and abs(_rp.F_P_eff / (_rp.L * _rp.L_ph) - 5.0) < 1e-12)
+    _pw = PP.load_paper(ROOT / "cards" / "papers" / "nowak2014.yaml")
+    _rep = PP.reproduce(_pw, envelope=False)
+    _tau = {i.id: i.model for i in _rep.items}["tau_X"]
+    # Nowak (Nat. Commun. 5, 3240): tau_ref 1.45 ns, bare F_P 1.04 (paper theory 1.1), L_ph = Z_eff(1.03 meV, 35 K) ~ 0.72
+    # (Fable r4 review): tau = 1450/(1 + F_P L_ph) ~ 830 ps against the measured 820 +- 30 ps.
+    check("19f. Nowak 2014 tau_X = 1450/(1 + 1.04 L_ph) ~ 830 ps (+- 10 ps) and inside the paper 820 +- 60 ps (was 716 ps)",
+          abs(_tau - 830.0) < 10.0 and abs(_tau - 820.0) < 60.0, f"tau_X {_tau:.1f} ps")
+    _sq = PP.load_paper(ROOT / "cards" / "papers" / "somaschi2016_qd1.yaml")
+    _repq = PP.reproduce(_sq, envelope=False)
+    _Bq = {i.id: i.model for i in _repq.items}
+    _tm = PP.reproduce(PP.load_paper(ROOT / "cards" / "papers" / "tomm2021.yaml"), envelope=False)
+    _Bt = {i.id: i.model for i in _tm.items}["sys_eff_QD1"]
+    check("19g. A2 (no Z_filt double count): Tomm 2021 system efficiency 0.51 -> ~0.57 (Fable r4 prediction, paper 0.53 +- 0.03 within 2 sigma + 0.01)",
+          0.55 < _Bt < 0.60, f"sys_eff_QD1 {_Bt:.4f}")
+    check("19h. A2: somaschi2016_qd1 brightness = 0.91 x 0.884 x 0.70 = 0.563 within 3 % (was 0.503 with the Z_filt double count)",
+          abs(_Bq.get("B_first_lens", _Bq.get("brightness", float("nan"))) / 0.563 - 1) < 0.03,
+          str({k: round(v, 4) for k, v in _Bq.items() if isinstance(v, float)}))
+
     n, p = len(RESULTS), sum(RESULTS)
     print(f"{p}/{n} compose_engine checks passed")
     return 0 if p == n else 1
