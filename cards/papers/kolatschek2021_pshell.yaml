@@ -44,7 +44,7 @@ device:
       NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
       eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused for this line"}
       eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
-      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: spectral selection window FWHM 0.04 nm at 4 K (0.1 nm = 0.0745 meV at 40 and 77 K, not representable per temperature point; 4 K value entered). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.9611 eV x 0.04/1290 nm = 29.8 ueV at the assumed ~1290 nm line"}
+      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: spectral selection window FWHM 0.04 nm at 4 K (0.1 nm = 0.0745 meV at 40 and 77 K, text p.5 'the spectral selection window is increased to FWHM = 0.1nm'; the 4 K leaf value is entered here and the 0.0745 meV of the 40 / 77 K points is supplied per point by series rate_vs_T per_point). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.9611 eV x 0.04/1290 nm = 29.8 ueV at the assumed ~1290 nm line"}
       filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the selection window"}
 reported:
   - {id: g2_4K, observable: g2_0, convention: raw, value: 0.0115, err: 0.0002, tag: V, where: "text p.5 / Fig 4 caption (4 K, saturation; fit with blinking envelope; fitted values 0.01-0.02 across powers)"}
@@ -64,6 +64,8 @@ series:
     where: "text p.5 (355 kcps at 4 K, 262 kcps at 40 K, 191 kcps at 77 K detector count rates; numbers printed in the text, not digitised)"
     digitized: false
     points: [[4.0, 355000.0], [40.0, 262000.0], [77.0, 191000.0]]
+    per_point:
+      setup.filter_width_meV: [0.0298, 0.0745, 0.0745]
 reproduce:
   - item: g2_4K
     class: M
@@ -76,8 +78,10 @@ reproduce:
     class: M
     tol: {rel: 0.5}
     tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
-    expect: fail
-    reason: "model 6.8e5 (envelope 5.05e5-7.8e5) vs 3.55e5, ~1.9x high; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (r4-cavity A2 alone 9.7e5, r4-incoh p_X 0.6-0.8 [E] alone 6.5e5, both on the F_P 11 total-ratio structure). The 6.4 % setup efficiency was measured on line 1 and the first-lens extraction and pump saturation are assumed, with eta_blink 0.25; no unblinked count rate is printed to separate the factors."
+    expect: pass
+    reason: "r4-phonon I1 flip fail -> pass (Fable predicted the absolute stays a fail): the 0.04 nm window at 4 K now removes the ZPL tail (T_zpl = w/(w + gamma) with the class gamma*) and the sideband outside it, 6.8e5 -> 5.2e5 (envelope 3.54e5-6.26e5) vs 3.55e5, +47 percent, inside rel 0.5 (the paper value is at the envelope bottom, so the pass is thin). Not tuned. The 6.4 % setup efficiency was measured on line 1 and the first-lens extraction and pump saturation are assumed, with eta_blink 0.25."
+    weak: true
+    weak_reason: "CIRCULAR, not an independent test: the metamorphic C-band dot-size class range (l_xy [5, 8] nm, l_z [2, 3] nm) was chosen in the r4 Z adjudication with this card's rate(T) as the bracketing datum, so passing rate(T) with it is a fit, not a prediction. Becomes a test only when an independent literature source for O/C-band metamorphic dot sizes is entered."
   - item: g2_vs_T
     class: M
     tol: {metric: rms_rel, max: 0.5}
@@ -88,10 +92,13 @@ reproduce:
     class: M
     tol: {metric: rms_rel, max: 0.5}
     tol_reason: "three text-printed rates spanning a factor 1.9; rms relative deviation 0.5 is the same loose band as the rate_4K item (6.4 % setup efficiency measured on line 1, unknown pump saturation), written before the run"
-    expect: fail
-    reason: "model gap: rms_rel 1.68; the model rate does not follow the paper's roughly 2x fall from 4 to 77 K (thermal escape / red-shifted line leaving the window), which the p_shell path does not contain, and the absolute scale is already 2.4x high at 4 K."
+    expect: pass
+    reason: "r4-phonon I1 flip fail -> pass (Fable predicted the series shape improves and the absolute stays a fail; the series rms came out inside 0.5): with the stated windows (0.04 nm at 4 K, 0.1 nm at 40 and 77 K, per_point) the window-passed Zf of the phonon spectrum and the ZPL truncation T_zpl = w/(w + gamma) bring the model to 5.2e5 / 3.9e5 / 2.6e5 against 3.55e5 / 2.62e5 / 1.91e5 (rms_rel 0.4527, only just inside the 0.5 tolerance); the ratios 40 K / 4 K 0.76 and 77 K / 4 K 0.51 match the paper 0.74 and 0.54, while the absolute scale stays about 1.5x high. The window shape is not stated by the paper (default Lorentzian; Gaussian and top-hat give the same ratios within 5 percent)."
+    weak: true
+    weak_reason: "CIRCULAR, not an independent test: the metamorphic C-band dot-size class range (l_xy [5, 8] nm, l_z [2, 3] nm) was chosen in the r4 Z adjudication with this card's rate(T) as the bracketing datum, so passing rate(T) with it is a fit, not a prediction. Becomes a test only when an independent literature source for O/C-band metamorphic dot sizes is entered."
 fits: []
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I1 (Zf_window: setup.filter_width_meV drives the ZPL truncation and sideband transmission, per-point windows 0.0298 / 0.0745 / 0.0745 meV on rate_vs_T) and I2 (r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947)", change: "rate_4K 6.8e5 -> 5.205e5 (envelope 5.05e5-7.8e5 -> 3.54e5-6.26e5), expect fail -> pass; rate_vs_T rms 1.82 -> 0.4527, expect fail -> pass; g2_4K and g2_vs_T unchanged. Fable predicted both absolute items stay fail; flipped with the honest reason, tolerances untouched"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): rate_4K 9.35e5 -> 9.71e5, rate_vs_T rms 1.925 -> 3.002. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
@@ -100,3 +107,4 @@ history:
   - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable reviews items E and cards row: structure.F_P 12 -> 11 (total ratio convention); setup.filter_width_meV 0.0298 (stated 0.04 nm FWHM window at 4 K, DR conversion). The engine uses filter_width_meV only for the X/XX top-hat leakage, not for the sideband transmission Zf_window (Fable list item 1, engine work), so no model output is expected to move; the 0.1 nm window at 40/77 K cannot be entered per temperature point"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added", note: "rate_4K 9.3e5 -> 6.5e5 (envelope 4.6e5-7.7e5), ~1.8x high as the review predicted; expect fail unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: rate_4K expect fail on both sides, reason rewritten to the combined-model outcome (model 6.8e5, envelope 5.05e5-7.8e5, ~1.9x high); this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); p_X anchor text corrected to what the Nowak and Reimer texts say; no tolerance changed"}
+  - {date: 2026-11-04, by: "orchestrator (Opus) audit H4", reason: "rate_4K and rate_vs_T passes flagged weak: the I2 dot-size range was justified by this card's own rate(T) (r4-fable-z-adjudication.md I2 row), so the pass is circular until an independent source exists"}

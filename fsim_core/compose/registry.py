@@ -379,6 +379,12 @@ LENS_FIBRE_DET = _LensFibreDet(
         ParamSpec("filter_width_meV", "meV", 0.0, tex=r"w_{\mathrm{filt}}", lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Top-hat spectral window width $w_{\mathrm{filt}}$ for the X / XX leakage ($\varepsilon_{XX}$); 0 = no window "
                        r"(both lines fully collected)."),
+        ParamSpec("filter_shape", "", "lorentzian", tex=r"\mathrm{window\ shape}", choices=("lorentzian", "gaussian", "tophat"),
+                  tag="A", source=_SRC, sweepable=False, group="advanced",
+                  help=r"Shape of the spectral window of width $w_{\mathrm{filt}}$ for the ZPL / phonon-sideband transmission $Z_{\mathrm f}(w)$: "
+                       r"Lorentzian (etalon-like, the ZPL passes $w/(w + \gamma)$), Gaussian or top-hat (grating slit). The window acts when "
+                       r"$w_{\mathrm{filt}} > 0$ and the ZPL-filter switch is off: it sets the brightness factor $Z_{\mathrm f}$ and the HOM "
+                       r"ZPL fraction $q = Z\,T_{\mathrm{zpl}}/Z_{\mathrm f}$."),
         ParamSpec("filter_offset_meV", "meV", 0.0, tex=r"\delta_{\mathrm{filt}}", lo=-500.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Offset $\delta_{\mathrm{filt}}$ of the X line from the window centre (negative = window blue of X)."),
         ParamSpec("xx_width_ratio", "1", 1.5, tex=r"w_{XX}/w_{X}", lo=0.1, hi=10.0, tag="E", group="advanced",

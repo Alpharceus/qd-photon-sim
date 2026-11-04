@@ -24,7 +24,7 @@ device:
       tau_bare_ns: {value: 1.55, unit: ns, tag: V, where: "text p.2: mean decay time 1.55 ns (sd 0.37 ns) of 6 trion transitions outside CBGs on the same sample"}
       eta_blink: {value: 0.70, unit: "1", tag: V, where: "text p.3: source active about 70 % of the time at saturation (blinking)"}
       charge_state: {value: "X+", unit: "", tag: DR, where: "text p.2: attributed to a positively charged trion (supplementary)"}
-      gamma_star_4K_ns: {value: 17.4, unit: "1/ns", tag: A, source: "fitted to the HOM visibility V_TPI,analyt (item hom_V_TPI, class C): the main text gives no linewidth"}
+      gamma_star_4K_ns: {value: 20.8, unit: "1/ns", tag: A, source: "fitted to the HOM visibility V_TPI,analyt (item hom_V_TPI, class C): the main text gives no linewidth; re-fitted 17.4 -> 20.8 at r4-phonon after the unfiltered HOM factor q^2 rose (class row l_xy/l_z change raises Z and the ZPL fraction q; the setup window also truncates the ZPL, T_zpl = w/(w + gamma)); brentq to hom_V 0.0811 for the paper 0.081"}
   structure:
     kind: cbg
     params:
@@ -141,6 +141,7 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_QD1]}
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_TPI]}
 history:
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I1 (Zf_window: setup.filter_width_meV 0.282 meV now truncates the ZPL, Lorentzian window default) and I2 (r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947), Fable r4 adjudication", change: "gamma_star_4K_ns re-fitted 17.4 -> 20.8 (class C fit to hom_V_TPI: after I2 alone the model was 0.0955 vs 0.081, abs 0.01 failed); after the re-fit hom_V_TPI 0.08115 pass. BFL_76 0.5772 -> 0.5263 (fail stays), rate_vs_T rms 3.43 -> 2.288 (I1 alone 1.90; fail stays, Fable predicted absolute stays fail), rate_vs_frep 2.37 -> 2.07 (fail stays), g2 items unchanged. Expects unchanged, not tuned"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_76 0.562 -> 0.577, rate_vs_T rms 3.11 -> 3.43, rate_vs_frep 2.28 -> 2.37, hom_V_TPI 0.0811 -> 0.0797. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.598 (eta_out 0.90 x beta 0.664 product, cavity-only semantics) -> 0.85 (paper FDTD >85 percent total, V), table_mode total"}
