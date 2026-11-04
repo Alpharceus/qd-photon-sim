@@ -99,6 +99,7 @@ its main class is listed here and the exception is stated in its docstring.
   against the paper or the contract that states them:
   `audit_physics.py` (transcription of the physics constants and formulas against the papers);
   `verify_card_loader.py` (literature card loader against the legacy loader and card contents);
+  `verify_card_provenance.py` (every card number and quoted source statement searched verbatim in the paper texts on disk; the NOT_FOUND report is informational, the gate is its planted-error `--self-test`);
   `verify_citations.py` (offline check of both citation ledgers);
   `verify_comsol_anchors.py` (COMSOL anchor intake harness (file set, schema and units of delivered folders));
   `verify_materials.py` (material parameters against the cited papers);

@@ -158,7 +158,7 @@ for fp in sorted(Path(root, "cards", "papers").glob("*.yaml")):
                 pts = ent["points"]
                 xs = [float(p[0]) for p in pts]
                 py = [float(p[1]) for p in pts]
-                sr = engine.series(spec, ent["x"]["path"], xs, [req])
+                sr = engine.series(spec, ent["x"]["path"], xs, [req], per_point=ent.get("per_point"))   # the card's per_point leaves (r4-phonon I1: a wider spectral window at 40 / 77 K) are part of the series definition
                 my = [float(v) for v in sr["y"][req]]
                 r = [((m - p) / p) ** 2 for m, p in zip(my, py) if p != 0.0]
                 card["items"][item] = {"kind": "series", "model": f(math.sqrt(sum(r) / len(r))) if r and all(math.isfinite(v) for v in my) else None}

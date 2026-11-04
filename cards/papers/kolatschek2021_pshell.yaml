@@ -90,7 +90,7 @@ reproduce:
     tol: {metric: rms_rel, max: 0.5}
     tol_reason: "three text-printed rates spanning a factor 1.9; rms relative deviation 0.5 is the same loose band as the rate_4K item (6.4 % setup efficiency measured on line 1, unknown pump saturation), written before the run"
     expect: fail
-    reason: "r4 red-team item 9: drive.p_X removed (neutral share on a charged line; double counts eta_blink). Series rms_rel 1.074 vs the 0.5 tolerance (was 0.4527, the thin pass): the absolute scale is ~2x high at all three temperatures; the ratios are unchanged. The earlier pass also rested on a dot-size class range chosen with this rate(T) as the datum (circular)"
+    reason: "r4 red-team item 9: drive.p_X removed (neutral share on a charged line; double counts eta_blink). Series rms_rel 0.6145 vs the 0.5 tolerance after r4-review-fixes (1.074 at the red-team fix; 0.4527 before, the thin pass). The earlier pass also rested on a dot-size class range chosen with this rate(T) as the datum (circular)"
 fits: []
 history:
   - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 12: material inas_ingaas_metamorphic_cband l_xy / l_z reverted to the InAs/GaAs class [3, 5] / [1, 2] nm [A] (the [5, 8] / [2, 3] E ranges were tuned to a test datum, no literature citation); engine review fixes re-run", note: "obtained: g2_4K 0.001795 pass (weak), rate_4K 7.055e5 fail, g2_vs_T rms_rel 0.9221 fail, rate_vs_T rms_rel 0.6145 fail; expects unchanged"}

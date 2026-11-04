@@ -31,6 +31,11 @@ VERIFY = ROOT / "verify"
 N_RE = re.compile(r"(\d+)\s*/\s*(\d+)")
 
 
+# Per-script arguments. verify_card_provenance.py's default mode is a report (NOT_FOUND items are listed, not gated); the gate is
+# its planted-error self-test (13/13), so that is what run_all runs.
+EXTRA_ARGS = {"verify_card_provenance.py": ["--self-test"]}
+
+
 def discover(only=None):
     py = sorted(VERIFY.glob("verify_*.py")) + [VERIFY / "audit_physics.py"]
     cjs = sorted(VERIFY.glob("verify_*.cjs"))
@@ -131,7 +136,7 @@ def main(argv):
     t_all = time.time()
     print(f"{'verifier':<44} {'N/N':>9} {'seconds':>9}  status", flush=True)
     for p in py:
-        counts, dt, status, out = run_one([sys.executable, str(p.relative_to(ROOT))], base_env, timeout)
+        counts, dt, status, out = run_one([sys.executable, str(p.relative_to(ROOT)), *EXTRA_ARGS.get(p.name, [])], base_env, timeout)
         record(p.name, counts, dt, status)
         if status != "ok":
             print("    last output: " + " | ".join(l.strip() for l in out.strip().splitlines()[-3:])[:400], flush=True)
