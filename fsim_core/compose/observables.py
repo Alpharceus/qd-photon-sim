@@ -313,17 +313,46 @@ def irf_dip_g2(g2_0, tau_dip_ns, irf_fwhm_ps):
     return float(1.0 - (1.0 - float(g2_0)) * cw_g2._dip_factor(float(tau_dip_ns), float(irf_fwhm_ps), "gaussian"))
 
 
-def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None):
-    """Predicted raw visibility V_raw = (rho^2 I - g2_raw)(1 - eps_int) with I the solver's whole-stream overlap
-    and rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1, V = I - g2). The pre-FX2c
-    form ((1 - g2) I - g2) is the Ollivier relation for the single-photon M_s, not for this I (module doc)."""
+def _bs_factor(bs_R=0.5):
+    """2RT/(R^2 + T^2), T = 1 - R: the fringe-contrast factor of an unbalanced beam splitter (1 at R = 1/2) [DR]."""
+    R = float(bs_R)
+    T = 1.0 - R
+    return 2.0 * R * T / (R * R + T * T)
+
+
+def hom_v_raw(I, g2_raw, eps_int=0.0, g2_int=None, bs_R=0.5):
+    """Raw visibility in the CROSS-polarised normalisation the experiments use (r4-hom, Fable 2.3):
+    V_raw = rho^2 I/(1 + g2_raw) (1 - eps_int) 2RT/(R^2 + T^2), with I the solver's whole-stream overlap and
+    rho^2 = (1 - g2_raw)/(1 - g2_int); g2_int=None means no background (rho = 1, V = I/(1 + g2)). For two independent
+    identical sources C_par = (N^2/4)(2 g2 + 2 - 2 I), C_perp = (N^2/4)(2 g2 + 2), so V = 1 - C_par/C_perp = I/(1 + g2) [DR].
+    The pre-r4 law (rho^2 I - g2_raw) normalised to the far peak; it agrees to O(g2)."""
     rho2 = 1.0 if (g2_int is None or not g2_int < 1.0) else (1.0 - g2_raw) / (1.0 - g2_int)
-    return (rho2 * I - g2_raw) * (1.0 - eps_int)
+    return rho2 * I / (1.0 + g2_raw) * (1.0 - eps_int) * _bs_factor(bs_R)
 
 
-def hom_v_corrected(V_raw, g2):
-    """g2-corrected visibility V_corr = (V_raw + g2)/(1 - g2) (Tomm 0.925, 0.021 -> 0.966)."""
-    return (V_raw + g2) / (1.0 - g2)
+def hom_v_corrected(V_raw, g2, eps_int=0.0, bs_R=0.5):
+    """Exact inverse of `hom_v_raw` for the single-photon overlap M_s: M = V_raw/[(1 - eps_int) 2RT/(R^2 + T^2)] (1 + g2)/(1 - g2)
+    (the stream overlap is I = M_s (1 - g2) + O(g2^2)). With a background and g2 = g2_raw this equals I/(1 - g2_signal)
+    exactly (Tomm 0.925-type values: with eps = 0, R = 1/2 it is the old I/(1 - g2))."""
+    return V_raw / ((1.0 - eps_int) * _bs_factor(bs_R)) * (1.0 + g2) / (1.0 - g2)
+
+
+HOM_CORRECTIONS = ("engine", "santori2002", "ollivier2021")
+
+
+def hom_v_corrected_by(correction, V_raw, g2, eps_int=0.0, bs_R=0.5):
+    """The corrected visibility under the convention a paper declares (card item field `correction:`) [A]:
+    engine = the exact inverse of the engine's raw law; ollivier2021 = (V + g2)/(1 - g2), Ollivier et al., PRL 126,
+    063602 (2021), applied to the raw V as printed (no beam-splitter / interferometer term); santori2002 = that same
+    g2 treatment after removing the beam-splitter and interferometer terms, (V/[(1 - eps) 2RT/(R^2 + T^2)] + g2)/(1 - g2),
+    the Santori et al. (2002) type with R, T, eps and g2."""
+    if correction == "engine":
+        return hom_v_corrected(V_raw, g2, eps_int, bs_R)
+    if correction == "ollivier2021":
+        return (V_raw + g2) / (1.0 - g2)
+    if correction == "santori2002":
+        return (V_raw / ((1.0 - eps_int) * _bs_factor(bs_R)) + g2) / (1.0 - g2)
+    raise ValueError(f"unknown HOM correction {correction!r}; valid: {HOM_CORRECTIONS}")
 
 
 def cavity_sideband_filter(ph, T_K, kappa_meV, detuning_meV, gamma_zpl_meV):
@@ -446,6 +475,10 @@ def _derive(c: Context) -> dict:
         d["beta_entered"] = NAN
         why["beta_entered"] = "the structure has no entered beta (structure.beta_direct absent or 0)"
     d["inversion"] = NAN if res.inversion is None else float(res.inversion)
+    # r4-hom (Fable 2.4): `inversion` is the expected excitation count n_exc (P_X(end) + photons emitted in the window), which does
+    # not depend on how long the window runs after the pulse; the end-of-window population stays as the observable P_X_end.
+    if "n_exc" in res.extra and res.inversion is not None and math.isfinite(float(res.extra["n_exc"])):
+        d["inversion"] = float(res.extra["n_exc"])
     irf_ps = float(plan.inputs.get("irf_ps", 0.0) or 0.0) or float(_read(c, "setup", "irf_ps", 0.0) or 0.0)
     d["irf_ps"] = irf_ps
     if "eta_prep" in res.extra:
@@ -458,7 +491,8 @@ def _derive(c: Context) -> dict:
     d["n_exc"] = float(res.extra["n_exc"]) if "n_exc" in res.extra else NAN
     if "n_exc" not in res.extra:
         why["n_exc"] = "only the lindblad / jc / polaron coherent solvers report the expected excitation count"
-    d["P_X_end"] = float(res.extra["P_X_end"]) if "P_X_end" in res.extra else d["inversion"]
+    d["P_X_end"] = float(res.extra["P_X_end"]) if "P_X_end" in res.extra else (
+        NAN if res.inversion is None else float(res.inversion))
     if not math.isfinite(d["P_X_end"]):
         why["P_X_end"] = "the solver has no end-of-window population (incoherent / cw drive)"
     d["eta_prep_x_eta_rad"] = d["eta_prep"] * d["eta_rad"]
@@ -529,6 +563,20 @@ def _derive(c: Context) -> dict:
         why["g2_irf"] = "IRF-convolved dip needs a cw rate-solver drive (dip recovery time)"
     I1 = float(res.I_single)
     d["hom_I"] = I1 * q * q if math.isfinite(I1) else NAN
+    # r4-hom (Fable 2.5): two-timescale dephasing. The solver's I carries the FAST dephasing gamma* only; the slow spectral
+    # diffusion (material.sigma_sd_ueV, tau_sd_ns) reduces the overlap of two photons setup.hom_delay_ns apart by
+    # F_sd = hom_vs_separation(dt)/hom_vs_separation(0) (OU walk; -> 1 for dt << tau_sd). 0 (default) = off, bit-identical.
+    d["hom_sd_factor"] = 1.0
+    hdly = float(_read(c, "setup", "hom_delay_ns", 0.0) or 0.0)
+    if hdly > 0.0 and math.isfinite(d["hom_I"]):
+        from .. import resonant_source as _rs
+        from .. import lindblad as _lb
+        _args = (Gamma, float(res.extra.get("hom_gamma_star_fast_ns", rt.gamma_star_ns)), float(_lb.mev_to_rate(float(em.sigma_sd_ueV) * 1e-3)), float(em.tau_sd_ns))
+        _f0 = float(_rs.hom_vs_separation(0.0, *_args))
+        _f1 = float(_rs.hom_vs_separation(hdly, *_args))
+        if _f0 > 0.0 and math.isfinite(_f1):
+            d["hom_sd_factor"] = _f1 / _f0
+            d["hom_I"] *= d["hom_sd_factor"]
     hg = plan.inputs.get("hom_gate")
     if hg:
         sg = float(hg.get("jitter_ns", 0.0))
@@ -565,19 +613,32 @@ def _derive(c: Context) -> dict:
         why["hom_I"] = why["hom_V"] = ("a cw stream has no per-pulse HOM overlap" if not pulsed
                                        else "solver has no coherence information (rate solver)")
     eps = float(_read(c, "setup", "eps_int", 0.0))
+    bsR = float(_read(c, "setup", "bs_R", 0.5))
+    corr_keys = {"engine": "hom_V_corr", "santori2002": "hom_V_corr_santori2002", "ollivier2021": "hom_V_corr_ollivier2021"}
     if math.isfinite(d["hom_I"]) and math.isfinite(d["g2_raw"]):
         # FX4: the overlap I is the SIGNAL stream's, so rho^2 = (1 - g2_raw)/(1 - g2_signal) must use the signal g2 (before
         # the drive-embedded bg_frac); g2_0 already contains that background and would double-count it (final review 1).
         g2_sig = float(res.extra.get("g2_signal", g2))
-        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2_sig)
-        d["hom_V_corr"] = hom_v_corrected(d["hom_V_raw"], d["g2_raw"])
-        # FX4: a corrected visibility above 1 is outside the physical (single-photon M_s) range (final review 6)
-        if d["hom_V_corr"] > 1.0 + 1e-6:          # 1e-6 = the solvers' Richardson HOM tolerance (numerical noise of an ideal emitter)
-            d["hom_V_corr"] = NAN
-            why["hom_V_corr"] = ("corrected visibility > 1: engine's multi-photon convention differs from the "
-                                 "paper's M_s")
+        d["hom_V_raw"] = hom_v_raw(d["hom_I"], d["g2_raw"], eps, g2_int=g2_sig, bs_R=bsR)
+        # r4-hom (Fable 2.3): corrected = the exact inverse of the raw law (eps_int and the splitter term are removed too); a
+        # value above 1 by less than the second order of the stream-vs-single-photon identity, 2 g2^2 + 1e-6, is clipped to 1
+        # (noted); only a larger excess is NaN.
+        tol_gt1 = 2.0 * g2_sig * g2_sig + 1e-6
+        for cname, key in corr_keys.items():
+            v = hom_v_corrected_by(cname, d["hom_V_raw"], d["g2_raw"], eps, bsR)
+            if v > 1.0 + tol_gt1:
+                v = NAN
+                why[key] = ("corrected visibility > 1: engine's multi-photon convention differs from the "
+                            "paper's M_s")
+            elif v > 1.0:
+                warnings.append(f"{key} = {v:.6f} exceeds 1 by less than 2 g2^2 + 1e-6 = {tol_gt1:.2e} (second order of the "
+                                "stream-vs-single-photon identity): clipped to 1")
+                v = 1.0
+            d[key] = v
     else:
-        d["hom_V_raw"] = d["hom_V_corr"] = NAN
+        d["hom_V_raw"] = NAN
+        for key in corr_keys.values():
+            d[key] = NAN
     if bool(plan.inputs.get("cross_pol")) and eta_pol >= 1.0:
         warnings.append("cross-polarised collection with eta_pol = 1: an unpolarised (trion / unpolarised X) emitter loses "
                         "1/2 in a cross-polarised setup unless the structure is polarisation-selective (brief trap 9); "
@@ -691,7 +752,7 @@ def _o(id_, label, unit, deps, conventions=("intrinsic",), passthrough_of=None, 
 
 _MS = ("material", "structure")
 _ALL = ("material", "structure", "drive")
-_CH = ("material", "structure", "drive", "setup", "material.eta_blink", "setup.coinc_window_ns", "setup.eps_int")
+_CH = ("material", "structure", "drive", "setup", "material.eta_blink", "setup.coinc_window_ns", "setup.eps_int", "setup.bs_R")
 _o("lambda_nm", "Emission wavelength $\\lambda$", "nm", ("material.lambda_nm", "material.E_X_meV"),
    passthrough_of="material.lambda_nm")
 _o("F_P_eff", "Effective Purcell factor $F_{\\mathrm P}L$", "1", _MS)
@@ -748,12 +809,22 @@ _o("detuning_ueV", "Emitter minus cavity detuning $\\delta_{\\mathrm{EC}}$", "ue
 _o("g2_0", "$g^{(2)}(0)$", "1", _ALL + ("setup.laser_leak", "setup.dark_cps"), ("intrinsic", "raw", "bg_corrected"),
    by_conv={"intrinsic": "g2_0", "raw": "g2_raw", "bg_corrected": "g2_bgc"})
 _o("g2_raw", "$g^{(2)}(0)$ with laser leak and dark counts", "1", _CH, key="g2_raw")
-_o("hom_I", "HOM overlap $I_{\\mathrm{HOM}}$", "1", _ALL + ("setup",), ("intrinsic", "raw", "corrected"),
-   by_conv={"intrinsic": "hom_I", "raw": "hom_V_raw", "corrected": "hom_V_corr"})
-_o("hom_V", "HOM visibility $V_{\\mathrm{HOM}}$ (raw|corrected)", "1", _CH, ("raw", "corrected"),
-   by_conv={"raw": "hom_V_raw", "corrected": "hom_V_corr"})
+_o("hom_I", "HOM overlap $I_{\\mathrm{HOM}}$", "1", _ALL + ("setup",),
+   ("intrinsic", "raw", "corrected", "corrected_santori2002", "corrected_ollivier2021"),
+   by_conv={"intrinsic": "hom_I", "raw": "hom_V_raw", "corrected": "hom_V_corr",
+            "corrected_santori2002": "hom_V_corr_santori2002", "corrected_ollivier2021": "hom_V_corr_ollivier2021"})
+_o("hom_V", "HOM visibility $V_{\\mathrm{HOM}}$ (raw|corrected)", "1", _CH,
+   ("raw", "corrected", "corrected_santori2002", "corrected_ollivier2021"),
+   by_conv={"raw": "hom_V_raw", "corrected": "hom_V_corr",
+            "corrected_santori2002": "hom_V_corr_santori2002", "corrected_ollivier2021": "hom_V_corr_ollivier2021"})
+_o("hom_sd_factor", "Spectral-diffusion factor $F_{\\mathrm{sd}}$ of the HOM overlap at the photon separation setup.hom_delay_ns (1 = off)",
+   "1", _CH + ("setup.hom_delay_ns", "material.sigma_sd_ueV", "material.tau_sd_ns"))
 _o("hom_V_raw", "HOM visibility, raw", "1", _CH, key="hom_V_raw")
 _o("hom_V_corr", "HOM visibility, $g^{(2)}$-corrected", "1", _CH, key="hom_V_corr")
+_o("hom_V_corr_santori2002", "HOM visibility corrected by the Santori-2002-type formula (R, T, eps_int, g2)", "1", _CH,
+   key="hom_V_corr_santori2002")
+_o("hom_V_corr_ollivier2021", "HOM visibility corrected by the Ollivier-2021 formula (V + g2)/(1 - g2)", "1", _CH,
+   key="hom_V_corr_ollivier2021")
 _o("B_first_lens", "First-lens brightness $B_{\\mathrm{lens}}$", "1", _CH, key="B_lens")
 _o("B_lens", "First-lens brightness $B_{\\mathrm{lens}}$ (alias of B_first_lens)", "1", _CH, key="B_lens")
 _o("B_fibre", "Brightness into the fibre $B_{\\mathrm{fibre}}$", "1", _CH)

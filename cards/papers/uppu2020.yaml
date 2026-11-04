@@ -84,8 +84,8 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.96 +/- 0.02 (2 sigma = 0.04); gamma* is the material class default (paper gives no pure dephasing), so this is an unfitted comparison"
-    expect: unavailable
-    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1. The paper's 0.96 also divides out the beam-splitter imbalance R 0.476 / T 0.524 and the classical visibility 0.995 (Eq. C2), which the model's g2-only corrected convention does not apply; hom_raw (model 0.939 vs 0.93) still agrees"
+    expect: fail
+    reason: "r4-hom (Fable 2.3): the corrected value is now finite: 1.001 is within the second-order tolerance 2 g2^2 + 1e-6 and is clipped to 1 (was NaN, unavailable). 1.0 vs 0.96(2) misses 2 sigma by a hair (0.04 vs 0.04): the dot's real dephasing (gamma* ~0.12 /ns from M 0.96) is not in the class default and the paper's own correction divides out R 0.476 / T 0.524 and 0.995 (Eq. C2), which this card does not enter. With the etalon filter (r4-filter) Fable predicts 0.993 (pass)."
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
@@ -94,6 +94,7 @@ reproduce:
 fits:
   - {param: structure.F_bg, fitted_to: [gamma_rate]}
 history:
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3: hom_corr expect unavailable -> fail (clipped to 1.0 instead of NaN; the NaN rule is now 2 g2^2 + 1e-6)", change: "expect unavailable -> fail (hom_corr)"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}

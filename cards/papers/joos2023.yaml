@@ -27,6 +27,8 @@ device:
       eta_blink: {value: 0.67, unit: "1", tag: V, where: "text p.5: QD optically active 67 percent of the time under SUPER pumping"}
       charge_state: {value: "X+", unit: "", tag: V, where: "text p.2: positively charged exciton"}
       gamma_star_4K_ns: {value: 29.0, unit: "1/ns", tag: DR, where: "text p.4: single-peak linewidth 4.94 GHz FWHM: 2 pi x 4.94 - Gamma_total (2.0 /ns) = 29.0 /ns, treated as a Lorentzian (see notes)"}
+      sigma_sd_ueV: {value: 8.68, unit: ueV, tag: DR, where: "text p.4 / Fig 2d: Gaussian-dominated Voigt line of 4.94 GHz FWHM per doublet peak: 4.94 GHz x 4.1357 ueV/GHz = 20.43 ueV FWHM / 2.355 = 8.68 ueV standard deviation (slow line jumps)"}
+      tau_sd_ns: {range: [1000.0, 1000000.0], unit: ns, tag: E, source: "class range for charge-noise spectral diffusion (Kuhlmann 2013/2015, Thoma 2016, Wang 2016)"}
   structure:
     kind: cbg
     params:
@@ -52,6 +54,8 @@ device:
       eta_optics: {value: 0.361, unit: "1", tag: A, source: "borrowed from Nawrath 2022 (end-to-end 6.3 % / first-lens 17.4 %): optics split of this setup is in the supplement"}
       eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside eta_optics"}
       eta_det: {value: 0.768, unit: "1", tag: V, where: "text p.3: detection efficiency 76.8 percent"}
+      hom_delay_ns: {value: 6.6, unit: ns, tag: V, where: "text p.4 / Fig 2 caption: photon separation 6.6 ns in the TPI interferometer"}
+      hom_fast_fraction: {range: [0.0, 1.0], unit: "1", tag: E, source: "the 4.94 GHz Gaussian-dominated line is entered as a Lorentzian (gamma* 29 /ns); only the part fast on the 6.6 ns scale reduces V_TPI and the paper does not split it: gamma*_fast = f x 29 /ns, f in [0, 1] (Fable r4 2.5)"}
 reported:
   - {id: tau_dev, observable: tau_ps, value: 500.0, tag: V, where: "text p.2: lifetime of about 500 ps (approximate, no error), supp I"}
   - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 4.94(5) GHz = h x 4.94 GHz = 20.43 ueV; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
@@ -88,8 +92,10 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.03}
     tol_reason: "2 sigma of the paper 0.014 is 0.028; 0.03 absolute as the model-level visibility tolerance. The Lorentzian-equivalent gamma* from the 4.94 GHz Gaussian-dominated line over-dephases, so the model is biased low; the test is whether V is of order 0.1"
-    expect: fail
-    reason: "model 0.047 vs 0.104(14): gamma* from the 4.94 GHz Gaussian-dominated, doublet line treated as a Lorentzian over-dephases the 6.6 ns interference (the paper says only broadening on the photon-separation timescale matters); the model has no way to separate fast and slow spectral diffusion. Model gap, biased low as flagged in the notes."
+    weak: true
+    weak_reason: "the central point f = 0.5 is the arbitrary midpoint of an unconstrained split; the envelope over f in [0, 1] spans 0.053-0.82, so landing on 0.104 does not discriminate"
+    expect: pass
+    reason: "r4-hom: pre-registered pass-envelope (Fable: never a central pass, envelope [0.047, ~0.8]); obtained central 0.099 (f = 0.5, gamma*_fast 14.5 /ns) within 2 sigma of 0.104(14), envelope [0.053, 0.819]. The coincidence is luck of the range midpoint, not a discriminating test, hence weak."
   - item: inversion_super_pred
     class: P
     observable: inversion
@@ -102,5 +108,6 @@ fits:
 history:
   - {date: 2026-10-13, by: "R2 FIX1A", reason: "R2 FIX1A: SUPER registry default width moved 5 -> 3 ps (Piccinini 2025 class); this card's areas were calibrated at 5 ps, so fwhm1_ps / fwhm2_ps are now pinned explicitly at 5 ps. Ledger unchanged (rate_raw_super stays expect fail: 1.41e7 vs 6.5e6); the transient 8.8e6 'pass' was the 3 ps default, not physics"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.5: hom_V_super expect fail -> pass-envelope (two-timescale dephasing: hom_delay_ns 6.6, sigma_sd 8.68 ueV, tau_sd class range, hom_fast_fraction range [0, 1]; linewidth_peak keeps the full gamma* 29 /ns). inversion_super_pred now reports n_exc (the area1_pi calibration text quotes the older end-of-window inversion; the entered areas are not retuned)", change: "expect fail -> pass, weak (hom_V_super; pre-registered pass-envelope, obtained central 0.099)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.69 (eta_out 0.90 x beta(F_P 3.3) 0.767 product, cavity-only semantics) -> 0.85 (Nawrath same-platform FDTD total, A), table_mode total"}
   - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_super_raw 0.0060 -> 0.0105, rate_raw_super 1.41e7 -> 1.16e7, hom_V_super 0.047 -> 0.043, inversion_super_pred 0.59 -> 0.48; all verdicts unchanged; no expect or tolerance changed"}

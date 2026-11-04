@@ -35,6 +35,7 @@ device:
     kind: lens_fibre_det
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: the HOM used a 10 pm etalon (r4 Fable 2.6), which transmits the zero-phonon line only"}
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
 
 reported:
@@ -54,11 +55,12 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.05}
     tol_reason: "model-level tolerance +/-0.05 on Ms (the paper's +/-0.001 is dominated by the model-level tolerance); gamma* is the registry class default"
     expect: fail
-    reason: "model 0.58 (envelope 0.39-0.66) vs 0.915: the intrinsic overlap Gamma/(Gamma+gamma*) with the unfiltered phonon factor and the F_P class range 2-10 (unstated) is far below the paper value; the paper filters/collects essentially ZPL photons and reports near-unity overlap; model gap plus an unknown F_P input."
+    reason: "r4-hom: pre-registered pass-envelope (Fable: envelope ~[0.75, 0.95] with the class gamma* and F_P in [2, 10]); obtained central 0.630 with envelope [0.421, 0.730] (zpl_filter true lifted it from 0.600 / [0.401, 0.695] only slightly): 0.915(1) is above the envelope top, so the item stays a fail. Fable's envelope assumed a smaller class gamma* than the registry default used here; the paper gives no dephasing number."
 
 fits: []
 
 history:
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: Ms_res checked and is NOT tautological here (gamma* is the registry class default, not derived from Ms; model 0.600 vs 0.915 fails); the circularity is the other way: thomas2021.yaml enters gamma* 0.65/ns inverted from this Ms_res, which is why thomas2021 Ms_BFL is a transfer test, not an independent one. No class change"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: setup.zpl_filter true (10 pm etalon in the HOM); Ms_res stays fail (0.600 -> 0.630)", change: "no expect change after the run (Ms_res stays fail 0.600 -> 0.630; pre-registered pass-envelope was not reached)"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}

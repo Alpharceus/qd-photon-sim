@@ -115,6 +115,17 @@ def _run_point(entries, values, T_K, solver_req):
     if P > 0.0:
         rt = combine(em, sr, T_K, pump_ns=P)                       # observables and solver see the pumped Gamma / beta
     res = solver.run(plan, em, rt)
+    # r4-hom (Fable 2.5): setup.hom_fast_fraction f < 1 splits the entered pure dephasing into a FAST part f gamma* (seen by HOM) and a
+    # slow remainder (a CW linewidth excess is an upper bound on gamma*_fast); the HOM overlap is re-solved at f gamma*, every other
+    # observable (linewidth, g2, brightness) keeps the full gamma*. f = 1 (default) is the single run, bit-identical.
+    f_fast = float(vals.get("setup", {}).get("hom_fast_fraction", 1.0))
+    if "hom_fast_fraction" in vals.get("setup", {}):
+        reads.setdefault("setup", set()).add("hom_fast_fraction")
+    if f_fast < 1.0 and plan.timing == "pulsed" and math.isfinite(res.I_single) and float(rt.gamma_star_ns) > 0.0:
+        rt_fast = replace(rt, gamma_star_ns=f_fast * float(rt.gamma_star_ns))
+        res_fast = solver.run(plan, em, rt_fast)
+        res = replace(res, I_single=res_fast.I_single,
+                      extra={**res.extra, "hom_gamma_star_fast_ns": float(rt_fast.gamma_star_ns)})
     ctx = obs_mod.Context(em, sr, rt, plan, res, setup, T_K, vals, reads)
     ctx.solver = solver
     ctx.structure_kind = entries["structure"].kind
@@ -183,6 +194,7 @@ def _series(ctx) -> dict:
         args = (float(rt.Gamma_ns), float(rt.gamma_star_ns), sig, float(em.tau_sd_ns))
         hom_I = float(ctx.d.get("hom_I", float("nan")))
         f0 = float(rs.hom_vs_separation(1e-9, *args))
+        hom_I = hom_I / float(ctx.d.get("hom_sd_factor", 1.0) or 1.0)     # r4-hom: the dt -> 0 anchor is the tile WITHOUT the delay factor
         scale = hom_I / f0 if math.isfinite(hom_I) and math.isfinite(f0) and f0 > 0.0 else 1.0
         y = [scale * rs.hom_vs_separation(float(dt), *args) for dt in dts]
         out["hom_vs_dt"] = {"x": [float(v) for v in dts], "y": [float(v) for v in y], "x_unit": "ns",

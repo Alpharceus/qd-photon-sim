@@ -73,12 +73,13 @@ reproduce:
     class: M
     tol: {abs: 0.05}
     tol_reason: "model-level tolerance +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
-    expect: fail
-    reason: "model occupation 0.395 central (envelope 0.10-0.63) vs 0.77: the unknown absolute pulse area (5-20 pi class range) dominates the envelope; the central point is low and 0.77 lies above the envelope top 0.63."
+    expect: pass
+    reason: "r4-hom (Fable 2.4): the occupation is now the expected excitation count n_exc (the old P_X at the end of the +-8 sigma window had lost e^(-66/143) = 63 % of the prepared population to radiative decay): central 0.786 (envelope 0.27-0.99, set by the unknown 5-20 pi pulse area) vs 0.77 within abs 0.05, as Fable predicted (~0.75). Before: 0.395, fail."
 fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
 
 history:
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.4: inversion is n_exc, not the end-of-window population; pQD_BFL expect fail -> pass (0.395 -> 0.786)", change: "expect fail -> pass (pQD_BFL)"}
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 5: detuning_meV -> 0.580 DR (1340.6 x 0.4/924.82); fwhm_ps -> 19.5 V; BFL_best removed from reproduce (eta_ext 0.65 already contains beta; kept in reported); added pQD_BFL (inversion 0.77 = 0.50/0.65, DR, M, abs 0.05)"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "engine P9: phonon_assisted is now available; g2_BFL, Ms_BFL, pQD_BFL expect unavailable -> fail (real outcomes: model 0.18 / 0.49 / 0.395 vs 0.046 / 0.909 / 0.77)"}

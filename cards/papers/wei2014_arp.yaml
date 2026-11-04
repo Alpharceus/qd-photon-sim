@@ -21,6 +21,8 @@ device:
       alpha_ps2: {value: 0.022, unit: ps^2, tag: V, where: "Fig 2 caption: J(w) = alpha w^3 exp[-(w/w_c)^2] with alpha = 0.022 (printed 'ps^-2'; J(w) in 1/ps with w in 1/ps requires alpha in ps^2, Ramsay-class 0.027 ps^2), pinned in place of the deformation-potential computation"}
       l_xy_nm: {value: 3.613, unit: nm, tag: DR, where: "Fig 2 caption: w_c = 2 /ps; registry cutoff exp[-(E/E_c)^2] with E_c = hbar sqrt2 c_s/l gives l = sqrt2 c_s / w_c = 1.4142 * 5110 m/s / 2e12 /s = 3.613 nm (registry c_s = 5110 m/s)"}
       l_z_nm: {value: 3.613, unit: nm, tag: DR, where: "same cutoff as l_xy_nm (single confinement length)"}
+      sigma_sd_ueV: {value: 0.97, unit: ueV, tag: DR, where: "text p.3 / Fig 3b: Gaussian component of the scanning-FPI Voigt fit, 0.55 GHz FWHM x 4.1357 ueV/GHz = 2.27 ueV FWHM / 2.355 = 0.97 ueV standard deviation (slow spectral diffusion)"}
+      tau_sd_ns: {range: [1000.0, 1000000.0], unit: ns, tag: E, source: "class range for charge-noise spectral diffusion (Kuhlmann 2013/2015, Thoma 2016, Wang 2016): us-ms wandering, far slower than the 4 ns photon separation"}
   structure:
     kind: bulk_planar
     params: {}   # planar 5/24-pair DBR microcavity (text p.2) with no pillar; the lifetime-limited linewidth already contains any cavity effect, so no Purcell factor is applied on top
@@ -40,6 +42,8 @@ device:
       eta_det: {value: 0.2, unit: "1", tag: V, where: "text p.4: detection efficiency ~20% (overall collection ~1%)"}
       eps_int: {value: 0.005, unit: "1", tag: V, where: "text p.4: first-order Mach-Zehnder interference visibility 0.995, so eps_int = 1 - 0.995"}
       coinc_window_ns: {value: 3.2, unit: ns, tag: V, where: "text p.4: raw HOM visibility from counts within a 3.2 ns window around zero delay"}
+      hom_delay_ns: {value: 4.0, unit: ns, tag: V, where: "text p.4 / Fig 4b: photon separation 4 ns in the HOM interferometer"}
+      hom_fast_fraction: {range: [0.0, 1.0], unit: "1", tag: E, source: "the CW Lorentzian excess (0.09 GHz, gamma* 0.565 /ns) is an UPPER bound on the dephasing fast on the 4 ns scale (any slower broadening is invisible to HOM): gamma*_fast = f x 0.565, f in [0, 1] (Fable r4 2.5)"}
 reported:
   - {id: linewidth_hom, observable: linewidth_ueV, value: 1.985, err: 0.207, tag: DR, where: "text p.3 / Fig 3b: Lorentzian homogeneous linewidth 0.48(5) GHz x 4.1357 ueV/GHz = 1.985 +/- 0.207 ueV (FWHM)"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.003, err: 0.002, tag: V, where: "text p.3 / Fig 4a: g2(0) = 0.003(2), zero-delay peak over the mean of the adjacent six (caption) or seven (text) peaks, positively chirped pulses"}
@@ -57,19 +61,19 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "2 sigma of the printed 0.002 (0.004); abs 0.005 floor. The model g2 is the chirped-pulse re-excitation term plus nothing else (no background entered: the paper gives none)"
     expect: fail
-    reason: "model gap: model raw g2 0.0277 against 0.003(2). The model chirped-pulse transfer is incomplete (inversion 0.68; 0.67 with phonons switched off, so it is not a phonon effect) and the remaining population is re-excited, raising g2; whether the Gaussian ARP transfer or the end-of-window eta_prep bookkeeping (radiative decay inside the 8-sigma window, 30 ps chirped pulse) is responsible could not be separated within this card."
+    reason: "model 0.0277 vs 0.003(2): NOT an incomplete ARP transfer (r4 Fable review: the closed-system transfer is complete, P_e = 0.9999, Landau-Zener parameter ~10; the earlier 'inversion 0.68' was P_X at the end of the +-8 sigma_c window, 72 % of the prepared population surviving 134 ps of radiative decay). 0.0277 is the two-level re-excitation value of a 28 ps chirped pulse; the paper measured behind a 1 GHz etalon that removes the short in-pulse photon (the engine has no spectral filter on the photon stream until the r4-filter change merges): filtered ~0.0045 vs 0.003(2) predicted."
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.006 (0.012). gamma* is taken from the CW Lorentzian linewidth (excess 0.09 GHz), which predicts a lifetime-limited-ish overlap Gamma/(Gamma + gamma*) = 0.81, below the paper; the 4 ns / 1 GHz-etalon measurement samples dephasing much more slowly than the scanning FPI linewidth, so this is a prediction, not a transcription"
+    tol_reason: "2 sigma of the printed 0.006 (0.012). The overlap is solved at the FAST dephasing f x 0.565 /ns (f in [0, 1]: the CW excess is an upper bound) and multiplied by the slow-diffusion factor at the stated 4 ns separation (sigma_sd 0.97 ueV, tau_sd class range); raw V = I/(1 + g2) x 0.995 (cross-polarised normalisation)"
     expect: fail
-    reason: "model gap, as anticipated in tol_reason: the model raw visibility is 0.757 (overlap 0.789 with gamma* 0.565 /ns, zpl_filter on) against 0.979(6). The paper own Voigt analysis puts a 0.55 GHz Gaussian (spectral diffusion) component on top of the 0.48 GHz Lorentzian, i.e. the scanning-FPI linewidth is dominated by slow wandering that does not degrade 4 ns HOM; an instantaneous-dephasing gamma* from that width therefore over-penalises the overlap. The g2 contribution (0.028) lowers the raw value by a further ~0.03."
+    reason: "r4-hom: pre-registered pass-envelope (Fable: envelope [0.73, 0.98] containing 0.979), obtained central 0.8425 with envelope [0.762, 0.940] over f in [0, 1]: the top 0.940 misses 0.979(6). Cause: V_raw = I/(1 + g2) with the UNFILTERED g2 = 0.0277 (the 1 GHz etalon that removes the short in-pulse photon is not in this branch; r4-filter); at f = 0 the overlap is 0.997 and 0.997 x 0.995/1.0277 = 0.965 is capped below the paper. Expected to move to pass-envelope when the spectral filter merges (filtered g2 ~0.0045: ceiling ~0.983 per Fable)."
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the printed 0.007 (0.014); the model removes g2 only (the paper also removes the 0.995 interferometer term), compared with the g2-only model convention"
-    expect: fail
-    reason: "same model gap as hom_raw: g2-corrected model visibility 0.807 against 0.995(7), limited by the CW-linewidth gamma* (overlap 0.79); the interferometer term the paper also removes is not the cause."
+    tol_reason: "2 sigma of the printed 0.007 (0.014); the engine corrected convention is the exact inverse of the raw law, so it removes g2 AND the 0.995 interferometer term as the paper does (correction: engine)"
+    expect: pass-envelope
+    reason: "r4-hom pre-registration (Fable 2.5): the paper value is inside the envelope over f in [0, 1]; obtained central 0.895 (f = 0.5) with envelope [0.810, 0.998] containing 0.995(7), so the central point is outside 2 sigma (0.014) and the item is a pass-envelope, as predicted. The corrected convention removes g2 and the 0.995 interferometer term exactly as the paper does."
   - item: inversion_pred
     class: P
     observable: inversion
@@ -80,3 +84,4 @@ fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_hom]}
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3-2.5: hom_corr expect fail -> pass-envelope (two-timescale dephasing: sigma_sd 0.97 ueV, tau_sd class range, hom_delay_ns 4, hom_fast_fraction range [0, 1] on the 0.565 /ns CW excess; the corrected convention is now the exact inverse incl. eps_int). hom_raw stays fail: Fable predicted pass-envelope, obtained envelope top 0.940 < 0.979 because g2 is unfiltered (needs the r4-filter etalon). g2_raw stays fail with a corrected reason (misdiagnosis: the ARP transfer is complete, the miss is the missing 1 GHz etalon); inversion_pred now reports n_exc (0.68 -> 0.97, Fable 0.98)", change: "expect fail -> pass-envelope (hom_corr); hom_raw unchanged (fail, new reason)"}
