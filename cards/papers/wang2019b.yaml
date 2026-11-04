@@ -27,8 +27,8 @@ device:
   structure:
     kind: cbg
     params:
-      F_P: {value: 19.0, unit: "1", tag: DR, where: "text p.6 (simulated design value: Purcell factor >20 over a few nm, Supp Fig 7; simulated lower bound). The simulated 20 is an FDTD TOTAL rate ratio Gamma/Gamma_bulk, the leaf is the cavity enhancement, so 20 - 1 = 19 (cards README rule; r4 Fable review item E)"}
-      Q: {value: 155.0, unit: "1", tag: DR, where: "text p.6 (mode splitting 2.8 THz is 1.3 times the linewidth of B2, i.e. 2.15 THz at ~334 THz; the dot is resonant with B2, Fig 2 caption)"}
+      F_P: {value: 19.0, unit: "1", tag: A, source: "text p.6: \"the design can ideally yield a high Purcell factor of >20 in a few nm wavelength range\" (wang2019.txt l.193-194; simulated, Supp Fig 7). The paper does not say whether the simulated >20 is a total rate ratio Gamma/Gamma_bulk or the additional ratio; ASSUMPTION: total (cards README rule), so the cavity enhancement leaf is 20 - 1 = 19. A lower bound for the ideally tuned device"}
+      Q: {value: 155.0, unit: "1", tag: DR, where: "text p.6: \"The splitting is 2.8 THz, which is 1.5 (1.3) times larger than the linewidth of the B 1 (B2).\" (wang2019.txt l.191-192); arithmetic B2 linewidth = 2.8 THz / 1.3 = 2.15 THz, Q = nu/dnu = ~334 THz (897 nm) / 2.15 THz = 155 (the 334 THz carrier is our conversion c/897 nm); the dot is resonant with B2, Fig 2 caption"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "Fig 2 caption (the investigated quantum dot is resonant with B2)"}
       eta_table: {value: "0.65:0.8", unit: "", tag: A, source: "extraction at NA 0.65 is only in Supp Fig 7 (figure, not read); class value for a mirror-backed CBG (simulated >80 %, Kolatschek 2021) entered as a single table point"}
       leak: {value: 0.0, unit: "1", tag: A, source: "leaky-channel fraction of the EBG not given in the read text"}
@@ -44,7 +44,7 @@ device:
       NA: {value: 0.65, unit: "1", tag: V, where: "Supp Fig 7 caption (extraction simulated with an objective of NA = 0.65)"}
       eta_pol: {range: [0.962, 1.0], unit: "1", tag: E, source: "polarisation degree of the EBG device is not given; the pillar's 0.962 (text p.7) is the lower end"}
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.8 (5 GHz etalon filters out the phonon sideband for the HOM/purity measurement; it cuts the counts by ~30 %)"}
-      filter_fwhm_GHz: {value: 5.0, unit: GHz, tag: V, where: "text p.8 (5 GHz etalon for the HOM / purity measurement; the 0.56 efficiency is the loss-budget value without it)"}
+      filter_fwhm_GHz: {value: 5.0, unit: GHz, tag: V, where: "text p.8: \"after send the photons through a 5-GHz etalon to filter out the phonon sideband\" (wang2019.txt l.256-257; HOM / purity measurement; the 0.56 efficiency is the loss-budget value without it)"}
 reported:
   - {id: tau_ebg, observable: tau_ps, value: 69.1, err: 0.1, tag: V, where: "text p.7 / Fig 2f (radiative lifetime of the EBG-coupled dot, resonance fluorescence)"}
   - {id: eff_ebg, observable: B_first_lens, value: 0.56, err: 0.02, tag: V, where: "text p.8 (polarised single-photon efficiency at the first lens, loss-budget based, WITHOUT the etalon; main loss blinking 35 %)"}
@@ -88,6 +88,7 @@ reproduce:
     weak_reason: "the null model (V = 1) also passes: the corrected value is clipped at 1 and abs 0.05 exceeds the gap to the paper; the paper-style correction is also biased high by ~0.54 g2 behind a 5 GHz etalon"
 fits: []
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A083, A156; provenance Q): structure.F_P retagged DR -> A (the paper never defines the simulated >20 as a total rate ratio; the -1 is our assumption), value 19.0 unchanged; Q and etalon where-texts quote the paper lines; measured Purcell ratio is ~15.7 (not 14.7)", note: "text only; values, tolerances and expectations unchanged. The 334 THz carrier in Q is our conversion c/897 nm (false positive 334 in the checker)"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): eff_ebg 0.716 -> 0.724. Expect unchanged; not tuned."}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3: hom_corr_13ns and hom_corr_2ns expect unavailable -> pass (weak): the corrected visibility is clipped to 1 instead of NaN", change: "expect unavailable -> pass, weak"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}

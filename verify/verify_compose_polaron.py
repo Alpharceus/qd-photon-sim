@@ -1043,6 +1043,24 @@ _split["structure"]["params"]["mode_split_ueV"] = 90.0
 _ps = sc(_split)
 check("R4-V4. a 90 ueV H-mode split (Q 11100) lowers the collected H photon number versus degenerate modes (the H mode is Purcell-weaker)",
       _ps["n_ph"] < _ph["n_ph"], f"{_ph['n_ph']:.4f} -> {_ps['n_ph']:.4f}")
+# resonant_mode (r4 corrections b, Somaschi 2016: the paper does not say which polarised mode the dot sits on) [A]
+_rk = type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})()
+_hz = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_hz["structure"]["params"]["resonant_mode"] = "H"
+_hz = sc(_hz)
+check("R4-V5. resonant_mode H with split 0 equals V with split 0 (closed form: both modes carry the full F_P, the V-system numbers are identical)",
+      _hz["n_ph"] == _ph["n_ph"] and _hz["g2_0"] == _ph["g2_0"] and _hz["hom_I"] == _ph["hom_I"]
+      and FH.mode_ratio_H(_rk, 0.0, 1.0, "H") == FH.mode_ratio_H(_rk, 0.0, 1.0, "V") == 1.0
+      and FH.mode_ratio_V(_rk, 0.0, 1.0, "H") == FH.mode_ratio_V(_rk, 0.0, 1.0, "V") == 1.0,
+      f"n_H {_hz['n_ph']:.6g} / {_ph['n_ph']:.6g}")
+_hs = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_hs["structure"]["params"]["mode_split_ueV"] = 90.0
+_hs["structure"]["params"]["resonant_mode"] = "H"
+_hs = sc(_hs)
+check("R4-V6. resonant_mode H with a 90 ueV split: the collected H mode keeps the full F_P (rH = 1, rV = L(split) = 1/2 at split = kappa/2), so the H photon number is above the V-resonant 90 ueV split value; mode_ratio_V(kappa/2 split) = 1/2",
+      abs(FH.mode_ratio_V(_rk, 50.0, 1.0, "H") - 0.5) < 1e-12 and FH.mode_ratio_H(_rk, 50.0, 1.0, "H") == 1.0
+      and FH.mode_ratio_V(_rk, 50.0, 1.0, "V") == 1.0 and _hs["n_ph"] > _ps["n_ph"],
+      f"V-resonant {_ps['n_ph']:.4f} -> H-resonant {_hs['n_ph']:.4f}")
 
 # ---- r4-phonon I1: Zf_window (Fable r4 adjudication section 2)
 import copy as _copy                                                          # noqa: E402

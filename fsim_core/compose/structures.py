@@ -165,7 +165,7 @@ class _Struct(Structure):
 
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the param id; UI only
 _TEX = {
-    "mode_split_ueV": r"\hbar\Delta_{HV}", "F_P_ratio_VH": r"F_{\mathrm P}^{V}/F_{\mathrm P}^{H}",
+    "mode_split_ueV": r"\hbar\Delta_{HV}", "F_P_ratio_VH": r"F_{\mathrm P}^{V}/F_{\mathrm P}^{H}", "resonant_mode": r"\mathrm{dot\ resonant\ with}",
     "F_P": r"F_{\mathrm P}",
     "kappa_ueV": r"\hbar\kappa",
     "Q": r"Q",
@@ -361,8 +361,9 @@ GENERIC_CAVITY = _Struct(
         _p("eta_out", "1", 0.5, 0.0, 1.0, help=r"Outcoupling efficiency $\eta_{\mathrm{out}}$ from the mode to the first lens, including the far-field collection."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background (non-cavity) decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$ (1 = free; $< 1$ inhibited; $> 1$ leaky)."),
         _p_fpsrc("measured"),
-        _p("mode_split_ueV", "ueV", 0.0, 0.0, 5000.0, group="advanced", help=r"Energy split of the orthogonally polarised (H) cavity mode from the resonant (V) mode. 0 = degenerate modes (off). Only the FSS V-system of a cross-polarised drive reads it: the H-mode Purcell factor is $F_{\mathrm P}\,L(\Delta)$ with $L = 1/(1 + (2\Delta/\hbar\kappa)^2)$ (Somaschi et al. 2016: ~90 ueV)."),
+        _p("mode_split_ueV", "ueV", 0.0, 0.0, 5000.0, group="advanced", help=r"Energy split of the two orthogonally polarised cavity modes (the H mode from the V mode; the dot sits on the mode chosen by resonant_mode, V by default). 0 = degenerate modes (off). Only the FSS V-system of a cross-polarised drive reads it: the H-mode Purcell factor is $F_{\mathrm P}\,L(\Delta)$ with $L = 1/(1 + (2\Delta/\hbar\kappa)^2)$ (Somaschi et al. 2016: ~90 ueV)."),
         _p("F_P_ratio_VH", "1", 1.0, 0.1, 100.0, group="advanced", help=r"Ratio $F_{\mathrm P}(V)/F_{\mathrm P}(H)$ of the two polarised modes when stated (1 = equal). Only the FSS V-system reads it."),
+        _p("resonant_mode", "enum", "V", choices=("V", "H"), tag="A", group="advanced", help=r"Which polarised cavity mode the dot is spectrally resonant with. V (default) = the mode of the cross-polarised excitation, the H mode sits $\hbar\Delta_{HV}$ away; H = the dot is resonant with the H (collected) mode, which then gets the full $F_{\mathrm P}$ and the V mode gets $F_{\mathrm P}\,L(\Delta)$. Only the FSS V-system reads it. Assumption: Somaschi et al. 2016 do not state which mode the dot is resonant with."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.05, 0.9), fn=_generic_cavity)
 

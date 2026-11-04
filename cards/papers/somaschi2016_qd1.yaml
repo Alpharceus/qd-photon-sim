@@ -28,15 +28,15 @@ device:
   drive:
     kind: above_band
     params:
-      pump: {value: 2.45, unit: "1", tag: V, where: "text p.3 / Fig 2a caption (g2 at 2.45 P_sat)"}
+      pump: {value: 2.45, unit: "1", tag: V, where: "Fig 2a caption: \"autocorrelation histogram of device Q D1 at 2.45P sat\" (somaschi2016.txt l.383); 2.45 is the pump power in units of P_sat (P/P_sat), not a mean pair number mu"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "extraction drive.pulse_width_ps: 3 ps non-resonant pulses; rectangular window of that length is an assumption [A]"}
       tau_cap_ps: {range: [10.0, 100.0], unit: ps, tag: E, source: "capture/relaxation jitter not given in the paper; class range 10-100 ps"}
       tau_res_ps: {range: [1.5, 30.0], unit: ps, tag: E, source: "reservoir loss time (capture by neighbouring dots), not in the paper; lower end from refs/Third pass/siegert2005.txt (pure capture time between 1.5 and 4 ps), upper end 30 ps is an [E] class estimate"}
-      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text: \"SPS is excited twice every laser pulse cycle (12.2 ns) with a delay of 3 ns.\"; arithmetic 1 / 12.2 ns = 81.97 MHz, rounded to 82"}
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: E, source: "etalon filtering of the collected light is stated for the resonant HOM (p.4); assumed the same for QD1, and the 110 ueV pillar mode also filters the sideband"}
+      zpl_filter: {value: true, unit: "", tag: E, source: "etalon filtering of the collected light is stated for the resonant HOM (p.4); assumed the same for QD1 (the paper states the 10 µeV etalon only for the resonant measurements)"}
 reported:
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.024, err: 0.007, tag: V, where: "text p.3 / Fig 2a caption (QD1 at 2.45 P_sat, 3 ps non-resonant)"}
   - {id: M_raw, observable: hom_I, convention: raw, value: 0.74, err: 0.07, tag: V, where: "text p.4 (M of QD1 non-resonant without g2 correction)"}
@@ -69,6 +69,7 @@ reproduce:
 fits: []
 history:
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.503 -> 0.562, expect fail -> pass (no Z_filt on cavity-collected light); predicted 0.563 by the Fable review, not tuned"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit corrections (A004, A067): 2.45 documented as P/P_sat (not a pair number mu); f_rep where-text verbatim; unsupported 110 ueV pillar-mode statement removed", note: "text only; no value, tolerance or expectation changed"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling somaschi2016_qd1: above-band QD1 data (g2 0.024, M 0.74/0.78, B 0.65)"}
   - {date: 2026-10-12, by: "sonnet R2-3D", reason: "R2-3D: display geometry: meta.display_as micropillar so the Composer/Papers 3D view draws an illustrative micropillar (electrically contacted micropillar per the paper) instead of the lumped schematic; no device number changed"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: tau_res_ps 1.5-30 ps [E] added; g2_raw fail -> pass-envelope", note: "g2 model 4.6e-4 -> 0.070 [0.012,0.139]; B_first_lens 0.503 -> 0.313 (loss of pairs before capture); M_raw 0.742 -> 0.768, M_corr 0.743 -> 0.902 (still within 2 sigma)"}

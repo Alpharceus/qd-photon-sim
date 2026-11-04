@@ -28,7 +28,7 @@ device:
   structure:
     kind: cbg
     params:
-      F_P: {value: 1.98, unit: "1", tag: DR, where: "text p.2: 1.55 ns / 0.52 ns = 2.98 total decay-rate ratio, minus 1 for the additional ratio (paper rounds to 3)"}
+      F_P: {value: 1.98, unit: "1", tag: DR, where: "text p.2: \"yield a value of 0 .52 ns for QD1 and a mean value of 1.55 ns (standard deviation 0.37 ns) for 6 exemplary trion transitions ... This results in a Purcell factor of 3.\" (nawrath2022.txt l.171-174); arithmetic 1.55 ns / 0.52 ns = 2.98 total decay-rate ratio, minus 1 for the additional ratio = 1.98 (the paper rounds the ratio to 3)"}
       Q: {value: 160.0, unit: "1", tag: DR, where: "text p.2: cavity FWHM 9.74 nm at about 1555 nm gives Q about 160 (computed from the paper numbers)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "text p.2: QD1 in resonance with the cavity mode"}
       eta_table: {value: "0.6:0.85", unit: "", tag: V, where: "text p.2 / Fig 1a: FDTD collection efficiency into NA 0.6 above 85 percent (max above 92 percent), the whole-device total first-lens efficiency at the ideal F_P 16.6"}
@@ -46,8 +46,8 @@ device:
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.4 Methods: both polarisation components are split onto two SNSPDs, so none is discarded"}
       eta_optics: {value: 0.361, unit: "1", tag: DR, where: "text p.2: end-to-end 6.3 % / first-lens 17.4 % = 0.361 (the paper's own setup efficiency; FCSPCR is already corrected for detector efficiency)"}
       eta_fibre: {value: 1.0, unit: "1", tag: A, source: "fibre coupling is inside the 0.361 setup efficiency"}
-      eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2-3: raw detected 3.91e6 / corrected FCSPCR 4.77e6 = 0.82 (also 0.83 at 40 K, 0.82 at 152 and 228 MHz)"}
-      filter_width_meV: {value: 0.282, unit: meV, tag: DR, where: "Methods (main text): a reflective bandpass filter of FWHM 0.55 nm selects the QD transition (two 1.2 nm notch filters only suppress the laser). Conversion ours: dE = (1239.84/lambda) dlambda/lambda = 0.7973 eV x 0.55/1555 nm = 0.282 meV; the same filter is assumed at 4 K and 40 K"}
+      eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2: \"FCSPCR = 4.77 × 106 s−1 (raw, detected count rate 3.91 × 106 s−1)\" (l.219-220); arithmetic 3.91 / 4.77 = 0.82. Same arithmetic at 40 K: raw 2.47 / FCSPCR 2.96 = 0.83 (l.340-341); at 152 MHz 7.75 / 9.44 = 0.82 and at 228 MHz 11.37 / 13.88 = 0.82 (l.359-361)"}
+      filter_width_meV: {value: 0.282, unit: meV, tag: DR, where: "Methods (main text): \"a reﬂective bandpass ﬁlter (FWHM = 0 .55 nm) selects the QD transition in question\" (l.446-447; two 1.2 nm notch filters only suppress the laser). Conversion ours: E = 1239.84 / 1555 nm = 0.7973 eV, dE = E x 0.55 nm / 1555 nm = 0.282 meV; the same filter is assumed at 4 K and 40 K"}
       filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the bandpass window (at 40 K the red-shift of the line is not modelled)"}
 reported:
   - {id: tau_QD1, observable: tau_ps, value: 520.0, tag: V, where: "text p.2 / Fig 1d: decay time 0.52 ns of QD1 in the CBG under non-resonant 850 nm excitation (raw fit, no error given)"}
@@ -141,6 +141,7 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_QD1]}
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_TPI]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (DR items): F_P, eta_det and filter_width_meV where-text now quote the printed inputs verbatim and show the arithmetic", note: "text only; values, tolerances and expectations unchanged"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I1 (Zf_window: setup.filter_width_meV 0.282 meV now truncates the ZPL, Lorentzian window default) and I2 (r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947), Fable r4 adjudication", change: "gamma_star_4K_ns re-fitted 17.4 -> 20.8 (class C fit to hom_V_TPI: after I2 alone the model was 0.0955 vs 0.081, abs 0.01 failed); after the re-fit hom_V_TPI 0.08115 pass. BFL_76 0.5772 -> 0.5263 (fail stays), rate_vs_T rms 3.43 -> 2.288 (I1 alone 1.90; fail stays, Fable predicted absolute stays fail), rate_vs_frep 2.37 -> 2.07 (fail stays), g2 items unchanged. Expects unchanged, not tuned"}
   - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_76 0.562 -> 0.577, rate_vs_T rms 3.11 -> 3.43, rate_vs_frep 2.28 -> 2.37, hom_V_TPI 0.0811 -> 0.0797. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}

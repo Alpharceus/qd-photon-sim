@@ -30,14 +30,32 @@ def _brightness(plan) -> bool:
 
 
 # ---------------------------------------------------------------- plan inputs
-def mode_ratio_H(rt, split_ueV: float, ratio_VH: float) -> float:
-    """F_P(H)/F_P(V) of the polarisation-split cavity: L(split) / (F_P ratio V/H), L = 1/(1 + (2 split/kappa)^2)
-    (Lorentzian cavity mode, narrow dot line) [DR, Fable r4 cavity C/D]. 1 = degenerate modes."""
+def mode_ratio_H(rt, split_ueV: float, ratio_VH: float, resonant_mode: str = "V") -> float:
+    """F_P(H)/F_P(V-reference) of the polarisation-split cavity, where the V-reference is the mode with the full F_P
+    carried by ``rt`` (the mode the dot is resonant with).
+    resonant_mode "V" (default): L(split) / (F_P ratio V/H), L = 1/(1 + (2 split/kappa)^2) (Lorentzian cavity mode,
+    narrow dot line) [DR, Fable r4 cavity C/D]. 1 = degenerate modes.
+    resonant_mode "H" [A]: the dot is resonant with the H (collected) mode, which gets the full F_P: returns 1.0 (the V
+    mode then gets L(split) x ratio, see ``mode_ratio_V``)."""
+    if str(resonant_mode) == "H":
+        return 1.0
     L = 1.0
     if split_ueV > 0.0 and rt.kappa_ns is not None and rt.kappa_ns > 0.0:
         kap_ueV = float(rt.kappa_ns) * lb.HBAR_MEV_NS * 1e3
         L = 1.0 / (1.0 + (2.0 * float(split_ueV) / kap_ueV) ** 2)
     return L / float(ratio_VH)
+
+
+def mode_ratio_V(rt, split_ueV: float, ratio_VH: float, resonant_mode: str = "V") -> float:
+    """F_P(V)/F_P(resonant mode): 1.0 when the dot is resonant with V (default); L(split) x ratio_VH when it is
+    resonant with H (the V mode is then the detuned one) [A]."""
+    if str(resonant_mode) != "H":
+        return 1.0
+    L = 1.0
+    if split_ueV > 0.0 and rt.kappa_ns is not None and rt.kappa_ns > 0.0:
+        kap_ueV = float(rt.kappa_ns) * lb.HBAR_MEV_NS * 1e3
+        L = 1.0 / (1.0 + (2.0 * float(split_ueV) / kap_ueV) ** 2)
+    return L * float(ratio_VH)
 
 
 def attach(plan, em, sr, rt, vals, tr):
@@ -62,16 +80,23 @@ def attach(plan, em, sr, rt, vals, tr):
             tr("structure")["mode_split_ueV"]
         if ratio != 1.0:
             tr("structure")["F_P_ratio_VH"]
-        rH = mode_ratio_H(rt, split, ratio)
-        Gam_V = float(rt.Gamma_ns)
+        res_mode = str(st.get("resonant_mode", "V") or "V")
+        if res_mode != "V":
+            tr("structure")["resonant_mode"]
+        rH = mode_ratio_H(rt, split, ratio, res_mode)
+        rV = mode_ratio_V(rt, split, ratio, res_mode)
         G_bg = float(rt.Gamma_bg_ns)
-        Gam_H = G_bg + (Gam_V - G_bg) * rH
+        Gam_res = float(rt.Gamma_ns)
+        Gam_V = Gam_res if rV == 1.0 else G_bg + (Gam_res - G_bg) * rV
+        Gam_H = G_bg + (Gam_res - G_bg) * rH
         G0 = float(rt.Gamma0_ns)
         F_bg = G_bg / G0 if G0 > 0.0 else 0.0
         FPL_H = float(rt.F_P_eff) * rH
         beta_H = (float(rt.beta0) * F_bg + FPL_H) / (F_bg + FPL_H) if (F_bg + FPL_H) > 0.0 else float(rt.beta)
         add["vsys"] = {"fss_ueV": fss, "pol_angle_deg": phi, "Gamma_V_ns": Gam_V, "Gamma_H_ns": Gam_H,
                        "mode_ratio_H": rH, "beta_H": beta_H, "mode_split_ueV": split, "F_P_ratio_VH": ratio}
+        if res_mode != "V":
+            add["vsys"].update(resonant_mode=res_mode, mode_ratio_V=rV)
     if not add:
         return plan
     return replace(plan, inputs={**plan.inputs, **add})

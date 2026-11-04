@@ -22,7 +22,7 @@ device:
     kind: inas_gaas_sk
     params:
       lambda_nm: {value: 947.4, unit: nm, tag: V, where: "App D.2 / Fig 8 (resonant laser 947.4 nm)"}
-      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "in-plane Gaussian confinement length of the exciton wavefunction of this dot is not stated; InAs/GaAs SK class range 3-5 nm (large end expected for a 947 nm dot; the sideband width in Uppu Fig 8 would fix it but is not read out); r4 Fable cavity review item F. Registry phonon constants (alpha, D_c - D_v) are NOT changed"}
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "in-plane Gaussian confinement length of the exciton wavefunction of this dot is not stated; InAs/GaAs SK class range 3-5 nm (large end expected for a 947 nm dot, an estimate; Uppu Fig 8 is a resonance-fluorescence spectrum used for eta_zpl and prints no dot size or confinement energy); r4 Fable cavity review item F. Registry phonon constants (alpha, D_c - D_v) are NOT changed"}
       l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "out-of-plane confinement length not stated; InAs/GaAs SK class range 1-2 nm (r4 Fable cavity review item F)"}
   structure:
     kind: phc_waveguide
@@ -46,13 +46,13 @@ device:
       laser_leak: {range: [0.0, 0.007], unit: "1", tag: V, where: "text p.3 (single-photon impurity xi < 0.007, upper bound)"}
 reported:
   - {id: gamma_rate, observable: Gamma_ns, value: 2.89, tag: V, where: "Fig 2c caption, text p.3 (radiative decay rate of the well-coupled dipole, 1/ns)"}
-  - {id: beta_paper, observable: beta, value: 0.92, err: 0.02, tag: V, where: "text p.2, App D.2"}
+  - {id: beta_paper, observable: beta, value: 0.92, err: 0.02, tag: V, where: "App D.2: \"we extract β = (92± 2)% [10]\" (uppu2020.txt l.638); the main-text table prints 92 ± 5% (l.883)"}
   - {id: eta_zpl, observable: Z_phonon, value: 0.95, err: 0.01, tag: V, where: "App D.2 / Fig 8 (Gaussian fit of the sideband at 3 nW, 1.24 V)"}
   - {id: eta_rad, observable: eta_rad, value: 0.98, tag: V, where: "App D.2 (blinking dark-state model of weak bunching)"}
-  - {id: eta_S, observable: B_first_lens, value: 0.84, err: 0.04, tag: V, where: "text p.2 / App D.2 (source efficiency, product of measured factors)"}
+  - {id: eta_S, observable: B_first_lens, value: 0.84, err: 0.04, tag: V, where: "text p.2: \"ηS = 84%\" (uppu2020.txt l.92); App D.2: \"is found to reach up to 84± 4%\" (l.721), product of measured factors"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.015, err: 0.005, tag: V, where: "text p.3 (pi pulse; g2(0) = 2 xi - xi^2)"}
-  - {id: hom_corr, observable: hom_I, convention: corrected, value: 0.96, err: 0.02, tag: V, where: "text p.4 (corrected for g2, BS R=0.476/T=0.524 and classical visibility 0.995, Eq C2)"}
-  - {id: hom_raw, observable: hom_I, convention: raw, value: 0.93, err: 0.02, tag: V, where: "text p.4 (directly recorded, BS- and alignment-limited only)"}
+  - {id: hom_corr, observable: hom_I, convention: corrected, value: 0.96, err: 0.02, tag: V, where: "text p.4: \"We ﬁndV = (96±2)% when accounting for the ﬁnite multi-photon probability\" (uppu2020.txt l.286-287; corrected for g2, BS R=0.476/T=0.524 and classical visibility 0.995, Eq C2)"}
+  - {id: hom_raw, observable: hom_I, convention: raw, value: 0.93, err: 0.02, tag: V, where: "text p.4: \"while V = (93± 2)% is directly recorded\" (uppu2020.txt l.288; BS- and alignment-limited only)"}
 reproduce:
   - item: gamma_rate
     class: C
@@ -64,7 +64,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.03}
     tol_reason: "paper 0.95 +/- 0.01 (2 sigma = 0.02); widened to 0.03 absolute because the InAs/GaAs polaron constants are [E] class values, not Uppu's dot"
     expect: fail
-    reason: "model gap, narrowed: the registry InAs/GaAs polaron constants (class [E], alpha fixed by Krummheuer D_c - D_v = 9.8 eV, which Ramsay 2010 supports) with the dot-size class ranges l_xy 3-5 nm, l_z 1-2 nm give Z(1.6 K) = 0.909 central, envelope [0.839, 0.941]; the tip is 0.009 below the measured 0.95, so the paper value stays outside the envelope and the outcome stays fail. The r4 Fable review predicted pass-envelope at the (5, 2) corner via the 0.03 tolerance, but the envelope test uses the paper value itself, not the tolerance window. Not a missing input: a larger dot (sideband width of Uppu Fig 8) or a measured alpha would be needed."
+    reason: "model gap, narrowed: the registry InAs/GaAs polaron constants (class [E], alpha fixed by Krummheuer D_c - D_v = 9.8 eV; the nearest independent number is Ramsay et al., PRL 104, 017402 (2010), who deduce |D_e - D_h| = 9.0 +- 0.3 eV from K2 = A T with A = 11 +- 1 fs/K for InGaAs dots (refs/Third pass/ramsay2010.txt l.296-299), a different quantity from the registry alpha) with the dot-size class ranges l_xy 3-5 nm, l_z 1-2 nm give Z(1.6 K) = 0.909 central, envelope [0.839, 0.941]; the tip is 0.009 below the measured 0.95, so the paper value stays outside the envelope and the outcome stays fail. The r4 Fable review predicted pass-envelope at the (5, 2) corner via the 0.03 tolerance, but the envelope test uses the paper value itself, not the tolerance window. Not a missing input: a larger dot or a measured alpha would be needed (neither is printed in the paper)."
   - item: eta_rad
     class: M
     tol: {rel: 0.01}
@@ -98,6 +98,7 @@ reproduce:
 fits:
   - {param: structure.F_bg, fitted_to: [gamma_rate]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A009, A073, A020, A053): the err values 0.02/0.04 are percent-format in the paper ((92± 2)%, 84± 4%, (96±2)%, (93± 2)%), where-texts now quote them (checker false positives); the unsupported statement that the Fig 8 sideband width would fix the dot size is removed (Fig 8 prints no dot size); Ramsay attribution made specific", note: "text only; values, tolerances and expectations unchanged. g2 0.015 +- 0.005 is the card value; the model 0.0117 is a model output. T1 346 ps is not used in this card"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3: hom_corr expect unavailable -> fail (clipped to 1.0 instead of NaN; the NaN rule is now 2 g2^2 + 1e-6)", change: "expect unavailable -> fail (hom_corr)"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}

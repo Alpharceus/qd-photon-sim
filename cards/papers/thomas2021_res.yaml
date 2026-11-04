@@ -36,8 +36,8 @@ device:
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
       zpl_filter: {value: true, unit: "", tag: V, where: "text p.4: the HOM used a 10 pm etalon (r4 Fable 2.6), which transmits the zero-phonon line only"}
-      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
-      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: V, where: "SM Experimental Set-up (three 0.8 nm FWHM band-pass filters in the collection path: c dlambda/lambda^2 at 924.82 nm = 280.4 GHz; treated as one Lorentzian [A])"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "SM Experimental Set-up: \"The co-linearly polarized single photons are collected with a non-polarizing beam-splitter transmitting 90% of the light.\" (thomas2021.txt l.625; collection is co-linear with the excitation, not orthogonal; the cross-polarised resonant reference appears only in the Fig. 1(c,d) characterisation); eta_pol = 1"}
+      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: DR, where: "SM Experimental Set-up: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters\" (thomas2021.txt l.626) and the dot \"centred at 924.82 nm\" (l.624); arithmetic c dlambda/lambda^2 = 299792458 m/s x 0.8 nm / (924.82 nm)^2 = 280.4 GHz for ONE filter (the printed bandwidth is in nm; the GHz value is our conversion); treated as one Lorentzian [A]"}
 
 reported:
   - {id: g2_res, observable: g2_0, convention: raw, value: 0.039, err: 0.002, tag: V, where: "text p.3 (resonant reference at max brightness, 13 ps)"}
@@ -61,6 +61,7 @@ reproduce:
 fits: []
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A113): filter_fwhm_GHz V -> DR (0.8 nm printed, 280.4 GHz is the conversion); collection documented as co-linear (SM l.625)", note: "text only; no value, tolerance or expectation changed"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review optional sibling thomas2021_res: resonant 13 ps reference (g2 0.039(2), Ms 0.915(1)), same device as thomas2021 with the resonant_pulse drive"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: Ms_res checked and is NOT tautological here (gamma* is the registry class default, not derived from Ms; model 0.600 vs 0.915 fails); the circularity is the other way: thomas2021.yaml enters gamma* 0.65/ns inverted from this Ms_res, which is why thomas2021 Ms_BFL is a transfer test, not an independent one. No class change"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: setup.zpl_filter true (10 pm etalon in the HOM); Ms_res stays fail (0.600 -> 0.630)", change: "no expect change after the run (Ms_res stays fail 0.600 -> 0.630; pre-registered pass-envelope was not reached)"}

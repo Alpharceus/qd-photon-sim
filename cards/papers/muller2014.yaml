@@ -5,7 +5,7 @@ meta:
   arxiv: "1308.4257"
   extraction: .workers/devlib/papers/muller2014.yaml
   read_level: V-full
-  summary: "In(Ga)As/GaAs dot (X 1.4212 eV, E_b 2.3 meV) in a planar lambda-cavity on a 15-pair DBR, 4 K, 21.4 ps TPE pi pulse at 76 MHz; X-line g2 raw 0.022 / dark-corrected 0.004, X HOM raw 0.44 / corrected 0.71, X lifetime 400 ps"
+  summary: "In(Ga)As/GaAs dot (X 1.4212 eV, E_b 2.3 meV) in a planar lambda-cavity on a 15-pair DBR, 4 K, 21.4 ps TPE pi pulse at 76 MHz; X-line g2 raw 0.022 / dark-corrected 0.004, X HOM raw 0.44 / corrected 0.69 (Table 1 pair: 0.46 / 0.71), X lifetime 400 ps"
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "Methods (helium-flow cryostat at 4 K)"}
   material:
@@ -32,19 +32,20 @@ device:
     kind: lens_fibre_det
     params:
       NA: {value: 0.4, unit: "1", tag: E, source: "extraction lists NA 0.4 for the objective coupling into the MZI (Supp Fig 4), not necessarily the sample collection NA; assumed"}
-      eta_optics: {value: 0.012006, unit: "1", tag: DR, where: "calibrated (fits): Supp sec 2 per-APD rate 2500-3000 cts/s, midpoint 2750; with the monochromator ZPL filter (zpl_filter true) rate_detected_Hz = 114500 at the default eta_optics 0.5, so eta_optics = 0.5 x 2750/114500 (was 0.010696 without the filter flag)"}
+      eta_optics: {value: 0.012006, unit: "1", tag: DR, where: "calibrated (fits), not a paper number: Supp sec 2 prints \"ns1 =ns2 = 2500 − 3000 cts./s\" per APD, midpoint 2750; with the monochromator ZPL filter (zpl_filter true) the MODEL detected rate is about 114500 /s at the default eta_optics 0.5 (a model output, rounded, not from the paper), so eta_optics = 0.5 x 2750/114500 = 0.01201 (was 0.010696 without the filter flag)"}
       eps_int: {value: 0.05, unit: "1", tag: V, where: "text/Supp: interferometer mode overlap 0.95 +/- 0.01, so eps_int = 0.05"}
       coinc_window_ns: {value: 2.0, unit: ns, tag: E, source: "tau_c not printed; engine default window around each peak"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "Supp sec 5 and Fig 4 caption: the photons are 'spectrally filtered by a monochromator M' (50 ueV) before the fibre-coupled Mach-Zehnder (HOM) interferometer; Supp sec 5: 'after a spectral filtering with a monochromator, the signal output is detected by a fibre-coupled APD'"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "Supp sec 5: \"monochromator, the signal output is detected by a ﬁber-coupled\" (muller2014.txt l.597); Fig 4 caption: monochromator M before the interferometer (l.733); the 50 ueV resolution is from Methods (p.373-375). Passing the ZPL and rejecting the phonon sideband is the repo's reading (r4 Fable 2.6)"}
       dark_cps: {value: 250.0, unit: 1/s, tag: V, where: "Supp sec 2: APD dark count rate n_dc = 250 cts/s"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "the X line was selected with a monochromator of 50 ueV resolution (Methods, p.373-375), which passes the zero-phonon line and rejects the phonon sideband (r4 Fable 2.6)"}
 reported:
   - {id: g2_X_raw, observable: g2_0, convention: raw, value: 0.0220, err: 0.0177, tag: V, where: "Supp sec 2 eq 1; Fig 2 caption (X line, pi-pulse TPE, raw)"}
   - {id: g2_X_darkcorr, observable: g2_0, convention: intrinsic, value: 0.0037, err: 0.018, tag: V, where: "Supp sec 2 eq 3 (value); Fig 2 caption (error 0.018). APD dark-count corrected; the abstract 'g2 < 0.004' is this one, NOT the raw value"}
-  - {id: hom_X_raw, observable: hom_V, convention: raw, value: 0.44, err: 0.03, tag: V, where: "text p.3: raw two-photon interference visibility of X photons (central peak vs cross-polarised, 4 ns delay)"}
-  - {id: hom_X_corr, observable: hom_V, convention: corrected, value: 0.71, err: 0.04, tag: V, where: "text p.3 / Fig 5 caption: X indistinguishability from side-peak area ratios, corrected for dark counts and setup imperfection (mode overlap 0.95); the engine corrected convention removes g2 and eps_int (the exact inverse of the raw law)"}
+  - {id: hom_X_raw, observable: hom_V, convention: raw, value: 0.44, err: 0.03, tag: V, where: "text p.3: \"photon interference visibilities of 0. 58±0. 04 for XX and 0. 44±0. 03 for X\" (muller2014.txt l.284); same 0. 44 ± 0. 03 in the Eq. 16 analysis, Table 2. PAIRS WITH hom_X_corr 0.69 (text p.3: corrected \"0. 69 ± 0. 04 for X\")"}
+  - {id: hom_X_corr, observable: hom_V, convention: corrected, value: 0.69, err: 0.04, tag: V, where: "text p.3: \"we obtain the corrected degrees of indistinguishabilities to be 0 . 84 ± 0. 05 for XX and 0. 69 ± 0. 04 for X\" (l.314); Table 2 'APD and BS corrected 0. 69 ± 0. 04'. Paired with the raw 0.44 +- 0.03. Audit correction: was 0.71 +- 0.04, which is the side-peak-area result paired with raw 0.46 (hom_X_corr_t1). The engine corrected convention removes g2 and eps_int (the exact inverse of the raw law)"}
+  - {id: hom_X_raw_t1, observable: hom_V, convention: raw, value: 0.46, err: 0.02, tag: V, where: "Table 1: 'Raw data 0. 46 ± 0. 02 0. 59 ± 0. 02' (X, XX; muller2014.txt l.808), the side-peak-area analysis. PAIRS WITH hom_X_corr_t1 0.71"}
+  - {id: hom_X_corr_t1, observable: hom_V, convention: corrected, value: 0.71, err: 0.04, tag: V, where: "Table 1: 'APD and BS corrected 0. 71 ± 0. 04 0. 86 ± 0. 03' (l.810); text p.3: \"The degree of indistinguishability can be independently checked with the relative intensities of the side peaks ... 0 . 86 ± 0. 03 for XX and 0. 71 ± 0. 04 for X\". Paired with the raw 0.46 +- 0.02"}
   - {id: tau_X, observable: tau_ps, value: 400.0, err: 20.0, tag: V, where: "Supp sec 3: X lifetime T1, 3-level fit convolved with the 50 ps APD response"}
-  - {id: rate_det_X, observable: rate_detected_Hz, value: 2750.0, err: 250.0, tag: V, where: "Supp sec 2: n_s1 = n_s2 = 2500-3000 cts/s per APD"}
+  - {id: rate_det_X, observable: rate_detected_Hz, value: 2750.0, err: 250.0, tag: DR, where: "Supp sec 2 prints \"ns1 =ns2 = 2500 − 3000 cts./s\" per APD (muller2014.txt l.538); value = midpoint (2500 + 3000)/2 = 2750, err = half-width (3000 − 2500)/2 = 250"}
 reproduce:
   - item: tau_X
     class: C
@@ -71,17 +72,30 @@ reproduce:
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.04 (0.08). Envelope over gamma* in [0, 3.1] /ns. The model X photon carries the XX-to-X cascade jitter factor Gamma_XX/(Gamma_XX+Gamma_X) from tpe_cascade_hom"
     expect: fail
-    reason: "r4-hom: pre-registered pass (Fable: 0.645 at gamma* 0 is inside 2 sigma of 0.71(4)); obtained central 0.399 (gamma* range midpoint 1.55 /ns) with envelope [0.289, 0.647]: the cascade jitter cap 0.645 (Simon and Poizat 2005) sits just below the paper value, which lies outside the envelope, so the item fails at the central point and is not a pass-envelope. Fable's pass applies to gamma* = 0 only, not to the range midpoint."
+    reason: "r4-hom: pre-registered pass (Fable: 0.645 at gamma* 0 against the then-listed 0.71(4)); obtained central 0.399 (gamma* range midpoint 1.55 /ns) with envelope [0.289, 0.647]. The cascade jitter cap Gamma_XX/(Gamma_XX + Gamma_X) = 0.645 here (card rate ratio 1.818/2.818) is the trace-purity bound of Scholl et al., PRL 125, 233605 (2020), Eq. 3: \"For QDs where typically γXX ¼ 2γX, the maximum achievable trace purity is limited to ∼0.66.\" (scholl2020.txt l.139-140; not Simon and Poizat 2005, which does not contain it). After the audit correction the paired paper value is 0.69 +- 0.04 (raw 0.44; Table 2), outside the envelope, so the item fails at the central point and is not a pass-envelope. The Table 1 pair (0.71, raw 0.46) is the hom_X_corr_t1 item."
   - item: hom_X_raw
     class: M
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the printed 0.03 (0.06); the paper raw value includes the 0.95 interferometer mode overlap, now carried by setup.eps_int = 0.05"
     expect: pass-envelope
     reason: "r4-hom: pre-registered pass (Fable: central ~0.42 vs 0.44(3)); obtained central 0.355 (gamma* range midpoint 1.55 /ns), envelope [0.257, 0.576] contains 0.44(3): pass-envelope, as before the filter input but now centred 0.09 higher (0.264 -> 0.355)."
+  - item: hom_X_corr_t1
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.04 (0.08), same as hom_X_corr; Table 1 side-peak-area pair (raw 0.46 +- 0.02 with corrected 0.71 +- 0.04)"
+    expect: fail
+    reason: "R4 corrections b (audit A039): pair B, run after adding the item (not pre-registered): central 0.399, envelope [0.289, 0.647] does not contain the paper 0.71; same model number as hom_X_corr, fails like it"
+  - item: hom_X_raw_t1
+    class: M
+    tol: {k_sigma: 2}
+    tol_reason: "2 sigma of the printed 0.02 (0.04), the Table 1 raw X visibility"
+    expect: pass-envelope
+    reason: "R4 corrections b (audit A039): pair B of the printed values, run after adding the item (not pre-registered): central 0.358, envelope [0.259, 0.579] contains the Table 1 raw 0.46 +- 0.02; same model number as hom_X_raw"
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_X]}
   - {param: setup.eta_optics, fitted_to: [rate_det_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit correction (A039): hom_X_corr value 0.71 -> 0.69 per text p.3 \"corrected degrees of indistinguishabilities ... 0. 69 ± 0. 04 for X\" (pairs with raw 0.44 +- 0.03); Table 1 pair raw 0.46 +- 0.02 / corrected 0.71 +- 0.04 added as hom_X_raw_t1 / hom_X_corr_t1", note: "A027: cascade bound attribution Simon and Poizat 2005 -> Scholl 2020 Eq. 3. rate_det_X V -> DR (midpoint of the printed range 2500-3000). Duplicate zpl_filter key removed. Outcomes: hom_X_corr fail (central 0.399, envelope [0.289, 0.647]), hom_X_corr_t1 fail, hom_X_raw and hom_X_raw_t1 pass-envelope; no tolerance changed"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: setup.zpl_filter true (monochromator, 50 ueV, p.373-375 raw); hom_X_corr stays fail (envelope top 0.647 < 0.71), hom_X_raw stays pass-envelope; the corrected convention now removes eps_int too (exact inverse of the cross-polarised raw law), as the paper's mode-overlap correction does", change: "no expect change after the run (hom_X_corr fail, hom_X_raw pass-envelope; both pre-registered as pass); eta_optics recalibrated 0.010696 -> 0.012006 because zpl_filter lowers the collected rate by Z"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 14: setup.eps_int 0.05 V (mode overlap 0.95+-0.01); setup.coinc_window_ns 2.0 ns tag E (tau_c not printed); g2_X_raw and hom_X_raw expect fail -> pass per engine fx2a (4ef6528); reasons rewritten"}

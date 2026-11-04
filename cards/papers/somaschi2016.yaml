@@ -26,8 +26,9 @@ device:
     kind: generic_cavity
     params:
       F_P: {value: 9.8, unit: "1", tag: V, where: "p.5 text (Purcell factor F_P = 9.8 quoted for the resonant device)"}
-      Q: {value: 11100, unit: "1", tag: V, where: "SI Fig S3 (QD3 H-mode reflectivity dip: kappa = 120 ueV, Q = 11100); R4: replaces the main-text Q ~ 12000 of QD1/QD2"}
-      mode_split_ueV: {value: 90.0, unit: ueV, tag: V, where: "text p.4 (the orthogonally polarised H cavity mode lies ~90 ueV from the resonant V mode)"}
+      Q: {value: 11100, unit: "1", tag: V, where: "SI: \"The FWHM of the reflectivity dip gives the total cavity damping, κ = 120 µeV, corresponding to a Q-factor of Q = 11100.\" (device QD3, Fig. S3 is the reflectivity of the H polarized cavity mode); R4: replaces the main-text Q ~ 12000 of QD1/QD2. NOTE: this width is measured on the reflectivity dip of the H polarized cavity mode (SI Fig. S3) and is used for the V mode as an [A]"}
+      mode_split_ueV: {value: 90.0, unit: ueV, tag: V, where: "p.4 text: \"Because of the 1D wires connecting the pillar to the frame, the cavity also presents a small polarization splitting in the 90µeV range. The laser polarization is set along one direction of the cavity axes (named V), which is roughly oriented 45° with respect to the QD axes. A V polarization thus creates a coherent superposition of both exciton states that temporally evolves toward the orthogonal state coupled to the H polarized cavity mode.\" (somaschi2016.txt l.175-181); SI: \"For resonant excitation experiments, the laser energy is set to the V polarized cavity mode energy.\" (somaschi2016_SI.txt l.67-68)"}
+      resonant_mode: {value: V, unit: enum, tag: DR, where: "SI: \"For resonant excitation experiments, the laser energy is set to the V polarized cavity mode energy.\" (somaschi2016_SI.txt l.67-68), the excitation is strictly resonant with the dot, so the dot sits on the V mode; main text: \"the strong Purcell effect in the V mode\" (somaschi2016.txt l.204-205). Opt-in leaf, V is the default (bit-identical to the pre-existing behaviour); H is not used by this card. NOTE: kappa = 120 ueV (Q = 11100, SI Fig. S3) is the width measured on the H-mode reflectivity dip and is used here for the V mode as an [A]"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: A, source: "F_P is quoted at cavity resonance; the dot is Stark-tuned onto the mode by bias (p.3)"}
       eta_out: {value: 0.70, unit: "1", tag: V, where: "SI Fig S3 (QD3: Rmin gives eta_out = kappa_top/kappa = 0.7 +/- 0.05; beta x eta_out ~ 0.63 for QD3, p.5, consistent)"}
   drive:
@@ -37,15 +38,15 @@ device:
       fwhm_ps: {value: 15.0, unit: ps, tag: V, where: "p.4 text (temporal width of 15 ps; taken as intensity FWHM, the paper does not say)"}
       area_pi: {value: 0.866, unit: pi, tag: DR, where: "p.5 Fig 3 caption: g2 measured at 0.75 P_pi; area = sqrt(0.75) pi = 0.866 pi assuming power proportional to area squared. Brightness is quoted near the pi pulse (p.5), so it is compared at 0.866 pi (inversion 0.95)"}
       detuning_meV: {value: 0.0, unit: meV, tag: V, where: "p.4 text (strictly resonant excitation)"}
-      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text (laser pulse cycle 12.2 ns; 1/12.2 ns = 81.97 MHz)"}
+      f_rep_MHz: {value: 82.0, unit: MHz, tag: DR, where: "p.3 text: \"SPS is excited twice every laser pulse cycle (12.2 ns) with a delay of 3 ns.\"; arithmetic 1 / 12.2 ns = 81.97 MHz, rounded to 82"}
       cross_pol: {value: true, unit: "", tag: V, where: "p.4 text (V excitation, H collection, extinction ~1e5)"}
       pol_angle_deg: {value: 45.0, unit: deg, tag: V, where: "p.4 text (V excitation at ~45 deg to the QD axes)"}
       laser_leak: {range: [0.0, 0.003], unit: "1", tag: DR, where: "p.4 few % x etalon/pulse bandwidth"}
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: V, where: "p.4 text (10 ueV / 7 pm etalon filter on the collected light; the 110 ueV pillar mode also filters the sideband)"}
-      filter_fwhm_GHz: {value: 2.418, unit: GHz, tag: V, where: "SI Methods (resonant excitation): etalon of 10 ueV bandwidth (= 2.418 GHz) and 70% peak transmission on the crossed-polarisation fluorescence; the 70% is part of the setup efficiency, not entered"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "p.4 text: \"an etalon filter with 10 µeV (7 pm) bandwidth\" (somaschi2016.txt l.184-185)"}
+      filter_fwhm_GHz: {value: 2.418, unit: GHz, tag: DR, where: "SI: \"with an etalon with 10 µeV bandwidth (transmission 70%)\" (somaschi2016_SI.txt l.70); arithmetic 10 ueV / (h = 4.1357 ueV/GHz) = 2.418 GHz; the 70% transmission is part of the setup efficiency, not entered"}
 reported:
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.0028, err: 0.0012, tag: V, where: "p.4 text / p.5 Fig 3b caption / abstract (QD3 at 0.75 P_pi)", note: "measured value after the etalon, no correction stated"}
   - {id: M_raw, observable: hom_I, convention: raw, value: 0.989, err: 0.004, tag: V, where: "p.4 text (same-polarisation HOM, 3 ns delay, without g2 correction)"}
@@ -78,7 +79,7 @@ reproduce:
     tol: {k_sigma: 2}
     tol_reason: "2 sigma of the paper's 0.015 (+/-0.03). Written before the run: a two-level model with F_P 9.8, eta_out 0.70 and no polarisation-geometry loss is expected to give about 0.6, not 0.15, because the paper attributes the low value to p_X = 0.23 (FSS rotation vs strong Purcell, p.5), which is not modelled and was deliberately NOT entered as an input"
     expect: pass
-    reason: "merge of r4-filter with r4-cavity/r4-hom (combined model, not pre-registered by either branch): model 0.131 (envelope 0.130-0.131) vs 0.154 +/- 0.015, inside 2 sigma. All inputs paper-stated (SI kappa, eta_out, F_P; FSS 15 ueV, 45 deg, H mode 90 ueV); the cavity-collected Z double-count fix (r4-cavity A2) raises the filter-branch value 0.117 to 0.131. Inside Fable's predicted 0.12-0.17."
+    reason: "R4 corrections b: the V assignment is supported by the SI (laser set to the V polarized cavity mode energy), so the card runs V only; the opt-in resonant_mode H would give 0.426 (not used). Original note: merge of r4-filter with r4-cavity/r4-hom (combined model, not pre-registered by either branch): model 0.131 (envelope 0.130-0.131) vs 0.154 +/- 0.015, inside 2 sigma. All inputs paper-stated (SI kappa, eta_out, F_P; FSS 15 ueV, 45 deg, H mode 90 ueV); the cavity-collected Z double-count fix (r4-cavity A2) raises the filter-branch value 0.117 to 0.131. Inside Fable's predicted 0.12-0.17."
   - item: eta_prep_pred
     class: P
     observable: eta_prep
@@ -101,4 +102,5 @@ history:
   - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 filter + FSS: fss_ueV 15 V, pol_angle 45 V, mode_split 90 V, filter 2.418 GHz V (SI), Q 11100 V and eta_out 0.7 V (SI Fig S3)", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw fail->pass, M_raw fail->pass-envelope, brightness_res fail->pass-envelope (0.54->~0.12-0.17), M_corr stays pass-envelope"}
   - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: brightness_res pass-envelope -> fail (honest flip)", note: "obtained: g2_raw 0.00312 pass (Fable 0.0032), M_raw 0.918 [0.854, 1.000] pass-envelope, M_corr pass-envelope, brightness_res 0.117 vs 0.154 fail; two-level 0.54 -> 0.117 once the FSS V-system and the 90 ueV H-mode split are entered"}
   - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "null-model gate: g2_raw flagged weak", note: "the expectation (pass) was pre-registered and the number did not change (0.0031); the failing gate was 'every M pass the null model also passes is flagged weak': the null g2 = 0 passes the abs 0.005 floor against 0.0028. g2_raw now carries weak: true with a reason; tolerance untouched"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit correction (A067) refined by the SI: mode_split where-text now quotes the main text l.175-181 and SI l.67-68 verbatim; new structure.resonant_mode leaf (V default, H opt-in) set to V, DR with the SI quote (laser energy set to the V polarized cavity mode energy); the both-assignments envelope is dropped", note: "for the record the H assignment gives g2_raw 0.003125, M_raw 0.918, M_corr 0.924, brightness_res 0.426 (fail), V gives 0.003119 / 0.918 / 0.924 / 0.1305; no value, tolerance or expectation changed; kappa 120 ueV is the H-mode dip width used for V as an [A]; filter_fwhm_GHz V -> DR (10 ueV printed, 2.418 GHz is the conversion); f_rep where-text now verbatim; pillar 110 ueV text removed (not in the paper)"}
   - {date: 2026-11-03, by: "orchestrator (Opus) merge r4-filter", reason: "combined-model outcome: brightness_res fail -> pass (0.131 vs 0.154 +/- 0.015); recorded after the run, not pre-registered by either branch"}

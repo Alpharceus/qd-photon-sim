@@ -14,7 +14,7 @@ _shared:
   gaas_rho: &gaas_rho {value: 5370.0, unit: kg/m^3, tag: E, source: "bulk GaAs density, Krummheuer 2002 class [E]"}
   gaas_c:   &gaas_c   {value: 5110.0, unit: m/s, tag: E, source: "GaAs LA sound velocity, Krummheuer 2002 class [E]"}
   gaas_nlo: &gaas_nlo {value: 36.0, unit: meV, tag: E, source: "GaAs LO phonon energy [E]"}
-  alpha0:   &alpha0   {value: 0.0, unit: ps^2, tag: A, source: "sentinel: 0 = compute alpha from D_c, D_v, rho, c_LA, l_xy, l_z from the deformation potentials, density, sound speed and confinement lengths. Pin to e.g. 0.027 ps^2 (Ramsay-class InGaAs [E])"}
+  alpha0:   &alpha0   {value: 0.0, unit: ps^2, tag: A, source: "sentinel: 0 = compute alpha from D_c, D_v, rho, c_LA, l_xy, l_z from the deformation potentials, density, sound speed and confinement lengths. Pin to e.g. 0.027 ps^2 (InGaAs, Ramsay et al., PRL 105, 177402 (2010) [DR]: alpha = hbar A/(pi k_B) with A = 11.2 fs/K and hbar w_c = 1.44 meV, refs/Third pass/ramsay2010b_arxiv.txt l.172-195; w_c = 2.2 /ps)"}
   knr0:     &knr0     {value: 0.0, unit: 1/ns, tag: A, source: "assumption: no photonless escape; set > 0 for non-radiative loss [A]"}
   sd0:      &sd0      {value: 0.0, unit: ueV, tag: A, source: "assumption: no spectral diffusion (transform-limited-class dot); raise for charge-noise-limited devices [A]"}
   tausd0:   &tausd0   {value: 10.0, unit: ns, tag: A, source: "assumed spectral-diffusion correlation time; only matters with sigma_sd > 0 [A]"}

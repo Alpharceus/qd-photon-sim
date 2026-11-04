@@ -16,7 +16,7 @@ device:
     params:
       lambda_nm: {value: 924.82, unit: nm, tag: V, where: "text supplement (QD emission centred at 924.82 nm)"}
       charge_state: {value: "X", tag: V, where: "text p.2 (neutral exciton, device A3; charged exciton only for Fig 2 on Sample B, not carded)"}
-      gamma_star_4K_ns: {value: 0.65, unit: "1/ns", tag: DR, where: "text p.4: resonant Ms = 0.915(1) (g2-corrected); inverted with I = Gamma/(Gamma + gamma*_repo), Gamma = (1 + F_P)/tau_bare at the MIDPOINT F_P = 6 of the unstated class range [2, 10] [E] and tau_bare 1.0 ns (registry class): Gamma = 7/ns, gamma*_repo = Gamma (1/0.915 - 1) = 0.65/ns. The F_P midpoint is an estimate, so the value inherits that uncertainty (F_P 2 -> 0.28, F_P 10 -> 1.02 /ns)"}
+      gamma_star_4K_ns: {value: 0.65, unit: "1/ns", tag: DR, where: "text p.4: \"Ms = 0.915± 0.001\" (thomas2021.txt l.311, resonant, g2-corrected); inverted with I = Gamma/(Gamma + gamma*_repo), Gamma = (1 + F_P)/tau_bare at the MIDPOINT F_P = 6 of the unstated class range [2, 10] [E] and tau_bare 1.0 ns (registry class): Gamma = 7/ns, gamma*_repo = Gamma (1/0.915 - 1) = 0.65/ns. The F_P midpoint is an estimate, so the value inherits that uncertainty (F_P 2 -> 0.28, F_P 10 -> 1.02 /ns)"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured resonant coherence at the operating temperature; the non-resonant a_ac slope would double count it"}
   structure:
     kind: generic_cavity
@@ -28,7 +28,7 @@ device:
   drive:
     kind: phonon_assisted
     params:
-      detuning_meV: {value: 0.580, unit: meV, tag: DR, where: "text p.4 best-brightness point dlambda 0.4 nm at 924.82 nm: dE = 1340.6 meV x 0.4/924.82 = 0.580 meV; paper convention Delta = omega_L - omega_X, blue positive"}
+      detuning_meV: {value: 0.580, unit: meV, tag: DR, where: "text p.4: \"∆λ = 0.4 nm and a pulse duration of τ = 19.5 ps\" (thomas2021.txt l.366), dot at \"924.82 nm\" (l.624); arithmetic E = 1239.84 eV nm / 924.82 nm = 1340.6 meV, dE = 1340.6 meV x 0.4 nm / 924.82 nm = 0.580 meV; paper convention Delta = omega_L - omega_X, blue positive"}
       area_pi: {range: [5.0, 20.0], unit: pi, tag: E, source: "absolute pulse area not stated: Fig 2 x-axis is relative intracavity area; class range from the registry phonon_assisted default [E]"}
       fwhm_ps: {value: 19.5, unit: ps, tag: V, where: "text p.4 (19.5 ps best-brightness point); convention (intensity vs field FWHM) not stated in the paper: taken as the pulse duration reported"}
       f_rep_MHz: {value: 81.0, unit: MHz, tag: V, where: "text supplement (81 MHz repetition rate)"}
@@ -36,8 +36,8 @@ device:
     kind: lens_fibre_det
     params:
       NA: {range: [0.5, 0.9], unit: "1", tag: E, source: "objective NA not stated in the extraction or the text read; class range for a micropillar first lens [E], envelope only"}
-      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.2 (co-polarised collection along the linear dipole, extraction 'collection parallel'; eta_pol = 1; resonant reference in cross-polarisation)"}
-      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: V, where: "SM Experimental Set-up (three 0.8 nm FWHM band-pass filters in the collection path: c dlambda/lambda^2 at 924.82 nm = 280.4 GHz; treated as one Lorentzian [A])"}
+      eta_pol: {value: 1.0, unit: "1", tag: DR, where: "SM Experimental Set-up: \"The co-linearly polarized single photons are collected with a non-polarizing beam-splitter transmitting 90% of the light.\" (thomas2021.txt l.625; collection is co-linear with the excitation, not orthogonal; the cross-polarised resonant reference appears only in the Fig. 1(c,d) characterisation); eta_pol = 1"}
+      filter_fwhm_GHz: {value: 280.4, unit: GHz, tag: DR, where: "SM Experimental Set-up: \"Three high-transmission (∼ 95% each), 0.8 nm FWHM, high-extinction band-pass ﬁlters\" (thomas2021.txt l.626) and the dot \"centred at 924.82 nm\" (l.624); arithmetic c dlambda/lambda^2 = 299792458 m/s x 0.8 nm / (924.82 nm)^2 = 280.4 GHz for ONE filter (the printed bandwidth is in nm; the GHz value is our conversion); treated as one Lorentzian [A]"}
 
 reported:
   - {id: g2_BFL, observable: g2_0, convention: raw, value: 0.046, err: 0.001, tag: DR, where: "text p.4 and abstract: P = 1 - g2(0) = 0.954 +/- 0.001 at dlambda 0.4 nm, tau 19.5 ps (g2 implied by purity)"}
@@ -75,11 +75,12 @@ reproduce:
     tol: {abs: 0.05}
     tol_reason: "model-level tolerance +/-0.05 on the occupation; BFL_best itself is dropped from the ledger because eta_out 0.65 (the paper's eta_ext) already contains beta, so the first-lens brightness would be the input times the occupation; the occupation is the independent number (0.50/0.65)"
     expect: pass
-    reason: "r4-hom (Fable 2.4): the occupation is now the expected excitation count n_exc (the old P_X at the end of the +-8 sigma window had lost e^(-66/143) = 63 % of the prepared population to radiative decay): central 0.786 (envelope 0.27-0.99, set by the unknown 5-20 pi pulse area) vs 0.77 within abs 0.05, as Fable predicted (~0.75). Before: 0.395, fail."
+    reason: "r4-hom (Fable 2.4): the occupation is now the expected excitation count n_exc (the old P_X at the end of the +-8 sigma window had lost e^(-66/143) = 63 % of the prepared population to radiative decay; 143 ps is the MODEL total decay time 1 ns/(1 + F_P 6) at the F_P midpoint, not a paper number): central 0.786 (envelope 0.27-0.99, set by the unknown 5-20 pi pulse area) vs 0.77 within abs 0.05, as Fable predicted (~0.75). Before: 0.395, fail."
 fits:
   - {param: material.gamma_star_4K_ns, fitted_to: [Ms_BFL]}
 
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance and corrections (A113, A174, DR items): filter_fwhm_GHz V -> DR (the paper prints 0.8 nm; 280.4 GHz is the conversion); collection documented as co-linear (SM l.625), not orthogonal; detuning and gamma_star where-texts quote the paper lines; 143 ps identified as a model number", note: "text only; values, tolerances and expectations unchanged. A075: pQD_BFL 0.77 stays a documented DR (0.50 first-lens brightness / 0.65 extraction), the paper prints 0.50 at 19.5 ps"}
   - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.4: inversion is n_exc, not the end-of-window population; pQD_BFL expect fail -> pass (0.395 -> 0.786)", change: "expect fail -> pass (pQD_BFL)"}
   - {date: 2026-10-12, by: "Haiku 5.5 (claude-haiku-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 5: detuning_meV -> 0.580 DR (1340.6 x 0.4/924.82); fwhm_ps -> 19.5 V; BFL_best removed from reproduce (eta_ext 0.65 already contains beta; kept in reported); added pQD_BFL (inversion 0.77 = 0.50/0.65, DR, M, abs 0.05)"}
