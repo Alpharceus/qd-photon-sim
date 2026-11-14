@@ -14,7 +14,7 @@ meta:
   notes:
     - "Temperature is not stated in the main text (supplement); 4 K is assumed [A]."
     - "Lifetime and Purcell: 'lifetime about 500 ps owing to a Purcell enhancement of 4.3(8)' (supp I). Bare lifetime = 0.5 ns x 4.3 = 2.15 ns and F_P (additional) = 3.3 are both derived from those two numbers, so the lifetime is a calibration (class C), not a test; the 4.3 is the paper's own ratio to a reference lifetime, not an independent measurement."
-    - "gamma*: the single-peak linewidth 4.94 GHz (Gaussian-dominated Voigt, doublet from line jumps, Lorentzian fixed at the 0.32 GHz Fourier limit) is entered as a Lorentzian: gamma* = 2 pi x 4.94 GHz - Gamma_total = 31.04 - 2.0 = 29.0 /ns [DR]. This overstates the dephasing seen on the 6.6 ns timescale (the paper says only broadening within the photon separation reduces V_TPI), so the HOM item is a real test with a known bias toward low V."
+    - "gamma*: r4 red-team item 6: the paper fixes the Lorentzian at the Fourier limit and the 4.94 GHz single-peak line is Gaussian-dominated: \"linewidth of Γ FWHM = 4.94(5) GHz. As the Gaussian component of the Voigt profile dominates, the Lorentzian component has to be fixed to a value of 0 .32 GHz cor- responding to the Fourier limit. The influence of the\". It is therefore entered ONCE, as the Gaussian spectral-diffusion width material.sigma_sd_ueV (8.68 ueV std); the Lorentzian pure dephasing gamma* is 0 (Lorentzian = Gamma_total = 2.0 /ns, the Fourier limit 0.32 GHz) and setup.hom_fast_fraction is removed (it only distributed the double-entered Lorentzian). The engine linewidth_ueV is the Lorentzian width only, so linewidth_peak (20.43 ueV) is no longer reproduced (class M, fail)."
     - "Pulse areas: only the powers (P1 = 350 nW, P2 = 700 nW at 76 MHz, ratio 2) are given, not the absolute areas or the pulse widths. The operating point is the edge of the SUPER resonance found by the Fig 2b scan, so the areas are set to the model inversion maximum at area2/area1 = sqrt(2) (same pulse width) [A, decision; rejected: an area range 0-20 pi, under which any g2 or brightness item would pass vacuously]. Pulse widths stay at the class 5 ps default."
     - "Setup: the engine B_fibre excludes eta_optics, so the like-for-like quantity is the raw detected rate CR_raw = 6.50 MHz (rate_detected_Hz = f B_fibre eta_optics eta_det); the paper end-to-end efficiency 5.36 % = CR_end/f with CR_end = CR_raw/0.768 x (1 - g2/2) = 8.14 MHz is kept in this note only; the optics split is in the supplement. eta_optics 0.361 is borrowed from the same group's Nawrath 2022 setup (6.3 % end-to-end / 17.4 % first-lens) [A]."
 device:
@@ -23,14 +23,16 @@ device:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {value: 1551.0, unit: nm, tag: V, where: "text p.2 and p.3: positively charged exciton at 1551 nm"}
-      tau_bare_ns: {value: 2.15, unit: ns, tag: DR, where: "text p.2: lifetime about 500 ps and Purcell enhancement 4.3(8): 0.5 ns x 4.3 = 2.15 ns"}
+      tau_bare_ns: {value: 2.15, unit: ns, tag: DR, where: "text p.2: 'a lifetime of ~ 500 ps owing to a Purcell enhancement of 4 .3(8)' (stray space is in the extracted text; 4.3 +- 0.8). Arithmetic [DR]: 0.5 ns x 4.3 = 2.15 ns (2.15 is not printed)"}
       eta_blink: {value: 0.67, unit: "1", tag: V, where: "text p.5: QD optically active 67 percent of the time under SUPER pumping"}
       charge_state: {value: "X+", unit: "", tag: V, where: "text p.2: positively charged exciton"}
-      gamma_star_4K_ns: {value: 29.0, unit: "1/ns", tag: DR, where: "text p.4: single-peak linewidth 4.94 GHz FWHM: 2 pi x 4.94 - Gamma_total (2.0 /ns) = 29.0 /ns, treated as a Lorentzian (see notes)"}
+      gamma_star_4K_ns: {value: 0.0, unit: "1/ns", tag: V, where: "text p.4: \"component of the Voigt profile dominates, the Lorentzian component has to be fixed to a value of 0 .32 GHz cor- responding to the Fourier limit. The influence of the\" (joos2023.txt): the Lorentzian is fixed at the Fourier limit 0.32 GHz = Gamma_total (2.0 /ns), so the pure-dephasing Lorentzian gamma* = 0; the 4.94 GHz Gaussian-dominated width is entered once, as sigma_sd_ueV"}
+      sigma_sd_ueV: {value: 8.68, unit: ueV, tag: DR, where: "text p.4 / Fig 2d: 'single-peak linewidth of Gamma FWHM = 4.94(5) GHz. As the Gaussian component of the Voigt profile dominates'. Arithmetic [DR]: 4.94 GHz x 4.1357 ueV/GHz (Planck constant, ours) = 20.43 ueV FWHM; / 2.355 (= 2 sqrt(2 ln 2), ours) = 8.68 ueV standard deviation (slow line jumps); 20.43, 2.355 and 8.68 are not printed"}
+      tau_sd_ns: {range: [0.1, 6.6], unit: ns, tag: A, source: "the paper does not state tau_sd; the whole range is an assumption [A]. Context: the paper (joos2023.txt) reads (fragment) \"is only affected by the amount of broadening taking place on the time scale of the photon separation [37], i.e. 6.6 ns for the measurements presented here. This is\", which says which diffusion matters for the HOM overlap (the part acting within the 6.6 ns photon separation), not what tau_sd is; and (fragment) \"lar, this indicates that spectral diffusion (and line jumps) take place on a shorter time scale for the SUPER than\" (the sentence continues with the LA branch). The range [0.1, 6.6] ns is bounded above by that separation by our choice and below by 0.1 ns: no source on disk covers a ns-scale diffusion (Kuhlmann 2013, the only on-disk anchor, prints 0.05 s charge-noise correlation time and 8 us spin noise, both above this range)"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 3.3, unit: "1", tag: DR, where: "text p.2: Purcell enhancement 4.3(8) as the total decay-rate ratio, minus 1 for the additional ratio"}
+      F_P: {value: 3.3, unit: "1", tag: DR, where: "text p.2: 'a Purcell enhancement of 4 .3(8)'. Arithmetic [DR]: taken as the total decay-rate ratio (our reading, the paper does not define it) minus 1 for the additional ratio: 4.3 - 1 = 3.3 (3.3 is not printed)"}
       eta_table: {value: "0.6:0.85", unit: "", tag: A, source: "no FDTD figure in the joos main text; same platform as Nawrath 2022 whose FDTD whole-device first-lens efficiency into NA 0.6 is above 85 percent (p.2 there); total semantics"}
       table_mode: {value: total, unit: enum, tag: E, source: "same-platform whole-device FDTD extraction, FX3a table_mode total; F_P 3.3 only sets the rate"}
   drive:
@@ -52,9 +54,10 @@ device:
       eta_optics: {value: 0.361, unit: "1", tag: A, source: "borrowed from Nawrath 2022 (end-to-end 6.3 % / first-lens 17.4 %): optics split of this setup is in the supplement"}
       eta_fibre: {value: 1.0, unit: "1", tag: A, source: "inside eta_optics"}
       eta_det: {value: 0.768, unit: "1", tag: V, where: "text p.3: detection efficiency 76.8 percent"}
+      hom_delay_ns: {value: 6.6, unit: ns, tag: V, where: "text p.4 / Fig 2 caption: photon separation 6.6 ns in the TPI interferometer"}
 reported:
   - {id: tau_dev, observable: tau_ps, value: 500.0, tag: V, where: "text p.2: lifetime of about 500 ps (approximate, no error), supp I"}
-  - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 4.94(5) GHz = h x 4.94 GHz = 20.43 ueV; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
+  - {id: linewidth_peak, observable: linewidth_ueV, value: 20.43, tag: DR, where: "text p.4 / Fig 2d: single-peak FWHM 'Gamma FWHM = 4.94(5) GHz' x h (4.1357 ueV/GHz, ours) = 20.43 ueV [DR]; Gaussian-dominated Voigt of a doublet (splitting 6.19 GHz), FPI resolution 70 MHz"}
   - {id: g2_super_raw, observable: g2_0, convention: raw, value: 0.076, err: 0.001, tag: V, where: "text p.3-4 / Fig 2c: g2(0) = 0.076(1), coincidences integrated over one repetition period, dark counts corrected only, vs the Poisson-level peak"}
   - {id: rate_raw_super, observable: rate_detected_Hz, convention: intrinsic, value: 6500000.0, tag: V, where: "text p.3: raw detected count rate CR_raw = 6.50 MHz at 152 MHz (end-to-end 5.36 percent = CR_raw / 0.768 x (1 - g2/2) / f); no error given"}
   - {id: hom_V_super, observable: hom_V, convention: raw, value: 0.104, err: 0.014, tag: V, where: "text p.4 / Fig 2 caption: V_TPI = 0.104(14), central-peak area parallel vs orthogonal, 6.6 ns separation, unfiltered"}
@@ -68,16 +71,18 @@ reproduce:
     tol_reason: "bare lifetime and F_P are both derived from this ~500 ps and the Purcell 4.3, so the total lifetime agrees by construction; 5 percent numerical floor"
     expect: pass
   - item: linewidth_peak
-    class: C
+    class: M
     tol: {rel: 0.05}
-    tol_reason: "gamma* is entered from this linewidth (2 pi x 4.94 GHz minus the radiative rate), so the model linewidth agrees by construction; 5 percent numerical floor"
-    expect: pass
+    unavailable_reason: "no Voigt linewidth observable; Lorentzian-only linewidth_ueV is not comparable"
+    tol_reason: "5 percent relative, unchanged. r4 red-team item 6: gamma* is no longer derived from this linewidth (the paper fixes the Lorentzian at the Fourier limit, so gamma* = 0), and the engine linewidth_ueV is the Lorentzian hbar(Gamma + k + gamma*) only: it does not include the Gaussian sigma_sd that carries the 4.94 GHz. The item is therefore a comparison of a Lorentzian-only width with a Gaussian-dominated Voigt width, no longer a calibration"
+    expect: unavailable
+    reason: "r4 red-team item 6: model 1.316 ueV (= hbar Gamma_total, the Fourier-limited Lorentzian 0.32 GHz) vs 20.43 ueV. The engine's linewidth_ueV does not contain the Gaussian spectral-diffusion width (material.sigma_sd_ueV 8.68 ueV std = 20.43 ueV FWHM), which is where the 4.94 GHz is now entered once. Was class C pass by construction while the same 4.94 GHz was also entered as a Lorentzian gamma* 29 /ns (double count). Model gap: no Gaussian / Voigt linewidth observable"
   - item: g2_super_raw
     class: M
     tol: {k_sigma: 2, abs: 0.02}
     tol_reason: "model-level tolerance: g2 +/-0.02 at model level (the paper +/-0.001 is statistical only); the raw value integrates a full period against the Poisson peak, so it contains the re-excitation and the phonon-pumped background that the model computes"
     expect: fail
-    reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (each laser alone gives about a tenth of the SUPER intensity, text p.3) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
+    reason: "model 0.006 vs 0.076: the raw value integrates a full period against the Poisson level and so contains the incoherent single-laser phonon-pumped emission (Fig. 2a plots the single-laser components with a 'x10' label, i.e. each laser alone is of order a tenth of the SUPER spectrum: read from the figure label, not printed in the text) and any laser/FWM leak; neither is modelled (setup.laser_leak unstated, not entered), and the pulse widths are unstated. Missing inputs plus model gap."
   - item: rate_raw_super
     class: M
     tol: {rel: 0.5}
@@ -88,19 +93,31 @@ reproduce:
     class: M
     tol: {k_sigma: 2, abs: 0.03}
     tol_reason: "2 sigma of the paper 0.014 is 0.028; 0.03 absolute as the model-level visibility tolerance. The Lorentzian-equivalent gamma* from the 4.94 GHz Gaussian-dominated line over-dephases, so the model is biased low; the test is whether V is of order 0.1"
-    expect: fail
-    reason: "model 0.047 vs 0.104(14): gamma* from the 4.94 GHz Gaussian-dominated, doublet line treated as a Lorentzian over-dephases the 6.6 ns interference (the paper says only broadening on the photon-separation timescale matters); the model has no way to separate fast and slow spectral diffusion. Model gap, biased low as flagged in the notes."
+    weak: true
+    weak_reason: "r4 red-team item 6: the earlier pass was the free midpoint f = 0.5 of an unconstrained Lorentzian split and is withdrawn. The remaining pass uses the paper's Gaussian sigma_sd (8.68 ueV) with gamma* = 0 and a tau_sd range whose lower bound 0.1 ns is [A] (no source on disk covers ns-scale diffusion) and whose upper bound 6.6 ns is the photon separation (the paper does not state tau_sd, so the whole range is [A]); the model is insensitive to tau_sd inside that range (envelope 0.110-0.136), so the 0.118 vs 0.104 agreement is not a free-parameter coincidence but still rests on the Gaussian OU-walk model and the [A] range, hence kept weak (conservative)"
+    expect: pass
+    reason: "r4 red-team item 6: the previous pass (central 0.099 at f = 0.5, envelope [0.053, 0.819]) was an artefact of the free fast fraction (hom_fast_fraction removed, the 4.94 GHz is now entered once, as sigma_sd, with gamma* = 0 at the Fourier limit). Obtained central 0.1181 with envelope [0.1103, 0.1358] over tau_sd in [0.1, 6.6] ns, within 2 sigma of 0.104(14) (|diff| 0.014 < 0.028); expect unchanged (pass), no tolerance changed."
   - item: inversion_super_pred
     class: P
     observable: inversion
     convention: intrinsic
     tol_reason: "no reported inversion; the model inversion at the calibrated areas is stated, not compared"
     expect: pass
+  - item: inversion_super_pred_pop
+    class: P
+    observable: inversion
+    convention: population
+    tol_reason: "no reported inversion; review item E companion of inversion_super_pred (count): the exciton population right after the pulses, P_X_end exp((Gamma + k) m) with m the time from the last Gaussian pulse end (4 sigma) to the window end"
+    expect: pass
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_dev]}
-  - {param: material.gamma_star_4K_ns, fitted_to: [linewidth_peak]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 11: tau_sd_ns whole range [A] (the paper's 6.6 ns statement says which diffusion matters for HOM, not what tau_sd is; the paper does not state tau_sd); hom_V_super stays weak with the reason updated; linewidth_peak expect fail -> unavailable (no Voigt/Gaussian linewidth observable in the engine; the Lorentzian-only linewidth_ueV is not comparable with the Gaussian-dominated 20.43 ueV)", note: "re-run after the metamorphic-size revert (review item 12) and the engine fixes: g2_super_raw 0.01013 fail, rate_raw_super 1.203e7 [1.172e7, 1.234e7] fail, hom_V_super 0.1072 [0.1001, 0.1233] pass (weak), inversion_super_pred 0.5143 (count; companion item inversion_super_pred_pop reports the population convention), tau_dev 500 pass", change: "linewidth_peak expect fail -> unavailable (new item field unavailable_reason)"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 6: 4.94 GHz entered once: gamma_star_4K_ns 29.0 -> 0.0 /ns (Fourier-limited Lorentzian), hom_fast_fraction removed, tau_sd_ns [1e3, 1e6] -> [0.1, 6.6] ns", note: "obtained: linewidth_peak 20.43 ueV expected vs model 1.316 ueV, class C pass -> class M fail (engine linewidth_ueV carries no Gaussian sigma_sd; fits entry removed, tolerance 5 percent unchanged); hom_V_super 0.1181 [0.1103, 0.1358] pass (was 0.099 [0.053, 0.819], the free midpoint), weak kept with a new reason; g2_super_raw 0.00747 fail (unchanged verdict); rate_raw_super 1.629e7 [1.587e7, 1.671e7] fail (unchanged verdict); inversion_super_pred 0.6863 -> 0.6967; tau_dev unchanged", change: "class C -> M and expect pass -> fail (linewidth_peak)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "g2_super_raw 0.01054 -> 0.007794 (fail stays), rate_raw_super 1.189e7 -> 1.606e7 (envelope 1.158e7-1.219e7 -> 1.565e7-1.647e7; fail stays, 2.5x high), hom_V_super 0.09792 -> 0.1078 (envelope 0.052-0.8093 -> 0.05725-0.8913; pass stays, weak), inversion_super_pred 0.5079 -> 0.6863. Fable predicted only the unfiltered hom_V q^2 move (0.79 -> 0.90, observed +10 percent); the rate and inversion move (+35 percent) was not predicted: the larger dot lowers the phonon damping of the driven polaron solver. Expects unchanged, not tuned; the older reason strings quote model values (0.006, 1.41e7) that were already out of date before this change"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): rate_raw_super 1.16e7 -> 1.19e7, hom_V_super 0.0427 -> 0.0421. Expect unchanged; not tuned."}
   - {date: 2026-10-13, by: "R2 FIX1A", reason: "R2 FIX1A: SUPER registry default width moved 5 -> 3 ps (Piccinini 2025 class); this card's areas were calibrated at 5 ps, so fwhm1_ps / fwhm2_ps are now pinned explicitly at 5 ps. Ledger unchanged (rate_raw_super stays expect fail: 1.41e7 vs 6.5e6); the transient 8.8e6 'pass' was the 3 ps default, not physics"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.5: hom_V_super expect fail -> pass-envelope (two-timescale dephasing: hom_delay_ns 6.6, sigma_sd 8.68 ueV, tau_sd class range, hom_fast_fraction range [0, 1]; linewidth_peak keeps the full gamma* 29 /ns). inversion_super_pred now reports n_exc (the area1_pi calibration text quotes the older end-of-window inversion; the entered areas are not retuned)", change: "expect fail -> pass, weak (hom_V_super; pre-registered pass-envelope, obtained central 0.099)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.69 (eta_out 0.90 x beta(F_P 3.3) 0.767 product, cavity-only semantics) -> 0.85 (Nawrath same-platform FDTD total, A), table_mode total"}
   - {date: 2026-10-13, by: "sonnet r2-super", reason: "R2 SUPER: polaron B none in the non-adiabatic regime (Fable): the polaron solver no longer applies the static sqrt(Z) Rabi renormalisation when hbar|Omega|_max > 3 E_c; g2_super_raw 0.0060 -> 0.0105, rate_raw_super 1.41e7 -> 1.16e7, hom_V_super 0.047 -> 0.043, inversion_super_pred 0.59 -> 0.48; all verdicts unchanged; no expect or tolerance changed"}

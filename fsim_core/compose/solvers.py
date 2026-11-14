@@ -87,6 +87,7 @@ from .. import lindblad as lb
 from .. import pulse_counting as pcnt
 from .. import resonant_source as rs
 from ..spectral import KB
+from . import filterhook as _filterhook
 from . import rates as _rates_mod
 from .registry import Solver, get as _get, kinds as _kinds, register
 from .types import SolverResult
@@ -342,6 +343,8 @@ class RateSolver(Solver):
         r, tau = _interp_pump(plan, rt)
         if r <= 0.0:
             return False, "no incoherent pump rate in the plan"
+        if _ladder_cfg(plan) is not None:
+            return False, "the reservoir ladder (tau_res_ps / q_T) needs lindblad_incoherent"
         if plan.timing == "pulsed":
             f = _f_rep(plan)
             if f is None or tau <= 0.0:
@@ -512,11 +515,13 @@ class LindbladSolver(Solver):
         pcs = rs._pieces(tl)
         rho_w, emitted = _window_counts(pcs, p.shape, p.area_rad, dur)
         p0 = _window_p0(pcs, p.shape, p.area_rad, dur, (0,))
-        return SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
-                            inversion=float(st["P_e_post"]),
-                            extra={"det_X_meV": _det_X_meV(plan),
-                                   "eta_prep": 1.0 - p0, "n_exc": float(rho_w[1, 1].real) + emitted,
-                                   "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
+        res = SolverResult(g2_0=float(st["g2"]), n_ph=float(st["mean_photons"]), I_single=float(I),
+                           inversion=float(st["P_e_post"]),
+                           extra={"det_X_meV": _det_X_meV(plan),
+                                  "eta_prep": 1.0 - p0, "n_exc": float(rho_w[1, 1].real) + emitted,
+                                  "photons_in_window": emitted, "P_X_end": float(st["P_e_post"])})
+        # r4: opt-in spectral filter / FSS cross-polarised gating (identity when neither is set)
+        return _filterhook.lindblad_postprocess(res, plan, em, rt, _window_counts, _window_p0)
 
     def _tpe(self, plan, em, rt):
         p = plan.pulses[0]
@@ -589,6 +594,141 @@ def _s3d_ops(with_res: bool, extra: int = 0):
     return dim, e
 
 
+# ---------------------------------------------------------------- r4-incoh: reservoir ladder (classical master equation)
+# Opt-in (plan.inputs["tau_res_ps"] > 0 or ["q_T"] > 0; default = the S3d scheme above, bit-for-bit). Fable R4 review section 2.
+# Basis |n_R, n_T, d>, d in {G, X, XX}; H = 0 and every process is an incoherent jump, so the state stays diagonal and the
+# photon-counting hierarchy is carried by the populations alone (dimension 3 (N_R+1)(N_T+1), no density matrix).
+#   pump (window)  n_R -> n_R+1 at r  (Poisson loading, mu = int r dt)     trap loading  n_T -> n_T+1 at r q_T
+#   capture        (n_R, d) -> (n_R-1, d+1) at n_R/tau_cap, d < XX (blocked when the dot is full: capacity 2)
+#   reservoir loss n_R -> n_R-1 at n_R/tau_R  (capture by other dots / WL recombination) [E]
+#   trap release   (n_T, n_R) -> (n_T-1, n_R+1) at n_T k_rel,  k_rel = k0 exp(-E_T/kT) [E]
+#   XX -> X at Gamma_XX + k_XX (NOT counted: the X line is filtered), X -> G at Gamma (counted) and k (not counted)
+_LADDER_NR_MAX = 20                # [A] numerical cap of the reservoir occupation (arrivals above it are dropped)
+
+
+def _ladder_cfg(plan):
+    """None (S3d scheme) or the ladder options of a plan: tau_res_ps > 0 or q_T > 0 switches the ladder on."""
+    inp = plan.inputs
+    tau_res = float(inp.get("tau_res_ps", 0.0) or 0.0)
+    q_T = float(inp.get("q_T", 0.0) or 0.0)
+    if not (tau_res > 0.0 or q_T > 0.0):
+        return None
+    return {"tau_res_ns": tau_res * 1e-3, "q_T": q_T, "N_T": int(inp.get("N_T", 2) or 2),
+            "N_R": int(inp.get("N_R", 0) or 0), "k0_trap_ns": float(inp.get("k0_trap_ns", 0.0) or 0.0),
+            "E_trap_meV": float(inp.get("E_trap_meV", 0.0) or 0.0)}
+
+
+def ladder_generators(r, tau_cap_ns, Gam, k, gXX, kXX, NR, NT=0, tau_res_ns=0.0, q_T=0.0, k_rel=0.0, full_loss_ns=0.0):
+    """-> (Q_off, Q_pump_add, J, idx): population generators dp/dt = Q p (column = from-state) of the ladder; `Q_pump_add`
+    is the pump contribution (add it to Q_off inside the window); J holds the counted X -> G jumps (gain side)."""
+    n = 3 * (NR + 1) * (NT + 1)
+
+    def idx(nr, nt, d):
+        return (nr * (NT + 1) + nt) * 3 + d
+    Q = np.zeros((n, n))
+    Qp = np.zeros((n, n))
+    J = np.zeros((n, n))
+
+    def add(M, i, j, w):
+        M[j, i] += w
+        M[i, i] -= w
+    for nr in range(NR + 1):
+        for nt in range(NT + 1):
+            for d in range(3):
+                i = idx(nr, nt, d)
+                if nr < NR:
+                    add(Qp, i, idx(nr + 1, nt, d), r)
+                if nt < NT and q_T > 0.0:
+                    add(Qp, i, idx(nr, nt + 1, d), r * q_T)
+                if nr >= 1 and d < 2:
+                    add(Q, i, idx(nr - 1, nt, d + 1), nr / tau_cap_ns)
+                if nr >= 1 and tau_res_ns > 0.0:
+                    add(Q, i, idx(nr - 1, nt, d), nr / tau_res_ns)
+                if nr >= 1 and d == 2 and full_loss_ns > 0.0:        # pairs blocked by a full dot vanish (review 3.3 convention)
+                    add(Q, i, idx(nr - 1, nt, d), nr / full_loss_ns)
+                if nt >= 1 and k_rel > 0.0:
+                    add(Q, i, idx(min(nr + 1, NR), nt - 1, d), nt * k_rel)
+                if d == 2:
+                    add(Q, i, idx(nr, nt, 1), gXX + kXX)
+                if d == 1:
+                    add(Q, i, idx(nr, nt, 0), Gam + k)
+                    J[idx(nr, nt, 0), i] += Gam
+    return Q, Qp, J, idx
+
+
+def _ladder_counting(Q_off, Q_on, J, tau_on, tau_dark, gate_ns=None):
+    """Per-period factorial moments (m1, m2) of the counted X-line stream in the periodic steady state of the population
+    chain (same convention as lindblad.pulsed_counting: counting for 0 <= t < gate from the pump onset)."""
+    n = Q_off.shape[0]
+    period = tau_on + tau_dark
+    gate = period if gate_ns is None else min(gate_ns, period)
+    Phi = expm(Q_off * tau_dark) @ expm(Q_on * tau_on)
+    M = np.vstack([Phi - np.eye(n), np.ones((1, n))])
+    rhs = np.zeros(n + 1)
+    rhs[-1] = 1.0
+    p = np.linalg.lstsq(M, rhs, rcond=None)[0]
+    Z = np.zeros((n, n))
+    wins = []
+    on_c = min(gate, tau_on)
+    if on_c > 0:
+        wins.append((Q_on, J, on_c))
+    if tau_on - on_c > 0:
+        wins.append((Q_on, Z, tau_on - on_c))
+    dk_c = min(max(gate - tau_on, 0.0), tau_dark)
+    if dk_c > 0:
+        wins.append((Q_off, J, dk_c))
+    if tau_dark - dk_c > 0:
+        wins.append((Q_off, Z, tau_dark - dk_c))
+    V = np.zeros(3 * n)
+    V[:n] = p
+    for Qw, Jw, dt in wins:
+        A = np.block([[Qw, Z, Z], [Jw, Qw, Z], [Z, 2.0 * Jw, Qw]])
+        V = expm(A * dt) @ V
+    return float(V[n:2 * n].sum()), float(V[2 * n:].sum()), float(np.abs(V[:n].sum() - 1.0))
+
+
+def x_line_decay(mu, tau_cap_ns, Gam, k, gXX, kXX, tau_res_ns=0.0, NR=None, t_end_ns=None, n_t=2000, full_loss=True):
+    """Time-resolved X-line emission I_X(t) = Gamma P_X(t) after an instantaneous Poisson(mu) loading of the reservoir
+    (capture 1/tau_cap per pair, capacity 2, XX -> X uncounted, optional reservoir loss) -> (t_ns, I). [DR, Fable R4 3.3]
+    full_loss (default): a pair that finds the dot full vanishes at once, so the only delay is the XX -> X step (the review's
+    closed form P_X = (P1 + 2 P2) e^{-Gt} - 2 P2 e^{-2Gt}); False lets blocked pairs wait and refill the emptied dot."""
+    mu = float(mu)
+    NR = int(NR) if NR else int(min(max(4, math.ceil(mu + 6.0 * math.sqrt(max(mu, 1e-9))) + 2), _LADDER_NR_MAX))
+    Q, _, _, idx = ladder_generators(0.0, tau_cap_ns, Gam, k, gXX, kXX, NR, 0, tau_res_ns,
+                                     full_loss_ns=1e-6 if full_loss else 0.0)
+    p0 = np.zeros(Q.shape[0])
+    w = np.exp(-mu + np.arange(NR + 1) * math.log(max(mu, 1e-300)) - np.array([math.lgamma(i + 1) for i in range(NR + 1)]))
+    w[-1] += max(0.0, 1.0 - w.sum())                 # fold the truncated Poisson tail into the top level
+    for nr in range(NR + 1):
+        p0[idx(nr, 0, 0)] = w[nr]
+    t_end = float(t_end_ns) if t_end_ns else 12.0 / (Gam + k)
+    dt = t_end / (n_t - 1)
+    step = expm(Q * dt)
+    pX = np.empty(n_t)
+    px_mask = np.array([1.0 if (i % 3) == 1 else 0.0 for i in range(Q.shape[0])])
+    p = p0
+    for i in range(n_t):
+        pX[i] = px_mask @ p
+        p = step @ p
+    return np.arange(n_t) * dt, Gam * pX
+
+
+def tau_fit_from_decay(t, I, decades=3.0):
+    """Single-exponential fit A exp(-t/tau) of I(t) from its peak over `decades` decades [A, stated TCSPC convention]:
+    unweighted least squares in LINEAR intensity (the log-space fit under-weights the peak and gives a systematically
+    shorter tau; the linear fit is the one that reproduces the review's 854/943/1172 ps). -> (tau_fit_ns, t_mean_ns);
+    t_mean = int t I dt / int I dt."""
+    from scipy.optimize import curve_fit
+    t, I = np.asarray(t, float), np.asarray(I, float)
+    i0 = int(np.argmax(I))
+    sel = np.arange(len(I)) >= i0
+    sel &= I >= I[i0] * 10.0 ** (-float(decades))
+    tau0 = float(-1.0 / np.polyfit(t[sel], np.log(I[sel]), 1)[0])
+    (A, tau), _ = curve_fit(lambda x, a, b: a * np.exp(-x / b), t[sel], I[sel], p0=[I[i0], tau0])
+    t_mean = float(np.trapezoid(t * I, t) / np.trapezoid(I, t))
+    return float(tau), t_mean
+
+
 class IncoherentLindbladSolver(Solver):
     name = "lindblad_incoherent"
     label = "Lindblad (incoherent pump, S3d)"
@@ -611,6 +751,13 @@ class IncoherentLindbladSolver(Solver):
             return False, "needs pump rate, pump window and f_rep_MHz"
         if 1e3 / f <= _pump_window_ns(plan, r, tau):
             return False, "repetition period must exceed the pump window"
+        if _ladder_cfg(plan) is not None:                      # r4-incoh: the reservoir ladder is a separate opt-in model
+            if _shaped(plan):
+                return False, "the reservoir ladder (tau_res_ps / q_T) supports the rectangular pump window only"
+            if float(plan.inputs.get("p_refill", 0.0) or 0.0) > 0.0 or float(plan.inputs.get("k0_ns", 0.0) or 0.0) > 0.0:
+                return False, "the reservoir ladder replaces p_refill / thermal recapture: set them to 0 (use q_T for traps)"
+            if float(plan.relax_ns) <= 0.0:
+                return False, "the reservoir ladder needs a capture time (tau_cap_ps / tau_relax_ps > 0)"
         return True, ""
 
     @staticmethod
@@ -629,7 +776,67 @@ class IncoherentLindbladSolver(Solver):
             k_esc = k0 * math.exp(-min(E / (KB * T), 700.0)) if T > 0.0 else (k0 if E <= 0.0 else 0.0)
         return p_ref, tau_ref, bg, k_esc
 
+    def _run_ladder(self, plan, em, rt, cfg):
+        """r4-incoh reservoir ladder (module block above): pulsed g2 / n_ph from the population counting hierarchy; HOM from
+        the single-pair generator |R> -> X -> G with the reservoir loss (a pair lost before capture emits nothing)."""
+        r, tau_on = _interp_pump(plan, rt)
+        mu = float(r * tau_on)
+        period = 1e3 / float(plan.f_rep_MHz)
+        Gam, k, gs = float(rt.Gamma_ns), float(rt.k_nr_ns), float(rt.gamma_star_ns)
+        relax = float(plan.relax_ns)
+        if em is not None:
+            ratio = float(em.gamma_xx_ratio)
+            gXX = ratio * float(rt.Gamma0_ns)
+        else:
+            ratio = float(plan.inputs.get("gamma_xx_ratio", 2.0))
+            gXX = ratio * Gam
+        kXX = k * ratio
+        NR = cfg["N_R"] or int(min(max(4, math.ceil(mu + 5.0 * math.sqrt(max(mu, 0.0))) + 1), _LADDER_NR_MAX))
+        q_T = cfg["q_T"]
+        NT = cfg["N_T"] if q_T > 0.0 else 0
+        k_rel = 0.0
+        if q_T > 0.0 and cfg["k0_trap_ns"] > 0.0:
+            T = float(plan.inputs.get("T_K", 0.0) or 0.0)
+            E = cfg["E_trap_meV"]
+            k_rel = cfg["k0_trap_ns"] * math.exp(-min(E / (KB * T), 700.0)) if T > 0.0 else (
+                cfg["k0_trap_ns"] if E <= 0.0 else 0.0)
+        Q_off, Qp, J, _ = ladder_generators(r, relax, Gam, k, gXX, kXX, NR, NT, cfg["tau_res_ns"], q_T, k_rel)
+        m1, m2, dev = _ladder_counting(Q_off, Q_off + Qp, J, tau_on, period - tau_on, plan.gate_ns)
+        g2_sig = m2 / m1 ** 2 if m1 > 1e-300 else NAN
+        bg = float(plan.inputs.get("bg_frac", 0.0) or 0.0)
+        g2 = 1.0 - (1.0 - bg) ** 2 * (1.0 - g2_sig) if bg > 0.0 else g2_sig
+        # HOM: |R> -> X at 1/tau_cap, R lost at 1/tau_res, X -> G at Gamma (+k, gamma*)
+        dim, e = _s3d_ops(True)
+        c_ops = [np.sqrt(Gam) * e(0, 1), np.sqrt(1.0 / relax) * e(1, 2)]
+        if cfg["tau_res_ns"] > 0.0:
+            c_ops.append(np.sqrt(1.0 / cfg["tau_res_ns"]) * e(0, 2))
+        if k > 0:
+            c_ops.append(np.sqrt(k) * e(0, 1))
+        if gs > 0:
+            c_ops.append(np.sqrt(gs) * e(1, 1))
+        I = lb.indistinguishability(lb.liouvillian(np.zeros((dim, dim), dtype=complex), c_ops), dim, e(2, 2),
+                                    np.sqrt(Gam) * e(0, 1))
+        n_ph = m1                          # p_X (X share of the loaded pairs) is applied once, in observables._derive
+        reasons = ["reservoir ladder (r4-incoh): Poisson loading of n_R pairs, capacity-2 capture, XX -> X uncounted [A/E]",
+                   "HOM assumes the single-pair generator |R> -> X -> G (window re-excitation ignored) [A]"]
+        if mu > NR - 2.0 * math.sqrt(max(mu, 1.0)):
+            reasons.append(f"reservoir truncated at N_R = {NR} for mu = {mu:.3g}: arrivals above it are dropped")
+        if abs(dev) > 1e-6:
+            reasons.append("periodic steady state not normalised")
+        if bg > 0.0:
+            reasons.append("bg_frac: g2 = 1 - rho^2 (1 - g2_signal); HOM and n_ph are signal-only [A]")
+        F_dot, fano_notes = _pump_fano(plan)
+        reasons += fano_notes
+        extra = {"p_loaded": 1.0 - math.exp(-mu), "g_relax_ns": 1.0 / relax, "g2_signal": float(g2_sig), "p_refill": 0.0,
+                 "bg_frac": bg, "k_esc_ns": 0.0,
+                 "ladder": {"N_R": NR, "N_T": NT, "tau_res_ns": cfg["tau_res_ns"], "q_T": q_T, "k_rel_ns": k_rel, "mu": mu},
+                 "notes": reasons, **({} if F_dot is None else {"F_dot": F_dot})}
+        return SolverResult(g2_0=float(g2), n_ph=float(n_ph), I_single=float(I), inversion=None, extra=extra, valid=True)
+
     def run(self, plan, em, rt):
+        cfg = _ladder_cfg(plan)
+        if cfg is not None:
+            return self._run_ladder(plan, em, rt, cfg)
         r, tau_on = _interp_pump(plan, rt)
         period = 1e3 / float(plan.f_rep_MHz)
         Gam, k, gs = float(rt.Gamma_ns), float(rt.k_nr_ns), float(rt.gamma_star_ns)

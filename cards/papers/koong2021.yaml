@@ -18,7 +18,7 @@ device:
     params:
       lambda_nm: {value: 968.8, unit: nm, tag: V, where: "text p.2: X1- ZPL at omega_0 = 1.280 eV (968.8 nm)"}
       tau_bare_ns: {value: 0.687, unit: ns, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns under pulsed RF; measured in the planar-cavity sample, entered as the effective bare lifetime (calibration)"}
-      gamma_star_4K_ns: {value: 2.23, unit: "1/ns", tag: DR, where: "SI Sec II p.9: CW (dc Stark scan) Lorentzian FWHM 2.43(6) ueV minus the lifetime limit hbar/T1 = 0.96 ueV gives 1.47 ueV excess; gamma*_repo = 1.47e-3 meV / 6.582e-4 meV ns = 2.23 /ns"}
+      gamma_star_4K_ns: {value: 2.23, unit: "1/ns", tag: DR, where: "SI Fig S1: 'The Lorentzian fit (solid line) gives a full-width-at-half-maximum (FWHM, Gamma) of Gamma = 2 .43 (6) ueV' and 'excited state lifetime of T1 = 0.687 (3) ns'. Arithmetic [DR]: lifetime limit hbar/T1 = 0.6582 ueV ns / 0.687 ns = 0.96 ueV (not printed); excess = 2.43 - 0.96 = 1.47 ueV; gamma*_repo = 1.47e-3 meV / 6.582e-4 meV ns = 2.23 /ns (neither 1.47 nor 2.23 is printed)"}
       a_ac_ns_per_K: {value: 0.0, unit: "1/ns/K", tag: A, source: "gamma* is entered from the measured CW linewidth at the experiment temperature; no slope measured"}
       D_c_eV: {value: 7.0, unit: eV, tag: V, where: "SI Sec I p.8: electron deformation potential D_e = 7.0 eV (J(w) uses D_e - D_h)"}
       D_v_eV: {value: -3.5, unit: eV, tag: V, where: "SI Sec I p.8: hole deformation potential D_h = -3.5 eV"}
@@ -34,20 +34,21 @@ device:
     params:
       shape: {value: gauss, unit: "", tag: A, source: "experimental sidebands are razor-blade-limited spectra (p.2); the SI simulation uses rectangular frequency boxes, which the registry drive does not offer; Gaussian assumed"}
       delta_meV: {value: 0.6, unit: meV, tag: V, where: "text p.2: separation of the red and blue sidebands 1.2 meV, i.e. +/-0.6 meV (SI Sec I: Delta = 0.6 meV)"}
-      asymmetry: {value: 0.212, unit: "1", tag: DR, where: "text p.2-4: contrast C = (I_B - I_R)/(I_B + I_R) = -0.65 at the optimum, so a = I_blue/I_red = (1 + C)/(1 - C) = 0.35/1.65 = 0.212"}
-      fwhm_ps: {value: 3.65, unit: ps, tag: DR, where: "text p.2: each sideband 0.5 meV wide; Gaussian transform limit 0.441 h / 0.5 meV = 0.441 * 4135.7 ueV ps / 500 ueV = 3.65 ps intensity FWHM"}
+      asymmetry: {value: 0.212, unit: "1", tag: DR, where: "text p.2-4: 'the pulse contrast C ... C = (IB-IR)/(IB + IR)' and 'C =-0.65'. Arithmetic [DR]: a = I_blue/I_red = (1 + C)/(1 - C) = (1 - 0.65)/(1 + 0.65) = 0.35/1.65 = 0.212 (0.35, 1.65 and 0.212 are not printed)"}
+      fwhm_ps: {value: 3.65, unit: ps, tag: DR, where: "text p.2: 'The excitation laser spectrum shows the spectral width and the separation of the red and blue sideband of 0.5 meV and 1.2 meV, respectively'. Arithmetic [DR] with the assumption [A] that 0.5 meV is the intensity FWHM of a transform-limited Gaussian sideband: 0.441 h / 0.5 meV = 0.441 x 4135.7 ueV ps / 500 ueV = 3.65 ps (0.441 is the Gaussian time-bandwidth product, ours; 3.65 ps is not printed; the laser itself is '160 fs pulse width' before the 4f shaper)"}
       area_pi: {value: 5.0, unit: pi, tag: V, where: "Fig 3 caption (d): first oscillation maximum at pulse area 5 pi for C = -0.65 (simulation axis); the measured operating power is not given as an area"}
-      f_rep_MHz: {value: 80.3, unit: MHz, tag: V, where: "text p.2: mode-locked laser repetition rate 80.3 MHz"}
+      f_rep_MHz: {value: 80.3, unit: MHz, tag: V, where: "text p.2: 'A mode-locked laser with 80 .3 MHz repetition rate and 160 fs pulse width' (stray space is in the extracted text)"}
   setup:
     kind: lens_fibre_det
     params:
-      zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b) / text p.2: 120 ueV grating spectral filter after the collection fibre isolates the ZPL from the phonon sideband"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "Fig 2 caption (b): 'Spectral filtering with a bandwidth of 120 ueV after the collection fibre isolates the zero-phonon line (ZPL) from the phonon sideband (PSB) and excitation laser'; the SI calls it a grating filter: \"tering with a bandwidth of 120 µeV after the collection ﬁbre\" ... \"with the same 120 µeV-bandwidth grating ﬁlter to sup-\" (koong2021.txt)"}
+      filter_fwhm_GHz: {value: 29.0, unit: "GHz", tag: DR, where: "SI (koong2021.txt): \"with the same 120 µeV-bandwidth grating ﬁlter to sup-\"; arithmetic [DR]: 120 ueV / 4.1357 ueV per GHz = 29.0 GHz (29.0 is not printed). The filter is a GRATING filter, so its passband is Gaussian / top-hat; the engine's Lorentzian shape is [A] and is the wrong shape: on the picosecond pulse the Lorentzian wings pass more of the in-pulse photon than a grating passband, so the modelled filtered g2 is biased HIGH and the recorded fail is conservative"}
       eta_det: {value: 0.9, unit: "1", tag: V, where: "text p.2: SNSPD detection efficiency ~90% at ~950 nm"}
 reported:
   - {id: tau_X, observable: tau_ps, value: 687.0, err: 3.0, tag: V, where: "SI Sec II p.9 / Fig S1c: T1 = 0.687(3) ns"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.016, err: 0.001, tag: V, where: "text p.4 / Fig 4a: g2(0) = 0.016(1) at C = -0.65, raw"}
-  - {id: inversion_sim, observable: inversion, convention: intrinsic, value: 0.60, tag: V, where: "text p.4 / Fig 3d: simulated final occupation ~60% with phonons at 5 pi, C = -0.65 (path-integral, rectangular spectral boxes, 0.4 meV, T = 4 K)", note: "paper simulation, no error stated"}
-  - {id: inversion_meas, observable: inversion, convention: intrinsic, value: 0.80, tag: V, where: "text p.4 / abstract: measured inversion efficiency ~80% (C ~ -0.65)", note: "paper text attributes the 0.8 vs 0.6 gap to a pulse-shape mismatch between simulation and experiment; no error stated"}
+  - {id: inversion_sim, observable: inversion, convention: population, value: 0.60, tag: V, where: "text p.4 / Fig 3d: simulated final occupation ~60% with phonons at 5 pi, C = -0.65 (path-integral, rectangular spectral boxes, 0.4 meV, T = 4 K)", note: "paper simulation, no error stated"}
+  - {id: inversion_meas, observable: inversion, convention: count, value: 0.80, tag: V, where: "text p.4 / abstract: measured inversion efficiency ~80% (C ~ -0.65)", note: "paper text attributes the 0.8 vs 0.6 gap to a pulse-shape mismatch between simulation and experiment; no error stated"}
   - {id: Z_zpl, observable: Z_phonon, value: 0.92, tag: V, where: "SI Sec II p.8: ZPL fraction ~92% from the polaron fit of the CW resonance-fluorescence spectrum (previously cited parameters, not the Sec I simulation set)", note: "approximate, no error stated"}
   - {id: hom_raw_10ns, observable: hom_V, convention: raw, value: 0.29, err: 0.02, tag: V, where: "text p.5 / SI Sec III: raw V_HOM = 0.29(2) over a 10 ns window, photons 12.5 ns apart"}
   - {id: hom_postsel_100ps, observable: hom_V, convention: raw, value: 0.81, err: 0.12, tag: V, where: "text p.5: temporally post-selected V_HOM = 0.81(12) in a 0.1 ns window", note: "not a ledger item: temporal post-selection is not modelled"}
@@ -63,7 +64,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "2 sigma of the printed 0.001 is only 0.002; abs 0.005 floor because the paper gives no background fraction and the model has no laser leak or dark counts entered (pure re-excitation term)"
     expect: fail
-    reason: "model gap / missing input: the model raw g2 is 0.0088 (re-excitation of a 3.65 ps dichromatic pair at T1 687 ps) against 0.016(1); the 0.007 shortfall exceeds the 0.005 floor and is plausibly unmodelled background or blinking in the paper histogram (no background fraction is given, so none was entered)."
+    reason: "model gap / missing input: the model raw g2 is 0.0006 with the 120 ueV filter (0.0088 unfiltered: re-excitation of a 3.65 ps dichromatic pair at T1 687 ps) against 0.016(1); the shortfall exceeds the 0.005 floor and is plausibly unmodelled background or blinking in the paper histogram (no background fraction is given, so none was entered). r4 red-team item 12: the SI calls the filter a grating filter (\"with the same 120 µeV-bandwidth grating ﬁlter to sup-\"), so the engine's Lorentzian shape is [A] and the wrong shape; the Lorentzian wings pass more of the in-pulse photon than a grating passband, so the modelled filtered g2 is biased high and the recorded fail is conservative. The SI gives S/B ~ 20 only for the resonant RF reference (its g2 is 0.080), none for DPE, so the order of the unquantified background is a few percent (S/B ~ 20 means 1/20 = 0.05 of the counts)."
   - item: inversion_sim
     class: R
     tol: {abs: 0.10}
@@ -96,5 +97,10 @@ reproduce:
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item E: observable inversion split by convention (count = expected excitation count n_exc, population = exciton population right after the pulse, closed form P_X_end exp((Gamma + k) m)); inversion_sim (simulated final occupation) -> population, inversion_meas (measured, brightness-calibrated) -> count", note: "obtained: inversion_sim 0.6671 -> 0.6576 vs 0.60 (class R, pass, tol abs 0.1); inversion_meas 0.6671 (count, unchanged) vs 0.80 fail; expects unchanged"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: filter where-texts quote the SI ('120 ueV-bandwidth grating filter'); the Lorentzian shape is [A] and biases g2 high; the earlier statement 'the paper does not say what kind of filter it is' is removed", note: "text only; re-run: every item MATCH (g2_raw 0.00064 fail, hom_raw_10ns 0.4038 fail, Z_zpl 0.8748 pass, inversion 0.6671)"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", note: "initial transcription", reason: "initial transcription"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.6: g2_raw reason cites the SI S/B ~ 20 (resonant reference) as the order of the unquantified background; no expect changed. inversion items now report n_exc (window decay removed)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: inversion_sim class M -> R (the paper's own simulation number); expect unchanged (pass)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 29.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw stays fail, gap widens (0.0088->~0.003 vs 0.016)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: no change in verdicts", note: "obtained: g2_raw 0.00064 (Fable ~0.003) vs 0.016, fail with a wider gap as predicted; the 29 GHz grating removes the in-pulse photon almost entirely"}

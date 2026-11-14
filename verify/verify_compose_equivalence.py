@@ -260,20 +260,38 @@ if out is not None:
     rtol = 1e-9
 
     def zeff_ref(s_):
-        """Cavity sideband filter Z_eff of the Fock source (compose review finding 4): independent trapezoid of the
-        IBM sideband spectrum times the cavity Lorentzian, (Z + int S_sb T)/(Z + int S_sb). bs_figure_of_merit has no
-        cavity filtering (unfiltered output: efficiency x 1, I x Z^2), so the engine differs from it by exactly
-        Z_eff on eta and (Z/Z_eff)^2 / Z^2 on I when zpl_output is False."""
+        """Cavity sideband filter Z_eff of the Fock source (compose review finding 4): trapezoid of the IBM sideband spectrum
+        times the cavity Lorentzian, (Z + int S_sb T)/(Z + int S_sb), at the DOT width hbar (Gamma_0 + gamma*) the cavity sees
+        (r4 review A: w_dot, no Purcell channel). WIRING CHECK (the expected value is recomputed with the engine's own formula
+        in a second implementation, not a published number). bs_figure_of_merit has no cavity filtering (unfiltered output:
+        efficiency x 1, I x Z^2), so the engine differs from it by the cavity-collected ZPL share q_c on I and the pass
+        factors on eta when zpl_output is False. Returns (Z, Z_eff, t_sb, area)."""
         from fsim_core import qd_gf
         r_ = rs.source_rates(s_)
         ph = qd_gf.PhononParams(alpha_ps2=s_.phonon_alpha_ps2)
-        om, sb, z = qd_gf._spectrum_parts(ph, float(s_.T_K), float(rs.lb.HBAR_MEV_NS * (r_["Gamma"] + r_["gamma_star"])))
+        om, sb, z = qd_gf._spectrum_parts(ph, float(s_.T_K), float(rs.lb.HBAR_MEV_NS * (r_["Gamma0"] + r_["gamma_star"])))
         kap = s_.kappa_ueV * 1e-3
         T_ = (kap / 2) ** 2 / ((om + s_.cav_detune_ueV * 1e-3) ** 2 + (kap / 2) ** 2)
         tsb = sum(0.5 * (om[i + 1] - om[i]) * (sb[i] * T_[i] + sb[i + 1] * T_[i + 1]) for i in range(len(om) - 1))
         area = sum(0.5 * (om[i + 1] - om[i]) * (sb[i] + sb[i + 1]) for i in range(len(om) - 1))
-        return z, (z + tsb) / (z + area)
-    z_f, zeff_f = zeff_ref(src)
+        return z, (z + tsb) / (z + area), tsb, area
+
+    def zq_ref(s_):
+        """r4-cavity A2 / r4 review A wiring check (expected value recomputed by a second implementation of the engine's own
+        formula, not a published number): no Z_filt double count. The cavity-collected share w = F_P L/(F_P L + beta0 F_bg)
+        (F_bg = 1, the generic_cavity default) has Z_filt = 1 and ZPL fraction q_c = Z L/(Z L + t_sb) (zpl_output: q_c and 1);
+        the leaky beta0 share is not cavity filtered (1 and Z; zpl_output: Z and 1)."""
+        z_, _ze, tsb_, _area = zeff_ref(s_)
+        L_ = rs.source_rates(s_)["L"]
+        w_ = s_.F_P * L_ / (s_.F_P * L_ + s_.beta0 * 1.0)
+        qc0 = z_ * L_ / (z_ * L_ + tsb_)
+        if s_.zpl_output:
+            Zc, qc, Zl, ql = qc0, 1.0, z_, 1.0
+        else:
+            Zc, qc, Zl, ql = 1.0, qc0, 1.0, z_
+        return w_ * Zc + (1 - w_) * Zl, w_ * qc + (1 - w_) * ql, z_
+    z_f, zeff_f, _t, _a = zeff_ref(src)
+    zf_m, q_m, _z = zq_ref(src)
     try:
         g2_e = pick("g2_0")
         eta_e = (pick("rate_detected_Hz") / (src.f_rep_MHz * 1e6)) if "rate_detected_Hz" in sc else pick("eta")
@@ -282,13 +300,13 @@ if out is not None:
         # I_p = pulse_factor x Gamma/(Gamma + gamma*) (resonant_source._pulse_physics), times the unfiltered
         # phonon factor Z^2 (hom_phonon_factor). No spectral diffusion (that is the pairwise hom_matrix).
         rr = rs.source_rates(src)
-        I_ref = (fom["pulse_factor"] * rr["Gamma"] / (rr["Gamma"] + rr["gamma_star"]) * fom["hom_phonon_factor"]
-                 * (1.0 / zeff_f ** 2))
+        I_ref = fom["pulse_factor"] * rr["Gamma"] / (rr["Gamma"] + rr["gamma_star"]) * q_m ** 2
         check("engine g2 == bs_figure_of_merit g2 (rtol 1e-9)", math.isclose(g2_e, fom["g2"][0], rel_tol=rtol),
               f"{g2_e} vs {fom['g2'][0]}")
-        check("engine efficiency == bs_figure_of_merit eta x Z_eff of the cavity sideband filter (rtol 1e-9)",
-              math.isclose(eta_e, fom["eta"] * zeff_f, rel_tol=rtol), f"{eta_e} vs {fom['eta'] * zeff_f}")
-        check("engine hom_I == pulse_factor x Gamma/(Gamma+gamma*) x (Z/Z_eff)^2 (bs_figure_of_merit with the cavity sideband filter, rtol 1e-9)",
+        check("engine efficiency == bs_figure_of_merit eta (unfiltered; r4-cavity A2: the cavity-collected light has Z_filt = 1, "
+              "only the leaky beta0 share keeps the setup bookkeeping) x Z_filt (rtol 1e-9)",
+              math.isclose(eta_e, fom["eta"] * zf_m, rel_tol=rtol), f"{eta_e} vs {fom['eta'] * zf_m}")
+        check("engine hom_I == pulse_factor x Gamma/(Gamma+gamma*) x q^2, q = w Z L/(Z L + t_sb) + (1 - w) Z (ZPL fraction of the collected light; wiring check, rtol 1e-9)",
               math.isclose(I_e, I_ref, rel_tol=rtol), f"{I_e} vs {I_ref}")
     except KeyError as e:
         check("engine scalars contain the Fock figures of merit", False, str(e))
@@ -302,12 +320,10 @@ if out is not None:
             fom_v = rs.bs_figure_of_merit(s_v, 2)
             sc_v = _engine.evaluate_spec(T.fock_card_to_spec(FOCK, ov))["scalars"]
             rr_v = rs.source_rates(s_v)
-            I_v = (fom_v["pulse_factor"] * rr_v["Gamma"] / (rr_v["Gamma"] + rr_v["gamma_star"])
-                   * fom_v["hom_phonon_factor"])
             eta_v = sc_v["rate_detected_Hz"] / (s_v.f_rep_MHz * 1e6)
-            zf_v = 1.0 if s_v.zpl_output else zeff_ref(s_v)[1]
-            fom_v = {**fom_v, "eta": fom_v["eta"] * zf_v}
-            I_v = I_v / zf_v ** 2
+            zf_v, q_v, z_v = zq_ref(s_v)
+            fom_v = {**fom_v, "eta": fom_v["eta"] / (z_v if s_v.zpl_output else 1.0) * zf_v}      # fom eta carries Z when zpl_output
+            I_v = fom_v["pulse_factor"] * rr_v["Gamma"] / (rr_v["Gamma"] + rr_v["gamma_star"]) * q_v ** 2
             ok = (math.isclose(sc_v["g2_0"], fom_v["g2"][0], rel_tol=1e-9)
                   and math.isclose(eta_v, fom_v["eta"], rel_tol=1e-9)
                   and math.isclose(sc_v["hom_I"], I_v, rel_tol=1e-9))

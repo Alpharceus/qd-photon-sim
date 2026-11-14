@@ -28,6 +28,26 @@ not like-for-like. Entry layout (validated by `validate_entry`):
     observable: g2_0
     convention: raw
 
+Ladder variant (R3-LADDER). An entry with `solver: ladder` is evaluated by the phonon-free four-level exciton-biexciton ladder
+(ladder.py, Piccinini et al. 2025 Eqs 1-4) instead of the two-level polaron engine:
+
+  - item: <id>
+    class: P
+    mode: optimum
+    solver: ladder
+    optimum:
+      observable: N_X            # X-line photons per pulse pair, maximised over a FIXED grid (no refinement, no tuning)
+      reduction: max
+      ladder: {fss_ueV: {value, unit, tag, where}}      # the fine-structure splitting; E_b, Gamma, the pulses come from the device
+      scan: [...]                # as above (area1, area2)
+  - item: <id>
+    class: M | P
+    mode: at_optimum
+    solver: ladder
+    of: <ladder optimum item>
+    observable: g2_0 | N_X | n_ph | pXX_end
+    compare_to: <reported id>    # class M only (with tol), as for optimum items
+
 Observable. `inversion` here is the exciton occupation rho_XX at the END of the pulse window starting from |G><G|, i.e.
 the "maximum exciton occupation" of a pulse-pair map. It is NOT the engine's `inversion` scalar: that one is the
 periodic fixed point and, with the engine's long Gaussian window (16 sigma), includes the radiative decay of the
@@ -55,13 +75,16 @@ from .. import lindblad as lb
 from .. import resonant_source as rs
 from . import engine as E
 from .params import TAGS
-from .polaron import PolaronSolver
+from . import ladder as _lad
+from .polaron import PolaronSolver, sinc_gauss_area
 
 MODES = ("optimum", "at_optimum")
 RULES = ("swing_up_area_gauss", "sqrt_power_ratio")
 _HBAR_MEV_PS = lb.HBAR_MEV_NS * 1e3          # meV ps
 _SHAPE_KEYS = ("drive.delta1_meV", "drive.delta2_meV", "drive.fwhm1_ps", "drive.fwhm2_ps", "drive.shape", "T_K",
-               "drive.slm_alpha_pi", "drive.slm_bb_fwhm_meV", "drive.slm_bb_centre_meV", "drive.slm_mask_sigma_meV", "drive.slm_floor")
+               "drive.slm_alpha_pi", "drive.slm_bb_fwhm_meV", "drive.slm_bb_centre_meV", "drive.slm_mask_sigma_meV", "drive.slm_floor",
+               "drive.spectral_fwhm_meV", "drive.r")
+LADDER_OBSERVABLES = ("g2_0", "N_X", "n_ph", "pXX_end")
 _AMP_PATHS = ("drive.area1_pi", "drive.area2_pi", "drive.slm_T1", "drive.slm_T2")   # the paths that scale the field linearly
 ZOOM_LEVELS = 3
 ZOOM_N = 7
@@ -118,44 +141,60 @@ def validate_entry(w: str, e: dict, ids: dict, resolved: dict, P: list, order: l
         P.append(f"{w}: an {mode} entry must be class M or P, got {cls!r}")
     if not _ne(e.get("tol_reason")):
         P.append(f"{w}: tol_reason required (why this tolerance / why no comparison, written before the run)")
+    ladder = e.get("solver") == "ladder"
+    if e.get("solver") is not None and not ladder:
+        P.append(f"{w}: solver must be 'ladder' when given, got {e.get('solver')!r}")
+
+    def check_M(ref):
+        if ref not in ids or ids[ref][0] != "reported":
+            P.append(f"{w}: class M {mode} item compares with a reported scalar; {ref!r} is not a reported id")
+            return
+        tol = e.get("tol")
+        if not isinstance(tol, dict) or not tol:
+            P.append(f"{w}: tol required")
+            return
+        bad = set(tol) - {"k_sigma", "abs", "rel"}
+        if bad:
+            P.append(f"{w}: unknown tol keys {sorted(bad)}")
+        if "k_sigma" in tol and ids[ref][1].get("err") is None:
+            P.append(f"{w}: tol.k_sigma needs the reported item to carry err")
+        for k, v in tol.items():
+            if not (_num(v) and v >= 0):
+                P.append(f"{w}: tol.{k} must be a non-negative number")
+
     if mode == "at_optimum":
-        if cls != "P":
-            P.append(f"{w}: at_optimum is class P")
+        if cls == "M":
+            if not ladder:
+                P.append(f"{w}: a class M at_optimum item needs solver: ladder (the polaron at_optimum items are class P)")
+            check_M(e.get("compare_to", e.get("item")))
+        elif e.get("compare_to") is not None:
+            P.append(f"{w}: class P carries no comparison (compare_to); state the reference in tol_reason")
         if e.get("of") not in order:
             P.append(f"{w}: `of` must name an EARLIER optimum item, got {e.get('of')!r}")
         if not _ne(e.get("observable")):
             P.append(f"{w}: at_optimum needs an `observable`")
+        elif ladder and e["observable"] not in LADDER_OBSERVABLES:
+            P.append(f"{w}: a ladder at_optimum observable must be one of {list(LADDER_OBSERVABLES)}")
         return
     order.append(e.get("item"))
     ref = e.get("compare_to", e.get("item"))
     if cls == "M":
-        if ref not in ids or ids[ref][0] != "reported":
-            P.append(f"{w}: class M optimum item compares with a reported scalar; {ref!r} is not a reported id")
-        else:
-            tol = e.get("tol")
-            if not isinstance(tol, dict) or not tol:
-                P.append(f"{w}: tol required")
-            else:
-                bad = set(tol) - {"k_sigma", "abs", "rel"}
-                if bad or not tol:
-                    P.append(f"{w}: unknown tol keys {sorted(bad)}")
-                if "k_sigma" in tol and ids[ref][1].get("err") is None:
-                    P.append(f"{w}: tol.k_sigma needs the reported item to carry err")
-                for k, v in tol.items():
-                    if not (_num(v) and v >= 0):
-                        P.append(f"{w}: tol.{k} must be a non-negative number")
+        check_M(ref)
     elif cls == "P" and e.get("compare_to") is not None:
         P.append(f"{w}: class P carries no comparison (compare_to); state the reference in tol_reason")
     o = e.get("optimum")
     if not isinstance(o, dict):
         P.append(f"{w}: optimum block required")
         return
-    if o.get("observable") != "inversion":
+    if ladder:
+        if o.get("observable") != "N_X":
+            P.append(f"{w}: a ladder optimum.observable must be 'N_X' (X-line photons per pulse pair)")
+    elif o.get("observable") != "inversion":
         P.append(f"{w}: optimum.observable must be 'inversion' (exciton occupation after the pulses)")
     if o.get("reduction") != "max":
         P.append(f"{w}: optimum.reduction must be 'max'")
     s = o.get("solver")
-    if not (isinstance(s, dict) and _onoff(s.get("phonons")) in ("on", "off") and _onoff(s.get("radiative")) in ("on", "off")):
+    if not ladder and not (isinstance(s, dict) and _onoff(s.get("phonons")) in ("on", "off") and _onoff(s.get("radiative")) in ("on", "off")):
         P.append(f"{w}: optimum.solver must be {{phonons: on|off, radiative: on|off}}")
 
     def leaf_ok(where, d):
@@ -164,6 +203,19 @@ def validate_entry(w: str, e: dict, ids: dict, resolved: dict, P: list, order: l
         elif d["tag"] in ("V", "DR") and not _ne(d.get("where")):
             P.append(f"{where}: tag {d['tag']} needs where")
 
+    if ladder:
+        lad = o.get("ladder")
+        fss = lad.get("fss_ueV") if isinstance(lad, dict) else None
+        if not (isinstance(fss, dict) and _num(fss.get("value")) and fss["value"] >= 0):
+            P.append(f"{w}: a ladder optimum needs ladder.fss_ueV with a non-negative value")
+        else:
+            leaf_ok(f"{w}: ladder.fss_ueV", fss)
+    if ladder:
+        for sv in (o.get("scan") or []):
+            if isinstance(sv, dict) and sv.get("path") not in ("drive.area1_pi", "drive.area2_pi"):
+                P.append(f"{w}: a ladder scan may vary only drive.area1_pi / drive.area2_pi, got {sv.get('path')!r}")
+        if o.get("derive"):
+            P.append(f"{w}: a ladder optimum takes no derive rules")
     for path, leaf in (o.get("overrides") or {}).items():
         if path not in resolved:
             P.append(f"{w}: overrides {path!r} is not a device leaf path")
@@ -298,7 +350,8 @@ def _unit_series(train, n_f: int):
         t2 = copy.copy(train)
         t2.comps = tuple(replace(cc, amp=1.0 if k == j else 0.0) for k, cc in enumerate(train.comps))
         series.append(t2.omega(tm))
-        norms.append(c.dur_ns if c.shape == "rect" else c.sigma_ns * math.sqrt(2.0 * math.pi))
+        norms.append(c.dur_ns if c.shape == "rect" else sinc_gauss_area(c.tp_ns, c.r) if c.shape == "sinc_gauss"
+                     else c.sigma_ns * math.sqrt(2.0 * math.pi))
     return float(train.W / n_f), series, norms
 
 
@@ -352,6 +405,8 @@ def _grid_points(o, windows, ns):
 
 def optimise(paper_device: dict, o: dict) -> dict:
     """Run the optimum search. -> {value, argmax(scan), leaves(full), info}."""
+    if o.get("observable") == "N_X":                    # R3-LADDER: the four-level ladder has its own fixed-grid search
+        return optimise_ladder(paper_device, o)
     spec = E._as_spec(paper_device)
     entries = E._entries(spec)
     leaves = E._leaves(spec, entries)
@@ -446,6 +501,40 @@ def optimise(paper_device: dict, o: dict) -> dict:
             "values": vfull, "info": info, "entries": entries}
 
 
+def optimise_ladder(paper_device: dict, o: dict) -> dict:
+    """Ladder optimum (R3-LADDER): N_X maximised over a FIXED grid of the two pulse areas (no zoom, no refinement: the argmax is
+    a grid point chosen before any g2 is read). -> {value, argmax(scan), leaves, values, info, entries, setup}."""
+    spec = E._as_spec(paper_device)
+    entries = E._entries(spec)
+    leaves = E._leaves(spec, entries)
+    base = _base_values(entries, leaves, o.get("overrides") or {})
+    scan = o["scan"]
+    bad = [sv.get("path") for sv in scan if sv.get("path") not in ("drive.area1_pi", "drive.area2_pi")] + \
+          [d.get("path") for d in o.get("derive") or []]
+    if bad:
+        raise ValueError(f"ladder optimum: the scan may vary only drive.area1_pi / drive.area2_pi (got {bad})")
+    windows = {sv["name"]: (float(sv["window"][0]), float(sv["window"][1])) for sv in scan}
+    ns = {sv["name"]: int(sv["n"]) for sv in scan}
+    _, xs = _grid_points(o, windows, ns)
+    pts = [_point(base, o, x) for x in xs]
+    em, setup, sr, rt, plan, v, reads = E._prepare(entries, pts[0], float(pts[0]["T_K"]))
+    fss = float(o["ladder"]["fss_ueV"]["value"])
+    S = _lad.prepare(plan, em, rt, fss_ueV=fss)
+    a = [np.array([pt[f"drive.area{k + 1}_pi"] for pt in pts]) for k in range(len(S.series))]
+    res = _lad.scan(S, a)
+    k = int(np.argmax(res["N_X"]))
+    xb = xs[k]
+    vfull = pts[k]
+    edge = [s["name"] for s in scan if min(abs(xb[s["name"]] - windows[s["name"]][0]), abs(xb[s["name"]] - windows[s["name"]][1]))
+            < 1e-6 * (windows[s["name"]][1] - windows[s["name"]][0])]
+    info = {"n_fast": 0, "n_engine": 0, "n_ladder": len(pts), "on_boundary": edge, "solver": "ladder",
+            "fast_vs_engine_phonon_free": float("nan"), "ladder": dict(S.info), "pXX_end": float(res["pXX_end"][k]),
+            "pX_end": float(res["pX_end"][k]), "grid_max_N_X": float(res["N_X"][k])}
+    return {"value": float(res["N_X"][k]), "argmax": xb, "leaves": {kk: vfull[kk] for kk in vfull if kk.startswith("drive.area")
+                                                                     or kk.startswith("drive.delta") or kk.startswith("drive.fwhm")},
+            "values": vfull, "info": info, "entries": entries, "setup": S, "ladder": True}
+
+
 def _fmt_argmax(res: dict) -> dict:
     out = {k: round(v, 5) for k, v in res["argmax"].items()}
     slm = res["values"].get("drive.shape") == "slm_mask"           # the pulse-shaper pulses ignore the area leaves
@@ -460,18 +549,25 @@ def run_item(paper, e: dict, item, store: dict) -> None:
     key = (paper.id, e["item"], json.dumps(paper.device, sort_keys=True, default=str),
            json.dumps(e.get("optimum") or {"of": e.get("of")}, sort_keys=True, default=str))
     if e["mode"] == "optimum":
+        ladder = e.get("solver") == "ladder"
         if key not in _CACHE:
-            _CACHE[key] = optimise(paper.device, e["optimum"])
+            _CACHE[key] = (optimise_ladder if ladder else optimise)(paper.device, e["optimum"])
         res = _CACHE[key]
         store[e["item"]] = res
         item.model = res["value"]
         item.argmax = _fmt_argmax(res)
         info = res["info"]
-        s = e["optimum"]["solver"]
-        item.note = (f"max over {[sv['name'] for sv in e['optimum']['scan']]} (phonons {_onoff(s['phonons'])}, decay {_onoff(s['radiative'])}); "
-                     f"argmax {item.argmax}" + (f"; ON the window boundary {info['on_boundary']}" if info["on_boundary"] else "")
-                     + f"; {info['n_fast']} grid + {info['n_engine']} engine evaluations; accelerator vs engine "
-                       f"|diff| {info['fast_vs_engine_phonon_free']:.1e}")
+        if ladder:
+            item.note = (f"max over {[sv['name'] for sv in e['optimum']['scan']]} of the X-line photon number N_X, four-level ladder "
+                         f"(no phonons, FSS {info['ladder']['fss_ueV']:g} ueV), fixed grid of {info['n_ladder']} points; argmax "
+                         f"{item.argmax}; P_XX(end) {info['pXX_end']:.3f}"
+                         + (f"; ON the window boundary {info['on_boundary']}" if info["on_boundary"] else ""))
+        else:
+            s = e["optimum"]["solver"]
+            item.note = (f"max over {[sv['name'] for sv in e['optimum']['scan']]} (phonons {_onoff(s['phonons'])}, decay {_onoff(s['radiative'])}); "
+                         f"argmax {item.argmax}" + (f"; ON the window boundary {info['on_boundary']}" if info["on_boundary"] else "")
+                         + f"; {info['n_fast']} grid + {info['n_engine']} engine evaluations; accelerator vs engine "
+                           f"|diff| {info['fast_vs_engine_phonon_free']:.1e}")
         if item.kind == "scalar":
             from . import papers as _pp
             item.outcome = _pp._scalar_outcome(item.paper, item.err, item.model, 0.0, 0.0, item.tol)
@@ -483,6 +579,9 @@ def run_item(paper, e: dict, item, store: dict) -> None:
         item.outcome, item.note = "error", f"optimum item {e['of']!r} was not computed"
         return
     key2 = (key, e["of"])
+    if e.get("solver") == "ladder":
+        _run_ladder_at(e, item, src)
+        return
     req = e["observable"] if e.get("convention", "intrinsic") == "intrinsic" else f"{e['observable']}:{e['convention']}"
     try:
         ctx = E._run_point(src["entries"], src["values"], float(src["values"]["T_K"]), "auto")
@@ -500,3 +599,28 @@ def run_item(paper, e: dict, item, store: dict) -> None:
         item.outcome = "pass"
         item.note = f"{req} by the engine at the argmax of {e['of']}: {item.argmax}"
     _ = key2
+
+
+def _run_ladder_at(e: dict, item, src: dict) -> None:
+    """at_optimum item evaluated by the ladder at the argmax of a ladder optimum item (class M: compared with the reported value)."""
+    if not src.get("ladder"):
+        item.outcome, item.note = "error", f"optimum item {e['of']!r} was not computed by the ladder solver"
+        return
+    v = src["values"]
+    try:
+        r = _lad.g2_at(src["setup"], [float(v[f"drive.area{k + 1}_pi"]) for k in range(len(src["setup"].series))])
+        item.model = float(r[e["observable"]])
+    except Exception as ex:                                       # noqa: BLE001
+        item.outcome, item.note = "error", f"ladder error at the argmax: {type(ex).__name__}: {ex}"
+        return
+    item.argmax = _fmt_argmax(src)
+    if not math.isfinite(item.model):
+        item.outcome, item.note = "unavailable", "ladder value not finite at the argmax"
+        return
+    if item.kind == "scalar":
+        from . import papers as _pp
+        item.outcome = _pp._scalar_outcome(item.paper, item.err, item.model, 0.0, 0.0, item.tol)
+    else:
+        item.outcome = "pass"
+    item.note = (f"{e['observable']} by the four-level ladder (X line, no phonons) at the argmax of {e['of']}: {item.argmax}; "
+                 f"N_X {r['N_X']:.4f}, P_XX(end) {r['pXX_end']:.3f}, g2(0) {r['g2_0']:.5f}")

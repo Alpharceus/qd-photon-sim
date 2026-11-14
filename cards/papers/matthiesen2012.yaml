@@ -14,7 +14,7 @@ device:
     params:
       lambda_nm: {range: [960.0, 980.0], unit: nm, tag: V, where: "Supp: sample DBR enhances reflection at 960-980 nm; the exact line is not stated"}
       tau_bare_ns: {value: 0.76, unit: ns, tag: DR, where: "text p.5 / Supp fit parameters: transition lifetime T1 = 760 ps, used as the effective bare lifetime in the bulk_planar structure (no Purcell factor in the paper); calibrated, see fits"}
-      gamma_star_4K_ns: {range: [0.0, 0.144], unit: 1/ns, tag: DR, where: "Supp: fitted T2 = 1.52 +/- 0.15 ns at Omega ~0.22 Gamma, i.e. at the 2 T1 limit; the 1-sigma lower bound T2 = 1.37 ns gives 1/T2* = 1/1.37 - 1/1.52 = 0.072 /ns, gamma*_repo = 2/T2* = 0.144 /ns; upper end of the dephasing envelope, lower end 0"}
+      gamma_star_4K_ns: {range: [0.0, 0.144], unit: 1/ns, tag: A, source: "assumption. The Supp text only says \"The dephasing times extracted by fitting are 2T1 limited for the lowest Rabi frequency\" and \"decreasing to ~0.7 of this theoretical maximum at the highest Rabi frequency shown\" (matthiesen2012.txt l.533-536); main text: \"1.52 ns – the theoretical upper limit of T 2=2T1\" (l.173). No fitted T2 with an uncertainty (the earlier '1.52 +/- 0.15 ns' and its 1-sigma bound 1.37 ns) is printed, so the upper end 0.144 /ns is an assumed small dephasing, not a paper number; lower end 0 = lifetime limited"}
   structure:
     kind: bulk_planar
     params:
@@ -24,7 +24,7 @@ device:
   drive:
     kind: cw_resonant
     params:
-      omega_ueV: {value: 1.299, unit: ueV, tag: DR, where: "text p.5 / Fig 2d: Omega ~1.5 Gamma for the g2 measurement; Gamma = 1/T1 = 1.316 /ns, hbar Omega = 0.6582 ueV ns x 1.5 x 1.316 /ns = 1.299 ueV"}
+      omega_ueV: {value: 1.299, unit: ueV, tag: DR, where: "text p.5 / Fig 2: \"excitation power settings - Ω~1.5Γ, Ω~0.6Γ, Ω~0.22Γ\" (matthiesen2012.txt l.141; the g2 measurement is the 1.5 Gamma setting) and \"QD transition lifetime of 760 ps\" (l.164); arithmetic Gamma = 1/T1 = 1/0.76 ns = 1.316 /ns, hbar Omega = 0.6582 ueV ns x 1.5 x 1.316 /ns = 1.299 ueV"}
       detuning_meV: {value: 0.0, unit: meV, tag: V, where: "text p.3: laser resonant with the transition"}
   setup:
     kind: lens_fibre_det
@@ -49,5 +49,6 @@ reproduce:
 fits:
   - {param: material.tau_bare_ns, fitted_to: [tau_T1]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance: gamma_star_4K_ns range DR -> A (the fitted T2 = 1.52 +/- 0.15 ns and its 1-sigma bound 1.37 ns are not in the paper text, which prints 1.52 ns only as the 2 T1 limit); omega_ueV where-text now quotes the paper lines", note: "values and ranges unchanged; no expectation changed"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 13: g2_0 removed from reproduce (tautological for a two-level emitter; kept in reported with a note)"}

@@ -27,7 +27,7 @@ device:
   structure:
     kind: cbg
     params:
-      F_P: {value: 0.178, unit: "1", tag: DR, where: "text p.8: 0.913 ns / 0.775 ns = 1.178 total decay-rate ratio CBG vs planar, so additional ratio 0.178 (FEM Purcell factor 0.7-1.6, near unity, p.8); set from the lifetimes (class C)"}
+      F_P: {value: 0.178, unit: "1", tag: DR, where: "text p.8: \"a spontaneous emission decay time of (0.775±0.022) ns. For comparison, nominally identical QDs in unpatterned planar regions show a lifetime of (0.913±0.029) ns\" (tripathi2026.txt l.308-310); arithmetic 0.913 ns / 0.775 ns = 1.178 total decay-rate ratio CBG vs planar, so additional ratio 1.178 - 1 = 0.178; FEM: \"near-unity Purcell factor (0.7 to 1.6)\" (l.313-314); set from the lifetimes (class C)"}
       eta_table: {value: "0.81:0.26", unit: "", tag: DR, where: "text p.4: 3D FEM PEE 26 percent into NA 0.81 for the QD displaced 78 nm from the mesa centre (31 percent centred, 37-40 percent ideal 2.5D design); TOTAL first-lens efficiency of the device"}
       table_mode: {value: total, unit: enum, tag: E, source: "the paper PEE is the total extraction of all emission (grating far-field redistribution), FX3a table_mode total"}
   drive:
@@ -35,6 +35,7 @@ device:
     params:
       pump: {range: [2.0, 5.0], unit: "1", tag: E, source: "the T series and the 4 K g2 are 'at saturation' (text p.9) with no absolute P/P_sat; 2 to 5 as for the other p-shell cards"}
       f_rep_MHz: {value: 80.0, unit: MHz, tag: V, where: "text p.7 (laser repetition rate 80 MHz)"}
+      p_X: {value: 0.6197183098591549, unit: "1", tag: E, source: "440/(440+270) = 0.6197 (arithmetic, not printed) from \"exciton (X) exhibits an integrated superconducting nanowire single-photon detector (SNSPD) count rate of 440 kcps, while the charged exciton contributes an additional 270 kcps, yielding a combined count rate of\" (tripathi2026.txt l.286). Measured under \"resonant excitation wavelength of 1120 nm using OPO and at a bias of 1 V. At saturation, the neutral\" (a 1120 nm excitation), whereas the card drive and the g2 / T series are the quasi-resonant 1225 nm scheme (\"under quasi-resonant pulsed excitation at 1225 nm using a Hanbury Brown and Twiss setup. The zero-\"); the spectrum also shows biexciton lines (\"neutral exciton (X, black), charged exciton (X ±, green), biexciton (XX, red), and charged biexciton (XX ±, yellow). Line\"), so X + X+- is not the full pair budget, and equal collection efficiency for X and X+- is assumed. A 1120 nm partition applied to a 1225 nm drive: class estimate [E], not a measured partition of this drive"}
   setup:
     kind: lens_fibre_det
     params:
@@ -46,7 +47,7 @@ device:
 reported:
   - {id: tau_cbg, observable: tau_ps, value: 775.0, err: 22.0, tag: V, where: "text p.8: spontaneous emission decay time (0.775 +/- 0.022) ns of X in eCBG 1 at 1 V and 0.16 P_sat (single exponential fit)"}
   - {id: tau_planar, observable: tau_ps, value: 913.0, err: 29.0, tag: V, where: "text p.8: 0.913 +/- 0.029 ns planar reference; used as the input tau_bare_ns, record only"}
-  - {id: BFL_X, observable: B_first_lens, convention: intrinsic, value: 0.134, err: 0.01, tag: DR, where: "text p.7: X rate 440 kcps at saturation (1120 nm OPO excitation, 1 V) / (80 MHz x 0.041); error from the 7 percent setup-efficiency uncertainty only"}
+  - {id: BFL_X, observable: B_first_lens, convention: intrinsic, value: 0.134, err: 0.01, tag: DR, where: "text p.7: \"of 440 kcps, while the charged exciton contributes an additional 270 kcps\" (tripathi2026.txt l.286), \"laser repetition rate of 80 MHz and the independently calibrated setup detection efficiency of (4.1±0.3)%\" (l.287-288); arithmetic 440e3 / (80e6 x 0.041) = 0.134, not printed (the paper prints only the combined PEE 21.7 +- 3.0 %); error 0.134 x 0.3/4.1 = 0.0098 from the setup-efficiency uncertainty only"}
   - {id: PEE_total, observable: B_first_lens, convention: intrinsic, value: 0.217, err: 0.03, tag: V, where: "text p.7 and abstract: PEE (21.7 +/- 3.0) percent from X 440 kcps + X+- 270 kcps = 710 kcps; sums two lines, so not a ledger item"}
   - {id: g2_low_fit, observable: g2_0, convention: intrinsic, value: 0.0078, err: 0.0012, tag: V, where: "text p.9 / Fig 4b: fit value at 0.16 P_sat, 1 V (different pump from the card), record only"}
   - {id: g2_low_raw, observable: g2_0, convention: raw, value: 0.0249, err: 0.0021, tag: V, where: "text p.9: raw peak-area value at 0.16 P_sat, 1 V (different pump from the card), record only"}
@@ -66,11 +67,13 @@ reproduce:
     tol_reason: "F_P 0.178 (total rate ratio 1.178) is set from this lifetime and the planar reference 0.913 ns, so it agrees by construction; 5 percent numerical floor"
     expect: pass
   - item: BFL_X
-    class: M
+    class: C
     tol: {rel: 0.3}
     tol_reason: "the 440 kcps carries no error; the 4.1 +/- 0.3 percent setup efficiency gives 7 percent, and 30 percent covers the unknown absolute pump and the line partition between X and X+-"
-    expect: fail
-    reason: "model 0.248 (envelope 0.221-0.254 over pump 2-5) vs 0.134: the model extraction is the entered 0.26 FEM table times a near-unity preparation of the X state, while the real dot splits its carriers between X (440 kcps) and X+- (270 kcps) and other lines; the model has no charge-state partition. The headline 21.7 percent (both lines summed) would agree within 2 sigma but is not a like-for-like quantity."
+    expect: pass
+    reason: "model 0.1565 (envelope 0.1395-0.1604 over pump 2-5) vs 0.134, inside rel 30 percent; combined-model outcome after the r4-incoh merge (not pre-registered by either branch) (r4-cavity A2 alone gave 0.253 and a fail; the p_X factor 440/(440+270) = 0.62 from the two count rates of the same measurement, text p.7, brings it to 0.1565). Agreement is by construction of the X / X+- partition and not a test of the model: class C, not M."
+    weak: true
+    weak_reason: "r4 red-team item 12: the pass depends entirely on drive.p_X = 440/(440+270) = 0.62, which was measured under a 1120 nm excitation while this card's drive and the g2 / T series are the quasi-resonant 1225 nm scheme; the spectrum also shows biexciton lines (so X + X+- is not the full pair budget) and equal X / X+- collection efficiency is assumed. Without p_X the model is 0.253 (fail); the pass is a class-C construction (p_X is fitted to this item), not evidence for the model"
   - item: g2_sat_4K
     class: M
     tol: {k_sigma: 2, abs: 0.01}
@@ -85,6 +88,14 @@ reproduce:
     reason: "model flat at 3.4e-3 (rms_rel 0.88) vs 0.0183 -> 0.0663: the paper rise with temperature is phonon dephasing broadening the line into the detection window plus background; the p_shell path has no thermal escape (E_act, k0 not given) and no T-dependent background term."
 fits:
   - {param: structure.F_P, fitted_to: [tau_cbg]}
+  - {param: drive.p_X, fitted_to: [BFL_X]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 12: material inas_ingaas_metamorphic_cband l_xy / l_z reverted to the InAs/GaAs class [3, 5] / [1, 2] nm [A] (the [5, 8] / [2, 3] E ranges were tuned to a test datum, no literature citation); engine review fixes re-run", note: "obtained: tau_cbg 775.1 pass, BFL_X 0.1565 [0.1395, 0.1604] pass (weak), g2_sat_4K 0.00343 fail, g2_vs_T rms_rel 0.8804 fail; expects unchanged"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 12: drive.p_X retagged DR -> E with the 1120 nm vs 1225 nm excitation mismatch quoted; BFL_X flagged weak", note: "text and flag only; values, tolerances and expectations unchanged, re-run all MATCH (BFL_X 0.1565 [0.1395, 0.1604] pass, tau_cbg 775.1 pass, g2_sat_4K 0.00343 fail, g2_vs_T 0.8804 fail)"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A130, A138; DR items): F_P, BFL_X and p_X where-texts quote the printed inputs verbatim and mark the arithmetic (0.134 and 0.62 are recomputations, not printed numbers)", note: "text only; values, tolerances and expectations unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "no printed model value moved (tau_cbg 775.1, BFL_X 0.1565, g2_sat_4K 0.00343, g2_vs_T rms 0.8804 unchanged); expects unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_X 0.248 -> 0.253. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total now collects all emission at the FEM table, so mesa_reflector workaround replaced by cbg F_P 0.178 (rate_factor 1.178 -> F_P 0.178) + table 0.81:0.26"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: drive.p_X = 440/(440+270) added; BFL_X M/fail -> C/pass", note: "model 0.2476 -> 0.1535 (paper 0.134 +- 0.01, rel 0.3 tol passes); p_X is derived from the same measurement so the item is class C per the review"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: BFL_X expect was fail (HEAD, 0.253) and pass (r4-incoh, 0.1535, class C); the combined model gives 0.1565, envelope [0.1395, 0.1604], inside rel 0.3, so expect pass; this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); no tolerance changed"}

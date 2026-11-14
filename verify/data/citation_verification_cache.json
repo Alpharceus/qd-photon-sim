@@ -7,6 +7,78 @@
     },
     "verification_timestamp": "2026-09-11T05:29:04.712362+00:00"
   },
+  "arxiv_id|0803.3700": {
+    "response": {
+      "found": true,
+      "title": "Indistinguishable photons from a diode",
+      "year": 2008
+    },
+    "verification_timestamp": "2026-11-04T06:28:57.954506+00:00"
+  },
+  "arxiv_id|0804.0663": {
+    "response": {
+      "found": true,
+      "title": "Cavity-enhanced radiative emission rate in a single-photon-emitting diode operating at 0.5 GHz",
+      "year": 2008
+    },
+    "verification_timestamp": "2026-11-04T06:29:03.871101+00:00"
+  },
+  "arxiv_id|1209.5269": {
+    "response": {
+      "found": true,
+      "title": "The photonic trumpet: An efficient, broadband interface between a solid-state quantum emitter and a Gaussian beam",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:29:24.832575+00:00"
+  },
+  "arxiv_id|1308.4257": {
+    "response": {
+      "found": true,
+      "title": "On-demand generation of indistinguishable polarization-entangled photon pairs",
+      "year": 2013
+    },
+    "verification_timestamp": "2026-11-04T06:29:21.785162+00:00"
+  },
+  "arxiv_id|1402.6967": {
+    "response": {
+      "found": true,
+      "title": "Efficient out-coupling of high-purity single photons from a coherent quantum dot in a photonic-crystal cavity",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:29:18.774237+00:00"
+  },
+  "arxiv_id|1405.1991": {
+    "response": {
+      "found": true,
+      "title": "Deterministic and Robust Generation of Single Photons On a Chip with 99.5% Indistinguishability Using Rapid Adiabatic Passage",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:29:49.022031+00:00"
+  },
+  "arxiv_id|1409.0913v3": {
+    "response": {
+      "found": true,
+      "title": "Phonon-assisted population inversion of a single quantum dot",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:29:33.941938+00:00"
+  },
+  "arxiv_id|1507.06169": {
+    "response": {
+      "found": true,
+      "title": "Ultrafast electrical control of a resonantly driven single photon source",
+      "year": 2015
+    },
+    "verification_timestamp": "2026-11-04T06:29:00.868477+00:00"
+  },
+  "arxiv_id|1510.07314": {
+    "response": {
+      "found": true,
+      "title": "Generating single photons at GHz modulation-speed using electrically controlled quantum dot microlenses",
+      "year": 2015
+    },
+    "verification_timestamp": "2026-11-04T06:29:39.883738+00:00"
+  },
   "arxiv_id|1602.02325": {
     "response": {
       "found": true,
@@ -23,6 +95,22 @@
     },
     "verification_timestamp": "2026-09-11T05:31:55.345230+00:00"
   },
+  "arxiv_id|1706.03599": {
+    "response": {
+      "found": true,
+      "title": "Ordered arrays of InGaN/GaN dot-in-a-wire nanostructures as single photon emitters",
+      "year": 2017
+    },
+    "verification_timestamp": "2026-11-04T06:29:15.865294+00:00"
+  },
+  "arxiv_id|1902.01180": {
+    "response": {
+      "found": true,
+      "title": "Single-photon light emitting diodes based on pre-selected quantum dots using a deterministic lithography technique",
+      "year": 2019
+    },
+    "verification_timestamp": "2026-11-04T06:29:36.777977+00:00"
+  },
   "arxiv_id|2001.09805": {
     "response": {
       "found": true,
@@ -31,12 +119,76 @@
     },
     "verification_timestamp": "2026-09-11T05:29:18.789606+00:00"
   },
+  "arxiv_id|2009.02121": {
+    "response": {
+      "found": true,
+      "title": "Coherent Dynamics in Quantum Emitters under Dichromatic Excitation",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-11-04T06:29:12.843968+00:00"
+  },
+  "arxiv_id|2203.00712": {
+    "response": {
+      "found": true,
+      "title": "SUPER Scheme in Action: Experimental Demonstration of Red-detuned Excitation of a Quantum Dot",
+      "year": 2022
+    },
+    "verification_timestamp": "2026-11-04T06:29:09.900552+00:00"
+  },
+  "arxiv_id|2207.12898": {
+    "response": {
+      "found": true,
+      "title": "High emission rate from a Purcell-enhanced, triggered source of pure single photons in the telecom C-band",
+      "year": 2022
+    },
+    "verification_timestamp": "2026-11-04T06:29:27.838130+00:00"
+  },
   "arxiv_id|2303.08352": {
     "response": {
       "found": false,
       "note": "arXiv network error: The read operation timed out"
     },
     "verification_timestamp": "2026-09-14T18:15:15.602081+00:00"
+  },
+  "arxiv_id|2306.08668": {
+    "response": {
+      "found": true,
+      "title": "On-Demand Generation of Indistinguishable Photons in the Telecom C-Band using Quantum Dot Devices",
+      "year": 2023
+    },
+    "verification_timestamp": "2026-11-04T06:29:45.917359+00:00"
+  },
+  "arxiv_id|2310.20647": {
+    "response": {
+      "found": true,
+      "title": "Triggered telecom C-band single-photon source with high brightness, high indistinguishability and sub-GHz spectral linewidth",
+      "year": 2023
+    },
+    "verification_timestamp": "2026-11-04T06:29:06.939595+00:00"
+  },
+  "arxiv_id|2406.08057": {
+    "response": {
+      "found": true,
+      "title": "Bright electrically contacted circular Bragg grating resonators with deterministically integrated quantum dots",
+      "year": 2024
+    },
+    "verification_timestamp": "2026-11-04T06:29:51.859778+00:00"
+  },
+  "arxiv_id|2510.21428v2": {
+    "response": {
+      "found": true,
+      "title": "Exciton and biexciton preparation via coherent swing-up excitation in a GaAs quantum dot embedded in micropillar cavity",
+      "year": 2025
+    },
+    "verification_timestamp": "2026-11-04T06:29:30.791409+00:00"
+  },
+  "arxiv_id|2604.23422": {
+    "response": {
+      "found": true,
+      "title": "Stark-tunable O-band single-photon sources based on deterministically fabricated quantum dot--circular Bragg gratings on silicon",
+      "year": 2026
+    },
+    "verification_timestamp": "2026-11-04T06:29:42.917340+00:00"
   },
   "arxiv_id|cond-mat/0610425": {
     "response": {
@@ -62,6 +214,22 @@
     },
     "verification_timestamp": "2026-09-11T05:31:55.574001+00:00"
   },
+  "crossref_doi|10.1002/pssc.200880845": {
+    "response": {
+      "found": true,
+      "title": "Oxide removal from GaN(0001) surfaces",
+      "year": 2009
+    },
+    "verification_timestamp": "2026-11-04T06:30:00.032173+00:00"
+  },
+  "crossref_doi|10.1002/qute.202300111": {
+    "response": {
+      "found": true,
+      "title": "Bright Source of Purcell\u2010Enhanced, Triggered, Single Photons in the Telecom C\u2010Band",
+      "year": 2023
+    },
+    "verification_timestamp": "2026-11-04T06:31:50.798749+00:00"
+  },
   "crossref_doi|10.1007/s11671-009-9514-4": {
     "response": {
       "found": true,
@@ -69,6 +237,58 @@
       "year": 2009
     },
     "verification_timestamp": "2026-09-11T05:29:06.562762+00:00"
+  },
+  "crossref_doi|10.1021/acs.nanolett.0c01713": {
+    "response": {
+      "found": true,
+      "title": "Zwitterionic Nanoconjugate Enables Safe and Efficient\nLymphatic Drug Delivery",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-11-04T06:32:24.856973+00:00"
+  },
+  "crossref_doi|10.1021/acs.nanolett.1c02647": {
+    "response": {
+      "found": true,
+      "title": "Bright Purcell Enhanced Single-Photon Source in the Telecom O-Band Based on a Quantum Dot in a Circular Bragg Grating",
+      "year": 2021
+    },
+    "verification_timestamp": "2026-11-04T06:29:10.142507+00:00"
+  },
+  "crossref_doi|10.1021/acs.nanolett.1c02647:": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:43.788303+00:00"
+  },
+  "crossref_doi|10.1021/acs.nanolett.2c04375": {
+    "response": {
+      "found": true,
+      "title": "Position-Controlled Telecom Single Photon Emitters Operating at Elevated Temperatures",
+      "year": 2023
+    },
+    "verification_timestamp": "2026-11-04T06:30:23.201183+00:00"
+  },
+  "crossref_doi|10.1021/acs.nanolett.4c01813": {
+    "response": {
+      "found": true,
+      "title": "Coherently and Incoherently Pumped Telecom C-Band Single-Photon Source with High Brightness and Indistinguishability",
+      "year": 2024
+    },
+    "verification_timestamp": "2026-11-04T06:32:14.278008+00:00"
+  },
+  "crossref_doi|10.1021/acsphotonics.0c00310": {
+    "response": {
+      "found": true,
+      "title": "Toward Bright and Pure Single Photon Emitters at 300\nK Based on GaN Quantum Dots on Silicon",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-11-04T06:30:38.274998+00:00"
+  },
+  "crossref_doi|10.1021/acsphotonics.3c01199": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:51.009370+00:00"
   },
   "crossref_doi|10.1021/nl404400d": {
     "response": {
@@ -78,6 +298,36 @@
     },
     "verification_timestamp": "2026-09-11T05:29:18.505889+00:00"
   },
+  "crossref_doi|10.1021/nl503081n": {
+    "response": {
+      "found": true,
+      "title": "Deterministic and Robust Generation of Single Photons from a Single Quantum Dot with 99.5% Indistinguishability Using Adiabatic Rapid Passage",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:32:14.641228+00:00"
+  },
+  "crossref_doi|10.1038/nature01086": {
+    "response": {
+      "found": true,
+      "title": "Indistinguishable photons from a single-photon device",
+      "year": 2002
+    },
+    "verification_timestamp": "2026-11-04T06:32:15.859857+00:00"
+  },
+  "crossref_doi|10.1038/ncomms1746": {
+    "response": {
+      "found": true,
+      "title": "Bright single-photon sources in bottom-up tailored nanowires",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:29:34.173218+00:00"
+  },
+  "crossref_doi|10.1038/ncomms1746:": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:32:06.200673+00:00"
+  },
   "crossref_doi|10.1038/ncomms2691": {
     "response": {
       "found": true,
@@ -85,6 +335,20 @@
       "year": 2013
     },
     "verification_timestamp": "2026-09-11T05:29:06.151900+00:00"
+  },
+  "crossref_doi|10.1038/ncomms4240": {
+    "response": {
+      "found": true,
+      "title": "Deterministic and electrically tunable bright single-photon source",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:29:28.250622+00:00"
+  },
+  "crossref_doi|10.1038/ncomms4240:": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:58.459522+00:00"
   },
   "crossref_doi|10.1038/nmat1763": {
     "response": {
@@ -94,6 +358,14 @@
     },
     "verification_timestamp": "2026-09-11T05:29:18.242875+00:00"
   },
+  "crossref_doi|10.1038/nnano.2012.262": {
+    "response": {
+      "found": true,
+      "title": "On-demand semiconductor single-photon source with near-unity indistinguishability",
+      "year": 2013
+    },
+    "verification_timestamp": "2026-11-04T06:29:04.187282+00:00"
+  },
   "crossref_doi|10.1038/nphoton.2009.287": {
     "response": {
       "found": true,
@@ -101,6 +373,70 @@
       "year": 2010
     },
     "verification_timestamp": "2026-09-14T07:33:48.082729+00:00"
+  },
+  "crossref_doi|10.1038/nphoton.2013.377": {
+    "response": {
+      "found": true,
+      "title": "On-demand generation of indistinguishable polarization-entangled photon pairs",
+      "year": 2014
+    },
+    "verification_timestamp": "2026-11-04T06:31:18.291188+00:00"
+  },
+  "crossref_doi|10.1038/nphoton.2016.23": {
+    "response": {
+      "found": true,
+      "title": "Near-optimal single-photon sources in the solid state",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-11-04T06:29:40.445271+00:00"
+  },
+  "crossref_doi|10.1038/nphoton.2017.101": {
+    "response": {
+      "found": true,
+      "title": "Phonon scattering inhibits simultaneous near-unity efficiency and indistinguishability in semiconductor single-photon sources",
+      "year": 2017
+    },
+    "verification_timestamp": "2026-11-04T06:30:45.827305+00:00"
+  },
+  "crossref_doi|10.1038/nphys2688": {
+    "response": {
+      "found": true,
+      "title": "Charge noise and spin noise in a semiconductor quantum device",
+      "year": 2013
+    },
+    "verification_timestamp": "2026-11-04T06:32:23.933202+00:00"
+  },
+  "crossref_doi|10.1038/nphys4052": {
+    "response": {
+      "found": true,
+      "title": "Signatures of two-photon pulses from a quantum two-level system",
+      "year": 2017
+    },
+    "verification_timestamp": "2026-11-04T06:32:14.905215+00:00"
+  },
+  "crossref_doi|10.1038/s41534-018-0092-0": {
+    "response": {
+      "found": true,
+      "title": "Quantum dot single-photon sources with ultra-low multi-photon probability",
+      "year": 2018
+    },
+    "verification_timestamp": "2026-11-04T06:32:15.306052+00:00"
+  },
+  "crossref_doi|10.1038/s41565-020-00831-x": {
+    "response": {
+      "found": true,
+      "title": "A bright and fast source of coherent single photons",
+      "year": 2021
+    },
+    "verification_timestamp": "2026-11-04T06:29:40.952218+00:00"
+  },
+  "crossref_doi|10.1038/s41566-019-0494-3": {
+    "response": {
+      "found": true,
+      "title": "Towards optimal single-photon sources from polarized microcavities",
+      "year": 2019
+    },
+    "verification_timestamp": "2026-11-04T06:29:46.248823+00:00"
   },
   "crossref_doi|10.1063/1.1600519": {
     "response": {
@@ -110,6 +446,38 @@
     },
     "verification_timestamp": "2026-09-23T09:50:37.433111+00:00"
   },
+  "crossref_doi|10.1063/1.3497016": {
+    "response": {
+      "found": true,
+      "title": "Triggered single-photon emission from electrically excited quantum dots in the red spectral range",
+      "year": 2010
+    },
+    "verification_timestamp": "2026-11-04T06:29:52.755675+00:00"
+  },
+  "crossref_doi|10.1063/1.3633218": {
+    "response": {
+      "found": true,
+      "title": "Triggered single-photon emission in the red spectral range from optically excited InP/(Al,Ga)InP quantum dots embedded in micropillars up to 100 K",
+      "year": 2011
+    },
+    "verification_timestamp": "2026-11-04T06:30:38.545794+00:00"
+  },
+  "crossref_doi|10.1063/1.3694935": {
+    "response": {
+      "found": true,
+      "title": "Spontaneous emission control of single quantum dots in bottom-up nanowire waveguides",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:31:17.071438+00:00"
+  },
+  "crossref_doi|10.1063/1.4830000": {
+    "response": {
+      "found": true,
+      "title": "Single photon emission from site-controlled InGaN/GaN quantum dots",
+      "year": 2013
+    },
+    "verification_timestamp": "2026-11-04T06:30:23.413318+00:00"
+  },
   "crossref_doi|10.1063/1.4897640": {
     "response": {
       "found": true,
@@ -117,6 +485,174 @@
       "year": 2014
     },
     "verification_timestamp": "2026-09-11T05:29:06.337326+00:00"
+  },
+  "crossref_doi|10.1063/1.5020038": {
+    "response": {
+      "found": true,
+      "title": "On-demand generation of background-free single photons from a solid-state source",
+      "year": 2018
+    },
+    "verification_timestamp": "2026-11-04T06:29:40.146688+00:00"
+  },
+  "crossref_doi|10.1088/1367-2630/6/1/090": {
+    "response": {
+      "found": true,
+      "title": "Visible single-photon generation from semiconductor quantum dots",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-11-04T06:31:33.450547+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevA.34.4025": {
+    "response": {
+      "found": true,
+      "title": "Amplitude squeezing in a pump-noise-suppressed laser oscillator",
+      "year": 1986
+    },
+    "verification_timestamp": "2026-11-04T06:30:30.844686+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevApplied.20.034011": {
+    "response": {
+      "found": true,
+      "title": "Near-Room-Temperature Single-Photon Emission from a Strongly Confined Piezoelectric \n<mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\" overflow=\"scroll\"><mml:mrow><mml:mi>In</mml:mi><mml:mi>As</mml:mi></mml:mrow></mml:math>\n Quantum Dot",
+      "year": 2023
+    },
+    "verification_timestamp": "2026-11-04T06:29:52.133842+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.52.11969": {
+    "response": {
+      "found": true,
+      "title": "InAs/GaAs pyramidal quantum dots: Strain distribution, optical phonons, and electronic structure",
+      "year": 1995
+    },
+    "verification_timestamp": "2026-11-04T06:30:07.717937+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.54.11532": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:33.662184+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.55.4473": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:42.520011+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.56.10404": {
+    "response": {
+      "found": true,
+      "title": "Electronic structure of strained<mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\"><mml:mrow><mml:msub><mml:mrow><mml:mi mathvariant=\"normal\">I</mml:mi><mml:mi mathvariant=\"normal\">n</mml:mi><mml:mi mathvariant=\"normal\">P</mml:mi><mml:mo>/</mml:mo><mml:mi mathvariant=\"normal\">G</mml:mi><mml:mi mathvariant=\"normal\">a</mml:mi></mml:mrow><mml:mrow><mml:mn>0.51</mml:mn></mml:mrow></mml:msub></mml:mrow><mml:mrow><mml:msub><mml:mrow><mml:mi mathvariant=\"normal\">In</mml:mi></mml:mrow><mml:mrow><mml:mn>0.49</mml:mn></mml:mrow></mml:msub></mml:mrow><mml:mi mathvariant=\"normal\">P</mml:mi></mml:math>quantum dots",
+      "year": 1997
+    },
+    "verification_timestamp": "2026-11-04T06:30:00.342021+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.56.10435": {
+    "response": {
+      "found": true,
+      "title": "Energy relaxation by multiphonon processes in InAs/GaAs quantum dots",
+      "year": 1997
+    },
+    "verification_timestamp": "2026-11-04T06:31:41.103375+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.57.7190": {
+    "response": {
+      "found": true,
+      "title": "Eight-band calculations of strained InAs/GaAs quantum dots compared with one-, four-, and six-band approximations",
+      "year": 1998
+    },
+    "verification_timestamp": "2026-11-04T06:30:22.993176+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.59.5688": {
+    "response": {
+      "found": true,
+      "title": "Electronic and optical properties of strained quantum dots modeled by 8-band k\u22c5p theory",
+      "year": 1999
+    },
+    "verification_timestamp": "2026-11-04T06:30:15.353758+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.62.10324": {
+    "response": {
+      "found": true,
+      "title": "Electron and hole confinement in stacked self-assembled InP quantum dots",
+      "year": 2000
+    },
+    "verification_timestamp": "2026-11-04T06:30:00.637438+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.63.155307": {
+    "response": {
+      "found": true,
+      "title": "Acoustic phonon broadening mechanism in single quantum dot emission",
+      "year": 2001
+    },
+    "verification_timestamp": "2026-11-04T06:31:43.141690+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.65.161303": {
+    "response": {
+      "found": true,
+      "title": "Photon correlation spectroscopy of a single quantum dot",
+      "year": 2002
+    },
+    "verification_timestamp": "2026-11-04T06:31:33.175161+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.65.195313": {
+    "response": {
+      "found": true,
+      "title": "Theory of pure dephasing and the resulting absorption line shape in semiconductor quantum dots",
+      "year": 2002
+    },
+    "verification_timestamp": "2026-11-04T06:31:01.359349+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.68.233301": {
+    "response": {
+      "found": true,
+      "title": "Acoustic phonon sidebands in the emission line of single InAs/GaAs quantum dots",
+      "year": 2003
+    },
+    "verification_timestamp": "2026-11-04T06:31:42.921766+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.69.041307": {
+    "response": {
+      "found": true,
+      "title": "Phonon sidebands in exciton and biexciton emission from single GaAs quantum dots",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-11-04T06:31:43.582828+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.69.205324": {
+    "response": {
+      "found": true,
+      "title": "Submicrosecond correlations in photoluminescence from InAs quantum dots",
+      "year": 2004
+    },
+    "verification_timestamp": "2026-11-04T06:31:32.940927+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.72.085316": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:31:41.347598+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.75.195302": {
+    "response": {
+      "found": true,
+      "title": "Electronic shell structure and carrier dynamics of high aspect ratio<mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\"><mml:mrow><mml:mi>InP</mml:mi></mml:mrow></mml:math>single quantum dots",
+      "year": 2007
+    },
+    "verification_timestamp": "2026-11-04T06:30:38.758854+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.81.081304": {
+    "response": {
+      "found": true,
+      "title": "Probing long-lived dark excitons in self-assembled quantum dots",
+      "year": 2010
+    },
+    "verification_timestamp": "2026-11-04T06:31:42.727928+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevB.81.245419": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:30:53.865778+00:00"
   },
   "crossref_doi|10.1103/PhysRevB.90.125118": {
     "response": {
@@ -126,6 +662,14 @@
     },
     "verification_timestamp": "2026-09-23T09:50:36.988892+00:00"
   },
+  "crossref_doi|10.1103/PhysRevLett.104.017402": {
+    "response": {
+      "found": true,
+      "title": "Damping of Exciton Rabi Rotations by Acoustic Phonons in Optically Excited<mml:math xmlns:mml=\"http://www.w3.org/1998/Math/MathML\" display=\"inline\"><mml:mi>InGaAs</mml:mi><mml:mo>/</mml:mo><mml:mi>GaAs</mml:mi></mml:math>Quantum Dots",
+      "year": 2010
+    },
+    "verification_timestamp": "2026-11-04T06:31:01.575578+00:00"
+  },
   "crossref_doi|10.1103/PhysRevLett.106.103601": {
     "response": {
       "found": true,
@@ -133,6 +677,154 @@
       "year": 2011
     },
     "verification_timestamp": "2026-09-14T18:15:15.852793+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.107.167404": {
+    "response": {
+      "found": true,
+      "title": "Mapping the Local Density of Optical States of a Photonic Crystal with Single Quantum Dots",
+      "year": 2011
+    },
+    "verification_timestamp": "2026-11-04T06:31:17.807547+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.108.093602": {
+    "response": {
+      "found": true,
+      "title": "Subnatural Linewidth Single Photons from a Quantum Dot",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:29:19.275405+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.109.183601": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:32:16.076393+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.116.020401": {
+    "response": {
+      "found": true,
+      "title": "On-Demand Single Photons with High Extraction Efficiency and Near-Unity Indistinguishability from a Resonantly Driven Quantum Dot in a Micropillar",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-11-04T06:29:01.101544+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.116.033601": {
+    "response": {
+      "found": true,
+      "title": "Exploring Dephasing of a Solid-State Quantum Emitter via Time- and Temperature-Dependent Hong-Ou-Mandel Experiments",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-11-04T06:32:24.211444+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.116.213601": {
+    "response": {
+      "found": true,
+      "title": "Near-Transform-Limited Single Photons from an Efficient Solid-State Quantum Emitter",
+      "year": 2016
+    },
+    "verification_timestamp": "2026-11-04T06:32:24.523431+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.118.233602": {
+    "response": {
+      "found": true,
+      "title": "Probing Electron-Phonon Interaction through Two-Photon Interference in Resonantly Driven Semiconductor Quantum Dots",
+      "year": 2017
+    },
+    "verification_timestamp": "2026-11-04T06:31:43.359725+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.120.257401": {
+    "response": {
+      "found": true,
+      "title": "Phonon Decoherence of Quantum Dots in Photonic Structures: Broadening of the Zero-Phonon Line and the Role of Dimensionality",
+      "year": 2018
+    },
+    "verification_timestamp": "2026-11-04T06:31:08.923727+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.125.233605": {
+    "response": {
+      "found": true,
+      "title": "Crux of Using the Cascaded Emission of a Three-Level Quantum Ladder System to Generate Indistinguishable Photons",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-11-04T06:31:25.644218+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.126.047403": {
+    "response": {
+      "found": true,
+      "title": "Coherent Dynamics in Quantum Emitters under Dichromatic Excitation",
+      "year": 2021
+    },
+    "verification_timestamp": "2026-11-04T06:32:13.963636+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.126.063602": {
+    "response": {
+      "found": true,
+      "title": "Hong-Ou-Mandel Interference with Imperfect Single Photon Sources",
+      "year": 2021
+    },
+    "verification_timestamp": "2026-11-04T06:32:15.606126+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.126.233601": {
+    "response": {
+      "found": true,
+      "title": "Bright Polarized Single-Photon Source Based on a Linear Dipole",
+      "year": 2021
+    },
+    "verification_timestamp": "2026-11-04T06:29:40.688568+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.81.1110": {
+    "response": {
+      "found": true,
+      "title": "Enhanced Spontaneous Emission by Quantum Boxes in a Monolithic Optical Microcavity",
+      "year": 1998
+    },
+    "verification_timestamp": "2026-11-04T06:31:16.795002+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevLett.94.030502": {
+    "response": {
+      "found": true,
+      "title": "Creating Single Time-Bin-Entangled Photon Pairs",
+      "year": 2005
+    },
+    "verification_timestamp": "2026-11-04T06:31:18.487437+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevResearch.6.L032021": {
+    "response": {
+      "found": true,
+      "title": "Broadband amplitude squeezing at room temperature in electrically driven quantum dot lasers",
+      "year": 2024
+    },
+    "verification_timestamp": "2026-11-04T06:30:23.618882+00:00"
+  },
+  "crossref_doi|10.1103/PhysRevX.1.021009": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:30:46.292246+00:00"
+  },
+  "crossref_doi|10.1109/50.802999": {
+    "response": {
+      "found": true,
+      "title": "Strong Purcell effect for InAs quantum boxes in three-dimensional solid-state microcavities",
+      "year": 1999
+    },
+    "verification_timestamp": "2026-11-04T06:31:16.548782+00:00"
+  },
+  "crossref_doi|10.1109/JQE.2012.2205224": {
+    "response": {
+      "found": true,
+      "title": "Impacts of Wetting Layer and Excited State on the Modulation Response of Quantum-Dot Lasers",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:30:23.834723+00:00"
+  },
+  "crossref_doi|10.1126/sciadv.abc8268": {
+    "response": {
+      "found": true,
+      "title": "Scalable integrated single-photon source",
+      "year": 2020
+    },
+    "verification_timestamp": "2026-11-04T06:29:43.304638+00:00"
   },
   "crossref_doi|10.1364/CLEO_FS.2026.FM2C.3": {
     "response": {
@@ -142,6 +834,22 @@
     },
     "verification_timestamp": "2026-09-14T07:33:48.326040+00:00"
   },
+  "crossref_doi|10.1364/OE.16.012771": {
+    "response": {
+      "found": true,
+      "title": "Electrically pumped single-photon emission in the visible spectral range up to 80 K",
+      "year": 2008
+    },
+    "verification_timestamp": "2026-11-04T06:29:52.434583+00:00"
+  },
+  "crossref_doi|10.1364/OE.27.036824": {
+    "response": {
+      "found": true,
+      "title": "Optimized designs for telecom-wavelength quantum light sources based on hybrid circular Bragg gratings",
+      "year": 2019
+    },
+    "verification_timestamp": "2026-11-04T06:31:18.013925+00:00"
+  },
   "crossref_doi|10.1364/OL.29.000572": {
     "response": {
       "found": true,
@@ -149,6 +857,14 @@
       "year": 2004
     },
     "verification_timestamp": "2026-09-14T07:33:47.865897+00:00"
+  },
+  "crossref_doi|10.1364/OME.380601": {
+    "response": {
+      "found": true,
+      "title": "Phonon effects in quantum dot single-photon sources",
+      "year": 2019
+    },
+    "verification_timestamp": "2026-11-04T06:30:46.088344+00:00"
   },
   "crossref_title|Band alignments of ternary wurtzite and zincblende III-nitrides investigated by hybrid density functional theory": {
     "response": {
@@ -158,6 +874,14 @@
     },
     "verification_timestamp": "2026-09-11T05:36:48.498475+00:00"
   },
+  "crossref_title|Carrier dynamics in modulation-doped InAs/GaAs quantum dots": {
+    "response": {
+      "found": true,
+      "title": "Carrier spin dynamics in modulation-doped InAs\u2215GaAs quantum dots",
+      "year": 2006
+    },
+    "verification_timestamp": "2026-11-04T06:31:42.263733+00:00"
+  },
   "crossref_title|Multi-excitonic complexes in single InGaN quantum dots": {
     "response": {
       "found": true,
@@ -166,6 +890,28 @@
     },
     "verification_timestamp": "2026-09-11T05:29:14.617024+00:00"
   },
+  "crossref_title|Phonon-dressed Mollow triplet / polaron master equation": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:30:46.865236+00:00"
+  },
+  "crossref_title|Rapid carrier relaxation in self-assembled InGaAs/GaAs quantum dots": {
+    "response": {
+      "found": true,
+      "title": "Ultrafast carrier-relaxation dynamics in self-assembled InAs/GaAs quantum dots",
+      "year": 2002
+    },
+    "verification_timestamp": "2026-11-04T06:31:34.090187+00:00"
+  },
+  "crossref_title|Spontaneous emission control of single quantum dots in bottom-up nanowire waveguides": {
+    "response": {
+      "found": true,
+      "title": "Spontaneous emission control of single quantum dots in bottom-up nanowire waveguides",
+      "year": 2012
+    },
+    "verification_timestamp": "2026-11-04T06:31:17.593927+00:00"
+  },
   "crossref_title|Temperature-dependent fine structure splitting in InGaN quantum dots": {
     "response": {
       "found": true,
@@ -173,6 +919,12 @@
       "year": 2017
     },
     "verification_timestamp": "2026-09-11T05:37:27.554236+00:00"
+  },
+  "crossref_title|Theory of frequency-filtered and time-resolved N-photon correlations": {
+    "response": {
+      "found": false
+    },
+    "verification_timestamp": "2026-11-04T06:32:16.659660+00:00"
   },
   "crossref_title|Universal bandgap bowing in group III nitride alloys": {
     "response": {
@@ -188,6 +940,147 @@
       "note": "S2 API HTTP 429"
     },
     "verification_timestamp": "2026-09-11T05:29:13.399920+00:00"
+  },
+  "semantic_scholar|10.1021/acs.nanolett.0c01713": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:32:31.578810+00:00"
+  },
+  "semantic_scholar|10.1021/acs.nanolett.1c02647:": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:50.522720+00:00"
+  },
+  "semantic_scholar|10.1021/acsphotonics.3c01199": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:58.178466+00:00"
+  },
+  "semantic_scholar|10.1038/ncomms1746:": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:32:13.618394+00:00"
+  },
+  "semantic_scholar|10.1038/ncomms4240:": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:32:05.975722+00:00"
+  },
+  "semantic_scholar|10.1063/1.3497016": {
+    "response": {
+      "found": true,
+      "title": "Triggered single-photon emission from electrically excited quantum dots in the red spectral range",
+      "year": 2010
+    },
+    "verification_timestamp": "2026-11-04T06:29:59.724743+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevA.34.4025": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:37.986461+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.52.11969": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:14.976179+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.54.11532": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:40.817615+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.59.5688": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:22.732524+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.62.10324": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:07.475492+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.75.195302": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:45.563888+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevB.81.245419": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:01.085570+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevLett.104.017402": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:08.663460+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevLett.109.183601": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:32:23.498399+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevLett.120.257401": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:16.228463+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevLett.125.233605": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:32.697108+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevLett.94.030502": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:31:25.334010+00:00"
+  },
+  "semantic_scholar|10.1103/PhysRevX.1.021009": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:53.568719+00:00"
+  },
+  "semantic_scholar|10.1109/JQE.2012.2205224": {
+    "response": {
+      "found": false,
+      "note": "S2 API HTTP 429"
+    },
+    "verification_timestamp": "2026-11-04T06:30:30.548735+00:00"
   },
   "semantic_scholar|Multi-excitonic complexes in single InGaN quantum dots": {
     "response": {

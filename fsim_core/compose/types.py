@@ -46,6 +46,8 @@ class StructureResponse:
     notes: tuple = ()
     inputs: dict = field(default_factory=dict)
     tag_floor: str = ""              # widest provenance tag of constants hidden inside response() ("" = none); tag_of applies it
+    F_P_source: str = "measured"     # r4-cavity A: "computed" | "simulated" F_P is a bare (ZPL-only) cavity number that rates.combine
+                                     # dresses with the phonon overlap L_ph; "measured" (entered g / lifetime-derived F_P) already contains it
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,8 @@ class Pulse:
     chirp_meV_ps: float = 0.0
     t0_ps: float = 0.0
     phase_rad: float = 0.0
+    tp_ps: float = 0.0               # sinc_gauss only: sinc time scale t_p (Piccinini 2025 Eq 4); 0 = unused (rect, gauss)
+    r: float = 0.0                   # sinc_gauss only: Gaussian window parameter r of Eq 4
 
 
 @dataclass(frozen=True)

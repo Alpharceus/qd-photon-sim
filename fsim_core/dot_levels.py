@@ -861,6 +861,9 @@ def class_presets() -> dict:
 
     def bommer(T=5.0, height_nm=3.0, radius_nm=10.0):
         gainp, mat = M.GaInP(0.51), M.AlGaInP(0.2)
+        # Al step: [DR] V01 model-solid; VB fraction 0.36 of dEg = 132 meV at 5 K, inside the measured 0.19-0.41 band
+        # (Prins JPCS 56, 423 (1995) fit 0.27, Liedenbaum/Dawson 0.33-0.35, Zhang APL 73, 1098 (1998) LDA 0.33 at
+        # x_Z = 0.10); not retuned (r3: comment only, legacy bit-identity)
         vbo = -0.045 + (gainp.p["vbo"] - mat.p["vbo"])   # Pryor + model-solid Al step
         return DotSystem(InP, mat, M.AlGaInP(0.55), GaAs, T,
                          DotGeometry(height_nm, radius_nm), {"dot-matrix": vbo},

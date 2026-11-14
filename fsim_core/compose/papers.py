@@ -100,6 +100,7 @@ class ItemResult:
     reason: str = ""
     weak: bool = False                 # FX4: a pass that cannot discriminate (reason in weak_reason)
     weak_reason: str = ""
+    unavailable_reason: str = ""       # r4 review 11: the engine has no observable comparable with the paper quantity (item is unavailable)
     mode: str = ""                      # "" | optimum | at_optimum (optimum.py)
     argmax: dict = field(default_factory=dict)   # optimum items: the scanned values and pulse leaves at the maximum
 
@@ -253,6 +254,12 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
             conv = r.get("convention", "intrinsic")
             if conv not in o.conventions:
                 P.append(f"{w}: convention {conv!r} invalid for {o.id}; valid: {list(o.conventions)}")
+        if r.get("correction") is not None:        # r4-hom: the correction formula the paper declares for a corrected HOM item
+            from .observables import HOM_CORRECTIONS
+            if r.get("observable") not in ("hom_I", "hom_V") or r.get("convention") != "corrected":
+                P.append(f"{w}: `correction` applies only to hom_I / hom_V items with convention 'corrected'")
+            elif r["correction"] not in HOM_CORRECTIONS:
+                P.append(f"{w}: correction {r['correction']!r} invalid; valid: {list(HOM_CORRECTIONS)}")
         if not _is_num(r.get("value")):
             P.append(f"{w}: value must be a number")
         if r.get("err") is not None and not (_is_num(r["err"]) and r["err"] >= 0):
@@ -298,6 +305,14 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
                 P.append(f"{w}: digitized series must be tag DR")
             if not _nonempty(s.get("method")):
                 P.append(f"{w}: digitized series needs a non-empty `method` note")
+        pp_ = s.get("per_point")
+        if pp_ is not None:                                      # r4-phonon I1: other leaves that change per series point
+            npts_ = len(s["points"]) if isinstance(s.get("points"), list) else -1
+            if not (isinstance(pp_, dict) and all(isinstance(v, list) and len(v) == npts_ and all(_is_num(t) for t in v)
+                                                  for v in pp_.values())):
+                P.append(f"{w}: per_point must map a leaf path to a list of one number per point")
+            elif resolved and any(k not in resolved for k in pp_):
+                P.append(f"{w}: per_point path not a device leaf path: {[k for k in pp_ if k not in resolved]}")
         pts = s.get("points")
         if not (isinstance(pts, list) and pts and all(
                 isinstance(p, (list, tuple)) and len(p) in (2, 3) and all(_is_num(v) for v in p) for p in pts)):
@@ -339,6 +354,8 @@ def _validate(raw: dict, stem: Optional[str]) -> tuple:
             P.append(f"{w}: weak must be true or false")
         if e.get("weak") is True and not _nonempty(e.get("weak_reason")):
             P.append(f"{w}: weak: true needs a non-empty weak_reason")
+        if e.get("unavailable_reason") is not None and (not _nonempty(e.get("unavailable_reason")) or e.get("expect") != "unavailable"):
+            P.append(f"{w}: unavailable_reason needs a non-empty text and expect: unavailable")
         if cls == "R" and e.get("weak"):
             P.append(f"{w}: class R is never counted, so it carries no weak flag")
         if e.get("expect") not in EXPECTS:
@@ -477,7 +494,8 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
 
     def base(e) -> ItemResult:
         item = e["item"]
-        if e.get("mode") == "optimum":                 # R2 SUPCMP: compare_to names the reported value (default: the item id)
+        if e.get("mode") == "optimum" or (e.get("mode") == "at_optimum" and e["class"] == "M"):
+            # R2 SUPCMP / R3-LADDER: compare_to names the reported value (default: the item id)
             ref = e.get("compare_to", item)
             if e["class"] == "M":
                 kind, ent = ids[ref]
@@ -492,12 +510,15 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             kind, ent = ids[item]
             if kind == "scalar":
                 oid, conv = ent["observable"], ent.get("convention", "intrinsic")
+                if conv == "corrected" and ent.get("correction") not in (None, "engine"):
+                    conv = "corrected_" + str(ent["correction"])          # r4-hom: the paper's declared correction formula
             else:
                 oid, conv = ent["y"]["observable"], ent["y"].get("convention", "intrinsic")
         r = ItemResult(id=item, cls=e["class"], kind=kind, observable=oid, convention=conv,
                        expect=e["expect"], where=ent.get("where", ""), tol=dict(e.get("tol") or {}),
                        tol_reason=e.get("tol_reason", ""), reason=e.get("reason", ""),
-                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""), mode=e.get("mode", ""))
+                       weak=bool(e.get("weak", False)), weak_reason=e.get("weak_reason", ""), mode=e.get("mode", ""),
+                       unavailable_reason=str(e.get("unavailable_reason", "") or ""))
         if kind == "scalar":
             r.paper, r.err = float(ent["value"]), (None if ent.get("err") is None else float(ent["err"]))
         if r.tol:
@@ -549,7 +570,9 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
             continue
         r.model, (r.lo, r.hi) = float(ev["central"]), ev["range"]
         r.inputs = [p for p in ev["inputs"] if p in paper.inputs_from_paper]
-        if not rep_valid:
+        if r.unavailable_reason:
+            r.outcome, r.note = "unavailable", r.unavailable_reason
+        elif not rep_valid:
             r.outcome, r.note = "unavailable", "model run flagged invalid: " + "; ".join(rep_reasons)
         elif not math.isfinite(r.model):
             r.outcome = "unavailable"
@@ -567,7 +590,7 @@ def reproduce(paper: Paper, *, envelope: bool = True) -> ReproduceReport:
         xs = [float(p[0]) for p in pts]
         py = [float(p[1]) for p in pts]
         try:
-            sr = engine.series(spec, s["x"]["path"], xs, [r.request])
+            sr = engine.series(spec, s["x"]["path"], xs, [r.request], per_point=s.get("per_point"))
         except SolverUnavailable as e:
             r.outcome, r.note = "unavailable", f"solver unavailable: {e}"
             continue

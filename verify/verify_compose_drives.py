@@ -286,6 +286,25 @@ for _k in ("above_band", "p_shell"):
           _PP <= set(_e.observables_for({})) and _PP <= set(_e.observables_for({"cw": False}))
           and not (_PP & set(_e.observables_for({"cw": True}))) and {"B_first_lens_Hz", "B_fibre_Hz", "rate_detected_Hz"} <= set(_e.observables_for({"cw": True})),
           f"{sorted(_PP & set(_e.observables_for({'cw': True})))}")
+# r4-incoh: reservoir ladder / trap / tail / p_X inputs are opt-in (defaults = the original scheme) and new observables are pulsed-only
+_R4 = ("tau_res_ps", "q_T", "k0_trap_ns", "E_trap_meV", "a_slow")
+for _k in ("above_band", "p_shell"):
+    _e = entries[_k]
+    _pl0 = _e.plan({}, EM, RT)
+    _pl1 = _e.plan({"tau_res_ps": 25.0, "q_T": 0.1, "k0_trap_ns": 2.0, "E_trap_meV": 8.0, "a_slow": 0.02, "tau_slow_ps": 2000.0, "p_X": 0.7}, EM, RT)
+    check(f"{_k}: r4 inputs default to off (0, p_X = 1, p_X absent from plan.inputs) and are carried into the plan when set",
+          all(_e.param(n).default == 0.0 for n in _R4) and _e.param("p_X").default == 1.0
+          and all(_pl0.inputs.get(n, 0.0) == 0.0 for n in _R4) and "p_X" not in _pl0.inputs
+          and _pl1.inputs["tau_res_ps"] == 25.0 and _pl1.inputs["q_T"] == 0.1 and _pl1.inputs["p_X"] == 0.7
+          and _pl1.inputs["a_slow"] == 0.02 and _pl1.inputs["tau_slow_ps"] == 2000.0)
+    check(f"{_k}: p_X outside [0.5, 1] and negative tau_res_ps are refused",
+          raises(ValueError, _e.plan, {"p_X": 0.3}, EM, RT)[0] and raises(ValueError, _e.plan, {"p_X": 1.2}, EM, RT)[0]
+          and raises(ValueError, _e.plan, {"tau_res_ps": -1.0}, EM, RT)[0])
+    _new = {"tau_fit_ps", "t_mean_ps", "g2_window"}
+    check(f"{_k}: tau_fit_ps / t_mean_ps / g2_window are pulsed only; g2_far and rate_single_corr_Hz are advertised in both timings",
+          _new <= set(_e.observables_for({})) and not (_new & set(_e.observables_for({"cw": True})))
+          and {"g2_far", "rate_single_corr_Hz"} <= set(_e.observables_for({"cw": True})))
+
 _pay = {d["kind"]: d for d in R.registry_payload()["drives"]}
 check("registry payload carries observables_cw for above_band / p_shell only, equal to observables_for(cw = true)",
       all(sorted(entries[k].observables_for({"cw": True})) == _pay[k]["observables_cw"] for k in ("above_band", "p_shell"))

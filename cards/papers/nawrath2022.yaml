@@ -24,11 +24,11 @@ device:
       tau_bare_ns: {value: 1.55, unit: ns, tag: V, where: "text p.2: mean decay time 1.55 ns (sd 0.37 ns) of 6 trion transitions outside CBGs on the same sample"}
       eta_blink: {value: 0.70, unit: "1", tag: V, where: "text p.3: source active about 70 % of the time at saturation (blinking)"}
       charge_state: {value: "X+", unit: "", tag: DR, where: "text p.2: attributed to a positively charged trion (supplementary)"}
-      gamma_star_4K_ns: {value: 17.4, unit: "1/ns", tag: A, source: "fitted to the HOM visibility V_TPI,analyt (item hom_V_TPI, class C): the main text gives no linewidth"}
+      gamma_star_4K_ns: {value: 20.8, unit: "1/ns", tag: A, source: "fitted to the HOM visibility V_TPI,analyt (item hom_V_TPI, class C): the main text gives no linewidth; brentq on this leaf through the card's fits entry to hom_V 0.081 (the paper value) gives 20.797 /ns (r4 review re-fit with the metamorphic dot sizes back at the InAs/GaAs class [3, 5] / [1, 2] nm), entered as 20.8; the earlier 17.4 -> 20.8 change owed to the setup window truncating the ZPL (T_zpl = w/(w + gamma)), not to the dot-size range"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 1.98, unit: "1", tag: DR, where: "text p.2: 1.55 ns / 0.52 ns = 2.98 total decay-rate ratio, minus 1 for the additional ratio (paper rounds to 3)"}
+      F_P: {value: 1.98, unit: "1", tag: DR, where: "text p.2: \"yield a value of 0 .52 ns for QD1 and a mean value of 1.55 ns (standard deviation 0.37 ns) for 6 exemplary trion transitions ... This results in a Purcell factor of 3.\" (nawrath2022.txt l.171-174); arithmetic 1.55 ns / 0.52 ns = 2.98 total decay-rate ratio, minus 1 for the additional ratio = 1.98 (the paper rounds the ratio to 3)"}
       Q: {value: 160.0, unit: "1", tag: DR, where: "text p.2: cavity FWHM 9.74 nm at about 1555 nm gives Q about 160 (computed from the paper numbers)"}
       detuning_ueV: {value: 0.0, unit: ueV, tag: V, where: "text p.2: QD1 in resonance with the cavity mode"}
       eta_table: {value: "0.6:0.85", unit: "", tag: V, where: "text p.2 / Fig 1a: FDTD collection efficiency into NA 0.6 above 85 percent (max above 92 percent), the whole-device total first-lens efficiency at the ideal F_P 16.6"}
@@ -46,7 +46,9 @@ device:
       eta_pol: {value: 1.0, unit: "1", tag: DR, where: "text p.4 Methods: both polarisation components are split onto two SNSPDs, so none is discarded"}
       eta_optics: {value: 0.361, unit: "1", tag: DR, where: "text p.2: end-to-end 6.3 % / first-lens 17.4 % = 0.361 (the paper's own setup efficiency; FCSPCR is already corrected for detector efficiency)"}
       eta_fibre: {value: 1.0, unit: "1", tag: A, source: "fibre coupling is inside the 0.361 setup efficiency"}
-      eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2-3: raw detected 3.91e6 / corrected FCSPCR 4.77e6 = 0.82 (also 0.83 at 40 K, 0.82 at 152 and 228 MHz)"}
+      eta_det: {value: 0.82, unit: "1", tag: DR, where: "text p.2: \"FCSPCR = 4.77 × 106 s−1 (raw, detected count rate 3.91 × 106 s−1)\" (l.219-220); arithmetic 3.91 / 4.77 = 0.82. Same arithmetic at 40 K: raw 2.47 / FCSPCR 2.96 = 0.83 (l.340-341); at 152 MHz 7.75 / 9.44 = 0.82 and at 228 MHz 11.37 / 13.88 = 0.82 (l.359-361)"}
+      filter_width_meV: {value: 0.282, unit: meV, tag: DR, where: "Methods (main text): \"a reﬂective bandpass ﬁlter (FWHM = 0 .55 nm) selects the QD transition in question\" (l.446-447; two 1.2 nm notch filters only suppress the laser). Conversion ours: E = 1239.84 / 1555 nm = 0.7973 eV, dE = E x 0.55 nm / 1555 nm = 0.282 meV; the same filter is assumed at 4 K and 40 K"}
+      filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the bandpass window (at 40 K the red-shift of the line is not modelled)"}
 reported:
   - {id: tau_QD1, observable: tau_ps, value: 520.0, tag: V, where: "text p.2 / Fig 1d: decay time 0.52 ns of QD1 in the CBG under non-resonant 850 nm excitation (raw fit, no error given)"}
   - {id: BFL_76, observable: B_first_lens, convention: intrinsic, value: 0.174, tag: V, where: "text p.2-3 and abstract: first-lens collection efficiency 17.4 % (NA 0.6), the end-to-end 6.3 % divided by the paper's setup efficiency (supp)"}
@@ -94,7 +96,7 @@ reproduce:
     tol: {rel: 0.3}
     tol_reason: "no error printed; 30 % covers the setup-efficiency calibration (the 17.4 % is back-computed with it) and the unstated P/P_sat; the QD-to-CBG offset is not covered, which is the point of the test"
     expect: fail
-    reason: "model 0.562 (envelope 0.501-0.576 over pump P/P_sat 2-5, FX3a table_mode total with the paper's FDTD >85 percent) vs 0.174: eta_table is the FDTD whole-device efficiency of a centred emitter while the paper attributes the lost Purcell (3 vs 16.6) and, implicitly, brightness to a QD-to-CBG offset of unknown size (supp); the offset is a missing input, not a transcription error."
+    reason: "model 0.577 (r4-cavity A2, was 0.562; envelope 0.515-0.591 over pump P/P_sat 2-5, FX3a table_mode total with the paper's FDTD >85 percent) vs 0.174: eta_table is the FDTD whole-device efficiency of a centred emitter while the paper attributes the lost Purcell (3 vs 16.6) and, implicitly, brightness to a QD-to-CBG offset of unknown size (supp); the offset is a missing input, not a transcription error."
   - item: g2_ps_76
     class: M
     tol: {abs: 0.005}
@@ -116,7 +118,7 @@ reproduce:
     tol: {metric: rms_rel, max: 0.3}
     tol_reason: "two printed raw detector rates (a 37 % fall from 4 to 40 K); 0.3 rms relative deviation means the model must put the 4 K rate within about 30 % and not be T-flat by more than the fall"
     expect: fail
-    reason: "model rate scale ~3.2x the paper (rms_rel 3.11 after FX3a): the same ~3.2x brightness overshoot as BFL_76 (offset) plus a model rate that falls only 7 percent from 4 to 40 K against the paper 37 percent (no thermal escape without E_act, k0, which the paper does not give)."
+    reason: "model rate scale ~3.2x the paper (rms_rel 3.43 after FX3a and r4-cavity A2 (was 3.11)): the same ~3.2x brightness overshoot as BFL_76 (offset) plus a model rate that falls only 7 percent from 4 to 40 K against the paper 37 percent (no thermal escape without E_act, k0, which the paper does not give)."
   - item: rate_vs_frep
     class: M
     tol: {metric: rms_rel, max: 0.3}
@@ -139,5 +141,10 @@ fits:
   - {param: structure.F_P, fitted_to: [tau_QD1]}
   - {param: material.gamma_star_4K_ns, fitted_to: [hom_V_TPI]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 12: metamorphic C-band dot sizes reverted to the InAs/GaAs class [3, 5] / [1, 2] nm [A] (the [5, 8] / [2, 3] E ranges were tuned to a test datum); gamma_star_4K_ns re-fitted through the fits entry (brentq on hom_V_TPI = 0.081): 20.797 /ns, entered 20.8 (unchanged to 3 digits, the earlier compensation claim was wrong)", note: "obtained: hom_V_TPI 0.08099 pass (class C), tau_QD1 521.1 pass, BFL_76 0.5041 fail, g2_ps_76 0.0005378 fail, g2_analyt_76 0.0005378 pass; series rate_vs_T / rate_vs_frep / g2_ps_vs_T / g2_ps_vs_frep fail (rms_rel 1.884, 1.94, 0.9709, 0.9646); expects unchanged"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (DR items): F_P, eta_det and filter_width_meV where-text now quote the printed inputs verbatim and show the arithmetic", note: "text only; values, tolerances and expectations unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I1 (Zf_window: setup.filter_width_meV 0.282 meV now truncates the ZPL, Lorentzian window default) and I2 (r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947), Fable r4 adjudication", change: "gamma_star_4K_ns re-fitted 17.4 -> 20.8 (class C fit to hom_V_TPI: after I2 alone the model was 0.0955 vs 0.081, abs 0.01 failed); after the re-fit hom_V_TPI 0.08115 pass. BFL_76 0.5772 -> 0.5263 (fail stays), rate_vs_T rms 3.43 -> 2.288 (I1 alone 1.90; fail stays, Fable predicted absolute stays fail), rate_vs_frep 2.37 -> 2.07 (fail stays), g2 items unchanged. Expects unchanged, not tuned"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): BFL_76 0.562 -> 0.577, rate_vs_T rms 3.11 -> 3.43, rate_vs_frep 2.28 -> 2.37, hom_V_TPI 0.0811 -> 0.0797. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.598 (eta_out 0.90 x beta 0.664 product, cavity-only semantics) -> 0.85 (paper FDTD >85 percent total, V), table_mode total"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable incoherent review cards row: setup.filter_width_meV 0.282 DR (stated 0.55 nm bandpass FWHM, Methods of the main text; the supplement was not read). The engine uses this leaf only for X/XX top-hat leakage, not the sideband transmission, so no model output is expected to move; cavity review item E (16.6 -> 15.6) does not apply because F_P here is already the additional ratio 1.98 = 2.98 - 1 and 16.6 is not an input; no expects changed"}

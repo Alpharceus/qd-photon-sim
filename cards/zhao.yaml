@@ -18,14 +18,25 @@ params:
   C_dep_pF:
     value: 3.5
     unit: pF
+    tag: E
+    source: "Zhao et al., p. 4 (and arXiv v1): 'QD lasers generally feature lower C_dep, sometimes as low as 3.5 pF' [E: a literature-generic sentence, NOT a measured value of this device; the QW laser example is 280 pF]"
+  squeezing_dB_raw:
+    value: -0.9
+    unit: dB
     tag: V
-    source: "Zhao et al.: depletion capacitance reduced down to ~3.5 pF [V, read]"
+    source: "Zhao et al., PRResearch 6, L032021 (2024), main p. 2-3: 'the largest noise reduction is 0.9 dB at 8 GHz' [V]; repo sign (negative = squeezing). Band 3-12 GHz, 40 mA = 4.4 I_th (I_th 9 mA), T 293 K, RBW 200 kHz, balanced two-photodiode detection. err 0.1 dB [V, arXiv:2309.09703v1 only; the published version prints no error bar]. This RAW detector value is the like-for-like comparison target (ledger zhao_squeezing_dB_det); r3-bommer-zhao-answer.md Q2"
+    err: 0.1
+  eta_total:
+    value: 0.219
+    unit: ""
+    tag: V
+    source: "Zhao 2024 SI Table S3 (SI 'Squeezing data analysis' p. 8-10): T = 0.4 (fibre coupling, measured) x 0.794 (isolator) x 0.933 (1st beamsplitter) x 0.933 (2nd beamsplitter) x 0.891 (fibre + connector) x 0.9 (detector, S_PD 0.95 A/W) x 0.99 (electrical noise, SNC 20 dB) = 0.2195 [V; the detector and electrical factors are typical-value / derived inputs of the SI]"
   squeezing_dB:
     value: 3.1
     unit: dB
-    tag: E
-    source: "Zhao et al.: measured pump-current squeezing under the quiet drive [E: disputed, was [V, read]; see conflict -- the 0.9 dB figure in paper_digests.md:231 disagrees with 3.1 dB]"
-    conflict: "Published title: 'Broadband amplitude squeezing at room temperature in electrically driven quantum dot laser'. The card carries 3.1 dB, but paper_digests.md:231 records the measured value as 0.9 ± 0.1 dB below shot noise (6.7 %). See .workers/review/p2-whole-deck-findings.md line 'presentation2/sections/02_emission.json:626,669'. The discrepancy is a deck/card reconciliation task, not a numeric bug."
+    tag: V
+    source: "[V as published, NOT a target: SI inverts Eq. S3 on the wrong ratio (1/S); the consistent inversion of the raw -0.9 dB with T = 0.219 gives S_facet = 0.145, i.e. -8.4 dB [DR]. Zhao 2024 main p. 3: '3.1 dB at the laser output facet after correcting for the overall efficiency' (SI value 3.12 dB). Loss bound with T = 0.219: 10 log10(1 - T) = -1.07 dB, so a raw 0.9 dB cannot correspond to only 3.1 dB at the facet]"
+    conflict: "Published title: 'Broadband amplitude squeezing at room temperature in electrically driven quantum dot laser'. The card carries the published 3.1 dB (corrected to the laser facet), but the measured RAW value is 0.9 dB below shot noise at 8 GHz (arXiv v1: 0.9 +/- 0.1 dB; its '6.7 %' is itself 0.3 dB). Resolved in devlib-r3-papers (r3-bommer-zhao-answer.md Q2): the raw 0.9 dB (squeezing_dB_raw) is the comparison target; 3.1 dB is internally inconsistent with the SI loss model (consistent facet value -8.4 dB [DR]) and is not a target. See also .workers/review/p2-whole-deck-findings.md line 'presentation2/sections/02_emission.json:626,669'."
 
 data:
   g2_vs_pump:
@@ -40,13 +51,13 @@ scene:
   material:
     kind: inas_gaas_sk
     params:
-      lambda_nm: {value: 930.0, unit: nm, tag: A, where: "display assumption: the card gives no emission wavelength or material; the InAs/GaAs class wavelength is drawn"}
+      lambda_nm: {value: 1308.0, unit: nm, tag: V, where: "Zhao 2024 SI Table S1: emission wavelength 1308 nm (arXiv v1: 1.31 um); InAs/GaAs QD DFB laser, 8 QD layers"}
   structure:
     kind: edge_ridge
     params:
-      ridge_width_nm: {value: 2000.0, unit: nm, tag: A, where: "display assumption: the card gives no cavity geometry"}
-      L_um: {value: 250.0, unit: um, tag: A, where: "display assumption: the card gives no cavity length"}
+      ridge_width_nm: {value: 2000.0, unit: nm, tag: V, where: "Zhao 2024 SI Table S1: mesa width 2 um"}
+      L_um: {value: 750.0, unit: um, tag: V, where: "Zhao 2024 SI Table S1: cavity length 750 um"}
   drive:
     kind: electrical_cw
   note: >
-    Closest registry class: edge-emitting ridge waveguide (the published title is an electrically driven quantum-dot laser; the card holds only pump-statistics numbers: C_dep_pF, squeezing_dB, g2). Material, wavelength, ridge width and cavity length are display assumptions [A]. The quiet-pump current source is not drawn.
+    Closest registry class: edge-emitting ridge waveguide (the published title is an electrically driven quantum-dot laser; the card holds only pump-statistics numbers: C_dep_pF, squeezing_dB, g2). Wavelength 1308 nm, mesa 2 um and cavity 750 um are [V] (SI Table S1); facet reflectivities 0.03 (AR) / 0.95 (HR) [V] have no scene field and are not drawn; the material kind is the registry's closest InAs/GaAs class. The quiet-pump current source is not drawn.

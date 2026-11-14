@@ -105,6 +105,31 @@ dead_control:
     drive.hom_gate_shape: {drive.hom_gate_ps: 100.0}
     drive.hom_gate_start_ps: {drive.hom_gate_ps: 100.0}
     drive.hom_jitter_ps: {drive.hom_gate_ps: 100.0}
+    # r4 gate fixes: leaves that act only when another leaf enables their channel (conditional, not unwired)
+    # trap release: the reservoir ladder is on only with q_T > 0 (or tau_res_ps > 0) and the release rate k0 exp(-E_T/kT) needs k0 > 0
+    drive.above_band.k0_trap_ns: {drive.q_T: 1.0, drive.tau_res_ps: 20.0}
+    drive.above_band.E_trap_meV: {drive.q_T: 1.0, drive.tau_res_ps: 20.0, drive.k0_trap_ns: 1000.0}
+    drive.p_shell.k0_trap_ns: {drive.q_T: 1.0, drive.tau_res_ps: 20.0}
+    drive.p_shell.E_trap_meV: {drive.q_T: 1.0, drive.tau_res_ps: 20.0, drive.k0_trap_ns: 1000.0}
+    # slow tail: g2_window adds the slow component only when its weight a_slow > 0
+    drive.above_band.tau_slow_ps: {drive.a_slow: 0.3}
+    drive.p_shell.tau_slow_ps: {drive.a_slow: 0.3}
+    # V-system: pol_angle_deg and material.fss_ueV act only with a cross-polarised collection AND a non-zero FSS (resonant_pulse, lindblad)
+    drive.resonant_pulse.pol_angle_deg: {material.fss_ueV: 5.0}
+    material.fss_ueV: {drive.cross_pol: true, drive.pol_angle_deg: 45.0}
+    # etalon / filter leaves act only inside an active etalon: setup.filter_fwhm_GHz > 0 (coherent pulsed plans)
+    setup.filter_applies_to: {setup.filter_fwhm_GHz: 20.0}
+    # filter_shape is read only by the spectral WINDOW (setup.filter_width_meV > 0, phonon material), not by the etalon
+    setup.filter_shape: {setup.filter_width_meV: 0.5}
+    # spectral diffusion lowers the HOM overlap only with a slow-diffusion width (sigma_sd > 0) AND a photon separation hom_delay_ns > 0
+    setup.hom_delay_ns: {material.sigma_sd_ueV: 2.0}
+    # per-polarisation cavity-mode leaves act only through the V-system: cross-polarised drive plus a non-zero FSS
+    structure.F_P_ratio_VH: {material.fss_ueV: 5.0, drive.cross_pol: true}
+    structure.mode_split_ueV: {material.fss_ueV: 5.0, drive.cross_pol: true}
+    # resonant_mode swaps which mode carries the full F_P, so it differs from V only when the two modes differ (ratio != 1)
+    structure.resonant_mode: {material.fss_ueV: 5.0, drive.cross_pol: true, structure.F_P_ratio_VH: 3.0}
+    # excess_loss = scattering changes eta_mirror only when a measured Q below the planar-mirror Q is entered (r4-cavity B)
+    structure.micropillar.excess_loss: {structure.Q_measured: 300.0}
   # extra values to try for a parameter BEFORE the generic grid (the grid is lo..hi of the ParamSpec). A parameter that acts only in a narrow
   # regime of its own range names that regime here; the generic candidates are still tried afterwards.
   candidates:

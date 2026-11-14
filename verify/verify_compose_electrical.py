@@ -882,20 +882,21 @@ check("14e. hom_gate_fraction = exp(-G t0) - exp(-G (t0 + T)) for a rect gate (t
 # removed parameters: registry, old saved specs, engine
 reg14 = {k: {p.name for p in R.get("drive", k).params} for k in ("electrical_pulsed", "electrical_cw")}
 check("14f. removed from the registry: electrical_pulsed has no mu / dg_inj_factor, electrical_cw has no dg_inj_factor and keeps mu; "
-      "no material has fss_ueV",
+      "fss_ueV is a LIVE material leaf again (FSS V-system, re-added in r4; no longer a removed key)",
       "mu" not in reg14["electrical_pulsed"] and "dg_inj_factor" not in reg14["electrical_pulsed"]
       and "dg_inj_factor" not in reg14["electrical_cw"] and "mu" in reg14["electrical_cw"]
-      and all("fss_ueV" not in {p.name for p in R.get("material", k).params} for k in R.kinds("material")))
-old14 = espec({**M3}, {**MAT, "fss_ueV": 25.0})
+      and all("fss_ueV" in {p.name for p in R.get("material", k).params} for k in R.kinds("material")))
+old14 = espec({**M3}, {**MAT})
 old14["drive"]["params"]["mu"] = 0.7
 old14["drive"]["params"]["dg_inj_factor"] = 0.3
 v14 = validate_spec(old14)
 msgs14 = [i["message"] for i in v14["issues"] if i["level"] == "warning" and "removed" in i["message"]]
 bad14 = espec({**M3, "nonsense_key": 1.0}, MAT)
 a14, b14 = engine.evaluate_spec(old14)["scalars"], engine.evaluate_spec(espec(M3, MAT))["scalars"]
-check("14g. an old spec that still carries the removed keys (material.fss_ueV, drive.mu, drive.dg_inj_factor) loads: ok, one warning each, the engine "
-      "ignores them (same g2, n_ph as without); a genuinely unknown key is still an error",
-      v14["ok"] and len(msgs14) == 3 and a14["g2_0"] == b14["g2_0"] and a14["n_ph"] == b14["n_ph"] and not validate_spec(bad14)["ok"],
+check("14g. an old spec that still carries the removed keys (drive.mu, drive.dg_inj_factor; material.fss_ueV is live, not removed) loads: ok, one warning each "
+      "for the two removed drive keys and none for fss_ueV (live leaf, so not in this spec), the engine ignores the removed keys "
+      "(same g2, n_ph as without); a genuinely unknown key is still an error",
+      v14["ok"] and len(msgs14) == 2 and a14["g2_0"] == b14["g2_0"] and a14["n_ph"] == b14["n_ph"] and not validate_spec(bad14)["ok"],
       str(msgs14)[:200])
 # b_dark (p_shell): only (1 - b_dark) of the pump loads the bright state, so b_dark = 0.4 at pump P equals b_dark = 0 at pump 0.6 P
 def pshell(**dp):

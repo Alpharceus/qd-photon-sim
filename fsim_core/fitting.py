@@ -17,11 +17,15 @@ not, and is not presented as, held-out validation.
 Phase-0/1 fit driver: joint fit of {eps(T), rho(T)} to the validation card.
 
 Residual blocks (each optional block activates when the card carries it):
-  1. g2_vs_T      -- the published g2(0) series; rows carry {w, dx} filter
-                     geometry and an optional bound:"upper" flag (one-sided).
+  1. g2_vs_T      -- the g2(0) series of Chatzarakis Fig. 5 (the main text prints
+                     only g2(0) <= 0.02 at 78 K and 0.36 at 230 K; the 120-210 K
+                     values are annotations inside the figure); rows carry {w, dx}
+                     filter geometry and an optional bound:"upper" flag (one-sided).
   2. gamma_vs_T   -- digitized Gamma_X(T) [and Gamma_XX(T)] linewidths (S2);
                      constrains the Gamma model and the XX/X width ratio r_xx.
-  3. tau_vs_T     -- published X decay times (S4). tau(T)/tau(T0) is an
+  3. tau_vs_T     -- X decay times annotated next to the spectra in SI Fig. S4
+                     (figure-only, except tau = 1.77 ns at 78 K, which the Fig. S6
+                     caption prints). tau(T)/tau(T0) is an
                      independent measure of the retention ratio S(T)/S(T0)
                      (assumes Gamma_r const -- assumption ledger).
 Anchors/priors: Gamma(250 K) anchor (only when no gamma_vs_T data), E_a prior,

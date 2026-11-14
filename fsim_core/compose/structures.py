@@ -165,6 +165,7 @@ class _Struct(Structure):
 
 # display symbols (KaTeX TeX; Scully-Zubairy / Metcalf-van der Straten notation), keyed by the param id; UI only
 _TEX = {
+    "mode_split_ueV": r"\hbar\Delta_{HV}", "F_P_ratio_VH": r"F_{\mathrm P}^{V}/F_{\mathrm P}^{H}", "resonant_mode": r"\mathrm{dot\ resonant\ with}",
     "F_P": r"F_{\mathrm P}",
     "kappa_ueV": r"\hbar\kappa",
     "Q": r"Q",
@@ -172,6 +173,8 @@ _TEX = {
     "beta0": r"\beta_0",
     "eta_out": r"\eta_{\mathrm{out}}",
     "F_bg": r"F_{\mathrm{bg}}",
+    "F_P_source": r"F_{\mathrm P}\ \mathrm{source}",
+    "excess_loss": r"\mathcal{L}_{\mathrm{excess}}",
     "d_um": r"d",
     "N_top": r"N_{\mathrm{top}}",
     "N_bot": r"N_{\mathrm{bot}}",
@@ -278,6 +281,22 @@ def _path(name):
     return f"structure.{name}"
 
 
+_FPSRC_HELP = (r"Provenance of $F_{\mathrm P}$ (r4-cavity A): computed / simulated = the bare ZPL cavity number (Q/V, FDTD), dressed by the "
+               r"phonon overlap $L_{\mathrm{ph}} = Z_{\mathrm{eff}}(\kappa, T)$ in the rate; measured = entered $g$ or a lifetime-derived "
+               r"$F_{\mathrm P}$ that already contains the phonon renormalisation (no extra factor).")
+
+
+def _p_fpsrc(default, choices=("measured", "computed", "simulated")):
+    return _p("F_P_source", "enum", default, choices=choices, tag="A",
+              source="r4-cavity A: whether F_P is a bare cavity number or already phonon-renormalised [A]",
+              help=_FPSRC_HELP, group="advanced")
+
+
+def _fpsrc(v, default):
+    x = str(v("F_P_source"))
+    return default if x == "auto" else x
+
+
 @dataclass(frozen=True)
 class StructureResponseX(StructureResponse):
     """StructureResponse plus `extra`: geometry numbers the structure itself derived (open-cavity waist, DBR layer
@@ -286,7 +305,8 @@ class StructureResponseX(StructureResponse):
 
 
 def _cavity_resp(entry, em, *, F_P, kappa_meV, detuning_meV, g_meV=None, F_bg=1.0, beta0=0.0,
-                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None, tag_floor="", extra=None):
+                 eta_out, eta_out_fn=None, pol_factor=1.0, notes=(), inputs=None, tag_floor="", extra=None,
+                 F_P_source="measured"):
     E_mode = em.E_X_meV - detuning_meV
     if g_meV is None and kappa_meV:
         g_meV = g_from_purcell(F_P, kappa_meV, em.gamma0_ns)
@@ -295,7 +315,7 @@ def _cavity_resp(entry, em, *, F_P, kappa_meV, detuning_meV, g_meV=None, F_bg=1.
                              F_bg=float(F_bg), beta0=float(beta0), eta_out=float(eta_out),
                              eta_out_fn=eta_out_fn, pol_factor=float(pol_factor),
                              notes=tuple(notes), inputs=dict(inputs or {}), tag_floor=tag_floor,
-                             extra=dict(extra or {}))
+                             extra=dict(extra or {}), F_P_source=str(F_P_source))
 
 
 _COMMON_NOTE_EFFNA = ("eta_out includes the far-field/NA collection at the setup NA; "
@@ -325,7 +345,8 @@ def _generic_cavity(self, vals, em, T_K, NA):
     inputs = {"F_P": _path("F_P"), "kappa_meV": _path(kin), "E_mode_meV": _path("detuning_ueV"),
               "F_bg": _path("F_bg"), "beta0": _path("beta0"), "eta_out": _path("eta_out")}
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=v.pos("F_bg"),
-                        beta0=v.frac("beta0"), eta_out=v.frac("eta_out"), notes=notes, inputs=inputs)
+                        beta0=v.frac("beta0"), eta_out=v.frac("eta_out"), notes=notes, inputs=inputs,
+                        F_P_source=_fpsrc(v, "measured"))
 
 
 GENERIC_CAVITY = _Struct(
@@ -339,6 +360,10 @@ GENERIC_CAVITY = _Struct(
         _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of the background ($F_{\mathrm{bg}}$) emission that is already in the collected mode."),
         _p("eta_out", "1", 0.5, 0.0, 1.0, help=r"Outcoupling efficiency $\eta_{\mathrm{out}}$ from the mode to the first lens, including the far-field collection."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background (non-cavity) decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$ (1 = free; $< 1$ inhibited; $> 1$ leaky)."),
+        _p_fpsrc("measured"),
+        _p("mode_split_ueV", "ueV", 0.0, 0.0, 5000.0, group="advanced", help=r"Energy split of the two orthogonally polarised cavity modes (the H mode from the V mode; the dot sits on the mode chosen by resonant_mode, V by default). 0 = degenerate modes (off). Only the FSS V-system of a cross-polarised drive reads it: the H-mode Purcell factor is $F_{\mathrm P}\,L(\Delta)$ with $L = 1/(1 + (2\Delta/\hbar\kappa)^2)$ (Somaschi et al. 2016: ~90 ueV)."),
+        _p("F_P_ratio_VH", "1", 1.0, 0.1, 100.0, group="advanced", help=r"Ratio $F_{\mathrm P}(V)/F_{\mathrm P}(H)$ of the two polarised modes when stated (1 = equal). Only the FSS V-system reads it."),
+        _p("resonant_mode", "enum", "V", choices=("V", "H"), tag="A", group="advanced", help=r"Which polarised cavity mode the dot is spectrally resonant with. V (default) = the mode of the cross-polarised excitation, the H mode sits $\hbar\Delta_{HV}$ away; H = the dot is resonant with the H (collected) mode, which then gets the full $F_{\mathrm P}$ and the V mode gets $F_{\mathrm P}\,L(\Delta)$. Only the FSS V-system reads it. Assumption: Somaschi et al. 2016 do not state which mode the dot is resonant with."),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.05, 0.9), fn=_generic_cavity)
 
@@ -376,6 +401,11 @@ def _micropillar_calc(v, em):
     Qm = v.f("Q_measured")
     Q = Qm if Qm > 0 else Qcalc
     eta_mirror = Tt / (Tt + Tb + loss)
+    # r4-cavity B: opt-in. The loss implied by a measured Q is larger than the planar budget when the pillar adds sidewall
+    # scattering / absorption; that excess never leaves through the top mirror. Capped at the design value (Q_meas >= Q_planar).
+    l_tot = 4.0 * math.pi * n_c * L_eff_um * 1e3 / (lam * Qm) if Qm > 0 else 0.0
+    if v("excess_loss") == "scattering" and Qm > 0 and l_tot > Tt + Tb + loss:
+        eta_mirror = Tt / l_tot
     eo = v.f("eta_out")
     if eo >= 0:
         eta_mirror = eo
@@ -414,6 +444,7 @@ def _micropillar(self, vals, em, T_K, NA):
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=v.pos("F_bg"),
                         beta0=v.frac("beta0"), eta_out=fn(NA), eta_out_fn=fn, pol_factor=1.0,
                         notes=notes, inputs=inputs, tag_floor="E",           # dbr.penetration_depth, n_c = n_high [E]
+                        F_P_source=_fpsrc(v, "computed"),
                         extra={"t_high_nm": c["t_high_nm"], "t_low_nm": c["t_low_nm"],
                                "spacer_unit_nm": c["spacer_unit_nm"], "w0_um": c["w0"], "L_eff_um": c["L_eff_um"]})
 
@@ -443,6 +474,10 @@ MICROPILLAR = _Struct(
         _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of background emission already in the mode."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, tag="A", source="leaky rate = Gamma0 [A], Somaschi 2016 (beta 0.88 at F_P 7.6) [V]",
            help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
+        _p("excess_loss", "enum", "ignore", choices=("ignore", "scattering"), tag="A",
+           source="r4-cavity B: whether the Q deficit of a measured Q is sidewall scattering that never reaches the top mirror [A]",
+           help=r"ignore (default): $\eta_{\mathrm{mirror}} = T_{\mathrm t}/(T_{\mathrm t} + T_{\mathrm b} + \mathcal{L}_{\mathrm{rt}})$. scattering: with $Q_{\mathrm{meas}} > 0$ the round-trip loss implied by $Q_{\mathrm{meas}}$, $\mathcal{L}_{\mathrm{tot}} = 4\pi n_{\mathrm c} L_{\mathrm{eff}}/(\lambda Q_{\mathrm{meas}})$, exceeds the planar budget and the excess never leaves through the top mirror, $\eta_{\mathrm{mirror}} = T_{\mathrm t}/\mathcal{L}_{\mathrm{tot}}$.", group="advanced"),
+        _p_fpsrc("computed"),
     ),
     refs=(_REF_PURCELL, _REF_GERARD, _REF_SOMASCHI), eta_hint=(0.1, 0.8), viz="micropillar", fn=_micropillar)
 
@@ -502,7 +537,8 @@ def _open_cavity(self, vals, em, T_K, NA):
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, g_meV=g, F_bg=v.pos("F_bg"),
                         beta0=v.frac("beta0"), eta_out=eta, pol_factor=v.frac("pol_collect"),
                         notes=notes, inputs=inputs,
-                        extra={"waist_um": waist, "stable": waist is not None})
+                        extra={"waist_um": waist, "stable": waist is not None},
+                        F_P_source=_fpsrc(v, "measured" if v("mode") == "direct" else "computed"))
 
 
 OPEN_CAVITY = _Struct(
@@ -530,6 +566,7 @@ OPEN_CAVITY = _Struct(
         _p("pol_dipole", "1", 1.0, 0.0, 1.0,
            help=r"Dipole alignment $\cos^2\theta_{\mu}$ between the dipole and the cavity field: scales $g^2$ (and $F_{\mathrm P}$) of the dot-cavity coupling, $g \to g\sqrt{\cos^2\theta_{\mu}}$. 1 = aligned.", group="advanced"),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
+        _p_fpsrc("auto", choices=("auto", "measured", "computed", "simulated")),
     ),
     refs=(_REF_TOMM, _REF_PURCELL), eta_hint=(0.2, 0.7), viz="open_cavity", fn=_open_cavity)
 
@@ -584,7 +621,8 @@ def _cbg(self, vals, em, T_K, NA):
     inputs = {"F_P": _path("F_P") + "+r_factor", "kappa_meV": _path("Q"), "E_mode_meV": _path("detuning_ueV"),
               "F_bg": _path("leak"), "eta_out": _path("eta_table") + "+table_mode"}
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, F_bg=1.0 + leak,
-                        beta0=beta0, eta_out=fn(NA), eta_out_fn=fn, notes=notes, inputs=inputs)
+                        beta0=beta0, eta_out=fn(NA), eta_out_fn=fn, notes=notes, inputs=inputs,
+                        F_P_source=_fpsrc(v, "measured"))
 
 
 CBG = _Struct(
@@ -603,6 +641,7 @@ CBG = _Struct(
         _p("r_factor", "1", 1.0, 0.0, 1.0, help=r"Position factor $\xi_{\mathrm r} = |E(\mathbf r)|^2/|E_{\max}|^2$ of the dot (folded into $F_{\mathrm P}$ like the micropillar)."),
         _p("leak", "1", 0.0, 0.0, 10.0, help=r"Extra leaky decay $F_{\mathrm{leak}}$ in units of $\Gamma_0$ (cavity_only mode: $\beta = F_{\mathrm P}/(1 + F_{\mathrm P} + F_{\mathrm{leak}})$; total mode: rate only)."),
         _p("detuning_ueV", "ueV", 0.0, -20000.0, 20000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
+        _p_fpsrc("measured"),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.2, 0.7), viz="bullseye", fn=_cbg)
 
@@ -635,7 +674,8 @@ def _phc_cavity(self, vals, em, T_K, NA):
     else:
         g = None
     return _cavity_resp(self, em, F_P=F_P, kappa_meV=kappa, detuning_meV=det, g_meV=g, F_bg=v.pos("F_bg"),
-                        beta0=v.frac("beta0"), eta_out=v.frac("eta_out"), notes=notes, inputs=inputs)
+                        beta0=v.frac("beta0"), eta_out=v.frac("eta_out"), notes=notes, inputs=inputs,
+                        F_P_source=_fpsrc(v, "computed"))
 
 
 PHC_CAVITY = _Struct(
@@ -651,6 +691,7 @@ PHC_CAVITY = _Struct(
         _p("detuning_ueV", "ueV", 0.0, -2000.0, 2000.0, help=r"Dot minus mode energy $\hbar\Delta_{\mathrm c} = E_X - E_{\mathrm{mode}}$ (positive = dot above the mode)."),
         _p("beta0", "1", 0.0, 0.0, 1.0, help=r"Fraction $\beta_0$ of background emission already in the mode."),
         _p("F_bg", "1", 1.0, 0.0, 10.0, help=r"Background decay rate $F_{\mathrm{bg}}$ in units of $\Gamma_0$."),
+        _p_fpsrc("computed"),
     ),
     refs=(_REF_PURCELL,), eta_hint=(0.01, 0.2), viz="phc_cavity", fn=_phc_cavity)
 
@@ -1123,7 +1164,7 @@ def _nitride_planar_cavity(self, vals, em, T_K, NA):
     if dp < 1.0:
         notes.append(f"material dipole {em.dipole}: cos^2 projection {dp:.4g} on the in-plane cavity field folded into F_P [DR/A]")
     return _cavity_resp(self, em, F_P=r["Fp_add"] * dp, kappa_meV=r["kappa_meV"], detuning_meV=em.E_X_meV - 1000.0 * r["E_cav_eV"],
-                        eta_out=r["eta_out"], notes=notes, inputs=inputs)
+                        eta_out=r["eta_out"], notes=notes, inputs=inputs, F_P_source="computed")
 
 
 NITRIDE_PLANAR_CAVITY = _Struct(

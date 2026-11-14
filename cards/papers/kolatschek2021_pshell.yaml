@@ -22,12 +22,12 @@ device:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {range: [1280.0, 1301.0], unit: nm, tag: E, source: "text p.5: line is 'blue-shifted with respect to the cavity mode' (mode ~1302 nm from the line-1 shift); wavelength not stated"}
-      eta_blink: {value: 0.25, unit: "1", tag: V, where: "text ~l.348-355 blinking limits rate to ~25%"}
+      eta_blink: {value: 0.25, unit: "1", tag: V, where: "text p.5: blinking 'on a timescale of around 100ns is observed' ... 'count rate to around 25% in comparison to the' unblinked case (verbatim fragments)"}
       charge_state: {value: "X-", unit: "", tag: DR, where: "text p.5 (no fine structure splitting observed, hinting strongly at a charged transition); X- vs X+ is not stated, X- chosen [A]"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3: 'the maximally achievable Purcell factor for perfect spatial and spectral overlap is reduced to 12'. The paper does NOT say whether 12 is a total rate ratio Gamma/Gamma_bulk; treating it as the total ratio is our interpretation [A] (cards README rule; r4 Fable review item E); the leaf is the cavity enhancement, 12 - 1 = 11 [DR arithmetic on that interpretation]"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {range: [0.0, 8000.0], unit: ueV, tag: E, source: "line is blue of the mode by an unstated amount; 0 to 8 meV (line 1 is 6.6 meV) as an envelope"}
       eta_table: {value: "0.6:0.8", unit: "", tag: A, source: "text p.2: simulated extraction >80 % into NA 0.6 over >60 nm for an ideally placed emitter; entered as a single table point (NA 0.6 -> 0.8)"}
@@ -43,6 +43,8 @@ device:
       NA: {value: 0.6, unit: "1", tag: A, source: "objective NA not stated in the read text; 0.6 is the NA of the paper's CBG simulation"}
       eta_optics: {value: 0.064, unit: "1", tag: A, source: "text p.3: setup efficiency 6.4 % (measured for line 1, first lens to detector); reused for this line"}
       eta_det: {value: 1.0, unit: "1", tag: A, source: "detector efficiency is already inside the 6.4 % setup efficiency"}
+      filter_width_meV: {value: 0.0298, unit: meV, tag: DR, where: "text p.5: 'the excitonic line is spectrally filtered (full width at half maximum (FWHM) = 0.04nm)' at 4 K and 'the spectral selection window is increased to FWHM = 0.1nm' at 40 and 77 K. The printed values are WAVELENGTH widths only; the meV values are our conversion [DR arithmetic]: dE = (1239.84 eV nm / lambda) (dlambda / lambda) with lambda = 1290 nm [A, the line wavelength is not printed for this p-shell charged line; the card ranges it 1280-1301 nm]: 0.9611 eV x 0.04/1290 = 29.8 ueV = 0.0298 meV and 0.9611 eV x 0.1/1290 = 74.5 ueV = 0.0745 meV (neither is printed); the 4 K leaf value is entered here and the 0.0745 meV of the 40 / 77 K points is supplied per point by series rate_vs_T per_point"}
+      filter_offset_meV: {value: 0.0, unit: meV, tag: A, source: "line assumed centred in the selection window"}
 reported:
   - {id: g2_4K, observable: g2_0, convention: raw, value: 0.0115, err: 0.0002, tag: V, where: "text p.5 / Fig 4 caption (4 K, saturation; fit with blinking envelope; fitted values 0.01-0.02 across powers)"}
   - {id: rate_4K, observable: rate_detected_Hz, value: 355000.0, tag: V, where: "text p.5 / Fig 4b (detector count rate at saturation, 4 K; ~25 % of the unblinked rate; no error given)"}
@@ -61,6 +63,8 @@ series:
     where: "text p.5 (355 kcps at 4 K, 262 kcps at 40 K, 191 kcps at 77 K detector count rates; numbers printed in the text, not digitised)"
     digitized: false
     points: [[4.0, 355000.0], [40.0, 262000.0], [77.0, 191000.0]]
+    per_point:
+      setup.filter_width_meV: [0.0298, 0.0745, 0.0745]
 reproduce:
   - item: g2_4K
     class: M
@@ -74,7 +78,7 @@ reproduce:
     tol: {rel: 0.5}
     tol_reason: "no error printed; 50 percent band because pump saturation, the 6.4 % setup efficiency (measured on line 1), the NA 0.6 table and the unknown F_P/detuning are assumed, and blinking (~25 % duty) is not modelled"
     expect: fail
-    reason: "model 9.3e5 (envelope 7.7e5-9.7e5) vs 3.55e5 with F_P 12 and eta_blink 0.25: the 6.4 % setup efficiency was measured on line 1 and the first-lens extraction/pump saturation are assumed, so the model is ~2.6x high; no unblinked count rate is printed to separate the factors."
+    reason: "r4 red-team item 9: drive.p_X (the NEUTRAL-exciton share, applied to a CHARGED line, and a double count of the blinking duty eta_blink 0.25 which is already entered from \"Furthermore, a strong blinking of the emit- ter on a timescale of around 100ns is observed count rate to around 25% in comparison to the case without blinking.\") is removed. Model 7.436e5 (envelope 5.899e5-7.821e5) vs 3.55e5, 2.1x high; the envelope floor is above the paper value, outside rel 0.5. The previous pass (5.2e5) was thin, and its sizing (dot-size class range chosen with this rate(T) as the bracketing datum) was circular, so the fail is the honest state"
   - item: g2_vs_T
     class: M
     tol: {metric: rms_rel, max: 0.5}
@@ -86,10 +90,18 @@ reproduce:
     tol: {metric: rms_rel, max: 0.5}
     tol_reason: "three text-printed rates spanning a factor 1.9; rms relative deviation 0.5 is the same loose band as the rate_4K item (6.4 % setup efficiency measured on line 1, unknown pump saturation), written before the run"
     expect: fail
-    reason: "model gap: rms_rel 1.68; the model rate does not follow the paper's roughly 2x fall from 4 to 77 K (thermal escape / red-shifted line leaving the window), which the p_shell path does not contain, and the absolute scale is already 2.4x high at 4 K."
+    reason: "r4 red-team item 9: drive.p_X removed (neutral share on a charged line; double counts eta_blink). Series rms_rel 0.6145 vs the 0.5 tolerance after r4-review-fixes (1.074 at the red-team fix; 0.4527 before, the thin pass). The earlier pass also rested on a dot-size class range chosen with this rate(T) as the datum (circular)"
 fits: []
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 12: material inas_ingaas_metamorphic_cband l_xy / l_z reverted to the InAs/GaAs class [3, 5] / [1, 2] nm [A] (the [5, 8] / [2, 3] E ranges were tuned to a test datum, no literature citation); engine review fixes re-run", note: "obtained: g2_4K 0.001795 pass (weak), rate_4K 7.055e5 fail, g2_vs_T rms_rel 0.9221 fail, rate_vs_T rms_rel 0.6145 fail; expects unchanged"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 9: drive.p_X [0.6, 0.8] removed (neutral-exciton share applied to a charged line; double counts eta_blink 0.25)", note: "obtained: rate_4K 5.2e5 [3.54e5, 6.26e5] pass -> 7.436e5 [5.899e5, 7.821e5] fail; rate_vs_T rms 0.4527 pass -> 1.074 fail (the red-team result expected the thin pass to turn into a fail); g2_4K 0.001795 pass (weak, unchanged), g2_vs_T 0.9221 fail (unchanged). The weak (circular) flags on the two rate items are dropped with the passes; the circularity statement moved into the reasons", change: "expect pass -> fail (rate_4K, rate_vs_T)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I1 (Zf_window: setup.filter_width_meV drives the ZPL truncation and sideband transmission, per-point windows 0.0298 / 0.0745 / 0.0745 meV on rate_vs_T) and I2 (r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947)", change: "rate_4K 6.8e5 -> 5.205e5 (envelope 5.05e5-7.8e5 -> 3.54e5-6.26e5), expect fail -> pass; rate_vs_T rms 1.82 -> 0.4527, expect fail -> pass; g2_4K and g2_vs_T unchanged. Fable predicted both absolute items stay fail; flipped with the honest reason, tolerances untouched"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): rate_4K 9.35e5 -> 9.71e5, rate_vs_T rms 1.925 -> 3.002. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 3: F_P range -> 12.0 DR (text p.3); material.eta_blink 0.25 V; added series rate_vs_T (355/262/191 kcps, M, rms_rel 0.5); rate_4K and g2_4K expects re-recorded from the post-fix run"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: cbg table_mode total changes the model rate_4K 8.6e5 -> 9.3e5 (envelope 5.6e5-9.6e5 -> 7.7e5-9.7e5); expect fail unchanged, reason text updated"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: g2_4K flagged weak (model 6x below the paper, abs 0.01 tol); expect unchanged (pass)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable reviews items E and cards row: structure.F_P 12 -> 11 (total ratio convention); setup.filter_width_meV 0.0298 (stated 0.04 nm FWHM window at 4 K, DR conversion). The engine uses filter_width_meV only for the X/XX top-hat leakage, not for the sideband transmission Zf_window (Fable list item 1, engine work), so no model output is expected to move; the 0.1 nm window at 40/77 K cannot be entered per temperature point"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added", note: "rate_4K 9.3e5 -> 6.5e5 (envelope 4.6e5-7.7e5), ~1.8x high as the review predicted; expect fail unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: rate_4K expect fail on both sides, reason rewritten to the combined-model outcome (model 6.8e5, envelope 5.05e5-7.8e5, ~1.9x high); this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); p_X anchor text corrected to what the Nowak and Reimer texts say; no tolerance changed"}
+  - {date: 2026-11-04, by: "orchestrator (Opus) audit H4", reason: "rate_4K and rate_vs_T passes flagged weak: the I2 dot-size range was justified by this card's own rate(T) (r4-fable-z-adjudication.md I2 row), so the pass is circular until an independent source exists"}

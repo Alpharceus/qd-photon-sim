@@ -120,7 +120,7 @@ async function waitRun(page, timeout = 120000) {
     // ---------------------------------------------------------------- load
     await page.goto(`${BASE}/#/compose`, { waitUntil: "load" });
     await page.waitForSelector(".ws-compose .mount .kind-chip", { timeout: 60000 });
-    await page.waitForFunction(() => document.querySelector(".ws-compose .plaque"), null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector(".ws-compose .plaque[data-status]"), null, { timeout: 60000 });   // the VALIDATING placeholder is also a .plaque but carries no status yet
     await settle(page);
     const rail = await page.$$eval(".rail-item", (els) => els.map((e) => e.dataset.ws));
     check("rail: Composer follows Designer, Papers present", rail.indexOf("design") + 1 === rail.indexOf("compose") && rail.includes("papers"), rail.join(","));

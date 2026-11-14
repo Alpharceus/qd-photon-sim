@@ -393,12 +393,21 @@ th = PP.load_paper(ROOT / "cards" / "papers" / "thomas2021.yaml")
 sp_th = engine._as_spec(th.device)
 ent_th = engine._entries(sp_th)
 c_th = engine._run_point(ent_th, engine._central_values(engine._leaves(sp_th, ent_th)), 8.0, "auto")
-Zt, Zft = c_th.d["Z_phonon"], c_th.d["Z_filt"]
+Zt = c_th.d["Z_phonon"]
+# r4-cavity A2: Z_filt of the cavity-collected light is 1 (the cavity is the filter), the ZPL fraction q = Z/Z_eff is separate
+from fsim_core.compose.observables import cavity_sideband_parts as _csp                    # noqa: E402
+# r4 review A: the cavity-collected ZPL fraction is q_c = Z L/(Z L + t_sb) at the dot width w_dot the cavity sees
+_Zp, _tsb, _sbp = _csp(c_th.em.phonon, 8.0, float(c_th.sr.kappa_meV), float(c_th.em.E_X_meV) - float(c_th.sr.E_mode_meV),
+                       float(c_th.rt.dot_linewidth_ueV) * 1e-3)
+Zft = (_Zp + _tsb) / (_Zp + _sbp)
+_qc_th = _Zp * float(c_th.rt.L) / (_Zp * float(c_th.rt.L) + _tsb)
 I1 = float(c_th.res.I_single)
-check("Thomas 2021 diagnosis: engine hom_I = I_single(polaron ZPL overlap) x (Z/Z_eff)^2 exactly (Z once, no double "
-      "counting) and exceeds I_single x Z^2",
-      c_th.solver.name == "polaron" and abs(c_th.d["hom_I"] - I1 * (Zt / Zft) ** 2) <= 1e-12 and c_th.d["hom_I"] > I1 * Zt ** 2,
-      f"hom_I {c_th.d['hom_I']:.4f}, I_single {I1:.4f}, Z {Zt:.4f}, Z_eff {Zft:.4f}, "
+check("Thomas 2021 diagnosis (WIRING check: the expected value is recomputed with the same formula q_c = Z L/(Z L + t_sb) in "
+      "this script, not a published number): engine hom_I = I_single(polaron ZPL overlap) x q_c^2 exactly (Z once, no double "
+      "counting; Z_filt = 1 for the cavity-collected light) and exceeds I_single x Z^2",
+      c_th.solver.name == "polaron" and c_th.d["Z_filt"] == 1.0
+      and abs(c_th.d["hom_I"] - I1 * _qc_th ** 2) <= 1e-12 and c_th.d["hom_I"] > I1 * Zt ** 2,
+      f"hom_I {c_th.d['hom_I']:.4f}, I_single {I1:.4f}, Z {Zt:.4f}, Z_eff {Zft:.4f}, q_c {_qc_th:.4f}, "
       f"Gamma/(Gamma+gamma*) = {c_th.d['Gamma_ns'] / (c_th.d['Gamma_ns'] + c_th.d['gamma_star_ns']):.3f} (gamma* {c_th.d['gamma_star_ns']:.2f}/ns "
       f"from the InAs/GaAs-class T slope at 8 K), g2 {c_th.d['g2_0']:.3f}")
 
@@ -541,11 +550,20 @@ RT_w = Rates(Gamma_ns=2.45, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, 
 r_w, pl_w = arp_run(1.6, 32.3, alpha0=True, rt=RT_w, f_rep_MHz=82.0)
 pc_w = pl_w.pulses[0]
 ref_w = ode_chirp(pc_w.area_rad / math.pi, pc_w.fwhm_ps, pc_w.chirp_meV_ps)
-check("arp card-like case (phonons off, Gamma 2.45/ns): eta_prep > 0.99 while the end-of-window inversion is < 0.8 "
-      "(radiative decay inside the window, not an incomplete transfer); the lossless ODE of the same chirped pulse gives ~1",
-      r_w.extra["eta_prep"] > 0.99 and r_w.inversion < 0.8 and ref_w > 0.99,
-      f"eta_prep {r_w.extra['eta_prep']:.4f}, inversion {r_w.inversion:.3f}, ODE (no decay) {ref_w:.4f}, "
+check("arp card-like case (phonons off, Gamma 2.45/ns): eta_prep > 0.99 and the expected count n_exc > 0.97 (r4-hom: `inversion` of the engine is n_exc) "
+      "while the end-of-window population P_X_end stays below n_exc by the decay inside the (now +-5 sigma_c) window; the lossless ODE of the same "
+      "chirped pulse gives ~1",
+      r_w.extra["eta_prep"] > 0.99 and r_w.extra["n_exc"] > 0.97 and r_w.inversion < r_w.extra["n_exc"] - 0.1 and ref_w > 0.99,
+      f"eta_prep {r_w.extra['eta_prep']:.4f}, n_exc {r_w.extra['n_exc']:.4f}, P_X_end {r_w.inversion:.3f}, ODE (no decay) {ref_w:.4f}, "
       f"window {r_w.extra['window_ps']:.0f} ps")
+# r4-hom 2.4: the CLOSED system (Gamma = 0, phonons off, Wei chirp 32.3 ps^2, 1.6 pi) completes the transfer: n_exc = P_X_end >= 0.999
+RT_c = Rates(Gamma_ns=1e-9, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
+r_c, pl_c = arp_run(1.6, 32.3, alpha0=True, rt=RT_c)
+check("R4-ARP. closed system (Gamma ~ 0, phonons off, Wei chirp, 1.6 pi): n_exc >= 0.999 from |G> (adiabatic transfer is complete, "
+      "Landau-Zener parameter ~10; P_X_end is the periodic-state population, 0.5 here because the closed system never relaxes between pulses); the chirped window is +-5 sigma_c, shorter than the unchirped +-8 sigma",
+      r_c.extra["n_exc"] >= 0.999
+      and abs(r_c.extra["window_ps"] - 2.0 * PL.CHIRP_WINDOW_SIGMA * rs.gaussian_sigma(pl_c.pulses[0].fwhm_ps * 1e-3) * 1e3) < 1e-6,
+      f"n_exc {r_c.extra['n_exc']:.6f}, P_X_end {r_c.inversion:.6f}, window {r_c.extra['window_ps']:.1f} ps")
 
 # 14c. phonons at 4.2 K: positive chirp robust, negative chirp degraded (Wei 2014: |+> -> |-> relaxation emits phonons)
 RT_b = Rates(Gamma_ns=0.02, gamma_star_ns=0.0, k_nr_ns=0.0, L=1.0, F_P_eff=0.0, beta=0.5)
@@ -737,12 +755,12 @@ eng_sp = {"schema": "fsim-composed/1", "T_K": 4.2,
           "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
 o_eid = engine.evaluate_spec(eng_sp)["scalars"]
 want_eid = ivp_eid(3 * math.pi, 20.0, 5.0, float(o_eid["Gamma_ns"]), float(o_eid["gamma_star_ns"]))
-check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, material gamma* 0.5/ns): the inversion equals the independent "
+check("EID-g. engine end to end (resonant_pulse, 3 pi Gaussian 20 ps, eid_ps 5, material gamma* 0.5/ns): the end-of-window population P_X_end (r4-hom: `inversion` is n_exc now) equals the independent "
       "2x2 Lindblad solve_ivp with the engine's Gamma and gamma* (1e-5), and differs from the EID-off run by > 0.01",
-      abs(o_eid["inversion"] - want_eid) < 1e-5
+      abs(o_eid["P_X_end"] - want_eid) < 1e-5
       and abs(engine.evaluate_spec({**eng_sp, "drive": {"kind": "resonant_pulse", "params": {**eng_sp["drive"]["params"], "eid_ps": 0.0}}})
-              ["scalars"]["inversion"] - o_eid["inversion"]) > 0.01,
-      f"{o_eid['inversion']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
+              ["scalars"]["P_X_end"] - o_eid["P_X_end"]) > 0.01,
+      f"{o_eid['P_X_end']:.6f} vs {want_eid:.6f}, solver {o_eid['solver']}")
 
 # ------------------------------------------------------------------ 14. R2 FIX-1a: registry defaults do what the drive claims
 def ref_spec(drv):
@@ -957,6 +975,390 @@ except ValueError as _e:
     _cw_msg = str(_e)
 check("PULSEEND D. a CW drive raises ValueError with a user-facing physics reason (no code names)",
       _cw_msg is not None and "pulsed" in _cw_msg and not any(t in _cw_msg for t in (".py", "polaron:", "_", "Solver")), str(_cw_msg)[:80])
+
+# ------------------------------------------------------------------ 15. r4: spectral filter + FSS gating through the engine
+from fsim_core.compose import filterhook as FH                           # noqa: E402
+
+
+def r4_spec(drv_params=None, mat_params=None, setup_params=None, struct=None, drive="resonant_pulse"):
+    return {"schema": "fsim-composed/1", "T_K": 4.0,
+            "material": {"kind": "ingaas_gaas", "params": {"k_nr_ns": 0.0, "gamma_star_4K_ns": 0.0, "a_ac_ns_per_K": 0.0, **(mat_params or {})}},
+            "structure": struct or {"kind": "generic_cavity", "params": {"F_P": 9.8, "Q": 11100, "eta_out": 0.7}},
+            "drive": {"kind": drive, "params": {"shape": "gauss", "fwhm_ps": 15.0, "area_pi": 1.0, **(drv_params or {})}},
+            "setup": {"kind": "lens_fibre_det", "params": setup_params or {}}, "solver": "auto"}
+
+
+def sc(spec):
+    return engine.evaluate_spec(spec)["scalars"]
+
+
+_u = sc(r4_spec())
+_f0 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 0.0}))
+check("R4-F1. setup.filter_fwhm_GHz = 0 reproduces the unfiltered engine numbers exactly (bit-identical g2, hom_I, B_first_lens)",
+      _u["g2_0"] == _f0["g2_0"] and _u["hom_I"] == _f0["hom_I"] and _u["B_first_lens"] == _f0["B_first_lens"],
+      f"g2 {_u['g2_0']:.6g}")
+_f3 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0}))
+_f20 = sc(r4_spec(setup_params={"filter_fwhm_GHz": 20.0}))
+# Fable r4 pulsed 2.1 analytic estimate of the etalon effect: g2_f/g2 ~ T_s/T_l, T_s = (pi/2) B/Dnu_s with Dnu_s = 0.44/tau_p (the
+# short in-pulse photon), T_l = B/(B + Gamma/2pi) (the long photon). The formula's own accuracy at the Ding anchor (5 ps, T1 83.9 ps,
+# 3 GHz) is 0.088 vs the independent probe 0.096 (8 %); the check allows 15 % (about twice that).
+_tau_ps, _B = 15.0, 3.0
+_est = (math.pi / 2.0 * _B / (0.44 / (_tau_ps * 1e-3))) / (_B / (_B + _u["Gamma_ns"] / (2.0 * math.pi)))
+_ratio = _f3["g2_0"] / _u["g2_0"]
+check("R4-F2. 15 ps pi pulse, 3 GHz etalon: g2_f/g2 equals the Fable analytic estimate (pi/2) B tau_p/0.44 / [B/(B + Gamma/2pi)] within 15 % (the formula's own error at the Ding anchor is 8 %), "
+      "20 GHz lies between 3 GHz and unfiltered, and the brightness is untouched (filter_applies_to g2_hom)",
+      abs(_ratio - _est) / _est < 0.15 and _f3["g2_0"] < _f20["g2_0"] < _u["g2_0"] and _f3["B_first_lens"] == _u["B_first_lens"],
+      f"ratio {_ratio:.4f} vs estimate {_est:.4f}; g2 {_u['g2_0']:.4f} -> 20 GHz {_f20['g2_0']:.4f} -> 3 GHz {_f3['g2_0']:.4f}")
+_fb = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0, "filter_applies_to": "g2_hom_brightness"}))
+_Gam = _u["Gamma_ns"]
+_Tl = 3.0 / (3.0 + _Gam / (2 * math.pi))
+check("R4-F3. filter_applies_to g2_hom_brightness: the brightness drops by the etalon transmission, within 6 % of the free-decay closed form B/(B + Gamma/2pi) (short-pulse limit, the in-pulse photons add a little)",
+      abs(_fb["B_first_lens"] / _u["B_first_lens"] - _Tl) / _Tl < 0.06,
+      f"ratio {_fb['B_first_lens'] / _u['B_first_lens']:.4f} vs closed form {_Tl:.4f}")
+_lz = sc(r4_spec(setup_params={"filter_fwhm_GHz": 3.0}, drv_params={"eid_ps": 1e-9}))
+check("R4-F4. the polaron step-propagator path (eid_ps 1e-9 ps routes the plan to it) and the lindblad path give the same filtered g2 and HOM overlap (1e-3 relative; the refined lindblad grid is converged to 1.5e-5): two independent propagator assemblies",
+      abs(_lz["g2_0"] - _f3["g2_0"]) / _f3["g2_0"] < 1e-3
+      and abs(_lz["hom_I"] - _f3["hom_I"]) / _f3["hom_I"] < 1e-3,
+      f"solvers {_f3['solver']} / {_lz['solver']}, g2 {_f3['g2_0']:.6g} / {_lz['g2_0']:.6g}, I {_f3['hom_I']:.6f} / {_lz['hom_I']:.6f}")
+_pa = sc(r4_spec(drive="phonon_assisted", drv_params={"detuning_meV": 0.58, "area_pi": 8.0, "fwhm_ps": 19.5}, struct=None))
+_pb = sc(r4_spec(drive="phonon_assisted", drv_params={"detuning_meV": 0.58, "area_pi": 8.0, "fwhm_ps": 19.5},
+                 setup_params={"filter_fwhm_GHz": 3.5}))
+check("R4-F5. phonon_assisted (phonons on, polaron path): a 3.5 GHz etalon gives a finite filtered g2 and HOM overlap and lowers g2",
+      math.isfinite(_pb["g2_0"]) and math.isfinite(_pb["hom_I"]) and _pb["g2_0"] < _pa["g2_0"], f"{_pa['g2_0']:.4f} -> {_pb['g2_0']:.4f}")
+# ---- FSS gating
+_nf = sc(r4_spec(drv_params={"cross_pol": True}, mat_params={"fss_ueV": 0.0}))
+check("R4-V1. fss_ueV = 0 with cross_pol: the two-level numbers are unchanged (g2, hom_I, B_first_lens equal the unpolarised run)",
+      _nf["g2_0"] == _u["g2_0"] and _nf["hom_I"] == _u["hom_I"] and _nf["B_first_lens"] == _u["B_first_lens"])
+_sh = r4_spec(drv_params={"cross_pol": True, "fwhm_ps": 0.1, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0, "tau_bare_ns": 1.0})
+_sh["structure"] = {"kind": "generic_cavity", "params": {"F_P": 0.0, "Q": 11100, "eta_out": 1.0, "F_bg": 1.0}}
+_rs_ = sc(_sh)
+_G = _rs_["Gamma_ns"]
+_d = float(lb.mev_to_rate(15e-3))
+_pH = 0.5 * _d * _d / (_G * _G + _d * _d)
+check("R4-V2. engine V-system, 0.1 ps pi pulse at 45 deg, FSS 15 ueV, no cavity: the H photon number per pulse equals the closed form (1/2) delta^2/(Gamma^2 + delta^2) within 3 %",
+      abs(_rs_["n_ph"] - _pH) / _pH < 0.03, f"n_H {_rs_['n_ph']:.4f} vs {_pH:.4f}")
+check("R4-V3. mode_ratio_H: degenerate modes give 1, split = kappa/2 gives 1/2 (Lorentzian), F_P ratio V/H 2 halves it again",
+      abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 0.0, 1.0) - 1.0) < 1e-15
+      and abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 50.0, 1.0) - 0.5) < 1e-12
+      and abs(FH.mode_ratio_H(type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})(), 50.0, 2.0) - 0.25) < 1e-12)
+_ph = sc(r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0}))
+_split = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_split["structure"]["params"]["mode_split_ueV"] = 90.0
+_ps = sc(_split)
+check("R4-V4. a 90 ueV H-mode split (Q 11100) lowers the collected H photon number versus degenerate modes (the H mode is Purcell-weaker)",
+      _ps["n_ph"] < _ph["n_ph"], f"{_ph['n_ph']:.4f} -> {_ps['n_ph']:.4f}")
+# resonant_mode (r4 corrections b, Somaschi 2016: the paper does not say which polarised mode the dot sits on) [A]
+_rk = type("R", (), {"kappa_ns": 1.0 / lb.HBAR_MEV_NS * 0.1})()
+_hz = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_hz["structure"]["params"]["resonant_mode"] = "H"
+_hz = sc(_hz)
+check("R4-V5. resonant_mode H with split 0 equals V with split 0 (closed form: both modes carry the full F_P, the V-system numbers are identical)",
+      _hz["n_ph"] == _ph["n_ph"] and _hz["g2_0"] == _ph["g2_0"] and _hz["hom_I"] == _ph["hom_I"]
+      and FH.mode_ratio_H(_rk, 0.0, 1.0, "H") == FH.mode_ratio_H(_rk, 0.0, 1.0, "V") == 1.0
+      and FH.mode_ratio_V(_rk, 0.0, 1.0, "H") == FH.mode_ratio_V(_rk, 0.0, 1.0, "V") == 1.0,
+      f"n_H {_hz['n_ph']:.6g} / {_ph['n_ph']:.6g}")
+_hs = r4_spec(drv_params={"cross_pol": True, "pol_angle_deg": 45.0}, mat_params={"fss_ueV": 15.0})
+_hs["structure"]["params"]["mode_split_ueV"] = 90.0
+_hs["structure"]["params"]["resonant_mode"] = "H"
+_hs = sc(_hs)
+check("R4-V6. resonant_mode H with a 90 ueV split: the collected H mode keeps the full F_P (rH = 1, rV = L(split) = 1/2 at split = kappa/2), so the H photon number is above the V-resonant 90 ueV split value; mode_ratio_V(kappa/2 split) = 1/2",
+      abs(FH.mode_ratio_V(_rk, 50.0, 1.0, "H") - 0.5) < 1e-12 and FH.mode_ratio_H(_rk, 50.0, 1.0, "H") == 1.0
+      and FH.mode_ratio_V(_rk, 50.0, 1.0, "V") == 1.0 and _hs["n_ph"] > _ps["n_ph"],
+      f"V-resonant {_ps['n_ph']:.4f} -> H-resonant {_hs['n_ph']:.4f}")
+
+# ---- r4-phonon I1: Zf_window (Fable r4 adjudication section 2)
+import copy as _copy                                                          # noqa: E402
+from scipy.integrate import quad as _quad                                      # noqa: E402
+from fsim_core.compose import observables as _OB                              # noqa: E402
+
+_ph0 = qd_gf.PhononParams(alpha_ps2=0.0)
+_wp = _OB.window_filter_parts(_ph0, 4.0, 0.05, 0.0, 0.01)
+check("R4-Z1. alpha = 0 (no sideband): Zf = T_zpl = w/(w + gamma) for a Lorentzian window (closed form 0.05/0.06)",
+      abs(_wp["z"] - 1.0) < 1e-12 and abs(_wp["T_zpl"] - 0.05 / 0.06) < 1e-12 and abs(_wp["Zf"] - 0.05 / 0.06) < 1e-9,
+      f"Zf {_wp['Zf']:.9f} vs {0.05 / 0.06:.9f}")
+_php = qd_gf.PhononParams(D_e_eV=-14.6, D_h_eV=-4.8, rho_m_kg_m3=5370.0, c_s_m_s=5110.0, l_xy_nm=4.0, l_z_nm=1.5)
+_Zp = qd_gf.zpl_weight(_php, 4.0)
+_tiny = _OB.window_filter_parts(_php, 4.0, 0.02, 0.0, 1e-5)
+_huge = _OB.window_filter_parts(_php, 4.0, 1e5, 0.0, 1e-3)
+check("R4-Z2. limits: gamma << w << E_c gives Zf = Z (to 3e-3: the sideband inside a 20 ueV window is ~0.1 %, adjudication 2), w -> infinity gives Zf = 1 and T_zpl = 1",
+      abs(_tiny["Zf"] - _Zp) < 3e-3 and abs(_huge["Zf"] - 1.0) < 1e-4 and abs(_huge["T_zpl"] - 1.0) < 1e-6,
+      f"Z {_Zp:.5f}, small-w Zf {_tiny['Zf']:.5f}, huge-w Zf {_huge['Zf']:.6f}")
+_leak = _OB.window_filter_parts(_php, 4.0, 0.0298, 0.0, 1e-9)["Zf"] - _Zp      # sideband light inside the window, share of the whole spectrum
+check("R4-Z3. the share of the sideband inside the 29.8 ueV window at 4 K is ~0.1 % (adjudication section 2 probe; accepted 0.03-0.3 %)",
+      3e-4 < _leak < 3e-3, f"sideband share {_leak * 100:.3f} %")
+_g, _w, _o = 0.012, 0.03, 0.007
+_lor = lambda x: (_g / 2 / math.pi) / ((x - _o) ** 2 + (_g / 2) ** 2)          # noqa: E731
+_Tth = _quad(_lor, -_w / 2, _w / 2, points=[_o], limit=400)[0]
+_sg = _w / (2 * math.sqrt(2 * math.log(2)))
+_gau = lambda x: math.exp(-x * x / (2 * _sg * _sg)) * _lor(x)                  # noqa: E731
+_Tga = _quad(_gau, -10 * _sg, 10 * _sg, points=[0.0, _o], limit=400)[0]
+_Tlo = _quad(lambda x: (_w / 2) ** 2 / (x * x + (_w / 2) ** 2) * _lor(x), -2.0, 2.0, points=[0.0, _o], limit=800)[0]
+check("R4-Z4. T_zpl for the three window shapes (offset 7 ueV) matches an independent numerical quadrature of the Lorentzian line (1e-4)",
+      abs(_OB.zpl_window_transmission(_w, _o, _g, "tophat") - _Tth) < 1e-4
+      and abs(_OB.zpl_window_transmission(_w, _o, _g, "gaussian") - _Tga) < 1e-4
+      and abs(_OB.zpl_window_transmission(_w, _o, _g, "lorentzian") - _Tlo) < 1e-4,
+      f"tophat {_Tth:.5f}, gaussian {_Tga:.5f}, lorentzian {_Tlo:.5f}")
+# engine wiring: bit-identical defaults and the limits through evaluate_spec
+_NC = {"kind": "bulk_planar", "params": {}}                      # no finite-kappa cavity: the setup window acts on the whole spectrum
+
+
+def _dd(spec):
+    sp_ = engine._as_spec(spec)
+    en_ = engine._entries(sp_)
+    return engine._run_point(en_, engine._central_values(engine._leaves(sp_, en_)), float(sp_.T_K), "auto").d
+
+
+_b0 = _dd(r4_spec(struct=_NC))
+_bw0 = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.0}))
+_bzf = _dd(r4_spec(struct=_NC, setup_params={"zpl_filter": True}))
+_bzfw = _dd(r4_spec(struct=_NC, setup_params={"zpl_filter": True, "filter_width_meV": 0.03}))
+check("R4-Z5. filter_width 0 is bit-identical to no window, and zpl_filter true ignores the window (Z_filt = Z, q = 1, brightness identical)",
+      _b0["Z_filt"] == 1.0 and _bw0["Z_filt"] == 1.0 and _bw0["hom_zpl_fraction"] == _b0["hom_zpl_fraction"]
+      and _bzfw["Z_filt"] == _bzf["Z_filt"] == _bzf["Z_phonon"] and _bzfw["hom_zpl_fraction"] == 1.0
+      and _bzfw["Z_filt"] == _bzf["Z_filt"])
+_bw = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.05}))
+_bwide = _dd(r4_spec(struct=_NC, setup_params={"filter_width_meV": 1e5}))
+_gam_ns = _bw["Gamma_ns"] + _bw["gamma_star_ns"]      # k_nr = 0 in r4_spec
+check("R4-Z6. a 50 ueV Lorentzian window without the ZPL switch lowers Z_filt below Z (truncated ZPL, ~0.1 % of the sideband) "
+      "and sets q = Z T_zpl/Zf with the closed-form T_zpl; a 100 eV window gives Z_filt = 1 and q = Z",
+      _bw["Z_filt"] < _bw["Z_phonon"]
+      and abs(_bw["hom_zpl_fraction"] - _bw["Z_phonon"] * (0.05 / (0.05 + lb.HBAR_MEV_NS * _gam_ns)) / _bw["Z_filt"]) < 1e-6
+      and abs(_bwide["Z_filt"] - 1.0) < 1e-4 and abs(_bwide["hom_zpl_fraction"] - _bwide["Z_phonon"]) < 1e-4,
+      f"Z {_bw['Z_phonon']:.4f} Zf(50 ueV) {_bw['Z_filt']:.4f} q {_bw['hom_zpl_fraction']:.4f}; wide Zf {_bwide['Z_filt']:.5f}")
+# per-point series window: each point equals the single evaluation at that window
+_ser_spec = r4_spec(struct=_NC, setup_params={"filter_width_meV": 0.03})
+_ws = [0.03, 0.075, 0.075]
+_rs = engine.series(_ser_spec, "T_K", [4.0, 40.0, 77.0], ["Z_filt"], per_point={"setup.filter_width_meV": _ws})["y"]["Z_filt"]
+_ind = []
+for _T, _wv in zip((4.0, 40.0, 77.0), _ws):
+    _sp = _copy.deepcopy(_ser_spec)
+    _sp["T_K"] = _T
+    _sp["setup"]["params"]["filter_width_meV"] = _wv
+    _ind.append(_dd(_sp)["Z_filt"])
+check("R4-Z7. series per_point setup.filter_width_meV: every point equals the single evaluation at that temperature and window (1e-12)",
+      all(abs(a - b) < 1e-12 for a, b in zip(_rs, _ind)) and len(set(_ws)) == 2, f"{_rs} vs {_ind}")
+
+# ---- r4 red-team item 1/2: the etalon's own sideband transmission sets q and (with filter_applies_to g2_hom_brightness) the brightness tax
+_E0 = r4_spec(struct=_NC)
+_Ed = _dd(_E0)
+_Ef = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5}))
+_Efb = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5, "filter_applies_to": "g2_hom_brightness"}))
+_Sb = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5, "filter_applies_to": "g2_hom_brightness"}))
+_S0 = sc(_E0)
+_Tl05 = 0.5 / (0.5 + _Ed["Gamma_ns"] / (2.0 * math.pi))           # free-decay etalon transmission (closed form), gamma* = 0
+_ratio_b = _Sb["B_first_lens"] / _S0["B_first_lens"]
+check("R4-E1. a narrow etalon (0.5 GHz << sideband width) without zpl_filter: q -> 1 from the filter's own window (no zpl_filter needed), "
+      "Z_filt = Z when the brightness is taxed (g2_hom_brightness) and 1 when it is not, and the brightness factor equals Z x T_etalon (closed form, 7 %)",
+      _Ef["hom_zpl_fraction"] > 0.999 and abs(_Ef["Z_filt"] - 1.0) < 1e-12
+      and abs(_Efb["Z_filt"] - _Efb["Z_phonon"]) < 5e-3 and _Efb["Z_filt"] >= _Efb["Z_phonon"]
+      and abs(_ratio_b - _Efb["Z_phonon"] * _Tl05) / (_Efb["Z_phonon"] * _Tl05) < 0.07,
+      f"q {_Ef['hom_zpl_fraction']:.5f}, Z {_Efb['Z_phonon']:.4f}, Z_filt(bright) {_Efb['Z_filt']:.4f}, B ratio {_ratio_b:.4f} vs Z T {_Efb['Z_phonon'] * _Tl05:.4f}")
+_Eh = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0, "filter_applies_to": "hom"}))
+_Eg = sc(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0}))
+_Eu = sc(_E0)
+check("R4-E2. filter_applies_to hom (etalon in the HOM path only): g2 and the brightness are the unfiltered numbers (bit-identical), the HOM overlap is that of the filtered stream (equal to the g2_hom run)",
+      _Eh["g2_0"] == _Eu["g2_0"] and _Eh["B_first_lens"] == _Eu["B_first_lens"] and _Eh["hom_I"] == _Eg["hom_I"] and _Eg["g2_0"] < _Eu["g2_0"],
+      f"g2 {_Eu['g2_0']:.5f} (hom) vs filtered {_Eg['g2_0']:.5f}; I {_Eh['hom_I']:.5f} = {_Eg['hom_I']:.5f}")
+_Ez = _dd(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 3.0, "zpl_filter": True}))
+check("R4-E3. zpl_filter true keeps priority over the etalon window (Z_filt = Z, q = 1): cards that set it are unchanged",
+      _Ez["hom_zpl_fraction"] == 1.0 and abs(_Ez["Z_filt"] - _Ez["Z_phonon"]) < 1e-15)
+
+# ---- r4 review fixes (Fable adjudication .workers/devlib/r4-fable-review-adjudication.md): every expectation below is computed in
+# this script from closed forms / independent integrals, never by calling the function under test
+import copy as _cp                                                         # noqa: E402
+from scipy.linalg import expm as _expm                                     # noqa: E402
+from scipy.special import gammaln as _gammaln                              # noqa: E402
+
+
+def _ctx(spec):
+    sp_ = engine._as_spec(spec)
+    en_ = engine._entries(sp_)
+    return engine._run_point(en_, engine._central_values(engine._leaves(sp_, en_)), float(sp_.T_K), "auto")
+
+
+# R4-RV-A: the cavity channel sees the WHOLE spectrum once, L_spec = (Z L + t_sb)/(Z + sb). Limiting case: a narrow cavity (kappa)
+# sitting in the LA sideband at detuning Delta = E_ZPL - E_mode picks up t_sb = (pi kappa/2) S_sb(-Delta) (the area of the
+# peak-normalised Lorentzian is pi kappa/2); the old form multiplied the sideband term by L a second time.
+from fsim_core.compose.rates import combine as _combine                    # noqa: E402
+from fsim_core.compose.types import StructureResponse as _SR               # noqa: E402
+_kap, _det = 0.02, 2.0                                                      # meV: narrow cavity 2 meV below the ZPL
+_srA = _SR(F_P=5.0, kappa_meV=_kap, E_mode_meV=float(EM0.E_X_meV) - _det, g_meV=None, F_bg=1.0, beta0=0.0, F_P_source="computed")
+_rA = _combine(EM0, _srA, 4.0)
+_wdA = _rA.dot_linewidth_ueV * 1e-3
+_om, _ssb, _zA = qd_gf._spectrum_parts(PH, 4.0, _wdA)
+_Ssb_at = float(np.interp(-_det, _om, _ssb))
+_tsb_cf = 0.5 * math.pi * _kap * _Ssb_at
+_sbA = float(np.trapezoid(_ssb, _om))
+_Lspec_cf = (_zA * _rA.L + _tsb_cf) / (_zA + _sbA)
+_Lold = _rA.L * (_zA + _tsb_cf) / (_zA + _sbA)
+check("R4-RV-A. narrow cavity in the LA sideband (kappa 0.02 meV, 2 meV below the ZPL): F_P_eff/F_P = (Z L + (pi kappa/2) S_sb(-Delta))/(Z + sb) "
+      "(closed-form limit, 5 %), and the pre-review form L (Z + t_sb)/(Z + sb) is more than 1.5x too low",
+      abs(_rA.F_P_eff / 5.0 / _Lspec_cf - 1.0) < 0.05 and _Lspec_cf / _Lold > 1.5,
+      f"engine {_rA.F_P_eff / 5.0:.5f} vs closed form {_Lspec_cf:.5f}; old form {_Lold:.5f}, L {_rA.L:.4g}")
+_cA = _ctx(r4_spec(struct={"kind": "generic_cavity", "params": {"F_P": 5.0, "Q": 4.0e4, "eta_out": 0.7, "F_P_source": "computed"}}))
+check("R4-RV-A2. cavity-collected ZPL fraction on resonance q_c = Z L/(Z L + t_sb) -> 1 for a narrow cavity (kappa << sideband width): "
+      "hom_zpl_fraction within 1e-2 of 1 and above Z",
+      0.99 < _cA.d["hom_zpl_fraction"] <= 1.0 + 1e-12 and _cA.d["hom_zpl_fraction"] > _cA.d["Z_phonon"],
+      f"q {_cA.d['hom_zpl_fraction']:.5f}, Z {_cA.d['Z_phonon']:.5f}")
+
+# R4-RV-B: q weights the channels by the light each PASSES the HOM-path filter. Window branch with a leaky channel (beta0 > 0):
+# expected q from the hand mixture formula with the pass factors built from window_filter_parts called here (a building block,
+# not the code under test), w_c from the closed-form rate budget w_c = F_P L/(F_P L + beta0 F_bg)
+from fsim_core.compose.observables import window_filter_parts as _wfp      # noqa: E402
+_spB = r4_spec(struct={"kind": "generic_cavity", "params": {"F_P": 6.0, "Q": 8000, "eta_out": 0.7, "beta0": 0.3}},
+               setup_params={"filter_width_meV": 0.05})
+_spB["T_K"] = 30.0
+_cB = _ctx(_spB)
+_wB = float(_cB.rt.dot_linewidth_ueV) * 1e-3
+_LB, _ZB = float(_cB.rt.L), float(_cB.d["Z_phonon"])
+_pB = _wfp(_cB.em.phonon, 30.0, 0.05, 0.0, _wB, "lorentzian", float(_cB.sr.kappa_meV),
+           float(_cB.em.E_X_meV) - float(_cB.sr.E_mode_meV), _LB)
+_wcB = 6.0 * _LB / (6.0 * _LB + 0.3 * 1.0)
+_Pc, _Pl = _pB["Zf_cav"] / _pB["Z_eff_cav"], _pB["Zf"]
+_qc, _ql = _ZB * _LB * _pB["T_zpl"] / _pB["Zf_cav"], _ZB * _pB["T_zpl"] / _pB["Zf"]
+_qB = (_wcB * _Pc * _qc + (1 - _wcB) * _Pl * _ql) / (_wcB * _Pc + (1 - _wcB) * _Pl)
+_qB_old = _wcB * _qc + (1 - _wcB) * _ql
+check("R4-RV-B. q = (w_c P_c q_c + (1 - w_c) P_l q_l)/(w_c P_c + (1 - w_c) P_l) with the filter pass factors P (hand mixture, 30 K, leaky channel "
+      "beta0 0.3): engine hom_zpl_fraction equals it to 1e-6 and differs from the unweighted w q_c + (1 - w) q_l",
+      abs(_cB.d["hom_zpl_fraction"] - _qB) < 1e-6 and abs(_qB - _qB_old) > 1e-5,
+      f"engine {_cB.d['hom_zpl_fraction']:.8f}, hand {_qB:.8f}, unweighted {_qB_old:.8f}, w_c {_wcB:.4f}")
+
+# R4-RV-C: etalon in the HOM path only (filter_applies_to hom) with a dark-count background: the stream entering the interferometer is the
+# filtered signal S_hom = S n_f/n_u; rho = S_hom/(S_hom + B_hom), g2_hm = 1 - rho^2 (1 - g2_f); V_raw = rho_g^2 I/(1 + g2_hm), R = 1/2,
+# with rho_g^2 = (1 - g2_hm)/(1 - g2_f) (the engine's signal-overlap scaling)
+_sC = r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 0.5, "filter_applies_to": "hom", "dark_cps": 30000.0, "zpl_filter": True})
+_cC = _ctx(_sC)
+_ex = _cC.res.extra
+_Thom = _ex["n_ph_filtered"] / _ex["n_ph_unfiltered"]
+_S = float(_cC.d["rate_detected_Hz"])
+_dk = float(_cC.d["dark_bg_Hz"])
+_rho = _S * _Thom / (_S * _Thom + _dk)
+_g2hm = 1.0 - _rho ** 2 * (1.0 - _ex["g2_filtered"])
+_Vc = ((1.0 - _g2hm) / (1.0 - _ex["g2_filtered"])) * _cC.d["hom_I"] / (1.0 + _g2hm)
+_rho_old = _S / (_S + _dk)
+check("R4-RV-C. filter_applies_to hom + dark counts: hom_V_raw uses the FILTERED signal S n_f/n_u against the dark counts "
+      f"(rho from the hand formula, 1e-9); the pre-review unfiltered S would give a different rho (T_hom = {_Thom:.3f})",
+      0.0 < _Thom < 0.9 and abs(_cC.d["hom_V_raw"] - _Vc) < 1e-9 and abs(_rho - _rho_old) > 1e-3,
+      f"V_raw {_cC.d['hom_V_raw']:.8f} vs hand {_Vc:.8f}; rho {_rho:.5f} (old {_rho_old:.5f}), g2_f {_ex['g2_filtered']:.5f}")
+
+
+# R4-RV-D: tau_fit of a LADDER plan uses the plan's own generator (blocked pairs wait and refill); the S3d scheme keeps the vanish
+# convention. Independent chain built here from the verbal model (capture nr/tau_cap into X or XX, XX -> X at gXX + kXX, X -> G Gamma + k,
+# reservoir loss nr/tau_res); Poisson(mu) loading; fit with the TCSPC convention (peak, 3 decades, linear least squares)
+def _ladder_I(mu, tau_cap, Gam, k, gXX, kXX, tau_res, NR, wait, t_end, n_t=2000):
+    states = [(nr, d) for nr in range(NR + 1) for d in range(3)]
+    ix = {st: i for i, st in enumerate(states)}
+    Q = np.zeros((len(states), len(states)))
+
+    def add(a, b, w):
+        Q[ix[b], ix[a]] += w
+        Q[ix[a], ix[a]] -= w
+    for (nr, d) in states:
+        if nr >= 1 and d < 2:
+            add((nr, d), (nr - 1, d + 1), nr / tau_cap)
+        if nr >= 1 and tau_res > 0.0:
+            add((nr, d), (nr - 1, d), nr / tau_res)
+        if nr >= 1 and d == 2 and not wait:
+            add((nr, d), (nr - 1, d), nr / 1e-6)
+        if d == 2:
+            add((nr, d), (nr, 1), gXX + kXX)
+        if d == 1:
+            add((nr, d), (nr, 0), Gam + k)
+    w = np.exp(-mu + np.arange(NR + 1) * math.log(mu) - _gammaln(np.arange(NR + 1) + 1.0))
+    w[-1] += max(0.0, 1.0 - w.sum())
+    p = np.zeros(len(states))
+    for nr in range(NR + 1):
+        p[ix[(nr, 0)]] = w[nr]
+    dt = t_end / (n_t - 1)
+    step = _expm(Q * dt)
+    pX = np.empty(n_t)
+    mask = np.array([1.0 if st[1] == 1 else 0.0 for st in states])
+    for i in range(n_t):
+        pX[i] = mask @ p
+        p = step @ p
+    return np.arange(n_t) * dt, Gam * pX
+
+
+_G, _kcap = 1.28, 0.03
+_t, _Iw = _ladder_I(1.2, _kcap, _G, 0.0, 2.0 * _G, 0.0, 0.0, 12, True, 12.0 / _G)
+_, _Iv = _ladder_I(1.2, _kcap, _G, 0.0, 2.0 * _G, 0.0, 0.0, 12, False, 12.0 / _G)
+_tfw, _ = solvers.tau_fit_from_decay(_t, _Iw)
+_tfv, _ = solvers.tau_fit_from_decay(_t, _Iv)
+_tl, _Il = solvers.x_line_decay(1.2, _kcap, _G, 0.0, 2.0 * _G, 0.0, 0.0, NR=12, full_loss=False)
+_tv, _Iv2 = solvers.x_line_decay(1.2, _kcap, _G, 0.0, 2.0 * _G, 0.0, 0.0, NR=12, full_loss=True)
+check("R4-RV-D1. x_line_decay full_loss=False / True equal the independent wait / vanish chains (tau_fit 1e-3 relative) and the two "
+      "conventions differ by > 10 % at mu 1.2 (wait refills the emptied dot)",
+      abs(solvers.tau_fit_from_decay(_tl, _Il)[0] / _tfw - 1.0) < 1e-3 and abs(solvers.tau_fit_from_decay(_tv, _Iv2)[0] / _tfv - 1.0) < 1e-3
+      and _tfw / _tfv > 1.10, f"wait {_tfw * 1e3:.1f} ps, vanish {_tfv * 1e3:.1f} ps")
+_spD = {"schema": "fsim-composed/1", "T_K": 4.0, "material": {"kind": "inas_gaas_sk", "params": {}},
+        "structure": {"kind": "bulk_planar", "params": {}},
+        "drive": {"kind": "above_band", "params": {"pump": {"value": 3.0, "unit": "1", "tag": "A", "source": "t"},
+                                                   "window_ps": {"value": 3.0, "unit": "ps", "tag": "A", "source": "t"},
+                                                   "f_rep_MHz": {"value": 76.0, "unit": "MHz", "tag": "A", "source": "t"}}},
+        "setup": {"kind": "lens_fibre_det", "params": {}}, "solver": "auto"}
+_spDl = _cp.deepcopy(_spD)
+_spDl["drive"]["params"]["tau_res_ps"] = {"value": 300.0, "unit": "ps", "tag": "A", "source": "t"}
+_cD0, _cDl = _ctx(_spD), _ctx(_spDl)
+
+
+def _fit_expect(c, wait, tau_res):
+    pl = c.plan
+    mu = float(pl.pump_rate_ns) * float(pl.tau_on_ns)
+    Gam, k = float(c.rt.Gamma_ns), float(c.rt.k_nr_ns)
+    gXX = float(c.em.gamma_xx_ratio) * float(c.rt.Gamma0_ns)
+    NR = int(min(max(4, math.ceil(mu + 6.0 * math.sqrt(max(mu, 1e-9))) + 2), 20))
+    t_, I_ = _ladder_I(mu, float(pl.relax_ns), Gam, k, gXX, k * float(c.em.gamma_xx_ratio), tau_res, NR, wait, 12.0 / (Gam + k))
+    return solvers.tau_fit_from_decay(t_, I_)[0] * 1e3
+
+
+_e0, _el = _fit_expect(_cD0, False, 0.0), _fit_expect(_cDl, True, 0.3)
+check("R4-RV-D2. engine tau_fit_ps: S3d scheme (no tau_res) = the vanish chain, ladder plan (tau_res 300 ps) = the wait chain (independent "
+      "chains, 2e-3 relative)",
+      abs(_cD0.d["tau_fit_ps"] / _e0 - 1.0) < 2e-3 and abs(_cDl.d["tau_fit_ps"] / _el - 1.0) < 2e-3,
+      f"S3d {_cD0.d['tau_fit_ps']:.1f} vs {_e0:.1f} ps; ladder {_cDl.d['tau_fit_ps']:.1f} vs {_el:.1f} ps")
+
+# R4-RV-E: inversion by convention. Closed form: after a Gaussian pi pulse the two-level population decays as exp(-(Gamma + k) t) once the
+# drive is off, so P_pulse_end = P_X_end exp((Gamma + k) 4 sigma) (sigma = amplitude std, FWHM/(2 sqrt(ln 2))); the count convention is n_exc
+_sE = r4_spec(drv_params={"fwhm_ps": 100.0}, struct=_NC, mat_params={"k_nr_ns": 0.2})
+_cE = _ctx(_sE)
+_sigE = 0.100 / (2.0 * math.sqrt(math.log(2.0)))
+_popE = _cE.res.extra["P_X_end"] * math.exp((float(_cE.rt.Gamma_ns) + 0.2) * 4.0 * _sigE)
+_obsE = R.get("observable", "inversion")
+_vE_pop, _vE_cnt = _obsE.compute(_cE, "population"), _obsE.compute(_cE, "count")
+check("R4-RV-E. inversion: population = P_X_end exp((Gamma + k) 4 sigma) (closed form, 1e-9), <= 1, and below the count n_exc "
+      "(which adds the photons emitted during the pulse); count = intrinsic = n_exc",
+      abs(_vE_pop - _popE) < 1e-9 and _vE_pop <= 1.0 + 1e-9 and _vE_pop < _vE_cnt and _vE_cnt == _obsE.compute(_cE, "intrinsic")
+      and abs(_vE_cnt - _cE.res.extra["n_exc"]) < 1e-12 and 0.7 < _vE_pop,
+      f"population {_vE_pop:.6f} (closed form {_popE:.6f}), count {_vE_cnt:.6f}, P_X_end {_cE.res.extra['P_X_end']:.6f}")
+
+# R4-RV-F: g2_far raw convention = 1 - rho^2 (1 - g2/eta_blink), rho = S/(S + B), S the blink-averaged detected rate (hand formula)
+_sF = r4_spec(struct=_NC, setup_params={"dark_cps": 2000.0}, mat_params={"eta_blink": 0.65})
+_cF = _ctx(_sF)
+_SF, _BF = float(_cF.d["rate_detected_Hz"]), float(_cF.d["dark_bg_Hz"])
+_rhoF = _SF / (_SF + _BF)
+_obsF = R.get("observable", "g2_far")
+_g2farF = _cF.d["g2_0"] / 0.65
+check("R4-RV-F. g2_far: intrinsic = g2/eta_blink (unchanged), raw = 1 - rho^2 (1 - g2/eta_blink) with the detector background (hand, 1e-12)",
+      abs(_obsF.compute(_cF, "intrinsic") - _g2farF) < 1e-12
+      and abs(_obsF.compute(_cF, "raw") - (1.0 - _rhoF ** 2 * (1.0 - _g2farF))) < 1e-12 and _obsF.compute(_cF, "raw") > _g2farF,
+      f"intrinsic {_g2farF:.6f}, raw {_obsF.compute(_cF, 'raw'):.6f}, rho {_rhoF:.5f}")
+
+# R4-RV-G: exact splitter law V = 2RT rho^2 I (1 - eps)/(R^2 + T^2 + 2RT g2) and its inverse. Hand numbers: R = 0.47 (T = 0.53), eps = 0.03,
+# g2 = 0.1, I = 0.8 -> 2RT = 0.4982, R^2 + T^2 = 0.5018; R = 1/2 reduces to I/(1 + g2)
+from fsim_core.compose.observables import hom_v_raw as _hvr, hom_v_corrected as _hvc    # noqa: E402
+_Vh = 0.4982 * 0.97 * 0.8 / (0.5018 + 0.4982 * 0.1)
+_Vg = _hvr(0.8, 0.1, 0.03, None, 0.47)
+check("R4-RV-G. hom_v_raw is the exact unbalanced-splitter law (hand numbers, 1e-12), reduces to I/(1 + g2) at R = 1/2, and "
+      "hom_v_corrected is its exact inverse (round trip to I/(1 - g2) at 1e-12)",
+      abs(_Vg - _Vh) < 1e-12 and abs(_hvr(0.8, 0.1, 0.0, None, 0.5) - 0.8 / 1.1) < 1e-12
+      and abs(_hvc(_Vg, 0.1, 0.03, 0.47) - 0.8 / 0.9) < 1e-12,
+      f"V {_Vg:.9f} vs {_Vh:.9f}")
+
+# R4-RV-H: the NaN branch of the corrected visibility fires only for a solver overlap I > 1 (numerics guard); a physical stream is clipped
+_hI = _ctx(r4_spec(struct=_NC, setup_params={"filter_fwhm_GHz": 5.0}))
+check("R4-RV-H. a filtered stream with I <= 1 never hits the NaN branch (hom_V_corr finite and <= 1)",
+      _hI.res.I_single <= 1.0 and math.isfinite(_hI.d["hom_V_corr"]) and _hI.d["hom_V_corr"] <= 1.0
+      and "hom_V_corr" not in _hI.d["_why"], f"I {_hI.res.I_single:.5f}, V_corr {_hI.d['hom_V_corr']:.5f}")
 
 n_ok = sum(RESULTS)
 print(f"{n_ok}/{len(RESULTS)} polaron checks passed")

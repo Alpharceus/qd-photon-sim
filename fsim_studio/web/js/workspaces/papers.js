@@ -671,9 +671,10 @@ function optimumBlock(r) {
   const o = src?.optimum;
   const sym = (path) => tex(pathSymbol(path, P?.texIdx || null));
   const scanKeys = new Set((o?.scan || []).map((sv) => sv.name));
+  const isLadder = e.solver === "ladder" || src?.solver === "ladder";      // R3-LADDER: four-level ladder items have no optimum.solver dict
   const head = e.mode === "optimum"
     ? h("span.label-chip.pp-opt-label", { dataset: { role: "optimum-label" }, title: "The model value is the maximum of the observable over the scan window below; the argmax is where it is reached" }, "maximum over the paper's scan window")
-    : h("span.label-chip.pp-opt-label", { dataset: { role: "optimum-label" }, title: "Evaluated by the engine at the argmax of the optimum item it names" }, "at the maximum of ", itemLabel(e.of));
+    : h("span.label-chip.pp-opt-label", { dataset: { role: "optimum-label" }, title: isLadder ? "Evaluated by the four-level ladder at the argmax of the optimum item it names" : "Evaluated by the engine at the argmax of the optimum item it names" }, "at the maximum of ", itemLabel(e.of));
   const win = (o?.scan || []).map((sv) => h("li", { dataset: { scan: sv.name } }, sym(sv.path || `drive.${sv.name}`), " ∈ [",
     h("span.pp-num", `${fmt(sv.window[0])}, ${fmt(sv.window[1])}`), "]", sv.unit && sv.unit !== "1" ? ` ${sv.unit}` : "", h("span.pp-muted", ` · ${sv.n} points`)));
   const scanLeaf = new Set((o?.scan || []).filter((x) => x.path).map((x) => x.path.split(".").slice(1).join(".")));   // "area1_pi" repeats the scanned "area1"
@@ -681,10 +682,12 @@ function optimumBlock(r) {
   const am = amEntries.length ? amEntries.map(([k, v]) =>
     h("li", { dataset: { argmax: k } }, sym(scanKeys.has(k) ? ((o.scan.find((sv) => sv.name === k).path) || `drive.${k}`) : `drive.${k}`), " = ", h("span.pp-num", fmt(v, { sig: 5 })))) : null;
   const sv = o?.solver;
-  const solver = sv ? `two-level${onOff(sv.phonons) === "on" ? ", LA-phonon polaron" : ", no phonons"}${onOff(sv.radiative) === "on" ? ", with decay" : ", no decay"}` : "";
+  const fssV = o?.ladder?.fss_ueV?.value;
+  const solver = isLadder ? `four-level ladder (G, X_H, X_V, XX), no phonons${fssV != null ? `, FSS ${fmt(fssV)} µeV` : ""}`
+    : sv ? `two-level${onOff(sv.phonons) === "on" ? ", LA-phonon polaron" : ", no phonons"}${onOff(sv.radiative) === "on" ? ", with decay" : ", no decay"}` : "";
   const canOpen = !!(it && am);
   const btn = h("button.btn.btn-outline.pp-open-opt", { type: "button", dataset: { role: "open-optimum" }, disabled: canOpen ? null : "disabled",
-    title: canOpen ? "Open the device in the Composer with the scanned leaves set to the argmax" : "Run Reproduce first: the argmax comes from the run",
+    title: canOpen ? (isLadder ? "Open the device in the Composer at the argmax. The Composer runs the two-level engine, so its g2(0) is not the four-level ladder item value" : "Open the device in the Composer with the scanned leaves set to the argmax") : "Run Reproduce first: the argmax comes from the run",
     on: { click: (ev) => openOptimumInComposer(ev.currentTarget, r) } }, icon("design", { size: 14 }), "Open optimum in Composer");
   return h("div.pp-opt", { dataset: { mode: e.mode } }, head,
     win.length ? h("div.pp-opt-sec", h("span.pp-k", "window"), h("ul.pp-opt-list", { dataset: { role: "window" } }, win)) : null,
@@ -868,7 +871,10 @@ async function openOptimumInComposer(btn, r) {
   btn.setAttribute("aria-busy", "true");
   try {
     const res = await P.ctx.api.postJSON(`/api/papers/${encodeURIComponent(id)}/design`, { item: r.id, argmax_full: r.item.argmax_full || null });
-    const seed = { design: res.design, paper: id, collapsed: res.collapsed || [], note: res.note || "", item: r.id };
+    const led = r.ledger;
+    const srcE = led?.mode === "optimum" ? led : (P.paper.reproduce || []).find((x) => x.item === led?.of && x.mode === "optimum");
+    const ladder = led?.solver === "ladder" || srcE?.solver === "ladder";
+    const seed = { design: res.design, paper: id, collapsed: res.collapsed || [], note: res.note || "", item: r.id, ...(ladder ? { ladder: true } : {}) };
     P.ctx.state.set({ composeSeed: seed });
     try { sessionStorage.setItem("fsim-studio:compose-seed", JSON.stringify(seed)); } catch { /* private window: state.js carries it */ }
     P.ctx.navigate("#/compose");

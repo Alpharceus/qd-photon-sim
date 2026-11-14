@@ -9,6 +9,13 @@ import { fmt, unitText, isNum } from "./format.js";
 import { symbolNode, symbolText, richPlain } from "./math.js";
 
 const SLIDER_STEPS = 400;
+// Readable names for pulse-shape enum values (the option value stays the code value).
+const CHOICE_LABELS = {
+  gauss: "Gaussian",
+  rect: "Rectangular",
+  slm_mask: "Spectral mask on a broadband pulse",
+  sinc_gauss: "Sinc × Gaussian (flat-top spectrum)",
+};
 
 /** A number for an input box: five significant figures, so "0.759633" or 0.30000000000000004 never clip the field. */
 export function sigFig(v, n = 5) { return String(Number(Number(v).toPrecision(n))); }
@@ -58,7 +65,7 @@ export function fieldRow({ path, meta, value, ranged, envDefault, onChange, onRa
   if (Array.isArray(meta.choices) || meta.unit === "enum") {
     const choices = meta.choices || (path === "drive.mode" ? ["EL", "PL"] : [String(value)]);
     control = h("select.fr-select", { id, on: { change: (e) => onChange(e.target.value) } },
-      choices.map((c) => h("option", { value: c, selected: String(c) === String(value) }, c)));
+      choices.map((c) => h("option", { value: c, selected: String(c) === String(value) }, CHOICE_LABELS[c] || c)));
   } else if (typeof value === "boolean") {
     const input = h("input", { id, type: "checkbox", role: "switch", checked: value, on: { change: (e) => onChange(e.target.checked) } });
     control = h("label.switch.fr-switch", input, h("span.switch-track", { "aria-hidden": "true" }), h("span.switch-label", value ? "on" : "off"));

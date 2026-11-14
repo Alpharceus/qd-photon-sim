@@ -34,6 +34,11 @@ import math
 
 from .drives import (OBS_COHERENT_PULSED, _E_BRIEF, _EID, _GAUSS, _PAPER_CONV, _SRC_A, _TRION, PlannedDrive,
                      _P, _dark_inputs, _getter, _nonneg, _positive, _pulse_inputs)
+from functools import lru_cache
+
+import numpy as np
+
+from .. import lindblad as _lb
 from .. import qd_gf
 from .slm_pulse import SlmField
 from ..resonant_source import gaussian_sigma
@@ -114,12 +119,64 @@ def _plan_super_slm(self, g, d1, d2, f_rep):
                      needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
 
 
+_HBAR_MEV_PS = _lb.HBAR_MEV_NS * 1e3
+#: Piccinini et al. 2025 (arXiv:2510.21428v2) Methods: FWHM_lambda = 0.923 lambda0^2/(c t_p), i.e. dE = 0.923 h / t_p [V]
+_PICC_TP_COEFF = 0.923
+_SRC_PICC = ("Piccinini et al., arXiv:2510.21428v2 (2025), Methods Eq. 4: Omega_j(t) = Theta_j s(t)/Int s dt, "
+             "s = sinc(t/t_p) exp[-(t/(r t_p))^2], r = 10 [V]; t_p = 0.923 h/dE from FWHM_lambda = 0.923 lambda0^2/(c t_p) [DR]")
+
+
+@lru_cache(maxsize=32)
+def sinc_gauss_diagnostics(tp_ps: float, r: float) -> dict:
+    """Numerical widths of the Eq 4 pulse s(t) = sinc(t/t_p) exp[-(t/(r t_p))^2] truncated at +-half_window_tp t_p [DR]:
+    `spectral_fwhm_meV` (FWHM of |FT s|^2 on the energy axis hbar omega) and `main_lobe_fwhm_ps` (FWHM of the intensity s^2
+    around t = 0, inside the first zeros +-t_p)."""
+    dt = min(tp_ps / 200.0, 0.05)
+    T = 3.0 * r * tp_ps / math.pi                # the solver window (polaron.SINC_WINDOW_WIDTHS)
+    n_half = int(math.ceil(T / dt))
+    t = np.arange(-n_half, n_half + 1) * dt
+    s = np.sinc(t / tp_ps) * np.exp(-(math.pi * t / (r * tp_ps)) ** 2)
+    nfft = int(2 ** math.ceil(math.log2(max(8 * s.size, 1 << 15))))
+    F = np.fft.fftshift(np.fft.fft(s, n=nfft))
+    E = np.fft.fftshift(np.fft.fftfreq(nfft, dt)) * 2.0 * math.pi * _HBAR_MEV_PS     # meV
+    I = np.abs(F) ** 2
+    above = E[I >= 0.5 * I.max()]
+    spec = float(above.max() - above.min())
+    s2 = s * s
+    ml = np.abs(t) <= tp_ps
+    above_t = t[ml & (s2 >= 0.5 * s2.max())]
+    return {"spectral_fwhm_meV": spec, "main_lobe_fwhm_ps": float(above_t.max() - above_t.min())}
+
+
+def _plan_super_sinc_gauss(self, g, d1, d2, f_rep):
+    """Piccinini et al. 2025 Eq 4 pulses (R3-LADDER): both pulses share spectral_fwhm_meV and r; t_p = 0.923 h/dE derived here;
+    fwhm1/2_ps are ignored (Pulse.fwhm_ps carries the numerical main-lobe intensity FWHM, only as a width label)."""
+    dE = _positive("spectral_fwhm_meV", g("spectral_fwhm_meV"))
+    r = _positive("r", g("r"))
+    tp = _PICC_TP_COEFF * 2.0 * math.pi * _HBAR_MEV_PS / dE
+    diag = sinc_gauss_diagnostics(float(tp), float(r))
+    a1, a2 = _nonneg("area1_pi", g("area1_pi")), _nonneg("area2_pi", g("area2_pi"))
+    kw = dict(shape="sinc_gauss", fwhm_ps=diag["main_lobe_fwhm_ps"], tp_ps=tp, r=r)
+    p1 = Pulse(area_rad=a1 * math.pi, detuning_meV=-d1, **kw)
+    p2 = Pulse(area_rad=a2 * math.pi, detuning_meV=-d2, **kw)
+    inputs = {"shape": "sinc_gauss", "spectral_fwhm_meV": dE, "r": r, "t_p_ps": tp,
+              "spectral_fwhm_numeric_meV": diag["spectral_fwhm_meV"], "main_lobe_fwhm_ps": diag["main_lobe_fwhm_ps"],
+              "area1_pi": a1, "area2_pi": a2, "Delta_paper_meV": d1, "Delta2_paper_meV": d2, "det_X_meV": -d1,
+              "detuning_convention": "repo det_X = -Delta_paper; frame of pulse 1, pulse 2 beats at (Delta2 - Delta1)/hbar",
+              "swing_up_splitting_meV": abs(d2 - d1), "pulse_model": _SRC_PICC}
+    _dark_inputs(g, inputs)
+    return DrivePlan(family="coherent", timing="pulsed", f_rep_MHz=f_rep, target="X", pulses=(p1, p2),
+                     needs=frozenset({"phonons", "two_colour"}), inputs=inputs)
+
+
 def _plan_super(self, vals, em, rt):
     g = _getter(self, vals)
     shape = g("shape")
     d1, d2 = float(g("delta1_meV")), float(g("delta2_meV"))
     if shape == "slm_mask":
         return _plan_super_slm(self, g, d1, d2, _positive("f_rep_MHz", g("f_rep_MHz")))
+    if shape == "sinc_gauss":
+        return _plan_super_sinc_gauss(self, g, d1, d2, _positive("f_rep_MHz", g("f_rep_MHz")))
     w1, w2 = _positive("fwhm1_ps", g("fwhm1_ps")), _positive("fwhm2_ps", g("fwhm2_ps"))
     a1, a2 = _nonneg("area1_pi", g("area1_pi")), _nonneg("area2_pi", g("area2_pi"))
     f_rep = _positive("f_rep_MHz", g("f_rep_MHz"))
@@ -139,11 +196,14 @@ def _plan_super(self, vals, em, rt):
 
 
 _SLM_SRC = "Karli et al., Nano Lett. 22, 6567 (2022) (arXiv:2203.00712v1), Sec. V B (Eqs. 2-3)"
-_SUPER_SHAPE = _P("shape", "", "gauss", choices=("gauss", "rect", "slm_mask"), tag="A", source=_SRC_A, sweepable=False,
+_SUPER_SHAPE = _P("shape", "", "gauss", choices=("gauss", "rect", "slm_mask", "sinc_gauss"), tag="A", source=_SRC_A, sweepable=False,
                   help="Pulse envelope. slm_mask: the pulse-shaper pair of Karli et al. 2022 Sec. V B (broadband Gaussian spectrum "
                        "times a two-Gaussian field mask, inverse-transformed); then only delta1/delta2 and the slm_* "
-                       "parameters act (areas and widths follow from the spectrum).")
+                       "parameters act (areas and widths follow from the spectrum). sinc_gauss: the sinc pulse with a Gaussian "
+                       "window of Piccinini et al. 2025 (Eq. 4); then the pulse width follows from spectral_fwhm_meV and r, and "
+                       "the two intensity FWHM entries are ignored.")
 _SLM_VIS = {"shape": ["slm_mask"]}
+_SINC_VIS = {"shape": ["sinc_gauss"]}
 
 SUPER = PlannedDrive(
     kind="super", label="SUPER (two-colour red-detuned swing-up)",
@@ -190,6 +250,10 @@ SUPER = PlannedDrive(
            visible_if=_SLM_VIS, help=r"Width $\hbar\sigma$ of each Gaussian FIELD mask line (Eq. 3)."),
         _P("slm_floor", "1", 0.05, lo=0.0, hi=1.0, tag="DR", source=_SLM_SRC + ": 'a transmission of 5% between the two peaks'; read as a field weight [DR]", group="advanced",
            visible_if=_SLM_VIS, help="Mask floor between the two peak centres (non-zero SLM extinction), added to the field mask."),
+        _P("spectral_fwhm_meV", "meV", 0.48, lo=0.05, hi=5.0, tag="V", source=_SRC_PICC + "; dE = 0.48 meV (text p.2) [V]",
+           visible_if=_SINC_VIS, help=r"Spectral FWHM $\Delta E$ of each pulse; fixes $t_{\mathrm p} = 0.923\,h/\Delta E$. sinc_gauss only."),
+        _P("r", "1", 10.0, lo=2.0, hi=40.0, tag="V", source=_SRC_PICC, visible_if=_SINC_VIS,
+           help=r"Gaussian window parameter $r$ of the sinc pulse (window $\exp[-(t/(r t_{\mathrm p}))^2]$). sinc_gauss only."),
         _P("f_rep_MHz", "MHz", 80.0, lo=1.0, hi=2000.0, scale="log", tag="A", source=_SRC_A,
            help="Pulse repetition rate."),
         _EID, _TRION,

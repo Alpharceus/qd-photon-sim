@@ -15,18 +15,18 @@ meta:
     - "LINE 1 ONLY (see the file header). The 23 % first-lens figure is g2-corrected, setup-calibrated (1.4 % / 6.4 %) and a LOWER bound because competing transitions (trions of the same dot) are not counted under above-band pumping; the model's n_ph also has no competing channel, so the comparison is like-for-like only in that sense."
     - "1.4 % end-to-end and 1.1 Mcps are the same measurement divided by the repetition rate and linked to 0.23 by the 6.4 % setup efficiency, so only the first-lens brightness is put in the ledger (otherwise it would be counted twice)."
     - "Detuning 6.6 meV = 1239.84/1293 - 1239.84/1302 eV: the 9 nm blue shift is rounded in the text ('around 9 nm') and the mode wavelength 1302 nm is derived, so the detuning is DR (the CBG mode is broad: Q = 130, kappa ~ 7 meV, so the Lorentzian is not very sensitive to it)."
-    - "F_P = 12 is the paper's ideal-overlap value at the measured Q; this dot's spatial overlap is unknown (non-deterministic placement) and there is no position factor in the cbg kind (see kolatschek2021.yaml)."
+    - "F_P: the paper's ideal-overlap Purcell factor 12 at the measured Q is a total rate ratio, entered as the cavity enhancement 11; this dot's spatial overlap is unknown (non-deterministic placement) and there is no position factor in the cbg kind (see kolatschek2021.yaml, where r_factor is an E range; this line keeps r_factor = 1 because B_first_lens is the lens efficiency of a centred dipole and the offset dependence of the extraction is not in the engine)."
 device:
   T_K: {value: 4.0, unit: K, tag: V, where: "text p.3 (sample cooled to 4 K)"}
   material:
     kind: inas_ingaas_metamorphic_cband
     params:
       lambda_nm: {value: 1293.0, unit: nm, tag: V, where: "text p.3 (bright excitonic line at 1293 nm)"}
-      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: V, where: "text p.4 (decay time outside the cavity: mean 1209.4 ps, standard deviation 226.3 ps over several QDs; +/-1 sigma)"}
+      tau_bare_ns: {range: [0.9831, 1.4357], unit: ns, tag: DR, where: "text p.4: 'measurements of decay times from multiple QDs outside the cavity (taumean = 1209.4 ps with a standard deviation of 226.3 ps)'. Arithmetic [DR]: mean -/+ 1 sigma = 1209.4 -/+ 226.3 = 983.1 .. 1435.7 ps = 0.9831 .. 1.4357 ns (the bounds are not printed; they are a spread over different dots, not a measurement uncertainty)"}
   structure:
     kind: cbg
     params:
-      F_P: {value: 12.0, unit: "1", tag: DR, where: "text p.3 (maximally achievable Purcell factor 12 for perfect spatial and spectral overlap at the measured Q; simulated 18.6 at Q ~ 200)"}
+      F_P: {value: 11.0, unit: "1", tag: DR, where: "text p.3: 'the maximally achievable Purcell factor for perfect spatial and spectral overlap is reduced to 12' ('simulated 18.6' with 'a Q-factor of around 200'). The paper does NOT say whether 12 is a total rate ratio Gamma/Gamma_bulk or a Purcell-only factor; treating it as the total ratio is our interpretation [A] (cards README rule; r4 Fable review item E), the leaf is the cavity enhancement, so 12 - 1 = 11 [DR arithmetic on that interpretation]"}
       Q: {value: 130.0, unit: "1", tag: V, where: "text p.2 (measured Q about 130, simulated 200)"}
       detuning_ueV: {value: 6600.0, unit: ueV, tag: DR, where: "text p.3 (line at 1293 nm is around 9 nm blue-shifted with respect to the cavity mode; dot minus mode = +6.6 meV)"}
       table_mode: {value: total, unit: enum, tag: E, source: "the paper simulated extraction above 80 percent into NA 0.6 is the whole-device collection efficiency, FX3a table_mode total"}
@@ -37,6 +37,7 @@ device:
       pump: {range: [0.5, 10.0], unit: "1", tag: E, source: "absolute pump power not given for the g2 measurement of Fig 2b (the line needed 'stronger pumping'); P/P_sat from 0.5 to 10 as an envelope"}
       window_ps: {value: 3.0, unit: ps, tag: V, where: "text p.3 (775 nm pulsed laser, pulse width 3 ps); rectangular window of that length is an assumption [A]"}
       f_rep_MHz: {value: 76.0, unit: MHz, tag: V, where: "text p.3 (repetition rate 76 MHz)"}
+      p_X: {range: [0.6, 0.8], unit: "1", tag: E, source: "p_X class range [E]: X share of the pairs loaded under non-resonant pumping. Anchors re-read in the source texts: Nowak 2014 verbatim \"From this we deduce pX = 0.69 and pCX = 0.31\" (from the 17 percent CX brightness at saturation); Reimer 2012 verbatim \"approximately one-quarter of the time an electron is captured into the quantum dot resulting in recombination of the charged exciton instead of the neutral exciton\" (a charged-exciton share of about 0.25; no p_X is printed there, so 0.75 would be arithmetic of this card and not a paper value, and it is not used as an anchor); Tripathi 2026 p.7: X 440 kcps and X+- 270 kcps, 440/(440+270) = 0.62. The range 0.6-0.8 is a class range, not a measured value for this dot"}
   setup:
     kind: lens_fibre_det
     params:
@@ -57,9 +58,15 @@ reproduce:
     class: M
     tol: {abs: 0.1}
     tol_reason: "no error printed and the value is a lower bound; 0.1 absolute (about half the value) because F_P overlap, the NA 0.6 table point and pump saturation are all assumed"
-    expect: fail
-    reason: "model overestimates: central 0.59 = n_ph 0.995 x beta 0.74 (F_P_eff 2.8 after the 6.6 meV detuning) x eta_out 0.8; the envelope [0.2325, 0.5912] (low edge at 0.5 P_sat) just misses the paper 0.23. The model has ideal placement and unity pump saturation, while the paper's 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions; the overlap is not quantifiable from the text."
+    expect: pass-envelope
+    reason: "model central 0.557, envelope [0.189, 0.640] vs 0.23 (tol abs 0.1): the paper value lies inside the input envelope only and the central value is 0.33 above it, so this is not a pass; combined-model outcome after the r4-incoh merge (not pre-registered by either branch). Pieces: r4-cavity A2 alone put the central at 0.796 (envelope [0.315, 0.800]), and p_X 0.6-0.8 [E] (X share of the loaded pairs; the paper calls 0.23 a lower bound because competing X+- transitions are not counted) lowers it to 0.557 on the F_P 11 total-ratio structure. The model has ideal placement and unity pump saturation, while the paper 0.23 is a g2-corrected lower bound for a non-deterministically placed dot with competing transitions."
 fits: []
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-review-fixes", reason: "review item 12: material inas_ingaas_metamorphic_cband l_xy / l_z reverted to the InAs/GaAs class [3, 5] / [1, 2] nm [A] (the [5, 8] / [2, 3] E ranges were tuned to a test datum, no literature citation); engine review fixes re-run", note: "obtained: g2_line1 0.0003962 fail, B_first_lens 0.5572 [0.1889, 0.6402] pass-envelope; expects unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-phonon coder)", reason: "r4-phonon I2 (registry row inas_ingaas_metamorphic_cband l_xy [3,5] -> [5,8] nm, l_z [1,2] -> [2,3] nm, tag E: 'O-band dot class; Kolatschek rate(T) brackets it', Fable r4 adjudication): Z(4 K) 0.891 -> 0.947", change: "no printed model value moved (g2_line1 4.0e-4, B_first_lens 0.5572 unchanged); expects unchanged"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-cavity coder)", reason: "r4-cavity A2 engine change (bug fix that moves defaults): B_first_lens 0.739 -> 0.796. Expect unchanged; not tuned."}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "FX3a table semantics: eta_table 0.6:0.8 is the paper's whole-device simulated extraction (above 80 percent), so semantics were already total; table_mode total now explicit, value unchanged"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable review item E: structure.F_P 12 -> 11 (total ratio convention); expects unchanged (g2_line1 fail, B_first_lens fail)"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh)", reason: "r4-incoh: p_X range 0.6-0.8 [E] added; B_first_lens expect fail -> pass-envelope", note: "model central 0.739 -> 0.517, envelope [0.292,0.743] -> [0.175,0.595]; central is outside abs 0.1 (review predicted 0.35-0.47), 0.23 is inside the envelope: flipped to pass-envelope honestly, not a pass"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (r4-incoh merge)", reason: "merge of r4-incoh into rt-edge-emitter: B_first_lens expect was fail (HEAD, central 0.796) and pass-envelope (r4-incoh, central 0.517); the combined model gives central 0.557, envelope [0.189, 0.640], paper 0.23 inside the envelope only, so expect pass-envelope; this is the combined-model outcome after the r4-incoh merge (not pre-registered by either branch); p_X anchor text corrected to what the Nowak and Reimer texts say; no tolerance changed"}

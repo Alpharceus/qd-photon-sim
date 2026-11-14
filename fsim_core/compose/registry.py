@@ -348,16 +348,45 @@ LENS_FIBRE_DET = _LensFibreDet(
                        r"Ignored by continuous drives."),
         ParamSpec("eps_int", "1", 0.0, tex=r"\varepsilon_{\mathrm{int}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
                   help=r"Interferometer imperfection $\varepsilon_{\mathrm{int}}$ (1 - fringe contrast of a perfect source) in the raw HOM visibility: "
-                       r"$V_{\mathrm{raw}} = \left[(1 - g^{(2)})\,I - g^{(2)}\right](1 - \varepsilon_{\mathrm{int}})$."),
+                       r"$V_{\mathrm{raw}} = \frac{I}{1 + g^{(2)}}\,(1 - \varepsilon_{\mathrm{int}})\,\frac{2RT}{R^2 + T^2}$ "
+                       r"(cross-polarised normalisation, r4-hom)."),
+        ParamSpec("bs_R", "1", 0.5, tex=r"R", lo=0.01, hi=0.99, tag="A", source=_SRC,
+                  help=r"Beam-splitter reflectivity $R$ of the HOM interferometer ($T = 1 - R$); an unbalanced splitter scales the raw "
+                       r"visibility by $2RT/(R^2 + T^2)$ (1 at $R = 1/2$)."),
+        ParamSpec("hom_fast_fraction", "1", 1.0, tex=r"f_{\mathrm{fast}}", lo=0.0, hi=1.0, tag="A", source=_SRC,
+                  help=r"Fraction $f$ of the pure dephasing $\gamma^*$ that is FAST on the photon-separation scale: the HOM overlap is solved at "
+                       r"$f\gamma^*$ (the remainder is slow wandering invisible to HOM); linewidth, $g^{(2)}$ and brightness keep the full "
+                       r"$\gamma^*$. A CW linewidth excess is an upper bound on $\gamma^*_{\mathrm{fast}}$, so a card enters $f \in [0, 1]$. 1 = off."),
+        ParamSpec("hom_delay_ns", "ns", 0.0, tex=r"\Delta t_{\mathrm{HOM}}", lo=0.0, hi=1.0e6, tag="A", source=_SRC,
+                  help=r"Time separation $\Delta t$ of the two interfering photons. 0 = off (the solver's overlap with the fast dephasing "
+                       r"$\gamma^*$ only). > 0 multiplies $I$ by the spectral-diffusion factor $F_{\mathrm{sd}}(\sigma_{\mathrm{sd}}, "
+                       r"\tau_{\mathrm{sd}}, \Delta t)$ of the material (slow wandering that is invisible to HOM at short $\Delta t$)."),
         ParamSpec("zpl_filter", "", False, tex=r"\mathrm{ZPL\ filter}", tag="A", source=_SRC,
                   help=r"Spectrally filter to the zero-phonon line (brightness $\times Z$, HOM unity)."),
         ParamSpec("irf_ps", "ps", 0.0, tex=r"\tau_{\mathrm{IRF}}", lo=0.0, hi=2000.0, tag="A", source=_SRC,
                   help=r"Detector timing response $\tau_{\mathrm{IRF}}$ (Gaussian FWHM); 0 = off. Feeds the IRF-convolved cw dip ($g^{(2)}_{\mathrm{IRF}}$) and "
                        r"the IRF leak of the binned GHz histogram ($g^{(2)}_{\mathrm{bin}}$). A drive-level $\tau_{\mathrm{IRF}}$ (electrical drives) "
                        r"takes precedence when non-zero."),
+        ParamSpec("filter_fwhm_GHz", "GHz", 0.0, tex=r"B_{\mathrm{etalon}}", lo=0.0, hi=1000.0, tag="A", source=_SRC,
+                  help=r"Lorentzian etalon / spectral filter FWHM $B$ on the detected photon stream of a coherent pulsed drive (exact cascaded "
+                       r"filter mode, Fock $\{0,1,2\}$; resonant_pulse, arp, phonon_assisted, dichromatic). 0 = off (bit-identical). The short "
+                       r"photon emitted inside the pulse (bandwidth $\sim 1/\tau_{\mathrm p}$) is removed, the long lifetime-limited photon passes: "
+                       r"$g^{(2)}$ and the HOM overlap are those of the filtered stream (Fischer et al., Nat. Phys. 13, 649 (2017); Fable r4 pulsed 2.1)."),
+        ParamSpec("filter_applies_to", "", "g2_hom", tex=r"\mathrm{filter\ acts\ on}", choices=("g2_hom", "g2_hom_brightness", "hom"), tag="A", source=_SRC,
+                  sweepable=False,
+                  help="Which observables are measured behind the etalon: g2_hom (purity and HOM only; the brightness was measured before it) or "
+                       "g2_hom_brightness (the filtered photon number also sets the brightness); hom (the etalon is in the HOM path only: g2 and "
+                       "brightness unfiltered, HOM overlap of the filtered stream). With a filter the HOM ZPL fraction q and (for "
+                       "g2_hom_brightness) the sideband loss come from the filter's own Lorentzian window (r4 red-team item 1)."),
         ParamSpec("filter_width_meV", "meV", 0.0, tex=r"w_{\mathrm{filt}}", lo=0.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Top-hat spectral window width $w_{\mathrm{filt}}$ for the X / XX leakage ($\varepsilon_{XX}$); 0 = no window "
                        r"(both lines fully collected)."),
+        ParamSpec("filter_shape", "", "lorentzian", tex=r"\mathrm{window\ shape}", choices=("lorentzian", "gaussian", "tophat"),
+                  tag="A", source=_SRC, sweepable=False, group="advanced",
+                  help=r"Shape of the spectral window of width $w_{\mathrm{filt}}$ for the ZPL / phonon-sideband transmission $Z_{\mathrm f}(w)$: "
+                       r"Lorentzian (etalon-like, the ZPL passes $w/(w + \gamma)$), Gaussian or top-hat (grating slit). The window acts when "
+                       r"$w_{\mathrm{filt}} > 0$ and the ZPL-filter switch is off: it sets the brightness factor $Z_{\mathrm f}$ and the HOM "
+                       r"ZPL fraction $q = Z\,T_{\mathrm{zpl}}/Z_{\mathrm f}$."),
         ParamSpec("filter_offset_meV", "meV", 0.0, tex=r"\delta_{\mathrm{filt}}", lo=-500.0, hi=500.0, tag="A", source=_SRC, group="advanced",
                   help=r"Offset $\delta_{\mathrm{filt}}$ of the X line from the window centre (negative = window blue of X)."),
         ParamSpec("xx_width_ratio", "1", 1.5, tex=r"w_{XX}/w_{X}", lo=0.1, hi=10.0, tag="E", group="advanced",

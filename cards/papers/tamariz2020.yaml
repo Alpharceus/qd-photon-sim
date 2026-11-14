@@ -9,7 +9,7 @@ meta:
   read_level: V-full
   summary: "GaN QD2 in planar AlN on Si (no cavity), 300 K, cw above-band 266 nm excitation, NA 0.55: g2(0) 0.17 +/- 0.08 at 6.5 kW/cm2, linewidth 55 meV, count rate 1.9e6 /s at the sample surface"
   notes:
-    - "NITRIDE HIGH T: the engine has NO LO-phonon Gamma(T) term yet (material E_LO_meV is a reference only; build() uses gamma*(T) = gamma*(4 K) + a_ac (T - 4 K)). The linewidth item therefore tests the missing term: the paper's Eq. 1 constants Gamma_0 = 1 meV and gamma_A = 18 ueV/K are entered, the 3.57 eV Gamma_LO term cannot be. A nitride/electrical round will add the term; until then the item is an honest expected fail."
+    - "NITRIDE HIGH T: the engine's lo_phonon Gamma(T) model (gamma_T_model: lo_phonon) is ON for this card with the paper's Eq. 1 constants Gamma_0 = 1 meV (via gamma*(4 K)), gamma_A = 18 ueV/K, Gamma_LO = 3.57 eV (= 3570 meV) and E_LO = 102 meV [V]. The model total width at 300 K is 76.9 meV. It exceeds the 112-line mean (55 meV) because Eq. 1 was fitted to the single Fig. 2c dot, whose line broadens to about 60 meV [V p.4], so the paper's own fit at 300 K (77 meV, evaluated here from the printed constants; the paper prints no 300 K value of the fit) overshoots its own data for that dot by about 17 meV, and the dot-to-dot variation of Gamma_LO is large."
     - "g2: the paper fits the QD2 g2(tau) traces with a multi-level X-XX cascade model plus spectral diffusion, convolved with the IRF. The registry cw above_band drive has a two-level capture model with only an uncorrelated-background fraction (bg_frac) standing in for the XX leak into the 8 meV window (text p.5) and no IRF or spectral diffusion; the absolute pump (kW/cm2 -> rate) is not convertible, so pump and bg_frac are E envelopes and a g2 pass is weak."
     - "COUNT RATE: 1.9 +/- 0.7e6 /s is loss-corrected 'at the sample surface' (NA 0.55 objective, 8 meV window), not a first-lens or detector rate in the registry's sense, so it is reported only."
     - "NOT CARDED: XX binding energy 47 meV (QD2) and XX broadening ~80 meV lie outside the gan_aln registry range (E_b -10..10 meV) and the cw above_band drive has no cascade; the exciton decay time tau_d is only from ensemble TRPL (value not in the main text), so tau_bare stays at the registry class range."
@@ -19,9 +19,11 @@ device:
     kind: gan_aln
     params:
       lambda_nm: {value: 275.5, unit: nm, tag: E, source: "QD2 energy not stated in the main text; emission of the probed QDs is 4.2-4.6 eV and the Supp calibration refers to ~4.5 eV (1239.84 / 4.5 = 275.5 nm); class value"}
-      gamma_star_4K_ns: {value: 1628.7, unit: "1/ns", tag: DR, where: "text p.4 Eq. 1: Gamma_0 = 1 +/- 0.1 meV at T = 0 plus gamma_A x 4 K = 0.072 meV = 1.072 meV at 4 K, divided by hbar = 6.582e-4 meV ns (conversion mine); FWHM of the ensemble-mean line, so gamma* in the linewidth sense hbar (Gamma + k + gamma*)"}
-      a_ac_ns_per_K: {value: 27.35, unit: "1/ns/K", tag: DR, where: "text p.4 Eq. 1: gamma_A = 18 +/- 2 ueV/K = 0.018 meV/K / 6.582e-4 meV ns (conversion mine)"}
-      E_LO_meV: {value: 102.0, unit: meV, tag: V, where: "text p.4 Eq. 1 (E_LO about 102 meV from the PL data); reference only, the engine has no LO term"}
+      gamma_star_4K_ns: {value: 1628.7, unit: "1/ns", tag: DR, where: "text p.4: \"Γ0, γA, and ΓLO were ﬁtted to the data with resulting values of 1 ± 0.1 meV, 18 ± 2 μeV/K, and 3.57 ± 0.26 eV, respectively.\" (tamariz2020.txt l.226-227); arithmetic Gamma_0 + gamma_A x 4 K = 1 meV + 0.018 meV/K x 4 K = 1.072 meV at 4 K, divided by hbar = 6.582e-4 meV ns = 1628.7 /ns (conversion mine); FWHM of the ensemble-mean line, so gamma* in the linewidth sense hbar (Gamma + k + gamma*)"}
+      a_ac_ns_per_K: {value: 27.35, unit: "1/ns/K", tag: DR, where: "text p.4: \"18 ± 2 μeV/K\" (tamariz2020.txt l.226-227); arithmetic 0.018 meV/K / 6.582e-4 meV ns = 27.35 /ns/K (conversion mine)"}
+      gamma_T_model: {value: lo_phonon, unit: "", tag: A, where: "engine switch: total width Gamma(T) = Gamma_0 + a_ac T + b_LO/(exp(E_LO/kT) - 1), the form of the paper's Eq. 1"}
+      b_LO_meV: {value: 3570.0, unit: meV, tag: V, where: "text p.4: \"3.57 ± 0.26 eV\" (tamariz2020.txt l.227), i.e. 3570 meV; fitted by the paper to the Fig. 2c dot (Gamma_LO is printed in eV, not meV)"}
+      E_LO_meV: {value: 102.0, unit: meV, tag: V, where: "text p.4: \"ELO is readily available from the PL data and amounts to ≈102 meV\" (tamariz2020.txt l.210-211); not among the fitted constants (\"Γ0, γA, and ΓLO were ﬁtted\")"}
   structure:
     kind: bulk_planar
     params:
@@ -39,7 +41,8 @@ device:
 reported:
   - {id: g2_best_300K, observable: g2_0, convention: raw, value: 0.17, err: 0.08, tag: V, where: "text p.5 / abstract (QD2, 300 K, 6.5 kW/cm2, 8 meV band pass; fit to the raw histogram with the IRF-convolved model)", note: "IRF-convolved fit of raw data, not background-subtracted"}
   - {id: g2_avg_300K, observable: g2_0, convention: raw, value: 0.23, err: 0.05, tag: V, where: "text p.6 (average over probed QDs at 20 kW/cm2, emission 4.4-4.6 eV)", note: "different power and several dots; reported only (same model output as g2_best_300K)"}
-  - {id: linewidth_300K, observable: linewidth_ueV, value: 55000.0, err: 7000.0, tag: V, where: "text p.4 (mean FWHM 55 meV at 300 K over 112 emission lines; the 7 meV is the standard deviation across lines, used as err)", note: "ensemble spread, not a measurement error of one line; Eq. 1 constants Gamma_0 and gamma_A are entered, the LO term is not"}
+  - {id: linewidth_300K, observable: linewidth_ueV, value: 55000.0, err: 7000.0, tag: V, where: "text p.4: \"The scatter yields an average value of 55 meV with a standard deviation of 7 meV (based on 112 emission lines).\" (tamariz2020.txt l.232-234; 112 emission lines, not 112 dots; the 7 meV is the standard deviation across lines, used as err)", note: "ensemble spread, not a measurement error of one line; Eq. 1 constants Gamma_0 and gamma_A are entered, the LO term is not"}
+  - {id: linewidth_X2_300K, observable: linewidth_ueV, value: 60000.0, err: 15000.0, tag: V, where: "text p.4 (the Fig. 2c dot X2 line 'broadens to about 60 meV' at 300 K; 'about' = no printed error, err is an [E] +-15 meV)", note: "the very curve to which the paper fitted Eq. 1 (Gamma_0, gamma_A, Gamma_LO, E_LO), so a calibration check, not a test"}
   - {id: count_rate_surface, observable: rate_detected_Hz, value: 1900000.0, err: 700000.0, tag: V, where: "text p.5 (count rate at the sample surface 1.9 +/- 0.7e6 /s, 300 K, 6.5 kW/cm2, 8 meV window, detection losses calibrated)", note: "loss-corrected to the sample surface; not a registry detected rate, reported only"}
 series: []
 reproduce:
@@ -52,10 +55,19 @@ reproduce:
   - item: linewidth_300K
     class: M
     tol: {k_sigma: 2}
-    tol_reason: "2 sigma of the 7 meV line-to-line spread (14 meV) because the paper quotes no single-line error; the paper's Eq. 1 low-order constants are inputs, the Gamma_LO term (3.57 eV, E_LO 102 meV) which dominates at 300 K has no engine counterpart"
+    tol_reason: "2 sigma of the 7 meV line-to-line spread (14 meV) because the paper quotes no single-line error; the paper's Eq. 1 constants (Gamma_0, gamma_A, Gamma_LO 3.57 eV, E_LO 102 meV) are inputs, the LO term is on (gamma_T_model lo_phonon)"
     expect: fail
-    reason: "known engine gap: the engine has no LO-phonon Gamma(T) term (a nitride/electrical round will add it). Model linewidth is Gamma_0 + gamma_A T only (about 6.4 meV) against the paper's 55 meV mean; the missing LO term contributes tens of meV at 300 K (Gamma_LO / (exp(E_LO/kT) - 1) = 3.57 eV / 50.7 = 70 meV for the Eq. 1 fit)."
-fits: []
+    reason: "LO term now on (76.9 meV vs 55 +- 14 meV, +22 meV, from 8x low to 1.4x high); the residual is the paper's fit-vs-data spread and the dot-to-dot variation of Gamma_LO, not an engine gap: Eq. 1 was fitted to the Fig. 2c dot (X2 line), which broadens to about 60 meV at 300 K, so the paper's own fit at 300 K (77 meV, evaluated here from the printed constants; the paper prints no 300 K value of the fit) overshoots its own data by about 17 meV, and the 55 meV mean is over 112 different dots whose phonon coupling the paper itself calls dot-specific"
+  - item: linewidth_X2_300K
+    class: C
+    tol: {abs: 15000.0}
+    tol_reason: "calibration: the Eq. 1 constants were fitted by the paper to this very Fig. 2c curve; +-15 meV [E] because the figure is quoted as 'about 60 meV'. Pre-registered FAIL by about 2 meV (model 76.9 vs 60 + 15 = 75): the paper's own fit misses its own figure, unless the SI prints the Fig. 2c value"
+    expect: fail
+    reason: "the paper's Eq. 1 evaluated at 300 K (Gamma_0 1.0 + gamma_A T 5.4 + Gamma_LO/(exp(E_LO/kT) - 1) 70.4 = 76.9 meV) exceeds the Fig. 2c dot's 'about 60 meV' by about 17 meV, i.e. the fit misses its own data; the engine reproduces Eq. 1 exactly (unit check), so the residual belongs to the paper, not the model"
+fits:
+  - {param: material.b_LO_meV, fitted_to: [linewidth_X2_300K]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance and corrections (A049, A076): gamma_star/a_ac/b_LO/E_LO/linewidth where-texts now quote the paper lines; Gamma_LO documented as printed in eV (3.57 +- 0.26 eV); 112 emission lines; the 300 K value of Eq. 1 (77 meV) is our evaluation of the printed constants, not a printed number", note: "text only; values, tolerances and expectations unchanged. Callsen et al. is cited in the paper as ref. 31 for the E_LO size scaling; no repo file cites Callsen for that"}
   - {date: 2026-10-12, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "second review: g2_best_300K M -> P (envelope [0, 0.51] from the unstated bg_frac 0-0.3 is vacuous; no stated input narrows it); item renamed g2_best_300K_pred, outcome still pass"}
+  - {date: 2026-11-03, by: "Sonnet 5.5 (claude-sonnet-5-5)", reason: "LO term on: gamma_T_model lo_phonon with the paper's Eq. 1 (Gamma_LO 3570 meV, E_LO 102 meV): model linewidth 6.4 -> 76.9 meV; linewidth_300K stays a documented fail with a new reason; linewidth_X2_300K (class C) added"}

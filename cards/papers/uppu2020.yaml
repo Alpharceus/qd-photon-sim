@@ -22,6 +22,8 @@ device:
     kind: inas_gaas_sk
     params:
       lambda_nm: {value: 947.4, unit: nm, tag: V, where: "App D.2 / Fig 8 (resonant laser 947.4 nm)"}
+      l_xy_nm: {range: [3.0, 5.0], unit: nm, tag: E, source: "in-plane Gaussian confinement length of the exciton wavefunction of this dot is not stated; InAs/GaAs SK class range 3-5 nm (large end expected for a 947 nm dot, an estimate; Uppu Fig 8 is a resonance-fluorescence spectrum used for eta_zpl and prints no dot size or confinement energy); r4 Fable cavity review item F. Registry phonon constants (alpha, D_c - D_v) are NOT changed"}
+      l_z_nm: {range: [1.0, 2.0], unit: nm, tag: E, source: "out-of-plane confinement length not stated; InAs/GaAs SK class range 1-2 nm (r4 Fable cavity review item F)"}
   structure:
     kind: phc_waveguide
     params:
@@ -39,17 +41,19 @@ device:
     kind: lens_fibre_det
     params:
       eta_pol: {range: [0.80, 0.98], unit: "1", tag: V, where: "text p.2 (>98%) / App D.2 (80%)"}
-      zpl_filter: {value: true, unit: "", tag: V, where: "App D.1 (3 GHz etalon removes the phonon sideband)"}
+      zpl_filter: {value: true, unit: "", tag: V, where: "App D.2 (uppu2020.txt l.715-720): \"The phonon sideband is ﬁtted to a Gaussian to estimate the fraction emitted in the zero phonon line, ηzpl = 95 ± 1%. The product of ηY , β, ηzpl, and ηrad is the intrinsic eﬃciency of the QD single photon source\". eta_S therefore contains the ZPL fraction (Z on the brightness is like for like), while the etalon peak transmission ηf = 87 % is a separate setup factor outside eta_S. zpl_filter is kept for that reason only (r4 red-team link 1: uppu2020 HOLDS)"}
+      filter_fwhm_GHz: {value: 3.0, unit: "GHz", tag: V, where: "App D.1: \"ﬁbre is spectrally ﬁltered using a 3 GHz linewidth etalon\" \"(free spectral range: 100 GHz) to suppress the emission\" (uppu2020.txt l.456-457)"}
+      filter_applies_to: {value: g2_hom, unit: "", tag: V, where: "all detected light is spectrally filtered (\"ﬁbre is spectrally ﬁltered using a 3 GHz linewidth etalon\"), but eta_S is the intrinsic source efficiency (product of measured factors incl. eta_zpl, filter transmission eta_f separate), so only g2 and HOM are taken behind the etalon in the model"}
       laser_leak: {range: [0.0, 0.007], unit: "1", tag: V, where: "text p.3 (single-photon impurity xi < 0.007, upper bound)"}
 reported:
   - {id: gamma_rate, observable: Gamma_ns, value: 2.89, tag: V, where: "Fig 2c caption, text p.3 (radiative decay rate of the well-coupled dipole, 1/ns)"}
-  - {id: beta_paper, observable: beta, value: 0.92, err: 0.02, tag: V, where: "text p.2, App D.2"}
+  - {id: beta_paper, observable: beta, value: 0.92, err: 0.02, tag: V, where: "App D.2: \"we extract β = (92± 2)% [10]\" (uppu2020.txt l.638); the main-text table prints 92 ± 5% (l.883)"}
   - {id: eta_zpl, observable: Z_phonon, value: 0.95, err: 0.01, tag: V, where: "App D.2 / Fig 8 (Gaussian fit of the sideband at 3 nW, 1.24 V)"}
   - {id: eta_rad, observable: eta_rad, value: 0.98, tag: V, where: "App D.2 (blinking dark-state model of weak bunching)"}
-  - {id: eta_S, observable: B_first_lens, value: 0.84, err: 0.04, tag: V, where: "text p.2 / App D.2 (source efficiency, product of measured factors)"}
+  - {id: eta_S, observable: B_first_lens, value: 0.84, err: 0.04, tag: V, where: "text p.2: \"ηS = 84%\" (uppu2020.txt l.92); App D.2: \"is found to reach up to 84± 4%\" (l.721), product of measured factors"}
   - {id: g2_raw, observable: g2_0, convention: raw, value: 0.015, err: 0.005, tag: V, where: "text p.3 (pi pulse; g2(0) = 2 xi - xi^2)"}
-  - {id: hom_corr, observable: hom_I, convention: corrected, value: 0.96, err: 0.02, tag: V, where: "text p.4 (corrected for g2, BS R=0.476/T=0.524 and classical visibility 0.995, Eq C2)"}
-  - {id: hom_raw, observable: hom_I, convention: raw, value: 0.93, err: 0.02, tag: V, where: "text p.4 (directly recorded, BS- and alignment-limited only)"}
+  - {id: hom_corr, observable: hom_I, convention: corrected, value: 0.96, err: 0.02, tag: V, where: "text p.4: \"We ﬁndV = (96±2)% when accounting for the ﬁnite multi-photon probability\" (uppu2020.txt l.286-287; corrected for g2, BS R=0.476/T=0.524 and classical visibility 0.995, Eq C2)"}
+  - {id: hom_raw, observable: hom_I, convention: raw, value: 0.93, err: 0.02, tag: V, where: "text p.4: \"while V = (93± 2)% is directly recorded\" (uppu2020.txt l.288; BS- and alignment-limited only)"}
 reproduce:
   - item: gamma_rate
     class: C
@@ -61,7 +65,7 @@ reproduce:
     tol: {k_sigma: 2, abs: 0.03}
     tol_reason: "paper 0.95 +/- 0.01 (2 sigma = 0.02); widened to 0.03 absolute because the InAs/GaAs polaron constants are [E] class values, not Uppu's dot"
     expect: fail
-    reason: "model gap: the registry InAs/GaAs polaron constants (class [E], alpha/l_xy defaults) give Z(1.6 K) = 0.909 against the measured 0.95; this is a phonon-constant mismatch, not a missing input."
+    reason: "model gap, narrowed: the registry InAs/GaAs polaron constants (class [E], alpha fixed by Krummheuer D_c - D_v = 9.8 eV; the nearest independent number is Ramsay et al., PRL 104, 017402 (2010), who deduce |D_e - D_h| = 9.0 +- 0.3 eV from K2 = A T with A = 11 +- 1 fs/K for InGaAs dots (refs/Third pass/ramsay2010.txt l.296-299), a different quantity from the registry alpha) with the dot-size class ranges l_xy 3-5 nm, l_z 1-2 nm give Z(1.6 K) = 0.909 central, envelope [0.839, 0.941]; the tip is 0.009 below the measured 0.95, so the paper value stays outside the envelope and the outcome stays fail. The r4 Fable review predicted pass-envelope at the (5, 2) corner via the 0.03 tolerance, but the envelope test uses the paper value itself, not the tolerance window. Not a missing input: a larger dot or a measured alpha would be needed (neither is printed in the paper)."
   - item: eta_rad
     class: M
     tol: {rel: 0.01}
@@ -72,29 +76,39 @@ reproduce:
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.84 +/- 0.04 (2 sigma = 0.08); the setup.eta_pol range [0.80, 0.98] is the paper's own unresolved discrepancy, so a pass inside the envelope means only the 0.98 end reproduces it"
-    expect: fail
-    reason: "diagnosed: with the model Z = 0.909 (paper 0.95) and setup.eta_pol in [0.80, 0.98] the envelope is [0.68, 0.83], just below the paper 0.84 (central 0.753); the shortfall is the Z mismatch, and at eta_pol 0.80 the product is 0.69 (the paper's own 80 % vs >98 % discrepancy is unresolved). Under FX1 structure.pol_factor is inert with beta_direct, so the dipole share lives in setup.eta_pol."
+    expect: pass-envelope
+    reason: "flipped fail -> pass-envelope as a side effect of the dot-size class ranges (l_xy 3-5 nm, l_z 1-2 nm) that widen Z: central 0.753 vs 0.84 +/- 0.04 misses the 2 sigma window, and 0.84 lies inside the envelope [0.625, 0.859] only because of the setup.eta_pol range [0.80, 0.98] (the paper's own unresolved 80 % vs >98 % discrepancy) combined with the Z range; not a pass. At eta_pol 0.80 the product is 0.69. Under FX1 structure.pol_factor is inert with beta_direct, so the dipole share lives in setup.eta_pol."
   - item: g2_raw
     class: M
     tol: {k_sigma: 2, abs: 0.005}
     tol_reason: "paper 0.015 +/- 0.005 (2 sigma = 0.01); partly input-determined by the laser_leak range, which is the paper's own xi bound"
-    expect: fail
-    reason: "model gap: pi-pulse re-excitation alone (laser leak 0) gives about 0.024 for Gamma tau_p = 0.058 at 20 ps FWHM, plus 2 xi up to 0.014; the paper attributes its 0.015 to laser background alone. The 20 ps intensity-FWHM convention is an assumption and moves this."
+    expect: pass
+    reason: "R4 filter: 3 GHz etalon [V]; Fable prediction central 0.012 (range [0.005, 0.019]) vs 0.015"
   - item: hom_corr
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.96 +/- 0.02 (2 sigma = 0.04); gamma* is the material class default (paper gives no pure dephasing), so this is an unfitted comparison"
-    expect: unavailable
-    reason: "FX4: corrected visibility > 1 (model 1.001): engine's multi-photon convention differs from the paper's M_s; the engine now returns NaN for V_corr > 1. The paper's 0.96 also divides out the beam-splitter imbalance R 0.476 / T 0.524 and the classical visibility 0.995 (Eq. C2), which the model's g2-only corrected convention does not apply; hom_raw (model 0.939 vs 0.93) still agrees"
+    expect: fail
+    reason: "r4 Fable filtered-HOM note: behind the etalon the re-excitation photon overlaps the single-photon mode, so the stream overlap exceeds 1 - g2 at FIRST order (engine excess 0.551 g2_f vs analytic 0.54); the corrected value is capped at its I = 1 value and clipped to 1. Model 1.000 vs 0.96 +/- 0.02 misses 2 sigma: the residual is the class gamma* (the dot's dephasing is not in the paper). Note the paper-style correction itself is biased high by ~0.24 g2 behind its 3 GHz etalon."
   - item: hom_raw
     class: M
     tol: {k_sigma: 2}
     tol_reason: "paper 0.93 +/- 0.02 (2 sigma = 0.04); the model raw V uses g2_raw and eps_int = 0, so the paper's extra alignment/BS losses are not in the model"
-    expect: pass
+    expect: fail
+    reason: "R4 honest flip: the earlier pass was two errors cancelling (in-pulse photons lowered I by ~0.023, the leak raised g2_raw); the filtered overlap gives V_raw ~0.977 vs 0.93; the paper dot has real dephasing (gamma* ~ 0.12 /ns from M 0.96) that the class default does not carry"
 fits:
   - {param: structure.F_bg, fitted_to: [gamma_rate]}
 history:
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-redteam-fixes", reason: "r4 red-team item 10: setup.zpl_filter KEPT (eta_S is a product that contains the ZPL fraction, so Z on the brightness is like for like); where-text now quotes the paper; filter_applies_to g2_hom set", note: "re-run: all ten items bit-identical to the ledger (gamma_rate 2.889, eta_zpl 0.9088, eta_S 0.753 [0.6245, 0.8585], g2_raw 0.01173, hom_corr 1, hom_raw 0.978); zpl_filter has priority over the etalon window, so the engine change does not reach this card"}
+  - {date: 2026-11-04, by: "Sonnet 5.5 (coder) r4-corrections-b", reason: "audit provenance (A009, A073, A020, A053): the err values 0.02/0.04 are percent-format in the paper ((92± 2)%, 84± 4%, (96±2)%, (93± 2)%), where-texts now quote them (checker false positives); the unsupported statement that the Fig 8 sideband width would fix the dot size is removed (Fig 8 prints no dot size); Ramsay attribution made specific", note: "text only; values, tolerances and expectations unchanged. g2 0.015 +- 0.005 is the card value; the model 0.0117 is a model output. T1 346 ps is not used in this card"}
+  - {date: 2026-11-03, by: "sonnet r4-hom", reason: "r4 Fable review 2.3: hom_corr expect unavailable -> fail (clipped to 1.0 instead of NaN; the NaN rule is now 2 g2^2 + 1e-6)", change: "expect unavailable -> fail (hom_corr)"}
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 7 / engine FX1 (2259a83): pol_factor inert with beta_direct; dipole share moved to setup.eta_pol range [0.80, 0.98]; structure.pol_factor deleted; eta_S stays expect fail (model 0.753, envelope [0.68, 0.83]), reason rewritten"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX2c: HOM relation fixed to V_corr = I/(1-g2) (uncapped): hom_corr pass -> fail (model ~0.96 -> 1.001; paper's corrected value also removes BS imbalance and classical visibility, Eq. C2, not in the model)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: hom_corr expect fail -> unavailable (V_corr > 1 is now invalid, NaN)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable cavity review item F: material.l_xy_nm [3, 5] nm and l_z_nm [1, 2] nm E class ranges added; registry phonon constants untouched. eta_zpl stays fail (envelope [0.839, 0.941] does not contain 0.95; Fable predicted pass-envelope at the corner) with the reason rewritten; eta_S fail -> pass-envelope (envelope [0.625, 0.859] now contains 0.84), an unpredicted side effect; no tolerance changed"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 spectral filter: setup.filter_fwhm_GHz 3.0 [V]", note: "PRE-REGISTERED from Fable r4 pulsed review (2.1/2.2) before the run: g2_raw fail->pass, hom_corr unavailable->pass, hom_raw pass->FAIL (honest flip)"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "R4 run: hom_corr pass -> unavailable (stays)", note: "obtained: g2_raw 0.0117 pass (Fable 0.012); hom_raw 0.9777 vs 0.93 fail (predicted honest flip, now recorded); hom_corr remains unavailable until review 2.3 lands"}
+  - {date: "2026-11-03", by: "Sonnet 5.5 (coder) r4-filter", reason: "rendered-text gate", note: "the card-text check failed on a file name in the hom_corr reason (my wording); reworded, no expectation or number changed"}
+  - {date: 2026-11-03, by: "orchestrator (Opus) merge r4-filter", reason: "combined-model outcome: corrected HOM -> unavailable (V_corr > 1 beyond 2 g2^2 with the filter on); open review question, not a test"}
+  - {date: 2026-11-03, by: "orchestrator (Opus)", reason: "r4 Fable filtered-HOM cap (corrected HOM capped at its I = 1 value): hom_corr unavailable -> model 1.000 clipped; uppu fail, wang2019b pass weak (null model passes)"}

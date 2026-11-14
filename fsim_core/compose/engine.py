@@ -18,6 +18,7 @@ import numpy as np
 
 from .. import lindblad as lb
 from .. import resonant_source as rs
+from . import filterhook as _filterhook
 from . import observables as obs_mod
 from . import rates as rates_mod
 from . import solvers as solvers_mod
@@ -103,6 +104,7 @@ def _prepare(entries, values, T_K):
     plan = entries["drive"].plan(tr("drive"), em, rt)
     if "T_K" not in plan.inputs:                  # P9: phonon-aware solvers need the bath temperature
         plan = replace(plan, inputs={**plan.inputs, "T_K": float(T_K)})
+    plan = _filterhook.attach(plan, em, sr, rt, vals, tr)       # r4: opt-in etalon filter / FSS gating (identity when off)
     return em, setup, sr, rt, plan, vals, reads
 
 
@@ -115,6 +117,23 @@ def _run_point(entries, values, T_K, solver_req):
     if P > 0.0:
         rt = combine(em, sr, T_K, pump_ns=P)                       # observables and solver see the pumped Gamma / beta
     res = solver.run(plan, em, rt)
+    # r4-hom (Fable 2.5): setup.hom_fast_fraction f < 1 splits the entered pure dephasing into a FAST part f gamma* (seen by HOM) and a
+    # slow remainder (a CW linewidth excess is an upper bound on gamma*_fast); the HOM overlap is re-solved at f gamma*, every other
+    # observable (linewidth, g2, brightness) keeps the full gamma*. f = 1 (default) is the single run, bit-identical.
+    f_fast = float(vals.get("setup", {}).get("hom_fast_fraction", 1.0))
+    if "hom_fast_fraction" in vals.get("setup", {}):
+        reads.setdefault("setup", set()).add("hom_fast_fraction")
+    if f_fast < 1.0 and plan.timing == "pulsed" and math.isfinite(res.I_single) and float(rt.gamma_star_ns) > 0.0:
+        rt_fast = replace(rt, gamma_star_ns=f_fast * float(rt.gamma_star_ns))
+        res_fast = solver.run(plan, em, rt_fast)
+        res = replace(res, I_single=res_fast.I_single,
+                      extra={**res.extra, "hom_gamma_star_fast_ns": float(rt_fast.gamma_star_ns)})
+    if plan.inputs.get("filter_fwhm_GHz") and not res.extra.get("filter_applied"):
+        res = replace(res, reasons=tuple(res.reasons) + (f"setup.filter_fwhm_GHz = {plan.inputs['filter_fwhm_GHz']:g} GHz is "
+                                                         f"not applied by the {solver.name} solver (lindblad / polaron two-level pulsed only)",))
+    if plan.inputs.get("vsys") and "vsys" not in res.extra:
+        res = replace(res, reasons=tuple(res.reasons) + (f"FSS gating (material.fss_ueV) is not applied by the {solver.name} "
+                                                         f"solver (lindblad resonant_pulse only)",))
     ctx = obs_mod.Context(em, sr, rt, plan, res, setup, T_K, vals, reads)
     ctx.solver = solver
     ctx.structure_kind = entries["structure"].kind
@@ -183,6 +202,7 @@ def _series(ctx) -> dict:
         args = (float(rt.Gamma_ns), float(rt.gamma_star_ns), sig, float(em.tau_sd_ns))
         hom_I = float(ctx.d.get("hom_I", float("nan")))
         f0 = float(rs.hom_vs_separation(1e-9, *args))
+        hom_I = hom_I / float(ctx.d.get("hom_sd_factor", 1.0) or 1.0)     # r4-hom: the dt -> 0 anchor is the tile WITHOUT the delay factor
         scale = hom_I / f0 if math.isfinite(hom_I) and math.isfinite(f0) and f0 > 0.0 else 1.0
         y = [scale * rs.hom_vs_separation(float(dt), *args) for dt in dts]
         out["hom_vs_dt"] = {"x": [float(v) for v in dts], "y": [float(v) for v in y], "x_unit": "ns",
@@ -365,9 +385,11 @@ def envelope(spec, observables, max_corners: int = 16, n_lhs: int = 32) -> dict:
     return out
 
 
-def series(spec, path: str, values, observables) -> dict:
+def series(spec, path: str, values, observables, per_point=None) -> dict:
     """Sweep one leaf path (e.g. 'structure.F_P', or 'T_K') over `values` at the central point of every
-    other leaf. -> {"path", "x", "y": {request: [..]}, "tag": {request: tag}, "failed": [indices]}."""
+    other leaf. -> {"path", "x", "y": {request: [..]}, "tag": {request: tag}, "failed": [indices]}.
+    per_point (r4-phonon I1): optional {leaf path: [value per x]} of other leaves that change with the swept point (e.g. a
+    spectral window that is wider at the high temperatures of the same series); None = bit-identical."""
     spec = _as_spec(spec)
     entries = _entries(spec)
     leaves = _leaves(spec, entries)
@@ -380,6 +402,10 @@ def series(spec, path: str, values, observables) -> dict:
     reads = {a: set() for a in AXIS_KEYS}
     for i, x in enumerate(values):
         p = {**base, path: x}
+        for pp, vv in (per_point or {}).items():
+            if pp not in leaves:
+                raise KeyError(f"unknown per_point leaf path {pp!r}; known: {sorted(leaves)}")
+            p[pp] = vv[i]
         try:
             c = _run_point(entries, p, float(p["T_K"]), spec.solver)
         except SolverUnavailable:

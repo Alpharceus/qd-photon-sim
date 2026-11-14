@@ -21,12 +21,13 @@ device:
     kind: inas_inp_cband
     params:
       lambda_nm: {value: 879.9, unit: nm, tag: DR, where: "text p.5 (X line at 1.409 eV; 1239.84/1.409, conversion mine)"}
+      tau_bare_ns: {range: [1.0, 2.0], unit: ns, tag: E, source: "bare X lifetime of an InAsP dot in an InP nanowire is not stated; class range 1.0-2.0 ns (Bulgarini et al., APL 100, 121106 (2012): lifetime vs wire diameter for this dot class; r4 Fable review item G)"}
   structure:
     kind: photonic_nanowire
     params:
       d_nm: {value: 200.0, unit: nm, tag: V, where: "text p.3 (example nanowire: diameter at the dot 200 nm, length 11.2 um, 2 deg taper at the tip; diameters 160-220 nm over the sample)"}
       n_wire: {value: 3.37, unit: "1", tag: E, source: "InP refractive index near 880 nm, class value [E]; not stated in the paper"}
-      mirror_phase_ok: {value: true, unit: bool, tag: V, where: "text (nanowire standing-wave paragraph, raw l.202-206): the dot sits at an antinode of the HE11 standing wave and the reflected light must be in phase at the emitter"}
+      mirror_phase_ok: {value: true, unit: bool, tag: A, source: "text (nanowire standing-wave paragraph, raw l.202-206) states the design intent (dot at an antinode of the HE11 standing wave, reflected light in phase at the emitter), not a measured phase; true is the design case. The alternative false (incoherent return, rate unchanged, tau = tau_bare) cannot be ranged (boolean leaf, not sweepable); its effect is covered by the tau_bare_ns range below (r4 Fable review item G)"}
       mirror_R: {value: 0.30, unit: "1", tag: A, source: "Reimer text p.6: modal reflectivity of the gold mirror 'assumed' 30 % from Friedler et al. so that theory matches the measured 42 %; the paper's own post-hoc assumption, not a measurement"}
   drive:
     kind: above_band
@@ -41,7 +42,7 @@ device:
 reported:
   - {id: extraction_raw, note: "same measurement as extraction_corrected (X-only raw vs charged-exciton-corrected); not a ledger item", observable: B_first_lens, value: 0.30, tag: V, where: "text p.6 (RAW: X-only, 24 MHz / 76 MHz = 0.3 photons per pulse at the first lens, setup efficiency ~1 %, background subtracted; no error given)"}
   - {id: extraction_corrected, observable: eta_extract, value: 0.42, tag: V, where: "text p.6 / abstract (CORRECTED for the ~1/4 of captures that form X-)"}
-  - {id: g2_raw, observable: g2_0, convention: raw, value: 0.36, tag: V, where: "text p.6 / Fig 4c (RAW: filtered X line near saturation, Si APD)"}
+  - {id: g2_raw, note: "NOT A TEST: this 0.36 is the Si-APD-response-limited dip depth (the paper: taking the finite APD time response into account gives 0.12); the engine g2 is the zero-delay peak AREA over one repetition period, which is IRF-independent, so the two are not the same quantity. Kept in reported, not in the ledger (r4 Fable incoherent review section 0)", observable: g2_0, convention: raw, value: 0.36, tag: V, where: "text p.6 / Fig 4c (RAW: filtered X line near saturation, Si APD)"}
   - {id: g2_corrected, observable: g2_0, value: 0.12, tag: V, where: "text p.6 / Fig 4c caption (CORRECTED for the finite APD time response; residual is nanowire-tail background)"}
   - {id: tau_X, observable: tau_ps, value: 1700.0, err: 100.0, tag: V, where: "Fig 4 caption (X lifetime 1.7 ns +/- 0.1 ns)"}
 reproduce:
@@ -51,12 +52,6 @@ reproduce:
     tol_reason: "no error printed; half the +/- 0.1 of the model-level tolerance, because mirror_R = 0.30 is the paper's own post-hoc assumption and the NA 0.75 vs 1 change is only 3 %; not a fit in this repo, so unfitted (class M). Review item 10: the mirror R 0.30 was chosen by the paper so that its own theory matches 42 %, so a pass here would not be an independent test"
     expect: pass
     reason: "FX4: the bottom-mirror R = 0.30 was chosen by the paper itself so that its own theory matches 42 percent, so the comparison is model against the paper's tuned theory (class R, not a test); model 0.378"
-  - item: g2_raw
-    class: M
-    tol: {abs: 0.1}
-    tol_reason: "no error printed; 0.1 absolute because the model has neither APD response nor background, and above-band re-excitation (pump range 2-10 P_sat) is the only g2 source"
-    expect: fail
-    reason: "model gap: the model has no background and no APD response, and above-band re-excitation at Gamma tau_window ~ 0.002 (3 ps window, 1.7 ns lifetime) gives g2 ~ 1e-4; the paper's 0.36 is dominated by APD response plus nanowire-tail background and carrier-reservoir multi-photon emission that the single-level incoherent solver does not represent."
   - item: g2_corrected
     class: M
     tol: {abs: 0.05}
@@ -68,10 +63,11 @@ reproduce:
     tol: {k_sigma: 2}
     tol_reason: "paper 1.7 +/- 0.1 ns (2 sigma = 0.2 ns); tau_bare is the InAs/InP class default and F_bg = 1 (no Purcell gain, inhibition unknown), so this is an unfitted class-value comparison"
     expect: fail
-    reason: "engine FX3a: model 986 ps vs 1700 +/- 100 ps. With the paper-stated antinode placement the coherent bottom mirror now speeds the total rate by (1 + beta|r|) (R 0.30) on top of the class tau_bare (InAs/InP default) and F_bg 1; the paper's 1.7 ns includes any leaky-mode inhibition and the dot's true bare lifetime, neither of which is a stated input (a F_bg < 1 inhibition and tau_bare are unknown), so the earlier pass was an accident of the incoherent mirror."
+    reason: "model 986 ps (envelope 658-1315 ps over tau_bare_ns 1.0-2.0 ns [E]) vs 1700 +/- 100 ps. The coherent bottom mirror at the design antinode placement speeds the total rate by (1 + beta|r|) = 1.49 on top of the class tau_bare, so even tau_bare = 2 ns reaches only 1315 ps. The r4 Fable review predicted a pass-envelope from the incoherent-return alternative (mirror_phase_ok = false, tau = tau_bare up to 2 ns), but that boolean leaf cannot be ranged in a card, so the envelope does not reach 1.7 ns and it stays fail. The paper's 1.7 ns includes leaky-mode inhibition and the dot's true bare lifetime, neither stated."
 fits: []
 history:
   - {date: 2026-10-12, by: "Sonnet 5.5", reason: "initial transcription", note: "initial transcription"}
   - {date: 2026-10-12, by: "sonnet card-fix", reason: "card-review item 10: extraction_raw removed from reproduce (kept in reported; same measurement as the corrected value, a raw pass was a cancellation of two gaps); tol_reason note that mirror R 0.30 was chosen by the paper to match 42 percent so a pass would not be independent; taper_mfr_nm left at the registry default (the paper does not state the taper output mode size in the extraction)"}
   - {date: 2026-10-12, by: "sonnet card-reconcile", reason: "engine FX3a: coherent bottom mirror rate boost (1 + beta|r|) now applied (mirror_phase_ok added as V, paper states antinode placement): tau_X pass -> fail (model ~1700 -> 986 ps); extraction_corrected fail -> pass (model 0.26 -> 0.378, weak: R 0.30 chosen by paper)"}
   - {date: 2026-10-12, by: "sonnet fx4", reason: "final review FX4: extraction_corrected class M -> R (mirror R 0.30 chosen by the paper to match its own theory); expect unchanged (pass)"}
+  - {date: 2026-11-03, by: "sonnet devlib-r4-cards", reason: "r4 Fable reviews item G and incoherent section 0/3: mirror_phase_ok retagged A (design intent, value true kept; a boolean cannot be ranged in a card); material.tau_bare_ns E range [1.0, 2.0] added; g2_raw removed from the ledger (IRF-limited dip depth, not comparable with the period-window area; kept in reported with a note); tau_X stays fail (envelope 658-1315 ps does not reach 1700 ps, Fable predicted pass-envelope via mirror_phase_ok = false which the card cannot express), reason rewritten; no tolerance changed"}
